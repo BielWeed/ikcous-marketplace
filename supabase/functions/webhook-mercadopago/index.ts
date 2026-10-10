@@ -24,7 +24,9 @@
  * assinatura barra isso), mas o corpo em si nunca carrega o pedido: quem
  * sabe a qual pedido um pagamento pertence é o `external_reference` que
  * `criarPagamento`/`consultarPagamento` leem de volta da API do MP,
- * autenticada pelo `MP_ACCESS_TOKEN`. Por isso o pedido sai de
+ * autenticada pelo token do gateway (o do LOJISTA quando ele cadastrou a
+ * chave dele, o `MP_ACCESS_TOKEN` da plataforma quando não —
+ * `_shared/credenciais-mp.ts`, tarefa mp-2). Por isso o pedido sai de
  * `consulta.externalReference`, nunca de `body`.
  *
  * `pareceUuid` nesse valor é a segunda trava: sem forma de UUID (ausente,
@@ -62,31 +64,67 @@
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import * as webpush from "jsr:@negrel/webpush@0.3.0";
+// Tarefa mp-2 (15/09/2026): as DUAS chaves deste webhook (o segredo que
+// autentica a notificação e o token que reconsulta o MP) saem daqui — da
+// chave do LOJISTA quando ela existe, do ambiente quando não existe cadastro.
+// Frente 8 (29/09/2026, decisão do dono), a regra fechada do SEGREDO em uma
+// frase: a reserva do ambiente (`MP_WEBHOOK_SECRET`) só vale quando NÃO há
+// cadastro nenhum (origem "ambiente") — para origem "lojista" SEM a chave de
+// assinatura própria a reserva MORRE (500 nomeado antes da assinatura,
+// alinhado ao gate do PIX na criação: a confirmação de uma loja não depende
+// de segredo global da plataforma), e origem "indisponivel" segue fechando
+// com 500 antes da assinatura, porque o MP está assinando com o segredo DO
+// LOJISTA.
+import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import {
   avaliarAssinatura,
+  buscarOrdersDoPedido,
+  camposDaAssinatura,
+  chaveDoCartaoDaTentativa,
   consultarOrder,
   consultarPagamento,
   extrairValorDaOrder,
   idEhClassico,
+  limiteInferiorDoSentinela,
   mapearStatus,
   mapearStatusOrder,
+  orderEhDeCartao,
+  parcelasDaOrder,
+  recusaLiberaAVaga,
+  resolverSentinela,
+  sentinelaDaChave,
+  tipoDoPagamentoDaOrder,
   TOLERANCIA_DE_VALOR,
+  vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
+import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
 import {
-  carregarChavesVapid,
-  corsHeaders,
-  enviarParaInscritos,
-  readKey,
-  resumir,
-} from "../_shared/webpush.ts";
-import { enviarComprovantePedido } from "../_shared/comprovante.ts";
-// PEÇA 5 (12/09/2026): `dispararAvisoDePagamentoAtrasadoReal`, mais abaixo,
-// fala SMTP direto (sem passar por `_shared/comprovante.ts`, que não é
-// arquivo desta peça) e usa `escaparHtml` para o mesmo motivo que
-// `_shared/comprovante.ts` já usa: nome de loja é texto que ALGUÉM digitou.
-import { enviarEmail, remetenteConfigurado } from "../_shared/smtp.ts";
-import { escaparHtml } from "../_shared/pedido.ts";
+  consultarContestacao,
+  criarResolvedorDeVendedor,
+  registrarContestacao,
+  type ResultadoDaConsultaDoCaso,
+  STATUS_DA_CONTESTACAO,
+} from "../_shared/contestacao.ts";
+import { recuperarContestacaoPeloCaso } from "../_shared/reconsulta-de-contestacao.ts";
+// FASE 2 (04/10/2026): o push ao lojista, o comprovante ao cliente e o aviso de
+// pagamento atrasado saem do módulo ÚNICO dos três caminhos que confirmam
+// pagamento (imediata, este webhook e o cron) — `_shared/efeitos-do-pagamento.ts`.
+// O push contado e o "aviso ao admin uma vez" moram em `aviso-ao-lojista.ts`.
+import {
+  type AvisarAdminUmaVez,
+  avisarAdminUmaVez as avisarAdminUmaVezCompartilhado,
+  dispararPushContadoReal,
+} from "../_shared/aviso-ao-lojista.ts";
+import {
+  aplicarEfeitosDoPagamentoConfirmado,
+  type DepsDosEfeitos,
+  desfechoComEfeito,
+} from "../_shared/efeitos-do-pagamento.ts";
+// Os testes e o contrato antigo importam estes dois DAQUI: a definição é uma só.
+export {
+  assuntoDoAvisoDePagamentoAtrasado,
+  htmlDoAvisoDePagamentoAtrasado,
+} from "../_shared/efeitos-do-pagamento.ts";
 // T5 do plano de estorno pelo app (08/09/2026): o webhook é o segundo
 // caminho (e o único, para estorno feito FORA do app) que registra o
 // desfecho de uma devolução — reusa a MESMA decisão pura do P0
@@ -118,6 +156,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // "pagamento não encontrado" (:305-307). Custa uma linha de log. Colocar
 // aqui um tópico que ÀS VEZES é pagamento custaria o dinheiro da loja — por
 // isso a lista só entra com o que a doc afirma, com certeza, ser outra coisa.
+/** Tópico legado da Orders API cujo `data.id` é o id do CASO de contestação. */
+const TOPICO_DE_CONTESTACAO = "topic_chargebacks_wh";
+
 const TOPICOS_IRRELEVANTES = new Set([
   "merchant_order",
   "topic_merchant_order_wh",
@@ -129,7 +170,6 @@ const TOPICOS_IRRELEVANTES = new Set([
   "stop_delivery_op_wh",
   "topic_claims_integration_wh",
   "topic_card_id_wh",
-  "topic_chargebacks_wh",
   "point_integration_wh",
 ]);
 
@@ -161,330 +201,180 @@ const json = (corpo: unknown, status = 200) =>
   });
 
 /**
- * Dispara o push de "pedido pago" para os admins inscritos. Mesmo padrão de
- * `notify-new-order/index.ts:194-243`: carrega VAPID, monta o
- * `ApplicationServer`, busca os admins em `profiles` e as inscrições em
- * `push_subscriptions`, envia via `enviarParaInscritos`.
+ * Push aos admins inscritos — o mecanismo mora em `_shared/aviso-ao-lojista.ts`
+ * (`dispararPushContadoReal`), compartilhado com a reconciliação e a
+ * confirmação imediata. Estes dois são só o prefixo de log deste arquivo.
  *
- * Erros aqui NUNCA sobem: o pedido já está marcado 'pago' no banco quando
- * esta função roda, e uma falha de push não pode virar 500 — isso faria o MP
- * reenviar um evento que já foi tratado com sucesso, e reprocessar a RPC de
- * novo só para cair em 'ja_pago'. Só loga.
+ * Erros NUNCA sobem: o pedido já está marcado 'pago' no banco quando o push
+ * roda, e uma falha de push não pode virar 500 — isso faria o MP reenviar um
+ * evento que já foi tratado com sucesso. Só loga.
+ *
+ * C-P (02/10/2026): `disparoPushContadoReal` devolve QUANTAS inscrições
+ * receberam o push — o aviso de cobrança duplicada precisa disso para só dar a
+ * reserva por gasta quando o push CHEGOU. `disparoPushReal` mantém a
+ * assinatura de sempre (devolve void) para os outros pushes deste arquivo.
  */
 async function disparoPushReal(args: {
   supabase: ReturnType<typeof createClient>;
   aviso: { title: string; body: string; url: string };
 }): Promise<void> {
-  const { supabase, aviso } = args;
-  try {
-    const { data: admins, error: erroAdmins } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("role", "admin");
-    if (erroAdmins) throw erroAdmins;
-
-    const ids = (admins ?? []).map((a: any) => a.id);
-    if (ids.length === 0) {
-      console.warn("webhook-mercadopago: nenhum admin cadastrado, aviso de pagamento sem destino");
-      return;
-    }
-
-    const { data: inscricoes, error: erroInscricoes } = await supabase
-      .from("push_subscriptions")
-      .select("endpoint, p256dh, auth")
-      .in("user_id", ids);
-    if (erroInscricoes) throw erroInscricoes;
-
-    if (!inscricoes || inscricoes.length === 0) {
-      console.warn("webhook-mercadopago: nenhum admin inscrito para push");
-      return;
-    }
-
-    const vapidKeys = await carregarChavesVapid(
-      Deno.env.get("VAPID_PUBLIC_KEY"),
-      Deno.env.get("VAPID_PRIVATE_KEY"),
-    );
-    const servidor = await webpush.ApplicationServer.new({
-      contactInformation: Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.org",
-      vapidKeys,
-    });
-
-    const itens = await enviarParaInscritos({
-      servidor,
-      inscricoes,
-      mensagem: JSON.stringify(aviso),
-      rotulo: "webhook-mercadopago",
-      aoDetectarMorta: (endpoint: string) =>
-        supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),
-    });
-
-    const resumo = resumir(itens);
-    console.log(
-      `webhook-mercadopago: aviso de pagamento → ${resumo.enviados} entregues, ${resumo.falharam} falharam`,
-    );
-  } catch (erro) {
-    console.error("webhook-mercadopago: falha ao disparar push de pagamento", erro);
-  }
+  await disparoPushContadoReal(args);
 }
 
-/**
- * Manda ao CLIENTE o comprovante do pedido (PEDIDO-070) chamando DIRETO o
- * miolo de `send-order-confirmation` — `_shared/comprovante.ts` — em vez de
- * `supabase.functions.invoke`. É o mesmo movimento que `notify-new-order`
- * já faz para reusar a `send-push` via `_shared/webpush.ts` (ver o
- * cabeçalho daquele arquivo): a function de origem não pode ser importada
- * pelo `index.ts` dela mesma porque chama `serve()` no topo, então o miolo
- * mora em `_shared` e os dois chamadores importam de lá.
- *
- * REDESENHO DE 25/08/2026 — POR QUE NÃO A QUARTA CORREÇÃO NA PORTA HTTP
- *   O comprovante foi consertado três vezes chamando `send-order-
- *   confirmation` pela porta pública (desenhada para o navegador): (1) faltava
- *   a chamada; (2) o texto mentia no pagamento atrasado — incompatibilidade
- *   de CONTRATO; (3) a chave (JWT novo x legado) — incompatibilidade de
- *   AUTENTICAÇÃO. As rodadas 2 e 3 são o mesmo defeito com roupa diferente:
- *   cada volta descobria mais um jeito de a porta HTTP não servir a um
- *   chamador servidor. A correção não é acertar o contrato da porta pela
- *   quarta vez — é não passar por ela: chamando a função direto, por
- *   import, não existe mais fronteira nenhuma para autenticar. Some o HTTP,
- *   o `verify_jwt`, o header forçado, a chave legada enquistada e a
- *   dependência do calendário de desligamento das chaves legadas
- *   (INFRA-260, #126) — não porque a INFRA-260 foi concluída, mas porque
- *   esta chamada específica deixou de depender dela.
- *
- * SÓ PARA `resultado === "pago"` — achado de revisão de contexto limpo,
- * 25/08/2026, mantido no redesenho. O chamador (mais abaixo) restringe este
- * disparo a 'pago', mesmo o push ao lojista saindo também para
- * 'pago_apos_expirar'. Motivo: `enviarComprovantePedido`
- * (`_shared/comprovante.ts`) só sabe ler o literal 'pago' —
- * `aguardandoPagamento` compara `payment_status !== 'pago'`, e
- * 'pago_apos_expirar' cai nesse `true`. Disparar para esse retorno faria o
- * comprovante mentir DUAS vezes: diria que o pagamento ainda está
- * "aguardando confirmação" (já foi confirmado — é por isso que chegamos
- * aqui) e que o pedido "entra na fila de separação" (o pedido segue
- * `status='cancelled'`, estoque já devolvido; nunca entra em separação). E
- * não há segunda chance: `reivindicar_email_de_confirmacao` é reserva única
- * e definitiva, então o e-mail certo nunca poderia ser mandado depois.
- *
- * PEÇA 5 (revisão de dinheiro-não-recebido, 12/09/2026): 'pago_apos_expirar'
- * deixa de ficar mudo — ver `dispararAvisoDePagamentoAtrasadoReal`, mais
- * abaixo, que manda um texto PRÓPRIO e honesto (nunca este comprovante
- * padrão) e compete pela MESMA reserva. `_shared/comprovante.ts` não é
- * arquivo desta peça (outro executor do lote edita em paralelo) — por isso o
- * texto novo não virou um parâmetro ali, e mora duplicado aqui e em
- * `reconciliar-pagamentos/index.ts` (mesmo nome de função). Consolidar as
- * duas cópias em `_shared/comprovante.ts` é candidato a tarefa própria, com
- * revisão própria — a sessão principal decide, não este executor.
- *
- * A REPETIÇÃO NÃO PRECISA DE TRAVA AQUI
- *   O MP é reentrante por natureza (reenvia a mesma notificação até receber
- *   200), mas `enviarComprovantePedido` já reserva o envio com
- *   `reivindicar_email_de_confirmacao` — um UPDATE condicional atômico em
- *   que só a primeira chamada ganha (a MESMA trava que já protege o
- *   caminho do front, chamando a MESMA RPC, sem mudar uma linha dela).
- *   Reenvio do MP chamando esta função de novo é seguro: a chamada seguinte
- *   cai em `ja_enviado` e não manda nada. Além disso, esta função só é
- *   alcançada quando `confirmar_pagamento` (RPC, `FOR UPDATE`) devolve
- *   'pago' — um reenvio que chegue depois de o pagamento já ter sido
- *   registrado recebe 'ja_pago' e nem tenta chamar o comprovante de novo
- *   (ver o teste "push dispara em exatamente 2 dos 9 retornos possíveis").
- *
- * Erros aqui NUNCA sobem, pela mesma razão do push (`disparoPushReal`,
- * acima): o pedido já está 'pago' no banco quando esta função roda, e uma
- * falha de e-mail não pode virar 500 — isso faria o MP reenviar um evento
- * que já foi tratado com sucesso. Só loga — tanto a exceção inesperada
- * (`catch`) quanto o desfecho `{ ok: false, motivo }` que
- * `enviarComprovantePedido` devolve sem lançar (SMTP não configurado,
- * pedido sem e-mail, reserva já gasta por outro chamador etc.).
- */
-async function dispararComprovanteReal(args: {
+function disparoPushContadoReal(args: {
   supabase: ReturnType<typeof createClient>;
-  orderId: string;
-}): Promise<void> {
-  const { supabase, orderId } = args;
-  try {
-    const desfecho = await enviarComprovantePedido({ supabase, orderId });
-    if (!desfecho.ok) {
-      console.error(
-        "webhook-mercadopago: comprovante ao cliente não enviado",
-        { orderId, motivo: desfecho.motivo },
-      );
-    }
-  } catch (erro) {
-    console.error(
-      "webhook-mercadopago: falha ao disparar comprovante ao cliente",
-      erro,
-    );
-  }
+  aviso: { title: string; body: string; url: string };
+}): Promise<number> {
+  return dispararPushContadoReal({ ...args, rotulo: "webhook-mercadopago" });
 }
+
 
 /**
- * PEÇA 5 (revisão de dinheiro-não-recebido, 12/09/2026): o texto HONESTO
- * para 'pago_apos_expirar' — nunca o HTML de `_shared/comprovante.ts`
- * (`htmlDoPedido`), que mentiria "aguardando confirmação" e "entra na fila
- * de separação" para um pedido já confirmado e `status='cancelled'` (ver o
- * comentário de `dispararAvisoDePagamentoAtrasadoReal`, abaixo). Pura e
- * EXPORTADA para o teste conferir o TEXTO sem tocar SMTP nem banco — mesmo
- * padrão de `formatarBRL`/`numeroDoPedido`, acima.
- *
- * Não promete estoque disponível nem reenvio automático (a política do dono
- * é HONRAR o pagamento tardio, mas a reanálise ainda é manual — não há botão
- * de reanálise pelo cliente hoje): diz só o que já é fato — o pagamento
- * chegou, o pedido foi cancelado antes disso, e a loja vai resolver.
- *
- * NUNCA afirmar "prazo" nem "automaticamente" aqui (achado bloqueante da
- * revisão, 12/09/2026): `confirmar_pagamento` devolve 'pago_apos_expirar' por
- * DOIS caminhos (migration 20260810000000, linhas 118-125 e 173-180) — a
- * varredura de 30 min (aí sim é "prazo" e "automático") E o cliente que
- * CANCELA pelo app com o QR na mão e paga o PIX segundos depois, dentro da
- * janela (aí "prazo" e "automático" são as duas mentiras). Mesmo motivo do
- * "fora do fluxo", não "fora do prazo" do push acima: só "já estava
- * cancelado" e "estoque já tinha voltado" são verdade nos dois casos.
+ * C-P (02/10/2026) — pausas da reconsulta de quem encontra o aviso
+ * 'em_envio' (outra entrega da MESMA order está com a reserva). Três
+ * reconsultas, pausas crescentes: 8 s é a SOMA DAS PAUSAS, não um prazo. O
+ * tempo real desta etapa é pausas + até 4 chamadas de reserva (+ confirmar
+ * ou liberar) + o push (teto de 5 s na resposta); as RPCs são aguardadas sem
+ * tempo-limite próprio, então não há latência garantida. A soma foi escolhida
+ * para deixar folga aos 22 s que o MP dá para o 200/201, junto com o resto do
+ * handler (consulta ao MP, leituras).
  */
-export function htmlDoAvisoDePagamentoAtrasado(args: {
-  orderId: string;
-  nomeDaLoja: string;
-}): string {
-  const { orderId, nomeDaLoja } = args;
-  const loja = String(nomeDaLoja ?? "").trim();
-  return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; border: 1px solid #e4e4e7; border-radius: 24px; color: #18181b;">
-      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a1a1aa;">
-        Pedido ${escaparHtml(numeroDoPedido(orderId))}
-      </p>
-      ${loja ? `<p style="margin: 0 0 20px; font-size: 18px; font-weight: 800;">${escaparHtml(loja)}</p>` : ""}
-      <p style="margin: 0 0 16px; font-size: 14px; line-height: 20px; color: #3f3f46;">
-        Recebemos a confirmação do seu pagamento para este pedido, mas ele já estava cancelado e o estoque já tinha voltado para a loja quando o pagamento foi confirmado — por isso não entrou na fila de separação.
-      </p>
-      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #3f3f46;">
-        A loja já foi avisada do pagamento e vai entrar em contato para resolver (reenvio, se ainda houver estoque, ou devolução do valor pago).
-      </p>
-    </div>
-  `;
-}
+const PAUSAS_DO_AVISO_EM_ENVIO_MS = [1000, 2500, 4500];
 
-export function assuntoDoAvisoDePagamentoAtrasado(orderId: string, nomeDaLoja: string): string {
-  const loja = String(nomeDaLoja ?? "").trim();
-  const numero = numeroDoPedido(orderId);
-  return loja ? `Pedido ${numero} · ${loja}` : `Pedido ${numero}`;
-}
+const dormirDeVerdade = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 
 /**
- * Manda ao CLIENTE um aviso HONESTO de pagamento confirmado FORA do prazo
- * (PEÇA 5, revisão de dinheiro-não-recebido, 12/09/2026) — o gêmeo de
- * `dispararComprovanteReal`, acima, para o retorno 'pago_apos_expirar' da
- * RPC, que aquela função nunca atende (ver o parágrafo "PEÇA 5" no
- * comentário dela).
+ * C-P (02/10/2026) — o push "Cobrança de cartão duplicada?" sai UMA vez por
+ * (pedido, order do MP), sem gastar a vez quando o push não chega. Sem a
+ * reserva ele saía a cada ENTREGA: o MP manda uma notificação por
+ * atualização da order mais os reenvios, e este handler relê o estado ATUAL
+ * — três entregas da mesma order aprovada divergente davam três pushes iguais
+ * (W7).
  *
- * MESMA trava anti-duplicata do comprovante padrão: os dois competem pela
- * MESMA reserva (`reivindicar_email_de_confirmacao`, UPDATE condicional
- * atômico, só a PRIMEIRA chamada ganha) — um pedido nunca recebe os dois
- * textos, e um reenvio do MP (ou a `reconciliar-pagamentos`, que chama esta
- * MESMA função duplicada) que chegue depois de qualquer um dos dois cai em
- * `reservou !== true` e não manda nada.
+ * A reserva é um PRAZO (migration 20261191000000), não uma trava definitiva.
+ * `reservar_aviso_ao_lojista` devolve:
+ *   'reservado' → a vaga é desta chamada: o push sai por
+ *      `disparoPushContadoReal` (diz quantas inscrições o receberam); chegou a
+ *      ≥ 1 → `confirmar_aviso_ao_lojista`; não chegou a ninguém (erro, nenhum
+ *      admin inscrito, nenhuma entrega) → `liberar_aviso_ao_lojista`;
+ *   'enviado' → já entregue: nada a fazer;
+ *   'em_envio' → outra entrega está avisando AGORA. Esta NÃO supõe sucesso
+ *      ("singleflight"): espera o RESULTADO da dona reconsultando
+ *      (`PAUSAS_DO_AVISO_EM_ENVIO_MS`, a própria reserva toma posse se a dona
+ *      liberou ou se o prazo venceu). Virou 'reservado' → faz o push como a
+ *      dona faria; virou 'enviado' → nada; continuou 'em_envio' → devolve
+ *      "pendente", e quem chama responde NÃO-2xx para o MP reentregar (~15 min
+ *      depois, quando o prazo de 2 min já venceu ou o aviso já saiu).
+ * Confirmar/liberar rodam quando o push TERMINA, mesmo depois do teto de 5 s
+ * da resposta (`comTempoLimite` mantém o isolado vivo com `waitUntil`); se o
+ * isolado morrer antes, o prazo de 2 minutos solta a chave sozinho. Falha de
+ * confirmar/liberar só loga — o prazo cobre.
  *
- * Mesma forma de erro do resto do arquivo: NUNCA lança para quem chama — o
- * pedido já está 'pago_apos_expirar' no banco quando isto roda, e uma falha
- * de e-mail não pode virar 500 (o MP reenviaria um evento já tratado).
+ * A chave é a MESMA nos dois ramos que avisam (S5, a adoção que perdeu a
+ * corrida, e o `cartao_divergente`): é o mesmo fato e o mesmo texto, e o S5
+ * numa entrega costuma virar o ramo divergente na reentrega seguinte. Outra
+ * order aprovada no mesmo pedido é outra chave — avisa de novo.
+ *
+ * FALHA ABERTA: erro da RPC, exceção, função ausente (edge publicada antes da
+ * migration) ou valor desconhecido → avisa mesmo assim, sem confirmar/liberar
+ * (a vaga não é desta chamada) — perder um aviso de dinheiro é pior que
+ * repetir um. O `console.error` do `cartao_divergente` continua saindo em
+ * TODA entrega.
+ *
+ * LIMITES (já existiam antes da C-P) — a entrega NÃO é garantida: a dona da
+ * reserva cujo push não chega a ninguém libera e responde 200; na falha
+ * aberta, o push que não chega a ninguém também não se repete nesta entrega.
+ * Nos dois casos, só uma nova notificação do MP para a mesma order tenta de
+ * novo.
  */
-async function dispararAvisoDePagamentoAtrasadoReal(args: {
+async function avisarCobrancaDuplicadaUmaVez(args: {
   supabase: ReturnType<typeof createClient>;
+  enviarPushContado: typeof disparoPushContadoReal;
+  dormir: (ms: number) => Promise<void>;
   orderId: string;
-}): Promise<void> {
-  const { supabase, orderId } = args;
-  try {
-    // Falha fechada ANTES de reservar — mesmo motivo do comprovante padrão
-    // (`_shared/comprovante.ts`): reservar sem poder enviar deixaria o
-    // pedido marcado "já avisado" para sempre, sem o cliente ter recebido
-    // nada.
-    if (!remetenteConfigurado()) {
-      console.error(
-        "webhook-mercadopago: SMTP não configurado — aviso de pagamento atrasado não enviado",
-        orderId,
-      );
-      return;
-    }
+  idOrder: string;
+  aviso: { title: string; body: string; url: string };
+}): Promise<"ok" | "pendente"> {
+  const { supabase, enviarPushContado, dormir, orderId, idOrder, aviso } = args;
+  const chave = `cartao_divergente:${orderId}:${idOrder}`;
 
-    const { data: pedido, error: erroPedido } = await supabase
-      .from("marketplace_orders")
-      .select("id, user_id, customer_data")
-      .eq("id", orderId)
-      .maybeSingle();
-    if (erroPedido) throw erroPedido;
-    if (!pedido) {
-      console.warn(
-        "webhook-mercadopago: pedido do aviso de pagamento atrasado não encontrado",
-        orderId,
-      );
-      return;
-    }
-
-    // Mesma ordem de `emailDoCliente` (`_shared/comprovante.ts`): o e-mail
-    // que a pessoa digitou NAQUELE pedido primeiro; o da conta só quando o
-    // pedido não traz nenhum.
-    let destinatario = String(
-      (pedido as Record<string, unknown>).customer_data
-        ? ((pedido as Record<string, unknown>).customer_data as Record<string, unknown>).email ?? ""
-        : "",
-    ).trim();
-    if (!destinatario && (pedido as Record<string, unknown>).user_id) {
-      const { data: conta } = await supabase.auth.admin.getUserById(
-        String((pedido as Record<string, unknown>).user_id),
-      );
-      destinatario = String(conta?.user?.email ?? "").trim();
-    }
-    if (!destinatario) {
-      console.warn(
-        "webhook-mercadopago: pedido pago_apos_expirar sem e-mail de cliente",
-        orderId,
-      );
-      return;
-    }
-
-    // A TRAVA anti-duplicata — ver o docstring desta função.
-    const { data: reservou, error: erroReserva } = await supabase.rpc(
-      "reivindicar_email_de_confirmacao",
-      { p_order_id: orderId },
-    );
-    if (erroReserva) throw erroReserva;
-    if (reservou !== true) return; // já enviado (padrão ou este mesmo aviso)
-
-    const { data: config } = await supabase
-      .from("store_config")
-      .select("store_name")
-      .limit(1)
-      .maybeSingle();
-    const nomeDaLoja = (config as Record<string, unknown> | null)?.store_name ?? "";
-
+  // null = a reserva falhou (falha aberta: avisa sem prazo)
+  const reservar = async (): Promise<string | null> => {
     try {
-      await enviarEmail({
-        para: destinatario,
-        assunto: assuntoDoAvisoDePagamentoAtrasado(orderId, String(nomeDaLoja ?? "")),
-        html: htmlDoAvisoDePagamentoAtrasado({ orderId, nomeDaLoja: String(nomeDaLoja ?? "") }),
-      });
-    } catch (erroEnvio) {
-      // Devolve a reserva: o SMTP recusou, então ninguém recebeu nada — uma
-      // tentativa posterior tem de ser possível (mesmo padrão do comprovante
-      // padrão).
-      await supabase
-        .rpc("liberar_email_de_confirmacao", { p_order_id: orderId })
-        .then(undefined, (erroLiberar: unknown) => {
-          console.error(
-            "webhook-mercadopago: liberar reserva do aviso de pagamento atrasado falhou",
-            orderId,
-            erroLiberar,
-          );
-        });
-      throw erroEnvio;
+      const { data, error } = await supabase.rpc("reservar_aviso_ao_lojista", { p_chave: chave });
+      if (error) throw error;
+      if (data === "reservado" || data === "em_envio" || data === "enviado") return data;
+      throw new Error(`reservar_aviso_ao_lojista devolveu valor desconhecido: ${String(data)}`);
+    } catch (erro) {
+      console.error(
+        "webhook-mercadopago: reservar_aviso_ao_lojista falhou — avisa mesmo assim (falha aberta)",
+        { orderId, idOrder, erro },
+      );
+      return null;
     }
+  };
 
-    console.log(`webhook-mercadopago: aviso de pagamento atrasado enviado para ${orderId}`);
-  } catch (erro) {
-    console.error(
-      "webhook-mercadopago: falha ao enviar aviso de pagamento atrasado ao cliente",
-      orderId,
-      erro,
-    );
+  let estado = await reservar();
+  for (const pausa of PAUSAS_DO_AVISO_EM_ENVIO_MS) {
+    if (estado !== "em_envio") break;
+    await dormir(pausa);
+    estado = await reservar();
   }
+  if (estado === "enviado") {
+    console.warn(
+      "webhook-mercadopago: aviso de cobrança duplicada já entregue — push não repetido",
+      { orderId, idOrder },
+    );
+    return "ok";
+  }
+  if (estado === "em_envio") {
+    console.warn(
+      "webhook-mercadopago: aviso de cobrança duplicada continua em envio por outra entrega — pedindo reentrega ao MP",
+      { orderId, idOrder },
+    );
+    return "pendente";
+  }
+  const reservaDestaChamada = estado === "reservado";
+
+  const desfecho = (async () => {
+    let entregues = 0;
+    try {
+      entregues = await enviarPushContado({ supabase, aviso });
+    } catch (erro) {
+      console.error("webhook-mercadopago: push de cobrança duplicada falhou", { orderId, idOrder, erro });
+    }
+    if (!reservaDestaChamada) return;
+    const rpc = entregues > 0 ? "confirmar_aviso_ao_lojista" : "liberar_aviso_ao_lojista";
+    try {
+      const { error } = await supabase.rpc(rpc, { p_chave: chave });
+      if (error) throw error;
+    } catch (erro) {
+      console.error(
+        `webhook-mercadopago: ${rpc} falhou — a reserva expira sozinha em 2 minutos`,
+        { orderId, idOrder, erro },
+      );
+    }
+  })();
+  await comTempoLimite(desfecho, 5000);
+  return "ok";
+}
+
+/**
+ * Lote A (04/10/2026): aviso ao admin UMA vez por chave — `avisarAdminUmaVez`
+ * de `_shared/aviso-ao-lojista.ts` (a mesma reserva com prazo da C-P, sem a
+ * espera "singleflight"), com o prefixo de log deste arquivo. Usado pela
+ * contestação que o app não consegue registrar sozinho (sem CBK, conflito,
+ * decisão revertida) e, desde a FASE 2, também pela reconsulta periódica do
+ * cron (`reconciliar-pagamentos`), que chama o MESMO miolo.
+ */
+function avisarAdminUmaVez(args: {
+  supabase: ReturnType<typeof createClient>;
+  enviarPushContado: typeof disparoPushContadoReal;
+  chave: string;
+  aviso: { title: string; body: string; url: string };
+}): Promise<void> {
+  return avisarAdminUmaVezCompartilhado({ ...args, rotulo: "webhook-mercadopago" });
 }
 
 /** Terminal de sucesso de um refund INDIVIDUAL na Payments API clássica —
@@ -498,77 +388,55 @@ const STATUS_REFUND_APROVADO_PAYMENTS = "approved";
 const STATUS_REFUND_CONCLUIDO_ORDERS = "processed";
 
 /**
- * Insere uma linha `sistema` já `concluido` e chama `concluir_estorno` na
- * sequência — o padrão que A4 (estorno feito fora do app) e B/settled-sem-
- * linha (chargeback cujo `in_process` nunca chegou) COMPARTILHAM: "nasce
- * concluido, nunca solicitado" (pré-requisito 3 do plano — linha nova é
- * dinheiro NOVO; esta linha é dinheiro que JÁ saiu). `valorOriginal` só
- * difere de `amount` quando o clamp (disponível < valor do MP) reduziu —
- * nesse caso o motivo ganha o valor real do MP, para o lojista não estranhar
- * a diferença.
- *
- * Erro nomeado `estorno_acima_do_total` (a RPC recusou por segurança) →
- * console.error e `false` (SEGUE — 200 no fim, item 6 do brief: reenviar não
- * muda a conta e 500 aqui viraria reenvio infinito). Qualquer outro erro de
- * banco → lança (o chamador devolve 500 — fila do MP).
+ * Relê o `valor_estornado` do pedido — a fonte canônica do acumulado
+ * (`concluir_estorno` é o único que o soma). Usada depois de um 23505: o
+ * acumulado em memória deste lote não enxerga o que OUTRA entrega concluiu
+ * entre a leitura inicial e agora.
  */
-async function inserirEstornoConcluido(args: {
+async function releValorEstornado(
+  supabase: ReturnType<typeof createClient>,
+  orderId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("marketplace_orders")
+    .select("valor_estornado")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error) throw error;
+  const valor = Number((data as Record<string, unknown> | null)?.valor_estornado);
+  if (!data || !Number.isFinite(valor)) {
+    throw new Error("webhook-mercadopago: valor_estornado ilegível ao reler o pedido");
+  }
+  return valor;
+}
+
+/**
+ * A REGRA ÚNICA do acumulado em memória (`pedido.valor_estornado`) depois de
+ * QUALQUER `concluir_estorno` deste passo — recuperação da janela de falha,
+ * linha pendente do app, estorno externo (Lote A, bloqueios da revisão de
+ * 04/10/2026). Só soma o valor da linha quando a RPC diz que concluiu AGORA
+ * (`ja_concluida === false`): é o único caso em que ESTA entrega pôs o
+ * dinheiro no banco. `ja_concluida === true` (outra entrega concluiu a MESMA
+ * linha entre a nossa leitura e a RPC) ou retorno ilegível: o acumulado em
+ * memória não sabe o que mudou — relê o `valor_estornado` do banco, a fonte
+ * canônica. Somar no escuro contava o mesmo dinheiro duas vezes e o clamp do
+ * refund seguinte gravava MENOS do que saiu (pedido de 100, refunds 20 e 70:
+ * o banco terminava em 80, e nenhuma reentrega corrigia).
+ */
+async function acumularConclusao(args: {
   supabase: ReturnType<typeof createClient>;
   orderId: string;
+  pedido: PedidoParaEstorno;
+  dataRpc: unknown;
   amount: number;
-  valorOriginal: number;
-  motivoBase: string;
-  mpRefundId: string | null;
-  mpStatus: string;
-  mpStatusDetail: string | null;
-}): Promise<boolean> {
-  const { supabase, orderId, amount, valorOriginal, motivoBase, mpRefundId, mpStatus, mpStatusDetail } = args;
-  const clampou = amount < valorOriginal;
-  const motivo = motivoBase + (clampou ? `, valor no MP R$ ${valorOriginal.toFixed(2)}` : "");
-
-  const { data: linhaInserida, error: erroInsert } = await supabase
-    .from("order_refunds")
-    .insert({
-      order_id: orderId,
-      amount,
-      solicitado_por: "sistema",
-      status: "concluido",
-      motivo,
-      mp_refund_id: mpRefundId,
-      mp_status: mpStatus,
-      mp_status_detail: mpStatusDetail,
-    })
-    .select("id")
-    .maybeSingle();
-  if (erroInsert) throw erroInsert;
-  if (!linhaInserida) {
-    console.error(
-      "webhook-mercadopago: insert do estorno fora do app não devolveu a linha",
-      orderId,
-      mpRefundId,
-    );
-    return false;
+}): Promise<void> {
+  const { supabase, orderId, pedido, dataRpc, amount } = args;
+  const jaConcluida = (dataRpc as { ja_concluida?: unknown } | null)?.ja_concluida;
+  if (jaConcluida === false) {
+    pedido.valor_estornado = Number((pedido.valor_estornado + amount).toFixed(2));
+    return;
   }
-
-  const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
-    p_refund_id: (linhaInserida as Record<string, unknown>).id,
-    p_mp_refund_id: mpRefundId,
-    p_mp_status: mpStatus,
-    p_mp_status_detail: mpStatusDetail,
-  });
-  if (erroConcluir) {
-    if (String((erroConcluir as { message?: string }).message ?? "").includes("estorno_acima_do_total")) {
-      console.error(
-        "webhook-mercadopago: concluir_estorno (estorno fora do app) recusou — acima do total",
-        orderId,
-        mpRefundId,
-        erroConcluir,
-      );
-      return false;
-    }
-    throw erroConcluir;
-  }
-  return true;
+  pedido.valor_estornado = await releValorEstornado(supabase, orderId);
 }
 
 /**
@@ -602,6 +470,10 @@ async function registrarDesfechoDoEstorno(args: {
   orderId: string;
   rota: "payment" | "order";
   corpo: Record<string, unknown>;
+  // Lote A (R1): a consulta do CASO da contestação (GET /v1/chargebacks/
+  // {case_id}) e o aviso ao admin uma vez — injetados pelo handler.
+  consultarCaso: (caseId: string) => Promise<ResultadoDaConsultaDoCaso>;
+  avisar: AvisarAdminUmaVez;
 }): Promise<void> {
   const { supabase, orderId, rota, corpo } = args;
   const ehPayments = rota === "payment";
@@ -614,7 +486,7 @@ async function registrarDesfechoDoEstorno(args: {
   const { data: refundsRowsBrutos, error: erroRefundsRows } = await supabase
     .from("order_refunds")
     .select(
-      "id, amount, status, solicitado_por, mp_refund_id, mp_status, tentativas, concluido_em, created_at",
+      "id, amount, status, solicitado_por, mp_refund_id, mp_chargeback_id, mp_status, tentativas, concluido_em, created_at",
     )
     .eq("order_id", orderId);
   if (erroRefundsRows) throw erroRefundsRows;
@@ -660,10 +532,21 @@ async function registrarDesfechoDoEstorno(args: {
       linha.status === "concluido" &&
       (linha.concluido_em === null || linha.concluido_em === undefined)
     ) {
-      const { error: erroRecuperacao } = await supabase.rpc("concluir_estorno", {
+      const { data: dataRecuperacao, error: erroRecuperacao } = await supabase.rpc("concluir_estorno", {
         p_refund_id: linha.id,
       });
-      if (erroRecuperacao) {
+      if (!erroRecuperacao) {
+        // Lote A: a linha órfã somou AGORA no banco — o acumulado em memória
+        // (lido antes) tem de enxergar, senão o clamp do estorno externo
+        // seguinte tenta mais do que sobra e a RPC recusa.
+        await acumularConclusao({
+          supabase,
+          orderId,
+          pedido,
+          dataRpc: dataRecuperacao,
+          amount: Number(linha.amount ?? 0),
+        });
+      } else {
         if (
           String((erroRecuperacao as { message?: string }).message ?? "").includes(
             "estorno_acima_do_total",
@@ -744,13 +627,29 @@ async function registrarDesfechoDoEstorno(args: {
       ehPayments,
       linha,
       pedido,
-      idsJaReivindicados: Array.from(reivindicados),
+      // O id da PRÓPRIA linha sai do conjunto (achado MÉDIO da revisão do
+      // P1 de estorno, 29/09): com a regra nova, a linha em_processamento
+      // CARREGA o id do refund dela — deixá-lo no conjunto fazia
+      // refundQueCobreALinha excluir o refund dela mesma e a linha ficava
+      // tentar_depois para sempre (só o cron concluía). Os ids das OUTRAS
+      // linhas permanecem: um refund credita UMA linha (P0). Paridade com
+      // o cron, que exclui a própria linha com .neq('id', ...).
+      // Segunda camada para o lote (achado da revisão final, teste W2c):
+      // DUAS pendentes com o MESMO id (ledger anômalo) não concluem as
+      // duas — o acúmulo em memória de `pedido.valor_estornado` (I-B,
+      // abaixo) + a guarda de soma bruta (E37) recusam a 2ª linha ainda
+      // neste ciclo; ela fica para o cron, que relê o banco por linha.
+      idsJaReivindicados: Array.from(reivindicados).filter(
+        (id) => id !== linha.mp_refund_id,
+      ),
       temPreVeredito: false,
     });
     if (resultado.tipo === "concluido") {
-      const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
+      const { data: dataConcluir, error: erroConcluir } = await supabase.rpc("concluir_estorno", {
         p_refund_id: linha.id,
-        p_mp_refund_id: resultado.mp_refund_id,
+        // '' (refund sem id legível na resposta) vira NULL — o COALESCE da
+        // RPC preserva o que já existia (revisão de 29/09).
+        p_mp_refund_id: resultado.mp_refund_id || null,
         p_mp_status: resultado.mp_status,
         p_mp_status_detail: resultado.mp_status_detail,
       });
@@ -772,29 +671,53 @@ async function registrarDesfechoDoEstorno(args: {
       }
       if (resultado.mp_refund_id) reivindicados.add(resultado.mp_refund_id);
       // I-B: acumulado EM MEMÓRIA — a próxima linha do lote decide com ele.
-      pedido.valor_estornado = Number((pedido.valor_estornado + linha.amount).toFixed(2));
-      // BLOQUEIA-1 (laudo Opus rodada 2, PR #449): `somaEmCurso` (abaixo)
-      // percorre `linhasBanco` como foi lida no INÍCIO do passo — sem
-      // marcar esta linha como concluída AQUI, no objeto local, ela
-      // continua contando como 'solicitado'/'em_processamento' nesse
-      // array, e o valor dela seria descontado DUAS vezes do `disponivel`
-      // do estorno externo (uma via `pedido.valor_estornado`, acima; outra
-      // via `somaEmCurso`). Mutar o objeto local é seguro: `linhaBanco` é a
-      // MESMA referência que `linhasBanco` guarda (ambos vêm do mesmo
-      // SELECT desta chamada) — `somaEmCurso`, chamada mais abaixo NESTE
-      // MESMO lote, já enxerga o status atualizado.
+      // Lote A: só soma se a RPC concluiu AGORA; `ja_concluida` (outra
+      // entrega concluiu a mesma linha) relê do banco — `acumularConclusao`.
+      await acumularConclusao({ supabase, orderId, pedido, dataRpc: dataConcluir, amount: linha.amount });
+      // BLOQUEIA-1 (laudo Opus rodada 2, PR #449): o retrato local acompanha
+      // a conclusão. O saldo do estorno externo agora é lido no banco, sob a
+      // trava (`registrar_estorno_externo_do_mp`) — o retrato não decide mais
+      // dinheiro, mas fica coerente para qualquer leitura seguinte do lote.
       linhaBanco.status = "concluido";
     }
     // tentar_depois → nada (o cron continua com ela).
   }
 
-  // Item 4 do passo A: refunds "processed"/"approved" que SOBRARAM fora de
-  // `reivindicados` = estorno feito FORA do app (painel do MP).
-  const somaEmCurso = (rows: Array<Record<string, unknown>>) =>
-    rows
-      .filter((l) => l.status === "solicitado" || l.status === "em_processamento")
-      .reduce((acc, l) => acc + Number(l.amount ?? 0), 0);
+  // ── B) Contestação (status === "charged_back") — Lote A (R1/R1-NULL) ─────
+  // ANTES dos refunds externos (revisão do Lote A, ordem): no MESMO GET, um
+  // caso FINAL a favor da loja libera a reserva, e o REF que só não cabia por
+  // causa dela entra inteiro neste mesmo evento — com o REF primeiro, a RPC
+  // dele via a reserva (nao_cabe) e ninguém o revisitava depois. A RPC do REF
+  // lê o saldo sob a mesma trava, então a ordem não conta dinheiro duas vezes.
+  if (status === STATUS_DA_CONTESTACAO) {
+    await registrarContestacao({
+      supabase,
+      orderId,
+      corpo,
+      ehPayments,
+      pedido,
+      consultarCaso: args.consultarCaso,
+      avisar: args.avisar,
+      rotulo: "webhook-mercadopago",
+    });
+  }
 
+  // Item 4 do passo A: refunds "processed"/"approved" que SOBRARAM fora de
+  // `reivindicados` = estorno feito FORA do app (painel do MP) — ou o refund
+  // REGULAR numa order contestada (REF tem identidade própria; nenhum
+  // contrato do MP liga REF a CBK — doc refund-order/post).
+  //
+  // Lote A (revisão, defeito pré-existente): TODO refund daqui entra pela RPC
+  // `registrar_estorno_externo_do_mp` (20261196000000), com o pedido TRAVADO,
+  // e entra INTEIRO ou não entra. Antes, um clamp sobre o retrato lido no
+  // começo descontava a linha do APP ainda sem POST (intenção, não dinheiro):
+  // pedido 100, REF 20 concluído, APP 20 solicitado, REF novo 70 -> gravava
+  // 60, e a reentrega pulava o REF já "reivindicado" — os 10 nunca voltavam.
+  // Não cabe no dinheiro real (estornado + reserva de contestação): nada é
+  // gravado, a identidade fica livre (a reentrega tenta de novo) e o admin é
+  // avisado uma vez. O APP não é liberado aqui: quando o saldo acaba, o
+  // executor dele não manda POST — recusa a linha nova e SEGURA a incerta
+  // (`linhaPodeJaTerChegadoAoMp`, _shared/estorno.ts) até o MP dar veredito.
   for (const refund of refundsConcluidos) {
     const refundId = typeof refund.id === "string" || typeof refund.id === "number"
       ? String(refund.id)
@@ -807,9 +730,8 @@ async function registrarDesfechoDoEstorno(args: {
     // `CHECK (amount > 0)` no banco (500 em laço, o MP reenvia para
     // sempre); `amount <= 0` também violaria o mesmo CHECK, e não-positivo
     // não tem leitura de negócio aqui (refund de valor zero/negativo não é
-    // um refund). Pula este refund (nenhum insert, nenhuma RPC); o resto do
-    // handler continua (confirmar_pagamento do status atual roda do mesmo
-    // jeito).
+    // um refund). Pula este refund (nenhuma RPC); o resto do handler
+    // continua (confirmar_pagamento do status atual roda do mesmo jeito).
     if (!Number.isFinite(valorRefundBruto) || valorRefundBruto <= 0) {
       console.error(
         "webhook-mercadopago: refund sem valor legível ou não-positivo — pulando (não é 'não sei' = 0)",
@@ -818,158 +740,39 @@ async function registrarDesfechoDoEstorno(args: {
       );
       continue;
     }
-    const valorRefund = valorRefundBruto;
-    const disponivel = Number(
-      (pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2),
-    );
+    const valorRefund = Number(valorRefundBruto.toFixed(2));
 
-    if (disponivel <= 0) {
-      console.error(
-        "webhook-mercadopago: estorno externo além do que o pedido pode registrar",
-        orderId,
-        refundId,
-        { disponivel, valorRefund },
-      );
-      continue;
-    }
-
-    const amountClampado = Math.min(valorRefund, disponivel);
-    const ok = await inserirEstornoConcluido({
-      supabase,
-      orderId,
-      amount: amountClampado,
-      valorOriginal: valorRefund,
-      motivoBase: "estorno feito fora do app (Mercado Pago)",
-      mpRefundId: refundId,
-      mpStatus: status,
-      mpStatusDetail: statusDetail || null,
+    const { data, error } = await supabase.rpc("registrar_estorno_externo_do_mp", {
+      p_order_id: orderId,
+      p_mp_refund_id: refundId,
+      p_valor: valorRefund,
+      p_mp_status: status,
+      p_mp_status_detail: statusDetail || null,
     });
-    if (ok) {
+    if (error) throw error;
+    const retornoExterno = (data ?? null) as Record<string, unknown> | null;
+    if (typeof retornoExterno?.resultado !== "string") {
+      throw new Error("webhook-mercadopago: registrar_estorno_externo_do_mp devolveu retorno ilegível — o MP reenvia");
+    }
+    // Estado CANÔNICO (lido sob a trava) para quem vier depois neste lote.
+    const valorCanonico = Number(retornoExterno.valor_estornado);
+    if (Number.isFinite(valorCanonico)) pedido.valor_estornado = valorCanonico;
+    if (retornoExterno.resultado === "inserido" || retornoExterno.resultado === "ja_registrado") {
       reivindicados.add(refundId);
-      pedido.valor_estornado = Number((pedido.valor_estornado + amountClampado).toFixed(2));
+    }
+    if (retornoExterno.aviso === "saldo") {
+      console.error(
+        "webhook-mercadopago: devolução do MP não cabe no que o pedido ainda pode devolver — não registrada, admin avisado",
+        { orderId, refundId, valorRefund },
+      );
+      await args.avisar(`estorno_externo_nao_cabe:${orderId}:${refundId}`, {
+        title: "Devolução do Mercado Pago para conferir",
+        body: `${numeroDoPedido(orderId)} · o Mercado Pago registrou uma devolução que passa do que este pedido ainda podia devolver — o app não registrou essa devolução; confira no painel do Mercado Pago`,
+        url: "/admin-orders",
+      });
     }
   }
 
-  // ── B) Chargeback (status === "charged_back") ────────────────────────────
-  if (status === "charged_back") {
-    const linhaChargeback = linhasBanco.find(
-      (l) => l.solicitado_por === "sistema" && l.mp_status === "charged_back",
-    );
-
-    // Valor pago: payment → transaction_amount (do corpo cru); order →
-    // extrairValorDaOrder — MESMO clamp do item A4.
-    const valorPagoBruto = ehPayments ? Number(corpo.transaction_amount) : extrairValorDaOrder(corpo);
-    // ANTES-DE-CRESCER-1: valor ilegível OU não-positivo é "não sei", nunca
-    // "zero" — só afeta os DOIS ramos que nascem uma linha NOVA com
-    // `amountCb` (in_process sem linha, settled sem linha); a linha
-    // EXISTENTE (settled/reimbursed) usa o próprio `linhaChargeback.amount`,
-    // já gravado, e não lê valorPago.
-    const valorPagoValido = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto) &&
-      valorPagoBruto > 0;
-    const valorPago = valorPagoValido ? valorPagoBruto : 0;
-    const disponivelCb = Number(
-      (pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2),
-    );
-    const amountCb = Math.min(valorPago, disponivelCb > 0 ? disponivelCb : 0);
-
-    if (statusDetail === "in_process") {
-      if (!linhaChargeback) {
-        if (!valorPagoValido) {
-          console.error(
-            "webhook-mercadopago: chargeback (in_process) sem valor pago legível — pulando (não é 'não sei' = 0)",
-            orderId,
-          );
-        } else if (disponivelCb <= 0) {
-          console.error(
-            "webhook-mercadopago: chargeback além do que o pedido pode reservar",
-            orderId,
-          );
-        } else {
-          const { error: erroInsertCb } = await supabase.from("order_refunds").insert({
-            order_id: orderId,
-            amount: amountCb,
-            solicitado_por: "sistema",
-            status: "em_processamento",
-            motivo: "contestação (chargeback) em análise no Mercado Pago",
-            mp_status: "charged_back",
-            mp_status_detail: "in_process",
-            mp_refund_id: null,
-            ultimo_erro: null,
-          });
-          if (erroInsertCb) throw erroInsertCb;
-        }
-      }
-      // já existe: nada (dedupe por solicitado_por='sistema' AND
-      // mp_status='charged_back').
-    } else if (statusDetail === "settled") {
-      if (linhaChargeback) {
-        const { error: erroConcluirCb } = await supabase.rpc("concluir_estorno", {
-          p_refund_id: linhaChargeback.id,
-          p_mp_refund_id: null,
-          p_mp_status: "charged_back",
-          p_mp_status_detail: "settled",
-        });
-        if (erroConcluirCb) {
-          if (
-            String((erroConcluirCb as { message?: string }).message ?? "").includes(
-              "estorno_acima_do_total",
-            )
-          ) {
-            console.error(
-              "webhook-mercadopago: concluir_estorno (chargeback settled) recusou — acima do total",
-              orderId,
-              erroConcluirCb,
-            );
-          } else {
-            throw erroConcluirCb;
-          }
-        }
-      } else if (!valorPagoValido) {
-        console.error(
-          "webhook-mercadopago: chargeback (settled) sem valor pago legível — pulando (não é 'não sei' = 0)",
-          orderId,
-        );
-      } else if (disponivelCb <= 0) {
-        console.error(
-          "webhook-mercadopago: chargeback (settled) além do que o pedido pode registrar",
-          orderId,
-        );
-      } else {
-        // A notificação de in_process nunca chegou: nasce já concluido,
-        // como em A4 (mesmo helper — "nasce concluido, nunca solicitado").
-        await inserirEstornoConcluido({
-          supabase,
-          orderId,
-          amount: amountCb,
-          valorOriginal: valorPago,
-          motivoBase: "estorno feito fora do app (Mercado Pago)",
-          mpRefundId: null,
-          mpStatus: "charged_back",
-          mpStatusDetail: "settled",
-        });
-      }
-    } else if (statusDetail === "reimbursed") {
-      if (linhaChargeback) {
-        const { error: erroUpdateCb } = await supabase
-          .from("order_refunds")
-          .update({
-            status: "recusado",
-            mp_status_detail: "reimbursed",
-            ultimo_erro: "o Mercado Pago decidiu a contestação a favor da loja: o dinheiro ficou com você",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", linhaChargeback.id)
-          .in("status", ["em_processamento"]);
-        if (erroUpdateCb) throw erroUpdateCb;
-      } else {
-        console.log(
-          "webhook-mercadopago: chargeback reimbursed sem linha em_processamento — nada a atualizar",
-          orderId,
-        );
-      }
-      // nunca soma.
-    }
-  }
 }
 
 /**
@@ -988,14 +791,28 @@ async function registrarDesfechoDoEstorno(args: {
  * um único argumento porque é mais claro e não depende de todo fallback
  * continuar correto para sempre — não porque seja uma trava de segurança.
  */
+// `camposDaAssinatura` (mp-10): morava AQUI, copiada — este arquivo precisa
+// dos dois campos em três lugares (a recusa barata logo abaixo, o log de
+// entrada e o log de falha), e a recusa TEM de concordar com o que
+// `avaliarAssinatura` aceitaria. Duas cópias do mesmo parse podiam divergir
+// em silêncio; agora as duas usam a MESMA função, importada de
+// `_shared/mercadopago.ts`.
+
 async function handler(
   req: Request,
   deps: {
     supabase?: ReturnType<typeof createClient>;
     fetchImpl?: typeof fetch;
-    enviarPush?: typeof disparoPushReal;
-    enviarComprovante?: typeof dispararComprovanteReal;
-    enviarAvisoAtrasado?: typeof dispararAvisoDePagamentoAtrasadoReal;
+    enviarPush?: DepsDosEfeitos["enviarPush"];
+    // C-P: o push do aviso de cobrança duplicada, que diz quantas inscrições o receberam.
+    enviarPushContado?: typeof disparoPushContadoReal;
+    // Seller ID da loja dona do caso de contestação (header X-Caller-Id do MP);
+    // ausente: `GET /users/me` do próprio token (uma vez por requisição).
+    vendedorId?: string | null;
+    // C-P rodada 3: a espera da reconsulta do aviso 'em_envio' (injetável no teste).
+    dormir?: (ms: number) => Promise<void>;
+    enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
+    enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
   } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -1029,12 +846,115 @@ async function handler(
   // 64 caracteres sobra folga sobre o maior `data.id` legítimo do MP (ULID
   // de Order, 29 caracteres; id de payment clássico é numérico, menor ainda).
   const LIMITE_LOG_DATA_ID = 64;
-  const tsDoHeader = req.headers.get("x-signature")?.match(/(?:^|,)\s*ts=([^,]*)/)?.[1] ?? null;
+  const { ts: tsDoHeader, v1: v1Recebido } = camposDaAssinatura(req.headers.get("x-signature"));
   console.log("webhook-mercadopago: notificação recebida", {
     dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
     temXRequestId: req.headers.get("x-request-id") !== null,
     ts: tsDoHeader,
   });
+
+  // PORTA BARATA (tarefa mp-7, 16/09/2026): requisição que não tem NEM A
+  // FORMA de uma notificação do MP morre aqui — antes do client de service
+  // role, antes de resolver credenciais, antes do SELECT em `app_settings`.
+  // Até esta tarefa, TODA requisição que chegasse à URL pagava esse SELECT
+  // antes de qualquer autenticação (a função roda com `verify_jwt = false`),
+  // então quem descobrisse a URL fazia a loja gastar banco de graça. A
+  // decisão é IDÊNTICA à que `avaliarAssinatura` já tomaria — sem `ts` ou
+  // sem `v1` ela devolve `valido: false` sem sequer importar a chave do
+  // HMAC — só que agora sem pagar nada; por isso lê os campos pela MESMA
+  // função de parse, e não por uma segunda regra que pudesse divergir.
+  //
+  // `console.warn` CURTO e sem o bloco de diagnóstico da assinatura
+  // inválida (dataId, x-request-id, v1, candidatos): isto é o chão de ruído
+  // da internet, não um caso para investigar, e logar tudo aqui seria dar a
+  // quem varre a URL um jeito de encher o log.
+  //
+  // O que NÃO entra: cache/memoização da resolução de credenciais. O que
+  // barateia é recusar antes, não guardar segredo em memória entre
+  // requisições.
+  if (!tsDoHeader || !v1Recebido) {
+    console.warn("webhook-mercadopago: sem x-signature utilizável — recusado antes de tocar o banco");
+    return json({ error: "Assinatura inválida." }, 401);
+  }
+
+  // Tarefa mp-2 (15/09/2026): o client de service role SUBIU para cá — ele
+  // era montado lá embaixo, depois da consulta ao MP, e agora é preciso
+  // ANTES: as credenciais do Mercado Pago (segredo do HMAC e token de
+  // consulta) moram no registro cifrado do lojista em app_settings, e é este
+  // client que o lê. Nada mais muda de ordem; quem já usava `supabase` mais
+  // abaixo continua com o MESMO objeto.
+  const supabase =
+    deps.supabase ??
+    createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+    );
+
+  // De QUEM são as chaves desta loja: do lojista (cadastro na tela de
+  // Ajustes, cifrado) ou da plataforma (env). A regra fechada — nunca cair no
+  // token do ambiente quando existe cadastro ilegível — mora em
+  // `_shared/credenciais-mp.ts`.
+  const credenciaisMp = await resolverCredenciaisMp(supabase);
+
+  // Tarefa mp-7 (16/09/2026): cadastro do lojista PRESENTE e ilegível
+  // (`origem: "indisponivel"` — cofre ausente ou chave trocada) fecha AQUI,
+  // antes de avaliar a assinatura. Nesse estado o lojista cadastrou o
+  // segredo DELE, o MP assina a notificação com ELE, e a reserva do
+  // ambiente abaixo não bate: a resposta era 401 "assinatura inválida" e o
+  // 500 com o motivo certo (mais abaixo, na checagem do token) ficava
+  // INALCANÇÁVEL. O dinheiro não se perdia (`reconciliar-pagamentos` pega em
+  // 24h), mas o diagnóstico MENTIA durante os 30 min do PIX — quem estava de
+  // plantão caçava o segredo errado em vez de devolver a chave do cofre.
+  //
+  // 500 e não 200 pelo mesmo motivo de sempre: o evento FICA na fila do MP,
+  // que reenvia, e a notificação volta sozinha quando a credencial voltar ao
+  // lugar. Vem ANTES do roteamento, então neste estado até tópico
+  // irrelevante recebe 500 — é o estado quebrado da loja inteira, e o custo
+  // é um reenvio do MP, não dinheiro.
+  if (credenciaisMp.origem === "indisponivel") {
+    // Só origem e motivo: nem token nem segredo entram em log. O data.id vai
+    // truncado (LIMITE_LOG_DATA_ID): este ramo roda ANTES da assinatura, e
+    // quem descobrir a URL não pode escrever conteúdo próprio sem limite aqui.
+    console.error(
+      `webhook-mercadopago: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+      dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+    );
+    return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
+  }
+
+  // RESERVA SÓ DO SEGREDO, E SÓ SEM CADASTRO (frente 8, 29/09/2026 — decisão
+  // do dono, alinhando a notificação à política do PIX da criação): origem
+  // "ambiente" (deploy da plataforma, sem cadastro nenhum) continua usando o
+  // `MP_WEBHOOK_SECRET` do env — ali ele é a chave CERTA por definição. Para
+  // lojista com cadastro e SEM a chave de assinatura própria, o segredo do
+  // ambiente NÃO é mais reserva: a confirmação de pagamento de uma loja não
+  // pode depender de um segredo GLOBAL compartilhado com a plataforma
+  // (decisão do dono no app multi-loja), e o PIX dessa loja nem nasce mais
+  // (gate da frente 3 em criar-pagamento) — as camadas agora dizem o mesmo.
+  //
+  // A justificativa ANTIGA da reserva ("sem ela, notificação legítima viraria
+  // 401 e o pedido expiraria") ficou obsoleta: notificação do lojista é
+  // assinada com a chave do PAINEL DELE e falharia contra o segredo da
+  // plataforma de qualquer jeito — a reserva só "funcionava" quando o painel
+  // da loja era configurado com o segredo da plataforma, o setup errado.
+  //
+  // 500 e não 401/200 pelo mesmo motivo do estado `indisponivel` acima: o
+  // evento FICA na fila do MP, que reenvia — a loja se cura cadastrando a
+  // chave em Ajustes, e o reconciliador (10 min, honra `pago_apos_expirar`)
+  // segue de backstop. Log CURTO, sem segredo nem dado do corpo.
+  if (credenciaisMp.origem === "lojista" && !credenciaisMp.segredoWebhook) {
+    console.error(
+      "webhook-mercadopago: lojista sem chave de assinatura própria — a reserva do ambiente não vale; cadastrar a chave em Ajustes",
+      dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+    );
+    return json(
+      { error: "Chave de assinatura do webhook não configurada para esta loja." },
+      500,
+    );
+  }
+
+  const segredoWebhook = credenciaisMp.segredoWebhook ??
+    Deno.env.get("MP_WEBHOOK_SECRET") ?? "";
 
   // A ÚNICA autenticação: sem ela, quem descobrir a URL forja um "aprovado".
   // Amarra SEMPRE o `data.id` do CORPO (nunca o da query string — ver o
@@ -1045,7 +965,7 @@ async function handler(
     xSignature: req.headers.get("x-signature"),
     xRequestId: req.headers.get("x-request-id"),
     dataId: dataIdStr,
-    segredo: Deno.env.get("MP_WEBHOOK_SECRET") ?? "",
+    segredo: segredoWebhook,
     // Number.POSITIVE_INFINITY: a janela de `ts` fica DESLIGADA nesta
     // função. Corrigido em 09/08/2026 (rodada de conserto 1) — a versão
     // anterior usava 86400s (24h), medida contra um limite que não existe:
@@ -1069,10 +989,10 @@ async function handler(
     // Log de FALHA: dataId (corpo, truncado), x-request-id, ts, o v1
     // recebido e os RÓTULOS dos candidatos tentados (sem hash nenhum, nem
     // prefixo dele — publicar hash calculado é um oráculo de verificação
-    // offline do `MP_WEBHOOK_SECRET`, achado de revisão de 16/08/2026) — o
+    // offline do segredo do webhook, achado de revisão de 16/08/2026) — o
     // que transforma suspeita em causa provada quando o MP reenviar a
-    // notificação real. NUNCA loga `MP_WEBHOOK_SECRET`.
-    const v1Recebido = req.headers.get("x-signature")?.match(/(?:^|,)\s*v1=([^,]*)/)?.[1] ?? null;
+    // notificação real. NUNCA loga o segredo — nem o do lojista, nem o
+    // `MP_WEBHOOK_SECRET` da plataforma.
     console.warn("webhook-mercadopago: assinatura inválida", {
       dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
       xRequestId: req.headers.get("x-request-id"),
@@ -1124,7 +1044,17 @@ async function handler(
   //     contrato do MP mudou, não rotina.
   const tipoDoEvento = body?.type;
   let rota: "payment" | "order";
-  if (tipoDoEvento === "payment") {
+  // `topic_chargebacks_wh` (R3, FASE 2): `data.id` é o id do CASO, não do
+  // pedido. Não é irrelevante: é a notificação que o MP manda na criação E NA
+  // MUDANÇA de uma contestação
+  // (https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/optional-notifications)
+  // e a resolução manda reconsultar `GET /v1/chargebacks/{case_id}`
+  // (https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-management/chargebacks/management).
+  // Tratada depois da checagem do token, pelo MESMO miolo do cron.
+  const ehTopicoDeCaso = tipoDoEvento === TOPICO_DE_CONTESTACAO;
+  if (ehTopicoDeCaso) {
+    rota = "order"; // placeholder: o desvio logo após o token nunca usa a rota
+  } else if (tipoDoEvento === "payment") {
     rota = "payment";
   } else if (tipoDoEvento === "order") {
     rota = "order";
@@ -1143,6 +1073,53 @@ async function handler(
   } else {
     rota = idEhClassico(dataIdStr) ? "payment" : "order";
     console.log(`webhook-mercadopago: type ausente, decidido pela forma do id -> rota "${rota}"`, dataIdStr);
+  }
+
+  // Tarefa mp-2: sem token não há como perguntar ao MP o que de fato
+  // aconteceu — e o webhook NUNCA confia no corpo que chegou. 500 (não 200)
+  // de propósito: o evento FICA na fila do MP, que reenvia, e quando alguém
+  // devolver a credencial ao lugar a notificação volta e o pedido confirma.
+  // Depois do roteamento, e não antes: tópico irrelevante continua sendo
+  // descartado com 200 sem nunca ter precisado de credencial nenhuma.
+  //
+  // Tarefa mp-7: o que sobra para este ramo é a origem "ambiente" sem
+  // `MP_ACCESS_TOKEN` (motivo `ambiente_sem_token`) — a origem
+  // "indisponivel" já fechou lá em cima, antes da assinatura, porque naquele
+  // estado o 401 saía primeiro e escondia este mesmo log.
+  if (!credenciaisMp.token) {
+    // Só origem e motivo: nem token nem segredo entram em log.
+    console.error(
+      `webhook-mercadopago: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+      dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+    );
+    return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
+  }
+
+  if (ehTopicoDeCaso) {
+    // O pedido NUNCA sai do corpo (forjável): sai da linha do ledger que já
+    // carrega ESSE case_id. Mesmo miolo do cron; efeitos idempotentes por caso.
+    try {
+      const desfecho = await recuperarContestacaoPeloCaso({
+        supabase,
+        token: credenciaisMp.token,
+        vendedorId: deps.vendedorId,
+        fetchImpl: deps.fetchImpl,
+        caseId: dataIdStr,
+        rotulo: "webhook-mercadopago",
+        avisar: (chave, aviso) =>
+          avisarAdminUmaVez({
+            supabase,
+            enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+            chave,
+            aviso,
+          }),
+      });
+      return json({ ok: true, resultado: "contestacao_recuperada_pelo_caso", desfecho }, 200);
+    } catch (erro) {
+      // Falha transitória: 500 mantém o evento na fila do MP, que reenvia.
+      console.error("webhook-mercadopago: recuperar contestação pelo caso falhou — evento mantido na fila do MP", erro);
+      return json({ error: "Erro ao recuperar a contestação." }, 500);
+    }
   }
 
   // As duas rotas convergem nestas cinco variáveis antes do restante do
@@ -1164,10 +1141,28 @@ async function handler(
   // passo novo (`registrarDesfechoDoEstorno`) ler `status`/`status_detail`/
   // `refunds[]`/`transaction_amount_refunded` SEM um segundo GET.
   let corpoConsultado: Record<string, unknown> | null = null;
+  // Fase 3.5 (cartão): a recusa desta order LIBERA a vaga em vez de chegar a
+  // `confirmar_pagamento` — ver `recusaLiberaAVaga` (_shared/mercadopago.ts)
+  // e o passo logo depois do `pareceUuid`, mais abaixo. Só a rota `order`
+  // liga isto; a rota `payment` tem a sua própria trava (bloco `payment`
+  // perto da RPC).
+  let liberarAVaga = false;
+  // Achado B2 (2ª revisão de risco, 26/09/2026): só a rota `order` sabe pela
+  // FORMA da resposta se a cobrança é de cartão (`orderEhDeCartao`) — usado
+  // mais abaixo para decidir se vale a pena tentar ADOTAR uma vaga vazia (ou
+  // com o sentinela "verificando:" que `criar-pagamento` grava num 409
+  // `idempotency_key_already_used`, Achado B2 em `criar-pagamento/index.ts`).
+  let ordemDeCartaoNaNotificacao = false;
+  // Lote A (04/10/2026, R1): o `status` CRU que o MP devolveu na consulta
+  // autenticada (nunca o do corpo do webhook), nas duas rotas — é ele que
+  // decide se a notificação é uma CONTESTAÇÃO (ver o desvio logo depois do
+  // passo do ledger, mais abaixo). O rótulo mapeado não serve: o mapa
+  // compartilhado traduz todo `charged_back` para 'estornado'.
+  let statusBrutoConfiavel = "";
 
   if (rota === "payment") {
     const consulta = await consultarPagamento({
-      token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+      token: credenciaisMp.token,
       paymentId: dataIdStr,
       fetchImpl: deps.fetchImpl,
     });
@@ -1185,6 +1180,7 @@ async function handler(
 
     // Usa o status que o MP DEVOLVEU, nunca o do corpo do webhook.
     statusMapeado = mapearStatus(consulta.status);
+    statusBrutoConfiavel = String(consulta.status ?? "");
     externalReference = consulta.externalReference;
     idParaRpc = String(consulta.id);
     statusBrutoParaLog = consulta.status;
@@ -1195,10 +1191,17 @@ async function handler(
     // `transaction_amount_refunded` moram nele, não nos campos já tipados.
     corpoConsultado = (consulta as Record<string, unknown>).corpo as Record<string, unknown> | undefined ?? null;
   } else {
+    // N1 (3ª revisão de risco, 26/09/2026): a order desta notificação PODE
+    // ser de cartão (payer com e-mail e CPF do titular) — não dá para saber
+    // antes de consultar, então `corpoNoLog: false` protege as duas formas
+    // (o log de erro do PIX já não tinha dado sensível para esconder, e
+    // continua sem ter — só passa a receber o mesmo resumo sem dado
+    // pessoal que o cartão já usa nos outros pontos desta function).
     const consulta = await consultarOrder({
-      token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+      token: credenciaisMp.token,
       orderId: dataIdStr,
       fetchImpl: deps.fetchImpl,
+      corpoNoLog: false,
     });
 
     if (!consulta.ok) {
@@ -1219,18 +1222,89 @@ async function handler(
     const statusRaiz = String(order.status ?? "");
     const statusDetailRaiz = String(order.status_detail ?? "");
     const statusBanco = mapearStatusOrder(statusRaiz, statusDetailRaiz);
+    liberarAVaga = recusaLiberaAVaga(order, statusBanco);
+    ordemDeCartaoNaNotificacao = orderEhDeCartao(order);
+
+    // Hardening (item não-verificável do laudo do revisor-risco, 26/09/2026):
+    // se o GET da order falhar em trazer `payment_method.type` legível
+    // (order de cartão com a resposta incompleta — nunca medido contra a API
+    // real, mas possível), `orderEhDeCartao` não tem como saber que é cartão
+    // pela FORMA da resposta, e uma recusa de cartão cairia no caminho de
+    // PIX logo abaixo (`confirmar_pagamento('recusado')`, que CANCELA o
+    // pedido — errado para cartão, spec decisão 3). Segundo sinal:
+    // `metodo_online` ('credito'/'debito'/'pix'), que `criar-pagamento` já
+    // carimba no PRÓPRIO pedido ao ocupar a vaga — lido do banco, não do
+    // JSON que pode vir incompleto.
+    //
+    // Só entra quando o PRIMEIRO sinal (a forma da resposta) NÃO decidiu
+    // cartão (`!liberarAVaga`), e só para 'recusado': 'expirado' já sai sem
+    // chamar RPC nenhuma (nem confirmar, nem liberar) três linhas abaixo,
+    // qualquer que seja o método — não tem o mesmo risco, e gastar a leitura
+    // aqui não mudaria nada.
+    if (!liberarAVaga && statusBanco === "recusado" && pareceUuid(order.external_reference)) {
+      const { data: metodoRow, error: erroMetodo } = await supabase
+        .from("marketplace_orders")
+        .select("metodo_online, gateway_payment_id")
+        .eq("id", order.external_reference)
+        .maybeSingle();
+      // Lote A (R10, 04/10/2026): a falha desta leitura era IGNORADA —
+      // `metodoRow` vinha null, um pedido de CARTÃO parecia PIX, e a recusa
+      // seguia para `confirmar_pagamento('recusado')`, que CANCELA o pedido e
+      // devolve o estoque. Sem saber o método, nada é decidido: 500, o MP
+      // reenvia (mesma régua do Achado S4 para a leitura do id gravado).
+      if (erroMetodo) {
+        console.error(
+          "webhook-mercadopago: falha ao ler o metodo_online do pedido numa recusa de order sem tipo legível — evento mantido na fila do MP",
+          { idOrder: String(order.id ?? ""), erro: erroMetodo },
+        );
+        return json({ error: "Erro ao verificar a forma de pagamento do pedido." }, 500);
+      }
+      const metodoGravado = (metodoRow as Record<string, unknown> | null)?.metodo_online;
+      const vagaGravada = (metodoRow as Record<string, unknown> | null)?.gateway_payment_id;
+      if (metodoGravado === "credito" || metodoGravado === "debito") {
+        console.warn(
+          "webhook-mercadopago: recusa de order sem payment_method.type legível — decidida pelo metodo_online gravado no pedido (cartão), liberando a vaga em vez de confirmar_pagamento",
+          { idOrder: String(order.id ?? ""), metodoGravado },
+        );
+        liberarAVaga = true;
+      } else if (
+        metodoGravado == null &&
+        typeof vagaGravada === "string" &&
+        vagaEmVerificacao(vagaGravada)
+      ) {
+        // Frente 9 (29/09/2026): o metodo_online NÃO cobre o SENTINELA — ele
+        // deixa a coluna NULL por desenho (fechamento S3: o sentinela nunca
+        // carimba método), então a recusa ilegível de um cartão sob sentinela
+        // caía no caminho de PIX: confirmar_pagamento('recusado') CANCELAVA o
+        // pedido e devolvia o estoque com o cliente na tela de retry (venda
+        // perdida). O sentinela é mecanismo EXCLUSIVO do cartão (Achado B2 —
+        // o PIX não gera sentinela), então vaga sentinela + método
+        // desconhecido decide CARTÃO: liberar a vaga; quem solta o sentinela
+        // de verdade é o resolverVagaEmVerificacao no retry do cliente.
+        console.warn(
+          "webhook-mercadopago: recusa de order sem payment_method.type legível — vaga em SENTINELA (mecanismo exclusivo do cartão), liberando em vez de confirmar_pagamento cancelar o pedido",
+          { idOrder: String(order.id ?? "") },
+        );
+        liberarAVaga = true;
+      }
+    }
 
     // `confirmar_pagamento` (20260810000000_confirmar_pagamento_guarda_
     // status.sql) não conhece 'expirado' — chamá-la com esse status cairia
     // no RETURN 'ignorado' final, indistinguível no log de todos os outros
     // caminhos de "ignorado" (status desconhecido, external_reference
     // inválido...). Filtra ANTES da RPC, com rótulo e log próprios.
-    if (statusBanco === "expirado") {
+    //
+    // Fase 3.5: o cartão expirado (desafio 3DS que ninguém concluiu) NÃO
+    // para aqui — ele segue até o passo de liberar a vaga, depois do
+    // `pareceUuid`. O PIX expirado continua exatamente como antes.
+    if (statusBanco === "expirado" && !liberarAVaga) {
       console.warn("webhook-mercadopago: order expirada, ignorada sem chamar a RPC", dataIdStr);
       return json({ ok: true, ignorado: "order expirada" }, 200);
     }
 
     statusMapeado = statusBanco;
+    statusBrutoConfiavel = statusRaiz;
     // MEDIDO: `external_reference` também fica na RAIZ da order — mesma
     // invariante que o caminho clássico já protege (o pedido NUNCA sai do
     // corpo do webhook; sai da resposta autenticada do MP).
@@ -1269,12 +1343,158 @@ async function handler(
   }
   const orderId = externalReference as string;
 
-  const supabase =
-    deps.supabase ??
-    createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+  // CARTÃO RECUSADO NÃO MATA O PEDIDO (Fase 3.5, spec decisão 3). O ramo
+  // 'recusado' de `confirmar_pagamento` CANCELA o pedido e devolve o estoque
+  // — certo para PIX, errado para cartão, em que a recusa é o começo da
+  // próxima tentativa (outro cartão ou PIX, na mesma reserva de 30 min).
+  // Aqui a recusa (ou a expiração) de uma order de cartão — e o
+  // cancelamento de qualquer order, que neste app é a própria
+  // `criar-pagamento` trocando PIX por cartão — só LIBERA a vaga:
+  // `liberar_cobranca_do_pedido` solta `gateway_payment_id` SE ele ainda for
+  // esta order e o pedido ainda estiver 'aguardando'. Idempotente por
+  // construção: o reenvio do MP encontra a vaga já solta e devolve false.
+  //
+  // `p_gateway_payment_id` é o `order.id` da resposta AUTENTICADA do MP,
+  // igual ao `p_payment_id` da `confirmar_pagamento` — nunca o do corpo.
+  // Erro de banco devolve 500: o evento fica na fila do MP e volta.
+  if (liberarAVaga) {
+    let liberou: boolean;
+    try {
+      const { data, error: erroLiberar } = await supabase.rpc("liberar_cobranca_do_pedido", {
+        p_order_id: orderId,
+        p_gateway_payment_id: idParaRpc,
+      });
+      if (erroLiberar) throw erroLiberar;
+      liberou = data === true;
+
+      // Achado S1 (3ª revisão de risco, 26/09/2026): esta recusa/cancelamento
+      // pode não bater com o que está NA VAGA — a Orders API respondeu 409
+      // `idempotency_key_already_used` a um RETRY desta mesma tentativa
+      // (token novo, mesma chave), e `criar-pagamento` gravou um SENTINELA
+      // (`verificando:<pedido>:c<n>`, Achado B2) em vez do id desta order.
+      // Sem este segundo passo, a recusa de verdade (nenhuma cobrança
+      // aprovada existe) não soltava NADA — o pedido ficava preso até a
+      // reserva morrer, mesmo com o motivo já conhecido (ver o comentário
+      // grande de `resolverVagaEmVerificacao`, `criar-pagamento/index.ts`,
+      // para o outro lado deste fechamento). Só tenta se a primeira
+      // tentativa não bateu, e só com o valor REAL da vaga — nunca
+      // inventado: se ela guarda uma cobrança de verdade (ou outro
+      // sentinela), a RPC recusa de novo e nada muda.
+      //
+      // Ponto 2 (4ª revisão de risco, 26/09/2026): este fallback soltava
+      // QUALQUER sentinela achado na vaga, sem checar se esta notificação
+      // tinha ALGUMA coisa a ver com a tentativa que ele representa — dois
+      // cenários reproduzidos pelo revisor:
+      //   Q2  — a recusa ATRASADA (ou reenviada) da tentativa c0 soltava o
+      //         sentinela da tentativa c1, ainda em análise no MP;
+      //   Q2b — o cancelamento ATRASADO de um PIX ANTIGO (troca PIX→cartão,
+      //         ramo (c) de `criar-pagamento`) também soltava o sentinela de
+      //         uma tentativa de CARTÃO seguinte.
+      // Nos dois, o cliente acabava pagando duas vezes: a cobrança que
+      // soltou por engano E a que ficou presa atrás dela. Dois cintos:
+      //   1. Só entra aqui para notificação de CARTÃO (`ordemDeCartaoNa
+      //      Notificacao`) — fecha Q2b (a notificação é sobre um PIX) sem
+      //      precisar de rede nenhuma.
+      //   2. Antes de soltar, confirma por BUSCA (`buscarOrdersDoPedido` +
+      //      `resolverSentinela`, `_shared/mercadopago.ts` — MESMA função do
+      //      Ponto 1) que NENHUMA order de cartão deste pedido está viva ou
+      //      aprovada — fecha Q2 (a notificação pode ser de uma tentativa
+      //      BEM mais velha que a que o sentinela representa). Busca que
+      //      falha, corpo ilegível, ou "nada encontrado" (a order do PRÓPRIO
+      //      sentinela pode não estar indexada ainda) NUNCA solta — mesma
+      //      regra de segurança do Ponto 1.
+      if (!liberou && ordemDeCartaoNaNotificacao) {
+        const { data: linhaComSentinela, error: erroLeituraSentinela } = await supabase
+          .from("marketplace_orders")
+          .select("gateway_payment_id")
+          .eq("id", orderId)
+          .maybeSingle();
+        if (erroLeituraSentinela) throw erroLeituraSentinela;
+        const idNaVaga = (linhaComSentinela as Record<string, unknown> | null)?.gateway_payment_id;
+        if (typeof idNaVaga === "string" && vagaEmVerificacao(idNaVaga)) {
+          // Segunda leitura, só quando o sentinela está mesmo lá — a
+          // primeira (acima) mantém a MESMA string de colunas de antes
+          // (`"gateway_payment_id"`, sozinha) porque o caminho do estorno
+          // (Achado B1/S4) pede exatamente essa string para uma leitura
+          // DIFERENTE; misturar as duas faria a injeção de falha de teste
+          // desse achado enxergar chamada errada.
+          //
+          // Nit (5ª revisão de risco, 26/09/2026): `error` desta leitura
+          // ignorado ANTES — o efeito já era seguro (`created_at` vai vazio,
+          // `desde` vira "" na busca, que segue tentando com uma janela mais
+          // larga), mas ficava difícil distinguir no log "leitura falhou" de
+          // "created_at está mesmo ausente". O desfecho não muda: sem
+          // `created_at`, a busca (que ainda pode funcionar com `begin_date`
+          // cru) decide, e o sentinela NUNCA solta às cegas.
+          const { data: linhaComCriacao, error: erroLeituraCriacao } = await supabase
+            .from("marketplace_orders")
+            .select("created_at, tentativas_de_pagamento")
+            .eq("id", orderId)
+            .maybeSingle();
+          if (erroLeituraCriacao) {
+            console.error(
+              "webhook-mercadopago: falha ao ler created_at do pedido para a busca do Ponto 2 — segue sem 'desde'; sentinela NUNCA solta às cegas",
+              { orderId, erro: erroLeituraCriacao },
+            );
+          }
+          const busca = await buscarOrdersDoPedido({
+            token: credenciaisMp.token,
+            pedidoId: orderId,
+            desde: String((linhaComCriacao as Record<string, unknown> | null)?.created_at ?? ""),
+            fetchImpl: deps.fetchImpl,
+          });
+          // B1 (5ª revisão de risco, 26/09/2026): o LIMITE INFERIOR vem do
+          // PRÓPRIO sentinela (gravado uma vez, na escrita — `montarSentinela`,
+          // `_shared/mercadopago.ts`) — a MESMA regra do Ponto 1
+          // (`resolverVagaEmVerificacao`, `criar-pagamento/index.ts`), nunca
+          // recalculada aqui.
+          const limiteInferiorMs = limiteInferiorDoSentinela(idNaVaga);
+          const resolucao = busca.ok ? resolverSentinela(busca.orders, limiteInferiorMs) : null;
+          // Revisão de risco de 30/09/2026 (3ª rodada, MENOR 1): MESMA regra
+          // do Ponto 1 no criar-pagamento — um sentinela com a chave de uma
+          // tentativa ANTERIOR (`c<n>` com `tentativas_de_pagamento` já em
+          // n+1) nunca solta pela busca: o limite inferior dele é o instante
+          // da tentativa n, e a janela pode trazer só a order MORTA de uma
+          // tentativa POSTERIOR enquanto a `c<n>` ambígua ainda não foi
+          // indexada — liberar abriria um cartão novo (chave nova) ao lado
+          // dela. Sem a leitura (erro acima), não dá para saber: não solta.
+          const chaveDaTentativaAtual = erroLeituraCriacao
+            ? null
+            : chaveDoCartaoDaTentativa(
+              orderId,
+              (linhaComCriacao as Record<string, unknown> | null)?.tentativas_de_pagamento,
+            );
+          const sentinelaDaTentativaAtual =
+            chaveDaTentativaAtual !== null && sentinelaDaChave(idNaVaga, chaveDaTentativaAtual);
+          if (resolucao?.acao === "liberar" && sentinelaDaTentativaAtual) {
+            const { data: liberouSentinela, error: erroLiberarSentinela } = await supabase.rpc(
+              "liberar_cobranca_do_pedido",
+              { p_order_id: orderId, p_gateway_payment_id: idNaVaga },
+            );
+            if (erroLiberarSentinela) throw erroLiberarSentinela;
+            liberou = liberouSentinela === true;
+          } else {
+            console.warn(
+              "webhook-mercadopago: recusa/cancelamento não amarrado ao sentinela (Ponto 2) — busca não confirmou que todas as orders de cartão do pedido estão mortas (ou o sentinela é de tentativa anterior), sentinela mantido",
+              { orderId, idOrder: idParaRpc, sentinela: idNaVaga, buscaOk: busca.ok, sentinelaDaTentativaAtual },
+            );
+          }
+        }
+      }
+    } catch (erro) {
+      console.error(
+        "webhook-mercadopago: liberar_cobranca_do_pedido falhou — evento mantido na fila do MP",
+        orderId,
+        erro,
+      );
+      return json({ error: "Erro ao liberar a cobrança." }, 500);
+    }
+    console.log(
+      "webhook-mercadopago: recusa de cartão (ou order cancelada) — vaga da cobrança liberada, pedido segue aguardando",
+      { orderId, idOrder: idParaRpc, status: statusBrutoParaLog, liberou },
     );
+    return json({ ok: true, resultado: liberou ? "cobranca_liberada" : "nada_a_liberar" }, 200);
+  }
 
   // PASSO NOVO (T5): gatilhos lidos do objeto CONSULTADO, nunca do corpo do
   // webhook. Fora disso o passo não roda (0 leituras extras) — ver o
@@ -1285,19 +1505,192 @@ async function handler(
     : "";
   const gatilhoDeEstorno = statusDoEstorno === "refunded" ||
     statusDetailDoEstorno === "partially_refunded" ||
-    statusDoEstorno === "charged_back";
+    statusDoEstorno === STATUS_DA_CONTESTACAO;
 
   if (gatilhoDeEstorno && corpoConsultado) {
-    try {
-      await registrarDesfechoDoEstorno({ supabase, orderId, rota, corpo: corpoConsultado });
-    } catch (erro) {
+    // Achado B1 (2ª revisão de risco, 26/09/2026): este passo lia status/
+    // status_detail/refunds do objeto CONSULTADO desta notificação — que
+    // pode ser uma ORDER ÓRFÃ (Achado A1: cartão aprovado no MP, nunca
+    // gravado porque outra tentativa ganhou a vaga) com o MESMO
+    // `external_reference` do pedido (as duas orders vêm da MESMA
+    // `criar-pagamento`). Reembolsar a ÓRFÃ no painel do MP registrava esse
+    // reembolso no ledger do pedido REAL e `concluir_estorno`
+    // (2026110000100_concluir_estorno.sql:118-125) virava o pedido PAGO em
+    // 'estornado' — dinheiro que o cliente pagou e a loja já recebeu,
+    // cancelado por um estorno que aconteceu em OUTRA cobrança. Roda ANTES
+    // do guard do Achado A3 (mais abaixo — aquele só protege a chamada a
+    // `confirmar_pagamento`, nunca chega a rodar para este passo) e nas DUAS
+    // rotas — a órfã pode ser notificada tanto por `order` quanto, se o
+    // painel do MP estiver inscrito no tópico clássico, por `payment`.
+    //
+    // Só registra quando o objeto CONSULTADO É a cobrança GRAVADA:
+    //  - `idParaRpc` já É `order.id` na rota `order` — compara direto, sem
+    //    chamada nova ao MP.
+    //  - Rota `payment`: o pagamento clássico não tem "order.id" comparável.
+    //    Gravado CLÁSSICO e IGUAL ao id notificado (legado, single-charge-
+    //    per-pedido de antes da Orders API): mesma cobrança, sem reconsulta —
+    //    comportamento de antes, byte a byte. Gravado diferente (clássico ou
+    //    não): reconsulta a ORDER GRAVADA e só confia nela se ELA MESMA
+    //    mostrar o MESMO gatilho de estorno — nunca no que a notificação
+    //    disse sobre outra cobrança.
+    // Achado S4 (3ª revisão de risco, 26/09/2026): esta leitura ignorava
+    // `error` — uma falha de banco (statement timeout, pool esgotado) fazia
+    // `linhaParaEstorno` virar `null` do MESMO jeito que "pedido sem essa
+    // cobrança gravada", e um estorno LEGÍTIMO da cobrança GRAVADA caía no
+    // ramo `estornado_orfao` abaixo: nunca registrava no ledger, e o pedido
+    // só virava 'estornado' pela RPC lá embaixo — sem `valor_estornado` nem
+    // razão. 500 aqui, como o resto do arquivo já faz para toda falha de
+    // leitura: o MP reenvia, e a notificação não se perde.
+    const { data: linhaParaEstorno, error: erroLeituraParaEstorno } = await supabase
+      .from("marketplace_orders")
+      .select("gateway_payment_id")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (erroLeituraParaEstorno) {
       console.error(
-        "webhook-mercadopago: registrarDesfechoDoEstorno falhou — evento mantido na fila do MP",
-        orderId,
-        erro,
+        "webhook-mercadopago: falha ao ler a cobrança gravada antes de registrar um estorno — evento mantido na fila do MP",
+        { orderId, erro: erroLeituraParaEstorno },
       );
-      return json({ error: "Erro ao registrar o desfecho do estorno." }, 500);
+      return json({ error: "Erro ao verificar a cobrança gravada." }, 500);
     }
+    const idGravadoParaEstorno = (linhaParaEstorno as Record<string, unknown> | null)?.gateway_payment_id;
+    const idGravadoParaEstornoStr =
+      typeof idGravadoParaEstorno === "string" && idGravadoParaEstorno.length > 0 ? idGravadoParaEstorno : null;
+
+    // O FORMATO do corpo confiável — não a rota da NOTIFICAÇÃO — é o que os
+    // leitores de estorno usam: `registrarDesfechoDoEstorno` deriva
+    // `ehPayments = rota === "payment"` para decidir ONDE os refunds moram
+    // (`corpo.refunds[]` com terminal "approved" no formato Payments;
+    // `transactions[].refunds[]` com terminal "processed" no formato Order)
+    // e de onde vem o valor pago (`transaction_amount` vs
+    // `extrairValorDaOrder`). Quando a guarda abaixo reconsulta a ORDER
+    // gravada, o corpo confiável é uma ORDER: passá-lo com a rota "payment"
+    // da notificação fazia o passo ler o formato errado — campos que uma
+    // ORDER não tem — e um estorno REAL da cobrança gravada, notificado pelo
+    // tópico clássico, nunca entrava no ledger (zero inserts, zero
+    // concluir_estorno): o pedido só virava 'estornado' pela RPC de
+    // pagamento, sem `valor_estornado` nem razão (W9, missão pagamentos,
+    // 28/09/2026).
+    let formatoConfiavelParaEstorno: "payment" | "order" = rota;
+    let corpoConfiavelParaEstorno: Record<string, unknown> | null = null;
+    if (idGravadoParaEstornoStr !== null && idGravadoParaEstornoStr === idParaRpc) {
+      corpoConfiavelParaEstorno = corpoConsultado;
+    } else if (rota === "payment" && idGravadoParaEstornoStr && !idEhClassico(idGravadoParaEstornoStr)) {
+      const consultaGravadaParaEstorno = await consultarOrder({
+        token: credenciaisMp.token,
+        orderId: idGravadoParaEstornoStr,
+        fetchImpl: deps.fetchImpl,
+        corpoNoLog: false,
+      });
+      if (!consultaGravadaParaEstorno.ok) {
+        console.error(
+          "webhook-mercadopago: não foi possível confirmar a cobrança GRAVADA antes de registrar um estorno — evento mantido na fila do MP",
+          { orderId, idGravado: idGravadoParaEstornoStr, status: consultaGravadaParaEstorno.status },
+        );
+        return json({ error: consultaGravadaParaEstorno.erro }, 500);
+      }
+      const ordemGravadaParaEstorno = consultaGravadaParaEstorno.order as Record<string, unknown>;
+      const statusGravado = typeof ordemGravadaParaEstorno.status === "string" ? ordemGravadaParaEstorno.status : "";
+      const statusDetailGravado = typeof ordemGravadaParaEstorno.status_detail === "string"
+        ? ordemGravadaParaEstorno.status_detail
+        : "";
+      const gatilhoNaGravada = statusGravado === "refunded" ||
+        statusDetailGravado === "partially_refunded" ||
+        statusGravado === STATUS_DA_CONTESTACAO;
+      corpoConfiavelParaEstorno = gatilhoNaGravada ? ordemGravadaParaEstorno : null;
+      // O corpo confiável deste ramo é a ORDER reconsultada — os leitores
+      // têm de usar o formato Order, mesmo que a NOTIFICAÇÃO tenha vindo
+      // pelo tópico clássico ("payment").
+      if (corpoConfiavelParaEstorno) formatoConfiavelParaEstorno = "order";
+    }
+
+    if (!corpoConfiavelParaEstorno) {
+      console.error(
+        "webhook-mercadopago: estorno_orfao — a notificação é sobre uma cobrança DIFERENTE da gravada, e a gravada não confirma o mesmo estorno — ledger do pedido NÃO tocado",
+        { orderId, idNotificado: idParaRpc, idGravado: idGravadoParaEstornoStr },
+      );
+      const avisoEstornoOrfao = {
+        title: "Estorno de cobrança sem registro",
+        body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago antes de mexer neste pedido`,
+        url: "/admin-orders",
+      };
+      await comTempoLimite(
+        (deps.enviarPush ?? disparoPushReal)({ supabase, aviso: avisoEstornoOrfao }),
+        5000,
+      );
+    } else {
+      try {
+        const resolvedorDoVendedor = criarResolvedorDeVendedor({
+          token: credenciaisMp.token,
+          fetchImpl: deps.fetchImpl,
+        });
+        await registrarDesfechoDoEstorno({
+          supabase,
+          orderId,
+          rota: formatoConfiavelParaEstorno,
+          corpo: corpoConfiavelParaEstorno,
+          consultarCaso: async (caseId) =>
+            consultarContestacao({
+              token: credenciaisMp.token,
+              caseId,
+              vendedorId: deps.vendedorId !== undefined
+                ? deps.vendedorId
+                : await resolvedorDoVendedor(),
+              fetchImpl: deps.fetchImpl,
+            }),
+          avisar: (chave, aviso) =>
+            avisarAdminUmaVez({
+              supabase,
+              enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+              chave,
+              aviso,
+            }),
+        });
+      } catch (erro) {
+        console.error(
+          "webhook-mercadopago: registrarDesfechoDoEstorno falhou — evento mantido na fila do MP",
+          orderId,
+          erro,
+        );
+        return json({ error: "Erro ao registrar o desfecho do estorno." }, 500);
+      }
+    }
+  }
+
+  // CONTESTAÇÃO (chargeback) NÃO PASSA POR `confirmar_pagamento` — Lote A
+  // (04/10/2026, R1). O mapa compartilhado (`_shared/mercadopago.ts`) traduz
+  // `charged_back` (clássico) e `charged_back:in_process/settled/reimbursed`
+  // (Orders) para 'estornado', e continua assim de propósito: o checkout da
+  // `criar-pagamento` lê esse rótulo (crítica de desenho A1 do lote). Mas
+  // aqui 'estornado' iria para `confirmar_pagamento`, onde é IRREVERSÍVEL
+  // (20260901000000 — não existe estornado->pago, e não deve existir): uma
+  // disputa EM ANÁLISE (`in_process`) ou GANHA pela loja (`reimbursed` =
+  // valor creditado ao vendedor) marcava o pedido pago como estornado.
+  // Semântica oficial (transaction-status):
+  // https://www.mercadopago.com.br/developers/en/docs/checkout-api-orders/payment-management/status/transaction-status
+  // — `in_process` = disputa em andamento; `settled` = valor devolvido ao
+  // COMPRADOR; `reimbursed` = valor creditado ao VENDEDOR. A página de
+  // status da ORDER
+  // (https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-management/status/order-status)
+  // descreve `reimbursed` como "valor devolvido ao pagador" — o contrário. A
+  // divergência é da doc do MP; vale a do STATUS DA TRANSAÇÃO, e por isso o
+  // ledger decide pelo `status_detail` do PAGAMENTO contestado, nunca pelo
+  // agregado da order (`registrarDesfechoDoEstorno`, ramo B).
+  //
+  // O passo do ledger (acima) já registrou o que havia para registrar: a
+  // reserva, a conclusão (que vira 'estornado' SÓ quando o total estornado
+  // cobre o pago — `concluir_estorno`, 2026110000100) ou a liberação. Daqui
+  // em diante nada muda no pedido: 200 com rótulo próprio. Vale para as duas
+  // rotas; o bloco A3 (rota `payment`, mais abaixo) tem a guarda gêmea para
+  // a ORDER GRAVADA contestada notificada como outro status.
+  if (statusBrutoConfiavel === STATUS_DA_CONTESTACAO) {
+    console.log(
+      "webhook-mercadopago: contestação (chargeback) tratada pelo ledger — confirmar_pagamento NÃO é chamada",
+      dataIdStr,
+      rota,
+      statusBrutoParaLog,
+    );
+    return json({ ok: true, resultado: "contestacao_no_ledger" }, 200);
   }
 
   if (statusMapeado === null) {
@@ -1381,9 +1774,14 @@ async function handler(
   // perguntar ao MP por ELE (`consultarOrder`, já existe neste arquivo),
   // reconstruindo o elo inteiro ("a cobrança que registramos está paga") e
   // devolvendo à (d) o seu valor de prova, ao custo de uma chamada HTTP.
-  // 🔒 GATILHO para deixar de ser opcional: religar cartão (Fase 3.5,
-  // `criar-pagamento/index.ts:688`, hoje desligado por `metodo !== "pix"`)
+  // 🔒 GATILHO para deixar de ser opcional: religar cartão (Fase 3.5)
   // ou qualquer relaxamento da trava de uma-cobrança-por-pedido.
+  // ⚠️ O GATILHO FOI ATINGIDO em 26/09/2026: a Fase 3.5 religou o cartão E
+  // relaxou a trava (a vaga é liberada numa recusa/troca). A metade de
+  // RECUSA desta rota já foi fechada (bloco "RECUSA PELA ROTA `payment`",
+  // acima: descarta, a rota `order` decide). A metade de 'pago'/'estornado'
+  // continua como descrita aqui — perguntar ao MP pelo `ORD…` gravado é
+  // decisão pendente, levada ao revisor da Fase 3.5, não feita de carona.
   //
   // Só entra quando o valor gravado NÃO tem forma de id clássico
   // (`idEhClassico`, `_shared/mercadopago.ts`): se os dois lados já falam a
@@ -1417,6 +1815,30 @@ async function handler(
       erroLeituraPedido,
     );
     return json({ error: "Erro ao consultar o pedido." }, 500);
+  }
+
+  // RECUSA PELA ROTA `payment` DE UMA COBRANÇA DA ORDERS API (Fase 3.5): o
+  // pagamento clássico que o MP notifica por dentro de uma order (cartão
+  // recusado, PIX cancelado na troca para cartão) chegaria aqui como
+  // 'recusado' — e a substituição do id pelo gravado no banco, logo abaixo,
+  // faria `confirmar_pagamento('recusado')` CANCELAR o pedido que a
+  // recusa de cartão devia deixar vivo. A rota `order` é quem decide essas
+  // recusas (libera a vaga do cartão, confirma a do PIX); esta aqui
+  // descarta com 200. Só fica de fora quem ainda fala a língua clássica: o
+  // valor gravado com forma de id clássico (PIX legado), que segue o caminho
+  // de sempre. Vaga vazia também é descartada — a RPC devolveria
+  // 'divergente' sem escrever nada, com um log de "dinheiro sem registro"
+  // que seria alarme falso para uma recusa.
+  if (rota === "payment" && statusMapeado === "recusado") {
+    const idGravado = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
+    const gravadoEhClassico = typeof idGravado === "string" && idGravado.length > 0 && idEhClassico(idGravado);
+    if (!gravadoEhClassico) {
+      console.log(
+        "webhook-mercadopago: recusa pela rota `payment` de cobrança da Orders API — decidida pela rota `order`, ignorada aqui",
+        { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco: idGravado ?? null },
+      );
+      return json({ ok: true, ignorado: "recusa decidida pela rota order" }, 200);
+    }
   }
 
   // CONFERÊNCIA DE VALOR (laudo 31/08, achado A3): o valor que o MP APROVOU
@@ -1470,6 +1892,174 @@ async function handler(
     );
   }
 
+  // Achado B2 (2ª revisão de risco, 26/09/2026) — ADOÇÃO: uma cobrança de
+  // CARTÃO pode ficar "ambígua" do lado de `criar-pagamento` — a Orders API
+  // respondeu 409 `idempotency_key_already_used` a um retry (token novo,
+  // MESMA chave) e a vaga do pedido ficou vazia (NULL) ou com um SENTINELA
+  // ("verificando:...", `vagaEmVerificacao`) sem NUNCA saber se a cobrança
+  // da tentativa anterior foi aprovada. Quando ESTA notificação diz que ela
+  // FOI aprovada e a vaga ainda está livre/em verificação, ADOTA: um UPDATE
+  // condicional (a MESMA disciplina de sempre — grava só se a condição
+  // bater) troca o NULL/sentinela pelo id de verdade, e só então a RPC
+  // `confirmar_pagamento` (mais abaixo) encontra o que precisa para
+  // confirmar. Sem isto, o cliente ficava preso em "aguardando" pelo resto
+  // da reserva (`criar-pagamento` devolvia "aguardando" sem parar,
+  // Achado B2) mesmo com o cartão JÁ aprovado — ninguém jamais gravava a
+  // vaga para a RPC achar.
+  if (rota === "order" && ordemDeCartaoNaNotificacao && statusMapeado === "pago") {
+    const idGravadoAtual = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
+    const idGravadoAtualStr = typeof idGravadoAtual === "string" ? idGravadoAtual : null;
+    const vagaAdotavel = idGravadoAtualStr === null || vagaEmVerificacao(idGravadoAtualStr);
+    if (vagaAdotavel) {
+      // Achado S3 (3ª revisão de risco, 26/09/2026): a ADOÇÃO só gravava
+      // `gateway_payment_id` — `metodo_online`/`parcelas` ficavam NULL (vaga
+      // NULL) ou com o valor do RETRY que gravou o sentinela (vaga
+      // sentinela, nunca a forma da cobrança que de fato foi aprovada — ver
+      // o fechamento simétrico em `respostaCartaoEmVerificacao`,
+      // `criar-pagamento/index.ts`, que parou de gravar essas duas colunas
+      // no sentinela por este MESMO motivo). O comprovante e o Financeiro
+      // liam isso e contavam a venda como PIX. `corpoConsultado` já É a
+      // order RECONSULTADA desta notificação (`rota === "order"`, acima) —
+      // lê a forma de verdade dela, nunca do corpo do webhook.
+      const tipoCartaoAdotado = tipoDoPagamentoDaOrder(corpoConsultado);
+      const metodoOnlineAdotado = tipoCartaoAdotado === "credit_card"
+        ? "credito"
+        : tipoCartaoAdotado === "debit_card"
+          ? "debito"
+          : null;
+      // INVARIANTE DA VAGA: só a RPC `liberar_cobranca_do_pedido` esvazia a
+      // vaga, e só por prova ou cancelamento confirmado. Esta adoção é CAS —
+      // TROCA o valor antigo (NULL ou o sentinela, conferido no WHERE abaixo)
+      // pelo id da order, nunca grava NULL. Mantém assim.
+      let queryAdocao = supabase
+        .from("marketplace_orders")
+        .update({
+          gateway_payment_id: idParaRpc,
+          metodo_online: metodoOnlineAdotado,
+          parcelas: parcelasDaOrder(corpoConsultado),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", orderId);
+      queryAdocao = idGravadoAtualStr === null
+        ? queryAdocao.is("gateway_payment_id", null)
+        : queryAdocao.eq("gateway_payment_id", idGravadoAtualStr);
+      // Menor (4ª revisão de risco, 26/09/2026): antes este `error` era
+      // ignorado — uma falha de BANCO (timeout, deadlock passageiro) fazia
+      // `adotado` virar `undefined` do MESMO jeito que "perdeu a corrida
+      // para outra adoção" (o ramo `else`, abaixo), e o código seguia como
+      // se alguém MAIS tivesse resolvido a vaga, quando na verdade NINGUÉM
+      // tentou de novo — a cobrança aprovada ficava sem registro. 500
+      // mantém o evento na fila do MP: o próximo reenvio tenta a adoção de
+      // novo.
+      const { data: adotado, error: erroAdocao } = await queryAdocao.select("id").maybeSingle();
+      if (erroAdocao) {
+        console.error(
+          "webhook-mercadopago: UPDATE de adoção (Achado B2) falhou — evento mantido na fila do MP",
+          { orderId, idOrder: idParaRpc, erro: erroAdocao },
+        );
+        return json({ error: "Erro ao adotar a cobrança." }, 500);
+      }
+      if (adotado) {
+        console.warn(
+          "webhook-mercadopago: cartao_adotado — cobrança aprovada ligada a uma vaga que estava vazia/em verificação (Achado B2)",
+          { orderId, idOrder: idParaRpc, idGravadoAntes: idGravadoAtualStr },
+        );
+      } else {
+        // Perdeu a corrida para OUTRA adoção/confirmação concorrente — segue
+        // para `confirmar_pagamento` normalmente; a guarda (d) da RPC decide
+        // com o estado REAL (idempotente, mesmo padrão do resto do arquivo).
+        console.warn(
+          "webhook-mercadopago: não foi possível adotar a vaga (ocupada entre a leitura e a tentativa) — segue para confirmar_pagamento normalmente",
+          { orderId, idOrder: idParaRpc },
+        );
+        // Achado S5 (3ª revisão de risco, 26/09/2026): quem ganhou a corrida
+        // pode ter sido OUTRA cobrança aprovada (não a `confirmar_pagamento`
+        // desta MESMA order, que a RPC abaixo trata sozinha) — sem reler, o
+        // pedido seguia com dinheiro de duas cobranças aprovadas e nenhum
+        // aviso além do `console.warn` acima. Mesmo aviso do `cartao_
+        // divergente` logo abaixo, para o admin conferir e devolver.
+        const { data: linhaAposCorrida } = await supabase
+          .from("marketplace_orders")
+          .select("gateway_payment_id")
+          .eq("id", orderId)
+          .maybeSingle();
+        const idNaVagaAposCorrida = (linhaAposCorrida as Record<string, unknown> | null)
+          ?.gateway_payment_id;
+        if (
+          typeof idNaVagaAposCorrida === "string" &&
+          idNaVagaAposCorrida.length > 0 &&
+          idNaVagaAposCorrida !== idParaRpc &&
+          !vagaEmVerificacao(idNaVagaAposCorrida)
+        ) {
+          console.error(
+            "webhook-mercadopago: cartao_divergente — order aprovada perdeu a corrida da adoção para OUTRA cobrança gravada — possível cobrança duplicada",
+            { orderId, idOrder: idParaRpc, idGravadoNaVaga: idNaVagaAposCorrida },
+          );
+          const avisoDivergenteAposCorrida = {
+            title: "Cobrança de cartão duplicada?",
+            body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago`,
+            url: "/admin-orders",
+          };
+          // C-P: uma vez por (pedido, order); quem chega junto espera o resultado
+          // da outra entrega — ver `avisarCobrancaDuplicadaUmaVez` (e os limites lá).
+          // Rodada 3: "pendente" = outra entrega segue com a reserva depois da
+          // espera; 503 faz o MP reentregar. O que rodou até aqui é idempotente
+          // (leituras, consulta GET ao MP, a adoção CAS que não casou) e o que
+          // fica para a reentrega é `confirmar_pagamento`, que daria 'divergente'
+          // (só lê).
+          const avisoS5 = await avisarCobrancaDuplicadaUmaVez({
+            supabase,
+            enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+            dormir: deps.dormir ?? dormirDeVerdade,
+            orderId,
+            idOrder: idParaRpc,
+            aviso: avisoDivergenteAposCorrida,
+          });
+          if (avisoS5 === "pendente") {
+            return json(
+              { error: "Aviso de cobrança duplicada em envio por outra entrega — reentregue." },
+              503,
+            );
+          }
+        }
+      }
+    } else if (idGravadoAtualStr !== idParaRpc) {
+      // A vaga já tem OUTRA cobrança de verdade (não vazia, não sentinela, e
+      // diferente desta) — esta order aprovada é uma DIVERGÊNCIA de verdade:
+      // duas cobranças aprovadas para o mesmo pedido (ex.: o cliente pagou
+      // com um segundo cartão numa tentativa nova enquanto a ambígua também
+      // caiu aprovada). A RPC abaixo recusa com 'divergente' (nunca
+      // sobrescreve a vaga real) — o dinheiro da SEGUNDA cobrança fica sem
+      // dono, e o admin precisa saber para conferir e devolver.
+      console.error(
+        "webhook-mercadopago: cartao_divergente — order aprovada, mas a vaga já tem OUTRA cobrança gravada — possível cobrança duplicada",
+        { orderId, idOrder: idParaRpc, idGravadoNaVaga: idGravadoAtualStr },
+      );
+      const avisoDivergente = {
+        title: "Cobrança de cartão duplicada?",
+        body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago`,
+        url: "/admin-orders",
+      };
+      // C-P: uma vez por (pedido, order); quem chega junto espera o resultado
+      // da outra entrega — ver `avisarCobrancaDuplicadaUmaVez` (e os limites lá).
+      // Rodada 3: "pendente" → 503 (ver o ramo S5, acima: mesma auditoria).
+      const avisoDv = await avisarCobrancaDuplicadaUmaVez({
+        supabase,
+        enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+        dormir: deps.dormir ?? dormirDeVerdade,
+        orderId,
+        idOrder: idParaRpc,
+        aviso: avisoDivergente,
+      });
+      if (avisoDv === "pendente") {
+        return json(
+          { error: "Aviso de cobrança duplicada em envio por outra entrega — reentregue." },
+          503,
+        );
+      }
+    }
+  }
+
   if (rota === "payment") {
     const idGravadoNoBanco = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
     if (
@@ -1477,10 +2067,92 @@ async function handler(
       idGravadoNoBanco.length > 0 &&
       !idEhClassico(idGravadoNoBanco)
     ) {
+      // Achado N3 (3ª revisão de risco, 26/09/2026): a vaga pode estar com o
+      // SENTINELA (`verificando:...`, Achado B2) em vez de um id de order de
+      // verdade — reconsultar isso pela Orders API SEMPRE falha (não é um id
+      // que ela reconhece), e o 500 de "não conseguiu confirmar antes de
+      // aplicar", mais abaixo, fazia o MP reenviar a MESMA notificação
+      // clássica em loop (W6). A rota `payment` não tem como resolver o
+      // sentinela por si só (não fala da cobrança de cartão que o ocupa) —
+      // quem resolve é a ADOÇÃO da rota `order` (acima) ou
+      // `resolverVagaEmVerificacao` em `criar-pagamento` (busca as orders de
+      // cartão na Orders API, Ponto 1 da 4ª revisão de risco, 26/09/2026).
+      // Aqui só ignora, sem reenviar: reenviar não muda nada até um dos dois
+      // caminhos rodar.
+      if (vagaEmVerificacao(idGravadoNoBanco)) {
+        console.warn(
+          "webhook-mercadopago: rota `payment` sobre um pedido com a vaga em verificação (sentinela) — ignorado, sem reconsultar",
+          { orderId, idGravadoNoBanco },
+        );
+        return json({ ok: true, ignorado: "vaga em verificação" }, 200);
+      }
       console.warn(
         "webhook-mercadopago: gateway_payment_id gravado não é um id clássico — a rota `payment` do MP devolveu um id que nunca bateria com o valor gravado (cobrança criada pela Orders API, painel provavelmente inscrito no tópico clássico). Enviando à RPC o valor GRAVADO NO BANCO, não o que o MP devolveu.",
         { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco },
       );
+
+      // Achado A3 (revisão de risco, 26/09/2026): substituir o id às cegas
+      // bastava enquanto só existia UMA cobrança de Orders API por pedido —
+      // a rota `payment` falava sempre do MESMO pagamento gravado. Com o
+      // cartão (Fase 3.5), o mesmo `external_reference` pode ter mais de uma
+      // ORDER ao longo da vida do pedido (uma recusada/cancelada, ou — pior,
+      // Achado A1 — uma ÓRFÃ que nunca chegou a ser gravada). Uma notificação
+      // clássica de 'pago'/'estornado' pode ser sobre QUALQUER uma delas — se
+      // for sobre a ÓRFÃ (ex.: reembolsada no painel do MP) e este bloco só
+      // trocasse o id, a RPC receberia `p_status` da órfã aplicado ao id
+      // GRAVADO: um reembolso de uma cobrança nunca registrada marcaria a
+      // cobrança de VERDADE como estornada.
+      //
+      // Só para 'pago'/'estornado' (nunca 'aguardando', que não escreve nada
+      // de qualquer jeito, nem 'recusado', que o bloco de RECUSA acima já
+      // filtrou antes de chegar aqui): reconsulta a ORDER GRAVADA — não a que
+      // a notificação falou — e só segue se ELA MESMA confirma o MESMO
+      // desfecho. Sem confirmar, 200 ignorado com log: reenviar não muda uma
+      // verificação que já rodou, e o dinheiro fica onde a página do MP já
+      // mostra (o painel do lojista resolve manualmente).
+      if (statusMapeado === "pago" || statusMapeado === "estornado") {
+        // Achado R6 (2ª revisão de risco, 26/09/2026): `corpoNoLog: false` —
+        // a cobrança gravada pode ser de CARTÃO (payer com e-mail e CPF do
+        // titular); sem isto, um 4xx/5xx aqui logaria o corpo cru.
+        const consultaGravado = await consultarOrder({
+          token: credenciaisMp.token,
+          orderId: idGravadoNoBanco,
+          fetchImpl: deps.fetchImpl,
+          corpoNoLog: false,
+        });
+        if (!consultaGravado.ok) {
+          console.error(
+            "webhook-mercadopago: rota `payment` não conseguiu confirmar o id GRAVADO antes de aplicar o status — evento mantido na fila do MP",
+            { orderId, idGravadoNoBanco, status: consultaGravado.status },
+          );
+          return json({ error: consultaGravado.erro }, 500);
+        }
+        const orderGravada = consultaGravado.order as Record<string, unknown>;
+        // Lote A (R1): a ORDER GRAVADA em contestação nunca chega a
+        // `confirmar_pagamento` — o rótulo 'estornado' que o mapa dá a ela não
+        // é o desfecho da disputa (ver o desvio da contestação, acima). O
+        // ledger já rodou com ESTA order (guarda B1, que a reconsulta quando a
+        // notificação clássica é de estorno).
+        if (String(orderGravada.status ?? "") === STATUS_DA_CONTESTACAO) {
+          console.log(
+            "webhook-mercadopago: rota `payment` — a ORDER GRAVADA está em contestação (chargeback); confirmar_pagamento NÃO é chamada",
+            { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco, statusMapeado },
+          );
+          return json({ ok: true, resultado: "contestacao_no_ledger" }, 200);
+        }
+        const statusDoGravado = mapearStatusOrder(
+          String(orderGravada.status ?? ""),
+          String(orderGravada.status_detail ?? ""),
+        );
+        if (statusDoGravado !== statusMapeado) {
+          console.warn(
+            "webhook-mercadopago: rota `payment` é sobre uma cobrança diferente da gravada, e a GRAVADA não confirma o mesmo desfecho — ignorado (provável cobrança órfã de outra tentativa, Achado A1)",
+            { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco, statusMapeado, statusDoGravado },
+          );
+          return json({ ok: true, ignorado: "id gravado não confirma o mesmo desfecho" }, 200);
+        }
+      }
+
       idParaRpc = idGravadoNoBanco;
     }
   }
@@ -1500,64 +2172,26 @@ async function handler(
     return json({ error: "Erro ao confirmar pagamento." }, 500);
   }
 
-  // Só estes dois retornos disparam push. `ja_pago`/`ja_estornado`/`ignorado`
-  // são reenvio do MP encontrando um estado que já foi tratado — 200, sem
-  // push, é o que impede o reenvio de virar spam para o lojista.
-  // `divergente`/`inexistente` NÃO são esse caso benigno: significam que a
-  // confirmação (já aprovada pelo MP) não bate com o pedido, e por isso são
-  // logados como erro no bloco abaixo, não silenciados.
-  if (resultado === "pago" || resultado === "pago_apos_expirar") {
-    // A RPC devolve só um texto — o push precisa de nome/número/valor, que
-    // vêm de uma leitura extra do pedido.
-    let pedido: Record<string, unknown> | null = null;
-    try {
-      const { data } = await supabase
-        .from("marketplace_orders")
-        .select("id, customer_name, total, total_amount")
-        .eq("id", orderId)
-        .maybeSingle();
-      pedido = data ?? null;
-    } catch (erro) {
-      // Pedido já está pago no banco; deixar o lojista sem aviso porque essa
-      // leitura cosmética falhou é pior que mandar o push sem o valor.
-      console.error("webhook-mercadopago: leitura do pedido para o push falhou", erro);
-    }
-
-    const valor = pedido?.total ?? pedido?.total_amount;
-    const aviso =
-      resultado === "pago_apos_expirar"
-        ? {
-            // "fora do fluxo", não "fora do prazo": a RPC devolve este
-            // mesmo valor tanto quando o pedido EXPIROU quanto quando foi
-            // CANCELADO pelo app e pago depois — "prazo" só é verdade na
-            // primeira rota. O corpo continua igual: "estoque já devolvido"
-            // já é verdade nas duas.
-            title: "Pagamento fora do fluxo",
-            body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)} · estoque já devolvido`,
-            url: "/admin-orders",
-          }
-        : {
-            title: "Pedido pago",
-            body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)}`,
-            url: "/admin-orders",
-          };
-
-    const enviarPush = deps.enviarPush ?? disparoPushReal;
-    await enviarPush({ supabase, aviso });
-
-    // PEDIDO-070: o cliente também precisa saber que o pagamento entrou.
-    // 'pago' recebe o comprovante padrão; 'pago_apos_expirar' NUNCA pode
-    // receber esse mesmo texto (ver "SÓ PARA resultado === 'pago'" no
-    // comentário de `dispararComprovanteReal`, acima) — recebe o aviso
-    // honesto de `dispararAvisoDePagamentoAtrasadoReal` (PEÇA 5,
-    // 12/09/2026), que compete pela MESMA reserva contra duplicidade.
-    if (resultado === "pago") {
-      const enviarComprovante = deps.enviarComprovante ?? dispararComprovanteReal;
-      await enviarComprovante({ supabase, orderId });
-    } else if (resultado === "pago_apos_expirar") {
-      const enviarAvisoAtrasado = deps.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
-      await enviarAvisoAtrasado({ supabase, orderId });
-    }
+  // Os efeitos do pagamento confirmado (push ao lojista, comprovante ao cliente
+  // ou aviso de pagamento atrasado) moram em `_shared/efeitos-do-pagamento.ts`,
+  // o módulo ÚNICO dos três caminhos que confirmam (imediata, webhook, cron).
+  // Só 'pago' e 'pago_apos_expirar' disparam: são o retorno de QUEM FEZ a
+  // transição sob o `FOR UPDATE` da RPC. `ja_pago`/`ja_estornado`/`ignorado`
+  // são reenvio do MP (ou o outro caminho) encontrando um estado que já foi
+  // tratado — 200, sem efeito, é o que impede o reenvio de virar spam para o
+  // lojista. `divergente`/`inexistente` NÃO são esse caso benigno: significam
+  // que a confirmação (já aprovada pelo MP) não bate com o pedido, e por isso
+  // são logados como erro no bloco abaixo, não silenciados. Falha de push ou
+  // de e-mail nunca sobe (o módulo engole e loga): o pedido já está pago.
+  if (desfechoComEfeito(resultado)) {
+    await aplicarEfeitosDoPagamentoConfirmado({
+      supabase,
+      orderId,
+      resultado,
+      enviarPush: deps.enviarPush,
+      enviarComprovante: deps.enviarComprovante,
+      enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
+    });
   } else if (resultado === "divergente" || resultado === "inexistente") {
     // error, não warn: ao contrário dos outros retornos deste laço (ja_pago,
     // ignorado...), estes dois chegam com o pagamento JÁ APROVADO pelo MP —
@@ -1575,6 +2209,22 @@ async function handler(
     console.error(
       "webhook-mercadopago: confirmar_pagamento devolveu resultado inesperado — dinheiro pode ter entrado sem registro",
       { orderId, paymentId: idParaRpc, resultado },
+    );
+  } else if (resultado === "ignorado" && statusMapeado === "pago") {
+    // Lote A (A5): pagamento APROVADO pelo MP que a RPC recusou aplicar — o
+    // pedido já estava 'recusado'/'estornado' (ou NULL histórico) com este
+    // mesmo id (confirmar_pagamento, ramo 'pago': "nao inventar transicao").
+    // Antes saía 200 em silêncio: dinheiro no MP, pedido sem pagamento no
+    // app. Só observabilidade — não muda fluxo, resposta nem chama outra
+    // RPC. Sem dado pessoal: id do pedido e do gateway só como prefixo.
+    console.error(
+      "webhook-mercadopago: confirmar_pagamento devolveu 'ignorado' para um pagamento APROVADO — conferir no painel do MP",
+      {
+        pedido8: orderId.slice(0, 8),
+        idGateway: `${String(idParaRpc).slice(0, 8)}…`,
+        statusRecebido: statusMapeado,
+        retorno: resultado,
+      },
     );
   }
 

@@ -166,7 +166,11 @@ describe("OrderDetailsView — status desconhecido não fica com tela branca", (
     // acaso, não por prova).
     expect(texto).toContain("Blusa Teste");
     // Rótulo de pending neste arquivo (statusConfig.pending.label).
-    expect(texto).toContain("Pedido Recebido");
+    // Redesenho, rodada 2 (revisor Opus, 25/09/2026): rótulos do hero em
+    // frase normal — "Pedido Recebido" virou "Pedido recebido". Mesmo
+    // comportamento provado (fallback de status desconhecido para pending),
+    // só o texto do rótulo mudou.
+    expect(texto).toContain("Pedido recebido");
   });
 
   it("controle: status conhecido (shipping) continua mostrando o rótulo dele, não o de pending", async () => {
@@ -176,8 +180,12 @@ describe("OrderDetailsView — status desconhecido não fica com tela branca", (
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Blusa Teste");
-    expect(texto).toContain("Em Trânsito");
-    expect(texto).not.toContain("Pedido Recebido");
+    // Redesenho, rodada 2 (revisor Opus): "Em Trânsito" virou "A caminho" —
+    // unificado com o nome da etapa na linha do tempo do mesmo cartão, que
+    // já usava "A caminho". Mesmo comportamento provado (shipping mostra o
+    // PRÓPRIO rótulo, não o de pending), só o texto mudou.
+    expect(texto).toContain("A caminho");
+    expect(texto).not.toContain("Pedido recebido");
   });
 });
 

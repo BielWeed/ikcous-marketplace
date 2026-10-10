@@ -18,9 +18,15 @@
  *     migration — aqui cada arquivo é query nova, mas a re-setada é barata e
  *     idêntica à receita);
  *   • arquivos que só conseguem rodar com pg_cron/pg_net (extensões do
- *     Supabase ausentes no image oficial do postgres) são PULADOS COM AVISO
- *     quando o erro é exatamente o de provisionamento — erro qualquer outro
- *     continua FALHOU (mesma lista e ressalva do util.cjs);
+ *     Supabase ausentes no image oficial do postgres): NATIVO primeiro; se o
+ *     erro é exatamente o de provisionamento, o arquivo é REAPLICADO com as
+ *     linhas `CREATE EXTENSION IF NOT EXISTS pg_cron|pg_net;` comentadas
+ *     (o schema `cron` é stub do provisionar-efemero.cjs) e contado como
+ *     "aplicado com emulação" — o corpo das funções que ele redefine entra
+ *     no banco, como em toda loja (PR 766: a 20260901 pulada deixava
+ *     `confirmar_pagamento` no corpo da 20260810). Só PULA se a reaplicação
+ *     ainda esbarrar em erro de provisionamento; erro de SQL real, em
+ *     qualquer das tentativas, continua FALHOU (mesma lista do util.cjs);
  *   • contenção: o banco É o descartável (service do job) — não há CREATE/
  *     DROP DATABASE aqui.
  *
@@ -28,8 +34,8 @@
  * (supabase_migrations.schema_migrations) e não gera rollback — este banco
  * morre no fim do job; a prova é o resultado, não o estado.
  *
- * SAÍDA: 0 = raiz inteira aplicou (pulados por provisionamento contados no
- * resumo); 1 = erro de SQL real (o arquivo e o código de erro saem no log);
+ * SAÍDA: 0 = raiz inteira aplicou (emulados e pulados por provisionamento
+ * contados no resumo); 1 = erro de SQL real (o arquivo e o código de erro saem no log);
  * 2/5 = recusa de alvo/falha de ferramenta (ver util.cjs).
  *
  * USO: node scripts/ci/banco/aplicar-migrations.cjs <pasta-de-migrations>
@@ -45,7 +51,7 @@ const {
   sair,
   lerDatabaseUrlEfemero,
   listarMigrations,
-  excecaoDeProvisionamento,
+  aplicarComProvisionamento,
   anexarAoSummaryDoJob,
 } = require("./util.cjs");
 
@@ -77,26 +83,29 @@ async function main() {
   await cliente.query("RESET ALL");
 
   let aplicados = 0;
+  const emulados = [];
   const pulados = [];
   let falha = null;
   try {
     for (const arquivo of arquivos) {
       const nome = path.basename(arquivo);
       const texto = fs.readFileSync(arquivo, "utf8");
-      try {
-        await cliente.query('SET search_path = "$user", public, extensions');
-        await cliente.query(texto);
+      const r = await aplicarComProvisionamento(cliente, nome, texto);
+      if (r.estado === "nativo") {
         aplicados += 1;
-      } catch (erro) {
-        await cliente.query("ROLLBACK").catch(() => {});
-        if (excecaoDeProvisionamento(nome, erro.message)) {
-          pulados.push(`${nome} → ${erro.message}`);
-          continue;
-        }
+      } else if (r.estado === "emulado") {
+        aplicados += 1;
+        emulados.push(`${nome} → ${r.avisos.join("; ")}`);
+        console.log(
+          `[${ROTULO}/1ª] aplicado com emulação: ${nome} (${r.avisos.join("; ")})`,
+        );
+      } else if (r.estado === "pulado") {
+        pulados.push(`${nome} → ${r.erro.message}`);
+      } else {
         falha = {
           nome,
-          codigo: erro.code || "(sem código)",
-          mensagem: erro.message,
+          codigo: r.erro.code || "(sem código)",
+          mensagem: r.erro.message,
           aplicados,
         };
         break;
@@ -124,21 +133,39 @@ async function main() {
   }
 
   const resumo = `**${aplicados}/${arquivos.length} arquivos aplicados** do zero sem erro de SQL${
+    emulados.length
+      ? ` · ${emulados.length} deles com pg_cron/pg_net emulado (corpo aplicado de verdade, agendamento não)`
+      : ""
+  }${
     pulados.length
-      ? ` · ${pulados.length} pulados por provisionamento (pg_cron/pg_net, ver aviso)`
+      ? ` · ${pulados.length} pulados por provisionamento (ver aviso)`
       : ""
   }.`;
   anexarAoSummaryDoJob(
     "CI Banco — 1ª passada (aplica do zero)",
     `${resumo}${
+      emulados.length
+        ? `\n\n<details><summary>Aplicados com pg_cron/pg_net emulado</summary>\n\n\`\`\`\n${emulados.join("\n")}\n\`\`\`\n\n</details>`
+        : ""
+    }${
       pulados.length
         ? `\n\n<details><summary>Pulados por provisionamento</summary>\n\n\`\`\`\n${pulados.join("\n")}\n\`\`\`\n\n</details>`
         : ""
     }`,
   );
+  // Job BLOQUEANTE: pulado NÃO é verde. O provisionador emula pg_cron, então
+  // pular um arquivo significa banco divergente de toda loja — foi um pulo
+  // (a 20260901 inteira) que escondeu o corpo errado de confirmar_pagamento
+  // até a 20261195 recusar (PR 766).
+  if (pulados.length > 0) {
+    sair(
+      "FALHOU",
+      `${pulados.length} arquivo(s) PULADOS por provisionamento mesmo com o pg_cron emulado — o banco do zero ficou diferente do de uma loja. Confira o passo 6 do provisionar-efemero.cjs.\n${pulados.join("\n")}`,
+    );
+  }
   sair(
     "OK",
-    `A raiz inteira aplicou num banco zerado (${aplicados} aplicados, ${pulados.length} pulados por provisionamento).`,
+    `A raiz inteira aplicou num banco zerado (${aplicados} aplicados, ${emulados.length} deles com pg_cron/pg_net emulado, 0 pulados por provisionamento).`,
   );
 }
 

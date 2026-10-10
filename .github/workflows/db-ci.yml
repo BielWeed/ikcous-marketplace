@@ -15,10 +15,16 @@
 #   + inventário INFORMATIVO dos rollback-manual-* (existência e caminho — a
 #       ressalva da #535), anexado ao summary do job.
 #
-# INFORMACIONAL POR NASCIMENTO (mesma regra do cabeçalho do ci.yml: um CI que
-# nasce vermelho é um CI que todo mundo aprende a ignorar): `continue-on-error`
-# abaixo segura o job enquanto a rodada não estabilizar. Para virar BLOQUEANTE
-# depois de estável, basta APAGAR a linha — nenhum outro passo precisa mudar.
+# BLOQUEANTE desde 04/10/2026 (PR 766). Nasceu informacional
+# (`continue-on-error: true`) e foi justamente ali que um defeito do PRÓPRIO
+# runner passava verde: sem pg_cron, a 20260901 era PULADA inteira e o
+# banco do zero ficava com confirmar_pagamento no corpo da 20260810 — estado
+# que nenhuma loja tem. Com o pg_cron emulado (provisionar-efemero.cjs, passo
+# 6) a raiz aplica inteira como numa loja real, e o job passa a reprovar:
+# arquivo PULADO por provisionamento também sai != 0
+# (aplicar-migrations / prova-dupla-aplicacao).
+# Só o inventário de rollback e as colisões de quem NÃO promete idempotência
+# seguem informativos, por desenho (relatório no summary, saída 0).
 #
 # SEGURANÇA DE BANCO (regra do dia 14/09): este job NUNCA aponta para banco
 # real. A única DATABASE_URL daqui é o service efêmero criado ABAIXO, e os
@@ -39,7 +45,7 @@ on:
       - "scripts/ci/banco/**"
       - ".github/workflows/db-ci.yml"
   push:
-    branches: [develop]
+    branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
       - "supabase/migrations/**"
       - "scripts/ci/banco/**"
@@ -61,9 +67,8 @@ jobs:
   migrations-do-zero:
     name: Migrations do zero (efêmero)
     runs-on: ubuntu-latest
-    # >>> NASCE INFORMACIONAL. Após estável, apague esta linha para o job
-    # >>> passar a BLOQUEAR o merge.
-    continue-on-error: true
+    # BLOQUEANTE: sem continue-on-error (ver cabeçalho). Não reintroduzir —
+    # tests/ci_banco_bloqueante_test.ts trava.
     timeout-minutes: 10
 
     services:

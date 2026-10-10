@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
 import { useProducts } from "@/hooks/useProducts";
+import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
+import {
+  FILTRO_POSTGREST_PARA_PREPARAR,
+  STATUS_PARA_PREPARAR,
+} from "@/lib/pedidos-para-preparar";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import {
@@ -47,11 +51,15 @@ interface AvaliacaoCrua {
   created_at: string;
 }
 
+// A regra unica "para preparar" (onda F, F2b) — a mesma do selo de Pedidos
+// e do Inicio. So status nao bastava: o PIX/cartao ainda nao pago virava
+// "Pedido de X esperando voce", e quem espera ali e a CLIENTE.
 async function buscarPedidosPendentes(): Promise<PedidoPendente[]> {
   const { data, error } = await supabase
     .from("marketplace_orders")
     .select("id, customer_name, total, created_at")
-    .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE as unknown as string[]);
+    .in("status", STATUS_PARA_PREPARAR as unknown as string[])
+    .or(FILTRO_POSTGREST_PARA_PREPARAR);
 
   if (error) throw error;
   return (data ?? []) as unknown as PedidoPendente[];
@@ -77,6 +85,21 @@ async function buscarPerguntasPendentes(): Promise<number> {
   // `??` e nao `||`: zero pergunta pendente e uma resposta legitima, e
   // `|| 0` daria o mesmo numero para "zero" e para "veio nulo".
   return data?.total_count ?? 0;
+}
+
+// A mesma RPC da tela de Devolucoes (`contagem` vem inteira, qualquer que
+// seja o filtro): so `solicitada` acende o sino — e o estado em que a
+// resposta e da loja e o prazo legal corre. Forma inesperada e FALHA da
+// fonte, nunca "zero devolucao".
+async function buscarDevolucoesSolicitadas(): Promise<number> {
+  const { data, error } = await supabase.rpc("admin_devolucoes_listar", {
+    p_status: "solicitada",
+    p_limite: 1,
+  });
+  if (error) throw error;
+  const lista = lerListaAdmin(data);
+  if (!lista) throw new Error("resposta inesperada de admin_devolucoes_listar");
+  return contagemDe(lista.contagem, "solicitada");
 }
 
 // `.is(null)` e nao "null ou string vazia": o SQL do painel trata resposta em
@@ -134,9 +157,10 @@ async function buscarProdutosComEstoqueBaixo(
 }
 
 /**
- * Junta as quatro fontes de aviso do lojista numa lista so.
+ * Junta as cinco fontes de aviso do lojista numa lista so (a quinta,
+ * devolucao, entrou com o plano 2026-09-26).
  *
- * Falha parcial nao derruba a tela: as quatro consultas correm em
+ * Falha parcial nao derruba a tela: as cinco consultas correm em
  * `Promise.allSettled`, e a que cair entra em `fontesComFalha` enquanto as
  * outras seguem. Tela em branco por causa de uma consulta e pior que tela
  * incompleta e honesta.
@@ -161,7 +185,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     const rodada = ++rodadaRef.current;
     setCarregando(true);
 
-    const [rPedidos, rPerguntas, rAvaliacoes, rProdutos] =
+    const [rPedidos, rPerguntas, rAvaliacoes, rProdutos, rDevolucoes] =
       await Promise.allSettled([
         buscarPedidosPendentes(),
         buscarPerguntasPendentes(),
@@ -171,6 +195,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
             typeof buscarProdutosComEstoqueBaixo
           >[0],
         ),
+        buscarDevolucoesSolicitadas(),
       ]);
 
     // Componente desmontado, ou rodada atropelada por outra mais nova: em
@@ -185,6 +210,10 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     const perguntasPendentes =
       rPerguntas.status === "fulfilled" ? rPerguntas.value : 0;
     if (rPerguntas.status === "rejected") falhas.push("pergunta");
+
+    const devolucoesSolicitadas =
+      rDevolucoes.status === "fulfilled" ? rDevolucoes.value : 0;
+    if (rDevolucoes.status === "rejected") falhas.push("devolucao");
 
     const avaliacoesCruas =
       rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value : [];
@@ -214,7 +243,13 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     );
 
     setAvisos(
-      montarAvisos({ pedidos, perguntasPendentes, avaliacoes, produtos }),
+      montarAvisos({
+        pedidos,
+        perguntasPendentes,
+        avaliacoes,
+        produtos,
+        devolucoesSolicitadas,
+      }),
     );
     setFontesComFalha(falhas);
     setCarregando(false);

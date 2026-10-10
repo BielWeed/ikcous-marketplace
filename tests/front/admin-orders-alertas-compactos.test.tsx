@@ -2,7 +2,7 @@
 //
 // Histórico do desenho desta área (tudo por pedido do Gabriel):
 //   02/09 de manhã: os três blocos gigantes (dinheiro preso, mercadoria a
-//     voltar, estorno devido) viraram uma PÍLULA colapsável full-width.
+//     voltar, devolver ao cliente) viraram uma PÍLULA colapsável full-width.
 //   02/09 à tarde: a pílula ainda ocupava uma faixa inteira da tela — o
 //     Gabriel pediu o passo seguinte: um BOTÃO redondo com o ícone de alerta,
 //     no canto direito da linha do título "Pedidos" (onde nada mais vive —
@@ -55,6 +55,11 @@ let mockTotalOrders = 0;
 // `let` porque cada teste controla o que a consulta de cancelados devolve.
 let mockPedidosCancelados: Order[] = [];
 
+// pedidos-4 (20261164000000): o contador de cancelados fora da janela de 90
+// dias e o botão que pede a varredura completa.
+let mockCanceladosForaDaJanela = 0;
+let mockBuscarTambemAntigos = vi.fn(async () => []);
+
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
     orders: mockOrders,
@@ -66,9 +71,10 @@ vi.mock("@/hooks/useOrders", () => ({
     pedidosCancelados: mockPedidosCancelados,
     fetchPedidosCancelados: vi.fn(async () => mockPedidosCancelados),
     pedidosCanceladosIncompleto: mockPedidosCanceladosIncompleto,
+    canceladosForaDaJanela: mockCanceladosForaDaJanela,
+    buscarTambemCanceladosAntigos: () => mockBuscarTambemAntigos(),
   }),
 }));
-
 let mockAnalyticsStats: any = null;
 // R3 da revisão do PR #400: o aviso de lista incompleta é caminho próprio —
 // ganha variável de controle aqui.
@@ -223,6 +229,8 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     mockTotalOrders = 0;
     mockPedidosCancelados = [];
     mockPedidosCanceladosIncompleto = false;
+    mockCanceladosForaDaJanela = 0;
+    mockBuscarTambemAntigos = vi.fn(async () => []);
     mockAnalyticsStats = null;
   });
 
@@ -251,8 +259,11 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     expect(hospedeiro.textContent).not.toContain(
       "O dinheiro entrou e o pedido está cancelado",
     );
+    // L3e (02/10/2026): a frase do balde de estorno mudou ("esta tela não
+    // devolve dinheiro nenhum" era falsa) — a sonda acompanha a frase nova,
+    // senão esta asserção passaria vazia para sempre.
     expect(hospedeiro.textContent).not.toContain(
-      "esta tela não devolve dinheiro nenhum",
+      "Os pedidos marcados com “Devolução em andamento”",
     );
   });
 
@@ -363,7 +374,41 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
 
     expect(botaoAlerta()).toBeNull();
     expect(hospedeiro.textContent).not.toContain("produto a voltar");
-    expect(hospedeiro.textContent).not.toContain("estorno devido");
+    expect(hospedeiro.textContent).not.toContain("devolver ao cliente");
+  });
+
+  it("pedidos-4: cancelados fora da janela viram aviso no dropdown e o botão pede a varredura completa", async () => {
+    // A honestidade do recorte (frente pedidos-4): pendência antiga que
+    // ficou fora da janela de 90 dias NÃO pode sumir em silêncio. Sem
+    // pendência visível nenhuma, o botão NASCE só pelo contador — e o
+    // dropdown explica e oferece a busca completa.
+    mockAnalyticsStats = statsFake(0);
+    mockCanceladosForaDaJanela = 3;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+
+    expect(botaoAlerta()).toBeTruthy();
+    expect(
+      hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]')
+        ?.textContent,
+    ).toBe("3");
+
+    await expandir();
+    expect(hospedeiro.textContent).toContain(
+      "cancelamentos anteriores à janela de 90 dias",
+    );
+
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Buscar também os antigos",
+    );
+    expect(botao).toBeTruthy();
+    await act(async () => {
+      botao!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(mockBuscarTambemAntigos).toHaveBeenCalledTimes(1);
   });
 
   it("cancelado que nunca foi pago, com mercadoria fora: badge conta o pedido e o resumo fala de PRODUTO, não de estorno", async () => {
@@ -385,7 +430,7 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
       "produto a voltar (1)",
     );
     expect(botaoAlerta()!.getAttribute("aria-label")).not.toContain(
-      "estorno devido",
+      "devolver ao cliente",
     );
     expect(
       hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]')
@@ -393,7 +438,7 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     ).toBe("1");
   });
 
-  it("cancelado pago sem envio: resumo e badge apontam ESTORNO devido", async () => {
+  it("cancelado pago sem envio: resumo e badge apontam DEVOLVER ao cliente", async () => {
     mockAnalyticsStats = statsFake(0);
     mockPedidosCancelados = [
       canceladoFake({ id: "def456", paymentStatus: "pago" }),
@@ -406,7 +451,7 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
 
     expect(botaoAlerta()).toBeTruthy();
     expect(botaoAlerta()!.getAttribute("aria-label")).toContain(
-      "estorno devido (1)",
+      "devolver ao cliente (1)",
     );
   });
 

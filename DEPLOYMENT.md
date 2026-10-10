@@ -24,16 +24,20 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
 1. Fazer o deploy da função via CLI:
 
    ```bash
-   supabase functions deploy send-push
+   supabase functions deploy send-push --project-ref dekxabvqdsuukijblazl
    ```
 
-   **O comando pergunta em qual projeto, e vem com o cursor no errado.** Desde
-   05/08/2026 a org tem **dois** projetos — o `jvgyjlbjhbfrncwbytls` foi
-   excluído (#85). O que hospeda a loja é o `cafkrminfnokvgjqtkle`, o mesmo que
-   está em `VITE_SUPABASE_URL`; o outro é o `lofznuxcvezrhxsgjqyg`
-   (`ikcous-mkt-priemira-cliente`), que aparece **antes** dele na lista. Dar
-   Enter direto publica no lugar errado sem erro nenhum. Para pular a escolha:
-   `--project-ref cafkrminfnokvgjqtkle`.
+   **Informe sempre `--project-ref` no comando.** A loja ativa usa
+   `dekxabvqdsuukijblazl`; o projeto anterior `cafkrminfnokvgjqtkle` está
+   pausado. O `lofznuxcvezrhxsgjqyg` é o sandbox e não recebe a publicação da
+   loja. Sem o ref explícito, o CLI abre uma escolha interativa na qual confirmar
+   o projeto errado pode publicar sem erro.
+
+   Desde 17/09/2026 dá para publicar sem CLI na máquina: o workflow
+   `publicar-functions` (GitHub → Actions → "Publicar edge functions
+   (Supabase)") roda o mesmo comando num runner do GitHub, com o destino
+   escolhido numa lista fechada — `loja` ou `sandbox`, sem cursor no lugar
+   errado. Como disparar e o que ele recusa: §5.3.2.
 
    O `lofznuxcvezrhxsgjqyg` é o **sandbox do MCP** — apesar do nome, não é loja
    de cliente. É para onde os `mcp.json` das IDEs apontam, para o servidor MCP
@@ -71,7 +75,7 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    **A `notify-new-order` também exige `--no-verify-jwt`** (PEDIDO-020, #89):
 
    ```bash
-   supabase functions deploy notify-new-order --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+   supabase functions deploy notify-new-order --no-verify-jwt --project-ref dekxabvqdsuukijblazl
    ```
 
    Ela é chamada pelo navegador do CLIENTE logo depois do pedido — muitas vezes
@@ -84,10 +88,11 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    ter sido criado nos últimos 15 minutos. O pior caso de um id vazado é
    duplicar o aviso de um pedido que acabou de entrar.
 
-   **O que está publicado hoje** — medido em 11/08/2026, depois da
+   **O que estava publicado em 11/08/2026** — medido depois da
    despublicação da `send-order-whatsapp`, com
-   `supabase functions list --project-ref cafkrminfnokvgjqtkle`. Esta tabela
-   envelhece; rode o comando em vez de confiar nela:
+   `supabase functions list --project-ref cafkrminfnokvgjqtkle` no projeto
+   anterior. Esta tabela é histórica; para conferir a loja ativa, rode
+   `supabase functions list --project-ref dekxabvqdsuukijblazl`:
 
    | Função | Versão | Atualizada em (UTC) |
    | --- | --- | --- |
@@ -99,8 +104,10 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    | `webhook-mercadopago` | 5 | 2026-08-11 02:44:10 |
    | `reconciliar-pagamentos` | 5 | 2026-08-11 02:44:22 |
 
-   São sete — as quatro antigas mais as três do checkout (§5.3). A
-   `send-order-whatsapp`, despublicada em 11/08/2026, não aparece mais.
+   São sete — as quatro antigas mais as três do checkout então publicadas (a
+   folha da §5.3 tem cinco desde 15/09/2026; esta tabela é a foto de
+   agosto/2026). A `send-order-whatsapp`, despublicada em 11/08/2026, não
+   aparece mais.
 
    Ressalvas desta tabela, cada uma com sua própria data:
 
@@ -112,7 +119,8 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
      com o painel fechado — continua não exercitado**, porque testá-lo cria
      pedido em produção.
    - **`send-order-whatsapp` foi DESPUBLICADA em 11/08/2026** (#167, rastreada
-     pela #187):
+     pela #187). O comando e a saída abaixo são registro histórico do projeto
+     anterior; **não execute este comando**:
 
      ```
      supabase functions delete send-order-whatsapp --project-ref cafkrminfnokvgjqtkle --yes
@@ -220,7 +228,7 @@ sem dizer **como o PIX de teste é pago** — que é a única parte não óbvia 
 A URL a cadastrar é:
 
 ```
-https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago
+https://dekxabvqdsuukijblazl.supabase.co/functions/v1/webhook-mercadopago
 ```
 
 **Isto mudou com a migração para a Orders API.** Com `montarCorpoPix` (clássico) o código mandava
@@ -238,37 +246,111 @@ cadastro aconteça — é a issue #212, não resolvida aqui.
 Nomes conferidos no código, não de memória (`Deno.env.get` nas functions, `import.meta.env` no
 front).
 
+**Desde 15/09/2026 a credencial do Mercado Pago tem DUAS origens possíveis**: a chave do
+LOJISTA, cadastrada na tela de Ajustes e guardada cifrada no banco, e a da PLATAFORMA, nos
+secrets abaixo. Quem decide qual vale é `supabase/functions/_shared/credenciais-mp.ts`, e a
+regra inteira está na §5.2.1 — leia-a antes de mexer em qualquer linha `MP_` desta tabela.
+
 | variável | onde | observação |
 | --- | --- | --- |
-| `VITE_MP_PUBLIC_KEY` | Vercel → Environment Variables → **só Preview** | o prefixo não indica ambiente (ver 5.1); pegue-a na aba "Credenciais de teste" do painel. Vai para o bundle, é pública por natureza |
-| `VITE_PAGAMENTO_ONLINE` | Vercel → **só Preview** | exatamente a string `true`; qualquer outro valor mantém o checkout antigo |
-| `MP_ACCESS_TOKEN` | Supabase → Edge Functions → Secrets | o prefixo NÃO indica ambiente na Orders API (teste e produção começam com `APP_USR`, ver 5.1) — pegue-o na aba "Credenciais de teste" do painel; **nunca** com prefixo `VITE_`, senão vaza no bundle |
+| `VITE_MP_PUBLIC_KEY` | **só desenvolvimento local** (`.env`) | o prefixo não indica ambiente (ver 5.1); pegue-a na aba "Credenciais de teste" do painel. Vai para o bundle, é pública por natureza. Em **qualquer deploy — produção OU Preview** — este valor assado é ignorado: quem vale é a ficha da loja (`store_config.mp_public_key`, §5.2.1); o assado só é lido em `npm run dev` (`import.meta.env.DEV`, `src/config/configuracaoDaLoja.ts`) |
+| `VITE_PAGAMENTO_ONLINE` | **só desenvolvimento local** (`.env`) | exatamente a string `true`; qualquer outro valor mantém o checkout antigo. Em **qualquer deploy — produção OU Preview** — este valor assado é ignorado: quem liga o PIX é o servidor (`store_config.pagamento_online`, que liga sozinho quando as três chaves da loja estão salvas e o teste de conexão passa, §5.2.1), não esta variável. Preview da Vercel é build de produção (`DEV` falso) e passa pelo mesmo porteiro: definir a variável lá não faz o PIX aparecer |
+| `MP_ACCESS_TOKEN` | Supabase → Edge Functions → Secrets | **RESERVA desde 15/09/2026**: só é usado quando o lojista NÃO cadastrou chave na tela (§5.2.1). O prefixo NÃO indica ambiente na Orders API (teste e produção começam com `APP_USR`, ver 5.1) — pegue-o na aba "Credenciais de teste" do painel; **nunca** com prefixo `VITE_`, senão vaza no bundle |
+| `MP_CHAVES_ENCRYPTION_KEY` | Supabase → Edge Functions → Secrets | **o COFRE**: 32 bytes em base64 (AES-256-GCM) com que a edge `credenciais-mercado-pago` cifra e decifra a chave do lojista em `app_settings`. Sem ele a tela não salva nem testa, e **a loja que já cadastrou chave para de cobrar** — é falha fechada de propósito (§5.2.1). Nunca com prefixo `VITE_`; nunca no banco (lá só moram ciphertext e iv). Trocá-lo torna ilegível o que já estava guardado: o lojista precisa colar as chaves de novo |
 | `MP_SANDBOX_PAYER_EMAIL` | Supabase → Edge Functions → Secrets | **opcional**, só faz sentido em ambiente de TESTE. Presente (e não vazia), `criar-pagamento` troca o e-mail do pagador do PIX por este valor e liga `payer.first_name = "APRO"` — o valor mágico que a doc de teste de PIX do MP exige para a order simular o fluxo completo. Desde 13/08/2026 uma string vazia já se comporta como ausente (achado de revisão: CHECKOUT-070), mas a forma CERTA de desligar o sandbox continua sendo **apagar o secret**, não deixar o campo em branco — é a única sem margem para engano |
-| `MP_WEBHOOK_SECRET` | Supabase → Secrets | a assinatura secreta do 5.1 |
+| `MP_WEBHOOK_SECRET` | Supabase → Secrets | a assinatura secreta do 5.1, também **RESERVA**: vale quando o lojista não cadastrou chave nenhuma e — sozinha entre as duas — também quando ele cadastrou o token mas deixou a "Chave de notificações" vazia (o campo é opcional na tela). Sem essa segunda reserva, notificação legítima viraria `401` e o pedido pago ficaria "aguardando" até expirar. O TOKEN não tem reserva nenhuma (§5.2.1) |
 | `RECONCILIACAO_SECRET` | Supabase → Secrets | **tem de bater** com o segredo homônimo no Vault |
+| `SUPABASE_ACCESS_TOKEN` | GitHub → Settings → Secrets and variables → Actions | **só para o workflow `publicar-functions`** (§5.3.2): token pessoal da conta do Supabase (avatar → Account → Access Tokens). Vale para **todos** os projetos da conta, não só a loja — por isso o workflow tem destino fechado (`ikcous-publicada`, `savy`, `almeida`, `sandbox` ou `loja`; `ikcous-publicada` e `savy` usam cada um o seu segredo próprio) e imprime o ref antes de publicar. Nunca em `.env`, nunca no código, nunca em Supabase → Secrets (lá não serve para nada). Revogar: na mesma página do Supabase; a partir daí o workflow falha no passo "Confere o segredo", antes de tocar em qualquer coisa |
 
 Os dois segredos do Vault (`reconciliacao_url` e `reconciliacao_secret`) foram criados em
 10/08/2026 pela migration `20260808000100`, **fora** dela, com `vault.create_secret`. Se o
 `RECONCILIACAO_SECRET` do ambiente das functions não bater com o do Vault, a
 `reconciliar-pagamentos` devolve `401` a cada 10 minutos, em silêncio.
 
-### 5.3 Deploy das três functions
+### 5.2.1 De quem é a chave que cobra — e o interruptor do PIX
+
+Antes de 15/09/2026, a tela *Ajustes > Pagamentos > Mercado Pago* guardava a chave do lojista
+cifrada e **ninguém cobrava com ela**: quem falava com o MP lia o `MP_ACCESS_TOKEN` da
+plataforma. Chave cadastrada que não cobra nada é pior que campo nenhum — o lojista acha que o
+dinheiro está caindo na conta dele. Agora a chave dele vale, e a decisão mora em UM lugar só
+(`resolverCredenciaisMp`, em `supabase/functions/_shared/credenciais-mp.ts`), de onde leem as
+quatro functions que falam com o Mercado Pago: `criar-pagamento`, `webhook-mercadopago`,
+`reconciliar-pagamentos` e `estornar-pagamento`.
+
+| o que existe no banco (`app_settings`, chave `pagamentos_mercado_pago`) | origem | o que acontece |
+| --- | --- | --- |
+| nenhum cadastro do lojista — ou registro pela metade, sem token cifrado | `ambiente` | usa `MP_ACCESS_TOKEN`/`MP_WEBHOOK_SECRET` dos secrets — o comportamento de sempre, para a loja que ainda roda pelas chaves da plataforma |
+| cadastro com token cifrado, cofre no lugar | `lojista` | decifra e cobra na conta **do lojista** |
+| cadastro presente, mas `MP_CHAVES_ENCRYPTION_KEY` ausente/trocada ou ciphertext ilegível | `indisponivel` | **falha fechada: ninguém cobra.** Nunca cai no token da plataforma |
+| a leitura de `app_settings` falhou | `indisponivel` | também fecha — na dúvida sobre existir chave do lojista, usar a da plataforma é justamente o risco abaixo |
+
+**Por que fechar em vez de cair na reserva.** Cobrar com o token da plataforma quando o lojista
+já cadastrou o dele é receber o dinheiro na **conta errada**: o cliente paga, o lojista não
+recebe, e desfazer isso é operação manual. Venda não fechada é recuperável; dinheiro na conta de
+quem não vendeu, não.
+
+O que aparece quando fecha, por function: `criar-pagamento` responde `503` com
+`"Pagamento indisponível."` e `terminal: true` (o cliente não fica no laço de "Tentar de novo");
+`webhook-mercadopago` responde `500` de propósito, para o MP **reenviar** a notificação quando a
+credencial voltar ao lugar; `reconciliar-pagamentos` não chama o MP sem chave e conta cada
+candidato como `falhas`; `estornar-pagamento` recusa a devolução com recado ao lojista. Nos logs
+saem apenas `origem` e `motivo` (`cofre_ausente`, `token_ilegivel`, `registro_ilegivel`,
+`ambiente_sem_token`, e `webhook_ilegivel` para o segredo de notificação, que sozinho não
+derruba a cobrança) — **nenhum token, nenhum segredo, nunca**.
+
+**O pagamento pelo app liga SOZINHO (30/09/2026).** Em *Ajustes > Pagamentos > Mercado Pago* o
+lojista cola as três chaves (Public Key, Access Token e a Chave de notificações — a assinatura
+do webhook) e toca em "Salvar chaves": o servidor testa a conexão na hora e, se as três chaves
+estão salvas e o teste passou, liga `pagamento_online` (Pix **e** cartão pelo app) sem botão
+nenhum. O bloco **"Receber PIX no app"** da tela só MOSTRA o estado que o servidor devolveu
+("Recebendo pelo app", "Pausado por você" ou "Falta para receber pelo app:" com a lista) e tem
+**Pausar** e **Retomar**; a pausa vence o automático (salvar ou testar não religam). Falta
+qualquer uma das três chaves, ou o teste falhou: desliga sozinho. O checkout do cliente só
+oferece PIX quando a ficha pública da loja traz `pagamento_online = true` **e** `mp_public_key`
+preenchida (`src/config/configuracaoDaLoja.ts`). `ler` só lê: loja que já existia com o estado
+antigo só muda quando o lojista salva, testa ou pausa.
+
+Essas duas colunas de `store_config` são escritas pela **própria edge
+`credenciais-mercado-pago`**, que roda com service role (claim `service_role`) e já é trancada
+por admin — o trigger `dominio_publico_so_muda_pela_frota` (migrations `20261140000000` e
+`20261150000000`) recusa qualquer outra escrita. Não há SQL na mão nem variável de ambiente
+para isto:
+
+- **`salvar`** publica a Public Key em `store_config.mp_public_key`; se a ficha recusar, a
+  resposta é erro explícito — nunca "salvo" calado;
+- **`salvar`** também TESTA a conexão na hora quando alguma credencial mudou (Access Token novo,
+  Public Key diferente ou Chave de notificações nova) e só deixa `pagamento_online` ligado se o
+  teste dessa credencial passou; carimba `pix_ligado_em` e `pix_ligado_por` (uid do admin) ao
+  ligar. `testar` grava o resultado e reconcilia (liga se tudo passou, desliga se falhou). Com
+  chave de TESTE liga e devolve o aviso "Chave de TESTE: o PIX não vai receber dinheiro de
+  verdade" — chave de sandbox conecta igualzinho à de produção, e quem não for avisado vai
+  achar que vendeu;
+- **`ligar_pix`** virou **retomar**: tira a pausa e reconcilia; faltando qualquer chave ou o
+  teste, `409` com o recado do que falta e nada gravado;
+- **`desligar_pix`** virou **pausar** e é sempre permitido (desligar é o lado seguro): apaga
+  `pagamento_online` e registra a pausa; se a loja ficaria sem nenhuma forma de pagamento, `409`
+  e a pausa não fica gravada.
+
+Depois de liberar, pausar ou retomar, **a vitrine reflete em até 1 minuto**: o porteiro serve a ficha da
+loja de um cache fresco de 60 s (`CACHE_FRESCO_MS`, em `src/hospedagem/porteiro.ts`).
+
+### 5.3 Deploy das functions da cobrança (três do checkout, mais duas desde 15/09/2026)
 
 **Sempre com o nome da função** — sem nome, publica todas as do diretório (ver §2).
 
 O `verify_jwt` de cada uma está versionado em `supabase/config.toml`, mas **a flag da linha de
-comando ganha do arquivo**. Então os três comandos abaixo não são intercambiáveis:
+comando ganha do arquivo**. Então os comandos abaixo não são intercambiáveis:
 
 ```bash
-supabase functions deploy criar-pagamento --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy criar-pagamento --project-ref dekxabvqdsuukijblazl
 ```
 
 ```bash
-supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref dekxabvqdsuukijblazl
 ```
 
 ```bash
-supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref dekxabvqdsuukijblazl
 ```
 
 - `criar-pagamento` vai **sem** `--no-verify-jwt`: quem chama é o cliente com sessão.
@@ -276,6 +358,42 @@ supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref c
   com segredo próprio. Quem autentica ali é o `x-signature` e o `RECONCILIACAO_SECRET`.
 
 Trocar isso é o erro que já derrubou o OTP uma vez (#162).
+
+**Desde 15/09/2026 a cobrança não cabe mais em três comandos.** A chave do lojista passou a
+valer de verdade (§5.2.1) e trouxe duas functions para esta mesma folha. As duas têm
+`verify_jwt = true` em `supabase/config.toml` — quem as chama é o lojista logado, então vão
+**sem** `--no-verify-jwt`:
+
+```bash
+supabase functions deploy estornar-pagamento --project-ref dekxabvqdsuukijblazl
+```
+
+```bash
+supabase functions deploy credenciais-mercado-pago --project-ref dekxabvqdsuukijblazl
+```
+
+- `estornar-pagamento` já existia e passou a resolver a credencial como as outras três;
+- `credenciais-mercado-pago` é a edge da tela *Ajustes > Pagamentos > Mercado Pago*: guarda a
+  chave cifrada, testa a conexão e liga o PIX (§5.2.1).
+
+**As cinco que carregam o módulo da credencial** — `criar-pagamento`, `webhook-mercadopago`,
+`reconciliar-pagamentos`, `estornar-pagamento` **e `credenciais-mercado-pago`** — **compartilham
+`supabase/functions/_shared/credenciais-mp.ts`**, e cada `supabase functions deploy` embute uma
+CÓPIA do módulo no bundle daquela function. A tela entra na lista porque é ela quem **GRAVA** o
+segredo, com exatamente as mesmas primitivas (`chaveDeCifra`, `cifrar`, `decifrar`) e sob a
+mesma `CHAVE_SETTINGS` que as outras usam para **LER**: quem grava por uma cifra enquanto os
+outros leem por outra faz o mesmo estrago com o sinal trocado.
+
+Mexeu no módulo (ou está publicando as duas origens pela primeira vez), publique **as cinco** na
+mesma janela. Publicar só parte deixa a loja meio nova, meio velha, e dói nos dois sentidos:
+
+- ficou para trás uma das que cobram: a tela grava a chave do lojista e a function atrasada
+  continua cobrando pelo `MP_ACCESS_TOKEN` da plataforma, na **conta errada**;
+- ficou para trás a `credenciais-mercado-pago`: a tela segue gravando sob a chave/cifra VELHA
+  enquanto as outras leem pela nova. Se o que mudou foi a `CHAVE_SETTINGS`, `lerRegistroMp` não
+  acha registro nenhum, a origem volta a `ambiente` e o dinheiro cai na **conta errada** do
+  mesmo jeito (§5.2.1); se foi a cifra, dá `token_ilegivel` e a loja **para de cobrar** (`503`)
+  sem ninguém entender por quê.
 
 ### 5.3.1 A ordem de deploy entre `criar-pagamento` e o front (CHECKOUT-080, #213)
 
@@ -323,6 +441,112 @@ perde; o inventário é que fica preso enquanto a janela durar.
 **Isto vale para CADA loja clonada deste molde**, em todo upgrade que cruze uma versão de
 `criar-pagamento` que mude o vocabulário do campo `statusPagamento`/`status` — não só nesta
 migração específica.
+
+### 5.3.1-b A ordem de deploy da liberação automática do PIX: function ANTES do front (30/09/2026)
+
+A liberação automática do pagamento pelo app (o servidor liga `store_config.pagamento_online`
+sozinho com as três chaves + teste de conexão, e a tela mostra "Recebendo", "Pausado por você" ou
+"Falta para receber") vive na function `credenciais-mercado-pago`. O front (Vercel) sobe sozinho
+no merge; **a function NÃO** — ela é publicada por loja (§5.3.2), uma a uma. Daí a janela: front
+novo falando com function antiga.
+
+**Regra: publique `credenciais-mercado-pago` em TODAS as lojas (a principal e cada cliente)
+ANTES de juntar o PR do front.** Confirme por loja que a resposta da ação `ler` já traz o campo
+`faltando` (é a marca da versão nova).
+
+**O que acontece se a ordem for invertida** (medido em
+`tests/front/admin-mercado-pago-liberacao-automatica.test.tsx`, casos A15/A15b/A15c): a tela
+percebe que a resposta não traz `faltando` e entra em modo "servidor desatualizado" — não diz
+"Tudo preenchido", não oferece Pausar/Retomar (a function antiga não conhece pausa), mostra o
+estado REAL (`pix_ligado`) e o recado "Atualizando o sistema de pagamentos desta loja — tente de
+novo em alguns minutos." Só resta o Ligar/Desligar de antes (a function antiga valida tudo por
+conta própria: só liga com teste conectado). Nada é cobrado errado e nada liga sem prova — mas a
+loja **não libera sozinha** até a function ser publicada, e o lojista vê um aviso em vez do
+estado novo. É estado transitório, não defeito: publique a function e recarregue a tela.
+
+### 5.3.2 Publicar pelo GitHub, sem CLI na máquina (workflow `publicar-functions`, desde 17/09/2026)
+
+Os comandos da §5.3 continuam valendo. O que mudou é que deixaram de ser o ÚNICO caminho:
+[`.github/workflows/publicar-functions.yml`](.github/workflows/publicar-functions.yml) roda o mesmo
+`supabase functions deploy` num runner do GitHub, a partir do commit da branch que você escolher.
+Nasceu de um caso concreto, em 17/09/2026: a `credenciais-mercado-pago` publicada era a de 14/09
+(a que falhava todo teste de conexão, peça 27) e a correção de 15/09 estava parada em `develop`
+porque ninguém estava com o CLI logado na máquina.
+
+**Como disparar:** GitHub → Actions → "Publicar edge functions (Supabase)" → *Run workflow* →
+escolher a **branch** (o que sobe é o código daquele commit) e preencher:
+
+- `functions`: os nomes, separados por vírgula ou espaço (`credenciais-mercado-pago`), ou o
+  apelido `cobranca`, que vira as cinco da §5.3 na ordem certa;
+- `projeto`: `ikcous-publicada` (`cafkrminfnokvgjqtkle`, a loja principal no ar, o padrão desde
+  03/10/2026, com o segredo próprio `SUPABASE_ACCESS_TOKEN_IKCOUS`), `savy` (`gnjsrucsmjkajijrakzr`),
+  `almeida` (`cuemaffjmhkebhmghbap`, Almeida Store, desde 30/09/2026), `sandbox`
+  (`lofznuxcvezrhxsgjqyg`) ou `loja` (`dekxabvqdsuukijblazl`, projeto antigo da principal: nenhuma
+  loja no ar chama as functions dele).
+- `expected_sha`: para `ikcous-publicada`, `savy` e `almeida`, o SHA completo (40 caracteres) do commit aprovado. O workflow
+  compara esse valor com o SHA do próprio run **antes** do primeiro deploy; se a branch tiver
+  avançado desde a revisão, o run falha sem publicar. Confira também o `head_sha` do run.
+
+Nos destinos `ikcous-publicada`, `savy` e `almeida`, o campo `functions` aceita somente as cinco
+Functions financeiras do apelido `cobranca`, juntas ou individualmente. Outros nomes são
+recusados antes do deploy. **Exceção desde 09/10/2026:** `ikcous-publicada` e `savy` (as lojas
+reais, e só elas) aceitam também `send-order-confirmation`, pelo nome; a `almeida` continua nas
+cinco, e o apelido `cobranca` continua sendo só as cinco. Motivo: o comprovante da venda de
+balcão compartilha `_shared/pedido.ts` e `_shared/comprovante.ts` com `criar-pagamento`,
+`webhook-mercadopago`, `reconciliar-pagamentos` e `send-order-confirmation`; sem poder publicar
+esta última, a release travaria sempre que esses arquivos mudassem. A lista que a release
+enxerga é `functionsPublicaveis` em `scripts/frota/canais-de-backend.json`, e o teste
+`tests/ci_publicar_functions_test.ts` exige que ela concorde com o workflow. As outras lojas clientes (Brand Meliz e Space Loja do Kit) ficam em
+projetos de contas sem acesso deste token e **não têm rota** neste workflow.
+
+O log imprime projeto e nomes antes de publicar e termina com o `supabase functions list` do
+projeto, que também vai para o resumo do job. A lista confirma as Functions ativas e suas versões
+de deploy; **não identifica o SHA nem o conteúdo do bundle publicado**. Confira o SHA do run,
+o ref de destino e o comportamento observado antes de declarar a publicação concluída.
+
+**O que ele faz diferente dos comandos da §5.3, de propósito:**
+
+- **não passa `--no-verify-jwt` nunca.** A verdade de cada function é o `supabase/config.toml`,
+  que o CLI lê sozinho; a flag na linha de comando ganharia do arquivo (§5.3), e é exatamente o
+  erro que já derrubou o OTP (#162). Se uma function precisa mudar de `verify_jwt`, muda no
+  `config.toml`, com revisão, e não num campo de formulário;
+- **recusa publicar sem nome** (cada chamada ao CLI leva um nome; sem nome ele publicaria o
+  diretório inteiro, §2), **recusa a `send-order-whatsapp`** (despublicada em 11/08/2026) e recusa
+  nome que não exista em `supabase/functions/`;
+- **só dispara à mão.** Push em `develop` ou `main` não publica nada: publicar em produção
+  continua sendo um ato humano, só que sem exigir CLI e login na máquina de quem publica.
+
+**O que ele precisa, uma vez só:** `SUPABASE_ACCESS_TOKEN` para `loja`, `almeida` e `sandbox`
+(§5.2; a Almeida está no mesmo org Supabase da loja principal), ou
+`SUPABASE_ACCESS_TOKEN_SAVY` para `savy`. São tokens pessoais; mantenha cada valor apenas nos
+secrets do GitHub e nunca o copie para o log ou para uma conversa. O workflow confere apenas o
+segredo do destino escolhido e falha antes do deploy se ele faltar. A presença do secret e uma
+consulta de leitura com o token Savy **não comprovam permissão de deploy**; confirme essa
+permissão antes de depender da publicação.
+
+**Antes da primeira publicação Savy:** registre o SHA exato da branch selecionada no
+`workflow_dispatch` e confira que ele contém o workflow com a opção `savy` e as cinco Functions
+pretendidas. Compare migrations, cron e configuração do projeto Savy com as dependências desse
+SHA. Registre a origem exata do código atualmente publicado e prepare uma branch de rollback
+que **também contenha este workflow com a opção `savy`**, mas publique o código anterior das
+Functions. Um commit anterior à inclusão da opção `savy` não serve como rollback pelo formulário.
+Se não for possível identificar o código anterior ou preparar e verificar a branch de rollback,
+não inicie o deploy. A lista de versões do Supabase, sozinha, não recupera o bundle anterior.
+
+**Pagamento Savy:** antes de publicar as Functions de cobrança, configure no aplicativo Mercado
+Pago da própria Savy o webhook de produção
+`https://gnjsrucsmjkajijrakzr.supabase.co/functions/v1/webhook-mercadopago` para as notificações
+de pagamento e order, e grave a assinatura secreta no painel autenticado da Savy. Não envie a
+chave por chat. Depois do deploy controlado, faça um teste de notificação e confira a validação
+HMAC e a atualização do pedido antes de promover o front; o teste de conexão do Access Token
+verifica outra coisa. Sem essa evidência, mantenha a publicação de pagamento pendente.
+
+O que ele NÃO faz: migrations (`supabase db push` continua proibido, AGENTS.md) e secrets das
+functions (esses continuam no painel, §5.2). Publicar uma function que depende de uma migration
+ainda não aplicada continua sendo erro de ordem, workflow ou não (§5.3.1).
+
+Testado por `tests/ci_publicar_functions_test.ts`: o bloco de validação é extraído do workflow e
+rodado com bash contra os casos acima.
 
 ### 5.4 O teste de ponta a ponta — e como o PIX de teste é pago
 

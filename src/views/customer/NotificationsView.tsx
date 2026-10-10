@@ -413,12 +413,23 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                       </div>
 
                       {/* Dismiss Action */}
+                      {/* Laudo NotificationsView-421: `opacity-0` puro +
+                       * `group-hover` era o ÚNICO jeito de revelar o X — em
+                       * touch (a maioria dos celulares) nunca existe hover
+                       * de verdade, então o botão ficava invisível PARA
+                       * SEMPRE mas continuava tocável. Mesma convenção já
+                       * usada em ProductCard.tsx e ProductView.tsx: opaco
+                       * por padrão, e o esconder-até-hover só entra sob
+                       * `@media (hover: hover)` (variante `hover-hover` do
+                       * tailwind.config.js). `after:-inset-2` amplia a área
+                       * de toque (28px de base + 8px por lado = 44px) sem
+                       * aumentar o ícone visível. */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           deleteNotification(notif.id);
                         }}
-                        className="absolute bottom-3 right-3 rounded-lg p-1.5 text-zinc-400 opacity-0 transition-all hover:bg-zinc-100 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 xs:relative xs:bottom-0 xs:right-0 xs:self-start"
+                        className="absolute bottom-3 right-3 rounded-lg p-1.5 text-zinc-400 opacity-100 transition-all after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-100 hover:text-zinc-600 hover-hover:opacity-0 hover-hover:group-hover:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 xs:relative xs:bottom-0 xs:right-0 xs:self-start"
                         title="Excluir notificação"
                       >
                         <X className="size-4" />

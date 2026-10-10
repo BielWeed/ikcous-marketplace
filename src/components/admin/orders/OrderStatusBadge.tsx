@@ -1,4 +1,4 @@
-import type { OrderStatus, PaymentStatus } from "@/types";
+import type { CanalDaVenda, OrderStatus, PaymentStatus } from "@/types";
 import { CheckCircle, Clock, Package, Truck, XCircle } from "lucide-react";
 import type React from "react";
 import { memo } from "react";
@@ -49,30 +49,55 @@ export const statusConfig: Record<
   cancelled: {
     label: "Cancelado",
     icon: XCircle,
-    color: "text-zinc-500",
+    // zinc-400 (e nao 500): sobre o fundo escuro do painel o 500 dava ~3,6:1,
+    // abaixo do minimo AA de 4,5:1; o 400 da ~6,7:1.
+    color: "text-zinc-400",
     bgColor: "bg-zinc-500/10",
     borderColor: "border-zinc-500/20",
-    className: "text-zinc-500",
+    className: "text-zinc-400",
   },
 };
+
+/**
+ * "padrao" é o selo de sempre (usado na ficha e nas filas). "cartao" é
+ * a escala do card de pedido da lista (AdminOrderCard): mais respiro e um
+ * ponto de cor na frente — o selo antigo ficava ilegível ao lado do valor em
+ * tela de celular. Os dois têm o rótulo em 11px (piso do painel).
+ */
+type TamanhoDoSelo = "padrao" | "cartao";
 
 interface OrderStatusBadgeProps {
   status: OrderStatus;
   className?: string;
+  tamanho?: TamanhoDoSelo;
 }
 
 export const OrderStatusBadge = memo(function OrderStatusBadge({
   status,
   className,
+  tamanho = "padrao",
 }: Readonly<OrderStatusBadgeProps>) {
   const cfg = statusConfig[status || "pending"] || statusConfig.pending;
+  const cartao = tamanho === "cartao";
 
   return (
     <div
-      className={`flex items-center rounded-full px-2 py-0.5 ${cfg.bgColor} ${className}`}
+      className={`flex items-center rounded-full ${
+        cartao ? "gap-1.5 px-2.5 py-1" : "px-2 py-0.5"
+      } ${cfg.bgColor} ${className}`}
     >
+      {cartao && (
+        <span
+          aria-hidden="true"
+          className={`size-1.5 shrink-0 rounded-full bg-current ${cfg.color}`}
+        />
+      )}
       <span
-        className={`text-[9px] font-black uppercase tracking-widest ${cfg.color}`}
+        className={`uppercase ${
+          cartao
+            ? "text-[11px] font-bold tracking-wider"
+            : "text-[11px] font-black tracking-wider"
+        } ${cfg.color}`}
       >
         {cfg.label}
       </span>
@@ -183,7 +208,8 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
     },
     sem_cobranca: {
       label: "Sem cobrança online",
-      color: "text-zinc-500",
+      // Mesmo motivo do "Cancelado": zinc-500 ficava abaixo de 4,5:1.
+      color: "text-zinc-400",
       bgColor: "bg-zinc-500/10",
       borderColor: "border-zinc-500/20",
     },
@@ -223,6 +249,13 @@ interface PaymentStatusBadgeProps {
   // Opcional para não quebrar chamador nenhum: sem ela, o comportamento é
   // idêntico ao de antes desta correção.
   orderStatus?: OrderStatus | null;
+  /**
+   * De onde a venda veio (D1, lote C4). Opcional para não quebrar chamador
+   * nenhum: sem ela, o comportamento é idêntico ao de antes — só troca o
+   * rótulo de "Recebido na entrega" para "Recebido no balcão" quando vale
+   * "presencial" e o pagamento já entrou.
+   */
+  canal?: CanalDaVenda;
   className?: string;
   /**
    * Rótulo CURTO (`shortLabel`) para grades de cards: "Pago fora do fluxo —
@@ -232,6 +265,8 @@ interface PaymentStatusBadgeProps {
    * frase inteira; o card fica limpo.
    */
   compact?: boolean;
+  /** Escala do selo — ver `TamanhoDoSelo`. */
+  tamanho?: TamanhoDoSelo;
 }
 
 /**
@@ -239,8 +274,11 @@ interface PaymentStatusBadgeProps {
  * DEPOIS foi cancelado — produzível hoje pelo botão "Cancelar Pedido" da
  * tela do cliente, que aparece para todo pedido pendente sem olhar o
  * pagamento. Sem isso, o painel mostrava "Pago" verde comum para um pedido
- * em que o dinheiro está com a loja, o estoque já voltou à prateleira e não
- * existe estorno automático em lugar nenhum deste app.
+ * em que o dinheiro pode ainda estar com a loja e o estoque já voltou à
+ * prateleira. (Desde 07/09/2026 o cancelamento de pedido pago e ainda não
+ * enviado pede a devolução ao Mercado Pago sozinho — linha em
+ * `order_refunds`; o rótulo continua valendo até o estorno concluir, quando
+ * `payment_status` vira 'estornado'.)
  *
  * Mesma família visual de `pago_apos_expirar` (dinheiro fora do fluxo, cores
  * reaproveitadas dali) — a causa é o espelho uma da outra: aqui o pedido
@@ -257,22 +295,49 @@ const PAGO_E_CANCELADO: PaymentStatusEntry = {
   needsAttention: true,
 };
 
+/**
+ * D1 do plano (docs/superpowers/plans/2026-09-15-super-atualizacao-do-app.md,
+ * seção 6): a venda de balcão grava o MESMO `recebido_na_entrega` — o banco
+ * não ganhou um oitavo valor. Só o rótulo muda, e muda aqui, num lugar só.
+ * Mesma cor de `recebido_na_entrega` de propósito: é o mesmo fato (dinheiro
+ * entrou fora do gateway), só o canal é outro.
+ */
+const RECEBIDO_NO_BALCAO: PaymentStatusEntry = {
+  label: "Recebido no balcão",
+  color: paymentStatusConfig.recebido_na_entrega.color,
+  bgColor: paymentStatusConfig.recebido_na_entrega.bgColor,
+  borderColor: paymentStatusConfig.recebido_na_entrega.borderColor,
+};
+
 function configDoPagamento(
   paymentStatus: PaymentStatus | null | undefined,
   orderStatus?: OrderStatus | null,
+  canal?: CanalDaVenda,
 ): PaymentStatusEntry {
   const key = paymentStatusKey(paymentStatus);
-  return (key === "pago" || key === "recebido_na_entrega") &&
+  // O cruzamento com `cancelled` VENCE o canal: venda de balcão cancelada
+  // com o dinheiro recebido continua "Pago e cancelado — precisa de
+  // atenção", porque o problema ali é dinheiro preso, não onde a venda
+  // aconteceu. Só DEPOIS de descartar esse caso é que o canal pode trocar o
+  // rótulo neutro por "Recebido no balcão".
+  if (
+    (key === "pago" || key === "recebido_na_entrega") &&
     orderStatus === "cancelled"
-    ? PAGO_E_CANCELADO
-    : getPaymentStatusConfig(key);
+  ) {
+    return PAGO_E_CANCELADO;
+  }
+  if (key === "recebido_na_entrega" && canal === "presencial") {
+    return RECEBIDO_NO_BALCAO;
+  }
+  return getPaymentStatusConfig(key);
 }
 
 export function rotuloDoPagamento(
   paymentStatus: PaymentStatus | null | undefined,
   orderStatus?: OrderStatus | null,
+  canal?: CanalDaVenda,
 ): string {
-  return configDoPagamento(paymentStatus, orderStatus).label;
+  return configDoPagamento(paymentStatus, orderStatus, canal).label;
 }
 
 /**
@@ -288,25 +353,33 @@ export function rotuloDoPagamento(
 export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   paymentStatus,
   orderStatus,
+  canal,
   className,
   compact = false,
+  tamanho = "padrao",
 }: Readonly<PaymentStatusBadgeProps>) {
   // `recebido_na_entrega` (Task 3b de
   // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md) entra no
   // mesmo cruzamento que `pago`: dinheiro que entrou fora do gateway e o
   // pedido morreu depois é exatamente o mesmo alerta.
-  const cfg = configDoPagamento(paymentStatus, orderStatus);
-  const label = rotuloDoPagamento(paymentStatus, orderStatus);
+  const cfg = configDoPagamento(paymentStatus, orderStatus, canal);
+  const label = rotuloDoPagamento(paymentStatus, orderStatus, canal);
 
   return (
     <div
       title={compact ? label : undefined}
-      className={`flex max-w-full items-center rounded-full border px-2 py-0.5 ${cfg.bgColor} ${cfg.borderColor} ${
+      className={`flex max-w-full items-center rounded-full border ${
+        tamanho === "cartao" ? "px-2.5 py-1" : "px-2 py-0.5"
+      } ${cfg.bgColor} ${cfg.borderColor} ${
         cfg.needsAttention ? "animate-pulse ring-1 ring-red-500/60" : ""
       } ${className || ""}`}
     >
       <span
-        className={`truncate text-[9px] font-black uppercase tracking-widest ${cfg.color}`}
+        className={`truncate uppercase ${
+          tamanho === "cartao"
+            ? "text-[11px] font-bold tracking-wider"
+            : "text-[11px] font-black tracking-wider"
+        } ${cfg.color}`}
       >
         {compact ? (cfg.shortLabel ?? label) : label}
       </span>

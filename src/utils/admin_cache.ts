@@ -1,3 +1,4 @@
+import { cupomDoBanco } from "@/lib/cupom-do-banco";
 import { supabase } from "@/lib/supabase";
 
 export interface Customer {
@@ -73,6 +74,23 @@ export function setCachedQuestionsData(data: any[] | null) {
   cachedQuestionsData = data;
 }
 
+// admin_cache-17 — as quatro variáveis de módulo acima sobrevivem à troca de
+// sessão na mesma aba/PWA: são cache em memória, sem chave de usuário, e
+// nenhum caminho de logout as tocava (clearLocalUserData, em
+// AuthContext.tsx, só varria localStorage). Num tablet de balcão
+// compartilhado, o próximo login via `onAuthStateChange` reaproveitava o
+// cache de nome/telefone/LTV do lojista anterior (ver os `if (cached... &&
+// ...length > 0) return;` acima). Função ÚNICA de limpeza, chamada por
+// `clearLocalUserData()` (cobre os dois caminhos de saída: SIGNED_OUT e o
+// fallback de erro do `logout`) e também quando o `onAuthStateChange` detecta
+// troca de uid sem SIGNED_OUT explícito entre as duas sessões.
+export function limparCachesDeAdmin() {
+  cachedCustomersData = null;
+  cachedCouponsData = null;
+  cachedReviewsData = null;
+  cachedQuestionsData = null;
+}
+
 // Prefetch for coupons
 export async function prefetchCouponsData() {
   if (cachedCouponsData && cachedCouponsData.length > 0) {
@@ -85,17 +103,8 @@ export async function prefetchCouponsData() {
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      cachedCouponsData = data.map((c) => ({
-        id: c.id,
-        code: c.code,
-        type: c.type,
-        value: c.value,
-        minPurchase: c.min_purchase ?? undefined,
-        usageLimit: c.usage_limit ?? undefined,
-        usageCount: c.usage_count ?? 0, // PAINEL-12: alinhado com o hook
-        validUntil: c.valid_until ?? undefined,
-        active: c.active ?? true,
-      }));
+      // PAINEL-12 + frente B: o mapeador único do cupom.
+      cachedCouponsData = data.map((c) => cupomDoBanco(c));
     }
   } catch (e) {
     console.error("Prefetch coupons failed:", e);

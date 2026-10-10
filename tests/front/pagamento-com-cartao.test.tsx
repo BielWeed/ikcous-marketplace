@@ -1,0 +1,1885 @@
+// @vitest-environment jsdom
+//
+// CARTÃO PELO APP (Fase 3.5, 26/09/2026) — Card Payment Brick, 3-D Secure,
+// recusa com "Tentar outro cartão"/"Pagar com PIX" e a regra de ouro do
+// modo cartão: NUNCA criar PIX sozinho. Contrato da edge em
+// docs/superpowers/plans/2026-09-26-painel-cartao-e-devolucoes.md ("Cartão
+// online"). Mesmo andaime de pagamento-online.test.tsx: `act` puro, sem
+// @testing-library; o SDK do Mercado Pago é um dublê em `globalThis`.
+import { act, useLayoutEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+import {
+  MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE,
+  PagamentoComCartao,
+  classificarRespostaCartao,
+  desafioConcluido,
+  enviarPagamentoComCartao,
+  montarBrickDeCartao,
+  montarCorpoDoCartao,
+  origemDoMercadoPago,
+  urlDoDesafioValida,
+} from "@/components/checkout/PagamentoComCartao";
+import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
+import { carregarSdkMercadoPago } from "@/components/checkout/sdk-mercado-pago";
+import type { ConfigDoCartao } from "@/lib/config-do-cartao";
+
+vi.mock("@/lib/supabase", () => ({
+  supabase: { rpc: vi.fn(), functions: { invoke: vi.fn() } },
+}));
+
+const { criarPagamento } = vi.hoisted(() => ({ criarPagamento: vi.fn() }));
+vi.mock("@/hooks/useOrders", () => ({
+  useOrders: () => ({ criarPagamento }),
+}));
+
+// Contrato "forma de cartão desligada" (01/10/2026): espião TRANSPARENTE em
+// `esquecerConfigDoCartao` — conta a invalidação do cache da config sem mudar
+// o comportamento real do módulo (o resto dele segue o original).
+const { esquecerConfigDoCartao } = vi.hoisted(() => ({
+  esquecerConfigDoCartao: vi.fn(),
+}));
+vi.mock("@/lib/config-do-cartao", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/config-do-cartao")>();
+  esquecerConfigDoCartao.mockImplementation(real.esquecerConfigDoCartao);
+  return { ...real, esquecerConfigDoCartao };
+});
+
+// @ts-expect-error flag interna do React, sem tipo público
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+function esperarMicrotarefas(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+const SO_CREDITO: ConfigDoCartao = {
+  credito: true,
+  debito: false,
+  parcelasMax: 6,
+};
+const SO_DEBITO: ConfigDoCartao = {
+  credito: false,
+  debito: true,
+  parcelasMax: 6,
+};
+const OS_DOIS: ConfigDoCartao = { credito: true, debito: true, parcelasMax: 6 };
+
+/** CardData do Brick — o token e o documento são o que NUNCA pode vazar. */
+function dadosDoBrick(sobrepor: Record<string, unknown> = {}) {
+  return {
+    token: "tok-secreto-123",
+    issuer_id: "25",
+    payment_method_id: "master",
+    transaction_amount: 150,
+    installments: 3,
+    payer: {
+      email: "cliente@exemplo.com",
+      identification: { type: "CPF", number: "123.456.789-09" },
+    },
+    ...sobrepor,
+  };
+}
+
+/** Dublê do SDK: cada `create()` devolve um controlador com `unmount` próprio. */
+function instalarSdkFalso() {
+  const unmounts: Array<ReturnType<typeof vi.fn>> = [];
+  const create = vi.fn(
+    async (_brick: string, _container: string, _config: any) => {
+      const unmount = vi.fn();
+      unmounts.push(unmount);
+      return { unmount };
+    },
+  );
+  const MercadoPagoSpy = vi.fn(function MercadoPagoStub() {
+    return { bricks: () => ({ create }) };
+  });
+  // @ts-expect-error stub do SDK
+  globalThis.MercadoPago = MercadoPagoSpy;
+  return { create, unmounts, MercadoPagoSpy };
+}
+
+function ultimaConfig(create: ReturnType<typeof instalarSdkFalso>["create"]) {
+  const chamada = create.mock.calls.at(-1);
+  if (!chamada) throw new Error("O Brick não foi criado.");
+  return chamada[2];
+}
+
+// O SDK carrega UMA vez por módulo (`promessaSdk`): resolve aqui, no começo,
+// e todos os testes abaixo já encontram o script "carregado".
+beforeAll(async () => {
+  const promessa = carregarSdkMercadoPago();
+  document
+    .querySelector("script[data-mp-sdk]")
+    ?.dispatchEvent(new Event("load"));
+  await promessa;
+});
+
+beforeEach(() => {
+  vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
+  criarPagamento.mockReset();
+});
+
+afterEach(() => {
+  // @ts-expect-error limpando o global entre testes
+  globalThis.MercadoPago = undefined;
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+describe("montarCorpoDoCartao — o corpo da edge sai do que o Brick entregou", () => {
+  it("crédito: token, bandeira, tipo do AdditionalData, parcelas, documento só com dígitos e e-mail", () => {
+    const r = montarCorpoDoCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: OS_DOIS,
+    });
+    expect(r).toEqual({
+      ok: true,
+      corpo: {
+        orderId: "ped-1",
+        metodo: "cartao",
+        token: "tok-secreto-123",
+        paymentMethodId: "master",
+        paymentTypeId: "credit_card",
+        parcelas: 3,
+        documento: { type: "CPF", number: "12345678909" },
+        email: "cliente@exemplo.com",
+      },
+    });
+  });
+
+  it("débito é sempre à vista, mesmo se o Brick mandar outra parcela", () => {
+    const r = montarCorpoDoCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick({ payment_method_id: "debelo", installments: 1 }),
+      adicionais: { paymentTypeId: "debit_card" },
+      config: OS_DOIS,
+    });
+    expect(r.ok && r.corpo.parcelas).toBe(1);
+    expect(r.ok && r.corpo.paymentTypeId).toBe("debit_card");
+  });
+
+  it("sem o tipo no AdditionalData, cai no payment_type_id do CardData; e com um tipo só ligado, é ele", () => {
+    const peloCardData = montarCorpoDoCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick({ payment_type_id: "debit_card", installments: 1 }),
+      adicionais: undefined,
+      config: OS_DOIS,
+    });
+    expect(peloCardData.ok && peloCardData.corpo.paymentTypeId).toBe(
+      "debit_card",
+    );
+
+    const peloUnicoLigado = montarCorpoDoCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: {},
+      config: SO_CREDITO,
+    });
+    expect(peloUnicoLigado.ok && peloUnicoLigado.corpo.paymentTypeId).toBe(
+      "credit_card",
+    );
+  });
+
+  it("tipo desconhecido com crédito E débito ligados não chuta: recusa com frase curada", () => {
+    const r = montarCorpoDoCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "prepaid_card" },
+      config: OS_DOIS,
+    });
+    expect(r).toEqual({
+      ok: false,
+      mensagem:
+        "Não foi possível identificar se o cartão é de crédito ou débito. Tente de novo.",
+    });
+  });
+
+  it("débito numa loja só de crédito é recusado aqui, antes da edge", () => {
+    const r = montarCorpoDoCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick({ installments: 1 }),
+      adicionais: { paymentTypeId: "debit_card" },
+      config: SO_CREDITO,
+    });
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.mensagem).toContain("não aceita cartão de débito");
+  });
+
+  it("parcelas acima do teto da lojista, zero ou quebradas não passam", () => {
+    for (const installments of [7, 0, 2.5, "abc"]) {
+      const r = montarCorpoDoCartao({
+        orderId: "ped-1",
+        dados: dadosDoBrick({ installments }),
+        adicionais: { paymentTypeId: "credit_card" },
+        config: SO_CREDITO,
+      });
+      expect(r.ok).toBe(false);
+    }
+  });
+
+  it("sem token, sem bandeira ou com documento fora de CPF/CNPJ não chama a edge", () => {
+    const casos = [
+      dadosDoBrick({ token: "" }),
+      dadosDoBrick({ payment_method_id: undefined }),
+      dadosDoBrick({
+        payer: { identification: { type: "DNI", number: "123" } },
+      }),
+      dadosDoBrick({
+        payer: { identification: { type: "CPF", number: "..." } },
+      }),
+    ];
+    for (const dados of casos) {
+      const r = montarCorpoDoCartao({
+        orderId: "ped-1",
+        dados,
+        adicionais: { paymentTypeId: "credit_card" },
+        config: SO_CREDITO,
+      });
+      expect(r.ok).toBe(false);
+    }
+  });
+
+  it("CNPJ em minúsculas vira CNPJ; e-mail ausente não entra no corpo", () => {
+    const r = montarCorpoDoCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick({
+        payer: {
+          identification: { type: "cnpj", number: "11.222.333/0001-81" },
+        },
+      }),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+    });
+    expect(r.ok && r.corpo.documento).toEqual({
+      type: "CNPJ",
+      number: "11222333000181",
+    });
+    expect(r.ok && "email" in r.corpo).toBe(false);
+  });
+});
+
+describe("classificarRespostaCartao — o que a tela faz com a resposta 200", () => {
+  const base = { paymentId: "pay-1", expiraEm: "2026-09-26T12:30:00Z" };
+
+  it("pago → aprovado; aguardando sem desafio → em análise", () => {
+    expect(
+      classificarRespostaCartao({ ...base, statusPagamento: "pago" }),
+    ).toEqual({ tipo: "aprovado" });
+    expect(
+      classificarRespostaCartao({ ...base, statusPagamento: "aguardando" }),
+    ).toEqual({ tipo: "em-analise", paymentId: "pay-1" });
+  });
+
+  it("aguardando com desafio3ds do Mercado Pago → desafio com a URL", () => {
+    const url =
+      "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/abc?display_mode=self_hosted";
+    expect(
+      classificarRespostaCartao({
+        ...base,
+        statusPagamento: "aguardando",
+        desafio3ds: { url },
+      }),
+    ).toEqual({ tipo: "desafio", url, paymentId: "pay-1" });
+  });
+
+  it("desafio com URL fora do Mercado Pago NÃO vira iframe — erro recuperável, semCobranca (a edge cancela a vaga ao pedir PIX)", () => {
+    for (const url of [
+      "https://golpe.io/3ds",
+      "http://www.mercadopago.com.br/3ds",
+      "javascript:alert(1)",
+    ]) {
+      const r = classificarRespostaCartao({
+        ...base,
+        statusPagamento: "aguardando",
+        desafio3ds: { url },
+      });
+      expect(r.tipo).toBe("erro");
+      expect(r.tipo === "erro" && r.categoria).toBe("recuperavel");
+      // B1, rodada 2 da revisão de risco pré-publicação: só é seguro
+      // oferecer "Pagar com PIX" aqui porque a edge CANCELA o cartão em
+      // action_required/created antes de criar o PIX — nunca duas cobranças.
+      expect(r.tipo === "erro" && r.sinal).toBe("semCobranca");
+    }
+  });
+
+  it("recusado mostra o motivo da edge (ou o padrão) e deixa tentar de novo", () => {
+    expect(
+      classificarRespostaCartao({
+        ...base,
+        statusPagamento: "recusado",
+        motivoRecusa: "Saldo insuficiente.",
+        podeTentarDeNovo: true,
+      }),
+    ).toEqual({ tipo: "recusado", motivo: "Saldo insuficiente." });
+    const semMotivo = classificarRespostaCartao({
+      ...base,
+      statusPagamento: "recusado",
+    });
+    expect(semMotivo.tipo).toBe("recusado");
+  });
+
+  it("recusado com podeTentarDeNovo:false é terminal (o pedido não aceita mais tentativa)", () => {
+    expect(
+      classificarRespostaCartao({
+        ...base,
+        statusPagamento: "recusado",
+        motivoRecusa: "A reserva deste pedido acabou.",
+        podeTentarDeNovo: false,
+      }),
+    ).toEqual({
+      tipo: "erro",
+      mensagem: "A reserva deste pedido acabou.",
+      categoria: "terminal",
+    });
+  });
+
+  it("expirado e estornado nunca viram sucesso silencioso — terminais DEFINITIVOS, sem sinal", () => {
+    for (const statusPagamento of ["expirado", "estornado"]) {
+      const r = classificarRespostaCartao({
+        ...base,
+        statusPagamento: statusPagamento as string,
+      });
+      expect(r.tipo).toBe("erro");
+      expect(r.tipo === "erro" && r.categoria).toBe("terminal");
+      expect(r.tipo === "erro" && r.sinal).toBeUndefined();
+    }
+  });
+
+  // Achado 3, rodada 4 da revisão de risco pré-publicação (26/09/2026): um
+  // status desconhecido ou AUSENTE num 200 nunca vira sucesso silencioso —
+  // mas também não é "morto" como expirado/estornado: a edge devolve o
+  // status CRU de um cartão que ela ainda não sabe mapear, e esse cartão
+  // pode estar VIVO (branch (d), `criar-pagamento/index.ts`). Por isso virou
+  // recuperável com o sinal `cartaoEmAnalise` (caixa âmbar, "Tentar de
+  // novo") em vez de terminal sem sinal nenhum (tela morta, só "Cancelar
+  // pedido" sobre um cartão que podia estar vivo).
+  it("status desconhecido ou AUSENTE não é terminal morto — recuperável com sinal 'cartaoEmAnalise' (o cartão pode estar vivo)", () => {
+    for (const statusPagamento of [
+      "in_process:pending_review_manual",
+      undefined,
+    ]) {
+      const r = classificarRespostaCartao({
+        ...base,
+        statusPagamento: statusPagamento as string,
+      });
+      expect(r.tipo).toBe("erro");
+      expect(r.tipo === "erro" && r.categoria).toBe("recuperavel");
+      expect(r.tipo === "erro" && r.sinal).toBe("cartaoEmAnalise");
+    }
+  });
+});
+
+describe("origem e aviso do desafio 3-D Secure", () => {
+  it("aceita só HTTPS nos domínios do Mercado Pago/Mercado Livre", () => {
+    for (const origem of [
+      "https://www.mercadopago.com.br",
+      "https://mercadopago.com",
+      "https://api.mercadolibre.com",
+      "https://www.mercadolivre.com.br",
+      "https://mercadolivre.com",
+    ]) {
+      expect(origemDoMercadoPago(origem)).toBe(true);
+    }
+    for (const origem of [
+      "http://www.mercadopago.com.br",
+      "https://mercadopago.com.br.golpe.io",
+      "https://golpemercadopago.com.br",
+      "null",
+      "",
+    ]) {
+      expect(origemDoMercadoPago(origem)).toBe(false);
+    }
+  });
+
+  it("urlDoDesafioValida recusa o que não é texto", () => {
+    expect(urlDoDesafioValida(undefined)).toBe(false);
+    expect(urlDoDesafioValida(42)).toBe(false);
+    expect(urlDoDesafioValida("https://www.mercadopago.com.br/x")).toBe(true);
+  });
+
+  it("status COMPLETE conclui (objeto ou JSON em texto); o resto não", () => {
+    expect(desafioConcluido({ status: "COMPLETE" })).toBe(true);
+    expect(desafioConcluido('{"status":"COMPLETE"}')).toBe(true);
+    expect(desafioConcluido({ status: "PENDING" })).toBe(false);
+    expect(desafioConcluido("COMPLETE")).toBe(false);
+    expect(desafioConcluido(null)).toBe(false);
+  });
+});
+
+describe("enviarPagamentoComCartao — o onSubmit sem o Brick", () => {
+  it("chama a edge com o corpo do contrato e classifica a resposta", async () => {
+    const criar = vi.fn().mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "pago",
+      expiraEm: "x",
+    });
+    const r = await enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+      criarPagamento: criar,
+    });
+    expect(r).toEqual({ tipo: "aprovado" });
+    expect(criar).toHaveBeenCalledWith({
+      orderId: "ped-1",
+      metodo: "cartao",
+      token: "tok-secreto-123",
+      paymentMethodId: "master",
+      paymentTypeId: "credit_card",
+      parcelas: 3,
+      documento: { type: "CPF", number: "12345678909" },
+      email: "cliente@exemplo.com",
+    });
+  });
+
+  it("erro da edge com .terminal=true é terminal; sem o campo, recuperável", async () => {
+    const terminal = await enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+      criarPagamento: vi.fn().mockRejectedValue(
+        Object.assign(new Error("O prazo para pagar este pedido acabou."), {
+          terminal: true,
+        }),
+      ),
+    });
+    expect(terminal).toEqual({
+      tipo: "erro",
+      mensagem: "O prazo para pagar este pedido acabou.",
+      categoria: "terminal",
+    });
+
+    const recuperavel = await enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+      criarPagamento: vi
+        .fn()
+        .mockRejectedValue(new Error("Não foi possível gerar a cobrança.")),
+    });
+    expect(recuperavel.tipo === "erro" && recuperavel.categoria).toBe(
+      "recuperavel",
+    );
+  });
+
+  it("dado inválido do Brick não chega à edge, e o erro carrega sinal 'semCobranca' (validação é local)", async () => {
+    const criar = vi.fn();
+    const r = await enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick({ token: undefined }),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+      criarPagamento: criar,
+    });
+    expect(r.tipo).toBe("erro");
+    expect(criar).not.toHaveBeenCalled();
+    // B1, rodada 2 da revisão de risco pré-publicação: nenhum POST chegou à
+    // edge — seguro oferecer "Pagar com PIX" na caixa de erro.
+    expect(r.tipo === "erro" && r.sinal).toBe("semCobranca");
+  });
+
+  // B1, rodada 2 da revisão de risco pré-publicação (26/09/2026): um 502
+  // ambíguo do POST de cartão NUNCA pode virar "semCobranca" — o cartão pode
+  // ter chegado ao Mercado Pago e a resposta se perdeu (reproduzido: duas
+  // cobranças vivas quando o front oferecia PIX cegamente aqui). Só
+  // `cartaoEmAnalise`, quando a edge confirma isso explicitamente.
+  it("erro genérico da edge (POST que já saiu) NÃO carrega sinal — falha fechada contra oferecer PIX", async () => {
+    const r = await enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+      criarPagamento: vi
+        .fn()
+        .mockRejectedValue(new Error("Erro de infraestrutura (502).")),
+    });
+    expect(r.tipo).toBe("erro");
+    expect(r.tipo === "erro" && r.sinal).toBeUndefined();
+  });
+
+  it("erro da edge com .cartaoEmAnalise=true propaga o sinal 'cartaoEmAnalise' — nunca 'semCobranca'", async () => {
+    const r = await enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+      criarPagamento: vi.fn().mockRejectedValue(
+        Object.assign(new Error("Há um pagamento com cartão em análise."), {
+          cartaoEmAnalise: true,
+        }),
+      ),
+    });
+    expect(r.tipo).toBe("erro");
+    expect(r.tipo === "erro" && r.sinal).toBe("cartaoEmAnalise");
+  });
+});
+
+// Contrato "forma de cartão desligada" (01/10/2026): o 409 do portão da edge
+// chega como Error com `codigo: "CARTAO_FORMA_DESLIGADA"` (useOrders só põe o
+// literal exato). O resultado é DISTINTO de "erro": a tela troca a
+// configuração e oferece PIX pela guarda da vaga — sem afirmar ausência de
+// cobrança, porque o portão roda antes do ramo "reconsultar" da edge.
+describe("enviarPagamentoComCartao — forma de cartão desligada", () => {
+  const MENSAGEM = "Esta forma de pagamento não está disponível nesta loja.";
+  const CODIGO = "CARTAO_FORMA_DESLIGADA";
+
+  /** O Error no formato que `useOrders/criarPagamento` lança. */
+  function erroDaEdge(campos: Record<string, unknown>) {
+    return Object.assign(new Error(MENSAGEM), {
+      terminal: false,
+      cartaoEmAnalise: false,
+      ...campos,
+    });
+  }
+
+  function enviarComErro(erro: Error) {
+    return enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick(),
+      adicionais: { paymentTypeId: "credit_card" },
+      config: SO_CREDITO,
+      criarPagamento: vi.fn().mockRejectedValue(erro),
+    });
+  }
+
+  it("Error com codigo exato -> { tipo: 'forma-desligada' }, sem sinal nem semCobranca", async () => {
+    const r = await enviarComErro(erroDaEdge({ codigo: CODIGO }));
+
+    // O tipo recusado é o que FOI ENVIADO (crédito, no AdditionalData): a
+    // tela tira só ele, sem esconder o outro tipo ainda ligado.
+    expect(r).toEqual({ tipo: "forma-desligada", tipoRecusado: "credit_card" });
+    // Nada afirma ausência de cobrança: nem sinal, nem semCobranca.
+    expect("sinal" in r).toBe(false);
+    expect(JSON.stringify(r)).not.toContain("semCobranca");
+  });
+
+  it("débito recusado numa loja com os dois ligados -> tipoRecusado 'debit_card'", async () => {
+    const r = await enviarPagamentoComCartao({
+      orderId: "ped-1",
+      dados: dadosDoBrick({ installments: 1 }),
+      adicionais: { paymentTypeId: "debit_card" },
+      config: OS_DOIS,
+      criarPagamento: vi.fn().mockRejectedValue(erroDaEdge({ codigo: CODIGO })),
+    });
+
+    expect(r).toEqual({ tipo: "forma-desligada", tipoRecusado: "debit_card" });
+  });
+
+  it("CONTROLE: a MESMA mensagem sem o código segue erro recuperável SEM sinal — nada se deduz do texto", async () => {
+    const r = await enviarComErro(erroDaEdge({}));
+
+    expect(r).toEqual({
+      tipo: "erro",
+      mensagem: MENSAGEM,
+      categoria: "recuperavel",
+      sinal: undefined,
+    });
+  });
+
+  it("CONTROLE: código em outra forma (caixa diferente) também segue erro sem sinal", async () => {
+    const r = await enviarComErro(
+      erroDaEdge({ codigo: "cartao_forma_desligada" }),
+    );
+
+    expect(r.tipo).toBe("erro");
+    expect(r.tipo === "erro" && r.sinal).toBeUndefined();
+  });
+
+  it("CONTROLE de segurança: código + cartaoEmAnalise:true NÃO é rebaixado a forma-desligada — vence o sinal de cartão em análise", async () => {
+    const r = await enviarComErro(
+      erroDaEdge({ codigo: CODIGO, cartaoEmAnalise: true }),
+    );
+
+    expect(r.tipo).toBe("erro");
+    expect(r.tipo === "erro" && r.sinal).toBe("cartaoEmAnalise");
+    expect(r.tipo === "erro" && r.categoria).toBe("recuperavel");
+  });
+
+  it("CONTROLE de segurança: código + terminal:true NÃO é rebaixado a forma-desligada — vence o terminal", async () => {
+    const r = await enviarComErro(
+      erroDaEdge({ codigo: CODIGO, terminal: true }),
+    );
+
+    expect(r).toEqual({
+      tipo: "erro",
+      mensagem: MENSAGEM,
+      categoria: "terminal",
+      sinal: undefined,
+    });
+  });
+
+  it("CONTROLE de segurança: código + terminal:true + cartaoEmAnalise:true -> erro terminal com o sinal de cartão em análise", async () => {
+    const r = await enviarComErro(
+      erroDaEdge({ codigo: CODIGO, terminal: true, cartaoEmAnalise: true }),
+    );
+
+    expect(r.tipo).toBe("erro");
+    expect(r.tipo === "erro" && r.categoria).toBe("terminal");
+    expect(r.tipo === "erro" && r.sinal).toBe("cartaoEmAnalise");
+  });
+});
+
+describe("montarBrickDeCartao — ciclo de vida do Card Payment Brick", () => {
+  function opcoes(
+    sobrepor: Partial<Parameters<typeof montarBrickDeCartao>[0]> = {},
+  ): Parameters<typeof montarBrickDeCartao>[0] {
+    return {
+      containerId: "mp-cartao-teste",
+      valor: 150,
+      config: SO_CREDITO,
+      emailDoPagador: "cliente@exemplo.com",
+      onEnviar: vi.fn(async () => {}),
+      onFalhaDeMontagem: vi.fn(),
+      onPronto: vi.fn(),
+      ...sobrepor,
+    };
+  }
+
+  it("cria o cardPayment no contêiner com valor, e-mail, teto de parcelas e só os tipos ligados", async () => {
+    const { create, MercadoPagoSpy } = instalarSdkFalso();
+    montarBrickDeCartao(opcoes());
+    await esperarMicrotarefas();
+
+    expect(MercadoPagoSpy).toHaveBeenCalledWith(
+      "TEST-000000-0000-0000-0000-000000000000",
+      { locale: "pt-BR" },
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+    const [brick, container, config] = create.mock.calls[0];
+    expect(brick).toBe("cardPayment");
+    expect(container).toBe("mp-cartao-teste");
+    expect(config.initialization).toEqual({
+      amount: 150,
+      payer: { email: "cliente@exemplo.com" },
+    });
+    expect(config.customization.paymentMethods).toEqual({
+      minInstallments: 1,
+      maxInstallments: 6,
+      types: { included: ["credit_card"] },
+    });
+  });
+
+  it("só débito: parcelas travadas em 1 e só debit_card; sem e-mail, sem payer", async () => {
+    const { create } = instalarSdkFalso();
+    montarBrickDeCartao(opcoes({ config: SO_DEBITO, emailDoPagador: null }));
+    await esperarMicrotarefas();
+
+    const config = ultimaConfig(create);
+    expect(config.initialization).toEqual({ amount: 150 });
+    expect(config.customization.paymentMethods).toEqual({
+      minInstallments: 1,
+      maxInstallments: 1,
+      types: { included: ["debit_card"] },
+    });
+  });
+
+  it("StrictMode (mount → cleanup → mount antes de o create rodar) cria o Brick uma vez só", async () => {
+    const { create } = instalarSdkFalso();
+    const o = opcoes();
+    const limpar1 = montarBrickDeCartao(o);
+    limpar1();
+    const limpar2 = montarBrickDeCartao(o);
+    await esperarMicrotarefas();
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(o.onFalhaDeMontagem).not.toHaveBeenCalled();
+    limpar2();
+  });
+
+  it("cleanup depois de montado desmonta o controlador", async () => {
+    const { unmounts } = instalarSdkFalso();
+    const limpar = montarBrickDeCartao(opcoes());
+    await esperarMicrotarefas();
+    expect(unmounts).toHaveLength(1);
+    expect(unmounts[0]).not.toHaveBeenCalled();
+
+    limpar();
+    expect(unmounts[0]).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancelado com o create() em voo: desmonta assim que ele termina", async () => {
+    const unmount = vi.fn();
+    let resolver!: (v: { unmount: () => void }) => void;
+    const create = vi.fn(
+      () =>
+        new Promise<{ unmount: () => void }>((r) => {
+          resolver = r;
+        }),
+    );
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+    const limpar = montarBrickDeCartao(opcoes());
+    await esperarMicrotarefas();
+    limpar();
+    resolver({ unmount });
+    await esperarMicrotarefas();
+    expect(unmount).toHaveBeenCalledTimes(1);
+  });
+
+  it("onReady avisa que o formulário está pronto; onSubmit repassa (CardData, AdditionalData)", async () => {
+    const { create } = instalarSdkFalso();
+    const o = opcoes();
+    montarBrickDeCartao(o);
+    await esperarMicrotarefas();
+
+    const { callbacks } = ultimaConfig(create);
+    callbacks.onReady();
+    expect(o.onPronto).toHaveBeenCalledTimes(1);
+
+    const dados = dadosDoBrick();
+    await callbacks.onSubmit(dados, { paymentTypeId: "credit_card" });
+    expect(o.onEnviar).toHaveBeenCalledWith(dados, {
+      paymentTypeId: "credit_card",
+    });
+  });
+
+  it("onError não crítico (campo incompleto) não derruba a tela; crítico derruba", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { create } = instalarSdkFalso();
+    const o = opcoes();
+    montarBrickDeCartao(o);
+    await esperarMicrotarefas();
+
+    const { callbacks } = ultimaConfig(create);
+    callbacks.onError({
+      type: "non_critical",
+      cause: "incomplete_fields",
+      message: "x",
+    });
+    expect(o.onFalhaDeMontagem).not.toHaveBeenCalled();
+
+    callbacks.onError({
+      type: "critical",
+      cause: "fields_setup_failed",
+      message: "y",
+    });
+    expect(o.onFalhaDeMontagem).toHaveBeenCalledTimes(1);
+  });
+
+  it("create() rejeitando com texto do bundle: avisa a falha e só o console vê o texto", async () => {
+    const consoleErro = vi.spyOn(console, "error").mockImplementation(() => {});
+    const create = vi
+      .fn()
+      .mockRejectedValue(new Error("Invalid public key format provided"));
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+    const o = opcoes();
+    montarBrickDeCartao(o);
+    await esperarMicrotarefas();
+
+    expect(o.onFalhaDeMontagem).toHaveBeenCalledTimes(1);
+    expect(consoleErro).toHaveBeenCalledWith(
+      "montarBrickDeCartao:",
+      expect.any(Error),
+    );
+  });
+});
+
+describe("PagamentoOnline em modo cartão (render de verdade)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+  });
+
+  async function renderCartao({
+    config = SO_CREDITO as ConfigDoCartao | null,
+    onErro = vi.fn(),
+    onTrocarParaPix = vi.fn(),
+  } = {}) {
+    await act(async () => {
+      raiz.render(
+        <PagamentoOnline
+          orderId="ped-12345678"
+          valor={150}
+          metodo="cartao"
+          configDoCartao={config}
+          emailDoPagador="cliente@exemplo.com"
+          onErro={onErro}
+          onTrocarParaPix={onTrocarParaPix}
+        />,
+      );
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    return { onErro, onTrocarParaPix };
+  }
+
+  async function enviarCartao(
+    create: ReturnType<typeof instalarSdkFalso>["create"],
+  ) {
+    const { callbacks } = ultimaConfig(create);
+    await act(async () => {
+      callbacks.onReady();
+    });
+    let erro: unknown = null;
+    await act(async () => {
+      try {
+        await callbacks.onSubmit(dadosDoBrick(), {
+          paymentTypeId: "credit_card",
+        });
+      } catch (e) {
+        erro = e;
+      }
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    return erro;
+  }
+
+  it("monta o Brick no contêiner da tela e NÃO cria PIX sozinho", async () => {
+    const { create } = instalarSdkFalso();
+    await renderCartao();
+
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
+    const idDoContainer = create.mock.calls[0][1];
+    expect(document.getElementById(idDoContainer)).not.toBeNull();
+    expect(hospedeiro.textContent).toContain("Pagamento com cartão");
+    expect(hospedeiro.textContent).toContain(
+      "Carregando o formulário do cartão",
+    );
+
+    await act(async () => {
+      ultimaConfig(create).callbacks.onReady();
+    });
+    expect(hospedeiro.textContent).not.toContain(
+      "Carregando o formulário do cartão",
+    );
+  });
+
+  it("aprovado: mostra 'Pagamento aprovado! Confirmando seu pedido…' e desmonta o Brick", async () => {
+    const { create, unmounts } = instalarSdkFalso();
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "pago",
+      expiraEm: "x",
+    });
+    await renderCartao();
+    await enviarCartao(create);
+
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    expect(criarPagamento.mock.calls[0][0]).toMatchObject({
+      orderId: "ped-12345678",
+      metodo: "cartao",
+      paymentTypeId: "credit_card",
+    });
+    expect(hospedeiro.textContent).toContain(
+      "Pagamento aprovado! Confirmando seu pedido…",
+    );
+    expect(unmounts[0]).toHaveBeenCalledTimes(1);
+  });
+
+  it("em análise: avisa que o banco está analisando", async () => {
+    const { create } = instalarSdkFalso();
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "aguardando",
+      expiraEm: "x",
+    });
+    await renderCartao();
+    await enviarCartao(create);
+
+    expect(hospedeiro.textContent).toContain(
+      "Pagamento em análise pelo banco. Você será avisado quando for aprovado.",
+    );
+  });
+
+  it("recusado: mostra o motivo; 'Tentar outro cartão' remonta o Brick do zero", async () => {
+    const { create, unmounts } = instalarSdkFalso();
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "recusado",
+      expiraEm: "x",
+      motivoRecusa: "Saldo insuficiente. Tente outro cartão ou pague com PIX.",
+      podeTentarDeNovo: true,
+    });
+    const { onErro } = await renderCartao();
+    await enviarCartao(create);
+
+    expect(onErro).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("Saldo insuficiente.");
+    expect(unmounts[0]).toHaveBeenCalledTimes(1);
+
+    const tentar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Tentar outro cartão",
+    )!;
+    await act(async () => {
+      tentar.click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(hospedeiro.textContent).not.toContain("Saldo insuficiente.");
+    // Continua sem PIX nenhum: só a primeira tentativa de cartão chamou a edge.
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+  });
+
+  it("recusado: 'Pagar com PIX' troca para o PIX na MESMA tela, gera o QR e avisa o pai", async () => {
+    const { create, unmounts } = instalarSdkFalso();
+    criarPagamento
+      .mockResolvedValueOnce({
+        paymentId: "pay-1",
+        statusPagamento: "recusado",
+        expiraEm: "x",
+        motivoRecusa: "Cartão recusado pelo banco.",
+        podeTentarDeNovo: true,
+      })
+      .mockResolvedValueOnce({
+        paymentId: "pay-2",
+        statusPagamento: "aguardando",
+        expiraEm: new Date(Date.now() + 20 * 60_000).toISOString(),
+        qrCode: "000201-pix",
+        qrCodeBase64: "abc123",
+      });
+    const { onTrocarParaPix } = await renderCartao();
+    await enviarCartao(create);
+
+    const pix = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Pagar com PIX",
+    )!;
+    await act(async () => {
+      pix.click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(onTrocarParaPix).toHaveBeenCalledTimes(1);
+    // Achado 2, rodada 4 da revisão de risco pré-publicação: o banco já
+    // respondeu que este cartão morreu (recusa definitiva) — o pedido NUNCA
+    // nasce incerto por causa desta troca.
+    expect(onTrocarParaPix).toHaveBeenCalledWith(false);
+    expect(criarPagamento).toHaveBeenLastCalledWith({
+      orderId: "ped-12345678",
+      metodo: "pix",
+    });
+    expect(
+      hospedeiro.querySelector("img[alt='QR code do PIX']"),
+    ).not.toBeNull();
+    expect(unmounts.every((u) => u.mock.calls.length === 1)).toBe(true);
+  });
+
+  it("recusado sem nova tentativa possível vai para o onErro como terminal", async () => {
+    const { create } = instalarSdkFalso();
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "recusado",
+      expiraEm: "x",
+      motivoRecusa: "Este pedido não aceita mais tentativas.",
+      podeTentarDeNovo: false,
+    });
+    const { onErro } = await renderCartao();
+    const erro = await enviarCartao(create);
+
+    expect(onErro).toHaveBeenCalledWith(
+      "Este pedido não aceita mais tentativas.",
+      "terminal",
+    );
+    // Relançado para o Brick sair do "processando".
+    expect(erro).toBeInstanceOf(Error);
+  });
+
+  it("3-D Secure: abre o iframe credentialless e só o COMPLETE do Mercado Pago troca para 'Confirmando com o banco…'", async () => {
+    const { create } = instalarSdkFalso();
+    const url =
+      "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/abc?display_mode=self_hosted";
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "aguardando",
+      expiraEm: "x",
+      desafio3ds: { url },
+    });
+    await renderCartao();
+    await enviarCartao(create);
+
+    const iframe = hospedeiro.querySelector("iframe");
+    expect(iframe).not.toBeNull();
+    expect(iframe!.getAttribute("title")).toBe("Autenticação do seu banco");
+    expect(iframe!.getAttribute("src")).toBe(url);
+    expect(iframe!.hasAttribute("credentialless")).toBe(true);
+
+    // Origem estranha: ignorado.
+    await act(async () => {
+      globalThis.dispatchEvent(
+        new MessageEvent("message", {
+          data: { status: "COMPLETE" },
+          origin: "https://golpe.io",
+        }),
+      );
+    });
+    expect(hospedeiro.querySelector("iframe")).not.toBeNull();
+
+    // Mercado Pago, mas ainda não concluído: ignorado.
+    await act(async () => {
+      globalThis.dispatchEvent(
+        new MessageEvent("message", {
+          data: { status: "PENDING" },
+          origin: "https://www.mercadopago.com.br",
+        }),
+      );
+    });
+    expect(hospedeiro.querySelector("iframe")).not.toBeNull();
+
+    await act(async () => {
+      globalThis.dispatchEvent(
+        new MessageEvent("message", {
+          data: { status: "COMPLETE" },
+          origin: "https://www.mercadopago.com.br",
+        }),
+      );
+    });
+    expect(hospedeiro.querySelector("iframe")).toBeNull();
+    expect(hospedeiro.textContent).toContain("Confirmando com o banco…");
+  });
+
+  it("falha de rede no envio: onErro recuperável e o erro volta ao Brick", async () => {
+    const { create } = instalarSdkFalso();
+    criarPagamento.mockRejectedValue(
+      new Error("Não foi possível gerar a cobrança."),
+    );
+    const { onErro } = await renderCartao();
+    const erro = await enviarCartao(create);
+
+    expect(onErro).toHaveBeenCalledWith(
+      "Não foi possível gerar a cobrança.",
+      "recuperavel",
+    );
+    expect(erro).toBeInstanceOf(Error);
+  });
+
+  it("nenhum dado do cartão (token, documento) vai para o console — nem no erro", async () => {
+    const espioes = (["log", "info", "warn", "error", "debug"] as const).map(
+      (nivel) => vi.spyOn(console, nivel).mockImplementation(() => {}),
+    );
+    const { create } = instalarSdkFalso();
+    criarPagamento.mockRejectedValue(
+      Object.assign(new Error("Falha"), { terminal: false }),
+    );
+    await renderCartao();
+    await enviarCartao(create);
+    await act(async () => {
+      ultimaConfig(create).callbacks.onError({
+        type: "critical",
+        cause: "card_token_creation_failed",
+        message: "tok-secreto-123",
+      });
+    });
+
+    const tudoQueFoiLogado = espioes
+      .flatMap((espiao) => espiao.mock.calls.flat())
+      .map((arg) => {
+        try {
+          return `${String(arg)} ${JSON.stringify(arg)}`;
+        } catch {
+          return String(arg);
+        }
+      })
+      .join("\n");
+    expect(tudoQueFoiLogado).not.toContain("tok-secreto-123");
+    expect(tudoQueFoiLogado).not.toContain("12345678909");
+    expect(tudoQueFoiLogado).not.toContain("123.456.789-09");
+  });
+
+  it("desmontar a tela desmonta o Brick", async () => {
+    const { unmounts } = instalarSdkFalso();
+    await renderCartao();
+    expect(unmounts).toHaveLength(1);
+
+    act(() => {
+      raiz.render(<div />);
+    });
+    expect(unmounts[0]).toHaveBeenCalledTimes(1);
+  });
+
+  it("modo cartão com a config desligada/ausente: não monta Brick, não cria PIX — o cliente escolhe", async () => {
+    const { create } = instalarSdkFalso();
+    await renderCartao({ config: null });
+
+    expect(create).not.toHaveBeenCalled();
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain(
+      "O pagamento com cartão não está disponível nesta loja agora.",
+    );
+  });
+
+  // B1, rodada 2 da revisão de risco pré-publicação (26/09/2026): a falha de
+  // montagem do Brick (SDK que não carrega, chave pública ausente, COEP
+  // bloqueando o iframe, `create()` que rejeita) nunca chega a enviar um
+  // cartão — o sinal "semCobranca" tem que chegar ao `onErro` do
+  // CheckoutView para o botão "Pagar com PIX" aparecer na caixa de erro.
+  it("falha de montagem do Brick: onErro recebe 'Não foi possível carregar o pagamento.' com sinal 'semCobranca'", async () => {
+    const create = vi
+      .fn()
+      .mockRejectedValue(new Error("Invalid public key format provided"));
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { onErro } = await renderCartao();
+
+    expect(onErro).toHaveBeenCalledWith(
+      "Não foi possível carregar o pagamento.",
+      "recuperavel",
+      "semCobranca",
+    );
+  });
+
+  // B2 da revisão de risco pré-publicação (26/09/2026): o desafio 3DS ficava
+  // SEM saída — só o iframe, mesmo a edge já aceitando PIX (cancela o
+  // cartão em action_required/created, ver criar-pagamento/index.ts) para
+  // quem abandonou o SMS do banco. O pedido do front é o MESMO de sempre:
+  // {orderId, metodo: "pix"} — quem decide cancelar ou recusar é a edge, não
+  // esta tela.
+  //
+  // Rodada 2 (achado B2, mesma revisão): "Tentar outro cartão" SAIU desta
+  // tela — com o cartão em `action_required`, a edge nunca cria uma segunda
+  // cobrança (branch (d), `criar-pagamento/index.ts`): um cartão novo só
+  // recebia de volta o MESMO desafio, sem trocar nada. "Pagar com PIX"
+  // continua sendo a única saída real.
+  it("desafio 3DS: 'Pagar com PIX' aparece junto do iframe, e 'Tentar outro cartão' NÃO aparece", async () => {
+    const { create } = instalarSdkFalso();
+    const url =
+      "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/abc?display_mode=self_hosted";
+    criarPagamento
+      .mockResolvedValueOnce({
+        paymentId: "pay-1",
+        statusPagamento: "aguardando",
+        expiraEm: "x",
+        desafio3ds: { url },
+      })
+      .mockResolvedValueOnce({
+        paymentId: "pay-2",
+        statusPagamento: "aguardando",
+        expiraEm: new Date(Date.now() + 20 * 60_000).toISOString(),
+        qrCode: "000201-pix",
+        qrCodeBase64: "abc123",
+      });
+    const { onTrocarParaPix } = await renderCartao();
+    await enviarCartao(create);
+
+    expect(hospedeiro.querySelector("iframe")).not.toBeNull();
+    const tentar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Tentar outro cartão",
+    );
+    const pix = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Pagar com PIX",
+    );
+    expect(tentar).toBeUndefined();
+    expect(pix).toBeDefined();
+
+    // "Pagar com PIX" no desafio dispara o MESMO caminho de sempre: avisa o
+    // pai (onTrocarParaPix) e a próxima cobrança pedida é PIX puro.
+    await act(async () => {
+      pix!.click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(onTrocarParaPix).toHaveBeenCalledTimes(1);
+    // Achado 2, rodada 4 da revisão de risco pré-publicação: o desafio 3DS
+    // ainda está aberto quando o cliente troca — o cartão pode estar vivo.
+    expect(onTrocarParaPix).toHaveBeenCalledWith(true);
+    expect(criarPagamento).toHaveBeenLastCalledWith({
+      orderId: "ped-12345678",
+      metodo: "pix",
+    });
+    expect(
+      hospedeiro.querySelector("img[alt='QR code do PIX']"),
+    ).not.toBeNull();
+  });
+
+  // B2, rodada 2: a mesma remoção vale para "Confirmando com o banco…" — a
+  // tela pré-existente também oferecia "Tentar outro cartão" sem trocar nada
+  // de verdade (o cartão nesse ponto já concluiu o desafio e está
+  // `processing`/aprovado no MP; um cartão novo bateria na mesma trava).
+  it("'Confirmando com o banco…' oferece só 'Pagar com PIX', sem 'Tentar outro cartão'", async () => {
+    const { create } = instalarSdkFalso();
+    const url =
+      "https://www.mercadopago.com.br/auth/card/validation/pages/remedies/abc";
+    criarPagamento.mockResolvedValue({
+      paymentId: "pay-1",
+      statusPagamento: "aguardando",
+      expiraEm: "x",
+      desafio3ds: { url },
+    });
+    const { onTrocarParaPix } = await renderCartao();
+    await enviarCartao(create);
+
+    await act(async () => {
+      globalThis.dispatchEvent(
+        new MessageEvent("message", {
+          data: { status: "COMPLETE" },
+          origin: "https://www.mercadopago.com.br",
+        }),
+      );
+    });
+
+    expect(hospedeiro.textContent).toContain("Confirmando com o banco…");
+    expect(
+      [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent === "Tentar outro cartão",
+      ),
+    ).toBeUndefined();
+    const pix = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Pagar com PIX",
+    );
+    expect(pix).toBeDefined();
+
+    // Achado 2, rodada 4 da revisão de risco pré-publicação: o webhook ainda
+    // pode aprovar o cartão a qualquer momento — o cartão está vivo.
+    await act(async () => {
+      pix!.click();
+    });
+    expect(onTrocarParaPix).toHaveBeenCalledWith(true);
+  });
+
+  // B2, cenário 2: cartão em análise sem desafio (`processing`) — o banco
+  // pode demorar, e a tela ficava presa em "Você será avisado quando for
+  // aprovado" até a reserva de 30 min morrer. Depois de alguns minutos,
+  // "Pagar com PIX" aparece como saída — seguro porque a edge responde 409
+  // enquanto o cartão ainda está em análise (achado B3, tratado no
+  // CheckoutView).
+  describe("em análise: 'Pagar com PIX' só depois de alguns minutos", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("não aparece de imediato, e aparece depois do teto de minutos em análise", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockResolvedValue({
+        paymentId: "pay-1",
+        statusPagamento: "aguardando",
+        expiraEm: "x",
+      });
+      const { onTrocarParaPix } = await renderCartao();
+      await enviarCartao(create);
+
+      expect(hospedeiro.textContent).toContain(
+        "Pagamento em análise pelo banco. Você será avisado quando for aprovado.",
+      );
+      expect(
+        [...hospedeiro.querySelectorAll("button")].find(
+          (b) => b.textContent === "Pagar com PIX",
+        ),
+      ).toBeUndefined();
+
+      await act(async () => {
+        vi.advanceTimersByTime(
+          MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE * 60_000 + 10_000,
+        );
+      });
+
+      const pix = [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent === "Pagar com PIX",
+      );
+      expect(pix).toBeDefined();
+
+      // Achado 2, rodada 4 da revisão de risco pré-publicação: em análise
+      // pelo emissor/antifraude, o cartão AINDA pode ser aprovado.
+      await act(async () => {
+        pix!.click();
+      });
+      expect(onTrocarParaPix).toHaveBeenCalledWith(true);
+    });
+  });
+});
+
+// Contrato "forma de cartão desligada" — INTEGRAÇÃO DA TELA (01/10/2026).
+// O resultado `{ tipo: "forma-desligada" }` de `enviarPagamentoComCartao` não
+// pode virar o erro genérico: (1) o formulário avisa o pai por
+// `onFormaDesligada` e NÃO por `onErro` (o erro sem sinal em modo cartão
+// marcaria a cobrança incerta no CheckoutView e esconderia o PIX para
+// sempre); (2) `PagamentoOnline` invalida o cache da config, desmonta o Brick
+// obsoleto e mostra o aviso de cartão indisponível — sem cobrança incerta,
+// oferece PIX, e a troca vai com `cartaoAindaVivo: true` (o código NÃO afirma
+// ausência de cobrança; o POST de PIX passa pela guarda da vaga na edge);
+// (3) com cobrança incerta neste pedido, NADA de PIX: a saída é "Ver meus
+// pedidos" (mesma saída da caixa âmbar do CheckoutView). "Cancelar pedido" não
+// mora aqui — só na caixa de erro do CheckoutView, que este componente abre
+// por `onErro`; daqui se prova que `onErro` NÃO é chamado, e a ausência do
+// botão na tela inteira é provada em checkout-view-cartao-forma-desligada.
+// test.tsx, com o CheckoutView e este componente de verdade.
+describe("forma de cartão desligada no meio do pagamento — integração da tela", () => {
+  const MENSAGEM = "Esta forma de pagamento não está disponível nesta loja.";
+  const CODIGO = "CARTAO_FORMA_DESLIGADA";
+  const AVISO_INDISPONIVEL =
+    "O pagamento com cartão não está disponível nesta loja agora.";
+  const QR_DO_PIX = {
+    paymentId: "pay-pix-1",
+    statusPagamento: "aguardando",
+    expiraEm: "2026-10-01T12:00:00.000Z",
+    qrCode: "000201...",
+    qrCodeBase64: "abc123",
+  };
+
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+    esquecerConfigDoCartao.mockClear();
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+  });
+
+  /** O Error no formato que `useOrders/criarPagamento` lança. */
+  function erroDaEdge(campos: Record<string, unknown>) {
+    return Object.assign(new Error(MENSAGEM), {
+      terminal: false,
+      cartaoEmAnalise: false,
+      ...campos,
+    });
+  }
+
+  function botoes(texto: string) {
+    return [...hospedeiro.querySelectorAll("button")].filter((b) =>
+      b.textContent?.includes(texto),
+    );
+  }
+
+  async function clicar(botao: HTMLButtonElement) {
+    await act(async () => {
+      botao.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+  }
+
+  /** Envia pelo último Brick criado; devolve o que o Brick recebeu de volta. */
+  async function enviar(
+    create: ReturnType<typeof instalarSdkFalso>["create"],
+    tipo: "credit_card" | "debit_card" = "credit_card",
+  ): Promise<unknown> {
+    const { callbacks } = ultimaConfig(create);
+    await act(async () => {
+      callbacks.onReady();
+    });
+    let devolvidoAoBrick: unknown = null;
+    await act(async () => {
+      try {
+        await callbacks.onSubmit(
+          dadosDoBrick(tipo === "debit_card" ? { installments: 1 } : {}),
+          { paymentTypeId: tipo },
+        );
+      } catch (e) {
+        // O que volta ao Brick não é o contrato aqui — o pai desmonta ele.
+        devolvidoAoBrick = e;
+      }
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    return devolvidoAoBrick;
+  }
+
+  describe("(1) PagamentoComCartao avisa o pai por onFormaDesligada", () => {
+    async function renderFormulario(
+      orderId: string,
+      {
+        config = SO_CREDITO,
+        comAviso = true,
+      }: { config?: ConfigDoCartao; comAviso?: boolean } = {},
+    ) {
+      const onErro = vi.fn();
+      const onPagarComPix = vi.fn();
+      const onFormaDesligada = vi.fn();
+      const props = {
+        orderId,
+        valor: 150,
+        config,
+        emailDoPagador: "cliente@exemplo.com",
+        onErro,
+        onPagarComPix,
+        ...(comAviso ? { onFormaDesligada } : {}),
+      };
+      await act(async () => {
+        raiz.render(<PagamentoComCartao {...props} />);
+      });
+      await act(async () => {
+        await esperarMicrotarefas();
+      });
+      return { onErro, onPagarComPix, onFormaDesligada };
+    }
+
+    it("resultado forma-desligada: onFormaDesligada UMA vez, onErro NUNCA", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockRejectedValue(erroDaEdge({ codigo: CODIGO }));
+      const { onErro, onPagarComPix, onFormaDesligada } =
+        await renderFormulario("ped-fd-1");
+
+      await enviar(create);
+
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
+      expect(onFormaDesligada).toHaveBeenCalledTimes(1);
+      expect(onErro).not.toHaveBeenCalled();
+      // O formulário não decide a troca sozinho: quem oferece (ou não) o PIX
+      // é o pai, que sabe se o pedido tem cobrança incerta.
+      expect(onPagarComPix).not.toHaveBeenCalled();
+    });
+
+    it("CONTROLE: a MESMA mensagem sem o código segue onErro recuperável sem sinal — onFormaDesligada nunca", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockRejectedValue(erroDaEdge({}));
+      const { onErro, onFormaDesligada } = await renderFormulario("ped-fd-2");
+
+      await enviar(create);
+
+      expect(onFormaDesligada).not.toHaveBeenCalled();
+      expect(onErro).toHaveBeenCalledTimes(1);
+      expect(onErro).toHaveBeenCalledWith(MENSAGEM, "recuperavel");
+    });
+
+    it("CONTROLE de segurança: código + cartaoEmAnalise:true vai por onErro com o sinal — onFormaDesligada nunca", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockRejectedValue(
+        erroDaEdge({ codigo: CODIGO, cartaoEmAnalise: true }),
+      );
+      const { onErro, onFormaDesligada } = await renderFormulario("ped-fd-3");
+
+      await enviar(create);
+
+      expect(onFormaDesligada).not.toHaveBeenCalled();
+      expect(onErro).toHaveBeenCalledWith(
+        MENSAGEM,
+        "recuperavel",
+        "cartaoEmAnalise",
+      );
+    });
+
+    it("onFormaDesligada recebe o tipo que o servidor recusou (débito numa loja com os dois)", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockRejectedValue(erroDaEdge({ codigo: CODIGO }));
+      const { onErro, onFormaDesligada } = await renderFormulario("ped-fd-6", {
+        config: OS_DOIS,
+      });
+
+      await enviar(create, "debit_card");
+
+      expect(onFormaDesligada).toHaveBeenCalledTimes(1);
+      expect(onFormaDesligada).toHaveBeenCalledWith("debit_card");
+      expect(onErro).not.toHaveBeenCalled();
+    });
+
+    // Caminho reserva: quem monta o formulário SEM `onFormaDesligada` cai no
+    // erro conservador de antes — recuperável e SEM sinal (em modo cartão o
+    // CheckoutView marca a cobrança incerta), e o Brick recebe a recusa.
+    it("SEM onFormaDesligada: onErro(mensagem, 'recuperavel') sem sinal, e o Brick recebe a recusa", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockRejectedValue(erroDaEdge({ codigo: CODIGO }));
+      const { onErro, onPagarComPix, onFormaDesligada } =
+        await renderFormulario("ped-fd-7", { comAviso: false });
+
+      const devolvido = await enviar(create);
+
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
+      // Exatamente dois argumentos: nenhum sinal (nem semCobranca).
+      expect(onErro.mock.calls).toEqual([[MENSAGEM, "recuperavel"]]);
+      expect(onFormaDesligada).not.toHaveBeenCalled();
+      expect(onPagarComPix).not.toHaveBeenCalled();
+      expect(devolvido).toBeInstanceOf(Error);
+      expect((devolvido as Error).message).toBe(MENSAGEM);
+    });
+  });
+
+  describe("(2)/(3) PagamentoOnline assume a tela", () => {
+    async function renderOnline({
+      orderId,
+      cobrancaIncerta,
+      config = SO_CREDITO,
+    }: {
+      orderId: string;
+      cobrancaIncerta: boolean;
+      config?: ConfigDoCartao;
+    }) {
+      const onErro = vi.fn();
+      const onTrocarParaPix = vi.fn();
+      const onVerMeusPedidos = vi.fn();
+      const props = {
+        orderId,
+        valor: 150,
+        metodo: "cartao" as const,
+        configDoCartao: config,
+        emailDoPagador: "cliente@exemplo.com",
+        cobrancaIncerta,
+        onErro,
+        onTrocarParaPix,
+        onVerMeusPedidos,
+      };
+      await act(async () => {
+        raiz.render(<PagamentoOnline {...props} />);
+      });
+      await act(async () => {
+        await esperarMicrotarefas();
+      });
+      return { onErro, onTrocarParaPix, onVerMeusPedidos };
+    }
+
+    it("(2) sem cobrança incerta: invalida o cache, desmonta o Brick obsoleto, avisa e oferece PIX -> onTrocarParaPix(true)", async () => {
+      const { create, unmounts } = instalarSdkFalso();
+      criarPagamento
+        .mockRejectedValueOnce(erroDaEdge({ codigo: CODIGO }))
+        .mockResolvedValue(QR_DO_PIX);
+      const { onErro, onTrocarParaPix } = await renderOnline({
+        orderId: "ped-fd-4",
+        cobrancaIncerta: false,
+      });
+      const idDoContainer = create.mock.calls[0][1];
+
+      await enviar(create);
+
+      expect(onErro).not.toHaveBeenCalled();
+      expect(esquecerConfigDoCartao).toHaveBeenCalledTimes(1);
+      // O formulário obsoleto sai de cena e NÃO volta, mesmo com a config
+      // velha (cartão ligado) ainda na prop.
+      expect(unmounts[0]).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(document.getElementById(idDoContainer)).toBeNull();
+      expect(hospedeiro.textContent).toContain(AVISO_INDISPONIVEL);
+      // Nenhum PIX criado sozinho: só o POST do cartão até aqui.
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
+
+      const pix = botoes("Pagar com PIX");
+      expect(pix).toHaveLength(1);
+      await clicar(pix[0]);
+
+      // O código não afirma ausência de cobrança: a troca avisa que o cartão
+      // podia estar vivo, e o PIX passa pela guarda da vaga na edge.
+      expect(onTrocarParaPix).toHaveBeenCalledTimes(1);
+      expect(onTrocarParaPix).toHaveBeenCalledWith(true);
+      expect(criarPagamento).toHaveBeenCalledTimes(2);
+      expect(criarPagamento.mock.calls[1][0]).toEqual({
+        orderId: "ped-fd-4",
+        metodo: "pix",
+      });
+    });
+
+    it("(3) com cobrança incerta: sem PIX e sem 'Cancelar pedido'; 'Ver meus pedidos' é a saída", async () => {
+      const { create, unmounts } = instalarSdkFalso();
+      criarPagamento.mockRejectedValue(erroDaEdge({ codigo: CODIGO }));
+      const { onErro, onTrocarParaPix, onVerMeusPedidos } = await renderOnline({
+        orderId: "ped-fd-5",
+        cobrancaIncerta: true,
+      });
+
+      await enviar(create);
+
+      expect(onErro).not.toHaveBeenCalled();
+      expect(esquecerConfigDoCartao).toHaveBeenCalledTimes(1);
+      expect(unmounts[0]).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(hospedeiro.textContent).toContain(AVISO_INDISPONIVEL);
+      // Diz ao cliente POR QUE não há outra forma agora — sem beco mudo.
+      // C5 (front B2): sem order conhecida, nunca "em análise".
+      expect(hospedeiro.textContent).toContain(
+        "Não conseguimos confirmar se uma tentativa anterior com cartão foi cobrada.",
+      );
+      expect(hospedeiro.textContent).not.toMatch(/em análise/i);
+      expect(botoes("Pagar com PIX")).toHaveLength(0);
+      expect(hospedeiro.textContent).not.toContain("Pagar com PIX");
+
+      const verPedidos = botoes("Ver meus pedidos");
+      expect(verPedidos).toHaveLength(1);
+      await clicar(verPedidos[0]);
+
+      expect(onVerMeusPedidos).toHaveBeenCalledTimes(1);
+      expect(onTrocarParaPix).not.toHaveBeenCalled();
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
+    });
+
+    // Só o débito desligado depois de o cliente escolher débito: a recusa diz
+    // respeito ao TIPO enviado. O crédito, ainda ligado na config da tela,
+    // continua — o formulário volta só com crédito. Se o crédito também for
+    // recusado, aí sim a tela de "cartão indisponível" assume, com as mesmas
+    // regras de (2)/(3).
+    function tiposDoUltimoBrick(
+      create: ReturnType<typeof instalarSdkFalso>["create"],
+    ) {
+      return ultimaConfig(create).customization.paymentMethods.types;
+    }
+
+    it("(4) sem cobrança incerta: débito recusado não esconde o crédito; crédito recusado depois -> PIX com cartaoAindaVivo=true", async () => {
+      const { create, unmounts } = instalarSdkFalso();
+      criarPagamento
+        .mockRejectedValueOnce(erroDaEdge({ codigo: CODIGO }))
+        .mockRejectedValueOnce(erroDaEdge({ codigo: CODIGO }))
+        .mockResolvedValue(QR_DO_PIX);
+      const { onErro, onTrocarParaPix } = await renderOnline({
+        orderId: "ped-fd-8",
+        cobrancaIncerta: false,
+        config: OS_DOIS,
+      });
+      expect(tiposDoUltimoBrick(create)).toEqual({
+        included: ["credit_card", "debit_card"],
+      });
+
+      await enviar(create, "debit_card");
+
+      expect(onErro).not.toHaveBeenCalled();
+      expect(onTrocarParaPix).not.toHaveBeenCalled();
+      expect(esquecerConfigDoCartao).toHaveBeenCalledTimes(1);
+      // O formulário com débito sai; volta um NOVO, só com crédito.
+      expect(unmounts[0]).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(tiposDoUltimoBrick(create)).toEqual({
+        included: ["credit_card"],
+      });
+      expect(hospedeiro.textContent).not.toContain(AVISO_INDISPONIVEL);
+      expect(botoes("Pagar com PIX")).toHaveLength(0);
+
+      await enviar(create, "credit_card");
+
+      // Agora não sobra tipo nenhum: a tela de indisponível assume.
+      expect(onErro).not.toHaveBeenCalled();
+      expect(unmounts[1]).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(hospedeiro.textContent).toContain(AVISO_INDISPONIVEL);
+      expect(criarPagamento).toHaveBeenCalledTimes(2);
+
+      const pix = botoes("Pagar com PIX");
+      expect(pix).toHaveLength(1);
+      await clicar(pix[0]);
+
+      expect(onTrocarParaPix).toHaveBeenCalledTimes(1);
+      expect(onTrocarParaPix).toHaveBeenCalledWith(true);
+      expect(criarPagamento.mock.calls[2][0]).toEqual({
+        orderId: "ped-fd-8",
+        metodo: "pix",
+      });
+    });
+
+    it("(5) com cobrança incerta: débito recusado volta só com crédito (sem PIX, sem onErro); crédito recusado -> só 'Ver meus pedidos'", async () => {
+      const { create, unmounts } = instalarSdkFalso();
+      criarPagamento.mockRejectedValue(erroDaEdge({ codigo: CODIGO }));
+      const { onErro, onTrocarParaPix, onVerMeusPedidos } = await renderOnline({
+        orderId: "ped-fd-9",
+        cobrancaIncerta: true,
+        config: OS_DOIS,
+      });
+
+      await enviar(create, "debit_card");
+
+      expect(onErro).not.toHaveBeenCalled();
+      expect(unmounts[0]).toHaveBeenCalledTimes(1);
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(tiposDoUltimoBrick(create)).toEqual({
+        included: ["credit_card"],
+      });
+      expect(botoes("Pagar com PIX")).toHaveLength(0);
+      expect(hospedeiro.textContent).not.toContain(AVISO_INDISPONIVEL);
+
+      await enviar(create, "credit_card");
+
+      expect(onErro).not.toHaveBeenCalled();
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(hospedeiro.textContent).toContain(AVISO_INDISPONIVEL);
+      // C5 (front B2): sem order conhecida, nunca "em análise".
+      expect(hospedeiro.textContent).toContain(
+        "Não conseguimos confirmar se uma tentativa anterior com cartão foi cobrada.",
+      );
+      expect(hospedeiro.textContent).not.toMatch(/em análise/i);
+      expect(botoes("Pagar com PIX")).toHaveLength(0);
+
+      const verPedidos = botoes("Ver meus pedidos");
+      expect(verPedidos).toHaveLength(1);
+      await clicar(verPedidos[0]);
+
+      expect(onVerMeusPedidos).toHaveBeenCalledTimes(1);
+      expect(onTrocarParaPix).not.toHaveBeenCalled();
+      expect(criarPagamento).toHaveBeenCalledTimes(2);
+    });
+
+    // Recusas são POR PEDIDO: trocar o `orderId` no MESMO componente não pode
+    // herdar as recusas do pedido anterior — nem no quadro intermediário da
+    // troca (primeiro commit com o pedido novo, antes de qualquer efeito). A
+    // sonda irmã fotografa o DOM em CADA commit (`useLayoutEffect` roda depois
+    // das mutações do commit e antes dos efeitos passivos): é o que o cliente
+    // poderia ver e tocar naquele quadro.
+    async function renderComSonda(props: Record<string, unknown>) {
+      const fotos: string[] = [];
+      function Sonda() {
+        useLayoutEffect(() => {
+          fotos.push(hospedeiro.textContent ?? "");
+        });
+        return null;
+      }
+      const montar = async (extra: Record<string, unknown>) => {
+        await act(async () => {
+          raiz.render(
+            <>
+              <PagamentoOnline {...(props as any)} {...extra} />
+              <Sonda />
+            </>,
+          );
+        });
+        await act(async () => {
+          await esperarMicrotarefas();
+        });
+      };
+      await montar({});
+      return { fotos, montar };
+    }
+
+    function propsDoPedido(orderId: string) {
+      return {
+        orderId,
+        valor: 150,
+        metodo: "cartao" as const,
+        configDoCartao: OS_DOIS,
+        emailDoPagador: "cliente@exemplo.com",
+        cobrancaIncerta: false,
+        onErro: vi.fn(),
+        onTrocarParaPix: vi.fn(),
+        onVerMeusPedidos: vi.fn(),
+      };
+    }
+
+    it("(6) recusas de crédito E débito no pedido A não vazam para o pedido B — nem no quadro da troca imediata", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockRejectedValue(erroDaEdge({ codigo: CODIGO }));
+      const props = propsDoPedido("ped-fd-10");
+      const { fotos, montar } = await renderComSonda(props);
+
+      await enviar(create, "debit_card");
+      await enviar(create, "credit_card");
+      expect(hospedeiro.textContent).toContain(AVISO_INDISPONIVEL);
+      const brickesDoPedidoA = create.mock.calls.length;
+
+      fotos.length = 0;
+      await montar({ orderId: "ped-fd-11" });
+
+      // Nenhum commit do pedido B mostra a tela de indisponível nem oferece
+      // PIX: as recusas eram do pedido A.
+      expect(fotos.length).toBeGreaterThan(0);
+      for (const foto of fotos) {
+        expect(foto).not.toContain(AVISO_INDISPONIVEL);
+        expect(foto).not.toContain("Pagar com PIX");
+      }
+      // O pedido B recebe o formulário com os DOIS tipos da config.
+      expect(create.mock.calls.length).toBeGreaterThan(brickesDoPedidoA);
+      expect(tiposDoUltimoBrick(create)).toEqual({
+        included: ["credit_card", "debit_card"],
+      });
+      expect(props.onTrocarParaPix).not.toHaveBeenCalled();
+      expect(props.onErro).not.toHaveBeenCalled();
+      expect(criarPagamento).toHaveBeenCalledTimes(2);
+    });
+
+    it("(7) recusa SÓ do débito no pedido A não vaza: todo formulário criado para o pedido B tem crédito E débito", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockRejectedValue(erroDaEdge({ codigo: CODIGO }));
+      const props = propsDoPedido("ped-fd-12");
+      const { montar } = await renderComSonda(props);
+
+      await enviar(create, "debit_card");
+      expect(tiposDoUltimoBrick(create)).toEqual({
+        included: ["credit_card"],
+      });
+      const brickesDoPedidoA = create.mock.calls.length;
+
+      await montar({ orderId: "ped-fd-13" });
+
+      const brickesDoPedidoB = create.mock.calls.slice(brickesDoPedidoA);
+      expect(brickesDoPedidoB.length).toBeGreaterThan(0);
+      for (const chamada of brickesDoPedidoB) {
+        expect(chamada[2].customization.paymentMethods.types).toEqual({
+          included: ["credit_card", "debit_card"],
+        });
+      }
+      expect(props.onErro).not.toHaveBeenCalled();
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
+    });
+
+    it("(8) resposta ATRASADA do pedido A (envio no ar durante a troca) não grava recusa no pedido B", async () => {
+      const { create } = instalarSdkFalso();
+      let recusarDepois: (erro: unknown) => void = () => {};
+      criarPagamento.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            recusarDepois = reject;
+          }),
+      );
+      const props = propsDoPedido("ped-fd-14");
+      const { montar } = await renderComSonda(props);
+
+      // O cliente envia débito no pedido A; a resposta ainda não voltou.
+      const { callbacks } = ultimaConfig(create);
+      await act(async () => {
+        callbacks.onReady();
+      });
+      let envioDoPedidoA: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        envioDoPedidoA = callbacks
+          .onSubmit(dadosDoBrick({ installments: 1 }), {
+            paymentTypeId: "debit_card",
+          })
+          .catch(() => {});
+      });
+
+      await montar({ orderId: "ped-fd-15" });
+      const brickesAteB = create.mock.calls.length;
+
+      // Só agora a recusa do pedido A chega.
+      await act(async () => {
+        recusarDepois(erroDaEdge({ codigo: CODIGO }));
+        await envioDoPedidoA;
+        await esperarMicrotarefas();
+      });
+
+      // O pedido B continua com os dois tipos e o formulário não remonta.
+      expect(create.mock.calls.length).toBe(brickesAteB);
+      expect(tiposDoUltimoBrick(create)).toEqual({
+        included: ["credit_card", "debit_card"],
+      });
+      expect(hospedeiro.textContent).not.toContain(AVISO_INDISPONIVEL);
+      expect(esquecerConfigDoCartao).not.toHaveBeenCalled();
+      expect(props.onErro).not.toHaveBeenCalled();
+    });
+  });
+});

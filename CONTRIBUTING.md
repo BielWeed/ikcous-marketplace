@@ -19,6 +19,16 @@ Se você está chegando agora, leia antes `docs/onboarding/03-SETUP-AMBIENTE.md`
 
 ## A trava que não existe
 
+> **Nota (14/09/2026):** a premissa abaixo (repositório privado, plano Free,
+> 403 na API de branch protection) **EXPIROU** — o `ci.yml` já registra isso
+> por escrito e aponta de volta para esta seção. O repositório hoje é
+> **público**, e branch protection é **grátis** em repositório público.
+> Ligar a trava (ou não) passou a ser **decisão do dono** (Gabriel), não mais
+> um limite técnico do plano. Enquanto ele não decidir, nada muda na prática:
+> a tabela abaixo continua sendo o que existe. O relato de 30/07/2026 fica
+> como histórico — é onde a falta de trava foi medida e explicada pela
+> primeira vez.
+
 Em 30/07/2026 o repositório passou a ser **privado**, porque havia chave
 `service_role` do Supabase no histórico enquanto ele era público. A conta é
 pessoal e está no plano Free. Consequência, testada na API e não deduzida:
@@ -175,12 +185,34 @@ O caminho para uma trava de verdade é GitHub Pro (US$ 4/mês, mantém o reposit
 privado) ou tornar o repositório público com o histórico purgado. **O Gabriel
 adiou essa decisão em 30/07/2026.** Está registrada como INFRA-240 no backlog.
 
+> **Atualização (14/09/2026):** a escolha entre as duas opções já aconteceu —
+> o repositório está público hoje (ver nota no topo da seção). Se o histórico
+> foi purgado antes disso, não medido aqui; confira o histórico do próprio
+> repositório antes de assumir. INFRA-240 no backlog hoje trata de outro
+> assunto (tamanho do histórico), não mais desta escolha.
+
 Enquanto isso: se você usar `--no-verify`, avise no Discord. Não é proibido —
 tem hora que é a saída certa. É que ninguém mais tem como saber.
 
 ---
 
 ## Modelo de branches
+
+> **Estado atual (08/10/2026): a base de trabalho é `claude/app-major-upgrade-wmc8x2`,
+> não a `develop`.** É a branch padrão do repositório e a que carrega a versão
+> oficial (1.5.x). Dos últimos 40 PRs juntados, 26 foram para ela e 4 para a
+> `develop`.
+>
+> - **`develop`** ficou parada na linha antiga de versões (1.35.0). Não abra
+>   branch nem PR a partir dela sem combinar com o dono.
+> - **`production`** registra a versão que está no ar (PRs `chore(release)`).
+> - **Onde as receitas abaixo dizem `develop`, leia
+>   `claude/app-major-upgrade-wmc8x2`** — inclusive em `git switch`,
+>   `gh pr create --base` e nas comparações de "apagar branch".
+>
+> O restante do guia descreve o GitFlow original e ainda não foi reescrito para
+> esse estado. Se um passo depender de `develop` de um jeito que não faz sentido
+> assim (por exemplo, "volta a release para develop"), pare e pergunte ao dono.
 
 ```mermaid
 gitGraph
@@ -214,7 +246,8 @@ gitGraph
 | Branch | Sai de | Volta para | Regra |
 | --- | --- | --- | --- |
 | `main` | — | — | Só código em produção. Todo commit aqui vira deploy. **Não é protegida pelo GitHub** — ver acima. |
-| `develop` | `main` | — | Integração. Base de toda branch nova. Branch padrão do repositório. |
+| `develop` | `main` | — | Integração no modelo original. **Hoje parada em 1.35.0 e fora do fluxo** — ver "Estado atual" acima. |
+| `claude/app-major-upgrade-wmc8x2` | — | — | **Base de toda branch nova hoje.** Branch padrão do repositório, versão oficial 1.5.x. |
 | `feat/<escopo>` | `develop` | `develop` | Funcionalidade nova. |
 | `fix/<escopo>` | `develop` | `develop` | Correção que pode esperar o próximo release. |
 | `chore/<escopo>` | `develop` | `develop` | Infra, dependência, configuração. |
@@ -225,7 +258,8 @@ gitGraph
 
 Existem branches antigas com prefixo `claude/` no remoto. São de sessões de
 agente anteriores ao GitFlow. Não crie mais nenhuma; a limpeza delas está em
-INFRA-180.
+INFRA-180. **A exceção é a `claude/app-major-upgrade-wmc8x2`**, que é a base de
+trabalho atual e não deve ser apagada.
 
 **O passo que todo mundo esquece:** `release` e `hotfix` fazem merge em **duas**
 branches. Se você mergear o hotfix só na `main`, o bug volta no próximo release,

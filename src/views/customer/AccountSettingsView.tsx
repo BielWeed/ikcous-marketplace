@@ -8,6 +8,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
+import { cpfValido, formatarCpf, somenteDigitosDoCpf } from "@/lib/cpf";
+import {
+  gravarCpfDaConta,
+  lerCpfDaConta,
+  mensagemFalhaCpf,
+} from "@/lib/cpf-da-conta";
 import { supabase } from "@/lib/supabase";
 import {
   PREDEFINED_AVATARS,
@@ -31,6 +37,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  IdCard,
   KeyRound,
   Loader2,
   Lock,
@@ -266,6 +273,17 @@ export function AccountSettingsView() {
   // mascara quando o valor gravado cabe na máscara.
   const [whatsappEditado, setWhatsappEditado] = useState(false);
 
+  // O CPF MORA NA CONTA (23/09/2026): campo OPCIONAL, fora de
+  // `profileData` de propósito — pedido do dono é "estado só em memória do
+  // componente (não no AuthContext profile)": `profile` do AuthContext é
+  // global (várias telas leem), e o CPF é sensível o bastante para não
+  // precisar viajar por um contexto que ninguém mais consome. `cpfOriginal`
+  // guarda os DÍGITOS que a conta já tinha (para "só grava se mudou" e para
+  // "limpar" funcionar: campo vazio ≠ original com dígitos É uma mudança).
+  const [cpf, setCpf] = useState("");
+  const [cpfOriginal, setCpfOriginal] = useState("");
+  const [cpfErro, setCpfErro] = useState(false);
+
   const [passwordData, setPasswordData] = useState({
     newPassword: "",
     confirmPassword: "",
@@ -299,6 +317,31 @@ export function AccountSettingsView() {
       // Toda carga é um cadastro "não editado" de novo — inclusive ao
       // tentar de novo depois de um erro.
       setWhatsappEditado(false);
+
+      // CPF é lido À PARTE, por RPC própria (`get_my_cpf`) e em try/catch
+      // PRÓPRIO — nunca no mesmo bloco do perfil principal: uma resposta
+      // inesperada aqui (rede, formato) não pode reprovar a carga de
+      // nome/WhatsApp, que já chegou com sucesso. `lerCpfDaConta` já é
+      // best-effort (nunca lança), mas o `typeof` abaixo é a mesma cautela
+      // para o formato do valor — campo só fica vazio nesses casos (e
+      // "salvar" sem mexer nele não grava nada, então não há risco de
+      // apagar um CPF real por causa de uma leitura que falhou).
+      try {
+        const resultadoCpf = await lerCpfDaConta();
+        const digitosCpf =
+          resultadoCpf.ok && typeof resultadoCpf.cpf === "string"
+            ? resultadoCpf.cpf
+            : "";
+        setCpf(digitosCpf ? formatarCpf(digitosCpf).formatado : "");
+        setCpfOriginal(digitosCpf);
+        setCpfErro(false);
+      } catch (erroCpf) {
+        console.error("Error fetching CPF:", erroCpf);
+        setCpf("");
+        setCpfOriginal("");
+        setCpfErro(false);
+      }
+
       setProfileLoadState("loaded");
     } catch (error) {
       console.error("Error fetching profile:", error);
@@ -340,6 +383,22 @@ export function AccountSettingsView() {
       }
     }
 
+    // CPF é OPCIONAL: campo vazio nunca bloqueia. Preenchido e inválido
+    // marca erro NO CAMPO — mesma régua (`cpfValido`) do cadastro e do
+    // checkout — e não chega a chamar a RPC.
+    const digitosCpfAtual = somenteDigitosDoCpf(cpf);
+    if (digitosCpfAtual && !cpfValido(digitosCpfAtual)) {
+      setCpfErro(true);
+      toast.error("CPF inválido", {
+        description: "Confira os números ou deixe o campo em branco.",
+      });
+      return;
+    }
+    setCpfErro(false);
+    // "Só grava se mudou" (pedido do dono): campo vazio quando a conta já
+    // tinha CPF TAMBÉM é uma mudança — é o caminho de limpar.
+    const cpfMudou = digitosCpfAtual !== cpfOriginal;
+
     setLoading(true);
     try {
       // `update_my_profile_secure` faz `whatsapp = COALESCE(p_whatsapp,
@@ -356,6 +415,18 @@ export function AccountSettingsView() {
       );
 
       if (error) throw error;
+
+      if (cpfMudou) {
+        const resultadoCpf = await gravarCpfDaConta(digitosCpfAtual);
+        if (!resultadoCpf.ok) {
+          toast.error(mensagemFalhaCpf(resultadoCpf.motivo));
+          // O resto do perfil (nome/WhatsApp) JÁ foi salvo com sucesso —
+          // não desfaz; só o CPF fica pendente para uma nova tentativa.
+          setLoading(false);
+          return;
+        }
+        setCpfOriginal(digitosCpfAtual);
+      }
 
       // Refresh global profile in context (ZENITH v21.7)
       await fetchProfile();
@@ -674,6 +745,44 @@ export function AccountSettingsView() {
                         placeholder="(00) 00000-0000"
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="cpf"
+                      className="ml-0.5 text-[10px] font-black uppercase tracking-wider text-zinc-500"
+                    >
+                      CPF (opcional)
+                    </label>
+                    <div className="group relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors group-focus-within:text-zinc-900">
+                        <IdCard className="size-4" />
+                      </span>
+                      <Input
+                        id="cpf"
+                        name="cpf"
+                        autoComplete="off"
+                        inputMode="numeric"
+                        value={cpf}
+                        disabled={profileLoadState !== "loaded"}
+                        onChange={(e) => {
+                          setCpf(formatarCpf(e.target.value).formatado);
+                          if (cpfErro) setCpfErro(false);
+                        }}
+                        aria-invalid={cpfErro}
+                        aria-describedby={cpfErro ? "cpf-erro" : undefined}
+                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+                        placeholder="000.000.000-00"
+                      />
+                    </div>
+                    {cpfErro && (
+                      <p
+                        id="cpf-erro"
+                        className="ml-0.5 text-xs font-bold text-red-600"
+                      >
+                        CPF inválido. Confira os números ou deixe em branco.
+                      </p>
+                    )}
                   </div>
 
                   <motion.div whileTap={{ scale: 0.995 }} className="pt-1">

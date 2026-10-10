@@ -1,5 +1,14 @@
 import { expect, test } from "@playwright/test";
-import { PRODUTO_ROUPAS, abrirLoja, instalarLojaFixtura } from "./kit-jornadas";
+import {
+  PRODUTO_ROUPAS,
+  abrirLoja,
+  exigirRedeSemImprevistos,
+  instalarLojaFixtura,
+} from "./kit-jornadas";
+
+// Guarda de rede (kit das jornadas): requisição não prevista derruba o
+// teste, com a lista na mensagem.
+test.afterEach(exigirRedeSemImprevistos);
 
 /**
  * JORNADA (c) do despacho: do carrinho até o passo de endereço — LEITURA

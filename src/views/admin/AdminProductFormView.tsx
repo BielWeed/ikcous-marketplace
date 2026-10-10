@@ -6,6 +6,11 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { PhoneSimulator } from "@/components/admin/PhoneSimulator";
+import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
+import {
+  type LinhaProntaDaGrade,
+  ModalVarianteGrade,
+} from "@/components/admin/products/ModalVarianteGrade";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,13 +30,33 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useCategories } from "@/hooks/useCategories";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
+// Só o TIPO da resposta da RPC do PDV — import "type" some da build, então
+// não puxa `useVendaPresencial.ts` (nem o cliente Supabase) para este chunk.
+import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
+import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
-import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
+import { formComVariacoes } from "@/utils/estoque-das-variacoes";
+import {
+  chaveDaIdentidade,
+  recadoDoTetoDeVariacoes,
+} from "@/utils/grade-de-combinacoes";
+import {
+  motivoDoBloqueioDoProduto,
+  motivoDoEnvioDeFotos,
+} from "@/utils/motivo-do-bloqueio-do-produto";
+import {
+  gruposDeVariacao,
+  temGrupoDemais,
+  travaDeUmGrupoSo,
+} from "@/utils/um-grupo-de-variacao";
 import {
   type ParDeAtributo,
   dividirEmAtributos,
@@ -53,18 +78,98 @@ import {
   Loader2,
   Package,
   Plus,
+  Power,
   Scissors,
   ShieldCheck,
   Smartphone,
   Trash2,
   TrendingDown,
   TrendingUp,
-  Truck,
   X,
 } from "lucide-react";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  lazy,
+  Suspense,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+
+// C5.2 — formato aceito para o código de barras (decisão do lote pdv-c5,
+// §5.6): depois de aparar e remover espaços INTERNOS, só letras, números e
+// hífen, de 4 a 64 caracteres. EAN/UPC/GTIN são dígitos, mas Code 128/39 têm
+// letras — por isso não restringe a dígitos, e não valida dígito
+// verificador (fora do escopo deste lote).
+const REGEX_CODIGO_BARRAS = /^[A-Za-z0-9-]{4,64}$/;
+const MSG_CODIGO_BARRAS_FORMATO_INVALIDO =
+  "Só letras, números e hífen, de 4 a 64 caracteres.";
+const MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA =
+  "Este código já está em outra variação deste produto.";
+
+/** Mesma string que vai para a RPC (btrim + igualdade exata, migration
+ * 20261161000000) e para o banco — aparar as pontas e remover os espaços
+ * do meio (código colado ou digitado com separador visual). */
+function normalizarCodigoBarras(valor: string): string {
+  return valor.trim().replace(/\s+/g, "");
+}
+
+/** Percentual com 1 casa, em pt-BR ("33,3%", nunca "33.3%") — a mesma grafia
+ * da lista de produtos. */
+function percentualComUmaCasa(valor: number): string {
+  return `${valor.toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
+// C5.3 — o leitor de câmera (LeitorDeCodigo, componente de C2) só entra no
+// chunk desta tela quando o lojista realmente clica em "Ler com a câmera":
+// import DINÂMICO via `React.lazy`, do mesmo jeito que `conferirCodigoNoBanco`
+// (acima) já faz com o cliente Supabase. Estático puxaria o decodificador de
+// código de barras (e a câmera) para todo carregamento do formulário.
+const LeitorDeCodigo = lazy(() =>
+  import("@/components/admin/pdv/LeitorDeCodigo").then((modulo) => ({
+    default: modulo.LeitorDeCodigo,
+  })),
+);
+
+// C5.3 — sem câmera (desktop sem webcam, navegador sem suporte) o botão
+// some: quem lê o código ali é o leitor FÍSICO USB, que digita direto no
+// campo (dispensa o modal). Chamada a cada render de propósito — é barata e
+// `navigator.mediaDevices` pode mudar entre uma leitura e outra (permissão
+// revogada, por exemplo).
+function temCameraDisponivel(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    typeof navigator.mediaDevices?.getUserMedia === "function"
+  );
+}
+
+/**
+ * Prazo de UMA foto, da compressão ao fim do upload. Existe porque o botão
+ * Publicar fica desligado enquanto há foto subindo e nenhuma das duas etapas
+ * tinha prazo: em rede lenta uma promessa que nunca responde segurava a tela
+ * para sempre (cliente pagante, 03/10/2026, selo "SLOW" na barra).
+ *
+ * Por que 90 s: depois da compressão (JPEG 1200 px, ~150-400 KB) o envio de
+ * 400 KB a 100 kbps (o patamar "muito lenta" de celular) leva ~32 s; a
+ * decodificação/compressão em celular de entrada soma 10-15 s. 90 s cobre esse
+ * pior caso REAL com folga, e ainda é curto o bastante para a lojista não
+ * esperar mais de um minuto e meio por foto antes de ver "Tentar de novo".
+ */
+const PRAZO_POR_FOTO_MS = 90_000;
+
+/** Uma foto que não subiu: guarda o arquivo para "Tentar de novo". */
+interface FotoComFalha {
+  id: string;
+  file: File;
+  motivo: "demorou demais" | "não foi enviada";
+}
+
 // Exportado só para o teste chamar direto (não passa pelo componente inteiro)
 // — continua sendo um detalhe interno desta tela, não uma API pública. Nome
 // `compressProductImage` (não `compressImage`) de propósito: já existe um
@@ -195,6 +300,8 @@ interface ProductFormFields {
   costPrice: string;
   originalPrice: string;
   stock: string;
+  /** Texto do campo "Avisar quando o estoque chegar a". Vazio = padrão (5). */
+  estoqueMinimo: string;
   category: string;
   images: string[];
   freeShipping: boolean;
@@ -203,11 +310,44 @@ interface ProductFormFields {
   metaTitle: string;
   metaDescription: string;
   sku: string;
+  codigoBarras: string;
   variants: ProductVariant[];
   weightKg: string;
   widthCm: string;
   heightCm: string;
   lengthCm: string;
+}
+
+// 2147483647 é o maior número que a coluna (inteiro de 32 bits) guarda. O
+// teto continua valendo, mas a tela não mostra esse número (onda J): são
+// duas mensagens, uma para o que não é inteiro e outra para o grande demais.
+const ESTOQUE_MINIMO_MAXIMO = 2147483647;
+const MENSAGEM_ESTOQUE_MINIMO_INVALIDO =
+  "Use um número inteiro: 0, 1, 2… (sem vírgula nem sinal de menos).";
+const MENSAGEM_ESTOQUE_MINIMO_GRANDE_DEMAIS =
+  "Número grande demais. Use um valor menor.";
+
+/**
+ * Lê o campo "Avisar quando o estoque chegar a". Vazio vira `null` (volta ao
+ * padrão do projeto, 5); só dígitos viram o número, zero incluído (zero é
+ * escolha da lojista). Qualquer outra coisa — negativo, decimal, texto ou
+ * acima do que a coluna guarda — vira erro do campo, nunca NaN nem estouro
+ * indo para o banco.
+ */
+function lerEstoqueMinimo(texto: string): {
+  valor: number | null;
+  erro: string;
+} {
+  const limpo = texto.trim();
+  if (limpo === "") return { valor: null, erro: "" };
+  if (!/^\d+$/.test(limpo)) {
+    return { valor: null, erro: MENSAGEM_ESTOQUE_MINIMO_INVALIDO };
+  }
+  const numero = Math.max(0, Math.trunc(Number(limpo)));
+  if (!Number.isSafeInteger(numero) || numero > ESTOQUE_MINIMO_MAXIMO) {
+    return { valor: null, erro: MENSAGEM_ESTOQUE_MINIMO_GRANDE_DEMAIS };
+  }
+  return { valor: numero, erro: "" };
 }
 
 function isProductFormDirty(
@@ -220,6 +360,7 @@ function isProductFormDirty(
   if (a.costPrice !== b.costPrice) return true;
   if (a.originalPrice !== b.originalPrice) return true;
   if (a.stock !== b.stock) return true;
+  if (a.estoqueMinimo !== b.estoqueMinimo) return true;
   if (a.category !== b.category) return true;
   if (a.freeShipping !== b.freeShipping) return true;
   if (a.isBestseller !== b.isBestseller) return true;
@@ -227,6 +368,7 @@ function isProductFormDirty(
   if (a.metaTitle !== b.metaTitle) return true;
   if (a.metaDescription !== b.metaDescription) return true;
   if (a.sku !== b.sku) return true;
+  if (a.codigoBarras !== b.codigoBarras) return true;
   if (a.weightKg !== b.weightKg) return true;
   if (a.widthCm !== b.widthCm) return true;
   if (a.heightCm !== b.heightCm) return true;
@@ -245,6 +387,7 @@ function isProductFormDirty(
       vA.id !== vB.id ||
       vA.productId !== vB.productId ||
       vA.sku !== vB.sku ||
+      vA.codigoBarras !== vB.codigoBarras ||
       vA.name !== vB.name ||
       vA.value !== vB.value ||
       vA.stockIncrement !== vB.stockIncrement ||
@@ -259,7 +402,7 @@ function isProductFormDirty(
   return false;
 }
 
-export const AdminProductFormView = React.memo(function AdminProductFormView({
+const FormularioDoProduto = React.memo(function FormularioDoProduto({
   productId,
   onNavigate,
   onSetDirty,
@@ -271,7 +414,23 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     deleteVariants,
     uploadProductImages,
     fetchProduct,
+    // `= []`: consumidor que não expõe a lista (testes de contrato da tela)
+    // deixa a checagem de SKU global degenerar para o produto atual.
+    products = [],
   } = useProducts({ autoFetch: false });
+
+  // O SKU da variação é UNIQUE na loja INTEIRA, não por produto. A grade gera
+  // códigos previsíveis (base reaproveitada, sufixo por valor), então a
+  // checagem do modal precisa enxergar a loja, não só este produto. Melhor
+  // esforço: se a lista de produtos ainda não carregou, a checagem degenera
+  // para o produto atual — e o salvar confere de novo (`upsertVariants`).
+  const skusDaLoja = useMemo(
+    () =>
+      products.flatMap((p: { variants?: ProductVariant[] }) =>
+        (p.variants ?? []).map((v) => v.sku ?? ""),
+      ),
+    [products],
+  );
   const { categories: dbCategories, addCategory } = useCategories();
   const isOffline = useOnlineStatus();
   const { config } = useStore();
@@ -285,6 +444,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     costPrice: "",
     originalPrice: "",
     stock: "",
+    estoqueMinimo: "",
     category: "",
     images: [] as string[],
     freeShipping: false,
@@ -293,6 +453,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     metaTitle: "",
     metaDescription: "",
     sku: "",
+    codigoBarras: "",
     variants: [] as ProductVariant[],
     weightKg: "",
     widthCm: "",
@@ -307,6 +468,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     costPrice: "",
     originalPrice: "",
     stock: "",
+    estoqueMinimo: "",
     category: "",
     images: [] as string[],
     freeShipping: false,
@@ -315,6 +477,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     metaTitle: "",
     metaDescription: "",
     sku: "",
+    codigoBarras: "",
     variants: [] as ProductVariant[],
     weightKg: "",
     widthCm: "",
@@ -326,6 +489,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const [showSuccess, setShowSuccess] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
   const [showVariantForm, setShowVariantForm] = useState(false);
+  // Grade de combinações: o modal de lote ao lado do unitário.
+  const [showGradeForm, setShowGradeForm] = useState(false);
+  // O Preço de Venda que a grade preencheu (campo estava vazio): a frase "veio
+  // da grade" fica sob o campo até a lojista mudar o valor. Não vai para o
+  // rascunho — é só um recado da tela, o preço em si fica no `formData`.
+  const [precoVeioDaGrade, setPrecoVeioDaGrade] = useState(false);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(
     null,
   );
@@ -336,6 +505,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const [variantFormData, setVariantFormData] = useState<{
     pares: ParNoForm[];
     sku: string;
+    codigoBarras: string;
     stockIncrement: string;
     priceOverride: string;
     active: boolean;
@@ -343,6 +513,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   }>({
     pares: [parNovo()],
     sku: "",
+    codigoBarras: "",
     stockIncrement: "0",
     priceOverride: "",
     active: true,
@@ -354,8 +525,37 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
+  // `key` da seção "Variações": muda UMA vez quando um RASCUNHO com variações
+  // é aplicado depois da montagem (o `abertaInicial` da seção só vale na
+  // montagem, e o rascunho chega por efeito/toast, já com o corpo montado).
+  // Sai no mesmo lote do `setFormData` do rascunho; edições normais não mexem.
+  const [chaveDasVariacoes, setChaveDasVariacoes] = useState(0);
 
   const [skuError, setSkuError] = useState("");
+  // C5.2 — três estados para o código de barras do PRODUTO: `ErroLocal`
+  // (formato + duplicidade DENTRO da tela, sem rede) e `ErroRede`
+  // (duplicidade no CATÁLOGO inteiro, achada pela RPC no blur) ficam
+  // separados de propósito — se fossem um só, editar qualquer variação
+  // (que recalcula o `ErroLocal`) apagaria sozinho o aviso de rede que o
+  // blur tinha acabado de encontrar. `AvisoRede` é a falha de conexão, que
+  // NUNCA bloqueia o salvar (só avisa). Ver `codigoBarrasError` mais abaixo,
+  // que combina os dois primeiros para o render e o `isValid`.
+  const [codigoBarrasErroLocal, setCodigoBarrasErroLocal] = useState("");
+  const [codigoBarrasErroRede, setCodigoBarrasErroRede] = useState("");
+  const [codigoBarrasAvisoRede, setCodigoBarrasAvisoRede] = useState("");
+  // Código de barras da VARIANTE em edição no modal: só formato local +
+  // duplicidade no catálogo (a duplicidade DENTRO da tela é uma conta do
+  // produto inteiro, recalculada quando a variante entra em
+  // `formData.variants` — ver o efeito do produto acima).
+  const [variantCodigoBarrasError, setVariantCodigoBarrasError] = useState("");
+  const [variantCodigoBarrasAvisoRede, setVariantCodigoBarrasAvisoRede] =
+    useState("");
+  // C5.3 — qual campo o leitor de câmera está preenchendo agora (`null` =
+  // fechado). Só um de cada vez: o modal de variação já cobre o campo do
+  // produto, então não há como os dois estarem abertos ao mesmo tempo.
+  const [leitorAberto, setLeitorAberto] = useState<
+    "produto" | "variacao" | null
+  >(null);
   const [priceError, setPriceError] = useState("");
   const [costError, setCostError] = useState("");
   const [originalPriceError, setOriginalPriceError] = useState("");
@@ -399,6 +599,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   );
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  // "Foto 1 de 3" do lote em andamento, para o aviso do botão desligado.
+  const [progressoDoEnvio, setProgressoDoEnvio] = useState<{
+    atual: number;
+    total: number;
+  } | null>(null);
+  // Fotos que estouraram o prazo ou falharam: ficam na tela com "Tentar de
+  // novo"/"Remover" e NUNCA entram em `isValid` -- não impedem salvar.
+  const [fotosComFalha, setFotosComFalha] = useState<FotoComFalha[]>([]);
+  // Ligado quando o produto novo JÁ foi criado e a lojista está sendo levada
+  // para a edição dele (a grade não gravou). Daí em diante o auto-save não pode
+  // mais escrever na chave de produto novo: recuperaria o rascunho sem id e o
+  // próximo "Publicar" criaria um segundo produto idêntico.
+  const produtoNovoJaCriadoRef = useRef(false);
   const [imageUploadStep, setImageUploadStep] = useState<
     "compressing" | "uploading" | "idle"
   >("idle");
@@ -478,13 +691,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
   // Lock body scroll when variant or category forms are open
   useEffect(() => {
-    if (showVariantForm || showCategoryForm) {
+    if (showVariantForm || showCategoryForm || showGradeForm) {
       document.body.classList.add("admin-modal-open");
       return () => {
         document.body.classList.remove("admin-modal-open");
       };
     }
-  }, [showVariantForm, showCategoryForm]);
+  }, [showVariantForm, showCategoryForm, showGradeForm]);
 
   const openAdjuster = (url: string, index: number) => {
     setAdjustingImgUrl(url);
@@ -496,13 +709,22 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (adjustingImgIndex === null) return;
     setIsUploadingAdjusted(true);
 
-    const file = new File([croppedBlob], `product-image-${Date.now()}.jpg`, {
-      type: "image/jpeg",
-    });
+    const file = arquivoDaImagemRecortada(croppedBlob, "product-image-");
     const loadingToast = toast.loading("Enviando imagem recortada...");
 
     try {
-      const urls = await uploadProductImages([file]);
+      // Mesmo prazo das fotos novas: o botão Publicar fica desligado enquanto
+      // este envio roda, e um upload que nunca responde o prenderia.
+      // Se o upload terminar DEPOIS do prazo, a tela já deu o envio por falha:
+      // o objeto que ele gravou é apagado (não fica órfão no armazenamento).
+      const urls = await comPrazo(
+        uploadProductImages([file]),
+        PRAZO_POR_FOTO_MS,
+        undefined,
+        (urlsTardias) => {
+          void descartarFotosDoProduto(urlsTardias ?? []);
+        },
+      );
       if (urls && urls.length > 0) {
         const newUrl = urls[0];
         setFormData((prev) => {
@@ -536,7 +758,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       }
     } catch (error) {
       console.error("Error uploading adjusted image:", error);
-      toast.error("Erro ao salvar imagem ajustada", { id: loadingToast });
+      toast.error("Erro ao salvar imagem ajustada", {
+        id: loadingToast,
+        description:
+          error instanceof PrazoEsgotado
+            ? "O envio demorou demais. Confira a conexão e tente de novo."
+            : undefined,
+      });
     } finally {
       setIsUploadingAdjusted(false);
     }
@@ -577,6 +805,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             costPrice: product.costPrice?.toString() || "",
             originalPrice: product.originalPrice?.toString() || "",
             stock: product.stock.toString(),
+            // Zero é escolha da lojista: só `null`/ausente vira campo vazio.
+            estoqueMinimo:
+              product.estoqueMinimo == null
+                ? ""
+                : String(product.estoqueMinimo),
             category: product.category,
             images: product.images,
             freeShipping: product.freeShipping,
@@ -585,6 +818,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             metaTitle: product.metaTitle || "",
             metaDescription: product.metaDescription || "",
             sku: product.sku || "",
+            codigoBarras: product.codigoBarras || "",
             variants: product.variants || [],
             weightKg: product.weightKg?.toString() || "",
             widthCm: product.widthCm?.toString() || "",
@@ -618,6 +852,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             costPrice: parsed.costPrice || "",
             originalPrice: parsed.originalPrice || "",
             stock: parsed.stock || "",
+            estoqueMinimo: parsed.estoqueMinimo || "",
             category: parsed.category || "",
             images: parsed.images || [],
             freeShipping: !!parsed.freeShipping,
@@ -626,6 +861,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             metaTitle: parsed.metaTitle || "",
             metaDescription: parsed.metaDescription || "",
             sku: parsed.sku || "",
+            codigoBarras: parsed.codigoBarras || "",
             variants: parsed.variants || [],
             weightKg: parsed.weightKg || "",
             widthCm: parsed.widthCm || "",
@@ -635,6 +871,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           setFormData(draftFields);
           setInitialData(draftFields);
           setIsPromoActive(!!parsed.originalPrice);
+          if (draftFields.variants.length > 0) {
+            setChaveDasVariacoes((chave) => chave + 1);
+          }
 
           toast.success("Rascunho recuperado automaticamente!", {
             description:
@@ -650,6 +889,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                   costPrice: "",
                   originalPrice: "",
                   stock: "",
+                  estoqueMinimo: "",
                   category: "",
                   images: [] as string[],
                   freeShipping: false,
@@ -658,6 +898,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                   metaTitle: "",
                   metaDescription: "",
                   sku: "",
+                  codigoBarras: "",
                   variants: [] as ProductVariant[],
                   weightKg: "",
                   widthCm: "",
@@ -697,6 +938,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             costPrice: parsed.costPrice ?? initialData.costPrice,
             originalPrice: parsed.originalPrice ?? initialData.originalPrice,
             stock: parsed.stock ?? initialData.stock,
+            estoqueMinimo: parsed.estoqueMinimo ?? initialData.estoqueMinimo,
             category: parsed.category ?? initialData.category,
             images: parsed.images ?? initialData.images,
             freeShipping:
@@ -715,6 +957,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             metaDescription:
               parsed.metaDescription ?? initialData.metaDescription,
             sku: parsed.sku ?? initialData.sku,
+            codigoBarras: parsed.codigoBarras ?? initialData.codigoBarras,
             variants: parsed.variants ?? initialData.variants,
             weightKg: parsed.weightKg ?? initialData.weightKg,
             widthCm: parsed.widthCm ?? initialData.widthCm,
@@ -733,6 +976,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 onClick: () => {
                   setFormData(draftFields);
                   setIsPromoActive(!!draftFields.originalPrice);
+                  if (draftFields.variants.length > 0) {
+                    setChaveDasVariacoes((chave) => chave + 1);
+                  }
                   toast.success("Rascunho restaurado!");
                 },
               },
@@ -775,7 +1021,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (formData.sku) {
       const hasSpecialChars = /[^A-Z0-9-]/i.test(formData.sku);
       if (hasSpecialChars) {
-        setSkuError("O SKU deve conter apenas letras, números e hífens.");
+        setSkuError(
+          "O código interno deve conter apenas letras, números e hífens.",
+        );
       } else {
         setSkuError("");
       }
@@ -783,6 +1031,186 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       setSkuError("");
     }
   }, [formData.sku]);
+
+  useEffect(() => {
+    // C5.2: formato do código de barras do PRODUTO e duplicidade DENTRO da
+    // tela (o próprio código contra o de cada variação, e as variações
+    // entre si) — sem rede. A duplicidade contra o CATÁLOGO inteiro mora em
+    // `conferirCodigoNoBanco` (chamada no blur), que escreve em
+    // `codigoBarrasErroRede`, um estado À PARTE: se estivesse aqui,
+    // qualquer mudança em `formData.variants` (editar o estoque de uma
+    // variação, por exemplo) apagaria sozinha o aviso "já está em outro
+    // produto" que o blur tinha acabado de achar.
+    const normalizado = normalizarCodigoBarras(formData.codigoBarras);
+    if (normalizado && !REGEX_CODIGO_BARRAS.test(normalizado)) {
+      setCodigoBarrasErroLocal(MSG_CODIGO_BARRAS_FORMATO_INVALIDO);
+      return;
+    }
+    const vistos = new Set<string>();
+    if (normalizado) vistos.add(normalizado);
+    let duplicadoNaTela = false;
+    for (const variante of formData.variants) {
+      const codigoVariante = normalizarCodigoBarras(
+        variante.codigoBarras || "",
+      );
+      if (!codigoVariante) continue;
+      if (vistos.has(codigoVariante)) {
+        duplicadoNaTela = true;
+        break;
+      }
+      vistos.add(codigoVariante);
+    }
+    setCodigoBarrasErroLocal(
+      duplicadoNaTela ? MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA : "",
+    );
+  }, [formData.codigoBarras, formData.variants]);
+
+  useEffect(() => {
+    // O código do produto mudou: o veredito de rede anterior (achado no
+    // blur de ANTES) ficou velho. Só um blur novo decide de novo — ver
+    // `conferirCodigoNoBanco`.
+    setCodigoBarrasErroRede("");
+    setCodigoBarrasAvisoRede("");
+  }, [formData.codigoBarras]);
+
+  useEffect(() => {
+    // Mesmo formato acima, para o código de barras da VARIANTE em edição no
+    // modal. A duplicidade dela contra o produto e as outras variações só
+    // aparece depois de "Efetivar Variante" (quando ela entra em
+    // `formData.variants` e o efeito de cima recalcula) — este efeito cobre
+    // só o formato, e o mesmo estado é reaproveitado por
+    // `conferirCodigoNoBanco` para o achado de rede (alvo "variacao").
+    const normalizado = normalizarCodigoBarras(variantFormData.codigoBarras);
+    setVariantCodigoBarrasError(
+      normalizado && !REGEX_CODIGO_BARRAS.test(normalizado)
+        ? MSG_CODIGO_BARRAS_FORMATO_INVALIDO
+        : "",
+    );
+    setVariantCodigoBarrasAvisoRede("");
+  }, [variantFormData.codigoBarras]);
+
+  // C5.2: duplicidade pelo CATÁLOGO inteiro, pela MESMA RPC que o PDV usa
+  // para bipar no balcão (AdminPdvView.tsx:170-179) — chamada ao sair do
+  // campo (blur) e, mais tarde (C5.3), depois de uma leitura pela câmera.
+  // Import DINÂMICO de propósito: esta view não tinha outro motivo para
+  // carregar o cliente Supabase (os hooks de dados fazem isso por trás), e
+  // um import ESTÁTICO aqui derrubaria os sete testes desta tela que não
+  // mockam "@/lib/supabase" — o módulo real lança sem as variáveis de
+  // ambiente do Supabase (`src/lib/env.ts`), medido nesta tarefa.
+  // Devolve "" quando o código está livre (ou é o próprio registro conferido,
+  // ou a rede falhou — nada que bloqueie) e a MENSAGEM de duplicado quando a
+  // RPC o encontra em outro produto/variação. Escreve nos estados de erro
+  // para o blur continuar tendo o mesmo efeito de sempre; o retorno é quem
+  // permite ao handleSubmit ESPERAR o veredito antes de gravar (ressalva da
+  // revisão: sem isso, salvar durante uma checagem em voo gravava antes da
+  // resposta). `idDaVariacao` é o id do registro conferido quando o alvo é
+  // variação: no modal, `editingVariant?.id`; no salvar, o id de cada
+  // variação do formulário.
+  async function conferirCodigoNoBanco(
+    codigoNormalizado: string,
+    alvo: "produto" | "variacao",
+    idDaVariacao?: string,
+  ): Promise<string> {
+    const setErroDeRede =
+      alvo === "produto"
+        ? setCodigoBarrasErroRede
+        : setVariantCodigoBarrasError;
+    const setAviso =
+      alvo === "produto"
+        ? setCodigoBarrasAvisoRede
+        : setVariantCodigoBarrasAvisoRede;
+
+    setAviso("");
+    if (!codigoNormalizado) {
+      setErroDeRede("");
+      return "";
+    }
+
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      const { data, error } = await supabase.rpc("buscar_por_codigo_barras", {
+        p_codigo: codigoNormalizado,
+      });
+      if (error) throw error;
+      const resposta = data as unknown as RespostaDoCodigo;
+
+      if (!resposta.encontrado || !resposta.produto) {
+        setErroDeRede("");
+        return "";
+      }
+
+      // O próprio produto/variação conferido nunca conta como duplicado —
+      // mas só na direção certa: um código que já é o do PRODUTO não deixa
+      // de ser duplicado só porque estamos conferindo o campo da VARIAÇÃO
+      // (e vice-versa). Ver pdv-c5.json, decisão (c).
+      const idDoProprio = alvo === "produto" ? productId : idDaVariacao;
+      const ehOProprio =
+        alvo === "produto"
+          ? resposta.origem === "produto" &&
+            !!idDoProprio &&
+            resposta.produto.id === idDoProprio
+          : resposta.origem === "variante" &&
+            idDoProprio != null &&
+            resposta.variante?.variant_id === idDoProprio;
+
+      if (ehOProprio) {
+        setErroDeRede("");
+        return "";
+      }
+
+      let mensagem = `Este código já está em ${resposta.produto.nome}`;
+      if (resposta.origem === "variante" && resposta.variante) {
+        mensagem += `, variação ${resposta.variante.nome}: ${resposta.variante.valor}`;
+      }
+      setErroDeRede(mensagem);
+      return mensagem;
+    } catch (erro) {
+      // Rede/RPC fora do ar: NÃO há veredito, então NÃO bloqueia — o índice
+      // único do banco só cobre a COLISÃO na hora de gravar (23505 vira
+      // mensagem amigável pela C5.1), não esta checagem em voo; quem fecha a
+      // corrida com o salvar é o await no início do handleSubmit. Só avisa,
+      // discreto, para o lojista tentar de novo.
+      console.warn(
+        "[AdminProductFormView] Não consegui conferir o código de barras agora:",
+        erro,
+      );
+      setAviso("Não consegui conferir agora.");
+      return "";
+    }
+  }
+
+  function aoSairDoCampoDeCodigoDeBarras(
+    valorBruto: string,
+    alvo: "produto" | "variacao",
+    idDaVariacao?: string,
+  ): void {
+    const normalizado = normalizarCodigoBarras(valorBruto);
+    // Formato inválido já tem o próprio erro (efeito acima); chamar a RPC
+    // aqui só teria a resposta assíncrona chegando depois e sobrescrevendo
+    // esse erro local, sem nenhuma corrida clara para decidir quem venceu.
+    if (!normalizado || !REGEX_CODIGO_BARRAS.test(normalizado)) return;
+    void conferirCodigoNoBanco(normalizado, alvo, idDaVariacao);
+  }
+
+  // C5.3 — a câmera achou um código: preenche o campo do alvo certo (o
+  // produto ou a variação em edição no modal), fecha o leitor e dispara a
+  // MESMA checagem de duplicidade do onBlur (C5.2) — uma leitura é, para
+  // este formulário, equivalente a digitar o código e sair do campo.
+  function aoLerCodigoDeBarras(leitura: { codigo: string }): void {
+    const normalizado = normalizarCodigoBarras(leitura.codigo);
+    if (leitorAberto === "produto") {
+      setFormData((prev) => ({ ...prev, codigoBarras: normalizado }));
+    } else if (leitorAberto === "variacao") {
+      setVariantFormData((prev) => ({ ...prev, codigoBarras: normalizado }));
+    }
+    const alvo = leitorAberto ?? "produto";
+    setLeitorAberto(null);
+    aoSairDoCampoDeCodigoDeBarras(
+      normalizado,
+      alvo,
+      alvo === "variacao" ? editingVariant?.id : undefined,
+    );
+  }
 
   useEffect(() => {
     // Validar Preço de Venda
@@ -884,6 +1312,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (isLoading || !draftChecked) return;
 
     const timer = setTimeout(() => {
+      // Produto novo já criado (grade não gravou): o rascunho já foi para a
+      // chave de edição dele, e esta chave NÃO pode ser recriada.
+      if (!productId && produtoNovoJaCriadoRef.current) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = !productId
         ? "ikcous_product_form_draft"
@@ -908,14 +1339,14 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
         return;
       }
 
-      const MAX_SINGLE_SIZE = 12 * 1024 * 1024; // 12MB
-      const MAX_TOTAL_SIZE = 30 * 1024 * 1024; // 30MB
+      const MAX_SINGLE_SIZE = 12 * 1024 * 1024; // 12 MB
+      const MAX_TOTAL_SIZE = 30 * 1024 * 1024; // 30 MB
       let totalSize = 0;
 
       for (const file of files) {
         if (file.size > MAX_SINGLE_SIZE) {
           toast.error(
-            `O arquivo "${file.name}" excede o tamanho limite de 12MB. Envie uma imagem menor.`,
+            `O arquivo "${file.name}" excede o tamanho limite de 12 MB. Envie uma imagem menor.`,
           );
           return;
         }
@@ -924,50 +1355,121 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
       if (totalSize > MAX_TOTAL_SIZE) {
         toast.error(
-          `O tamanho total das imagens selecionadas (${(totalSize / (1024 * 1024)).toFixed(1)}MB) excede o limite de 30MB por envio.`,
+          `O tamanho total das imagens selecionadas (${(totalSize / (1024 * 1024)).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB) excede o limite de 30 MB por envio.`,
         );
         return;
       }
 
       setIsUploadingImages(true);
       setImageUploadStep("compressing");
+      setProgressoDoEnvio({ atual: 1, total: files.length });
       const loadingToast = toast.loading(
         `Comprimindo ${files.length} imagem(ns)...`,
       );
+      const falhas: FotoComFalha[] = [];
+      let enviadas = 0;
       try {
-        const compressedFiles = await Promise.all(
-          files.map((file) => compressProductImage(file)),
-        );
+        // Uma foto por vez, cada uma com o próprio prazo: a que trava não
+        // arrasta as outras, e a lojista vê "N de M" andar.
+        for (const [indice, file] of files.entries()) {
+          setProgressoDoEnvio({ atual: indice + 1, total: files.length });
+          setImageUploadStep("compressing");
+          // Marca o estouro para a continuação ATRASADA não iniciar o upload
+          // de uma foto que a tela já deu por falha (evita arquivo órfão no
+          // armazenamento e um estado "uploading" depois do fim).
+          let estourou = false;
+          try {
+            const url = await comPrazo(
+              (async () => {
+                const comprimida = await compressProductImage(file);
+                if (estourou) throw new PrazoEsgotado(PRAZO_POR_FOTO_MS);
+                setImageUploadStep("uploading");
+                toast.loading(
+                  `Enviando foto ${indice + 1} de ${files.length}...`,
+                  { id: loadingToast },
+                );
+                const urls = await uploadProductImages([comprimida]);
+                if (!urls || urls.length === 0) {
+                  throw new Error("Falha no upload.");
+                }
+                return urls[0];
+              })(),
+              PRAZO_POR_FOTO_MS,
+              () => {
+                estourou = true;
+              },
+              // O upload (que ninguém cancela) terminou depois de a tela dar a
+              // foto por falha: apaga o objeto que ELE gravou.
+              (urlTardia) => {
+                void descartarFotosDoProduto([urlTardia]);
+              },
+            );
+            setFormData((prev) => ({
+              ...prev,
+              images: [...prev.images, url],
+            }));
+            enviadas += 1;
+          } catch (error) {
+            console.error("[Upload] Process error:", error, file.name);
+            falhas.push({
+              id: `${Date.now()}-${indice}-${file.name}`,
+              file,
+              motivo:
+                error instanceof PrazoEsgotado
+                  ? "demorou demais"
+                  : "não foi enviada",
+            });
+          }
+        }
 
-        setImageUploadStep("uploading");
-        toast.loading("Enviando imagens processadas...", { id: loadingToast });
-
-        const urls = await uploadProductImages(compressedFiles);
-        if (urls && urls.length > 0) {
-          setFormData((prev) => ({
-            ...prev,
-            images: [...prev.images, ...urls],
-          }));
+        if (falhas.length === 0) {
           toast.success("Imagens processadas e enviadas com sucesso!", {
             id: loadingToast,
           });
         } else {
-          throw new Error("Falha no upload.");
+          setFotosComFalha((prev) => [...prev, ...falhas]);
+          toast.error(
+            enviadas > 0
+              ? `${falhas.length} de ${files.length} fotos não subiram.`
+              : "Erro ao processar ou enviar imagens.",
+            {
+              id: loadingToast,
+              description:
+                "Veja o aviso abaixo das fotos: dá para tentar de novo, remover, ou publicar sem elas.",
+            },
+          );
         }
-      } catch (error) {
-        console.error("[Upload] Process error:", error);
-        toast.error("Erro ao processar ou enviar imagens.", {
-          id: loadingToast,
-          description:
-            "Por favor, verifique sua conexão e tente enviar novamente.",
-        });
       } finally {
+        // Sempre volta ao normal -- é isto que garante que o botão nunca
+        // fica preso por um envio que acabou (ou estourou).
         setIsUploadingImages(false);
         setImageUploadStep("idle");
+        setProgressoDoEnvio(null);
       }
     },
     [formData.images.length, uploadProductImages],
   );
+
+  const tentarFotoDeNovo = useCallback(
+    async (id: string) => {
+      const falha = fotosComFalha.find((f) => f.id === id);
+      if (!falha || isOffline) return;
+      if (formData.images.length >= 10) {
+        // Mesma regra do envio: não some com a foto da lista sem ela caber.
+        toast.error(
+          "O produto já tem 10 fotos. Remova uma foto antes de tentar de novo.",
+        );
+        return;
+      }
+      setFotosComFalha((prev) => prev.filter((f) => f.id !== id));
+      await processAndUploadImages([falha.file]);
+    },
+    [fotosComFalha, isOffline, formData.images.length, processAndUploadImages],
+  );
+
+  const descartarFotoComFalha = useCallback((id: string) => {
+    setFotosComFalha((prev) => prev.filter((f) => f.id !== id));
+  }, []);
 
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1038,6 +1540,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       return;
     }
 
+    if (variantCodigoBarrasError) {
+      toast.error(variantCodigoBarrasError);
+      return;
+    }
+
     const cleanNumberString = (val: string) => {
       if (!val) return "";
       let clean = val.replace(",", ".").replace(/[^\d.-]/g, "");
@@ -1057,12 +1564,41 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     const sanitizedVarSku = variantFormData.sku
       ? variantFormData.sku.trim().toUpperCase().replace(/\s+/g, "-")
       : undefined;
+    const sanitizedVarCodigoBarras = variantFormData.codigoBarras
+      ? normalizarCodigoBarras(variantFormData.codigoBarras)
+      : undefined;
+
+    // O SKU da variação é único na loja inteira (product_variants_sku_key):
+    // dois iguais NESTE produto são recusados pelo banco na hora de gravar,
+    // sem dizer qual. Aqui a lojista lê qual é, antes de perder o cadastro.
+    // Compara do jeito que será gravado (`sanitizedVarSku` já é maiúsculo e
+    // sem espaço; os já salvos passam pela mesma conta no envio).
+    if (sanitizedVarSku) {
+      const dona = formData.variants.find(
+        (v) =>
+          v.id !== editingVariant?.id &&
+          !!v.sku &&
+          v.sku.trim().toUpperCase().replace(/\s+/g, "-") === sanitizedVarSku,
+      );
+      if (dona) {
+        toast.error(
+          `O código interno "${sanitizedVarSku}" já está em outra variação deste produto (${dona.name}: ${dona.value}).`,
+          {
+            description:
+              "Cada variação precisa de um código interno diferente — ou deixe o código interno em branco.",
+            duration: 8000,
+          },
+        );
+        return;
+      }
+    }
 
     const vData = {
       productId: productId || "",
       name: nomeComposto,
       value: valorComposto,
       sku: sanitizedVarSku || undefined,
+      codigoBarras: sanitizedVarCodigoBarras || undefined,
       stockIncrement: Number.parseInt(sanitizedVarStock) || 0,
       priceOverride:
         parsedPriceOverride !== undefined
@@ -1072,24 +1608,28 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       imageUrl: variantFormData.imageUrl || undefined,
     };
 
+    // A lista passa por `formComVariacoes`: desligar a última variação ligada
+    // zera o estoque do produto (uma vez), em vez de deixar a soma velha no
+    // campo que acaba de destravar. Ver `estoque-das-variacoes.ts`.
     if (editingVariant) {
-      setFormData((prev) => ({
-        ...prev,
-        variants: prev.variants.map((v) =>
-          v.id === editingVariant.id ? { ...v, ...vData } : v,
+      setFormData((prev) =>
+        formComVariacoes(
+          prev,
+          prev.variants.map((v) =>
+            v.id === editingVariant.id ? { ...v, ...vData } : v,
+          ),
         ),
-      }));
+      );
     } else {
-      setFormData((prev) => ({
-        ...prev,
-        variants: [
+      setFormData((prev) =>
+        formComVariacoes(prev, [
           ...prev.variants,
           {
             ...vData,
             id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           } as any,
-        ],
-      }));
+        ]),
+      );
     }
 
     setShowVariantForm(false);
@@ -1097,6 +1637,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     setVariantFormData({
       pares: [parNovo()],
       sku: "",
+      codigoBarras: "",
       stockIncrement: "0",
       priceOverride: "",
       active: true,
@@ -1109,6 +1650,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   }, []);
 
   const handleEditVariant = useCallback((v: ProductVariant) => {
+    // Ressalva da revisão da C5.2: erros/avisos de código de barras da
+    // edição ANTERIOR não podem atravessar para esta — se o código não
+    // mudar entre uma abertura e outra, o efeito que valida não dispara e
+    // o erro velho ficaria preso no modal.
+    setVariantCodigoBarrasError("");
+    setVariantCodigoBarrasAvisoRede("");
     setEditingVariant(v);
     setVariantFormData({
       // Reabre a linha em pares ("Cor / Tamanho"+"Branca / PP" volta a ser
@@ -1117,6 +1664,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       // `dividirEmAtributos` em `variante-composta.ts`.
       pares: comChaveDeRender(dividirEmAtributos(v.name, v.value)),
       sku: v.sku || "",
+      codigoBarras: v.codigoBarras || "",
       stockIncrement: v.stockIncrement.toString(),
       priceOverride: v.priceOverride?.toString() || "",
       active: v.active,
@@ -1125,16 +1673,147 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     setShowVariantForm(true);
   }, []);
 
+  // O Preço de Venda como texto: um rascunho restaurado pode trazer o preço
+  // como número (rascunho de produto copiado do banco), e `.trim()` em número
+  // derrubava a tela inteira na restauração.
+  const precoDoProdutoTexto = String(formData.price ?? "");
+
+  /**
+   * Grade: as linhas que o modal entregou entram na lista como variantes
+   * comuns com id `temp-` — o MESMO caminho da variante unitária. A gravação
+   * em lote é o `upsertVariants` de sempre, no salvar do produto; nada de
+   * caminho novo de persistência. A trava de um grupo é conferida AQUI de
+   * novo (o modal já bloqueou no "Gerar") porque o estado do formulário é
+   * dono deste lado da parede.
+   */
+  const handleEfetivarGrade = (
+    linhas: LinhaProntaDaGrade[],
+    precoDaGrade?: number,
+  ): boolean => {
+    if (linhas.length === 0) return false;
+
+    const trava = travaDeUmGrupoSo(formData.variants, null, linhas[0].name);
+    if (trava.bloqueia) {
+      toast.error(`Este produto já usa "${trava.grupoEmUso}"`, {
+        description:
+          "Cada produto aceita um tipo de variação só. A grade precisa usar " +
+          "o atributo que o produto já tem.",
+        duration: 10000,
+      });
+      return false;
+    }
+
+    // Defesa em profundidade contra o mesmo lote entregue duas vezes: só
+    // entra a combinação que a lista, NO MOMENTO de gravar o estado, ainda
+    // não tem (comparada pela chave da grade, não pelo texto).
+    //
+    // O Preço de Venda que a grade deu ao produto entra NA MESMA atualização das
+    // linhas (as iguais a ele já vêm em Auto) e só se o campo ainda estiver
+    // vazio: o lote entregue de novo, ou um preço digitado no meio, nunca é
+    // sobrescrito. A trava de cima já recusou antes de chegar aqui, então
+    // recusa não deixa preço pela metade.
+    const aplicaPrecoDaGrade =
+      precoDaGrade !== undefined && precoDoProdutoTexto.trim() === "";
+    setFormData((prev) => {
+      const jaTem = new Set(prev.variants.map((v) => chaveDaIdentidade(v)));
+      const novas = linhas.filter(
+        (linha) => !jaTem.has(chaveDaIdentidade(linha)),
+      );
+      const comVariacoes = formComVariacoes(prev, [
+        ...prev.variants,
+        ...novas.map(
+          (linha) =>
+            ({
+              ...linha,
+              id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            }) as any,
+        ),
+      ]);
+      return aplicaPrecoDaGrade &&
+        precoDaGrade !== undefined &&
+        String(prev.price ?? "").trim() === ""
+        ? { ...comVariacoes, price: precoDaGrade.toFixed(2) }
+        : comVariacoes;
+    });
+    if (aplicaPrecoDaGrade) setPrecoVeioDaGrade(true);
+    setShowGradeForm(false);
+    toast.success(
+      linhas.length === 1
+        ? "Variante da grade criada — ela entra na loja quando o produto for salvo."
+        : `${linhas.length} variantes da grade criadas — elas entram na loja quando o produto for salvo.`,
+    );
+    return true;
+  };
+
+  // Desligar/religar na própria linha: a variação segue existindo (SKU,
+  // estoque e cadastro guardados) mas some da loja enquanto estiver desligada.
+  // O aviso só vem ao DESLIGAR, e diz o que acontece com quem compra. A lista
+  // passa por `formComVariacoes`: desligar a última ligada zera o estoque do
+  // produto (ver `estoque-das-variacoes.ts`). Nada vai para `deletedVariantIds`.
+  const handleToggleVariantActive = useCallback((v: ProductVariant) => {
+    setFormData((prev) =>
+      formComVariacoes(
+        prev,
+        prev.variants.map((x) =>
+          x.id === v.id ? { ...x, active: !x.active } : x,
+        ),
+      ),
+    );
+    if (v.active) {
+      toast.info(
+        `${v.name}: ${v.value} desligada. Ela deixa de aparecer na loja depois que você salvar o produto e volta quando você religar.`,
+      );
+    }
+  }, []);
+
   const confirmDeleteVariant = () => {
     if (!variantToDelete) return;
     if (!variantToDelete.startsWith("temp-")) {
       setDeletedVariantIds((prev) => [...prev, variantToDelete]);
     }
-    setFormData((prev) => ({
-      ...prev,
-      variants: prev.variants.filter((v) => v.id !== variantToDelete),
-    }));
+    setFormData((prev) =>
+      formComVariacoes(
+        prev,
+        prev.variants.filter((v) => v.id !== variantToDelete),
+      ),
+    );
     setVariantToDelete(null);
+  };
+
+  // Primeiro campo com erro que BLOQUEIA o salvar, na ordem em que a tela os
+  // mostra (básico, depois "Custo e lucro", depois "Avançado"). O AVISO de
+  // custo maior que o preço não entra: não bloqueia. Mesma lista do `isValid`.
+  const idDoPrimeiroCampoComErro = (): string | null => {
+    if (priceError) return "product-sale-price";
+    if (stockError) return "product-stock";
+    if (costError && !costError.startsWith("Aviso"))
+      return "product-cost-price";
+    if (originalPriceError) return "product-original-price";
+    if (skuError) return "product-sku";
+    if (codigoBarrasError) return "product-codigo-barras";
+    if (estoqueMinimoError) return "product-estoque-minimo";
+    return null;
+  };
+
+  // Mostra o campo e põe o foco nele. Se está dentro de uma SecaoRecolhivel
+  // que a lojista FECHOU com o erro lá dentro, o `temErro` dela já era
+  // verdadeiro (não muda, então não reabre sozinha): a gente aperta o
+  // cabeçalho dela, o mesmo gesto da lojista. Nada desmonta. O foco vai depois
+  // do commit (`requestAnimationFrame`), quando a seção já saiu do `hidden`.
+  const mostrarEFocarCampo = (id: string) => {
+    const painel = document
+      .getElementById(id)
+      ?.closest<HTMLElement>("[hidden]");
+    if (painel?.id) {
+      for (const cabecalho of document.querySelectorAll<HTMLButtonElement>(
+        "button[aria-controls]",
+      )) {
+        if (cabecalho.getAttribute("aria-controls") === painel.id) {
+          cabecalho.click();
+        }
+      }
+    }
+    requestAnimationFrame(() => document.getElementById(id)?.focus());
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -1148,7 +1827,56 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       toast.error("Não é possível salvar alterações em modo offline.");
       return;
     }
+    // Rede de segurança: com erro bloqueante num campo não grava e leva até ele
+    // (abre a seção recolhida, se for o caso). Pela tela este ponto não é
+    // alcançável — o botão de salvar fica desligado nesse estado e o <form>
+    // não tem botão de envio; quem leva a lojista ao campo é o motivo do
+    // bloqueio, que vira botão (acima). Vale para um submit sintético.
+    const campoComErro = idDoPrimeiroCampoComErro();
+    if (campoComErro) {
+      mostrarEFocarCampo(campoComErro);
+      return;
+    }
     setIsSubmitting(true);
+
+    // Ressalva da revisão da C5.2: o salvar ESPERA a checagem de duplicidade.
+    // Sem este trecho, um clique durante uma checagem em voo (o blur do campo
+    // acabou de disparar a RPC) gravava antes do veredito chegar. A checagem
+    // aqui é nova — não lê o estado que o blur escreveu — e cobre o produto
+    // e cada variação com código. O `isSubmitting` já está true: re-cliques
+    // caem na guarda acima enquanto se espera. Falha de rede NÃO bloqueia
+    // (conferirCodigoNoBanco devolve "" sem veredito); a colisão real que
+    // escapar vira 23505 traduzido pela C5.1.
+    const codigoDoProdutoNoSubmit = normalizarCodigoBarras(
+      formData.codigoBarras,
+    );
+    if (codigoDoProdutoNoSubmit) {
+      const mensagem = await conferirCodigoNoBanco(
+        codigoDoProdutoNoSubmit,
+        "produto",
+      );
+      if (mensagem) {
+        toast.error(mensagem);
+        setIsSubmitting(false);
+        return;
+      }
+    }
+    for (const variante of formData.variants) {
+      const codigoDaVariante = normalizarCodigoBarras(
+        variante.codigoBarras || "",
+      );
+      if (!codigoDaVariante) continue;
+      const mensagem = await conferirCodigoNoBanco(
+        codigoDaVariante,
+        "variacao",
+        variante.id,
+      );
+      if (mensagem) {
+        toast.error(mensagem);
+        setIsSubmitting(false);
+        return;
+      }
+    }
 
     const cleanNumberString = (val: string) => {
       if (!val) return "";
@@ -1216,6 +1944,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     const sanitizedSku = formData.sku
       ? formData.sku.trim().toUpperCase().replace(/\s+/g, "-")
       : undefined;
+    const sanitizedCodigoBarras = formData.codigoBarras
+      ? normalizarCodigoBarras(formData.codigoBarras)
+      : undefined;
 
     /*
       CAMPO VAZIO VAI COMO `null`, NUNCA COMO `undefined` (ADMIN-050, #96).
@@ -1239,6 +1970,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           ? Math.max(0, pOriginal)
           : null,
       stock: Math.max(0, pStock),
+      // Vazio = `null` (volta ao padrão, 5); número inteiro >= 0 vai como está.
+      // Texto inválido já bloqueou o salvar acima, então aqui nunca é NaN.
+      estoqueMinimo: lerEstoqueMinimo(formData.estoqueMinimo).valor,
       category: formData.category,
       images: formData.images,
       freeShipping: formData.freeShipping,
@@ -1247,6 +1981,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       metaTitle: formData.metaTitle.trim(),
       metaDescription: formData.metaDescription.trim(),
       sku: sanitizedSku || null,
+      codigoBarras: sanitizedCodigoBarras || null,
       variants: formData.variants,
       sold: productId ? currentProduct?.sold || 0 : 0,
       /*
@@ -1296,20 +2031,74 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             sku: v.sku
               ? v.sku.trim().toUpperCase().replace(/\s+/g, "-")
               : undefined,
+            codigoBarras: v.codigoBarras
+              ? normalizarCodigoBarras(v.codigoBarras)
+              : undefined,
           }));
           await upsertVariants(productId, variantsWithSanitizedSku);
         }
       } else {
+        // Este formulário já criou o produto e a ida para a edição não
+        // aconteceu (o App descarta uma navegação a menos de 400 ms de outra).
+        // Um segundo addProduct seria a cópia que a trava existe para impedir.
+        if (produtoNovoJaCriadoRef.current) {
+          toast.error(
+            "Este produto já foi criado. Abra-o na lista de produtos para terminar a edição.",
+          );
+          setIsSubmitting(false);
+          return;
+        }
         const variantsWithSanitizedSku = formData.variants.map((v) => ({
           ...v,
           sku: v.sku
             ? v.sku.trim().toUpperCase().replace(/\s+/g, "-")
             : undefined,
+          codigoBarras: v.codigoBarras
+            ? normalizarCodigoBarras(v.codigoBarras)
+            : undefined,
         }));
-        await addProduct({
+        const criado = await addProduct({
           ...productData,
           variants: variantsWithSanitizedSku,
         });
+
+        // O produto foi criado mas a grade NÃO gravou (o hook já avisou por
+        // toast). Dar "Salvo" e sair para a lista esconderia isso -- e ficar
+        // nesta tela deixaria o id do produto só no estado dela: recarregar o
+        // app, ou voltar em "Novo produto", recuperaria o rascunho SEM id e o
+        // "Publicar" criaria uma segunda cópia. Por isso o rascunho vai para a
+        // chave de EDIÇÃO do produto criado e a lojista é levada para a edição
+        // dele, onde "Salvar" atualiza a linha e regrava a grade.
+        if (criado?.variantesNaoSalvas) {
+          // ORDEM: primeiro trava o auto-save (um timer de 1 s pode estar
+          // agendado e reescreveria a chave de produto novo), depois move.
+          produtoNovoJaCriadoRef.current = true;
+          try {
+            localStorage.setItem(
+              `ikcous_product_form_draft_edit_${criado.id}`,
+              JSON.stringify(formData),
+            );
+          } catch (erroDeCota) {
+            // Sem rascunho a lojista perde só a digitação da grade; com a chave
+            // de produto novo de pé ela criaria a cópia. Apagar vence.
+            console.warn(
+              "[AdminProductFormView] Não consegui guardar o rascunho de edição:",
+              erroDeCota,
+            );
+          }
+          localStorage.removeItem("ikcous_product_form_draft");
+          const motivo = criado.variantesNaoSalvas.motivo;
+          toast.error(
+            `O produto foi criado, mas as variações NÃO foram salvas.${
+              motivo ? ` ${motivo}` : ""
+            } Você está na edição dele: corrija e toque em Salvar para tentar de novo -- isso atualiza este produto, não cria outro.`,
+            { duration: 30000 },
+          );
+          setIsSubmitting(false);
+          onSetDirty?.(false);
+          onNavigate("admin-product-form", criado.id, true);
+          return;
+        }
       }
 
       setIsSubmitting(false);
@@ -1353,6 +2142,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     };
   }, []);
 
+  // Combina os dois estados de erro do código de barras do produto (ver o
+  // comentário perto das declarações de estado, acima) para o render e para
+  // este gate — a duplicidade de REDE não bloqueia sozinha por mais tempo do
+  // que o campo continuar com o mesmo valor que a gerou.
+  const codigoBarrasError = codigoBarrasErroLocal || codigoBarrasErroRede;
+
+  // "Avisar quando o estoque chegar a": derivado do texto, sem estado próprio —
+  // o erro some no instante em que o texto volta a ser válido.
+  const estoqueMinimoError = lerEstoqueMinimo(formData.estoqueMinimo).erro;
+
   const isValid =
     formData.name &&
     formData.description &&
@@ -1362,10 +2161,39 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     Number.parseFloat(formData.price) > 0 &&
     Number.parseInt(formData.stock) >= 0 &&
     !skuError &&
+    !codigoBarrasError &&
     !priceError &&
     (!costError || costError.startsWith("Aviso")) &&
     !originalPriceError &&
+    !estoqueMinimoError &&
     !stockError;
+
+  // UMA conta para o botão e para o aviso (se fossem duas, divergiriam: um
+  // botão cinza sem frase, ou uma frase sobre um botão ligado). `null` = nada
+  // impede publicar por validação/envio de foto. Offline tem banner próprio.
+  // Enquanto envia foto, a frase é a do envio; passado o envio, a de
+  // validação -- e uma foto que FALHOU nunca entra aqui (não bloqueia).
+  const motivoDoBloqueio: string | null = isOffline
+    ? null
+    : isImageUploading
+      ? motivoDoEnvioDeFotos(progressoDoEnvio, isUploadingAdjusted)
+      : isValid
+        ? null
+        : motivoDoBloqueioDoProduto(
+            formData,
+            !!(
+              skuError ||
+              codigoBarrasError ||
+              priceError ||
+              (costError && !costError.startsWith("Aviso")) ||
+              originalPriceError ||
+              estoqueMinimoError ||
+              stockError
+            ),
+            !!productId,
+          );
+  const botaoDeSalvarDesligado =
+    isSubmitting || showSuccess || isOffline || motivoDoBloqueio !== null;
 
   // B3 da 2a revisao: produto pediu para editar mas nao carregou —
   // formulario vazio editavel e armadilha (save destrutivo). Erro na tela.
@@ -1387,16 +2215,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             />
           </svg>
         </div>
-        <p className="mt-6 text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+        <p className="mt-6 text-[11px] font-black uppercase tracking-[0.2em] text-red-400">
           Não foi possível carregar este produto
         </p>
-        <p className="mt-1 text-[9px] text-zinc-500">
+        <p className="mt-1 text-[11px] text-zinc-500">
           Verifique a conexão — o formulário fica bloqueado para proteger os
           dados
         </p>
         <button
           onClick={() => window.location.reload()}
-          className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+          className="mt-4 min-h-11 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
         >
           Recarregar
         </button>
@@ -1517,7 +2345,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                       <h3 className="text-xl font-black tracking-tight">
                         Nova Categoria
                       </h3>
-                      <p className="mt-1 text-[10px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+                      <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
                         Classificação de Estoque
                       </p>
                     </div>
@@ -1527,7 +2355,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                     <div className="space-y-2">
                       <label
                         htmlFor="cat-name"
-                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                       >
                         Nome do Setor / Categoria
                       </label>
@@ -1626,7 +2454,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                       <h3 className="text-xl font-black tracking-tight">
                         {editingVariant ? "Editar Variante" : "Nova Variante"}
                       </h3>
-                      <p className="mt-1 text-[10px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+                      <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
                         Grade de Produto
                       </p>
                     </div>
@@ -1643,7 +2471,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                           <>
                             <label
                               htmlFor="variant-name"
-                              className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                              className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                             >
                               Atributo (ex: Cor, Tamanho)
                             </label>
@@ -1672,7 +2500,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                                       )
                                     }
                                     className={cn(
-                                      "px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95",
+                                      "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
                                       par.name === attr
                                         ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
                                         : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
@@ -1685,7 +2513,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                             )}
                             <label
                               htmlFor="variant-value"
-                              className="ml-1 pt-2 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                              className="ml-1 pt-2 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                             >
                               Valor do Atributo
                             </label>
@@ -1758,7 +2586,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                           pares: [...p.pares, parNovo()],
                         }))
                       }
-                      className="w-full rounded-2xl border border-dashed border-white/10 bg-zinc-950/60 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
+                      className="min-h-11 w-full rounded-2xl border border-dashed border-white/10 bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
                     >
                       + Atributo
                     </button>
@@ -1768,9 +2596,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                       <div className="space-y-2">
                         <label
                           htmlFor="variant-sku"
-                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                         >
-                          Código SKU
+                          Código interno (SKU)
                         </label>
                         <LocalBufferedInput
                           id="variant-sku"
@@ -1787,15 +2615,15 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                             }))
                           }
                           className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                          placeholder="Ex: SKU-COR-TAM"
+                          placeholder="Ex: COR-TAM"
                         />
                       </div>
                       <div className="space-y-2">
                         <label
                           htmlFor="variant-status"
-                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                         >
-                          Status no Catálogo
+                          Aparece na loja?
                         </label>
                         <button
                           id="variant-status"
@@ -1828,12 +2656,80 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                       </div>
                     </div>
 
+                    {/* Código de Barras (C5.2) — a caixa da PP tem um código
+                        diferente da caixa da M: cada variação leva o seu.
+                        O botão "Ler com a câmera" (C5.3) usa o slot
+                        reservado ao lado do input. */}
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="variant-codigo-barras"
+                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                      >
+                        Código de barras
+                      </label>
+                      {/* No celular o botão desce para baixo do campo: lado a
+                          lado, os 13 dígitos não cabiam (onda J). */}
+                      <div className="flex flex-col gap-2 xs:flex-row">
+                        <LocalBufferedInput
+                          id="variant-codigo-barras"
+                          name="variant-codigo-barras"
+                          type="text"
+                          inputMode="numeric"
+                          data-testid="codigo-barras-variacao"
+                          value={variantFormData.codigoBarras}
+                          onFlush={(val) =>
+                            setVariantFormData((p) => ({
+                              ...p,
+                              codigoBarras: normalizarCodigoBarras(val),
+                            }))
+                          }
+                          onBlur={(e) =>
+                            aoSairDoCampoDeCodigoDeBarras(
+                              e.target.value,
+                              "variacao",
+                              editingVariant?.id,
+                            )
+                          }
+                          className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          placeholder="Ex: 7891234567890"
+                        />
+                        {/* C5.3 — some sem câmera: o leitor físico USB digita
+                            direto no campo acima, sem precisar deste botão. */}
+                        {temCameraDisponivel() && (
+                          <button
+                            type="button"
+                            onClick={() => setLeitorAberto("variacao")}
+                            className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                            title="Ler com a câmera"
+                          >
+                            <Camera className="size-4" />
+                            Ler com a câmera
+                          </button>
+                        )}
+                      </div>
+                      <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
+                        Opcional. É o código impresso na embalagem desta
+                        variação; a tela Vender lê ele pela câmera.
+                      </span>
+                      {variantCodigoBarrasError && (
+                        <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                          {variantCodigoBarrasError}
+                        </span>
+                      )}
+                      {!variantCodigoBarrasError &&
+                        variantCodigoBarrasAvisoRede && (
+                          <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
+                            {variantCodigoBarrasAvisoRede}
+                          </span>
+                        )}
+                    </div>
+
                     {/* Quantidade em Estoque & Sobrescrever Preço */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <label
                           htmlFor="variant-stock"
-                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                         >
                           Quantidade em Estoque
                         </label>
@@ -1850,16 +2746,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                           }
                           className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                         />
-                        <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
+                        <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                           Estoque físico real para esta variação específica.
                         </span>
                       </div>
                       <div className="space-y-2">
                         <label
                           htmlFor="variant-price"
-                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                         >
-                          Sobrescrever R$
+                          Preço diferente nesta variação
                         </label>
                         <div className="relative flex items-center">
                           <span className="absolute left-5 text-xs font-black text-zinc-600">
@@ -1880,7 +2776,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                             placeholder="Auto"
                           />
                         </div>
-                        <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
+                        <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                           Deixe em branco para usar o preço padrão.
                         </span>
                       </div>
@@ -1891,12 +2787,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                         a imagem já foi enviada quando o produto a recebeu, a
                         variante só referencia a URL). */}
                     <div className="space-y-2">
-                      <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                      <span className="ml-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500">
                         Imagem da Variante (Opcional)
                       </span>
                       {formData.images.length === 0 &&
                       !variantFormData.imageUrl ? (
-                        <p className="rounded-2xl border border-white/5 bg-zinc-950/60 px-4 py-3 text-[10px] font-bold leading-relaxed text-zinc-500">
+                        <p className="rounded-2xl border border-white/5 bg-zinc-950/60 px-4 py-3 text-[11px] font-bold leading-relaxed text-zinc-500">
                           Adicione imagens ao produto primeiro — a variante
                           aponta para uma delas em vez de enviar arquivo novo.
                         </p>
@@ -1919,14 +2815,14 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                                     imageUrl: "",
                                   }))
                                 }
-                                className="relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-emerald-500 ring-2 ring-emerald-500/40 transition-all"
+                                className="relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-emerald-500 ring-2 ring-emerald-500/40 transition-all"
                               >
                                 <img
                                   src={variantFormData.imageUrl}
                                   alt=""
                                   className="size-full object-cover"
                                 />
-                                <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[8px] font-black uppercase tracking-widest text-black">
+                                <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[11px] font-black text-black">
                                   Atual
                                 </span>
                               </button>
@@ -1951,7 +2847,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                                   }))
                                 }
                                 className={cn(
-                                  "relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
+                                  "relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
                                   selecionada
                                     ? "border-2 border-emerald-500 ring-2 ring-emerald-500/40"
                                     : "border-white/10 hover:border-emerald-500/50",
@@ -1963,7 +2859,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                                   className="size-full object-cover"
                                 />
                                 {selecionada && (
-                                  <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[8px] font-black uppercase tracking-widest text-black">
+                                  <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[11px] font-black text-black">
                                     Selecionada
                                   </span>
                                 )}
@@ -1972,7 +2868,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                           })}
                         </div>
                       )}
-                      <span className="ml-1 block text-[10px] leading-tight text-zinc-500">
+                      <span className="ml-1 block text-[11px] leading-tight text-zinc-500">
                         Aponta para uma das imagens do produto — nada é enviado
                         de novo. Facilita a visualização do produto na tela de
                         checkout e na seleção de atributos.
@@ -1984,6 +2880,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                     <button
                       type="button"
                       onClick={() => {
+                        // Ressalva da revisão da C5.2: o rascunho do modal
+                        // permanece (reabrir recupera o que estava digi-
+                        // tado), mas veredito de duplicidade e aviso de rede
+                        // são da checagem passada — não sobrevivem ao
+                        // fechar. O leitor de câmera aberto também morre
+                        // aqui (sem isto, um Cancelar durante a leitura
+                        // deixaria um leitor órfão na página).
+                        setVariantCodigoBarrasError("");
+                        setVariantCodigoBarrasAvisoRede("");
+                        setLeitorAberto(null);
                         setShowVariantForm(false);
                         setEditingVariant(null);
                       }}
@@ -1999,9 +2905,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                       }}
                       className="flex-[2] rounded-2xl bg-emerald-500 py-4 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
                     >
-                      {editingVariant
-                        ? "Salvar Protocolo"
-                        : "Efetivar Variante"}
+                      {editingVariant ? "Salvar" : "Salvar variação"}
                     </button>
                   </div>
                 </motion.div>
@@ -2010,6 +2914,22 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           </AnimatePresence>,
           document.body,
         )}
+
+      {/* Modal da grade de combinações. Ele não grava nada: efetivar entrega
+          as linhas e elas entram na lista de variantes abaixo, gravadas pelo
+          upsertVariants de sempre no salvar. Ele mesmo se põe no body. */}
+      <ModalVarianteGrade
+        aberto={showGradeForm}
+        onFechar={() => setShowGradeForm(false)}
+        variantesExistentes={formData.variants}
+        sugestoesDeAtributo={suggestedAttributes.filter(
+          (attr) => !attr.includes("/"),
+        )}
+        grupoUnicoEmUso={gruposDeVariacao(formData.variants).at(0) ?? null}
+        skusDaLoja={skusDaLoja}
+        precoDoProduto={precoDoProdutoTexto}
+        onEfetivar={handleEfetivarGrade}
+      />
 
       <header className="sticky top-0 z-30 border-b border-white/5 bg-zinc-950/80 px-4 py-3 backdrop-blur-md md:px-6 md:py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
@@ -2021,19 +2941,25 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                     AdminPageHeader, igual ao formulário de cupom; o botão de
                     ajuda segue dentro da linha do título. */}
                 <AdminPageHeader
-                  titulo={productId ? "Editar Produto" : "Novo Produto"}
+                  titulo={`${productId ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-product-form"].toLowerCase()}`}
                 >
                   <button
                     type="button"
                     onClick={() => setShowHelpModal(true)}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+                    className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
                     title="Guia de Cadastro e Ajuda"
                   >
-                    <HelpCircle className="size-3.5" />
+                    {/* O botão é a área de toque de 44px; o círculo de 28px é só o desenho. */}
+                    <span
+                      aria-hidden="true"
+                      className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                    >
+                      <HelpCircle className="size-3.5" />
+                    </span>
                   </button>
                 </AdminPageHeader>
               </div>
-              <p className="mt-0.5 hidden items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500 sm:flex md:text-[10px]">
+              <p className="mt-0.5 hidden items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500 sm:flex">
                 <ShieldCheck className="size-3 shrink-0 text-emerald-500" />
                 Ambiente de Gerenciamento Unificado
               </p>
@@ -2042,7 +2968,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
           <div className="flex items-center gap-2 md:gap-3">
             <div className="hidden flex-col items-end md:flex">
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+              <span className="text-[11px] font-black uppercase tracking-widest text-zinc-500">
                 ID do Sistema
               </span>
               <span className="font-mono text-xs font-bold text-zinc-300">
@@ -2051,7 +2977,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             </div>
 
             {isOffline && (
-              <span className="mr-1 animate-pulse rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-rose-500">
+              <span className="mr-1 animate-pulse rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-rose-500">
                 Sem Conexão
               </span>
             )}
@@ -2059,19 +2985,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             <button
               type="button"
               onClick={() => handleSubmit()}
-              disabled={
-                // #98 (ADMIN-060): showSuccess entra aqui — entre o sucesso
-                // e a navegação (1,5s) o botão mostra "Salvo" mas
-                // isSubmitting já é false; sem showSuccess o botão reabria
-                // para um segundo clique nessa janela.
-                !isValid ||
-                isSubmitting ||
-                showSuccess ||
-                isOffline ||
-                isImageUploading
-              }
+              // #98 (ADMIN-060): `showSuccess` entra em `botaoDeSalvarDesligado` —
+              // entre o sucesso e a navegação (1,5s) o botão mostra "Salvo"
+              // mas isSubmitting já é false; sem ele o botão reabria para um
+              // segundo clique nessa janela.
+              disabled={botaoDeSalvarDesligado}
               className={cn(
-                "px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[9px] md:text-[10px] border shrink-0",
+                "min-h-11 min-w-11 px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[11px] border shrink-0",
                 isOffline
                   ? "bg-zinc-900 border-rose-500/20 text-rose-400 cursor-not-allowed"
                   : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-emerald-950 border-white/10 shadow-lg shadow-emerald-500/20 disabled:from-zinc-800/80 disabled:to-zinc-800/80 disabled:text-zinc-500 disabled:border-white/5 disabled:shadow-none disabled:pointer-events-none",
@@ -2120,6 +3040,33 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             </span>
           </div>
         )}
+        {motivoDoBloqueio && (
+          <p
+            data-testid="motivo-do-bloqueio"
+            role="status"
+            className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs font-bold text-amber-300"
+          >
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+            {/* Com erro num CAMPO (e não foto subindo), o motivo vira um botão
+                de texto que leva até o campo — abre a seção recolhida onde o
+                erro ficou escondido e põe o foco nele. O botão de salvar
+                continua desligado; isto só mostra o caminho. */}
+            {!isImageUploading && idDoPrimeiroCampoComErro() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const id = idDoPrimeiroCampoComErro();
+                  if (id) mostrarEFocarCampo(id);
+                }}
+                className="min-h-11 text-left font-bold underline underline-offset-2"
+              >
+                {motivoDoBloqueio}
+              </button>
+            ) : (
+              <span>{motivoDoBloqueio}</span>
+            )}
+          </p>
+        )}
         {/* Visual Media Section */}
         <section className="group relative">
           <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-5 transition-opacity group-hover:opacity-10">
@@ -2137,114 +3084,176 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               <button
                 type="button"
                 onClick={() => setShowPhotoGuide((prev) => !prev)}
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                  showPhotoGuide
-                    ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                )}
+                className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
                 title="Ajuda / Guia de Fotos"
               >
-                ?
+                {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                    showPhotoGuide
+                      ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                      : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                  )}
+                >
+                  ?
+                </span>
               </button>
             </div>
 
-            {/* "+" Button - Only visible when images exist */}
+            {/* "+" Button e "Tirar Foto" - só visíveis quando já há imagens */}
             {formData.images.length > 0 && (
-              <label
-                htmlFor="product-image-upload"
-                className={cn(
-                  "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
-                  (isSubmitting || isImageUploading) &&
-                    "opacity-40 pointer-events-none",
-                )}
-                title="Adicionar Mais Imagens"
-              >
-                <Plus className="size-5" />
-                <input
-                  id="product-image-upload"
-                  name="product-images"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  disabled={isSubmitting || isImageUploading}
-                />
-              </label>
+              <div className="flex items-center gap-2">
+                {/* C5.3 — "Tirar foto": SEGUNDO input, com `capture`, para
+                    não tirar a galeria do celular do input de cima (ver
+                    comentário completo no estado vazio, abaixo). */}
+                <label
+                  htmlFor="product-image-capture"
+                  className={cn(
+                    "flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+                    (isSubmitting || isImageUploading) &&
+                      "opacity-40 pointer-events-none",
+                  )}
+                  title="Tirar Foto"
+                >
+                  <Camera className="size-5" />
+                  <input
+                    id="product-image-capture"
+                    name="product-image-capture"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
+                </label>
+                <label
+                  htmlFor="product-image-upload"
+                  className={cn(
+                    "flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+                    (isSubmitting || isImageUploading) &&
+                      "opacity-40 pointer-events-none",
+                  )}
+                  title="Adicionar Mais Imagens"
+                >
+                  <Plus className="size-5" />
+                  <input
+                    id="product-image-upload"
+                    name="product-images"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
+                </label>
+              </div>
             )}
           </div>
 
           <div className="w-full">
             {formData.images.length === 0 ? (
-              // Falso positivo: o label TEM texto visível ("Adicionar Fotos do
-              // Produto" e a instrução de arrastar), e o input com o id casado
-              // está dentro dele. A regra só olha `depth: 2` por padrão e o
-              // texto está em label > div > div > p. Pôr `aria-label` aqui
-              // resolveria o lint e pioraria a acessibilidade: substituiria
-              // esse texto rico pelo rótulo curto no nome acessível.
-              // eslint-disable-next-line jsx-a11y/label-has-associated-control
-              <label
-                htmlFor="product-image-upload"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={async (e) => {
-                  e.preventDefault();
-                  setIsDragging(false);
-                  if (isOffline) {
-                    toast.error("Não é possível enviar imagens offline.");
-                    return;
-                  }
-                  if (isImageUploading) return;
-                  const files = Array.from(e.dataTransfer.files || []);
-                  await processAndUploadImages(files);
-                }}
-                className={cn(
-                  "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
-                  isDragging
-                    ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
-                    : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
-                  (isSubmitting || isImageUploading) &&
-                    "opacity-40 pointer-events-none",
-                )}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
-                <div className="relative z-10 flex flex-col items-center text-center p-6 space-y-3">
-                  <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all duration-300 shadow-xl">
-                    <Camera className="size-6" />
+              <>
+                {/* Falso positivo: o label TEM texto visível ("Adicionar
+                    Fotos do Produto" e a instrução de arrastar), e o input
+                    com o id casado está dentro dele. A regra só olha
+                    `depth: 2` por padrão e o texto está em label > div >
+                    div > p. Pôr `aria-label` aqui resolveria o lint e
+                    pioraria a acessibilidade: substituiria esse texto rico
+                    pelo rótulo curto no nome acessível. */}
+                {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                <label
+                  htmlFor="product-image-upload"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    if (isOffline) {
+                      toast.error("Não é possível enviar imagens offline.");
+                      return;
+                    }
+                    if (isImageUploading) return;
+                    const files = Array.from(e.dataTransfer.files || []);
+                    await processAndUploadImages(files);
+                  }}
+                  className={cn(
+                    "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
+                    isDragging
+                      ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+                      : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
+                    (isSubmitting || isImageUploading) &&
+                      "opacity-40 pointer-events-none",
+                  )}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
+                  <div className="relative z-10 flex flex-col items-center text-center p-6 space-y-3">
+                    <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all duration-300 shadow-xl">
+                      <Camera className="size-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-black uppercase tracking-widest text-zinc-300 group-hover/upload:text-emerald-400 transition-colors">
+                        {isDragging
+                          ? "Solte para enviar!"
+                          : "Adicionar Fotos do Produto"}
+                      </p>
+                      <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
+                        Arraste as imagens aqui ou clique para buscar
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-2 text-[11px] font-black uppercase tracking-wider text-zinc-650">
+                      <span>Proporção ideal: 4:5</span>
+                      <span className="size-1 rounded-full bg-zinc-700" />
+                      <span>Máx: 10 fotos</span>
+                      <span className="size-1 rounded-full bg-zinc-700" />
+                      <span>Até 12 MB cada</span>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-black uppercase tracking-widest text-zinc-300 group-hover/upload:text-emerald-400 transition-colors">
-                      {isDragging
-                        ? "Solte para enviar!"
-                        : "Adicionar Fotos do Produto"}
-                    </p>
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                      Arraste as imagens aqui ou clique para buscar
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 pt-2 text-[8px] font-black uppercase tracking-widest text-zinc-650">
-                    <span>Proporção ideal: 4:5</span>
-                    <span className="size-1 rounded-full bg-zinc-700" />
-                    <span>Máx: 10 fotos</span>
-                    <span className="size-1 rounded-full bg-zinc-700" />
-                    <span>Até 12MB cada</span>
-                  </div>
-                </div>
-                <input
-                  id="product-image-upload"
-                  name="product-images"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  disabled={isSubmitting || isImageUploading}
-                />
-              </label>
+                  <input
+                    id="product-image-upload"
+                    name="product-images"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
+                </label>
+                {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`, fora
+                  do label de cima. O input de galeria (acima) fica SEM
+                  `capture` de propósito — com `capture` o celular deixa de
+                  oferecer a galeria e só abre a câmera. Os dois chamam o
+                  MESMO `handleImageUpload`: a origem do arquivo (câmera ou
+                  galeria) não muda o que a tela faz com ele. */}
+                <label
+                  htmlFor="product-image-capture"
+                  className={cn(
+                    "mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/30 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
+                    (isSubmitting || isImageUploading) &&
+                      "opacity-40 pointer-events-none",
+                  )}
+                >
+                  <Camera className="size-4" />
+                  Tirar Foto
+                  <input
+                    id="product-image-capture"
+                    name="product-image-capture"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
+                </label>
+              </>
             ) : (
               <div className="relative w-full">
                 {/* Single horizontal scroll carousel for ALL images */}
@@ -2278,7 +3287,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                                 <button
                                   type="button"
                                   onClick={() => openAdjuster(image, index)}
-                                  className="flex size-9 items-center justify-center rounded-lg bg-emerald-500 text-emerald-950 shadow-lg transition-all hover:scale-110 hover:bg-emerald-400 active:scale-95"
+                                  className="flex size-11 items-center justify-center rounded-lg bg-emerald-500 text-emerald-950 shadow-lg transition-all hover:scale-110 hover:bg-emerald-400 active:scale-95"
                                   title="Ajustar e Cortar"
                                 >
                                   <Scissors className="size-4" />
@@ -2286,7 +3295,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                                 <button
                                   type="button"
                                   onClick={() => removeImage(index)}
-                                  className="flex size-9 items-center justify-center rounded-lg bg-red-500 text-white shadow-lg transition-all hover:scale-110 hover:bg-red-400 active:scale-95"
+                                  className="flex size-11 items-center justify-center rounded-lg bg-red-500 text-white shadow-lg transition-all hover:scale-110 hover:bg-red-400 active:scale-95"
                                   title="Excluir"
                                 >
                                   <Trash2 className="size-4" />
@@ -2307,7 +3316,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                                 }`}
                               >
                                 <span
-                                  className={`flex size-4.5 cursor-help items-center justify-center rounded-full border border-white/10 text-[8px] font-black shadow-lg ${
+                                  className={`flex size-4.5 cursor-help items-center justify-center rounded-full border border-white/10 text-[11px] font-black shadow-lg ${
                                     meta.status === "excellent"
                                       ? "bg-emerald-500 text-emerald-950"
                                       : meta.status === "warning_aspect"
@@ -2325,7 +3334,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                                         ? "⚠"
                                         : "i"}
                                 </span>
-                                <div className="pointer-events-none absolute bottom-6 right-0 z-30 w-36 rounded-xl border border-white/10 bg-zinc-950 p-2.5 text-[8px] font-black uppercase leading-normal tracking-wider text-white opacity-0 shadow-2xl transition-opacity group-hover/tooltip:opacity-100">
+                                <div className="pointer-events-none absolute bottom-6 right-0 z-30 w-36 rounded-xl border border-white/10 bg-zinc-950 p-2.5 text-[11px] font-black uppercase leading-normal tracking-wider text-white opacity-0 shadow-2xl transition-opacity group-hover/tooltip:opacity-100">
                                   <span className="mb-0.5 block text-emerald-400">
                                     Dim: {meta.width}x{meta.height}
                                   </span>
@@ -2343,7 +3352,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                           {/* Cover / Index Badge */}
                           <div
                             className={cn(
-                              "absolute bottom-2.5 left-2.5 z-10 rounded-md border px-1.5 py-0.5 text-[7px] font-black uppercase tracking-widest backdrop-blur-md",
+                              "absolute bottom-2.5 left-2.5 z-10 rounded-md border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider backdrop-blur-md",
                               isCover
                                 ? "border-emerald-400/50 bg-emerald-500/90 text-emerald-950 shadow-md"
                                 : "border-white/10 bg-black/55 text-white/60",
@@ -2364,7 +3373,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                         className="relative flex aspect-[4/5] w-40 sm:w-48 shrink-0 snap-start animate-pulse flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-white/10 bg-white/5"
                       >
                         <Loader2 className="size-5 animate-spin text-emerald-400" />
-                        <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
                           {imageUploadStep === "compressing"
                             ? "Comprimindo..."
                             : "Enviando..."}
@@ -2375,11 +3384,43 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 </div>
 
                 {formData.images.length > 1 && (
-                  <span className="ml-1 mt-1 block text-[9px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 animate-pulse select-none">
+                  <span className="ml-1 mt-1 block text-[11px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 animate-pulse select-none">
                     ↔ Deslize para o lado para ver mais fotos
                   </span>
                 )}
               </div>
+            )}
+            {fotosComFalha.length > 0 && (
+              <ul data-testid="fotos-com-falha" className="mt-3 space-y-2">
+                {fotosComFalha.map((falha) => (
+                  <li
+                    key={falha.id}
+                    className="flex flex-col gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-300 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <span className="min-w-0">
+                      A foto "{falha.file.name}" {falha.motivo}. Ela não vai no
+                      produto — tente de novo, remova, ou publique sem ela.
+                    </span>
+                    <span className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void tentarFotoDeNovo(falha.id)}
+                        disabled={isImageUploading || isOffline}
+                        className="min-h-11 rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-950 disabled:opacity-40"
+                      >
+                        Tentar de novo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => descartarFotoComFalha(falha.id)}
+                        className="min-h-11 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-300"
+                      >
+                        Remover
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </section>
@@ -2394,16 +3435,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               transition={{ duration: 0.2 }}
               className="space-y-4 border-t border-white/5 pt-6"
             >
-              <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                 <BookOpen className="size-4 text-emerald-400" />
                 Guia de Fotos do Produto
               </h3>
               <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                   Imagens de alta qualidade aumentam a conversão de vendas. Siga
                   as orientações recomendadas:
                 </p>
-                <ul className="list-disc space-y-2 pl-4 text-[10px] font-medium text-zinc-500">
+                <ul className="list-disc space-y-2 pl-4 text-[11px] font-medium text-zinc-500">
                   <li>
                     <b className="text-zinc-350">Proporção 4:5 (Card):</b>{" "}
                     Essencial para que os produtos caibam no card da vitrine sem
@@ -2425,7 +3466,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                     detalhes e transmitem profissionalismo.
                   </li>
                 </ul>
-                <div className="flex items-center justify-between border-t border-white/5 pt-3 text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-3 text-[11px] font-black uppercase tracking-wider text-emerald-400">
                   <span>Proporção ideal: 4:5 ou 1:1</span>
                   <span>Res: &gt; 800px</span>
                 </div>
@@ -2433,163 +3474,6 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             </motion.section>
           )}
         </AnimatePresence>
-
-        {/* Product Variants Section */}
-        <section className="relative space-y-4 border-t border-white/5 pt-6 md:pt-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
-                <Layers className="size-5 text-emerald-500" />
-              </div>
-              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                Variações do Produto
-              </h3>
-              <button
-                type="button"
-                onClick={() => toggleHelp("productVariants")}
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                  expandedHelp.productVariants
-                    ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                )}
-                title="Ajuda / Guia de Variações"
-              >
-                ?
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setEditingVariant(null);
-                setVariantFormData({
-                  pares: [parNovo()],
-                  sku: "",
-                  stockIncrement: "0",
-                  priceOverride: "",
-                  active: true,
-                  imageUrl: "",
-                });
-                setShowVariantForm(true);
-              }}
-              className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
-            >
-              + Novo
-            </button>
-          </div>
-
-          {/* O produto ja esta no estado que mente: dois grupos de variacao.
-              A trava impede chegar aqui, mas produto antigo pode ja estar --
-              e nesse caso o numero de estoque na tela acima esta errado. Dizer
-              isso e' melhor que somar em silencio. */}
-          {produtoTemGrupoDemais && (
-            <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-              <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">
-                Este produto tem tipos de variação demais
-              </p>
-              <p className="text-[10px] font-medium leading-relaxed text-amber-200/80">
-                Cada produto aceita <b>um tipo só</b> de variação. Com mais de
-                um, o estoque mostrado acima soma as opções em dobro e o pedido
-                do cliente guarda só metade da escolha — quem pedir um P e um M
-                recebe dois P.
-              </p>
-              <p className="text-[10px] font-medium leading-relaxed text-amber-200/80">
-                Para consertar, edite as variações abaixo e junte tudo num tipo
-                só, com as opções combinadas (ex: <i>Rosa P</i>, <i>Rosa M</i>).
-              </p>
-            </div>
-          )}
-
-          {/* Variants Guide Section */}
-          <AnimatePresence>
-            {expandedHelp.productVariants && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="w-full space-y-3 border-b border-white/5 pb-4"
-              >
-                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  <BookOpen className="size-4 text-emerald-400" />
-                  Como usar as Variações
-                </h3>
-                <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
-                  <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
-                    Variações permitem vender o mesmo produto com diferentes
-                    opções — cor, tamanho, voltagem. Cada produto aceita{" "}
-                    <b className="text-zinc-350">um tipo só</b>: para vender cor
-                    e tamanho juntos, combine os dois no valor da opção (ex:
-                    Nome: <i>Modelo</i>, Valores: <i>Rosa P</i>, <i>Rosa M</i>).
-                  </p>
-                  <ul className="list-none space-y-2 pl-0 text-[10px] font-medium text-zinc-500">
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">
-                          Atributo (Nome e Valor):
-                        </b>{" "}
-                        Defina a característica (ex: Nome: <i>Tamanho</i>,
-                        Valor: <i>G</i>; ou Nome: <i>Cor</i>, Valor: <i>Azul</i>
-                        ).
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">
-                          Ajuste de Preço (Opcional):
-                        </b>{" "}
-                        Se uma variante custar mais caro (ex: tamanho especial
-                        ou material premium), preencha o campo de preço
-                        substituto. Se deixar em branco, o preço principal do
-                        produto será usado.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">Ajuste de Estoque:</b>{" "}
-                        Defina a variação de estoque (ex: se o produto principal
-                        tem 10 unidades e a variante G tem mais 5, use o
-                        incremento correto de estoque para que o cliente saiba
-                        exatamente o que há disponível).
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">Foto da Variante:</b>{" "}
-                        Vincule uma foto específica da variação. Quando o
-                        comprador selecioná-la na página do produto, o carrossel
-                        exibirá automaticamente a foto correspondente.
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="space-y-3">
-            {formData.variants.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-white/5 bg-zinc-900 p-8 text-center">
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-700">
-                  Nenhuma Variação Adicionada
-                </p>
-              </div>
-            ) : (
-              formData.variants.map((v) => (
-                <VariantItem
-                  key={v.id}
-                  variant={v}
-                  onEdit={handleEditVariant}
-                  onDelete={handleDeleteVariant}
-                />
-              ))
-            )}
-          </div>
-        </section>
 
         {/* Content Section */}
         <section className="space-y-4 border-t border-white/5 pt-6 md:space-y-8 md:pt-12">
@@ -2603,15 +3487,21 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             <button
               type="button"
               onClick={() => toggleHelp("productData")}
-              className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                expandedHelp.productData
-                  ? "bg-blue-500 border-blue-400 text-blue-950 shadow-md shadow-blue-500/10 scale-110"
-                  : "bg-zinc-950/50 border-white/10 text-zinc-400",
-              )}
+              className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
               title="Ajuda / Guia de Dados do Produto"
             >
-              ?
+              {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                  expandedHelp.productData
+                    ? "bg-blue-500 border-blue-400 text-blue-950 shadow-md shadow-blue-500/10 scale-110"
+                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                )}
+              >
+                ?
+              </span>
             </button>
           </div>
 
@@ -2625,16 +3515,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 transition={{ duration: 0.2 }}
                 className="space-y-4 border-b border-white/5 pb-6 pt-2"
               >
-                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                   <BookOpen className="size-4 text-blue-400" />
                   Guia de Cadastro e Informações
                 </h3>
                 <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                  <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                  <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                     O preenchimento correto dos dados melhora a indexação do
                     produto e facilita a decisão do cliente.
                   </p>
-                  <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
+                  <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
@@ -2666,19 +3556,34 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
-                        <b className="text-zinc-350">Código SKU:</b> Código
-                        identificador único do produto (Stock Keeping Unit).
-                        Útil para controle interno, integração de estoque e
-                        identificação ágil.
+                        <b className="text-zinc-350">Código interno:</b>{" "}
+                        Referência sua, livre de repetir — útil para controle e
+                        identificação ágil (fica em Avançado). Quem precisa ser
+                        único é o código interno de cada variação.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                      <span>
+                        <b className="text-zinc-350">Código de Barras:</b>{" "}
+                        Opcional — é o código impresso na EMBALAGEM física (o
+                        dos produtos de mercado ou o do seu fornecedor),
+                        diferente do código interno (que é uso interno seu).
+                        Precisa ser único no catálogo inteiro: o mesmo código
+                        não pode estar em outro produto ou variação. É o que a
+                        tela Vender lê no balcão. Se o produto tem variações,
+                        cadastre o código em CADA variação — a caixa da PP é
+                        diferente da caixa da M.
                       </span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
                         <b className="text-zinc-350">Estoque Base:</b>{" "}
-                        Quantidade física disponível. Se utilizar variações, o
-                        estoque de cada variante será somado ou deduzido deste
-                        total conforme as vendas.
+                        Quantidade física disponível quando o produto não tem
+                        variação ativa. Com qualquer variação ativa, o estoque
+                        do produto passa a ser a SOMA das variações ativas e
+                        este campo fica travado.
                       </span>
                     </li>
                   </ul>
@@ -2691,7 +3596,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             <div className="space-y-1.5 md:col-span-2 md:space-y-3">
               <label
                 htmlFor="product-name"
-                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
                 Nome do Produto *
               </label>
@@ -2711,7 +3616,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             <div className="space-y-1.5 md:col-span-2 md:space-y-3">
               <label
                 htmlFor="product-description"
-                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
                 Descrição do Produto *
               </label>
@@ -2728,8 +3633,8 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               />
             </div>
 
-            <div className="space-y-1.5 md:space-y-3">
-              <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500">
+            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
+              <span className="ml-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500">
                 Setor / Categoria *
               </span>
               <div className="group relative">
@@ -2746,7 +3651,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 >
                   <SelectTrigger
                     id="product-category"
-                    className="h-auto w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all hover:border-white/10 hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 [&>svg]:opacity-50"
+                    className="h-auto min-h-11 w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all hover:border-white/10 hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 [&>svg]:opacity-50"
                   >
                     <SelectValue placeholder="Selecionar Setor" />
                   </SelectTrigger>
@@ -2777,43 +3682,67 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               </div>
             </div>
 
+            {/* Preço de venda: sobe da antiga "Precificação" para o básico —
+                é o que toda lojista preenche. Só mudou de lugar no JSX; o
+                estado, o `id` e a validação (`priceError`) são os de sempre. */}
             <div className="space-y-1.5 md:space-y-3">
               <label
-                htmlFor="product-sku"
-                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                htmlFor="product-sale-price"
+                className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
-                Código SKU
+                Preço de Venda *
               </label>
               <div className="group relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-500/50 sm:left-6">
+                  R$
+                </span>
                 <LocalBufferedInput
-                  id="product-sku"
-                  name="product-sku"
-                  type="text"
-                  value={formData.sku}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      sku: val.trim().toUpperCase().replace(/\s+/g, "-"),
-                    }))
-                  }
-                  placeholder="Ex: SKU-PROD-BASE"
-                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                  id="product-sale-price"
+                  name="price"
+                  mask="currency"
+                  value={formData.price}
+                  onFlush={(val) => {
+                    // Sair do campo sem mexer também chama o onFlush: só
+                    // um valor DIFERENTE tira a frase "veio da grade".
+                    if (val !== formData.price) setPrecoVeioDaGrade(false);
+                    setFormData((prev) => ({ ...prev, price: val }));
+                  }}
+                  className="w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
                 />
-                <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
-                  <Layers className="size-5" />
-                </div>
               </div>
-              {skuError && (
-                <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                  {skuError}
+              {priceError && (
+                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                  {priceError}
                 </span>
               )}
+              {!priceError &&
+                precoVeioDaGrade &&
+                precoDoProdutoTexto.trim() !== "" &&
+                formData.variants.length > 0 && (
+                  <span
+                    data-testid="preco-veio-da-grade"
+                    className="ml-1 mt-1 block text-[11px] font-bold text-emerald-500"
+                  >
+                    Este preço veio da grade — as variações sem preço próprio
+                    usam ele.
+                  </span>
+                )}
+              {!priceError &&
+                precoDoProdutoTexto.trim() === "" &&
+                formData.variants.some((v) => v.priceOverride == null) && (
+                  <span
+                    data-testid="preco-das-variacoes-sem-preco"
+                    className="ml-1 mt-1 block text-[11px] font-bold text-amber-500"
+                  >
+                    As variações sem preço usam este.
+                  </span>
+                )}
             </div>
 
-            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
+            <div className="space-y-1.5 md:space-y-3">
               <label
                 htmlFor="product-stock"
-                className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
                 Quantidade em Estoque *
               </label>
@@ -2835,499 +3764,856 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 </div>
               </div>
               {hasActiveVariants ? (
-                <span className="ml-1 mt-1 block flex items-center gap-1.5 text-[10px] font-bold text-amber-500">
+                <span className="ml-1 mt-1 block flex items-center gap-1.5 text-[11px] font-bold text-amber-500">
                   <Info className="size-3.5 shrink-0" />
                   Estoque gerenciado pelas variantes ativas ({formData.stock}{" "}
                   un).
                 </span>
               ) : (
                 stockError && (
-                  <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                  <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
                     {stockError}
                   </span>
                 )
               )}
             </div>
 
-            {/* Peso e Dimensões de Envio (Logística) */}
-            {!isLocalShipping && (
-              <div className="space-y-3 border-t border-white/5 pt-5 md:col-span-2">
-                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  <Truck className="size-4 animate-pulse text-zinc-500" />
-                  Dimensões e Logística (Frete)
-                </h3>
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="product-weight"
-                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
+            {/* Variações (H1): MONTADA e FECHADA — o conteúdo nunca desmonta
+                (SecaoRecolhivel só aplica `hidden`), então estado e botões
+                seguem vivos com a seção fechada. `abertaInicial` só vale na
+                montagem, e aqui basta: com `productId` o formulário mostra o
+                esqueleto (`isLoading`, mais abaixo) e só monta este corpo
+                DEPOIS que o produto chegou — `formData.variants` já está
+                cheio na primeira montagem. Produto com variações abre
+                expandido; sem variações, fechado. */}
+            <div className="md:col-span-2">
+              <SecaoRecolhivel
+                key={chaveDasVariacoes}
+                titulo="Variações"
+                resumo={
+                  formData.variants.length === 0
+                    ? "Cor, tamanho ou voltagem — opcional"
+                    : `${formData.variants.length} ${
+                        formData.variants.length === 1
+                          ? "variação"
+                          : "variações"
+                      }`
+                }
+                abertaInicial={formData.variants.length > 0}
+              >
+                <div className="relative space-y-4">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => toggleHelp("productVariants")}
+                      className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
+                      title="Ajuda / Guia de Variações"
                     >
-                      Peso (kg)
-                    </label>
-                    <LocalBufferedInput
-                      id="product-weight"
-                      name="weightKg"
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      placeholder="Ex: 0.350"
-                      value={formData.weightKg}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, weightKg: val }))
-                      }
-                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                    />
+                      {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                          expandedHelp.productVariants
+                            ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                            : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                        )}
+                      >
+                        ?
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // O mesmo teto de 60 da grade vale para o "+ Novo": sem isto
+                        // o 61º chegava por clique avulso. Ver `grade-de-combinacoes.ts`.
+                        const recadoDoTeto = recadoDoTetoDeVariacoes(
+                          formData.variants.length,
+                        );
+                        if (recadoDoTeto) {
+                          toast.error(recadoDoTeto);
+                          return;
+                        }
+                        setEditingVariant(null);
+                        // Achado ANTES DE CRESCER da revisão: o gate do SALVAR pode
+                        // ter escrito erro/aviso de duplicidade no estado do modal
+                        // com ele FECHADO (a checagem das variações no submit). O
+                        // reset do form abaixo não dispara o efeito limpador quando
+                        // o código já estava vazio — limpar aqui garante que uma
+                        // variação nova e inocente nunca abra bloqueada.
+                        setVariantCodigoBarrasError("");
+                        setVariantCodigoBarrasAvisoRede("");
+                        setVariantFormData({
+                          pares: [parNovo()],
+                          sku: "",
+                          codigoBarras: "",
+                          stockIncrement: "0",
+                          priceOverride: "",
+                          active: true,
+                          imageUrl: "",
+                        });
+                        setShowVariantForm(true);
+                      }}
+                      className="ml-auto mr-2 min-h-11 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                    >
+                      + Novo
+                    </button>
+                    {/* Grade de combinações: gera Cor × Tamanho (até 3 camadas) de uma
+                        vez, reaproveitando os valores já usados. O "+ Novo" de uma
+                        combinação só continua ao lado, intacto. */}
+                    <button
+                      type="button"
+                      data-testid="abrir-grade"
+                      onClick={() => setShowGradeForm(true)}
+                      className="min-h-11 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                    >
+                      + Grade
+                    </button>
                   </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="product-width"
-                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      Largura (cm)
-                    </label>
-                    <LocalBufferedInput
-                      id="product-width"
-                      name="widthCm"
-                      type="number"
-                      min="0"
-                      placeholder="Ex: 15"
-                      value={formData.widthCm}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, widthCm: val }))
-                      }
-                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="product-height"
-                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      Altura (cm)
-                    </label>
-                    <LocalBufferedInput
-                      id="product-height"
-                      name="heightCm"
-                      type="number"
-                      min="0"
-                      placeholder="Ex: 15"
-                      value={formData.heightCm}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, heightCm: val }))
-                      }
-                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="product-length"
-                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      Comprimento (cm)
-                    </label>
-                    <LocalBufferedInput
-                      id="product-length"
-                      name="lengthCm"
-                      type="number"
-                      min="0"
-                      placeholder="Ex: 15"
-                      value={formData.lengthCm}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, lengthCm: val }))
-                      }
-                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                    />
+
+                  {/* O produto ja esta no estado que mente: dois grupos de variacao.
+                      A trava impede chegar aqui, mas produto antigo pode ja estar --
+                      e nesse caso o numero de estoque na tela acima esta errado. Dizer
+                      isso e' melhor que somar em silencio. */}
+                  {produtoTemGrupoDemais && (
+                    <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                      <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">
+                        Este produto tem tipos de variação demais
+                      </p>
+                      <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
+                        Cada produto aceita <b>um tipo só</b> de variação. Com
+                        mais de um, o estoque mostrado acima soma as opções em
+                        dobro e o pedido do cliente guarda só metade da escolha
+                        — quem pedir um P e um M recebe dois P.
+                      </p>
+                      <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
+                        Para consertar, edite as variações abaixo e junte tudo
+                        num tipo só, com as opções combinadas (ex: <i>Rosa P</i>
+                        , <i>Rosa M</i>).
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Variants Guide Section */}
+                  <AnimatePresence>
+                    {expandedHelp.productVariants && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2 }}
+                        className="w-full space-y-3 border-b border-white/5 pb-4"
+                      >
+                        <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                          <BookOpen className="size-4 text-emerald-400" />
+                          Como usar as Variações
+                        </h3>
+                        <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
+                          <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
+                            Variações permitem vender o mesmo produto com
+                            diferentes opções — cor, tamanho, voltagem. Cada
+                            produto aceita{" "}
+                            <b className="text-zinc-350">um tipo só</b>: para
+                            vender cor e tamanho juntos, combine os dois no
+                            valor da opção (ex: Nome: <i>Modelo</i>, Valores:{" "}
+                            <i>Rosa P</i>, <i>Rosa M</i>).
+                          </p>
+                          <ul className="list-none space-y-2 pl-0 text-[11px] font-medium text-zinc-500">
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Atributo (Nome e Valor):
+                                </b>{" "}
+                                Defina a característica (ex: Nome:{" "}
+                                <i>Tamanho</i>, Valor: <i>G</i>; ou Nome:{" "}
+                                <i>Cor</i>, Valor: <i>Azul</i>).
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Ajuste de Preço (Opcional):
+                                </b>{" "}
+                                Se uma variante custar mais caro (ex: tamanho
+                                especial ou material premium), preencha o campo
+                                de preço substituto. Se deixar em branco, o
+                                preço principal do produto será usado.
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Estoque da Variação:
+                                </b>{" "}
+                                Informe o estoque físico real desta variação —
+                                não é um extra somado ao estoque do produto.
+                                Assim que qualquer variação estiver ativa, o
+                                estoque do produto acima passa a ser a{" "}
+                                <b>soma</b> de todas as variações ativas, e o
+                                campo dele fica travado enquanto isso.
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Foto da Variante:
+                                </b>{" "}
+                                Vincule uma foto específica da variação. Quando
+                                o comprador selecioná-la na página do produto, o
+                                carrossel exibirá automaticamente a foto
+                                correspondente.
+                              </span>
+                            </li>
+                          </ul>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="space-y-3">
+                    {formData.variants.length === 0 ? (
+                      <div className="rounded-3xl border border-dashed border-white/5 bg-zinc-900 p-8 text-center">
+                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-600">
+                          Nenhuma Variação Adicionada
+                        </p>
+                      </div>
+                    ) : (
+                      formData.variants.map((v) => (
+                        <VariantItem
+                          key={v.id}
+                          variant={v}
+                          onEdit={handleEditVariant}
+                          onDelete={handleDeleteVariant}
+                          onToggleActive={handleToggleVariantActive}
+                        />
+                      ))
+                    )}
                   </div>
                 </div>
-                <span className="text-zinc-455 block text-[8px] font-medium leading-normal">
-                  * O peso e as dimensões da embalagem individual são utilizados
-                  para a cotação de frete automática (Correios/Melhor
-                  Envio/Frenet). Se não informados, o sistema utilizará valores
-                  padrão (0.3 kg e 15x15x15 cm).
-                </span>
+              </SecaoRecolhivel>
+            </div>
+
+            {/* Peso e medidas (H1): MONTADA e FECHADA. Com entrega local a
+                seção nem existe — como o campo já não existia. */}
+            {!isLocalShipping && (
+              <div className="md:col-span-2">
+                <SecaoRecolhivel
+                  titulo="Peso e medidas"
+                  resumo="Usados para calcular o frete"
+                >
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="product-weight"
+                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        >
+                          Peso (kg)
+                        </label>
+                        <LocalBufferedInput
+                          id="product-weight"
+                          name="weightKg"
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          placeholder="Ex: 0.350"
+                          value={formData.weightKg}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({ ...prev, weightKg: val }))
+                          }
+                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="product-width"
+                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        >
+                          Largura (cm)
+                        </label>
+                        <LocalBufferedInput
+                          id="product-width"
+                          name="widthCm"
+                          type="number"
+                          min="0"
+                          placeholder="Ex: 15"
+                          value={formData.widthCm}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({ ...prev, widthCm: val }))
+                          }
+                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="product-height"
+                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        >
+                          Altura (cm)
+                        </label>
+                        <LocalBufferedInput
+                          id="product-height"
+                          name="heightCm"
+                          type="number"
+                          min="0"
+                          placeholder="Ex: 15"
+                          value={formData.heightCm}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({ ...prev, heightCm: val }))
+                          }
+                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="product-length"
+                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        >
+                          Comprimento (cm)
+                        </label>
+                        <LocalBufferedInput
+                          id="product-length"
+                          name="lengthCm"
+                          type="number"
+                          min="0"
+                          placeholder="Ex: 15"
+                          value={formData.lengthCm}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({ ...prev, lengthCm: val }))
+                          }
+                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                        />
+                      </div>
+                    </div>
+                    <span className="block text-[11px] font-medium leading-normal text-zinc-400">
+                      * O peso e as dimensões da embalagem individual são
+                      utilizados para a cotação de frete automática
+                      (Correios/Melhor Envio/Frenet). Se não informados, o
+                      sistema utilizará valores padrão (0.3 kg e 15x15x15 cm).
+                    </span>
+                  </div>
+                </SecaoRecolhivel>
               </div>
             )}
           </div>
         </section>
 
-        {/* Pricing Section */}
-        <section className="relative space-y-4 border-t border-white/5 pt-6 md:pt-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
-                <DollarSign className="size-5 text-emerald-500" />
-              </div>
-              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                Precificação do Produto
-              </h3>
-              <button
-                type="button"
-                onClick={() => toggleHelp("productPricing")}
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                  expandedHelp.productPricing
-                    ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                )}
-                title="Ajuda / Guia de Precificação"
-              >
-                ?
-              </button>
-            </div>
-
-            {priceVal > 0 && (
-              <div className="flex gap-3">
-                <div className="flex flex-col items-end">
-                  <span className="mb-1 text-right text-[8px] font-black uppercase tracking-widest text-zinc-600">
-                    Margem Líquida
+        {/* Custo e lucro (H1): o Preço de venda subiu para o básico; aqui
+            ficam o custo, o preço "de" e a análise de lucro. MONTADA e
+            FECHADA; um erro de validação dentro dela a abre sozinha. O AVISO
+            de custo maior que o preço não é erro (não bloqueia o salvar), por
+            isso não força a abertura. */}
+        <SecaoRecolhivel
+          titulo="Custo e lucro"
+          resumo="Quanto custou, preço “de” e margem"
+          temErro={
+            (!!costError && !costError.startsWith("Aviso")) ||
+            !!originalPriceError
+          }
+        >
+          <div className="relative space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => toggleHelp("productPricing")}
+                  className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
+                  title="Ajuda / Guia de Precificação"
+                >
+                  {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                      expandedHelp.productPricing
+                        ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                        : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                    )}
+                  >
+                    ?
                   </span>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{
-                          width: `${Math.min(100, Math.max(0, marginPct))}%`,
-                        }}
-                        className={`h-full ${marginPct > 30 ? "bg-emerald-500" : "bg-orange-500"}`}
-                      />
-                    </div>
-                    <span
-                      className={`text-sm font-black ${marginPct > 30 ? "text-emerald-500" : "text-orange-500"}`}
-                    >
-                      {marginPct.toFixed(1)}%
+                </button>
+              </div>
+
+              {priceVal > 0 && (
+                <div className="flex gap-3">
+                  <div className="flex flex-col items-end">
+                    <span className="mb-1 text-right text-[11px] font-black uppercase tracking-widest text-zinc-500">
+                      Margem Líquida
                     </span>
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{
+                            width: `${Math.min(100, Math.max(0, marginPct))}%`,
+                          }}
+                          className={`h-full ${marginPct > 30 ? "bg-emerald-500" : "bg-orange-500"}`}
+                        />
+                      </div>
+                      <span
+                        className={`text-sm font-black ${marginPct > 30 ? "text-emerald-500" : "text-orange-500"}`}
+                      >
+                        {percentualComUmaCasa(marginPct)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          {/* Pricing Guide Section */}
-          <AnimatePresence>
-            {expandedHelp.productPricing && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-4 border-b border-white/5 pb-4"
-              >
-                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  <BookOpen className="size-4 text-emerald-400" />
-                  Guia de Custos e Margens
-                </h3>
-                <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                  <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
-                    Configure os preços de forma estratégica. O sistema calcula
-                    a lucratividade automaticamente em tempo real.
-                  </p>
-                  <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">
-                          Preço de Custo (Opcional):
-                        </b>{" "}
-                        O valor total que você pagou para adquirir ou fabricar o
-                        produto. Esse dado é estritamente confidencial e é usado
-                        apenas pelo sistema para calcular a margem de lucro e o
-                        retorno sobre investimento (ROI) exibidos abaixo.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">Preço de Venda:</b> O preço
-                        final cobrado do cliente. Pense em embutir custos fixos,
-                        impostos e taxas para manter sua operação saudável.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">Produto em Promoção:</b>{" "}
-                        Ative para indicar um preço promocional riscado (ex: De:
-                        R$ 100,00 por R$ 79,90). No aplicativo do cliente, isso
-                        criará etiquetas com o percentual de desconto (ex: 20%
-                        OFF), incentivando a compra impulsiva.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">
-                          Painel de Lucratividade:
-                        </b>{" "}
-                        O sistema analisa a diferença entre o preço de venda e o
-                        preço de custo. É recomendada uma margem de lucro
-                        líquida de pelo menos 30%. O sistema emitirá um alerta
-                        caso a margem esteja zerada ou negativa.
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="space-y-1.5 md:space-y-3">
-              <label
-                htmlFor="product-cost-price"
-                className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Preço de Custo
-              </label>
-              <div className="group relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
-                  R$
-                </span>
-                <LocalBufferedInput
-                  id="product-cost-price"
-                  name="costPrice"
-                  mask="currency"
-                  value={formData.costPrice}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({ ...prev, costPrice: val }))
-                  }
-                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                />
-              </div>
-              {costError && (
-                <span
-                  className={cn(
-                    "text-[10px] font-bold mt-1 ml-1 block",
-                    costError.includes("Aviso")
-                      ? "text-amber-500"
-                      : "text-red-500",
-                  )}
+            {/* Pricing Guide Section */}
+            <AnimatePresence>
+              {expandedHelp.productPricing && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4 border-b border-white/5 pb-4"
                 >
-                  {costError}
-                </span>
+                  <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                    <BookOpen className="size-4 text-emerald-400" />
+                    Guia de Custos e Margens
+                  </h3>
+                  <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
+                    <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
+                      Configure os preços de forma estratégica. O sistema
+                      calcula a lucratividade automaticamente em tempo real.
+                    </p>
+                    <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span>
+                          <b className="text-zinc-350">
+                            Preço de Custo (Opcional):
+                          </b>{" "}
+                          O valor total que você pagou para adquirir ou fabricar
+                          o produto. Esse dado é estritamente confidencial e é
+                          usado apenas pelo sistema para calcular a margem e o
+                          lucro exibidos abaixo.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span>
+                          <b className="text-zinc-350">Preço de Venda:</b> O
+                          preço final cobrado do cliente. Pense em embutir
+                          custos fixos, impostos e taxas para manter sua
+                          operação saudável.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span>
+                          <b className="text-zinc-350">Produto em Promoção:</b>{" "}
+                          Ative para indicar um preço promocional riscado (ex:
+                          De: R$ 100,00 por R$ 79,90). No aplicativo do cliente,
+                          isso criará etiquetas com o percentual de desconto
+                          (ex: 20% OFF), incentivando a compra impulsiva.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span>
+                          <b className="text-zinc-350">
+                            Painel de Lucratividade:
+                          </b>{" "}
+                          O sistema analisa a diferença entre o preço de venda e
+                          o preço de custo. É recomendada uma margem de lucro
+                          líquida de pelo menos 30%. O sistema emitirá um alerta
+                          caso a margem esteja zerada ou negativa.
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                </motion.div>
               )}
-            </div>
+            </AnimatePresence>
 
-            <div className="space-y-1.5 md:space-y-3">
-              <label
-                htmlFor="product-sale-price"
-                className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Preço de Venda
-              </label>
-              <div className="group relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-500/50 sm:left-6">
-                  R$
-                </span>
-                <LocalBufferedInput
-                  id="product-sale-price"
-                  name="price"
-                  mask="currency"
-                  value={formData.price}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({ ...prev, price: val }))
-                  }
-                  className="w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                />
-              </div>
-              {priceError && (
-                <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                  {priceError}
-                </span>
-              )}
-            </div>
-
-            <div className="space-y-3.5">
-              <label
-                htmlFor="product-promo-active"
-                className="flex cursor-pointer select-none items-center justify-between rounded-xl border border-white/5 bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
-              >
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
-                    Produto em Promoção
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-1.5 md:space-y-3">
+                <label
+                  htmlFor="product-cost-price"
+                  className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                >
+                  Preço de Custo
+                </label>
+                <div className="group relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                    R$
                   </span>
-                  <span className="block text-[8px] font-medium uppercase tracking-wider text-zinc-500">
-                    Ativar preço cortado (De/Por)
-                  </span>
-                </div>
-                <input
-                  id="product-promo-active"
-                  name="isPromoActive"
-                  type="checkbox"
-                  aria-label="Produto em Promoção"
-                  checked={isPromoActive}
-                  onChange={(e) => {
-                    setIsPromoActive(e.target.checked);
-                    if (!e.target.checked) {
-                      setFormData((prev) => ({
-                        ...prev,
-                        originalPrice: "",
-                      }));
+                  <LocalBufferedInput
+                    id="product-cost-price"
+                    name="costPrice"
+                    mask="currency"
+                    value={formData.costPrice}
+                    onFlush={(val) =>
+                      setFormData((prev) => ({ ...prev, costPrice: val }))
                     }
-                  }}
-                  className="size-5 cursor-pointer rounded border-white/10 bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
-                />
-              </label>
-
-              {isPromoActive && (
-                <div className="space-y-1.5 duration-300 animate-in fade-in slide-in-from-top-2 md:space-y-3">
-                  <label
-                    htmlFor="product-original-price"
-                    className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                    className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                  />
+                </div>
+                {costError && (
+                  <span
+                    className={cn(
+                      "text-[11px] font-bold mt-1 ml-1 block",
+                      costError.includes("Aviso")
+                        ? "text-amber-500"
+                        : "text-red-500",
+                    )}
                   >
-                    Preço Original ("De:")
-                  </label>
-                  <div className="group relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
-                      R$
+                    {costError}
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-3.5">
+                <label
+                  htmlFor="product-promo-active"
+                  className="flex cursor-pointer select-none items-center justify-between rounded-xl border border-white/5 bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
+                >
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
+                      Produto em Promoção
                     </span>
-                    <LocalBufferedInput
-                      id="product-original-price"
-                      name="originalPrice"
-                      mask="currency"
-                      value={formData.originalPrice}
-                      onFlush={(val) =>
+                    <span className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                      Ativar preço cortado (De/Por)
+                    </span>
+                  </div>
+                  <input
+                    id="product-promo-active"
+                    name="isPromoActive"
+                    type="checkbox"
+                    aria-label="Produto em Promoção"
+                    checked={isPromoActive}
+                    onChange={(e) => {
+                      setIsPromoActive(e.target.checked);
+                      if (!e.target.checked) {
                         setFormData((prev) => ({
                           ...prev,
-                          originalPrice: val,
-                        }))
+                          originalPrice: "",
+                        }));
                       }
-                      placeholder="Ex: 99.90"
-                      className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-zinc-600 transition-all focus:outline-none sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                    />
+                    }}
+                    className="size-5 cursor-pointer rounded border-white/10 bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
+                  />
+                </label>
+
+                {isPromoActive && (
+                  <div className="space-y-1.5 duration-300 animate-in fade-in slide-in-from-top-2 md:space-y-3">
+                    <label
+                      htmlFor="product-original-price"
+                      className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                    >
+                      Preço Original ("De:")
+                    </label>
+                    <div className="group relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                        R$
+                      </span>
+                      <LocalBufferedInput
+                        id="product-original-price"
+                        name="originalPrice"
+                        mask="currency"
+                        value={formData.originalPrice}
+                        onFlush={(val) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            originalPrice: val,
+                          }))
+                        }
+                        placeholder="Ex: 99.90"
+                        className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-zinc-600 transition-all focus:outline-none sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                      />
+                    </div>
+                    {originalPriceError && (
+                      <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                        {originalPriceError}
+                      </span>
+                    )}
                   </div>
-                  {originalPriceError && (
-                    <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                      {originalPriceError}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {priceVal > 0 && costPriceVal > 0 && (
-            <div className="group/roi relative mt-4">
-              {/* Glassmorphism Background with animated border logic */}
-              <div
-                className={cn(
-                  "absolute -inset-[1px] rounded-[2rem] blur-[2px] opacity-50 group-hover/roi:opacity-100 transition-opacity duration-500",
-                  marginPct <= 0
-                    ? "bg-gradient-to-r from-rose-500/20 via-rose-400/40 to-rose-500/20"
-                    : "bg-gradient-to-r from-emerald-500/20 via-emerald-400/40 to-emerald-500/20",
                 )}
-              />
+              </div>
+            </div>
 
-              <div className="relative flex flex-col items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/40 p-4 backdrop-blur-3xl sm:rounded-[2rem] sm:p-7 md:flex-row md:gap-6">
-                {/* Animated Glow Decor */}
+            {priceVal > 0 && costPriceVal > 0 && (
+              <div className="group/roi relative mt-4">
+                {/* Glassmorphism Background with animated border logic */}
                 <div
                   className={cn(
-                    "absolute top-0 right-0 w-32 h-32 blur-[50px] rounded-full pointer-events-none transition-all duration-700",
+                    "absolute -inset-[1px] rounded-[2rem] blur-[2px] opacity-50 group-hover/roi:opacity-100 transition-opacity duration-500",
                     marginPct <= 0
-                      ? "bg-rose-500/10 group-hover/roi:bg-rose-500/20"
-                      : "bg-emerald-500/10 group-hover/roi:bg-emerald-500/20",
+                      ? "bg-gradient-to-r from-rose-500/20 via-rose-400/40 to-rose-500/20"
+                      : "bg-gradient-to-r from-emerald-500/20 via-emerald-400/40 to-emerald-500/20",
                   )}
                 />
 
-                <div className="flex w-full items-center gap-4 sm:gap-6 md:w-auto">
-                  <div className="relative">
-                    <div
-                      className={cn(
-                        "absolute inset-0 blur-xl rounded-2xl transition-all",
-                        marginPct <= 0
-                          ? "bg-rose-500/20 group-hover/roi:bg-rose-500/40"
-                          : "bg-emerald-500/20 group-hover/roi:bg-emerald-500/40",
-                      )}
-                    />
-                    <div
-                      className={cn(
-                        "relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center border transition-transform duration-500 shadow-lg",
-                        marginPct <= 0
-                          ? "bg-gradient-to-br from-rose-500/20 to-rose-600/10 border-rose-500/30 group-hover/roi:scale-110 shadow-rose-500/10 text-rose-400"
-                          : "bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 group-hover/roi:scale-110 shadow-emerald-500/10 text-emerald-400",
-                      )}
-                    >
-                      {marginPct <= 0 ? (
-                        <TrendingDown className="size-6 text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)] sm:size-8" />
-                      ) : (
-                        <TrendingUp className="size-6 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)] sm:size-8" />
-                      )}
-                    </div>
-                  </div>
+                <div className="relative flex flex-col items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/40 p-4 backdrop-blur-3xl sm:rounded-[2rem] sm:p-7 md:flex-row md:gap-6">
+                  {/* Animated Glow Decor */}
+                  <div
+                    className={cn(
+                      "absolute top-0 right-0 w-32 h-32 blur-[50px] rounded-full pointer-events-none transition-all duration-700",
+                      marginPct <= 0
+                        ? "bg-rose-500/10 group-hover/roi:bg-rose-500/20"
+                        : "bg-emerald-500/10 group-hover/roi:bg-emerald-500/20",
+                    )}
+                  />
 
-                  <div className="flex flex-col">
-                    <p
-                      className={cn(
-                        "text-[10px] font-black uppercase tracking-[0.3em] mb-1.5 opacity-80",
-                        marginPct <= 0 ? "text-rose-400" : "text-emerald-400",
-                      )}
-                    >
-                      {marginPct <= 0 ? "Alerta de Margem" : "Análise de Lucro"}
-                    </p>
-                    <div className="flex items-baseline gap-2.5">
-                      <span className="text-xl font-black tabular-nums tracking-tighter text-white drop-shadow-sm sm:text-2xl md:text-3xl">
-                        R${" "}
-                        {(priceVal - costPriceVal).toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[10px] font-black uppercase tracking-widest italic",
-                          marginPct <= 0
-                            ? "text-rose-500/40"
-                            : "text-emerald-500/40",
-                        )}
-                      >
-                        / por unidade
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex w-full flex-col items-center gap-2 border-t border-white/5 pt-3 sm:gap-3 md:w-auto md:items-end md:border-t-0 md:pt-0">
-                  <div className="flex flex-col items-center md:items-end">
-                    <span className="mb-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                      Análise do Sistema
-                    </span>
-                    <div className="group/badge relative">
+                  <div className="flex w-full items-center gap-4 sm:gap-6 md:w-auto">
+                    <div className="relative">
                       <div
                         className={cn(
-                          "absolute inset-0 blur-md rounded-xl opacity-0 group-hover/roi:opacity-100 transition-opacity",
+                          "absolute inset-0 blur-xl rounded-2xl transition-all",
                           marginPct <= 0
-                            ? "bg-rose-500/40"
-                            : "bg-emerald-500/40",
+                            ? "bg-rose-500/20 group-hover/roi:bg-rose-500/40"
+                            : "bg-emerald-500/20 group-hover/roi:bg-emerald-500/40",
                         )}
                       />
                       <div
                         className={cn(
-                          "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl font-black text-[9px] sm:text-[11px] uppercase tracking-wider relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500",
+                          "relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center border transition-transform duration-500 shadow-lg",
                           marginPct <= 0
-                            ? "bg-rose-500 text-rose-950 shadow-[0_10px_20px_rgba(244,63,94,0.3)]"
-                            : "bg-emerald-500 text-emerald-950 shadow-[0_10px_20px_rgba(16,185,129,0.3)]",
+                            ? "bg-gradient-to-br from-rose-500/20 to-rose-600/10 border-rose-500/30 group-hover/roi:scale-110 shadow-rose-500/10 text-rose-400"
+                            : "bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 group-hover/roi:scale-110 shadow-emerald-500/10 text-emerald-400",
                         )}
                       >
                         {marginPct <= 0 ? (
-                          <>
-                            <AlertTriangle className="size-3.5" />
-                            Margem Negativa
-                          </>
+                          <TrendingDown className="size-6 text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)] sm:size-8" />
                         ) : (
-                          <>
-                            <Check className="size-3.5" />
-                            Alta Performance
-                          </>
+                          <TrendingUp className="size-6 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)] sm:size-8" />
                         )}
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Interactive background lines */}
-                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent opacity-20" />
+                    <div className="flex flex-col">
+                      <p
+                        className={cn(
+                          "text-[11px] font-black uppercase tracking-[0.2em] mb-1.5 opacity-80",
+                          marginPct <= 0 ? "text-rose-400" : "text-emerald-400",
+                        )}
+                      >
+                        {marginPct <= 0
+                          ? "Alerta de Margem"
+                          : "Análise de Lucro"}
+                      </p>
+                      <div className="flex items-baseline gap-2.5">
+                        <span className="text-xl font-black tabular-nums tracking-tighter text-white drop-shadow-sm sm:text-2xl md:text-3xl">
+                          R${" "}
+                          {(priceVal - costPriceVal).toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-[11px] font-black uppercase tracking-widest italic",
+                            marginPct <= 0
+                              ? "text-rose-500/40"
+                              : "text-emerald-500/40",
+                          )}
+                        >
+                          / por unidade
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex w-full flex-col items-center gap-2 border-t border-white/5 pt-3 sm:gap-3 md:w-auto md:items-end md:border-t-0 md:pt-0">
+                    <div className="flex flex-col items-center md:items-end">
+                      <span className="mb-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                        Análise do Sistema
+                      </span>
+                      <div className="group/badge relative">
+                        <div
+                          className={cn(
+                            "absolute inset-0 blur-md rounded-xl opacity-0 group-hover/roi:opacity-100 transition-opacity",
+                            marginPct <= 0
+                              ? "bg-rose-500/40"
+                              : "bg-emerald-500/40",
+                          )}
+                        />
+                        <div
+                          className={cn(
+                            "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl font-black text-[11px] uppercase tracking-wider relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500",
+                            marginPct <= 0
+                              ? "bg-rose-500 text-rose-950 shadow-[0_10px_20px_rgba(244,63,94,0.3)]"
+                              : "bg-emerald-500 text-emerald-950 shadow-[0_10px_20px_rgba(16,185,129,0.3)]",
+                          )}
+                        >
+                          {marginPct <= 0 ? (
+                            <>
+                              <AlertTriangle className="size-3.5" />
+                              Margem Negativa
+                            </>
+                          ) : (
+                            <>
+                              <Check className="size-3.5" />
+                              Alta Performance
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Interactive background lines */}
+                  <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent opacity-20" />
+                </div>
               </div>
+            )}
+          </div>
+        </SecaoRecolhivel>
+
+        {/* Avançado (H1): código interno, código de barras e aviso de estoque
+            — raros no dia a dia, mas nada se apaga. MONTADA e FECHADA; erro
+            em qualquer um dos três (formato, duplicidade ou número inválido)
+            a abre sozinha. */}
+        <SecaoRecolhivel
+          titulo="Avançado"
+          resumo="Código interno, código de barras e aviso de estoque"
+          temErro={!!skuError || !!codigoBarrasError || !!estoqueMinimoError}
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-sku"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Código interno (SKU)
+              </label>
+              <div className="group relative">
+                <LocalBufferedInput
+                  id="product-sku"
+                  name="product-sku"
+                  type="text"
+                  value={formData.sku}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      sku: val.trim().toUpperCase().replace(/\s+/g, "-"),
+                    }))
+                  }
+                  placeholder="Ex: CAMISETA-BASE"
+                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                />
+                <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
+                  <Layers className="size-5" />
+                </div>
+              </div>
+              {skuError && (
+                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                  {skuError}
+                </span>
+              )}
             </div>
-          )}
-        </section>
+
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-codigo-barras"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Código de barras
+              </label>
+              {/* No celular o botão desce para baixo do campo: lado a lado,
+                  os 13 dígitos não cabiam (onda J). */}
+              <div className="flex flex-col gap-2 xs:flex-row">
+                <LocalBufferedInput
+                  id="product-codigo-barras"
+                  name="product-codigo-barras"
+                  type="text"
+                  inputMode="numeric"
+                  data-testid="codigo-barras-produto"
+                  value={formData.codigoBarras}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      codigoBarras: normalizarCodigoBarras(val),
+                    }))
+                  }
+                  onBlur={(e) =>
+                    aoSairDoCampoDeCodigoDeBarras(e.target.value, "produto")
+                  }
+                  placeholder="Ex: 7891234567890"
+                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                />
+                {/* C5.3 — some sem câmera: o leitor físico USB digita direto
+                    no campo acima, sem precisar deste botão. */}
+                {temCameraDisponivel() && (
+                  <button
+                    type="button"
+                    onClick={() => setLeitorAberto("produto")}
+                    className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
+                    title="Ler com a câmera"
+                  >
+                    <Camera className="size-4" />
+                    Ler com a câmera
+                  </button>
+                )}
+              </div>
+              <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400">
+                Opcional. É o código impresso na embalagem; a tela Vender lê ele
+                pela câmera.
+              </span>
+              {codigoBarrasError && (
+                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                  {codigoBarrasError}
+                </span>
+              )}
+              {!codigoBarrasError && codigoBarrasAvisoRede && (
+                <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
+                  {codigoBarrasAvisoRede}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-estoque-minimo"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Avisar quando o estoque chegar a
+              </label>
+              <LocalBufferedInput
+                id="product-estoque-minimo"
+                name="product-estoque-minimo"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={formData.estoqueMinimo}
+                onFlush={(val) =>
+                  setFormData((prev) => ({ ...prev, estoqueMinimo: val }))
+                }
+                placeholder="Ex: 5"
+                aria-invalid={estoqueMinimoError ? true : undefined}
+                aria-describedby={
+                  estoqueMinimoError
+                    ? "product-estoque-minimo-dica product-estoque-minimo-erro"
+                    : "product-estoque-minimo-dica"
+                }
+                className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+              />
+              <span
+                id="product-estoque-minimo-dica"
+                className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400"
+              >
+                Vazio usa o padrão (5). Com variações, vale para a soma.
+              </span>
+              {estoqueMinimoError && (
+                <span
+                  id="product-estoque-minimo-erro"
+                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                >
+                  {estoqueMinimoError}
+                </span>
+              )}
+            </div>
+          </div>
+        </SecaoRecolhivel>
       </motion.form>
 
       {/* Image Cropper Modal */}
@@ -3365,7 +4651,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
               </div>
               <Smartphone className="size-4 text-zinc-400 transition-colors group-hover:text-emerald-400" />
-              <span className="text-[10px] font-black uppercase tracking-wider">
+              <span className="text-[11px] font-black uppercase tracking-wider">
                 Visualizar App
               </span>
             </button>
@@ -3394,7 +4680,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Engenharia & Cadastro de Produtos"
+        title="Como cadastrar um produto"
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
@@ -3404,19 +4690,23 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Estrutura do Formulário
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Package className="size-4 text-emerald-500" />
-                  Informações Básicas & SKU
+                  Informações Básicas & Código interno
                 </div>
                 <p className="text-xs text-zinc-400">
                   Nome do produto, descrição detalhada e o{" "}
-                  <strong className="text-white">SKU</strong> (código único de
-                  controle de estoque interno da sua loja).
+                  <strong className="text-white">Código interno</strong>{" "}
+                  (referência livre, em Avançado; só o código interno de cada
+                  variação precisa ser único). O{" "}
+                  <strong className="text-white">Código de Barras</strong> é
+                  opcional, identifica a embalagem física, precisa ser único no
+                  catálogo inteiro e é o que a tela Vender lê no balcão.
                 </p>
               </div>
 
@@ -3458,7 +4748,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           </div>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Dicas para um Cadastro de Sucesso
             </h4>
             <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">
@@ -3471,8 +4761,20 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 materiais e políticas de garantia.
               </li>
               <li>
-                Certifique-se de que o SKU cadastrado é único na loja para
-                evitar problemas na baixa de estoque.
+                O código interno do produto é livre — a loja não te impede de
+                repetir (é só uma referência sua). Já o código interno de cada
+                VARIAÇÃO precisa ser único: o sistema recusa salvar um que já
+                exista em qualquer outra variação já cadastrada (inclusive de
+                produtos excluídos).
+              </li>
+              <li>
+                O Código de Barras (opcional) identifica a EMBALAGEM física do
+                produto — diferente do código interno, que é uso interno seu.
+                Ele precisa ser único no catálogo inteiro (o mesmo código não
+                pode estar em outro produto ou variação) e é o que a tela Vender
+                lê no balcão. Se o produto tem variações, cadastre o código em
+                CADA variação: a caixa da PP tem um código diferente da caixa da
+                M.
               </li>
             </ul>
           </div>
@@ -3508,24 +4810,66 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* C5.3 — o leitor só existe no DOM enquanto está aberto, e entra num
+          OVERLAY FIXO acima dos modais desta tela (z-[120] vence o z-[110]
+          do modal de categoria e o z-[100] do modal de variação). Sem isto o
+          painel nasceria no fim do fluxo da página — fora da vista no alvo
+          produto e ATRÁS do overlay do modal de variação, invisível e
+          inclicável (achado BLOQUEIA da revisão em contexto limpo; o jsdom
+          não faz empilhamento, por isso a prova é o teste estrutural do
+          container). O `Suspense` segura o import dinâmico, com
+          `fallback={null}` porque a abertura já é o clique do lojista. */}
+      {leitorAberto !== null && (
+        <div
+          data-testid="container-do-leitor"
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
+        >
+          <Suspense fallback={null}>
+            <LeitorDeCodigo
+              aberto
+              modo="unico"
+              titulo="Ler o código de barras"
+              dica="Aponte para o código da embalagem"
+              aoLer={aoLerCodigoDeBarras}
+              aoFechar={() => setLeitorAberto(null)}
+            />
+          </Suspense>
+        </div>
+      )}
     </div>
   );
+});
+
+/**
+ * Uma instância do formulário POR produto (`productId` na `key`). O painel
+ * troca "novo" por "edição de p-1" na mesma view, sem desmontar: sem a `key`,
+ * os estados de produto novo (formulário preenchido, `isLoading` falso, rascunho
+ * já "checado") vazariam para a edição e a checagem de rascunho de edição
+ * compararia com o formulário velho -- e apagaria o rascunho recém-movido.
+ */
+export const AdminProductFormView = React.memo(function AdminProductFormView(
+  props: AdminProductFormViewProps,
+) {
+  return <FormularioDoProduto key={props.productId ?? "novo"} {...props} />;
 });
 
 interface VariantItemProps {
   readonly variant: ProductVariant;
   readonly onEdit: (v: ProductVariant) => void;
   readonly onDelete: (id: string) => void;
+  readonly onToggleActive: (v: ProductVariant) => void;
 }
 
 const VariantItem = React.memo(function VariantItem({
   variant,
   onEdit,
   onDelete,
+  onToggleActive,
 }: VariantItemProps) {
   return (
     <div className="group flex items-center justify-between rounded-2xl border border-white/5 bg-zinc-900 p-4 transition-all hover:border-emerald-500/30">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         {variant.imageUrl && (
           <div className="size-12 shrink-0 overflow-hidden rounded-lg border border-white/5">
             <LazyImage
@@ -3535,7 +4879,7 @@ const VariantItem = React.memo(function VariantItem({
             />
           </div>
         )}
-        <div>
+        <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
             <span
               data-testid="variante-cadastrada"
@@ -3544,12 +4888,12 @@ const VariantItem = React.memo(function VariantItem({
               {variant.name}: {variant.value}
             </span>
             {!variant.active && (
-              <span className="rounded border border-white/5 bg-zinc-800 px-1.5 py-0.5 text-[7px] font-black uppercase text-zinc-500">
+              <span className="rounded border border-white/5 bg-zinc-800 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-500">
                 Offline
               </span>
             )}
           </div>
-          <div className="flex items-center gap-4 text-[9px] font-black uppercase tracking-tighter text-zinc-500">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-black uppercase tracking-tighter text-zinc-500">
             <span className="flex items-center gap-1.5 rounded-md border border-white/5 bg-white/5 px-2 py-1">
               <Package className="size-3 text-zinc-400" />
               <span className="text-zinc-300">
@@ -3565,18 +4909,38 @@ const VariantItem = React.memo(function VariantItem({
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <button
           type="button"
           onClick={() => onEdit(variant)}
-          className="flex size-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-white/5 hover:text-white"
+          aria-label={`Editar variação ${variant.value}`}
+          className="flex size-11 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-white/5 hover:text-white"
         >
           <Edit2 className="size-3.5" />
         </button>
         <button
           type="button"
+          onClick={() => onToggleActive(variant)}
+          aria-label={`${variant.active ? "Desligar" : "Religar"} variação ${variant.value}`}
+          title={
+            variant.active
+              ? "Desligar: deixa de aparecer na loja, volta quando religar"
+              : "Religar: volta a aparecer na loja"
+          }
+          className={cn(
+            "flex size-11 items-center justify-center rounded-lg transition-all hover:bg-white/5",
+            variant.active
+              ? "text-emerald-500 hover:text-emerald-400"
+              : "text-zinc-600 hover:text-white",
+          )}
+        >
+          <Power className="size-3.5" />
+        </button>
+        <button
+          type="button"
           onClick={() => onDelete(variant.id)}
-          className="flex size-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-red-500/5 hover:text-red-500"
+          aria-label={`Excluir variação ${variant.value}`}
+          className="flex size-11 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-red-500/5 hover:text-red-500"
         >
           <Trash2 className="size-3.5" />
         </button>

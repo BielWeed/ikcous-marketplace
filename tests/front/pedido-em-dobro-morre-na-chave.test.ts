@@ -19,7 +19,7 @@ import {
   criarGerenciadorDeChave,
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // Map, não Record: indexação por chave variável em objeto é sink de
 // injeção para o eslint (3 warnings que estourariam o teto do CI).
@@ -180,6 +180,27 @@ describe("criarGerenciadorDeChave — a chave sobrevive à retentativa e morre n
     const gerente = criarGerenciadorDeChave(armazem, chavesSequenciais());
 
     expect(gerente.chavePara(impressaoDaCompra(compraBase))).toBe("chave-1");
+  });
+
+  it("no HTTP local sem randomUUID, gera UUID v4 com getRandomValues e preserva a chave", () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues: (bytes: Uint8Array) => {
+        for (let indice = 0; indice < bytes.length; indice++)
+          bytes[indice] = indice;
+        return bytes;
+      },
+    });
+    try {
+      const armazem = storageFake();
+      const primeira =
+        criarGerenciadorDeChave(armazem).chavePara("compra-http");
+      expect(primeira).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
+      expect(criarGerenciadorDeChave(armazem).chavePara("compra-http")).toBe(
+        primeira,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("chave gerada é uuid de verdade quando não se passa gerador", () => {

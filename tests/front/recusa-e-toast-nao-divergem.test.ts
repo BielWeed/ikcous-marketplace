@@ -169,6 +169,29 @@ const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
     erro: p0001("Estoque insuficiente para o produto Caneca"),
   },
 
+  // FORMAS DE PAGAMENTO POR LOJA (migration 20261174000000, fora da lista
+  // original de 11 acima — entrou depois, no re-review do commit
+  // 3c90059d). Estava AUSENTE deste corpus, e é exatamente por estar
+  // ausente que o portão nunca reprovou a versão que mapeava esta frase
+  // para `tentar_de_novo`: um `it.each` só cobra o que está na lista.
+  {
+    rotulo:
+      "12. forma de pagamento desligada pela loja entre a tela filtrar e o clique chegar ao banco",
+    erro: p0001(
+      "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
+    ),
+  },
+
+  // CUPONS DESLIGADOS (migration 20261203000000, issue #645): o gatilho de
+  // marketplace_orders recusa pedido com cupom quando a chave está desligada.
+  // Frase sem código de cupom, P0001 com texto: o painel NUNCA pode mandar
+  // "tentar de novo" (o pedido provadamente não nasceu, mas a regra do
+  // cabeçalho vale para toda frase do banco).
+  {
+    rotulo: "13. cupons desligados pela loja (chave enable_coupons)",
+    erro: p0001("Os cupons estão desativados nesta loja."),
+  },
+
   // SQLSTATE genérico: aborto de transação dentro do Postgres, sem ser P0001.
   {
     rotulo: "SQLSTATE genérico (deadlock 40P01)",

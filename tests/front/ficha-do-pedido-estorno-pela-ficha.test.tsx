@@ -193,13 +193,15 @@ describe("OrderDetail (ficha) — a porta de devolução do pedido pago e cancel
     );
   });
 
-  it("o EstornoCard mora logo abaixo da seção Pagamento: depois do 'Total do pedido' e antes de 'Entrega e rastreio'", async () => {
+  it("o EstornoCard mora logo abaixo da seção Pagamento: depois do 'Total do pedido' e antes do bloco 'Entrega'", async () => {
     await renderizarFicha();
 
     const texto = normalizarEspacos(hospedeiro.textContent);
     const posTotal = texto.indexOf("Total do pedido");
     const posEstorno = texto.indexOf("Devolução de dinheiro");
-    const posEntrega = texto.indexOf("Entrega e rastreio");
+    // Redesenho 08/10/2026: o título "Entrega e rastreio" virou o bloco
+    // "Entrega" (cliente + endereço), logo depois do estorno.
+    const posEntrega = texto.indexOf("Endereço de entrega");
     // Sanidade: as três âncoras renderizaram (indexOf -1 mentiria na ordem).
     expect(posTotal).toBeGreaterThan(-1);
     expect(posEstorno).toBeGreaterThan(-1);

@@ -148,6 +148,34 @@ async function main() {
         updated_at timestamptz NOT NULL DEFAULT now()
       )
     `);
+    // Achado 9 da revisão de risco de 26/09/2026 (rodada 2): sem isto, o
+    // mutante `storage_insert` (a policy de INSERT do bucket `devolucoes`
+    // perder o `split_part(name,'/',1) = auth.uid()`) sobrevivia à prova viva
+    // inteira — não por a RLS estar certa, mas porque `authenticated` nem
+    // TINHA grant de tabela em `storage.*` aqui, e QUALQUER insert (mutado ou
+    // não) morria antes de a policy ser avaliada, com "permission denied for
+    // schema storage". No Supabase de verdade `storage.objects`/`buckets` já
+    // nascem com GRANT ALL para anon/authenticated/service_role — é a RLS
+    // (as policies das migrations) quem faz a guarda, nunca o grant de
+    // tabela. Replica esse detalhe da plataforma aqui.
+    await cliente.query(
+      "GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role",
+    );
+    await cliente.query(
+      "GRANT ALL ON storage.objects, storage.buckets TO anon, authenticated, service_role",
+    );
+    // No Supabase de verdade `storage.objects` já nasce com RLS LIGADO pela
+    // plataforma — as migrations do app só ACRESCENTAM policy em cima. Sem
+    // isto aqui, `CREATE POLICY` das migrations (20261175000000) fica sem
+    // efeito nenhum: toda policy exige RLS ligado na tabela para valer, e
+    // nenhuma migration deste repo liga RLS em storage.objects (não devia —
+    // não é dela, é da plataforma). `storage.buckets` fica de fora de
+    // propósito: nenhuma migration cria policy nela, e ligar RLS sem
+    // nenhuma policy negaria leitura a anon/authenticated que hoje não
+    // precisa de guarda nenhuma aqui.
+    await cliente.query(
+      "ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY",
+    );
     console.log("[provisionar] storage mínimo criado");
 
     // 5. pg_cron emulado por stub. Assinaturas nas assinaturas que a fila de

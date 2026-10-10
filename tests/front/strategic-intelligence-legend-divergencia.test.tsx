@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 //
-// Trilha 4 (#104), ATUALIZADO pela 20261003000000 (frete deixou de ser
-// categoria): o centro do donut (soma de `get_category_analytics` — SÓ
-// itens, SEM subtrair desconto e SEM frete) e o card "Volume Total"
-// (SUM de `marketplace_orders.total`, JÁ líquido de desconto — e COM
-// frete) podem divergir por dois motivos: cupom e frete. A decisão do
-// brief é não mexer em cálculo — só explicitar a diferença na UI com uma
-// legenda. Este teste prova que a legenda aparece no bloco de dados de
-// verdade (não nos ramos de erro/vazio/esqueleto, que não têm total para
-// comparar). O guardião frase-a-frase da nota vive em
+// Trilha 4 (#104), ATUALIZADO pela 20261063000000 (o donut passou a
+// ratear `marketplace_orders.total` por categoria): o centro do donut e
+// a receita total da loja (SUM de `marketplace_orders.total`) agora somam
+// o MESMO dinheiro — a legenda que dizia "pode divergir" ficou obsoleta
+// no dia em que a migration 20261063 fechou a divergência de cupom e
+// frete. Este teste prova que a legenda ATUALIZADA (o total bate com a
+// receita total da loja) aparece no bloco de dados de verdade (não nos
+// ramos de erro/vazio/esqueleto, que não têm total para comparar).
+//
+// 28/09/2026: a legenda dizia "o card 'Volume Total'" — esse card (o
+// carrossel "Métricas principais", KpiSummaryCards) saiu da tela, então a
+// legenda parou de citar um card específico e passou a descrever o número
+// direto. O guardião frase-a-frase da nota vive em
 // grafico-de-categorias-nao-promete-frete.test.tsx; este cobre a
 // existência da legenda no ramo de dados.
 import { act } from "react";
@@ -29,7 +33,7 @@ function esperarChartPronto(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 250));
 }
 
-describe("StrategicIntelligenceBlocks — legenda da divergência de totais (#104)", () => {
+describe("StrategicIntelligenceBlocks — legenda do total do donut (#104, pós-20261063)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -57,7 +61,7 @@ describe("StrategicIntelligenceBlocks — legenda da divergência de totais (#10
     vi.unstubAllGlobals();
   });
 
-  it("explica que o total do donut é itens sem frete — pode divergir do Volume Total (com frete)", async () => {
+  it("explica que o total do donut é a receita total da loja", async () => {
     const { StrategicIntelligenceBlocks } = await import(
       "@/components/admin/dashboard/StrategicIntelligenceBlocks"
     );
@@ -73,7 +77,7 @@ describe("StrategicIntelligenceBlocks — legenda da divergência de totais (#10
     await esperarChartPronto();
     act(() => {});
 
-    expect(hospedeiro.textContent).toMatch(/sem desconto e sem frete/i);
-    expect(hospedeiro.textContent).toMatch(/volume total/i);
+    expect(hospedeiro.textContent).toMatch(/a receita total da loja/i);
+    expect(hospedeiro.textContent).not.toMatch(/volume total/i);
   });
 });

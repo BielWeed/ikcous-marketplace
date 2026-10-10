@@ -1,3 +1,4 @@
+import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { OrderTimeline } from "@/components/ui/custom/OrderTimeline";
@@ -34,7 +35,6 @@ import {
   Loader2,
   LogOut,
   MapPin,
-  MessageCircle,
   Package,
   Plus,
   Settings,
@@ -73,13 +73,16 @@ const itemVariants = {
 
 import { useStore } from "@/contexts/StoreContext";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { haptic } from "@/utils/haptic";
 
 interface ProfileViewProps {
   onNavigate: (view: View, id?: string) => void;
+  /** A aba fica montada escondida; `true` quando é a aba visível. */
+  isActive?: boolean;
 }
 
-export function ProfileView({ onNavigate }: ProfileViewProps) {
+export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
   const {
     user,
     profile,
@@ -94,7 +97,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
     deleteAddress,
     loading: addressesLoading,
   } = useAddresses();
-  const { orders } = useOrders(true, false);
+  const { orders, fetchUserOrders } = useOrders(true, false);
   const { config } = useStore();
   const [isOrdersExpanded, setIsOrdersExpanded] = useState(false);
   const [isAddressesExpanded, setIsAddressesExpanded] = useState(false);
@@ -291,7 +294,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
   }, [user, profile]);
 
   const handleWhatsAppSupport = (orderId: string) => {
-    const message = `Olá! Tenho uma dúvida sobre meu pedido #${orderId.slice(0, 8)}.`;
+    const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
     let phone = (config.whatsappNumber || "").replace(/\D/g, "");
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
@@ -313,6 +316,16 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
       onNavigate("auth");
     }
   }, [user, fetchAddresses, authLoading, onNavigate]);
+
+  // `useOrders` não busca ao montar: só lê o cache do aparelho, que só a
+  // busca grava, e cada tela tem a SUA cópia da lista. Sem esta chamada o
+  // cartão "Pedidos em Andamento" some logo depois do login (o logout apaga o
+  // cache) — defeito do print de 25/09/2026. Busca de novo sempre que a aba
+  // volta a ser a visível: ela fica montada escondida, e a busca feita em
+  // Meus Pedidos não chega nesta cópia. Silenciosa: cartão secundário.
+  useEffect(() => {
+    if (user && isActive) fetchUserOrders(true);
+  }, [user, isActive, fetchUserOrders]);
 
   const activeOrders = useMemo(() => {
     return orders.filter((o) =>
@@ -494,6 +507,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                 <AddressList
                   addresses={addresses}
                   compact={!isAddressesExpanded}
+                  showMaps
                   onEdit={(addr) => {
                     onNavigate("address-form", addr.id);
                   }}
@@ -581,7 +595,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                           )}
                           <div className="mt-1 flex items-center gap-2">
                             <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[9px] font-black tracking-widest text-zinc-500">
-                              ID #{order.id.slice(0, 8)}
+                              ID #{numeroDoPedido(order.id)}
                             </span>
                             <span className="size-1.5 rounded-full bg-zinc-200" />
                             <span className="text-[9px] font-bold tracking-tight text-zinc-400">
@@ -609,7 +623,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                             onClick={() => handleWhatsAppSupport(order.id)}
                             className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl border-none bg-emerald-600 text-[10px] font-black uppercase tracking-widest text-white shadow-sm shadow-emerald-600/10 transition-all hover:bg-emerald-700 active:scale-95"
                           >
-                            <MessageCircle className="size-4" />
+                            <IconeWhatsapp className="size-[18px]" />
                             WhatsApp
                           </Button>
                         )}

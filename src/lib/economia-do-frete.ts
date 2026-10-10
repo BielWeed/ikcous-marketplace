@@ -25,11 +25,20 @@
 export type ModoDeEconomiaDoFrete =
   | { tipo: "zero" }
   | { tipo: "local"; valor: number }
+  /**
+   * T3 (23/09/2026): a opção NACIONAL já escolhida CARREGA a própria
+   * economia (`precoCheio − price`) — grátis ou desconto, tanto faz. Nunca
+   * cotada de novo: a fonte é o carimbo que a edge já mandou na cotação
+   * real (contrato do plano §3, front nunca recalcula preço nacional).
+   */
+  | { tipo: "opcao"; valor: number }
   | { tipo: "cotar" };
 
 import { cepEhLocal } from "@/lib/cep-local";
+import { ehModalidadeDaLoja } from "@/lib/guarda-de-frete";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { soDigitos } from "@/lib/reconciliacao-de-cep";
+import type { ShippingOption } from "@/types";
 
 export function modoDeEconomiaDoFrete(params: {
   /** Veredito único do CartContext (`freteGratis`) — sem ele, não há o que economizar. */
@@ -43,6 +52,13 @@ export function modoDeEconomiaDoFrete(params: {
   /** `config.localDeliveryFee` — o mesmo valor que a RPC cobra para `local-delivery`. Ausente/nulo nunca vira 0 chutado nem o `shippingFee` de fábrica. */
   localDeliveryFee?: number;
   freeShippingMin: number;
+  /**
+   * T3 (23/09): a opção JÁ escolhida no ShippingCalculator/CartContext.
+   * Nacional com `precoCheio` responde por ela mesma (linha 0, abaixo) —
+   * sem essa opção (ainda não escolhida, ou é local/retirada), a tabela
+   * antiga (linhas 1-6) continua decidindo.
+   */
+  opcaoSelecionada?: Pick<ShippingOption, "id" | "price" | "precoCheio"> | null;
 }): ModoDeEconomiaDoFrete {
   const {
     freteGratis,
@@ -52,7 +68,18 @@ export function modoDeEconomiaDoFrete(params: {
     localCepRange,
     localDeliveryFee,
     freeShippingMin,
+    opcaoSelecionada,
   } = params;
+
+  // Linha 0 (T3, NOVA): opção NACIONAL já escolhida. A economia (grátis OU
+  // desconto) é o que a PRÓPRIA opção carrega -- nunca uma cotação nova.
+  if (opcaoSelecionada && !ehModalidadeDaLoja(opcaoSelecionada.id)) {
+    const cheio = opcaoSelecionada.precoCheio;
+    if (typeof cheio === "number" && cheio > opcaoSelecionada.price) {
+      return { tipo: "opcao", valor: cheio - opcaoSelecionada.price };
+    }
+    return { tipo: "zero" };
+  }
 
   // Linha 1.
   if (!freteGratis) return { tipo: "zero" };

@@ -105,6 +105,12 @@ function pedidoFake(overrides: {
   paymentStatus: PaymentStatus | null;
   cancelledAfterShipping?: boolean;
   returnedToSellerAt?: string | null;
+  // Achado 1 da revisão de 26/09/2026 (rodada 2): quanto uma devolução deste
+  // pedido já devolveu por fora (reembolso manual concluído).
+  valorDevolvidoPorDevolucao?: number;
+  // Achado A4 da revisão de 26/09/2026 (rodada 3): quanto já saiu pelo
+  // ledger CONFIRMADO do estorno (order_refunds concluído).
+  valorEstornado?: number;
 }): Order {
   return {
     id: overrides.id,
@@ -129,6 +135,8 @@ function pedidoFake(overrides: {
     updatedAt: new Date(0).toISOString(),
     cancelledAfterShipping: overrides.cancelledAfterShipping ?? false,
     returnedToSellerAt: overrides.returnedToSellerAt ?? null,
+    valorDevolvidoPorDevolucao: overrides.valorDevolvidoPorDevolucao,
+    valorEstornado: overrides.valorEstornado,
   };
 }
 
@@ -279,6 +287,85 @@ describe("baldeDeEstorno — a lista é derivada, nunca gravada", () => {
     });
     expect(baldeDeEstorno(pedido)).toBe("devolver_agora");
   });
+
+  // Achado 1 da revisão de 26/09/2026 (rodada 2): venda de balcão em
+  // dinheiro, devolução JÁ CONCLUÍDA com reembolso manual pelo valor
+  // inteiro — o "Já devolvi" pediria de novo o mesmo dinheiro que a
+  // devolução já devolveu. `baldeDeEstorno` esconde o pedido inteiro.
+  it("devolução já devolveu TUDO por fora: NÃO aparece em lugar nenhum", async () => {
+    const { baldeDeEstorno } = await import("@/views/admin/AdminOrdersView");
+    const pedido = pedidoFake({
+      id: "p8",
+      status: "cancelled",
+      paymentStatus: "recebido_na_entrega",
+      cancelledAfterShipping: false,
+      valorDevolvidoPorDevolucao: 100,
+    });
+    expect(baldeDeEstorno(pedido)).toBeNull();
+  });
+
+  it("devolução devolveu só PARTE por fora: continua 'devolver_agora' (falta o resto)", async () => {
+    const { baldeDeEstorno } = await import("@/views/admin/AdminOrdersView");
+    const pedido = pedidoFake({
+      id: "p9",
+      status: "cancelled",
+      paymentStatus: "recebido_na_entrega",
+      cancelledAfterShipping: false,
+      valorDevolvidoPorDevolucao: 40,
+    });
+    expect(baldeDeEstorno(pedido)).toBe("devolver_agora");
+  });
+});
+
+describe("valorDevolverAgora — o valor que falta, não o total do pedido", () => {
+  it("sem devolução: o valor que falta é o total inteiro", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(valorDevolverAgora({ total: 100 })).toBe(100);
+  });
+
+  it("devolução parcial: desconta o que já saiu por ela", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(
+      valorDevolverAgora({ total: 100, valorDevolvidoPorDevolucao: 40 }),
+    ).toBe(60);
+  });
+
+  it("devolução cobre tudo (ou passa): nunca fica negativo", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(
+      valorDevolverAgora({ total: 100, valorDevolvidoPorDevolucao: 150 }),
+    ).toBe(0);
+  });
+
+  // Achado A4 da revisão de 26/09/2026 (rodada 3, ataque X5): estorno
+  // CONFIRMADO pelo ledger (order_refunds concluído) é o MESMO tipo de
+  // dinheiro-que-já-saiu que o reembolso manual — faltava descontar.
+  it("estorno confirmado pelo MP (ledger): desconta também, mesmo sem devolução nenhuma", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(valorDevolverAgora({ total: 100, valorEstornado: 60 })).toBe(40);
+  });
+
+  it("devolução parcial + estorno parcial: desconta os dois juntos", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(
+      valorDevolverAgora({
+        total: 100,
+        valorDevolvidoPorDevolucao: 30,
+        valorEstornado: 30,
+      }),
+    ).toBe(40);
+  });
+
+  it("os dois juntos passando do total: nunca fica negativo", async () => {
+    const { valorDevolverAgora } = await import("@/lib/valor-devolver-agora");
+    expect(
+      valorDevolverAgora({
+        total: 100,
+        valorDevolvidoPorDevolucao: 60,
+        valorEstornado: 60,
+      }),
+    ).toBe(0);
+  });
 });
 
 // ITEM 3 da revisão de 26/08/2026 (segunda mutação sobrevivente): apagar
@@ -401,8 +488,19 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     // esta linha, a mutação que troca o ramo "esperando_o_produto" por
     // "devolver_agora" em `baldeDeEstorno` só morria no teste de função pura
     // — o teste de TELA (este bloco) continuava verde mesmo pondo o pedido
-    // no balde errado, porque nenhuma asserção aqui olhava "Estorno devido".
-    expect(hospedeiro.textContent).not.toContain("Estorno devido");
+    // no balde errado, porque nenhuma asserção aqui olhava a lista do dinheiro.
+    // A asserção é sobre COMPORTAMENTO (o item "devolver agora" e o título da
+    // lista do dinheiro não existem), não sobre uma frase: o texto do título
+    // já mudou uma vez ("Estorno devido" → "Devolver ao cliente") e uma
+    // negativa de texto passou a ser sempre verde sem proteger nada.
+    expect(
+      hospedeiro.querySelector('[data-testid^="devolver-agora-item-"]'),
+    ).toBeNull();
+    expect(
+      Array.from(hospedeiro.querySelectorAll("h3")).map((h) =>
+        h.textContent?.trim(),
+      ),
+    ).not.toContain("Devolver ao cliente");
   });
 
   // BLOQUEIA 1 da revisão de 26/08/2026: com o filtro padrão "Em Aberto",
@@ -471,6 +569,59 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     expect(botao).toBeUndefined();
   });
 
+  // Achado 1 (rodada 2): a lista mostrava o TOTAL do pedido, mesmo com uma
+  // devolução já tendo devolvido parte por fora — o cartão tem de mostrar o
+  // que FALTA, não o total, senão a lojista devolve o pedido inteiro de novo.
+  it("devolução parcial já concluída: 'Devolver agora' mostra o valor que falta, não o total", async () => {
+    mockPedidosCancelados = [
+      pedidoFake({
+        id: "ped-parcial",
+        status: "cancelled",
+        paymentStatus: "recebido_na_entrega",
+        cancelledAfterShipping: false,
+        valorDevolvidoPorDevolucao: 40,
+      }),
+    ];
+    mockTotalOrders = 1;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
+    });
+    await expandirAlertas(hospedeiro);
+
+    expect(hospedeiro.textContent).toContain("Devolver agora");
+    expect(hospedeiro.textContent).toContain("60,00");
+    expect(hospedeiro.textContent).not.toContain("100,00");
+  });
+
+  // Achado A4 (rodada 3, ataque X5): o mesmo desconto vale para o estorno
+  // CONFIRMADO pelo ledger (order_refunds concluído pelo MP), não só para a
+  // devolução manual — sem isto, "Devolver agora" prometia o total cheio
+  // mesmo com 60 já devolvidos pelo Mercado Pago.
+  it("estorno parcial já confirmado pelo MP: 'Devolver agora' mostra o valor que falta, não o total", async () => {
+    mockPedidosCancelados = [
+      pedidoFake({
+        id: "ped-estornado-parte",
+        status: "cancelled",
+        paymentStatus: "pago",
+        cancelledAfterShipping: false,
+        valorEstornado: 60,
+      }),
+    ];
+    mockTotalOrders = 1;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
+    });
+    await expandirAlertas(hospedeiro);
+
+    expect(hospedeiro.textContent).toContain("Devolver agora");
+    expect(hospedeiro.textContent).toContain("40,00");
+    expect(hospedeiro.textContent).not.toContain("100,00");
+  });
+
   it("clicar em 'O produto voltou' chama confirmarRetornoDoProduto com o id do pedido certo", async () => {
     mockPedidosCancelados = [
       pedidoFake({
@@ -503,7 +654,17 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     expect(confirmarRetornoDoProdutoMock).toHaveBeenCalledWith("ped-clique");
   });
 
-  it("o texto NUNCA promete estorno automático — manda o lojista ao painel do Mercado Pago", async () => {
+  // L3e (lacunas de pagamento, 02/10/2026): este teste dizia "o texto NUNCA
+  // promete estorno automático" — premissa que deixou de ser verdade em
+  // 07/09/2026 (cancelar pedido pago e não enviado grava a devolução em
+  // order_refunds e o cron a pede ao Mercado Pago sozinho). A frase que ele
+  // protegia ("esta tela não devolve dinheiro nenhum") mandava devolver por
+  // fora e pagava o cliente duas vezes. O que continua valendo, e é o que
+  // ele prende agora: a tela não afirma devolução em andamento para um
+  // pedido SEM linha em curso, e o caso manual continua sendo do lojista.
+  // (O lado em curso está em
+  // painel-devolver-agora-desconta-estorno-em-curso.test.tsx.)
+  it("pedido sem estorno em curso: a tela não diz que ESTE pedido está sendo devolvido, e o caso manual segue com o lojista", async () => {
     mockPedidosCancelados = [
       pedidoFake({
         id: "ped-honesto",
@@ -522,8 +683,11 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
 
     const texto = hospedeiro.textContent || "";
     expect(texto).toContain("Mercado Pago");
-    expect(texto).not.toMatch(/estorno automático/i);
-    expect(texto).not.toMatch(/o app (devolve|estorna)/i);
+    expect(texto).not.toContain("não devolve dinheiro nenhum");
+    expect(texto).toContain("Os outros dependem de você");
+    expect(
+      hospedeiro.querySelector('[data-testid="estorno-em-curso"]'),
+    ).toBeNull();
   });
 
   it("nenhum pedido cancelado e pago: nenhum balde aparece", async () => {
@@ -583,17 +747,26 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     expect(texto).not.toMatch(/o app (devolve|estorna)/i);
     expect(texto).not.toMatch(/devolva o dinheiro/i);
 
-    // BLOQUEIA 2 da revisão de 26/08/2026: o cabeçalho "Estorno devido" (uma
-    // AFIRMAÇÃO de dívida) não pode aparecer para um pedido que nunca foi
-    // cobrado — só o balde de mercadoria, com título próprio, aparece.
-    expect(texto).not.toContain("Estorno devido");
+    // BLOQUEIA 2 da revisão de 26/08/2026: o cabeçalho "Devolver ao cliente"
+    // (antes "Estorno devido"; uma AFIRMAÇÃO de dívida) não pode aparecer para
+    // um pedido que nunca foi cobrado — só o balde de mercadoria, com título
+    // próprio, aparece. Olha o h3 e o item, não a frase solta: o aviso de
+    // outros baldes pode CITAR o nome da lista.
+    expect(
+      hospedeiro.querySelector('[data-testid^="devolver-agora-item-"]'),
+    ).toBeNull();
+    expect(
+      Array.from(hospedeiro.querySelectorAll("h3")).map((h) =>
+        h.textContent?.trim(),
+      ),
+    ).not.toContain("Devolver ao cliente");
   });
 
   // BLOQUEIA 2 da revisão de 26/08/2026: os dois containers têm título
   // PRÓPRIO e cada pedido só entra no que responde à pergunta certa. Este
   // teste tem os DOIS baldes não vazios ao mesmo tempo (dois pedidos
   // distintos) para provar que os títulos não vazam um para o outro.
-  it("BLOQUEIA 2: os dois containers têm título próprio — 'Estorno devido' só quando há dinheiro, mercadoria nunca herda esse título", async () => {
+  it("BLOQUEIA 2: os dois containers têm título próprio — 'Devolver ao cliente' só quando há dinheiro, mercadoria nunca herda esse título", async () => {
     mockPedidosCancelados = [
       pedidoFake({
         id: "ped-so-mercadoria",
@@ -618,7 +791,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
 
     const texto = hospedeiro.textContent || "";
     expect(texto).toContain("Produtos que ainda não voltaram");
-    expect(texto).toContain("Estorno devido");
+    expect(texto).toContain("Devolver ao cliente");
 
     const cabecalhos = Array.from(hospedeiro.querySelectorAll("h3")).map((h) =>
       h.textContent?.trim(),
@@ -628,7 +801,9 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     expect(
       cabecalhos.filter((t) => t === "Produtos que ainda não voltaram"),
     ).toHaveLength(1);
-    expect(cabecalhos.filter((t) => t === "Estorno devido")).toHaveLength(1);
+    expect(cabecalhos.filter((t) => t === "Devolver ao cliente")).toHaveLength(
+      1,
+    );
   });
 
   it("pedido cancelado-após-envio SEM pagamento não entra no balde de dinheiro 'Devolver agora'", async () => {
@@ -924,7 +1099,7 @@ describe("Item 1 (27/08/2026): o banner de dinheiro em pedido cancelado não pod
     expect(texto).not.toMatch(/estorne (agora|pelo painel)/i);
     // A tela aponta para o card certo — mercadoria, não dinheiro — porque
     // este pedido específico ainda não pode ser devolvido. A frase do
-    // banner CITA "Estorno devido" pelo nome (para apontar para o card), o
+    // banner CITA "Devolver ao cliente" pelo nome (para apontar para o card), o
     // que faria uma checagem por substring falhar por motivo errado —
     // então a asserção real é sobre o CARD (h3) em si, não sobre a
     // ocorrência crua da palavra.
@@ -932,7 +1107,7 @@ describe("Item 1 (27/08/2026): o banner de dinheiro em pedido cancelado não pod
     const cabecalhos = Array.from(hospedeiro.querySelectorAll("h3")).map((h) =>
       h.textContent?.trim(),
     );
-    expect(cabecalhos).not.toContain("Estorno devido");
+    expect(cabecalhos).not.toContain("Devolver ao cliente");
 
     // 🔴 A METADE ÚTIL DA FRASE, presa por asserção.
     //
@@ -943,7 +1118,7 @@ describe("Item 1 (27/08/2026): o banner de dinheiro em pedido cancelado não pod
     // NENHUMA instrução, e a suíte diria que está tudo bem.
     //
     // A asserção é sobre o <p> do banner, não sobre `textContent` inteiro:
-    // "Estorno devido" também é o <h3> de um card, e medir no todo passaria
+    // "Devolver ao cliente" também é o <h3> de um card, e medir no todo passaria
     // pelo motivo errado (verde por causa do card, não do ponteiro).
     const paragrafos = Array.from(hospedeiro.querySelectorAll("p")).map((el) =>
       (el.textContent || "").replace(/\s+/g, " ").trim(),
@@ -952,7 +1127,7 @@ describe("Item 1 (27/08/2026): o banner de dinheiro em pedido cancelado não pod
       t.includes("O dinheiro entrou e o pedido está cancelado"),
     );
     expect(paragrafoDoBanner).toBeDefined();
-    expect(paragrafoDoBanner).toMatch(/Estorno devido/);
+    expect(paragrafoDoBanner).toMatch(/Devolver ao cliente/);
     expect(paragrafoDoBanner).toMatch(/Produtos que ainda não voltaram/);
   });
 });

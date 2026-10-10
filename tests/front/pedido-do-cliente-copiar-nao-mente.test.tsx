@@ -9,6 +9,7 @@
 // e só comemoram com `ok === true` — espelha
 // ficha-do-pedido-copiar-endereco-falha-avisa.test.tsx (painel) para os
 // pontos do cliente.
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type { Order } from "@/types";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -128,7 +129,7 @@ describe("OrderList — copiar o ID do pedido não mente", () => {
   function botaoId() {
     return [...hospedeiro.querySelectorAll("button")].find(
       (b) =>
-        b.textContent?.includes(`#${pedidoBase.id.slice(0, 8)}`) ||
+        b.textContent?.includes(`#${numeroDoPedido(pedidoBase.id)}`) ||
         b.textContent?.includes("Copiado!"),
     );
   }
@@ -213,7 +214,7 @@ describe("OrderDetailsView — copiar id e rastreio não mente", () => {
 
   function botaoIdPedido() {
     return [...hospedeiro.querySelectorAll('[role="button"]')].find((el) =>
-      el.textContent?.includes(`#${pedidoBase.id.slice(0, 8)}`),
+      el.textContent?.includes(`#${numeroDoPedido(pedidoBase.id)}`),
     );
   }
 

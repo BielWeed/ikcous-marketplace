@@ -168,8 +168,10 @@ describe("useEconomiaDoFreteExibida", () => {
     await esperarDebounce();
 
     expect(mockInvoke).toHaveBeenCalledTimes(1);
+    // CONTRATO-1.5.7.md §2/R1-4: mesmo `contratoCliente:3` que a cotação de
+    // VERDADE manda.
     expect(mockInvoke).toHaveBeenCalledWith("calculate-shipping", {
-      body: { cep: "01310100", cart },
+      body: { cep: "01310100", cart, contratoCliente: 3 },
     });
     expect(ultimoValor).toBe(19.9);
   });
@@ -322,6 +324,87 @@ describe("useEconomiaDoFreteExibida", () => {
     await esperarDebounce();
 
     expect(ultimoValor).toBe(41);
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+  });
+
+  // R2-5 (CONTRATO-1.5.7.md §8): "respeita a revisão, se chamar a edge" —
+  // sem chamada nova (isso duplicaria rede só para um número decorativo),
+  // o hook compara a revisão de CADA entrada com a revisão mais recente que
+  // ELE MESMO já viu em qualquer resposta. Uma cotação NOVA que traz uma
+  // revisão diferente invalida entradas mais VELHAS, mesmo dentro do TTL.
+  it("revisão do frete mudou entre duas cotações: a entrada MAIS VELHA do cache não serve mais, mesmo dentro do TTL", async () => {
+    mockInvoke.mockImplementation((_nome: string, opts: any) => {
+      const cep = opts.body.cep;
+      if (cep === "01310100") {
+        return Promise.resolve({
+          data: {
+            options: [{ id: "x", name: "X", price: 20, deliveryDays: 1 }],
+            revisaoConfig: "rev-1",
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({
+        data: {
+          options: [{ id: "y", name: "Y", price: 30, deliveryDays: 1 }],
+          revisaoConfig: "rev-2",
+        },
+        error: null,
+      });
+    });
+
+    // 1ª cotação: grava a entrada do CEP A com "rev-1".
+    await renderizar(paramsBase({ cepDeEntrega: "01310-100" }));
+    await esperarDebounce();
+    expect(ultimoValor).toBe(20);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+    // 2ª cotação (outro CEP): a lojista mudou a config nesse meio-tempo — a
+    // resposta chega com "rev-2".
+    await renderizar(paramsBase({ cepDeEntrega: "04567-000" }));
+    await esperarDebounce();
+    expect(ultimoValor).toBe(30);
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+
+    // Volta para o CEP A: a entrada gravada com "rev-1" não bate mais com a
+    // revisão mais recente conhecida ("rev-2") — recota, não serve o cache.
+    await renderizar(paramsBase({ cepDeEntrega: "01310-100" }));
+    await esperarDebounce();
+    expect(mockInvoke).toHaveBeenCalledTimes(3);
+  });
+
+  it("sem revisaoConfig na resposta (edge antiga/sem o campo): o cache continua servindo como antes — nada regride", async () => {
+    mockInvoke.mockImplementation((_nome: string, opts: any) => {
+      const cep = opts.body.cep;
+      return Promise.resolve({
+        data: {
+          options: [
+            {
+              id: "x",
+              name: "X",
+              price: cep === "01310100" ? 20 : 30,
+              deliveryDays: 1,
+            },
+          ],
+          // Sem `revisaoConfig` — formato anterior à 1.5.7.
+        },
+        error: null,
+      });
+    });
+
+    await renderizar(paramsBase({ cepDeEntrega: "01310-100" }));
+    await esperarDebounce();
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+    await renderizar(paramsBase({ cepDeEntrega: "04567-000" }));
+    await esperarDebounce();
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+
+    // Volta ao CEP A: sem revisão em NENHUMA das duas respostas, não há
+    // divergência para detectar — o cache serve normalmente.
+    await renderizar(paramsBase({ cepDeEntrega: "01310-100" }));
+    await esperarDebounce();
+    expect(ultimoValor).toBe(20);
     expect(mockInvoke).toHaveBeenCalledTimes(2);
   });
 

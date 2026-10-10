@@ -21,6 +21,9 @@ let RESPOSTA_PEDIDO: unknown = {
   data: { total: 100, valor_estornado: 0, payment_status: "pago" },
   error: null,
 };
+// Achado A3 (rodada 3, baixa prioridade): reembolso manual de devolução já
+// concluída do mesmo pedido — mesmo desconto que solicitar_estorno já faz.
+let RESPOSTA_DEVOLUCOES_MANUAIS: unknown = { data: [], error: null };
 let RESPOSTA_RPC: unknown = {
   data: { refund_id: "refund-1", amount: 50 },
   error: null,
@@ -53,13 +56,26 @@ function criarBuilderPedido() {
   return builder;
 }
 
+function criarBuilderDevolucoesManuais() {
+  const builder: Record<string, unknown> = {};
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase.
+  builder.then = (resolve: unknown, reject?: unknown) =>
+    Promise.resolve(RESPOSTA_DEVOLUCOES_MANUAIS).then(
+      resolve as never,
+      reject as never,
+    );
+  return builder;
+}
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: vi.fn((tabela: string) => {
       tabelasConsultadas.push(tabela);
-      return tabela === "order_refunds"
-        ? criarBuilderLinhas()
-        : criarBuilderPedido();
+      if (tabela === "order_refunds") return criarBuilderLinhas();
+      if (tabela === "devolucoes") return criarBuilderDevolucoesManuais();
+      return criarBuilderPedido();
     }),
     rpc: vi.fn((nome: string, argumentos: unknown) => {
       CHAMADAS.push({ tipo: "rpc", nome, argumentos });
@@ -130,6 +146,7 @@ beforeEach(() => {
     data: { total: 100, valor_estornado: 0, payment_status: "pago" },
     error: null,
   };
+  RESPOSTA_DEVOLUCOES_MANUAIS = { data: [], error: null };
   RESPOSTA_RPC = { data: { refund_id: "refund-1", amount: 50 }, error: null };
   RESPOSTA_INVOKE = { data: { status: "concluido" }, error: null };
 });
@@ -285,6 +302,24 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
 
     expect(atual().emCurso).toBe(30);
     expect(atual().disponivel).toBe(55);
+  });
+
+  it("achado A3 (rodada 3): disponível desconta reembolso manual de devolução já concluída do mesmo pedido", async () => {
+    RESPOSTA_PEDIDO = {
+      data: { total: 100, valor_estornado: 0, payment_status: "pago" },
+      error: null,
+    };
+    RESPOSTA_DEVOLUCOES_MANUAIS = {
+      data: [{ valor_reembolso: 40 }],
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().pago).toBe(100);
+    // Sem o desconto, a tela prometeria 100 — mais do que solicitar_estorno
+    // de verdade aceitaria (achado 3, rodada 2).
+    expect(atual().disponivel).toBe(60);
   });
 
   it("a leitura falhando marca `erro` e não derruba com exceção", async () => {

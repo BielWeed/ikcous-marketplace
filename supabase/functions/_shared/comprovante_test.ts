@@ -258,6 +258,193 @@ Deno.test("reserva concedida + SMTP configurado -> envia com o texto certo e dev
   assertStringIncludes(chamadasEnvio[0].html, "Blusa");
 });
 
+// --- RETIRADA NA LOJA (release 1.5.3): o e-mail diz ONDE retirar ------------
+//
+// O pedido de retirada nasce (migration 20261169000000) com
+// customer_data.shipping_option_id = 'store-pickup' e o RETRATO do endereço
+// da loja em customer_data.pickup_address. O comprovante tem de mostrar
+// "Retirada na loja" + esse endereço + o aviso neutro de esperar a loja (sem
+// prazo inventado), e o endereço da CLIENTE continua lá, rotulado como dela
+// — nunca "Entrega em", que prometeria uma entrega que não existe.
+
+async function htmlDoPedidoEnviado(
+  customerData: Record<string, unknown>,
+): Promise<string> {
+  const chamadasEnvio: Array<{ para: string; assunto: string; html: string }> = [];
+  const supabase = clienteFalso({
+    pedido: {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com", ...customerData },
+      subtotal: 100,
+      shipping: 0,
+      total: 100,
+      payment_method: "cash",
+      payment_status: null,
+    },
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    storeConfig: { store_name: "Loja Teste" },
+    reservou: true,
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      remetenteConfigurado: () => true,
+      enviarEmail: async (args) => {
+        chamadasEnvio.push(args);
+      },
+    },
+  });
+  assertEquals(desfecho, { ok: true });
+  return chamadasEnvio[0].html;
+}
+
+Deno.test("retirada na loja -> e-mail mostra 'Retirada na loja' + endereço da loja + aviso neutro; o da cliente fica rotulado como dela", async () => {
+  const html = await htmlDoPedidoEnviado({
+    shipping_option_id: "store-pickup",
+    pickup_address: "Rua Ficticia da Loja, 100 - Centro",
+    street: "Rua da Cliente",
+    number: "7",
+    city: "Cidade Teste",
+    state: "MG",
+    cep: "38500-000",
+  });
+  assertStringIncludes(html, "Retirada na loja");
+  assertStringIncludes(html, "Rua Ficticia da Loja, 100 - Centro");
+  assertStringIncludes(html, "Aguarde a confirmacao da loja para retirar");
+  assertStringIncludes(html, "Endereco do cliente");
+  assertStringIncludes(html, "Rua da Cliente");
+  assertEquals(html.includes("Entrega em"), false);
+});
+
+Deno.test("entrega local (controle) -> e-mail segue com 'Entrega em' e SEM bloco de retirada", async () => {
+  const html = await htmlDoPedidoEnviado({
+    shipping_option_id: "local-delivery",
+    street: "Rua da Cliente",
+    number: "7",
+  });
+  assertStringIncludes(html, "Entrega em");
+  assertEquals(html.includes("Retirada na loja"), false);
+  assertEquals(html.includes("Aguarde a confirmacao da loja"), false);
+});
+
+Deno.test("id de retirada SEM o retrato do endereço (pedido forjado/antigo) -> não inventa endereço de retirada", async () => {
+  const html = await htmlDoPedidoEnviado({
+    shipping_option_id: "store-pickup",
+    street: "Rua da Cliente",
+    number: "7",
+  });
+  assertStringIncludes(html, "Retirada na loja");
+  assertStringIncludes(html, "Aguarde a confirmacao da loja para retirar");
+  assertStringIncludes(html, "Endereco do cliente");
+});
+
+// --- canal presencial: o canal sai do BANCO e chega ao e-mail ----------------
+//
+// Os testes de htmlDoPedido passam o canal na mão; este prova a única linha
+// que liga as duas pontas (a coluna `canal` no select e o
+// `canal: String(pedido.canal ?? "online")` do montador) — ressalva da
+// revisão de C4.3.
+
+Deno.test("pedido com canal 'presencial' no banco -> o e-mail abre com 'Compra na loja'; sem canal, não", async () => {
+  async function htmlEnviadoPara(canal: string | undefined): Promise<string> {
+    const pedido: Record<string, unknown> = {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com" },
+      subtotal: 100,
+      total: 100,
+      payment_method: "cash",
+      payment_status: "recebido_na_entrega",
+    };
+    if (canal !== undefined) pedido.canal = canal;
+    const chamadasEnvio: Array<{ para: string; assunto: string; html: string }> = [];
+    const supabase = clienteFalso({
+      pedido,
+      itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+      storeConfig: { store_name: "Loja Teste" },
+      reservou: true,
+    });
+    const desfecho = await enviarComprovantePedido({
+      supabase: supabase as never,
+      orderId: UUID_PEDIDO,
+      deps: {
+        remetenteConfigurado: () => true,
+        enviarEmail: async (args) => {
+          chamadasEnvio.push(args);
+        },
+      },
+    });
+    assertEquals(desfecho, { ok: true });
+    assertEquals(chamadasEnvio.length, 1);
+    return chamadasEnvio[0].html;
+  }
+
+  assertStringIncludes(await htmlEnviadoPara("presencial"), "Compra na loja");
+  assertEquals((await htmlEnviadoPara(undefined)).includes("Compra na loja"), false);
+});
+
+// --- D3: a forma de pagamento do e-mail do BALCÃO não fala de entrega --------
+//
+// Defeito medido (spec do balcão, 28/09): venda de balcão pelo caminho real
+// (`enviarComprovantePedido`, canal lido do banco) saía com "Dinheiro na
+// entrega" / "PIX na entrega" / "Cartao na entrega". Aqui a ponta inteira:
+// coluna `canal` -> montador -> `htmlDoPedido` -> rótulo no HTML enviado.
+
+async function htmlDoComprovante(
+  paymentMethod: string,
+  canal: string | undefined,
+): Promise<string> {
+  const pedido: Record<string, unknown> = {
+    id: UUID_PEDIDO,
+    customer_data: { email: "cliente@exemplo.com" },
+    subtotal: 100,
+    total: 100,
+    payment_method: paymentMethod,
+    payment_status: "recebido_na_entrega",
+  };
+  if (canal !== undefined) pedido.canal = canal;
+  const enviados: Array<{ para: string; assunto: string; html: string }> = [];
+  const supabase = clienteFalso({
+    pedido,
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    storeConfig: { store_name: "Loja Teste" },
+    reservou: true,
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      remetenteConfigurado: () => true,
+      enviarEmail: async (args) => {
+        enviados.push(args);
+      },
+    },
+  });
+  assertEquals(desfecho, { ok: true });
+  assertEquals(enviados.length, 1);
+  return enviados[0].html;
+}
+
+Deno.test("e-mail do BALCÃO diz a forma real paga na loja e nunca 'na entrega'", async () => {
+  const dinheiro = await htmlDoComprovante("cash", "presencial");
+  assertStringIncludes(dinheiro, "Forma de pagamento");
+  assertStringIncludes(dinheiro, ">Dinheiro<");
+  const pix = await htmlDoComprovante("pix", "presencial");
+  assertStringIncludes(pix, ">PIX<");
+  const cartao = await htmlDoComprovante("card", "presencial");
+  assertStringIncludes(cartao, "Cartao na maquininha");
+  for (const html of [dinheiro, pix, cartao]) {
+    assertEquals(html.toLowerCase().includes("na entrega"), false);
+  }
+});
+
+Deno.test("e-mail do SITE (não presencial) segue com o texto de sempre: 'na entrega' (não-regressão do D3)", async () => {
+  assertStringIncludes(await htmlDoComprovante("cash", undefined), "Dinheiro na entrega");
+  assertStringIncludes(await htmlDoComprovante("cash", "online"), "Dinheiro na entrega");
+  assertStringIncludes(await htmlDoComprovante("pix", "online"), "PIX na entrega");
+  assertStringIncludes(await htmlDoComprovante("card", "online"), "Cartao na entrega");
+});
+
 // --- PIX pelo site: a abertura do e-mail depende do STATUS, não só do MÉTODO
 //
 // Achado de revisão de contexto limpo, 25/08/2026: mutar `comprovante.ts:331-
@@ -343,7 +530,7 @@ Deno.test("PIX pelo site AINDA aguardando pagamento -> abertura de 'aguardando',
   assertEquals(chamadasEnvio.length, 1);
   assertStringIncludes(
     chamadasEnvio[0].html,
-    "Recebemos seu pedido e ele esta aguardando a confirmacao do pagamento. Assim que o PIX for confirmado, ele entra na fila de separacao.",
+    "Recebemos seu pedido e ele esta aguardando a confirmacao do pagamento. Assim que o pagamento for confirmado, ele entra na fila de separacao.",
   );
   assertEquals(
     chamadasEnvio[0].html.includes("Guarde este e-mail: ele e o resumo do que voce comprou"),
@@ -389,4 +576,38 @@ Deno.test("envio de e-mail falha -> libera a reserva (RPC 'liberar_email_de_conf
     UUID_PEDIDO,
     "sem liberar, o pedido ficaria marcado 'já avisado' para sempre e o cliente sem comprovante nenhum",
   );
+});
+
+// 26/09/2026 — cartão pelo app: o comprovante diz a forma que o cliente usou
+// de fato (metodo_online), não "PIX pelo site" para todo pedido online.
+Deno.test("cartão de crédito pelo app -> o comprovante diz cartão, nunca PIX", async () => {
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_data: { email: "cliente@exemplo.com" },
+    subtotal: 100,
+    total: 100,
+    payment_method: "online",
+    metodo_online: "credito",
+    payment_status: "pago",
+  };
+  const chamadasEnvio: Array<{ para: string; assunto: string; html: string }> = [];
+  const supabase = clienteFalso({
+    pedido,
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    storeConfig: { store_name: "Loja Teste" },
+    reservou: true,
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      remetenteConfigurado: () => true,
+      enviarEmail: async (args) => {
+        chamadasEnvio.push(args);
+      },
+    },
+  });
+  assertEquals(desfecho, { ok: true });
+  assertStringIncludes(chamadasEnvio[0].html, "Cartao de credito pelo site");
+  assertEquals(chamadasEnvio[0].html.includes("PIX pelo site"), false);
 });

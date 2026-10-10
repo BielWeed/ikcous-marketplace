@@ -117,38 +117,27 @@ async function flush() {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
-// O título do acordeão mora no hub (AdminSettingsView) e muda com o desenho
-// novo do lote E ("Identidade da loja" → "Nome, logo e cores"; "Horário de
-// atendimento" → "Atendimento", tabela de vocabulário em
-// equipe/entregas/20260913-lote-e-desenho-salao-e-porao.md). O locator aceita
-// os DOIS títulos oficiais — o atual e o do desenho — para o teste sobreviver
-// às duas ordens de pouso (hub antes ou depois desta peça) SEM afrouxar o
-// alvo: continua exigindo o botão de seção colapsável (aria-expanded) cujo
-// texto carrega um dos dois títulos.
-function secaoColapsavel(tituloAtual: string, tituloNovo: string) {
-  const el = [...host.querySelectorAll("button")].find(
-    (node) =>
-      node.getAttribute("aria-expanded") !== null &&
-      (node.textContent?.includes(tituloAtual) ||
-        node.textContent?.includes(tituloNovo)),
-  );
-  expect(el).toBeDefined();
-  return el!;
-}
+// A identidade (IdentitySettingsSection) e o horário (BusinessHoursSection)
+// moravam atrás de dois acordeões duplicados em AdminSettingsView ("Nome,
+// logo e cores" e "Atendimento") — SAÍRAM de lá em 22/09/2026 (pedido do
+// dono): AdminAboutStoreView já monta os MESMOS componentes, sempre
+// visíveis (blocos 1 e 3, "Marca da loja" e "Horário de atendimento"), com o
+// mesmo contrato de props (active/onDirtyChange). Este arquivo passou a
+// renderizar a tela que continua editando de verdade — sem clique de
+// acordeão, os dois campos já estão no DOM.
 async function render(active = true) {
-  const { AdminSettingsView } = await import("@/views/admin/AdminSettingsView");
+  const { AdminAboutStoreView } = await import(
+    "@/views/admin/AdminAboutStoreView"
+  );
   await act(async () => {
     root.render(
-      <AdminSettingsView
+      <AdminAboutStoreView
         active={active}
         onNavigate={vi.fn()}
         onSetDirty={h.dirty}
       />,
     );
   });
-  const section = secaoColapsavel("Identidade da loja", "Nome, logo e cores");
-  if (section.getAttribute("aria-expanded") === "false")
-    await act(async () => section.click());
   await act(async () => {
     await import("@/components/admin/settings/IdentitySettingsSection");
   });
@@ -224,17 +213,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Ajustes — identidade da loja pela RPC protegida", () => {
-  it("salvar identidade não limpa horário pendente e recolher não perde os campos", async () => {
+describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
+  it("salvar identidade não limpa horário pendente", async () => {
     await render();
     await type("store-name", "Novo nome");
-    const section = secaoColapsavel("Identidade da loja", "Nome, logo e cores");
-    await act(async () => section.click());
-    expect(section.getAttribute("aria-expanded")).toBe("true");
-    await act(async () =>
-      secaoColapsavel("Horário de atendimento", "Atendimento").click(),
-    );
-    await flush();
     await type("store-business-hours", "Novo horário");
     await click("Salvar identidade");
     expect(h.dirty).toHaveBeenLastCalledWith(true);
@@ -248,12 +230,14 @@ describe("Ajustes — identidade da loja pela RPC protegida", () => {
     expect(input("store-business-hours").value).toBe("Novo horário");
     expect(h.dirty).toHaveBeenLastCalledWith(false);
   });
-  it("aba inativa não altera a guarda global, e a volta reapresenta sua pendência", async () => {
+  it("alternar a aba ativa preserva o rascunho, e a volta reapresenta a pendência", async () => {
+    // AdminAboutStoreView (diferente do antigo hub) não faz gate de
+    // onSetDirty por `active` — a soma das pendências é reportada sempre. O
+    // que este teste prende é o rascunho digitado sobrevivendo ao ciclo
+    // inativo/ativo, não o silêncio da guarda durante ele.
     await render();
     await type("store-name", "Não perdido");
-    h.dirty.mockClear();
     await render(false);
-    expect(h.dirty).not.toHaveBeenCalled();
     await render(true);
     expect(h.dirty).toHaveBeenLastCalledWith(true);
     expect(input("store-name").value).toBe("Não perdido");
@@ -266,10 +250,6 @@ describe("Ajustes — identidade da loja pela RPC protegida", () => {
       }),
     );
     await render();
-    await act(async () =>
-      secaoColapsavel("Horário de atendimento", "Atendimento").click(),
-    );
-    await flush();
     await type("store-business-hours", "Antigo usuário");
     await click("Salvar horário");
     h.auth = {
@@ -284,11 +264,11 @@ describe("Ajustes — identidade da loja pela RPC protegida", () => {
     const { toast } = await import("sonner");
     expect(toast.success).not.toHaveBeenCalled();
   });
-  it("mostra nome, cidade e estado da fotografia administrativa", async () => {
+  it("mostra o nome da fotografia administrativa; cidade e UF não são campos da marca (moram no Endereço)", async () => {
     await render();
     expect(input("store-name").value).toBe("Loja Teste");
-    expect(input("store-city").value).toBe("Uberlândia");
-    expect(input("store-state").value).toBe("MG");
+    expect(document.querySelector("#store-city")).toBeNull();
+    expect(document.querySelector("#store-state")).toBeNull();
   });
   it("preserva nome e cor digitados ao atualizar apenas config de horário/frete", async () => {
     await render();
@@ -303,16 +283,16 @@ describe("Ajustes — identidade da loja pela RPC protegida", () => {
     expect(input("store-color-hex").value).toBe("#0");
     expect(h.update).not.toHaveBeenCalled();
   });
-  it("grava pacote único com nome/local, sem updateConfig e sem inventar nome vazio", async () => {
+  it("grava pacote único com nome e a cidade/UF que a loja já tem, sem updateConfig e sem inventar nome vazio", async () => {
     await render();
     await type("store-name", "Minha Loja");
-    await type("store-city", "Patos de Minas");
-    await type("store-state", "mg");
     await click("Salvar identidade");
     expect(h.save).toHaveBeenCalledTimes(1);
+    // cidade e UF seguem no pacote (a RPC recusa pacote incompleto), com o
+    // valor da fotografia: quem os muda é o Endereço, não a marca
     expect(h.save.mock.calls[0][0].desired).toMatchObject({
       store_name: "Minha Loja",
-      store_city: "Patos de Minas",
+      store_city: "Uberlândia",
       store_state: "MG",
     });
     expect(h.update).not.toHaveBeenCalled();
@@ -332,13 +312,11 @@ describe("Ajustes — identidade da loja pela RPC protegida", () => {
   });
   it("imagens avançadas ficam sob título de gente, com todos os uploads alcançáveis", async () => {
     await render();
-    expect(host.textContent).toContain(
-      "Mais imagens da loja (favicon, ícones, compartilhamento)",
-    );
+    expect(host.textContent).toContain("Ícones do app (avançado)");
     expect(host.textContent).not.toContain("Ajustes avançados de imagens");
     // Renomear não pode esconder nada: as entradas de arquivo continuam na
-    // árvore, inclusive a de adicionar fonte (jsdom mantém o conteúdo do
-    // <details> na árvore esteja ele aberto ou fechado).
+    // árvore, inclusive a de adicionar fonte (a SecaoRecolhivel fechada só
+    // aplica `hidden`, não desmonta).
     expect(
       host.querySelector('input[id="identity-upload-Adicionar%20fonte"]'),
     ).not.toBeNull();

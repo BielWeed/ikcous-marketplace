@@ -32,6 +32,11 @@ export const LOCALSTORAGE_PURGE_WHITELIST: readonly string[] = [
   "orders_offline_updates_queue",
   "products_offline_updates_queue",
   "admin_banner_form_draft",
+  // C3.1 (PDV de balcão): mesmo motivo do rascunho de banner — é cupom em
+  // curso, escrita PENDENTE que o servidor ainda não confirmou. Sem isto,
+  // a Nuclear Purge (useUpdateCheck.ts:196) apaga uma venda montada sozinha
+  // no boot, sem ninguém decidir nada.
+  "admin_pdv_venda_draft",
 ];
 
 // Compartilha também o CRITÉRIO, não só a lista: os dois chamadores testam

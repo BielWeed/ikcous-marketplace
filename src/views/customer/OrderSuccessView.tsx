@@ -51,13 +51,25 @@ export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
       </p>
 
       <div className="grid w-full max-w-xs gap-4">
-        <Button
-          onClick={() => onNavigate("orders")}
-          className="h-14 gap-3 rounded-2xl bg-zinc-900 text-base font-bold text-white hover:bg-black"
-        >
-          <Package className="size-5" />
-          Meus Pedidos
-        </Button>
+        {/* CheckoutView-3301 (16/09/2026): mesmo defeito do SuccessView do
+            CheckoutView — este botão levava QUALQUER pessoa a "orders"
+            (OrderSearch), que exige e-mail (OrderSearch.tsx:63-66); o
+            convidado nunca informa e-mail neste app, então o botão era um
+            beco com cara de recurso. Esta view não recebe `orderId` (nada
+            no app navega para "order-success" hoje — plumar o id exigiria
+            mudar App.tsx, fora do escopo desta tarefa), então aqui a
+            correção possível é não oferecer o botão que não funciona para
+            quem não tem conta — o parágrafo acima já é honesto sobre como
+            acompanhar (WhatsApp da loja) desde o laudo de 30/08. */}
+        {user && (
+          <Button
+            onClick={() => onNavigate("orders")}
+            className="h-14 gap-3 rounded-2xl bg-zinc-900 text-base font-bold text-white hover:bg-black"
+          >
+            <Package className="size-5" />
+            Meus Pedidos
+          </Button>
+        )}
         <Button
           variant="ghost"
           onClick={() => onNavigate("home")}

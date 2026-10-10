@@ -97,14 +97,25 @@ describe("AddressForm — endereço que chega DEPOIS do mount preenche a ediçã
     });
 
     const cep = document.getElementById("cep") as HTMLInputElement;
-    const street = document.getElementById("street") as HTMLInputElement;
-    const nome = document.getElementById("name") as HTMLInputElement;
+    const cartao = document.querySelector('[data-testid="cartao-do-endereco"]');
+    const casa = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent === "Casa",
+    );
 
     // Âncora: os campos existem e a tela montou.
     expect(cep).toBeDefined();
 
     expect(cep.value).toBe("38500-000");
-    expect(street.value).toBe("Rua Teste");
-    expect(nome.value).toBe("Casa");
+    // Endereço salvo aparece no cartão (rua e bairro/cidade/UF)...
+    expect(cartao?.textContent).toContain("Rua Teste");
+    expect(cartao?.textContent).toContain("Centro · Testópolis – MG");
+    // ...e o apelido salvo ("Casa") vem com o botão Casa ligado.
+    expect(casa?.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      (document.getElementById("recipient_name") as HTMLInputElement).value,
+    ).toBe("Cliente Teste");
+    expect((document.getElementById("number") as HTMLInputElement).value).toBe(
+      "123",
+    );
   });
 });

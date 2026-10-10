@@ -26,6 +26,7 @@ type OrderRow = Database["public"]["Tables"]["marketplace_orders"]["Row"];
 
 const PEDIDO_BASE: OrderRow = {
   address_id: "end-1",
+  canal: "online",
   cancelled_after_shipping: false,
   confirmation_email_sent_at: null,
   coupon_code: null,
@@ -49,18 +50,23 @@ const PEDIDO_BASE: OrderRow = {
   payment_status: null,
   returned_to_seller_at: null,
   valor_estornado: 0,
+  tentativas_de_pagamento: 0,
+  metodo_online: null,
+  parcelas: null,
   shipping: null,
   shipping_cost: null,
   shipping_label_id: null,
   shipping_label_url: null,
   status: "pending",
   stock_returned_at: null,
+  estorno_manual_registrado_em: null,
   subtotal: 100,
   total: 120,
   total_amount: null,
   tracking_code: null,
   updated_at: "2026-08-01T11:00:00.000Z",
   user_id: "u-1",
+  vendedor_id: null,
 };
 
 function pedido(

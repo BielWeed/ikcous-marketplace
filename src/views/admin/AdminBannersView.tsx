@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ImageAdjuster } from "@/components/ui/custom/ImageAdjuster";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +40,12 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import {
+  gravarModoDoEditor,
+  lerModoDoEditor,
+  modoAoAbrirOBanner,
+} from "@/lib/modo-do-editor-de-banner";
 import { cn, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
@@ -446,11 +453,11 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
               >
                 {banner.title || "Campanha sem Título"}
               </h3>
-              <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+              <span className="shrink-0 font-mono text-[11px] text-zinc-500">
                 #{banner.order}
               </span>
               {posicaoCurta && (
-                <span className="hidden shrink-0 text-[10px] text-zinc-500 sm:inline">
+                <span className="hidden shrink-0 text-[11px] text-zinc-500 sm:inline">
                   · {posicaoCurta}
                 </span>
               )}
@@ -468,7 +475,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
             </div>
 
             {banner.link && (
-              <div className="flex min-w-0 items-center gap-1 font-mono text-[10px] text-zinc-500">
+              <div className="flex min-w-0 items-center gap-1 font-mono text-[11px] text-zinc-500">
                 <ExternalLink className="size-2.5 shrink-0" />
                 <span className="min-w-0 truncate">{banner.link}</span>
               </div>
@@ -496,7 +503,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="shrink-0 font-mono text-[9px] text-zinc-500">
+                    <span className="shrink-0 font-mono text-[11px] text-zinc-500">
                       {Math.round(pct)}%
                     </span>
                   </div>
@@ -536,7 +543,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
             </div>
 
             <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                 Exibir
               </span>
               <Switch
@@ -588,6 +595,76 @@ const itemVariants: Variants = {
     transition: { type: "spring", stiffness: 120, damping: 14 },
   },
 };
+
+// Fonte única do shape "banner vazio" (~20 campos), achado
+// AdminBannersView-1198: o literal completo (title, imageUrl, link,
+// position, active, order, subtitle, titleColor, ..., templateType,
+// productId, startDate, endDate, showTextOverlay) era reescrito à mão no
+// useState inicial do formData, nos dois "initial" de fallback
+// (dirty-check e auto-save, byte-a-byte iguais) e nas duas ramificações de
+// handleOpenDialog. Um campo novo que só entrasse em um desses blocos
+// deixava o indicador de "alterações não salvas" ou o rascunho do
+// auto-save sistematicamente errados, sem erro visível — agora os 5 pontos
+// chamam esta função e só podem divergir editando ela.
+// Exportada para o teste em
+// tests/front/admin-banners-default-nao-diverge.test.tsx.
+export const defaultBannerFor = (
+  position: Banner["position"],
+  order: number,
+): Omit<Banner, "id"> => ({
+  title: "",
+  imageUrl: "",
+  link: "",
+  position,
+  active: true,
+  order,
+  subtitle: "",
+  titleColor: "",
+  subtitleColor: "",
+  buttonText: "",
+  buttonBgColor: "",
+  buttonTextColor: "",
+  fontFamily: "",
+  overlayColor: "",
+  overlayOpacity: 40,
+  badgeText: "",
+  templateType: "default",
+  productId: "",
+  startDate: null,
+  endDate: null,
+  showTextOverlay: true,
+});
+
+// Comparação campo a campo de formData contra o baseline do formulário.
+// Mesmo achado AdminBannersView-1198: dirty-check e auto-save repetiam a
+// MESMA comparação de ~20 campos palavra por palavra; agora os dois chamam
+// esta função. Exportada pelo mesmo motivo de defaultBannerFor.
+export const isBannerFormDirty = (
+  formData: Partial<Banner>,
+  initial: Banner,
+): boolean =>
+  (formData.title || "") !== (initial.title || "") ||
+  (formData.imageUrl || "") !== (initial.imageUrl || "") ||
+  (formData.link || "") !== (initial.link || "") ||
+  formData.position !== initial.position ||
+  formData.active !== initial.active ||
+  Number(formData.order) !== Number(initial.order) ||
+  (formData.subtitle || "") !== (initial.subtitle || "") ||
+  (formData.titleColor || "") !== (initial.titleColor || "") ||
+  (formData.subtitleColor || "") !== (initial.subtitleColor || "") ||
+  (formData.buttonText || "") !== (initial.buttonText || "") ||
+  (formData.buttonBgColor || "") !== (initial.buttonBgColor || "") ||
+  (formData.buttonTextColor || "") !== (initial.buttonTextColor || "") ||
+  (formData.fontFamily || "") !== (initial.fontFamily || "") ||
+  (formData.overlayColor || "") !== (initial.overlayColor || "") ||
+  Number(formData.overlayOpacity ?? 40) !==
+    Number(initial.overlayOpacity ?? 40) ||
+  (formData.badgeText || "") !== (initial.badgeText || "") ||
+  (formData.templateType || "default") !==
+    (initial.templateType || "default") ||
+  (formData.productId || "") !== (initial.productId || "") ||
+  formData.startDate !== initial.startDate ||
+  formData.endDate !== initial.endDate;
 
 export const AdminBannersView = memo(function AdminBannersView({
   onNavigate: _onNavigate,
@@ -663,29 +740,9 @@ export const AdminBannersView = memo(function AdminBannersView({
   >("titleColor");
   const [extractedColors, setExtractedColors] = useState<string[]>([]);
 
-  const [formData, setFormData] = useState<Partial<Banner>>({
-    title: "",
-    imageUrl: "",
-    link: "",
-    position: "home_top",
-    active: true,
-    order: 0,
-    subtitle: "",
-    titleColor: "",
-    subtitleColor: "",
-    buttonText: "",
-    buttonBgColor: "",
-    buttonTextColor: "",
-    fontFamily: "",
-    overlayColor: "",
-    overlayOpacity: 40,
-    badgeText: "",
-    templateType: "default",
-    productId: "",
-    startDate: null,
-    endDate: null,
-    showTextOverlay: true,
-  });
+  const [formData, setFormData] = useState<Partial<Banner>>(() =>
+    defaultBannerFor("home_top", 0),
+  );
 
   // Sync destinationMode based on link or productId
   useEffect(() => {
@@ -912,9 +969,11 @@ export const AdminBannersView = memo(function AdminBannersView({
       return;
     }
     setIsUploadingAdjusted(true);
-    const file = new File([croppedBlob], `banner-image-${Date.now()}.jpg`, {
-      type: "image/jpeg",
-    });
+    // Mesmo achado do produto (AdminProductFormView-499): o ImageAdjuster
+    // exporta webp — nome/tipo fixos ".jpg"/"image/jpeg" mentiam sobre o
+    // conteúdo e quebravam a transformação de imagem do Storage. O helper
+    // derivado do tipo REAL do blob é compartilhado com a tela de produtos.
+    const file = arquivoDaImagemRecortada(croppedBlob, "banner-image-");
     const loadingToast = toast.loading("Enviando imagem recortada...");
     try {
       const url = await uploadBannerImage(file);
@@ -1117,16 +1176,21 @@ export const AdminBannersView = memo(function AdminBannersView({
     editingBanner,
   ]);
 
-  // Suporte a fechamento via tecla Escape
+  // Suporte a fechamento via tecla Escape.
+  // Ordem de captura: o ImageAdjuster é renderizado por cima do diálogo de
+  // banner (abre a partir de dentro dele, via openAdjuster), então é o
+  // overlay mais no topo e precisa ser checado ANTES de isDialogOpen — senão
+  // o Esc fecha o formulário inteiro (e apaga o upload) enquanto só o
+  // recorte deveria fechar.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (isDialogOpen) {
+        if (isAdjusterOpen) {
+          setIsAdjusterOpen(false);
+        } else if (isDialogOpen) {
           handleOpenChange(false);
         } else if (showHelpModal) {
           setShowHelpModal(false);
-        } else if (isAdjusterOpen) {
-          setIsAdjusterOpen(false);
         }
       }
     };
@@ -1152,10 +1216,60 @@ export const AdminBannersView = memo(function AdminBannersView({
     }
   }, [active]);
 
+  // Empurra uma entrada de histórico virtual quando o diálogo abre e a
+  // consome (history.back()) quando ele fecha — por QUALQUER caminho
+  // (Cancelar, Salvar com sucesso, Escape, Voltar físico do Android ou o
+  // botão Voltar do AdminLayout). Antes desta correção (achado
+  // AdminBannersView-1156) este componente não empurrava nada: o Voltar
+  // físico pulava direto para a URL que já estava uma posição abaixo
+  // (ex.: Ajustes) e o app trocava de tela por baixo do diálogo, em vez
+  // de só fechá-lo. Mesmo padrão de CheckoutView.tsx
+  // (`hasPushedAddressModalState`): copia o state atual e só acrescenta
+  // `modal: "banner"`, sem mudar a URL visível.
+  //
+  // A checagem `window.history.state?.modal === "banner"` antes do
+  // `back()` é o que torna o fechamento à prova de duas coisas: (1) o
+  // Voltar FÍSICO, onde o navegador já fez o pop sozinho antes do
+  // popstate chegar até este componente — sem a checagem, este efeito
+  // consumiria MAIS UMA entrada e o app sairia da tela de verdade, o
+  // exato bug que está sendo corrigido; e (2) uma navegação real para
+  // outra aba que aconteça com o diálogo aberto — o pushState dessa
+  // navegação já está por cima do nosso, então a flag não bate mais e
+  // este efeito não mexe no histórico dela.
+  const temEntradaDeHistoricoPendenteRef = useRef(false);
+  useEffect(() => {
+    if (isDialogOpen) {
+      if (!temEntradaDeHistoricoPendenteRef.current) {
+        window.history.pushState(
+          { ...window.history.state, modal: "banner" },
+          "",
+          window.location.pathname + window.location.search,
+        );
+        temEntradaDeHistoricoPendenteRef.current = true;
+      }
+    } else if (temEntradaDeHistoricoPendenteRef.current) {
+      temEntradaDeHistoricoPendenteRef.current = false;
+      if (window.history.state?.modal === "banner") {
+        window.history.back();
+      }
+    }
+  }, [isDialogOpen]);
+
+  // Registra o fechamento do diálogo como override do Voltar. O botão
+  // Voltar do AdminLayout (AdminArea.tsx:705) chama esta mesma função
+  // DIRETO (sem passar pelo popstate), e o history.back() disparado pelo
+  // efeito acima pode entregar um popstate que também tenta rodá-la de
+  // novo antes deste efeito desregistrar — `efetuouFechamentoRef` torna a
+  // segunda chamada um no-op em vez de repetir a limpeza de
+  // `handleOpenChange` (ex.: apagar upload órfão duas vezes).
+  const efetuouFechamentoRef = useRef(false);
   useEffect(() => {
     if (onSetBackOverride) {
       if (isDialogOpen) {
+        efetuouFechamentoRef.current = false;
         onSetBackOverride(() => () => {
+          if (efetuouFechamentoRef.current) return;
+          efetuouFechamentoRef.current = true;
           handleOpenChange(false);
         });
       } else {
@@ -1198,53 +1312,10 @@ export const AdminBannersView = memo(function AdminBannersView({
       banners.filter((b) => b.position === defaultPosition).length + 1;
     const initial: Banner = editingBanner || {
       id: "",
-      imageUrl: "",
-      title: "",
-      link: "",
-      position: defaultPosition,
-      active: true,
-      order: defaultOrder,
-      subtitle: "",
-      titleColor: "",
-      subtitleColor: "",
-      buttonText: "",
-      buttonBgColor: "",
-      buttonTextColor: "",
-      fontFamily: "",
-      overlayColor: "",
-      overlayOpacity: 40,
-      badgeText: "",
-      templateType: "default",
-      productId: "",
-      startDate: null,
-      endDate: null,
+      ...defaultBannerFor(defaultPosition, defaultOrder),
     };
 
-    const isDirty =
-      (formData.title || "") !== (initial.title || "") ||
-      (formData.imageUrl || "") !== (initial.imageUrl || "") ||
-      (formData.link || "") !== (initial.link || "") ||
-      formData.position !== initial.position ||
-      formData.active !== initial.active ||
-      Number(formData.order) !== Number(initial.order) ||
-      (formData.subtitle || "") !== (initial.subtitle || "") ||
-      (formData.titleColor || "") !== (initial.titleColor || "") ||
-      (formData.subtitleColor || "") !== (initial.subtitleColor || "") ||
-      (formData.buttonText || "") !== (initial.buttonText || "") ||
-      (formData.buttonBgColor || "") !== (initial.buttonBgColor || "") ||
-      (formData.buttonTextColor || "") !== (initial.buttonTextColor || "") ||
-      (formData.fontFamily || "") !== (initial.fontFamily || "") ||
-      (formData.overlayColor || "") !== (initial.overlayColor || "") ||
-      Number(formData.overlayOpacity ?? 40) !==
-        Number(initial.overlayOpacity ?? 40) ||
-      (formData.badgeText || "") !== (initial.badgeText || "") ||
-      (formData.templateType || "default") !==
-        (initial.templateType || "default") ||
-      (formData.productId || "") !== (initial.productId || "") ||
-      formData.startDate !== initial.startDate ||
-      formData.endDate !== initial.endDate;
-
-    onSetDirty(isDirty);
+    onSetDirty(isBannerFormDirty(formData, initial));
   }, [isDialogOpen, formData, editingBanner, banners, selectedTab, onSetDirty]);
 
   // State to manage draft recovery
@@ -1289,51 +1360,10 @@ export const AdminBannersView = memo(function AdminBannersView({
       banners.filter((b) => b.position === defaultPosition).length + 1;
     const initial: Banner = editingBanner || {
       id: "",
-      imageUrl: "",
-      title: "",
-      link: "",
-      position: defaultPosition,
-      active: true,
-      order: defaultOrder,
-      subtitle: "",
-      titleColor: "",
-      subtitleColor: "",
-      buttonText: "",
-      buttonBgColor: "",
-      buttonTextColor: "",
-      fontFamily: "",
-      overlayColor: "",
-      overlayOpacity: 40,
-      badgeText: "",
-      templateType: "default",
-      productId: "",
-      startDate: null,
-      endDate: null,
+      ...defaultBannerFor(defaultPosition, defaultOrder),
     };
 
-    const hasChanges =
-      (formData.title || "") !== (initial.title || "") ||
-      (formData.imageUrl || "") !== (initial.imageUrl || "") ||
-      (formData.link || "") !== (initial.link || "") ||
-      formData.position !== initial.position ||
-      formData.active !== initial.active ||
-      Number(formData.order) !== Number(initial.order) ||
-      (formData.subtitle || "") !== (initial.subtitle || "") ||
-      (formData.titleColor || "") !== (initial.titleColor || "") ||
-      (formData.subtitleColor || "") !== (initial.subtitleColor || "") ||
-      (formData.buttonText || "") !== (initial.buttonText || "") ||
-      (formData.buttonBgColor || "") !== (initial.buttonBgColor || "") ||
-      (formData.buttonTextColor || "") !== (initial.buttonTextColor || "") ||
-      (formData.fontFamily || "") !== (initial.fontFamily || "") ||
-      (formData.overlayColor || "") !== (initial.overlayColor || "") ||
-      Number(formData.overlayOpacity ?? 40) !==
-        Number(initial.overlayOpacity ?? 40) ||
-      (formData.badgeText || "") !== (initial.badgeText || "") ||
-      (formData.templateType || "default") !==
-        (initial.templateType || "default") ||
-      (formData.productId || "") !== (initial.productId || "") ||
-      formData.startDate !== initial.startDate ||
-      formData.endDate !== initial.endDate;
+    const hasChanges = isBannerFormDirty(formData, initial);
 
     if (!hasChanges) {
       return;
@@ -1354,6 +1384,13 @@ export const AdminBannersView = memo(function AdminBannersView({
     return () => clearTimeout(timer);
   }, [formData, isDialogOpen, editingBanner, banners, selectedTab]);
 
+  // O toque no alternador troca o modo E o lembra neste aparelho. Abrir o
+  // editor nunca grava: só a escolha do lojista vira preferência.
+  const escolherOModo = (modo: "simple" | "complete") => {
+    setBannerMode(modo);
+    gravarModoDoEditor(modo);
+  };
+
   const handleOpenDialog = (banner?: Banner) => {
     setActiveColorElement("titleColor");
     setProductSearch("");
@@ -1371,63 +1408,57 @@ export const AdminBannersView = memo(function AdminBannersView({
     setActiveStep(1);
     if (banner?.id) {
       setEditingBanner(banner);
-      const isSimple =
-        !banner.title?.trim() &&
-        !banner.subtitle?.trim() &&
-        !banner.buttonText?.trim() &&
-        !banner.badgeText?.trim();
-      setBannerMode(isSimple ? "simple" : "complete");
+      // Banner com texto abre SEMPRE em Completo: salvar em Simples apaga
+      // título, subtítulo, botão, selo, cores e fonte. Sem texto, vale o modo
+      // lembrado neste aparelho (Simples na primeira vez).
+      setBannerMode(modoAoAbrirOBanner(banner, lerModoDoEditor()));
+      // Fallback campo a campo contra defaultBannerFor (não um spread cego):
+      // banner vem do banco e pode ter nascido ANTES de um campo novo
+      // existir (coluna ainda não preenchida para linhas antigas) — o
+      // default de "editar um banner sem esse campo" precisa ser o MESMO
+      // default de "criar um banner do zero", nunca um valor hardcoded à
+      // parte que alguém esqueça de manter igual (achado AdminBannersView-1198).
+      const defaultsParaEdicao = defaultBannerFor(
+        banner.position || "home_top",
+        banner.order || 0,
+      );
       setFormData({
-        title: banner.title || "",
-        imageUrl: banner.imageUrl || "",
-        link: banner.link || "",
-        position: banner.position || "home_top",
-        active: banner.active ?? true,
-        order: banner.order || 0,
-        subtitle: banner.subtitle || "",
-        titleColor: banner.titleColor || "",
-        subtitleColor: banner.subtitleColor || "",
-        buttonText: banner.buttonText || "",
-        buttonBgColor: banner.buttonBgColor || "",
-        buttonTextColor: banner.buttonTextColor || "",
-        fontFamily: banner.fontFamily || "",
-        overlayColor: banner.overlayColor || "",
-        overlayOpacity: banner.overlayOpacity ?? 40,
-        badgeText: banner.badgeText || "",
-        templateType: banner.templateType || "default",
-        productId: banner.productId || "",
-        startDate: banner.startDate || null,
-        endDate: banner.endDate || null,
-        showTextOverlay: banner.showTextOverlay ?? true,
+        title: banner.title || defaultsParaEdicao.title,
+        imageUrl: banner.imageUrl || defaultsParaEdicao.imageUrl,
+        link: banner.link || defaultsParaEdicao.link,
+        position: banner.position || defaultsParaEdicao.position,
+        active: banner.active ?? defaultsParaEdicao.active,
+        order: banner.order || defaultsParaEdicao.order,
+        subtitle: banner.subtitle || defaultsParaEdicao.subtitle,
+        titleColor: banner.titleColor || defaultsParaEdicao.titleColor,
+        subtitleColor: banner.subtitleColor || defaultsParaEdicao.subtitleColor,
+        buttonText: banner.buttonText || defaultsParaEdicao.buttonText,
+        buttonBgColor: banner.buttonBgColor || defaultsParaEdicao.buttonBgColor,
+        buttonTextColor:
+          banner.buttonTextColor || defaultsParaEdicao.buttonTextColor,
+        fontFamily: banner.fontFamily || defaultsParaEdicao.fontFamily,
+        overlayColor: banner.overlayColor || defaultsParaEdicao.overlayColor,
+        overlayOpacity:
+          banner.overlayOpacity ?? defaultsParaEdicao.overlayOpacity,
+        badgeText: banner.badgeText || defaultsParaEdicao.badgeText,
+        templateType: banner.templateType || defaultsParaEdicao.templateType,
+        productId: banner.productId || defaultsParaEdicao.productId,
+        startDate: banner.startDate || defaultsParaEdicao.startDate,
+        endDate: banner.endDate || defaultsParaEdicao.endDate,
+        showTextOverlay:
+          banner.showTextOverlay ?? defaultsParaEdicao.showTextOverlay,
       });
     } else {
       setEditingBanner(null);
-      setBannerMode("simple");
+      setBannerMode(modoAoAbrirOBanner(null, lerModoDoEditor()));
       const defaultPosition =
         banner?.position || (selectedTab !== "all" ? selectedTab : "home_top");
-      setFormData({
-        title: "",
-        imageUrl: "",
-        link: "",
-        position: defaultPosition,
-        active: true,
-        order: banners.filter((b) => b.position === defaultPosition).length + 1,
-        subtitle: "",
-        titleColor: "",
-        subtitleColor: "",
-        buttonText: "",
-        buttonBgColor: "",
-        buttonTextColor: "",
-        fontFamily: "",
-        overlayColor: "",
-        overlayOpacity: 40,
-        badgeText: "",
-        templateType: "default",
-        productId: "",
-        startDate: null,
-        endDate: null,
-        showTextOverlay: true,
-      });
+      setFormData(
+        defaultBannerFor(
+          defaultPosition,
+          banners.filter((b) => b.position === defaultPosition).length + 1,
+        ),
+      );
     }
     setIsDialogOpen(true);
   };
@@ -1750,6 +1781,10 @@ export const AdminBannersView = memo(function AdminBannersView({
       await updateBanner(banner.id, { active: !banner.active });
     } catch (error) {
       console.error("Erro ao alternar status do banner:", error);
+      // Igual aos irmãos confirmDeleteBanner/moveBanner: sem isto o Switch só
+      // voltava a ficar habilitado em silêncio e o lojista achava que a
+      // troca tinha sido aplicada quando na verdade falhou.
+      toast.error("Erro ao alternar status do banner.");
     } finally {
       setIsProcessing(false);
       setActiveAction(null);
@@ -1952,18 +1987,23 @@ export const AdminBannersView = memo(function AdminBannersView({
                     {/* Onda 3 da reforma visual (03/09): o título minúsculo
                         (text-xs) virou o AdminPageHeader, igual ao das listas
                         aprovadas; o botão de ajuda continua ao lado. */}
-                    <AdminPageHeader titulo="Gerenciador de Banners">
+                    <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-banners"]}>
                       <button
                         type="button"
                         onClick={() => setShowHelpModal(true)}
-                        className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
-                        title="Guia do Gerenciador de Banners"
+                        className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
+                        title={`Como usar os ${NOMES_DO_PAINEL["admin-banners"]}`}
                       >
-                        <HelpCircle className="size-4.5" />
+                        <span
+                          aria-hidden="true"
+                          className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                        >
+                          <HelpCircle className="size-4.5" />
+                        </span>
                       </button>
                     </AdminPageHeader>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[10px] font-medium text-zinc-500">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
                     <span className="size-1.5 rounded-full bg-emerald-400/90" />
                     <span className="text-zinc-400">
                       {/* "Ligados" = só o interruptor (active). "No ar" seria
@@ -1983,7 +2023,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                   type="button"
                   onClick={() => handleOpenDialog()}
                   disabled={isOffline}
-                  className="group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] via-amber-450 to-amber-500 px-3 py-1.5 text-[10px] sm:text-xs font-black uppercase tracking-wider text-black shadow-[0_2px_12px_rgba(255,191,0,0.2)] transition-all duration-300 hover:scale-[1.02] hover:from-amber-400 hover:to-amber-500 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+                  className="group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] via-amber-450 to-amber-500 px-3 py-1.5 text-[11px] sm:text-xs font-black uppercase tracking-wider text-black shadow-[0_2px_12px_rgba(255,191,0,0.2)] transition-all duration-300 hover:scale-[1.02] hover:from-amber-400 hover:to-amber-500 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
                 >
                   <Plus className="size-3 stroke-[3px] transition-transform duration-300 group-hover:rotate-90" />
                   <span>Novo Banner</span>
@@ -2021,7 +2061,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         key={valor}
                         onClick={() => setSelectedTab(valor)}
                         className={cn(
-                          "relative rounded-lg px-3.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors duration-300",
+                          "relative rounded-lg px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors duration-300",
                           selectedTab === valor
                             ? "text-black"
                             : "text-zinc-400 hover:text-white",
@@ -2134,10 +2174,10 @@ export const AdminBannersView = memo(function AdminBannersView({
             ) : isLoaded && filteredBannersList.length === 0 ? (
               <div className="group/empty flex flex-col items-center justify-center rounded-[2.5rem] border border-dashed border-white/5 bg-zinc-950/20 p-12 py-16 text-center backdrop-blur-sm transition-all duration-300 hover:border-zinc-800">
                 <SlidersHorizontal className="mb-3 size-8 animate-pulse text-zinc-700 transition-colors group-hover/empty:text-zinc-500" />
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
                   Nenhum Banner encontrado
                 </p>
-                <p className="text-zinc-655 max-w-xs text-[9px] leading-relaxed">
+                <p className="text-zinc-655 max-w-xs text-[11px] leading-relaxed">
                   Tente ajustar a busca ou o filtro de status para visualizar as
                   campanhas.
                 </p>
@@ -2147,7 +2187,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       setSearchQueryList("");
                       setStatusFilter("all");
                     }}
-                    className="mt-3 text-[10px] font-black uppercase tracking-widest text-[#FFBF00] underline transition-colors hover:text-white"
+                    className="mt-3 text-[11px] font-black uppercase tracking-widest text-[#FFBF00] underline transition-colors hover:text-white"
                   >
                     Limpar Filtros
                   </button>
@@ -2180,7 +2220,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             <span className="size-1.5 rounded-full bg-[#FFBF00]/80" />
                             {pos.label}
                           </h2>
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600">
                             {positionBanners.length}{" "}
                             {positionBanners.length === 1
                               ? "banner"
@@ -2272,9 +2312,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <div className="flex shrink-0 select-none items-center gap-0.5 rounded-xl border border-white/5 bg-zinc-950 p-0.5">
                     <button
                       type="button"
-                      onClick={() => setBannerMode("simple")}
+                      onClick={() => escolherOModo("simple")}
                       className={cn(
-                        "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[8.5px] sm:text-[9px] font-bold uppercase tracking-wider transition-all duration-300 relative",
+                        "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all duration-300 relative",
                         bannerMode === "simple"
                           ? "text-black font-extrabold"
                           : "text-zinc-500 hover:text-zinc-300",
@@ -2295,9 +2335,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setBannerMode("complete")}
+                      onClick={() => escolherOModo("complete")}
                       className={cn(
-                        "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[8.5px] sm:text-[9px] font-bold uppercase tracking-wider transition-all duration-300 relative",
+                        "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all duration-300 relative",
                         bannerMode === "complete"
                           ? "text-black font-extrabold"
                           : "text-zinc-500 hover:text-zinc-300",
@@ -2358,7 +2398,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         >
                           <div
                             className={cn(
-                              "flex size-4.5 items-center justify-center rounded-full text-[9px] font-black shrink-0 transition-all",
+                              "flex size-4.5 items-center justify-center rounded-full text-[11px] font-black shrink-0 transition-all",
                               isActive
                                 ? "bg-[#FFBF00] text-black shadow-sm"
                                 : isCompleted
@@ -2370,7 +2410,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           </div>
                           <span
                             className={cn(
-                              "text-[8.5px] font-black uppercase tracking-wider leading-none",
+                              "text-[11px] font-black uppercase tracking-wider leading-none",
                               isActive
                                 ? "text-[#FFBF00]"
                                 : isCompleted
@@ -2392,7 +2432,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                 <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5 sm:pb-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Eye className="size-3.5 shrink-0 text-[#FFBF00] animate-pulse" />
-                    <h3 className="text-[10px] sm:text-[11px] font-black uppercase italic tracking-wider text-white truncate">
+                    <h3 className="text-[11px] font-black uppercase italic tracking-wider text-white truncate">
                       <span>Pré-Visualização ao Vivo</span>
                       <span className="hidden md:inline text-zinc-400 font-semibold normal-case not-italic ml-1">
                         (Como o cliente verá)
@@ -2572,7 +2612,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <h4 className="text-xs font-black uppercase tracking-wider text-white">
                       Rascunho Auto-salvo Detectado
                     </h4>
-                    <p className="mt-1 text-[10px] font-medium leading-tight text-zinc-400">
+                    <p className="mt-1 text-[11px] font-medium leading-tight text-zinc-400">
                       Você possui alterações não salvas criadas{" "}
                       {formatDistanceToNow(draftToRecover.savedAt)}. Deseja
                       recuperar?
@@ -2587,7 +2627,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       setDraftToRecover(null);
                       toast.info("Rascunho descartado.");
                     }}
-                    className="cursor-pointer rounded-xl border border-white/10 bg-zinc-950 px-3.5 py-2 text-[9px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:border-white/20 hover:text-white active:scale-95"
+                    className="cursor-pointer rounded-xl border border-white/10 bg-zinc-950 px-3.5 py-2 text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:border-white/20 hover:text-white active:scale-95"
                   >
                     Descartar
                   </button>
@@ -2595,12 +2635,17 @@ export const AdminBannersView = memo(function AdminBannersView({
                     type="button"
                     onClick={() => {
                       setFormData(draftToRecover.formData);
+                      // Rascunho com texto em Simples: salvar apagaria o
+                      // texto recuperado. O modo se revê como ao abrir.
+                      setBannerMode((m) =>
+                        modoAoAbrirOBanner(draftToRecover.formData, m),
+                      );
                       setDraftToRecover(null);
                       toast.success("Rascunho recuperado com sucesso!", {
                         icon: "⚡",
                       });
                     }}
-                    className="cursor-pointer rounded-xl bg-[#FFBF00] px-4 py-2 text-[9px] font-black uppercase tracking-wider text-black shadow-md transition-all hover:bg-[#FFBF00]/95 active:scale-95"
+                    className="cursor-pointer rounded-xl bg-[#FFBF00] px-4 py-2 text-[11px] font-black uppercase tracking-wider text-black shadow-md transition-all hover:bg-[#FFBF00]/95 active:scale-95"
                   >
                     Recuperar
                   </button>
@@ -2629,14 +2674,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                       </div>
 
                       <div className="space-y-1.5">
-                        <div className="mb-0.5 flex select-none items-baseline justify-between">
+                        <div className="mb-0.5 flex select-none items-baseline justify-between gap-2">
                           <Label
                             htmlFor="banner-upload"
-                            className="ml-1 text-[9px] font-black uppercase italic tracking-widest text-zinc-500 opacity-85"
+                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500 opacity-85"
                           >
                             Imagem do Banner
                           </Label>
-                          <span className="text-[8px] font-bold uppercase tracking-wider text-zinc-500">
+                          <span className="text-right text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                             {formData.position === "home_top"
                               ? "Recomendado: 4:1 (ex: 1200x300px)"
                               : "Recomendado: 21:9 (ex: 1200x500px)"}
@@ -2646,7 +2691,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           {uploading ? (
                             <div className="flex h-24 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/40">
                               <div className="size-6 animate-spin rounded-full border-2 border-zinc-700 border-t-[#FFBF00]" />
-                              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                 Enviando Imagem...
                               </span>
                             </div>
@@ -2661,10 +2706,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   />
                                 </div>
                                 <div className="flex flex-col min-w-0">
-                                  <span className="text-[10px] font-black uppercase italic tracking-wider text-white truncate">
+                                  <span className="text-[11px] font-black uppercase italic tracking-wider text-white truncate">
                                     Imagem Selecionada
                                   </span>
-                                  <span className="mt-0.5 flex items-center gap-1.5 text-[8px] font-bold tracking-wider text-emerald-400">
+                                  <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-emerald-400">
                                     <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                                     Carregada com Sucesso
                                   </span>
@@ -2674,7 +2719,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                               <div className="flex items-center gap-2 shrink-0">
                                 <Label
                                   htmlFor="banner-upload"
-                                  className="cursor-pointer select-none rounded-xl border border-white/10 bg-zinc-900 px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95"
+                                  className="cursor-pointer select-none rounded-xl border border-white/10 bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95"
                                 >
                                   Alterar
                                 </Label>
@@ -2683,7 +2728,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   onClick={() =>
                                     openAdjuster(formData.imageUrl!)
                                   }
-                                  className="flex cursor-pointer select-none items-center gap-1.5 rounded-xl bg-[#FFBF00] px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-black shadow-md transition-all duration-200 hover:bg-[#FFBF00]/90 active:scale-95"
+                                  className="flex cursor-pointer select-none items-center gap-1.5 rounded-xl bg-[#FFBF00] px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-black shadow-md transition-all duration-200 hover:bg-[#FFBF00]/90 active:scale-95"
                                 >
                                   <SlidersHorizontal className="size-3.5" />
                                   Ajustar
@@ -2694,7 +2739,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             <div className="relative">
                               <Label
                                 htmlFor="banner-upload"
-                                className="group flex h-28 w-full cursor-pointer flex-col items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-white/5 bg-zinc-900/50 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-650 transition-all hover:border-amber-400/30 hover:bg-zinc-900"
+                                className="group flex h-28 w-full cursor-pointer flex-col items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-white/5 bg-zinc-900/50 text-[11px] font-black uppercase tracking-wider text-zinc-650 transition-all hover:border-amber-400/30 hover:bg-zinc-900"
                               >
                                 <Upload className="size-7 text-zinc-500 transition-colors group-hover:text-[#FFBF00]" />
                                 <span>Enviar Imagem Principal</span>
@@ -2724,7 +2769,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       </div>
 
                       <div className="space-y-3">
-                        <span className="ml-1 block text-[9px] font-black uppercase italic tracking-widest text-zinc-500">
+                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-500">
                           Selecione a Posição na Home do PWA (Clique para
                           Ativar)
                         </span>
@@ -2884,7 +2929,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         <div className="space-y-1.5">
                           <Label
                             htmlFor="banner-simple-order"
-                            className="ml-1 text-[9px] font-black uppercase italic tracking-widest text-zinc-500"
+                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
                           >
                             Prioridade de Exibição (Ordem)
                           </Label>
@@ -2906,7 +2951,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         <div className="flex h-10 select-none items-center justify-between self-end rounded-xl border border-white/5 bg-black/40 p-3 shadow-inner">
                           <Label
                             htmlFor="banner-simple-active"
-                            className="flex cursor-pointer items-center gap-2 text-[9px] font-black uppercase tracking-wider text-white"
+                            className="flex cursor-pointer items-center gap-2 text-[11px] font-black uppercase tracking-wider text-white"
                           >
                             Banner Ativo{" "}
                             <Zap className="size-3 text-[#FFBF00]" />
@@ -2938,21 +2983,21 @@ export const AdminBannersView = memo(function AdminBannersView({
                       <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5">
                         <div className="flex items-center gap-1.5">
                           <Upload className="size-3.5 text-[#FFBF00]" />
-                          <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                          <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
                             1. Imagem do Banner
                           </h3>
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <div className="mb-0.5 flex select-none items-baseline justify-between">
+                        <div className="mb-0.5 flex select-none items-baseline justify-between gap-2">
                           <Label
                             htmlFor="banner-upload"
-                            className="ml-1 text-[8.5px] font-black uppercase italic tracking-widest text-zinc-400 opacity-90"
+                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-400 opacity-90"
                           >
                             Imagem do Banner
                           </Label>
-                          <span className="text-[7.5px] font-bold uppercase tracking-wider text-zinc-500">
+                          <span className="text-right text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                             {formData.position === "home_top"
                               ? "Recomendado: 4:1 (ex: 1200x300px)"
                               : "Recomendado: 21:9 (ex: 1200x500px)"}
@@ -2962,7 +3007,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         {uploading ? (
                           <div className="flex h-24 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-white/5 bg-zinc-900/40">
                             <div className="size-6 animate-spin rounded-full border-2 border-zinc-700 border-t-[#FFBF00]" />
-                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                               Enviando Imagem...
                             </span>
                           </div>
@@ -2977,10 +3022,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 />
                               </div>
                               <div className="flex flex-col min-w-0">
-                                <span className="text-[10px] font-black uppercase italic tracking-wider text-white truncate">
+                                <span className="text-[11px] font-black uppercase italic tracking-wider text-white truncate">
                                   Imagem Selecionada
                                 </span>
-                                <span className="mt-0.5 flex items-center gap-1.5 text-[8px] font-bold tracking-wider text-emerald-400">
+                                <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-emerald-400">
                                   <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                                   Carregada com Sucesso
                                 </span>
@@ -2990,14 +3035,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                             <div className="flex items-center gap-2 shrink-0">
                               <Label
                                 htmlFor="banner-upload"
-                                className="cursor-pointer select-none rounded-xl border border-white/10 bg-zinc-900 px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95"
+                                className="cursor-pointer select-none rounded-xl border border-white/10 bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95"
                               >
                                 Alterar
                               </Label>
                               <Button
                                 type="button"
                                 onClick={() => openAdjuster(formData.imageUrl!)}
-                                className="flex cursor-pointer select-none items-center gap-1.5 rounded-xl bg-[#FFBF00] px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-black shadow-md transition-all duration-200 hover:bg-[#FFBF00]/90 active:scale-95"
+                                className="flex cursor-pointer select-none items-center gap-1.5 rounded-xl bg-[#FFBF00] px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-black shadow-md transition-all duration-200 hover:bg-[#FFBF00]/90 active:scale-95"
                               >
                                 <SlidersHorizontal className="size-3.5" />
                                 Ajustar
@@ -3008,7 +3053,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           <div className="relative">
                             <Label
                               htmlFor="banner-upload"
-                              className="group flex h-28 w-full cursor-pointer flex-col items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-white/5 bg-zinc-900/50 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-650 transition-all hover:border-amber-400/30 hover:bg-zinc-900"
+                              className="group flex h-28 w-full cursor-pointer flex-col items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-white/5 bg-zinc-900/50 text-[11px] font-black uppercase tracking-wider text-zinc-650 transition-all hover:border-amber-400/30 hover:bg-zinc-900"
                             >
                               <Upload className="size-7 text-zinc-500 transition-colors group-hover:text-[#FFBF00]" />
                               <span>Enviar Imagem Principal</span>
@@ -3032,7 +3077,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
                       <div className="flex select-none items-center gap-2 border-b border-white/5 pb-1.5">
                         <Layout className="size-3.5 text-[#FFBF00]" />
-                        <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                        <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
                           2. Textos do Banner
                         </h3>
                       </div>
@@ -3041,7 +3086,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           <Label className="text-xs font-bold text-white">
                             Exibir Textos e Botão Sobrepostos
                           </Label>
-                          <p className="text-[10px] text-zinc-400">
+                          <p className="text-[11px] text-zinc-400">
                             Desative se a imagem já possui texto ou arte gráfica
                             integrada.
                           </p>
@@ -3060,7 +3105,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       <div className="space-y-1">
                         <Label
                           htmlFor="banner-title"
-                          className="ml-1 text-[8.5px] font-black uppercase italic tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
                         >
                           Título da Campanha
                         </Label>
@@ -3078,7 +3123,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         {productSuggestions &&
                           productSuggestions.titles.length > 0 && (
                             <div className="mt-1 select-none duration-200 animate-in fade-in">
-                              <span className="text-[7.5px] font-black uppercase tracking-wider text-zinc-550">
+                              <span className="text-[11px] font-black uppercase tracking-wider text-zinc-550">
                                 Sugestões do Produto Selecionado:
                               </span>
                               <div className="mt-0.5 flex flex-wrap gap-1">
@@ -3094,7 +3139,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                         }));
                                         toast.success("Título preenchido!");
                                       }}
-                                      className="cursor-pointer rounded-lg border border-white/5 bg-zinc-950 px-2 py-0.5 text-[7.5px] font-medium text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white"
+                                      className="cursor-pointer rounded-lg border border-white/5 bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white"
                                     >
                                       {titleSuggestion}
                                     </button>
@@ -3108,7 +3153,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       <div className="space-y-1">
                         <Label
                           htmlFor="banner-subtitle"
-                          className="ml-1 text-[8.5px] font-black uppercase italic tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
                         >
                           Subtítulo / Descrição da Oferta
                         </Label>
@@ -3128,7 +3173,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         {productSuggestions &&
                           productSuggestions.subtitles.length > 0 && (
                             <div className="mt-1 select-none duration-200 animate-in fade-in">
-                              <span className="text-[7.5px] font-black uppercase tracking-wider text-zinc-550">
+                              <span className="text-[11px] font-black uppercase tracking-wider text-zinc-550">
                                 Sugestões do Produto Selecionado:
                               </span>
                               <div className="mt-0.5 flex flex-wrap gap-1">
@@ -3144,7 +3189,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                         }));
                                         toast.success("Subtítulo preenchido!");
                                       }}
-                                      className="cursor-pointer rounded-lg border border-white/5 bg-zinc-950 px-2 py-0.5 text-[7.5px] font-medium text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white"
+                                      className="cursor-pointer rounded-lg border border-white/5 bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-400 transition-all hover:bg-zinc-900 hover:text-white"
                                     >
                                       {subtitleSuggestion}
                                     </button>
@@ -3159,7 +3204,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         <div className="space-y-1">
                           <Label
                             htmlFor="banner-badge"
-                            className="ml-1 text-[8.5px] font-black uppercase italic tracking-widest text-zinc-500"
+                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
                           >
                             Tag / Etiqueta do Cartaz (Badge)
                           </Label>
@@ -3181,7 +3226,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         <div className="space-y-1">
                           <Label
                             htmlFor="banner-btn-text"
-                            className="ml-1 text-[8.5px] font-black uppercase italic tracking-widest text-zinc-500"
+                            className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
                           >
                             Texto do Botão (CTA)
                           </Label>
@@ -3198,7 +3243,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             placeholder="Ex: Comprar Agora"
                             className="h-9 rounded-xl border-white/10 bg-zinc-900/50 text-xs font-bold text-white focus:ring-[#FFBF00]"
                           />
-                          <span className="ml-1 mt-0.5 block text-[7.5px] font-medium italic text-zinc-500">
+                          <span className="ml-1 mt-0.5 block text-[11px] font-medium italic text-zinc-500">
                             Opcional. Ao preencher, exibe o botão no banner e
                             ativa as cores do botão no Passo 2 (Estilo).
                           </span>
@@ -3220,11 +3265,11 @@ export const AdminBannersView = memo(function AdminBannersView({
                       <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5">
                         <div className="flex items-center gap-1.5">
                           <Sparkles className="size-3.5 text-[#FFBF00]" />
-                          <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                          <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
                             Temas Estéticos Rápidos
                           </h3>
                         </div>
-                        <span className="text-[8px] font-bold uppercase tracking-wider text-zinc-500 hidden sm:inline">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 hidden sm:inline">
                           Prontos para usar
                         </span>
                       </div>
@@ -3304,7 +3349,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 <div className="flex flex-col min-w-0">
                                   <span
                                     className={cn(
-                                      "text-[9px] font-black truncate leading-tight",
+                                      "text-[11px] font-black break-words leading-tight",
                                       isPresetSelected
                                         ? "text-[#FFBF00]"
                                         : "text-white group-hover:text-[#FFBF00]",
@@ -3312,14 +3357,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   >
                                     {preset.name}
                                   </span>
-                                  <span className="truncate text-[7.5px] leading-none text-zinc-400">
+                                  <span className="break-words text-[11px] leading-tight text-zinc-400">
                                     {preset.description}
                                   </span>
                                 </div>
                               </div>
 
                               {isPresetSelected && (
-                                <span className="text-[9px] font-bold text-[#FFBF00] shrink-0">
+                                <span className="text-[11px] font-bold text-[#FFBF00] shrink-0">
                                   ✓
                                 </span>
                               )}
@@ -3333,14 +3378,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
                       <div className="flex select-none items-center gap-2 border-b border-white/5 pb-1.5">
                         <SlidersHorizontal className="size-3.5 text-[#FFBF00]" />
-                        <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                        <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
                           Disposição do Layout & Estilo da Fonte
                         </h3>
                       </div>
 
                       {/* Seleção do Layout do Conteúdo */}
                       <div className="space-y-1.5">
-                        <span className="ml-1 block text-[8.5px] font-black uppercase italic tracking-widest text-zinc-400">
+                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-400">
                           Alinhamento e Estilo do Layout
                         </span>
                         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
@@ -3401,10 +3446,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     : "border-white/5 bg-zinc-900/30 hover:border-white/10 hover:bg-zinc-900",
                                 )}
                               >
-                                <div className="flex w-full items-center justify-between gap-1">
+                                <div className="flex w-full flex-wrap items-center justify-between gap-1">
                                   <span
                                     className={cn(
-                                      "text-[9px] font-black uppercase tracking-wider truncate",
+                                      "text-[11px] font-black uppercase tracking-wider break-words min-w-0",
                                       isSelected
                                         ? "text-[#FFBF00]"
                                         : "text-white",
@@ -3414,7 +3459,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   </span>
                                   <span
                                     className={cn(
-                                      "text-[7px] font-bold px-1 py-0.2 rounded border shrink-0",
+                                      "text-[11px] font-bold px-1 py-0.2 rounded border shrink-0",
                                       isSelected
                                         ? "border-[#FFBF00]/40 text-[#FFBF00] bg-[#FFBF00]/10"
                                         : "border-white/10 text-zinc-400 bg-black/40",
@@ -3424,7 +3469,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   </span>
                                 </div>
 
-                                <p className="text-[7.5px] leading-tight text-zinc-400 truncate w-full">
+                                <p className="w-full break-words text-[11px] leading-tight text-zinc-400">
                                   {t.desc}
                                 </p>
                               </button>
@@ -3435,7 +3480,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                       {/* Seleção de Tipografia (Fonte) */}
                       <div className="space-y-1.5 pt-1.5 border-t border-white/5">
-                        <span className="ml-1 block text-[8.5px] font-black uppercase italic tracking-widest text-zinc-400">
+                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-400">
                           Estilo da Fonte (Tipografia)
                         </span>
                         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
@@ -3503,7 +3548,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 <div className="space-y-0.5">
                                   <h5
                                     className={cn(
-                                      "text-[8.5px] font-black uppercase tracking-wider leading-none",
+                                      "text-[11px] font-black uppercase tracking-wider leading-tight",
                                       isSelected
                                         ? "text-[#FFBF00]"
                                         : "text-white group-hover:text-[#FFBF00]",
@@ -3511,7 +3556,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   >
                                     {f.label}
                                   </h5>
-                                  <p className="text-[7px] leading-tight text-zinc-400">
+                                  <p className="text-[11px] leading-tight text-zinc-400">
                                     {f.desc}
                                   </p>
                                 </div>
@@ -3526,7 +3571,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
                       <div className="flex select-none items-center gap-2 border-b border-white/5 pb-1.5">
                         <SlidersHorizontal className="size-3.5 text-[#FFBF00]" />
-                        <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                        <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
                           {hasButtonText
                             ? "Personalização de Cores dos Textos e Botão"
                             : "Personalização de Cores dos Textos e Filtro"}
@@ -3535,7 +3580,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                       {/* Seletor do Elemento Ativo para Alterar Cor */}
                       <div className="space-y-1.5">
-                        <span className="ml-1 block text-[8.5px] font-black uppercase italic tracking-widest text-zinc-400">
+                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-400">
                           Escolha o Elemento para Mudar a Cor:
                         </span>
                         <div
@@ -3558,7 +3603,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     : "border-white/5 bg-zinc-950 text-zinc-400 hover:border-white/10 hover:text-zinc-200",
                                 )}
                               >
-                                <span className="line-clamp-1 text-[8px] font-extrabold uppercase tracking-wider">
+                                <span className="break-words text-[11px] font-extrabold uppercase leading-tight tracking-wider">
                                   {el.label}
                                 </span>
                                 <span
@@ -3604,7 +3649,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             </div>
 
                             <div className="flex flex-col">
-                              <span className="text-[8px] font-extrabold uppercase tracking-wider text-zinc-400">
+                              <span className="text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">
                                 Cor de:{" "}
                                 <span className="font-black text-[#FFBF00]">
                                   {targetColorEl === "titleColor"
@@ -3618,7 +3663,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                           : "Filtro da Imagem"}
                                 </span>
                               </span>
-                              <span className="text-[7.5px] font-mono text-zinc-400">
+                              <span className="text-[11px] font-mono text-zinc-400">
                                 {formData[targetColorEl] || "#FFFFFF"}
                               </span>
                             </div>
@@ -3639,7 +3684,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 [targetColorEl]: defaults[targetColorEl],
                               }));
                             }}
-                            className="cursor-pointer text-[8px] font-extrabold uppercase tracking-wider text-amber-500 hover:text-amber-400 hover:underline transition-colors px-1.5 py-0.5"
+                            className="cursor-pointer text-[11px] font-extrabold uppercase tracking-wider text-amber-500 hover:text-amber-400 hover:underline transition-colors px-1.5 py-0.5"
                           >
                             Restaurar Padrão
                           </button>
@@ -3647,7 +3692,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                         {/* Cores Frequentes */}
                         <div className="flex items-center justify-between gap-2 pt-0.5">
-                          <span className="select-none text-[8px] font-bold uppercase tracking-wider text-zinc-400 shrink-0">
+                          <span className="select-none text-[11px] font-bold uppercase tracking-wider text-zinc-400 shrink-0">
                             Cores Frequentes:
                           </span>
                           <div className="flex select-none flex-wrap gap-1">
@@ -3680,7 +3725,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         {/* Cores da Marca da Loja */}
                         {brandingColors.length > 0 && (
                           <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-1.5">
-                            <span className="select-none text-[8px] font-extrabold uppercase tracking-wider text-[#FFBF00] shrink-0">
+                            <span className="select-none text-[11px] font-extrabold uppercase tracking-wider text-[#FFBF00] shrink-0">
                               Cores da Sua Marca:
                             </span>
                             <div className="flex select-none flex-wrap gap-1">
@@ -3698,7 +3743,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                       }))
                                     }
                                     className={cn(
-                                      "group relative flex items-center gap-1 rounded-full border border-white/10 px-2 py-0.5 text-[7.5px] font-bold transition-all duration-150 hover:scale-105 active:scale-95 cursor-pointer",
+                                      "group relative flex items-center gap-1 rounded-full border border-white/10 px-2 py-0.5 text-[11px] font-bold transition-all duration-150 hover:scale-105 active:scale-95 cursor-pointer",
                                       isSelected
                                         ? "border-[#FFBF00] bg-[#FFBF00]/15 text-[#FFBF00]"
                                         : "bg-zinc-900 text-zinc-300 hover:border-white/20",
@@ -3728,7 +3773,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       <div className="flex select-none justify-between items-center">
                         <Label
                           htmlFor="banner-overlay-opacity"
-                          className="ml-1 text-[9px] font-black uppercase italic tracking-widest text-zinc-400"
+                          className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-400"
                         >
                           Escurecimento da Imagem de Fundo (Filtro):{" "}
                           <span className="text-[#FFBF00]">
@@ -3771,7 +3816,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                               }))
                             }
                             className={cn(
-                              "flex-1 py-1 rounded-lg border text-[8px] font-extrabold uppercase transition-all cursor-pointer",
+                              "flex-1 py-1 rounded-lg border text-[11px] font-extrabold uppercase transition-all cursor-pointer",
                               (formData.overlayOpacity ?? 40) === opt.val
                                 ? "border-[#FFBF00] bg-[#FFBF00]/15 text-[#FFBF00]"
                                 : "border-white/5 bg-zinc-900/50 text-zinc-400 hover:border-white/10",
@@ -3786,13 +3831,13 @@ export const AdminBannersView = memo(function AdminBannersView({
                       {extractedColors.length > 0 && (
                         <div className="space-y-1 border-t border-white/5 pt-1.5">
                           <div className="flex select-none items-center justify-between">
-                            <span className="text-[8px] font-extrabold uppercase tracking-wider text-amber-400">
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-400">
                               Sugestões da Imagem 📸
                             </span>
                             <button
                               type="button"
                               onClick={handleAutoThemeFromImage}
-                              className="cursor-pointer text-[7.5px] font-black uppercase tracking-wider text-[#FFBF00] transition-colors hover:text-white"
+                              className="cursor-pointer text-[11px] font-black uppercase tracking-wider text-[#FFBF00] transition-colors hover:text-white"
                             >
                               ✨ Tema Inteligente
                             </button>
@@ -3839,12 +3884,12 @@ export const AdminBannersView = memo(function AdminBannersView({
                           <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-white/5 pb-1.5">
                             <div className="flex items-center gap-1.5">
                               <Sparkles className="size-3 text-[#FFBF00]" />
-                              <span className="text-[10px] font-black uppercase italic tracking-wider text-white">
+                              <span className="text-[11px] font-black uppercase italic tracking-wider text-white">
                                 Guia de Legibilidade
                               </span>
                               <span
                                 className={cn(
-                                  "text-[7.5px] font-black uppercase px-1.5 py-0.2 rounded-full border",
+                                  "text-[11px] font-black uppercase px-1.5 py-0.2 rounded-full border",
                                   isAllOk
                                     ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                                     : "bg-amber-500/10 text-amber-400 border-amber-500/30",
@@ -3859,7 +3904,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             <button
                               type="button"
                               onClick={handleOptimizeContrast}
-                              className="flex cursor-pointer items-center gap-1 rounded-md border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[7.5px] font-black uppercase tracking-wider text-[#FFBF00] transition-all hover:bg-[#FFBF00] hover:text-black active:scale-95 ml-auto"
+                              className="flex cursor-pointer items-center gap-1 rounded-md border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-[#FFBF00] transition-all hover:bg-[#FFBF00] hover:text-black active:scale-95 ml-auto"
                             >
                               <Sparkles className="size-2.5" /> Auto-Ajustar
                               Cores
@@ -3869,14 +3914,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                       })()}
 
                       {/* Indicadores Visuais de Contraste para Cada Elemento em Linha Única Compacta */}
-                      <div className="grid grid-cols-3 gap-1">
-                        <div className="flex items-center justify-between rounded-lg border border-white/5 bg-zinc-950/70 px-2 py-1">
-                          <span className="text-[7.5px] font-extrabold uppercase text-zinc-400">
+                      <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-zinc-950/70 px-2 py-1">
+                          <span className="text-[11px] font-extrabold uppercase text-zinc-400">
                             Título
                           </span>
                           <span
                             className={cn(
-                              "text-[7.5px] font-black uppercase px-1 py-0.2 rounded",
+                              "text-[11px] font-black uppercase px-1 py-0.2 rounded",
                               computedTitleRatio >= 3.0
                                 ? "bg-emerald-500/10 text-emerald-400"
                                 : "bg-rose-500/10 text-rose-400",
@@ -3888,13 +3933,13 @@ export const AdminBannersView = memo(function AdminBannersView({
                           </span>
                         </div>
 
-                        <div className="flex items-center justify-between rounded-lg border border-white/5 bg-zinc-950/70 px-2 py-1">
-                          <span className="text-[7.5px] font-extrabold uppercase text-zinc-400">
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-zinc-950/70 px-2 py-1">
+                          <span className="text-[11px] font-extrabold uppercase text-zinc-400">
                             Subtítulo
                           </span>
                           <span
                             className={cn(
-                              "text-[7.5px] font-black uppercase px-1 py-0.2 rounded",
+                              "text-[11px] font-black uppercase px-1 py-0.2 rounded",
                               computedSubtitleRatio >= 4.5
                                 ? "bg-emerald-500/10 text-emerald-400"
                                 : "bg-rose-500/10 text-rose-400",
@@ -3906,13 +3951,13 @@ export const AdminBannersView = memo(function AdminBannersView({
                           </span>
                         </div>
 
-                        <div className="flex items-center justify-between rounded-lg border border-white/5 bg-zinc-950/70 px-2 py-1">
-                          <span className="text-[7.5px] font-extrabold uppercase text-zinc-400">
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-zinc-950/70 px-2 py-1">
+                          <span className="text-[11px] font-extrabold uppercase text-zinc-400">
                             Botão CTA
                           </span>
                           <span
                             className={cn(
-                              "text-[7.5px] font-black uppercase px-1 py-0.2 rounded",
+                              "text-[11px] font-black uppercase px-1 py-0.2 rounded",
                               computedButtonRatio >= 4.5
                                 ? "bg-emerald-500/10 text-emerald-400"
                                 : "bg-rose-500/10 text-rose-400",
@@ -3945,7 +3990,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       </div>
 
                       <div className="space-y-3">
-                        <span className="ml-1 block text-[9px] font-black uppercase italic tracking-widest text-zinc-500">
+                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-500">
                           Selecione a Posição na Home do PWA (Clique para
                           Ativar)
                         </span>
@@ -4103,7 +4148,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <div className="space-y-3.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-3 sm:p-4">
                       {/* Título Principal do Bloco Único */}
                       <div className="flex select-none flex-col gap-1 border-b border-white/5 pb-2.5">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                           <div className="flex items-center gap-2">
                             <ExternalLink className="size-4 text-[#FFBF00]" />
                             <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
@@ -4120,7 +4165,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                               )
                             ) {
                               return (
-                                <span className="rounded border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-0.5 font-mono text-[8px] font-bold text-emerald-400">
+                                <span className="max-w-full break-words rounded border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-0.5 font-mono text-[11px] font-bold text-emerald-400">
                                   📦 Produto: {selectedProduct.name}
                                 </span>
                               );
@@ -4130,14 +4175,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                               formData.link?.startsWith("https://")
                             ) {
                               return (
-                                <span className="rounded border border-sky-500/30 bg-sky-500/15 px-2.5 py-0.5 font-mono text-[8px] font-bold text-sky-400">
+                                <span className="rounded border border-sky-500/30 bg-sky-500/15 px-2.5 py-0.5 font-mono text-[11px] font-bold text-sky-400">
                                   🌐 Link Externo
                                 </span>
                               );
                             }
                             if (formData.link) {
                               return (
-                                <span className="rounded border border-purple-500/30 bg-purple-500/15 px-2.5 py-0.5 font-mono text-[8px] font-bold text-purple-300">
+                                <span className="rounded border border-purple-500/30 bg-purple-500/15 px-2.5 py-0.5 font-mono text-[11px] font-bold text-purple-300">
                                   📌 Página da Loja{" "}
                                   {selectedCouponCode
                                     ? `(Cupom: ${selectedCouponCode})`
@@ -4146,13 +4191,13 @@ export const AdminBannersView = memo(function AdminBannersView({
                               );
                             }
                             return (
-                              <span className="rounded border border-white/5 bg-zinc-800/80 px-2.5 py-0.5 font-mono text-[8px] font-bold text-zinc-400">
+                              <span className="rounded border border-white/5 bg-zinc-800/80 px-2.5 py-0.5 font-mono text-[11px] font-bold text-zinc-400">
                                 ⚪ Apenas Foto (Sem Clique)
                               </span>
                             );
                           })()}
                         </div>
-                        <p className="text-[8.5px] text-zinc-400">
+                        <p className="text-[11px] text-zinc-400">
                           Escolha o que acontece quando o cliente clica neste
                           banner. Simples e rápido.
                         </p>
@@ -4160,7 +4205,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                       {/* SELETOR DE INTENÇÃO DE DESTINO (SIMPLES E INTUITIVO) */}
                       <div className="space-y-1.5 select-none">
-                        <Label className="text-[8.5px] font-black uppercase tracking-wider text-amber-400">
+                        <Label className="text-[11px] font-black uppercase tracking-wider text-amber-400">
                           Escolha a Ação ao Clicar no Banner:
                         </Label>
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -4184,10 +4229,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                             )}
                           >
                             <span className="text-base">⚪</span>
-                            <span className="mt-1 text-[9.5px] font-bold">
+                            <span className="mt-1 text-[11px] font-bold">
                               Apenas Foto
                             </span>
-                            <span className="text-[7.5px] font-medium text-zinc-500">
+                            <span className="text-[11px] font-medium text-zinc-500">
                               Sem clique
                             </span>
                           </button>
@@ -4206,10 +4251,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                             )}
                           >
                             <span className="text-base">📦</span>
-                            <span className="mt-1 text-[9.5px] font-bold">
+                            <span className="mt-1 text-[11px] font-bold">
                               Abrir Produto
                             </span>
-                            <span className="text-[7.5px] font-medium text-zinc-500">
+                            <span className="text-[11px] font-medium text-zinc-500">
                               Leva a 1 item
                             </span>
                           </button>
@@ -4238,10 +4283,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                             )}
                           >
                             <span className="text-base">🏷️</span>
-                            <span className="mt-1 text-[9.5px] font-bold">
+                            <span className="mt-1 text-[11px] font-bold">
                               Página da Loja
                             </span>
-                            <span className="text-[7.5px] font-medium text-zinc-500">
+                            <span className="text-[11px] font-medium text-zinc-500">
                               Home, Ofertas...
                             </span>
                           </button>
@@ -4260,10 +4305,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                             )}
                           >
                             <span className="text-base">🌐</span>
-                            <span className="mt-1 text-[9.5px] font-bold">
+                            <span className="mt-1 text-[11px] font-bold">
                               Link / URL
                             </span>
-                            <span className="text-[7.5px] font-medium text-zinc-500">
+                            <span className="text-[11px] font-medium text-zinc-500">
                               Link customizado
                             </span>
                           </button>
@@ -4273,14 +4318,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                       {/* CONFIGURAÇÃO DO BOTÃO CTA (TEXTO DO BOTÃO NO BANNER) */}
                       {destinationMode !== "none" && (
                         <div className="space-y-1.5 border-t border-white/5 pt-3">
-                          <div className="flex select-none items-center justify-between">
+                          <div className="flex select-none items-center justify-between gap-2">
                             <Label
                               htmlFor="banner-btn-text-step3"
-                              className="text-[8.5px] font-black uppercase tracking-wider text-amber-400"
+                              className="text-[11px] font-black uppercase tracking-wider text-amber-400"
                             >
                               <span>Texto do Botão de Ação (CTA)</span>
                             </Label>
-                            <span className="text-[7.5px] font-medium text-zinc-500">
+                            <span className="text-right text-[11px] font-medium text-zinc-500">
                               {formData.buttonText
                                 ? `Botão: "${formData.buttonText}"`
                                 : "Sem Botão Explícito"}
@@ -4303,7 +4348,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           />
 
                           <div className="flex select-none flex-wrap items-center gap-1 pt-0.5">
-                            <span className="mr-1 text-[7.5px] font-bold uppercase text-zinc-500">
+                            <span className="mr-1 text-[11px] font-bold uppercase text-zinc-500">
                               Sugestões:
                             </span>
                             {[
@@ -4328,7 +4373,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   }))
                                 }
                                 className={cn(
-                                  "cursor-pointer rounded-lg border border-white/5 bg-zinc-900 px-2 py-0.5 text-[8px] font-bold text-zinc-300 transition-all hover:border-amber-400/30 hover:bg-zinc-800 hover:text-white active:scale-95",
+                                  "cursor-pointer rounded-lg border border-white/5 bg-zinc-900 px-2 py-0.5 text-[11px] font-bold text-zinc-300 transition-all hover:border-amber-400/30 hover:bg-zinc-800 hover:text-white active:scale-95",
                                   formData.buttonText === btn.value &&
                                     "border-[#FFBF00] bg-[#FFBF00]/20 font-black text-white",
                                 )}
@@ -4345,7 +4390,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     buttonText: "",
                                   }))
                                 }
-                                className="cursor-pointer rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[8px] font-bold text-red-400 transition-all hover:bg-red-500/20 active:scale-95"
+                                className="cursor-pointer rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[11px] font-bold text-red-400 transition-all hover:bg-red-500/20 active:scale-95"
                               >
                                 ❌ Limpar Botão
                               </button>
@@ -4357,10 +4402,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                       {/* SUB-PAINEL DINÂMICO PARA CADA MODO */}
                       {destinationMode === "none" && (
                         <div className="select-none rounded-xl border border-white/5 bg-zinc-900/30 p-3 text-center">
-                          <p className="text-[10px] font-bold text-zinc-300">
+                          <p className="text-[11px] font-bold text-zinc-300">
                             ⚪ Este banner é apenas visual.
                           </p>
-                          <p className="mt-0.5 text-[8px] text-zinc-500">
+                          <p className="mt-0.5 text-[11px] text-zinc-500">
                             Ao ser exibido para os clientes, ele não terá
                             redirecionamento ao ser clicado.
                           </p>
@@ -4369,18 +4414,18 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                       {destinationMode === "product" && (
                         <div className="space-y-2 border-t border-white/5 pt-3">
-                          <div className="flex select-none items-center justify-between">
-                            <span className="font-sans text-[8.5px] font-black uppercase italic tracking-widest text-emerald-400">
+                          <div className="flex select-none items-center justify-between gap-2">
+                            <span className="font-sans text-[11px] font-black uppercase italic tracking-widest text-emerald-400">
                               📦 Vincular Produto Específico
                             </span>
-                            <span className="text-[7.5px] font-medium text-zinc-500">
+                            <span className="text-right text-[11px] font-medium text-zinc-500">
                               Leva o cliente diretamente para a página do
                               produto
                             </span>
                           </div>
 
                           {formData.productId && selectedProduct ? (
-                            <div className="bg-emerald-550/5 flex select-none items-center justify-between rounded-xl border border-emerald-500/20 p-2.5 duration-200 animate-in fade-in zoom-in-95">
+                            <div className="bg-emerald-550/5 flex select-none flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/20 p-2.5 duration-200 animate-in fade-in zoom-in-95">
                               <div className="flex min-w-0 items-center gap-2.5">
                                 <div className="size-10 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
                                   {selectedProduct.images?.[0] ? (
@@ -4390,24 +4435,24 @@ export const AdminBannersView = memo(function AdminBannersView({
                                       className="size-full object-cover"
                                     />
                                   ) : (
-                                    <div className="flex size-full items-center justify-center bg-zinc-950 text-[8px] text-zinc-650">
+                                    <div className="flex size-full items-center justify-center bg-zinc-950 text-center text-[11px] leading-tight text-zinc-650">
                                       Sem foto
                                     </div>
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="rounded bg-emerald-500 px-1.5 py-0.2 text-[7.5px] font-black uppercase text-black">
+                                  <div className="flex flex-wrap items-center gap-x-1.5">
+                                    <span className="rounded bg-emerald-500 px-1.5 py-0.2 text-[11px] font-black uppercase text-black">
                                       Vinculado
                                     </span>
-                                    <span className="truncate font-mono text-[7.5px] font-bold text-zinc-550">
+                                    <span className="truncate font-mono text-[11px] font-bold text-zinc-550">
                                       ID: {selectedProduct.id.slice(0, 8)}...
                                     </span>
                                   </div>
                                   <h4 className="mt-0.5 truncate text-[11px] font-bold leading-snug text-white">
                                     {selectedProduct.name}
                                   </h4>
-                                  <p className="mt-0.5 font-mono text-[9.5px] font-black leading-none text-amber-500">
+                                  <p className="mt-0.5 font-mono text-[11px] font-black leading-none text-amber-500">
                                     R${" "}
                                     {Number(selectedProduct.price).toFixed(2)}
                                   </p>
@@ -4423,7 +4468,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   }));
                                   toast.info("Vínculo com o produto removido.");
                                 }}
-                                className="shrink-0 cursor-pointer rounded-lg border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-[8.5px] font-black uppercase tracking-wider text-red-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
+                                className="shrink-0 cursor-pointer rounded-lg border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-red-400 transition-all hover:border-red-500/40 hover:bg-red-500/10 active:scale-95"
                               >
                                 Desvincular
                               </button>
@@ -4470,7 +4515,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     className="flex w-full cursor-pointer select-none items-center justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-1.5 text-left transition-all hover:border-amber-500/20 hover:bg-zinc-900/30 active:scale-[0.99]"
                                   >
                                     <div className="flex min-w-0 items-center gap-2">
-                                      <div className="size-7 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-zinc-900">
+                                      <div className="size-9 shrink-0 overflow-hidden rounded-lg border border-white/5 bg-zinc-900">
                                         {p.images?.[0] ? (
                                           <img
                                             src={p.images[0]}
@@ -4478,25 +4523,25 @@ export const AdminBannersView = memo(function AdminBannersView({
                                             className="size-full object-cover"
                                           />
                                         ) : (
-                                          <div className="flex size-full items-center justify-center text-[6px] text-zinc-600">
+                                          <div className="flex size-full items-center justify-center text-center text-[11px] leading-tight text-zinc-600">
                                             Sem foto
                                           </div>
                                         )}
                                       </div>
                                       <div className="min-w-0">
-                                        <h5 className="truncate text-[10.5px] font-bold leading-snug text-white">
+                                        <h5 className="truncate text-[11px] font-bold leading-snug text-white">
                                           {p.name}
                                         </h5>
-                                        <p className="truncate text-[8px] leading-none text-zinc-500">
+                                        <p className="truncate text-[11px] leading-none text-zinc-500">
                                           {p.category || "Sem categoria"}
                                         </p>
                                       </div>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-1.5">
-                                      <span className="font-mono text-[9px] font-black text-amber-500">
+                                      <span className="font-mono text-[11px] font-black text-amber-500">
                                         R$ {Number(p.price).toFixed(2)}
                                       </span>
-                                      <span className="rounded border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[7.5px] font-black uppercase text-zinc-400 transition-colors group-hover:text-white">
+                                      <span className="rounded border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-400 transition-colors group-hover:text-white">
                                         Vincular
                                       </span>
                                     </div>
@@ -4504,7 +4549,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 ))}
 
                                 {filteredProducts.length === 0 && (
-                                  <div className="py-2 text-center text-[9px] italic text-zinc-650">
+                                  <div className="py-2 text-center text-[11px] italic text-zinc-650">
                                     Nenhum produto correspondente encontrado.
                                   </div>
                                 )}
@@ -4516,7 +4561,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                       {destinationMode === "route" && (
                         <div className="space-y-2 border-t border-white/5 pt-3">
-                          <span className="text-[8.5px] font-black uppercase tracking-wider text-purple-400">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-purple-400">
                             🏷️ Escolha a Página da Loja
                           </span>
                           <div className="custom-scrollbar flex max-h-28 flex-wrap gap-1 overflow-y-auto p-0.5">
@@ -4535,7 +4580,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   );
                                 }}
                                 className={cn(
-                                  "cursor-pointer rounded-lg border border-white/10 bg-zinc-900/80 px-2.5 py-1 text-[8px] font-bold text-zinc-300 transition-all hover:border-purple-400/30 hover:text-white active:scale-95",
+                                  "cursor-pointer rounded-lg border border-white/10 bg-zinc-900/80 px-2.5 py-1 text-[11px] font-bold text-zinc-300 transition-all hover:border-purple-400/30 hover:text-white active:scale-95",
                                   formData.link === route.path &&
                                     "border-purple-400 bg-purple-400/20 font-extrabold text-white shadow-[0_0_10px_rgba(192,132,252,0.2)]",
                                 )}
@@ -4549,7 +4594,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                       {destinationMode === "custom" && (
                         <div className="space-y-2 border-t border-white/5 pt-3">
-                          <span className="text-[8.5px] font-black uppercase tracking-wider text-sky-400">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-sky-400">
                             🌐 Digite a URL ou Link Customizado
                           </span>
                           <LocalBufferedInput
@@ -4572,7 +4617,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       <div className="flex select-none items-center justify-between">
                         <Label
                           htmlFor="banner-scheduling-toggle"
-                          className="flex cursor-pointer select-none items-center gap-1.5 text-[9.5px] font-black uppercase italic tracking-wider text-white"
+                          className="flex cursor-pointer select-none items-center gap-1.5 text-[11px] font-black uppercase italic tracking-wider text-white"
                         >
                           Programação Temporal{" "}
                           <span title="Define uma data e hora para início e fim da exibição deste banner automaticamente.">
@@ -4630,7 +4675,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 onClick={() =>
                                   handleApplyDatePreset(preset.value as any)
                                 }
-                                className="cursor-pointer rounded-lg border border-white/5 bg-zinc-900 px-2 py-0.5 text-[8px] font-bold text-zinc-300 transition-all hover:border-[#FFBF00]/30 hover:bg-zinc-800 hover:text-white active:scale-95"
+                                className="cursor-pointer rounded-lg border border-white/5 bg-zinc-900 px-2 py-0.5 text-[11px] font-bold text-zinc-300 transition-all hover:border-[#FFBF00]/30 hover:bg-zinc-800 hover:text-white active:scale-95"
                               >
                                 {preset.label}
                               </button>
@@ -4641,7 +4686,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             <div className="space-y-1">
                               <Label
                                 htmlFor="banner-start-date"
-                                className="ml-1 text-[8.5px] font-black uppercase italic tracking-widest text-zinc-500"
+                                className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
                               >
                                 Data/Hora de Início
                               </Label>
@@ -4665,7 +4710,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             <div className="space-y-1">
                               <Label
                                 htmlFor="banner-end-date"
-                                className="ml-1 text-[8.5px] font-black uppercase italic tracking-widest text-zinc-500"
+                                className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
                               >
                                 Data/Hora de Fim (Expiração)
                               </Label>
@@ -4690,7 +4735,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                               formData.endDate &&
                               new Date(formData.startDate) >
                                 new Date(formData.endDate) && (
-                                <div className="col-span-2 select-none rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-[8.5px] font-bold text-rose-400">
+                                <div className="col-span-2 select-none rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-[11px] font-bold text-rose-400">
                                   ⚠️ Atenção: A data de expiração deve ser
                                   posterior à data de início.
                                 </div>
@@ -4732,23 +4777,23 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   borderClass,
                                 )}
                               >
-                                <div className="flex items-center gap-1.5 text-[8.5px] font-black uppercase tracking-wider">
+                                <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider">
                                   <IconComponent className="size-3 shrink-0" />
                                   <span>{title}</span>
                                 </div>
-                                <p className="text-[8.5px] font-medium leading-relaxed opacity-80">
+                                <p className="text-[11px] font-medium leading-relaxed opacity-80">
                                   {desc}
                                 </p>
                                 {list.length > 0 && (
                                   <div className="space-y-1 border-t border-white/5 pt-1.5">
-                                    <span className="text-[7.5px] font-black uppercase tracking-wider text-zinc-500">
+                                    <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
                                       Campanhas Concorrentes:
                                     </span>
                                     <div className="flex flex-wrap gap-1">
                                       {list.map((c) => (
                                         <div
                                           key={c.id}
-                                          className="flex shrink-0 items-center gap-1 rounded-lg border border-white/5 bg-zinc-950/60 px-1.5 py-0.5 text-[7.5px] font-bold text-white"
+                                          className="flex shrink-0 items-center gap-1 rounded-lg border border-white/5 bg-zinc-950/60 px-1.5 py-0.5 text-[11px] font-bold text-white"
                                         >
                                           <div className="size-2.5 shrink-0 overflow-hidden rounded-sm border border-white/10 bg-zinc-900">
                                             {c.imageUrl && (
@@ -4762,7 +4807,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                           <span className="max-w-[90px] truncate">
                                             {c.title || "Sem título"}
                                           </span>
-                                          <span className="font-mono text-[7px] text-zinc-550">
+                                          <span className="font-mono text-[11px] text-zinc-550">
                                             (#{c.order})
                                           </span>
                                         </div>
@@ -4781,7 +4826,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       <div className="space-y-1">
                         <Label
                           htmlFor="banner-order"
-                          className="ml-1 text-[8.5px] font-black uppercase italic tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase italic tracking-widest text-zinc-500"
                         >
                           Prioridade de Exibição (Ordem)
                         </Label>
@@ -4803,7 +4848,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       <div className="flex h-9 items-center justify-between self-end rounded-xl border border-white/5 bg-black/40 px-3 shadow-inner">
                         <Label
                           htmlFor="banner-active"
-                          className="flex cursor-pointer select-none items-center gap-1.5 text-[8.5px] font-black uppercase italic tracking-wider text-white"
+                          className="flex cursor-pointer select-none items-center gap-1.5 text-[11px] font-black uppercase italic tracking-wider text-white"
                         >
                           Banner Ativo <Zap className="size-3 text-[#FFBF00]" />
                         </Label>
@@ -4831,14 +4876,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                     variant="ghost"
                     onClick={handleCloseDialog}
                     disabled={isSubmitting}
-                    className="h-9.5 flex-1 cursor-pointer rounded-xl text-[9.5px] font-black uppercase tracking-wider text-zinc-500 transition-all hover:bg-white/5 hover:text-white"
+                    className="h-9.5 flex-1 cursor-pointer rounded-xl text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all hover:bg-white/5 hover:text-white"
                   >
                     Cancelar
                   </Button>
                   <Button
                     onClick={handleSubmit}
                     disabled={uploading || isSubmitting || isOffline}
-                    className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[9.5px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
+                    className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
                   >
                     {isOffline
                       ? "Modo Offline"
@@ -4855,7 +4900,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <Button
                       variant="ghost"
                       onClick={() => setActiveStep((prev) => (prev - 1) as any)}
-                      className="h-9.5 flex-1 cursor-pointer rounded-xl text-[9.5px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:bg-white/5 hover:text-white"
+                      className="h-9.5 flex-1 cursor-pointer rounded-xl text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:bg-white/5 hover:text-white"
                     >
                       Voltar
                     </Button>
@@ -4864,7 +4909,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       variant="ghost"
                       onClick={handleCloseDialog}
                       disabled={isSubmitting}
-                      className="h-9.5 flex-1 cursor-pointer rounded-xl text-[9.5px] font-black uppercase tracking-wider text-zinc-500 transition-all hover:bg-white/5 hover:text-white"
+                      className="h-9.5 flex-1 cursor-pointer rounded-xl text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all hover:bg-white/5 hover:text-white"
                     >
                       Cancelar
                     </Button>
@@ -4883,7 +4928,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                         }
                         setActiveStep((prev) => (prev + 1) as any);
                       }}
-                      className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[9.5px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] active:scale-95"
+                      className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] active:scale-95"
                     >
                       Continuar
                     </Button>
@@ -4891,7 +4936,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <Button
                       onClick={handleSubmit}
                       disabled={uploading || isSubmitting || isOffline}
-                      className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[9.5px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
+                      className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
                     >
                       {isOffline
                         ? "Modo Offline"
@@ -4913,59 +4958,59 @@ export const AdminBannersView = memo(function AdminBannersView({
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Manual do Gerenciador de Banners"
+        title={`Como usar os ${NOMES_DO_PAINEL["admin-banners"]}`}
       >
         <div className="space-y-4">
           <p className="leading-relaxed">
-            O Gerenciador de Banners permite que você faça a curadoria dos
-            banners rotativos na página inicial do aplicativo do cliente. Essa
-            seção é a principal vitrine de promoções e produtos em destaque.
+            Aqui você escolhe os banners rotativos na página inicial do
+            aplicativo do cliente. Essa seção é a principal vitrine de promoções
+            e produtos em destaque.
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-amber-500 pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#FFBF00]">
+            <h4 className="border-l-2 border-amber-500 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-[#FFBF00]">
               Parâmetros dos Banners
             </h4>
             <div className="grid select-none grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white">
+                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white">
                   <Layout className="size-4 text-emerald-500" />
                   Imagem Promocional
                 </div>
-                <p className="text-[10px] text-zinc-500">
+                <p className="text-[11px] text-zinc-500">
                   Ideal usar proporção horizontal de 21:9. Imagens com boa
                   legibilidade aumentam a conversão.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white">
+                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white">
                   <ExternalLink className="size-4 text-[#FFBF00]" />
                   Link de Destino
                 </div>
-                <p className="text-[10px] text-zinc-500">
-                  A rota interna do app para onde o cliente será direcionado
-                  (ex: `/produtos` ou `/categoria/calcados`).
+                <p className="text-[11px] text-zinc-500">
+                  A página do app para onde o cliente será levado ao tocar no
+                  banner (por exemplo, um produto ou uma categoria).
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white">
+                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white">
                   <ArrowUp className="size-4 text-sky-500" />
                   Sequência / Ordenação
                 </div>
-                <p className="text-[10px] text-zinc-500">
+                <p className="text-[11px] text-zinc-500">
                   Prioridade de exibição na fila de slides. Ordene usando os
                   controles simples no painel.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white">
+                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white">
                   <Sparkles className="size-4 text-purple-500" />
                   Status de Exibição
                 </div>
-                <p className="text-[10px] text-zinc-500">
+                <p className="text-[11px] text-zinc-500">
                   Suspenda ou ative a visibilidade de qualquer campanha
                   instantaneamente usando o botão de alternar.
                 </p>

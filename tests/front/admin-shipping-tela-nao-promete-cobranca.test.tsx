@@ -49,7 +49,17 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
-      select: () => Promise.resolve({ data: [], error: null }),
+      // AdminShippingView-126: a tela filtra credenciais com .not()/.neq()
+      // em credentials->>token; o dublê tem de aceitar a cadeia, senão o
+      // TypeError cai no catch e liga credsErro em silêncio.
+      select: () => {
+        const consulta = (): any =>
+          Object.assign(Promise.resolve({ data: [], error: null }), {
+            not: () => consulta(),
+            neq: () => consulta(),
+          });
+        return consulta();
+      },
     }),
     functions: { invoke: vi.fn() },
   },
@@ -126,19 +136,38 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
     expect(texto()).not.toMatch(/taxa de entrega fixa|taxa fixa/i);
   });
 
-  it("escolher um preset mostra a consequência NA HORA (selo de não salvas), sem tocar em Salvar", async () => {
+  /** O botão Salvar do cabeçalho (T4 unificação, 23/09/2026): a barra fixa
+   * "Alterações não salvas" morreu — o sinal de pendência agora é o rótulo
+   * do botão do cabeçalho ("Salvo" limpo → "Salvar" pendente). */
+  function botaoSalvar(): HTMLButtonElement | undefined {
+    return [...hospedeiro.querySelectorAll("button")].find((b) =>
+      /^(Salvo|Salvar|Salvando…|Tentar de novo)$/.test(
+        b.textContent?.trim() || "",
+      ),
+    ) as HTMLButtonElement | undefined;
+  }
+
+  /** Pill do preset LOCAL, escopada ao painel "Estratégias do frete local"
+   * — a estratégia NACIONAL (na mesma tela agora) repete rótulos como
+   * "Sempre grátis". */
+  function pillPresetLocal(nome: RegExp): HTMLElement | undefined {
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
+    return [...(escopo?.querySelectorAll('[role="radio"]') ?? [])].find((r) =>
+      nome.test(r.textContent || ""),
+    ) as HTMLElement | undefined;
+  }
+
+  it("escolher um preset mostra a consequência NA HORA (botão Salvar acende), sem tocar em Salvar", async () => {
     // O sucessor do teste do interruptor: quem desliga/liga o grátis precisa
     // ver a consequência ANTES de salvar. O hero continua descrevendo o
-    // config SALVO (a realidade) — por isso o selo de pendência é o que
+    // config SALVO (a realidade) — por isso o botão do cabeçalho é o que
     // avisa, na hora, que há escolha nova não salva.
     mockConfig.freeShippingMin = 0;
     await abrirTela();
 
-    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
 
-    const sempre = [...hospedeiro.querySelectorAll('[role="radio"]')].find(
-      (r) => /Sempre grátis/.test(r.textContent || ""),
-    );
+    const sempre = pillPresetLocal(/Sempre grátis/);
     expect(sempre).toBeDefined();
     await act(async () => {
       (sempre as HTMLElement).click();
@@ -147,16 +176,17 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
       await esperarMicrotarefas();
     });
 
+    const escopo = hospedeiro.querySelector("#bloco-frete-local-estrategias");
     expect(
-      hospedeiro.querySelector('[role="radio"][aria-checked="true"]')
-        ?.textContent,
+      escopo?.querySelector('[role="radio"][aria-checked="true"]')?.textContent,
     ).toMatch(/Sempre grátis/);
-    expect(texto()).toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
   });
 
-  it("o hero descreve o config SALVO, não a escolha pendente — e o selo marca a diferença", async () => {
+  it("o hero descreve o config SALVO, não a escolha pendente — e o botão Salvar marca a diferença", async () => {
     // Se o hero lesse o formulário, a tela contaria uma realidade que ainda
-    // não existe (o lojista pode desistir de salvar). O pendente tem selo.
+    // não existe (o lojista pode desistir de salvar). O pendente acende o
+    // botão do cabeçalho.
     mockConfig.freeShippingMin = 100;
     await abrirTela();
 
@@ -165,9 +195,7 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
         ?.textContent ?? "";
     expect(hero()).toContain("Acima de R$ 100");
 
-    const sempre = [...hospedeiro.querySelectorAll('[role="radio"]')].find(
-      (r) => /Sempre grátis/.test(r.textContent || ""),
-    ) as HTMLElement;
+    const sempre = pillPresetLocal(/Sempre grátis/) as HTMLElement;
     await act(async () => {
       sempre.click();
     });
@@ -178,7 +206,7 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
     // Realidade salva, não a pendente:
     expect(hero()).toContain("Acima de R$ 100");
     expect(hero()).not.toContain("Em toda a loja");
-    // …com o selo de que há diferença.
-    expect(texto()).toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+    // …com o botão marcando que há diferença.
+    expect(botaoSalvar()?.textContent?.trim()).toBe("Salvar");
   });
 });

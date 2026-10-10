@@ -1,4 +1,9 @@
 import { useStore } from "@/contexts/StoreContext";
+import {
+  CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
+  CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+  CLASSE_SELO_DESCONTO,
+} from "@/lib/cor-do-preco-promocional";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
@@ -249,7 +254,12 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                       {formData.originalPrice &&
                         Number.parseFloat(formData.originalPrice) >
                           Number.parseFloat(displayPrice) && (
-                          <div className="shrink-0 select-none whitespace-nowrap rounded-full border border-rose-200/60 bg-rose-50/90 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-rose-600 shadow-sm backdrop-blur-md">
+                          <div
+                            className={cn(
+                              "shrink-0 select-none whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-md",
+                              CLASSE_SELO_DESCONTO,
+                            )}
+                          >
                             {Math.round(
                               ((Number.parseFloat(formData.originalPrice) -
                                 Number.parseFloat(displayPrice)) /
@@ -313,7 +323,12 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                                 })}
                               </span>
                             </span>
-                            <span className="mt-1 text-xs font-black leading-none tracking-tight text-rose-500">
+                            <span
+                              className={cn(
+                                "mt-1 text-xs font-black leading-none tracking-tight",
+                                CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
+                              )}
+                            >
                               Por: R${" "}
                               {Number.parseFloat(displayPrice).toLocaleString(
                                 "pt-BR",
@@ -438,7 +453,12 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                       {formData.originalPrice &&
                         Number.parseFloat(formData.originalPrice) >
                           Number.parseFloat(displayPrice) && (
-                          <span className="rounded-full border border-rose-200/60 bg-rose-50/90 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-rose-600 shadow-sm backdrop-blur-md">
+                          <span
+                            className={cn(
+                              "rounded-full border px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-md",
+                              CLASSE_SELO_DESCONTO,
+                            )}
+                          >
                             {Math.round(
                               ((Number.parseFloat(formData.originalPrice) -
                                 Number.parseFloat(displayPrice)) /
@@ -490,7 +510,12 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                             })}
                           </span>
                         </span>
-                        <span className="mt-1 text-base font-black leading-none tracking-tighter text-rose-600">
+                        <span
+                          className={cn(
+                            "mt-1 text-base font-black leading-none tracking-tighter",
+                            CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                          )}
+                        >
                           Por: R${" "}
                           {Number.parseFloat(displayPrice).toLocaleString(
                             "pt-BR",
@@ -684,7 +709,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                     <div className="mx-auto mt-3 flex w-full max-w-xs shrink-0 items-center gap-0.5 rounded-xl bg-zinc-100/60 p-1">
                       {[
                         { id: "description", label: "Detalhes" },
-                        { id: "reviews", label: "Reviews (15)" },
+                        { id: "reviews", label: "Avaliações (15)" },
                         { id: "questions", label: "Chat" },
                       ].map((tab) => {
                         const isActive = activeDetailTab === tab.id;

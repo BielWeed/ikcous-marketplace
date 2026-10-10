@@ -121,6 +121,23 @@ describe("aviso de atualização mostra a versão limpa, não um código estranh
     expect(tela).not.toContain("v24");
   });
 
+  it("build novo com o MESMO núcleo semver → o selo NÃO nasce: sem a seta mentirosa '1.31.0 → 1.31.0'", () => {
+    // Peça 22/09: deploy de build novo (sha diferente) na MESMA release
+    // (1.31.0). De→para igual é enganação — o aviso segue, o selo não.
+    useUpdateCheckMock.mockReturnValue({
+      checkUpdate: vi.fn(),
+      updateAvailable: true,
+      newVersion: "1.31.0-sha.999999",
+      performNuclearPurge: vi.fn(),
+    });
+    montar();
+
+    const tela = textoNaTela();
+    expect(tela).toContain(TEXTO_DO_AVISO);
+    // Nem origem nem destino: com núcleos iguais, o selo inteiro some.
+    expect(tela).not.toContain("1.31.0");
+  });
+
   it("controle: sem newVersion, o aviso nasce sem selo de versão nenhum", () => {
     montar();
     const tela = textoNaTela();

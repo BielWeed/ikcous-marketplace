@@ -1,46 +1,89 @@
 // @vitest-environment jsdom
 //
-// Desenho SALÃO+PORÃO do lote E (13/09/2026, escolhido pelo Gabriel): a
-// tela de Ajustes ganha DUAS camadas. O SALÃO responde "como está?" sem
-// clique — o painel de 4 indicadores espelho (Conexão, Pagamento, Frete,
-// Atendimento) — e organiza o resto em grupos (Sua loja / Entrega /
-// Ferramentas) com títulos na linguagem de gente. O PORÃO (consulta rara)
-// fica no pé da tela.
+// Desenho SALÃO+PORÃO do lote E (13/09/2026) + painel simples (09/10/2026, E5).
+// A tela de Ajustes se organiza em seis grupos (Minha loja / Aparência do app /
+// Entrega e frete / Pagamentos / Regras de troca e devolução / Ferramentas).
+// O cartão "Como está sua loja" (4 indicadores: Conexão, Pagamento, Frete,
+// Atendimento) SAIU: o estado agora é o SUBTÍTULO de cada grupo, calculado
+// pela mesma função dos seis passos do Início (`src/lib/loja-pronta.ts`) — e
+// o indicador "Conexão" foi para o grupo Ferramentas, junto de "Minha loja
+// está no ar?". O PORÃO (consulta rara) fica no pé da tela.
 //
 // O que este teste fixa:
-//   1. O painel mostra os 4 indicadores e cada um diz a verdade do estado.
-//      PIX tem 3 níveis (Funcionando / Chave ausente / Desligado) — o
+//   1. O cartão "Como está sua loja" não existe, nem na carga nem depois.
+//   2. Minha loja diz "Falta: WhatsApp" (ou "Tudo preenchido"); Pagamentos
+//      diz "Na entrega + PIX" / o que estiver ativo; Entrega e frete diz o
+//      estado da entrega. Sem config carregada nenhum subtítulo chuta.
+//   3. PIX tem 3 níveis (Funcionando / Chave ausente / Desligado) — o
 //      crítico de desenho do lote E vetou o "PIX ativo" de 2 rótulos, que
 //      diria "ativo" numa loja com a chave ausente (a mentira exata que o
-//      laudo 0109 D1 combateu ao criar o termômetro).
-//   2. Config parcial/ausente (o campo não veio do banco) não quebra nem
-//      inventa: frete cai no MESMO fallback do resto da tela
-//      (`|| "flat_fee"`, com ramo para valor fora dos 3 conhecidos),
-//      horário vazio após trim = "não informado" ("" não é informado).
-//   3. O painel vive DENTRO do ramo isLoaded — durante a carga nenhum
-//      indicador pode dizer o estado de uma config que ainda não chegou.
-//   4. Grupos na ordem do desenho; vocabulário novo nos acordeões; velho
+//      laudo 0109 D1 combateu ao criar o termômetro). Desde H6 o nível mora
+//      só no termômetro do topo de Pagamentos (antes: subtítulo de "Minha
+//      loja está no ar?").
+//   4. "Conexão" (Online/Offline) mora em Ferramentas.
+//   5. Grupos na ordem do desenho; vocabulário novo nos acordeões; velho
 //      aposentado.
-//   5. Contratos intactos: acordeões nascem FECHADOS (decisão 02/09),
+//   6. Contratos intactos: acordeões nascem FECHADOS (decisão 02/09),
 //      onSetDirty somando as pendências, atalhos de vitrine continuam
 //      portas role="button" com onNavigate.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { montarEnderecoDaLoja } from "@/lib/endereco-da-loja";
 import type { View } from "@/types";
 
-const { mockConfig, mockStore, mockFlags, mockChave, mockOnline } = vi.hoisted(
-  () => ({
-    mockConfig: {} as Record<string, unknown>,
-    mockStore: { isLoaded: true, updateConfig: vi.fn(async () => true) },
-    mockFlags: { pagamentoOnlineLigado: vi.fn(() => true) },
-    mockChave: {
-      chavePublicaMercadoPago: vi.fn((): string | null => "APP_USR-prova"),
+const {
+  mockConfig,
+  mockStore,
+  mockFlags,
+  mockChave,
+  mockOnline,
+  estadoDeFrete,
+  invokeFrete,
+} = vi.hoisted(() => ({
+  mockConfig: {} as Record<string, unknown>,
+  mockStore: { isLoaded: true, updateConfig: vi.fn(async () => true) },
+  mockFlags: { pagamentoOnlineLigado: vi.fn(() => true) },
+  mockChave: {
+    chavePublicaMercadoPago: vi.fn((): string | null => "APP_USR-prova"),
+  },
+  mockOnline: { useOnlineStatus: vi.fn(() => false) },
+  // RELEASE 1.5.7 v2 (revisão Opus, verificação integrada da hub 22/09):
+  // este arquivo era da era de UM provedor (`config.shippingProvider`,
+  // StoreContext síncrono). Desde a migração multi-provedor, o subtítulo de
+  // "Entrega e frete" em Ajustes lê
+  // `ler_configuracao_frete` pela edge — `estadoDeFrete` é a fonte única
+  // que este mock devolve para essa ação. `ligados: []` = equivalente ao
+  // antigo `shippingProvider: undefined` (nenhuma transportadora).
+  estadoDeFrete: {
+    ligados: [] as string[],
+    provedores: {} as Record<
+      string,
+      { tem_chave: boolean; sandbox?: boolean; contato_email?: string | null }
+    >,
+  },
+  invokeFrete: vi.fn(),
+}));
+
+function respostaFrete() {
+  return {
+    success: true,
+    modo: estadoDeFrete.ligados.length > 0 ? "multi" : "legado",
+    ligados: estadoDeFrete.ligados,
+    provedores: {
+      melhor_envio: { tem_chave: false, sandbox: false, servicos: null },
+      superfrete: { tem_chave: false, sandbox: false, servicos: null },
+      frenet: { tem_chave: false, sandbox: false, servicos: null },
+      ...Object.fromEntries(
+        Object.entries(estadoDeFrete.provedores).map(([p, v]) => [
+          p,
+          { servicos: null, ...v },
+        ]),
+      ),
     },
-    mockOnline: { useOnlineStatus: vi.fn(() => false) },
-  }),
-);
+  };
+}
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -77,7 +120,11 @@ vi.mock("@/hooks/useAuth", () => ({
 vi.mock("@/lib/env-valores", () => ({
   lerSupabaseUrl: () => "https://abcdefghijklmnopqrst.supabase.co",
 }));
-vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    functions: { invoke: (...args: unknown[]) => invokeFrete(...args) },
+  },
+}));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -117,7 +164,41 @@ async function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe("Painel 'Como está sua loja' — salão sem clique", () => {
+// Config zerada por teste, por propriedade (sem índice dinâmico): ausente vale
+// "a loja não preencheu" para os subtítulos dos grupos.
+function reiniciarConfig() {
+  mockConfig.shippingProvider = undefined;
+  mockConfig.businessHours = undefined;
+  mockConfig.storeName = undefined;
+  mockConfig.logoUrl = undefined;
+  mockConfig.whatsappNumber = undefined;
+  mockConfig.originCep = undefined;
+  mockConfig.storeAddress = undefined;
+  mockConfig.storeCity = undefined;
+  mockConfig.storeState = undefined;
+  mockConfig.shippingCoverage = undefined;
+  mockConfig.formasPagamentoEntrega = undefined;
+}
+
+/** Minha loja preenchida do jeito que a tela grava: marca, endereço e CEP. */
+function preencherMarcaEEndereco() {
+  mockConfig.storeName = "Loja Teste";
+  mockConfig.logoUrl = "https://exemplo.test/logo.png";
+  Object.assign(
+    mockConfig,
+    montarEnderecoDaLoja({
+      cep: "38500-000",
+      rua: "Rua das Flores",
+      numero: "10",
+      complemento: "",
+      bairro: "Centro",
+      cidade: "Monte Carmelo",
+      uf: "MG",
+    }),
+  );
+}
+
+describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -146,15 +227,24 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
     // porta-de-avisar-clientes, que monta o hub com storeCity/storeState só).
     // Reset por propriedade (sem índice dinâmico): undefined vale ausente
     // para o hub (`|| "flat_fee"`, `?? ""`).
-    mockConfig.shippingProvider = undefined;
-    mockConfig.businessHours = undefined;
-    mockConfig.storeName = undefined;
+    reiniciarConfig();
     mockFlags.pagamentoOnlineLigado.mockReturnValue(true);
     mockChave.chavePublicaMercadoPago.mockReturnValue("APP_USR-prova");
     mockOnline.useOnlineStatus.mockReturnValue(false);
     mockStore.isLoaded = true;
     mockStore.updateConfig.mockReset();
     mockStore.updateConfig.mockResolvedValue(true);
+    // Equivalente novo de "shippingProvider: undefined": nenhum provedor
+    // ligado na edge.
+    estadoDeFrete.ligados = [];
+    estadoDeFrete.provedores = {};
+    invokeFrete.mockReset();
+    invokeFrete.mockImplementation((_nome: string, opcoes: any) => {
+      if (opcoes?.body?.action === "ler_configuracao_frete") {
+        return Promise.resolve({ data: respostaFrete(), error: null });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -167,6 +257,28 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
     hospedeiro.remove();
     vi.unstubAllGlobals();
   });
+
+  /** O `<section>` do grupo, achado pelo título (o `<h2>` filho direto). */
+  function secaoDoGrupo(titulo: string): Element {
+    const secao = [...hospedeiro.querySelectorAll("section")].find(
+      (s) => s.querySelector(":scope > h2")?.textContent === titulo,
+    );
+    expect(secao, `grupo "${titulo}" ausente`).toBeDefined();
+    return secao as Element;
+  }
+
+  /** A linha de estado sob o título do grupo (o `<p>` filho direto). */
+  function subtituloDoGrupo(titulo: string): string | null {
+    return (
+      secaoDoGrupo(titulo).querySelector(":scope > p")?.textContent ?? null
+    );
+  }
+
+  function cabecalhoDaSecao(texto: string) {
+    return [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes(texto),
+    ) as HTMLButtonElement | undefined;
+  }
 
   async function renderizar(
     onSetDirty?: (dirty: boolean) => void,
@@ -184,28 +296,188 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
         />,
       );
     });
+    // RELEASE 1.5.7 v2 (revisão Opus): o indicador de Frete não é mais
+    // síncrono do StoreContext — vem de `buscarConfiguracaoDeFrete()`
+    // (a edge), que resolve depois de pelo menos um `await` extra. Drena
+    // a fila de microtarefas antes de conferir o texto do painel.
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
   }
 
-  it("mostra os 4 indicadores nessa ordem: Conexão, Pagamento, Frete, Atendimento", async () => {
-    mockConfig.shippingProvider = "melhor_envio";
+  it("o cartão 'Como está sua loja' não existe mais — nem o título, nem os rótulos dos 4 indicadores", async () => {
+    estadoDeFrete.ligados = ["melhor_envio"];
+    estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
     mockConfig.businessHours = "Seg-Sáb: 9h às 18h";
     await renderizar();
 
-    const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Como está sua loja");
-    const posicoes = ["Conexão", "Pagamento", "Frete", "Atendimento"].map(
-      (rotulo) => texto.indexOf(rotulo),
+    const titulos = [...hospedeiro.querySelectorAll("h2")].map(
+      (h) => h.textContent,
     );
-    for (const posicao of posicoes) expect(posicao).toBeGreaterThan(-1);
-    expect(posicoes[0]).toBeLessThan(posicoes[1]);
-    expect(posicoes[1]).toBeLessThan(posicoes[2]);
-    expect(posicoes[2]).toBeLessThan(posicoes[3]);
+    expect(titulos).not.toContain("Como está sua loja");
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).not.toContain("Como está sua loja");
+    // "Atendimento" e "Frete" (os rótulos soltos do cartão) não aparecem como
+    // tile; o horário salvo não é mais espelhado em Ajustes (mora em Minha loja).
+    expect(texto).not.toContain("Atendimento");
+    expect(texto).not.toContain("Seg-Sáb: 9h às 18h");
+  });
 
-    // Valores espelho: online, PIX funcionando, frete nomeado, horário salvo.
-    expect(texto).toContain("Online");
-    expect(texto).toContain("Funcionando");
-    expect(texto).toContain("Melhor Envio");
-    expect(texto).toContain("Seg-Sáb: 9h às 18h");
+  describe("Minha loja: 'Falta: …' ou 'Tudo preenchido' (mesma função dos seis passos)", () => {
+    it("só falta o WhatsApp → 'Falta: WhatsApp'", async () => {
+      preencherMarcaEEndereco();
+      await renderizar();
+      expect(subtituloDoGrupo("Minha loja")).toBe("Falta: WhatsApp");
+    });
+
+    it("loja vazia lista tudo o que falta, na ordem dos passos", async () => {
+      await renderizar();
+      expect(subtituloDoGrupo("Minha loja")).toBe(
+        "Falta: Nome e logo, Endereço, WhatsApp",
+      );
+    });
+
+    it("com marca, endereço e WhatsApp → 'Tudo preenchido'", async () => {
+      preencherMarcaEEndereco();
+      mockConfig.whatsappNumber = "(34) 99999-9999";
+      await renderizar();
+      expect(subtituloDoGrupo("Minha loja")).toBe("Tudo preenchido");
+    });
+  });
+
+  describe("Pagamentos: o que está ativo", () => {
+    it("na entrega (as três formas) + PIX pelo app funcionando → 'Na entrega + PIX'", async () => {
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Na entrega + PIX");
+    });
+
+    it("PIX desligado → só 'Na entrega'", async () => {
+      mockFlags.pagamentoOnlineLigado.mockReturnValue(false);
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Na entrega");
+    });
+
+    it("sem nada na entrega mas com PIX pelo app → 'PIX'", async () => {
+      mockConfig.formasPagamentoEntrega = [];
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("PIX");
+    });
+
+    it("sem nada na entrega e sem PIX → 'Falta: Como você recebe'", async () => {
+      mockConfig.formasPagamentoEntrega = [];
+      mockFlags.pagamentoOnlineLigado.mockReturnValue(false);
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Falta: Como você recebe");
+    });
+
+    it("PIX ligado sem chave e nada na entrega → 'Falta: Como você recebe' (PIX quebrado não é jeito de receber)", async () => {
+      mockChave.chavePublicaMercadoPago.mockReturnValue(null);
+      mockConfig.formasPagamentoEntrega = [];
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Falta: Como você recebe");
+    });
+
+    it("PIX ligado com a chave ausente NÃO conta como PIX: o subtítulo avisa", async () => {
+      mockChave.chavePublicaMercadoPago.mockReturnValue(null);
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Na entrega · PIX sem chave");
+    });
+  });
+
+  describe("Entrega e frete: o estado da entrega", () => {
+    it("sem CEP da loja → 'Falta: CEP da loja' (a transportadora não é pendência do passo)", async () => {
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe("Falta: CEP da loja");
+    });
+
+    it("sem CEP mas com transportadora ligada → só 'Falta: CEP da loja'", async () => {
+      estadoDeFrete.ligados = ["melhor_envio"];
+      estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe("Falta: CEP da loja");
+    });
+
+    it("com CEP e transportadora ligada → diz a entrega local e a transportadora", async () => {
+      preencherMarcaEEndereco();
+      estadoDeFrete.ligados = ["melhor_envio"];
+      estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe(
+        "R$ 10 por entrega · Melhor Envio ligado",
+      );
+    });
+
+    it("com CEP, entrega nacional e nenhuma transportadora → o passo está feito e o texto avisa 'Sem transportadora'", async () => {
+      preencherMarcaEEndereco();
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe(
+        "R$ 10 por entrega · Sem transportadora",
+      );
+    });
+
+    it("loja que só entrega na cidade, com CEP, não precisa de transportadora", async () => {
+      preencherMarcaEEndereco();
+      mockConfig.shippingCoverage = "local";
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe(
+        "R$ 10 por entrega · Só na sua cidade",
+      );
+    });
+
+    it("leitura das transportadoras falhou (data nula + erro), com CEP e cobertura nacional → SEM subtítulo, não chuta", async () => {
+      preencherMarcaEEndereco();
+      invokeFrete.mockImplementation((_nome: string, opcoes: any) => {
+        if (opcoes?.body?.action === "ler_configuracao_frete") {
+          return Promise.resolve({
+            data: null,
+            error: { message: "falha de rede de mentira" },
+          });
+        }
+        return Promise.resolve({ data: { success: true }, error: null });
+      });
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBeNull();
+    });
+
+    it("SuperFrete ligada sem e-mail válido não conta como transportadora ligada", async () => {
+      preencherMarcaEEndereco();
+      estadoDeFrete.ligados = ["superfrete"];
+      estadoDeFrete.provedores = {
+        superfrete: { tem_chave: true, contato_email: null },
+      };
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe(
+        "R$ 10 por entrega · Sem transportadora",
+      );
+    });
+  });
+
+  it("grupos sem passo próprio (Aparência, Regras de troca, Ferramentas) não inventam subtítulo", async () => {
+    await renderizar();
+    expect(subtituloDoGrupo("Aparência do app")).toBeNull();
+    expect(subtituloDoGrupo("Regras de troca e devolução")).toBeNull();
+    expect(subtituloDoGrupo("Ferramentas")).toBeNull();
+  });
+
+  it("'Conexão' mora em Ferramentas, junto de 'Minha loja está no ar?': Online", async () => {
+    await renderizar();
+    const ferramentas = secaoDoGrupo("Ferramentas");
+    expect(ferramentas.textContent).toContain("Conexão");
+    expect(ferramentas.textContent).toContain("Online");
+    expect(ferramentas.textContent).toContain("Minha loja está no ar?");
+    // E só lá: nenhum outro grupo carrega o indicador.
+    for (const outro of [
+      "Minha loja",
+      "Aparência do app",
+      "Entrega e frete",
+      "Pagamentos",
+      "Regras de troca e devolução",
+    ]) {
+      expect(secaoDoGrupo(outro).textContent).not.toContain("Conexão");
+    }
   });
 
   it.each([
@@ -217,12 +489,20 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
     { ligado: true, chave: null, rotulo: "Chave ausente" },
     { ligado: false, chave: null, rotulo: "Desligado" },
   ])(
-    "PIX replica o termômetro: ligado=$ligado, chave=$chave → $rotulo",
+    "PIX no termômetro do topo de Pagamentos: ligado=$ligado, chave=$chave → $rotulo",
     async ({ ligado, chave, rotulo }) => {
       mockFlags.pagamentoOnlineLigado.mockReturnValue(ligado);
       mockChave.chavePublicaMercadoPago.mockReturnValue(chave);
       await renderizar();
-      expect(hospedeiro.textContent).toContain(rotulo);
+      // H6 (painel simples): o nível do PIX mora no termômetro do topo de
+      // Pagamentos — o único status; "Minha loja está no ar?" não o repete.
+      const termometro = [
+        ...secaoDoGrupo("Pagamentos").querySelectorAll("button"),
+      ].find((b) => b.textContent?.includes("Pagamento online (PIX)"));
+      expect(termometro?.textContent).toContain(rotulo);
+      expect(
+        cabecalhoDaSecao("Minha loja está no ar?")?.textContent,
+      ).not.toContain("PIX");
     },
   );
 
@@ -237,39 +517,69 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
     expect(hospedeiro.textContent).not.toContain("PIX ativo");
   });
 
-  it("config sem shippingProvider diz 'Sem cotação automática' (mesmo fallback do resto da tela)", async () => {
-    // A prova viva do guard porta-de-avisar-clientes: config parcial chega.
+  // O "Ativo: <provedor>" dos acordeões de Transportadoras e Consultas de
+  // frete saiu com eles (H5, painel simples: moram na tela de Frete). O que
+  // ele contava — nenhum ligado, id desconhecido, SuperFrete conhecida — o
+  // subtítulo de "Entrega e frete" conta, pela mesma leitura da edge.
+  it("nenhum provedor ligado na edge: o subtítulo diz 'Sem transportadora' (nenhum 'Ativo:' sobra)", async () => {
+    // A prova viva do guard porta-de-avisar-clientes: config parcial chega
+    // — ANTES a fonte era `config.shippingProvider` ausente; agora é a
+    // edge devolvendo `ligados: []` (o padrão do `beforeEach`).
+    preencherMarcaEEndereco();
     await renderizar();
-    expect(hospedeiro.textContent).toContain("Sem cotação automática");
+    expect(subtituloDoGrupo("Entrega e frete")).toBe(
+      "R$ 10 por entrega · Sem transportadora",
+    );
+    expect(hospedeiro.textContent).not.toContain("Ativo:");
   });
 
-  it("shippingProvider fora dos 3 conhecidos também cai no ramo seguro", async () => {
-    mockConfig.shippingProvider = "correio_galatico";
+  it("provedor ligado fora dos 3 conhecidos também cai no ramo seguro", async () => {
+    // Equivalente novo de "shippingProvider fora dos 3 conhecidos": a
+    // edge manda um id desconhecido em `ligados` — `buscarConfiguracaoDeFrete`
+    // filtra para a união fechada de ProvedorFrete, e o desconhecido some
+    // (mesmo efeito prático do fallback antigo).
+    preencherMarcaEEndereco();
+    estadoDeFrete.ligados = ["correio_galatico"];
     await renderizar();
-    expect(hospedeiro.textContent).toContain("Sem cotação automática");
+    expect(subtituloDoGrupo("Entrega e frete")).toBe(
+      "R$ 10 por entrega · Sem transportadora",
+    );
   });
 
-  it.each([null, "   "])(
-    "horário %p = 'não informado' (vazio após trim não é informado)",
-    async (horario) => {
-      mockConfig.businessHours = horario;
-      await renderizar();
-      expect(hospedeiro.textContent).toContain("não informado");
-    },
-  );
+  it("SuperFrete (1.5.4) é provedor conhecido: o subtítulo diz o nome, não o ramo seguro", async () => {
+    preencherMarcaEEndereco();
+    estadoDeFrete.ligados = ["superfrete"];
+    // E-mail de contato válido: sem ele a SuperFrete vira "incompleta"
+    // (achado 2) e não conta como ligada — prova dedicada em "SuperFrete
+    // ligada sem e-mail válido não conta como transportadora ligada", acima.
+    estadoDeFrete.provedores = {
+      superfrete: {
+        tem_chave: true,
+        contato_email: "tecnico@loja-ficticia.com.br",
+      },
+    };
+    await renderizar();
+    expect(subtituloDoGrupo("Entrega e frete")).toBe(
+      "R$ 10 por entrega · SuperFrete ligado",
+    );
+  });
 
-  it("durante a carga (isLoaded=false) o painel NÃO existe — indicador nenhum chuta estado", async () => {
-    mockConfig.shippingProvider = "melhor_envio";
+  it("durante a carga (isLoaded=false) nenhum grupo existe — subtítulo nenhum chuta estado", async () => {
+    estadoDeFrete.ligados = ["melhor_envio"];
+    estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
     mockStore.isLoaded = false;
     await renderizar();
-    expect(hospedeiro.textContent).not.toContain("Como está sua loja");
+    expect(hospedeiro.querySelectorAll("section").length).toBe(0);
+    expect(hospedeiro.textContent).not.toContain("Falta:");
     expect(hospedeiro.textContent).not.toContain("Melhor Envio");
   });
 
-  it("offline: Conexão diz Offline", async () => {
+  it("offline: Conexão diz Offline, em Ferramentas", async () => {
     mockOnline.useOnlineStatus.mockReturnValue(true);
     await renderizar();
-    expect(hospedeiro.textContent).toContain("Offline");
+    const ferramentas = secaoDoGrupo("Ferramentas").textContent ?? "";
+    expect(ferramentas).toContain("Conexão");
+    expect(ferramentas).toContain("Offline");
     expect(hospedeiro.textContent).not.toContain("Online");
   });
 });
@@ -308,6 +618,17 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     mockStore.isLoaded = true;
     mockStore.updateConfig.mockReset();
     mockStore.updateConfig.mockResolvedValue(true);
+    // Equivalente novo de "shippingProvider: undefined": nenhum provedor
+    // ligado na edge.
+    estadoDeFrete.ligados = [];
+    estadoDeFrete.provedores = {};
+    invokeFrete.mockReset();
+    invokeFrete.mockImplementation((_nome: string, opcoes: any) => {
+      if (opcoes?.body?.action === "ler_configuracao_frete") {
+        return Promise.resolve({ data: respostaFrete(), error: null });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -346,33 +667,26 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     await act(async () => {
       await esperarMicrotarefas();
     });
-  }
-
-  async function digitarNoCampo(id: string, valor: string) {
-    const campo = hospedeiro.querySelector<HTMLInputElement>(`#${id}`);
-    expect(campo, `campo ausente: #${id}`).not.toBeNull();
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
     await act(async () => {
-      setter?.call(campo, valor);
-      campo!.dispatchEvent(new Event("input", { bubbles: true }));
+      await esperarMicrotarefas();
     });
   }
 
-  it("os grupos aparecem na ordem do desenho: Como está sua loja, Sua loja, Entrega, Ferramentas", async () => {
+  it("os grupos aparecem na ordem do desenho: os seis grupos de Ajustes, sem o cartão de indicadores", async () => {
     await renderizar();
     const titulos = [...hospedeiro.querySelectorAll("h2")].map(
       (h) => h.textContent,
     );
     expect(titulos).toEqual([
-      "Como está sua loja",
-      "Sua loja",
-      "Entrega",
+      "Minha loja",
+      "Aparência do app",
+      "Entrega e frete",
       // Peça 20 (pedido do dono, 14/09): o Mercado Pago vira grupo próprio,
-      // ao lado de Entrega e antes do PORÃO (Ferramentas).
+      // ao lado de Entrega e frete e antes do PORÃO (Ferramentas).
       "Pagamentos",
+      // Devoluções (plano 2026-09-26): a política de trocas da loja mora
+      // num grupo próprio ("Pós-venda" até 09/10/2026), antes do PORÃO.
+      "Regras de troca e devolução",
       "Ferramentas",
     ]);
   });
@@ -380,18 +694,22 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
   it("os acordeões usam o vocabulário novo — e o velho saiu", async () => {
     await renderizar();
     const texto = hospedeiro.textContent ?? "";
+    // "Nome, logo e cores" e "Atendimento" (acordeões) SAÍRAM em 22/09/2026:
+    // eram duplicados de AdminAboutStoreView, que monta a edição de verdade.
+    // Desde 09/10/2026 nem o rótulo do indicador "Atendimento" resta aqui.
+    // "Transportadoras" e "Consultas de frete" saíram em 09/10/2026 (H5):
+    // moram na tela de Frete (frete-um-lugar-so.test.tsx).
     for (const novo of [
-      "Nome, logo e cores",
-      "Atendimento",
       "Entrega e frete",
+      "Formas de pagamento",
       "Mercado Pago",
       "Minha loja está no ar?",
-      "Consultas de frete",
     ]) {
       expect(texto).toContain(novo);
     }
     for (const velho of [
       "Identidade da loja",
+      "Nome, logo e cores",
       "Status de funcionamento do sistema",
       "Transportadoras e cotação de frete",
       "Histórico de cotações de frete",
@@ -406,73 +724,58 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     const cabecalhos = [
       ...hospedeiro.querySelectorAll("button[aria-expanded]"),
     ];
-    // Peça 20: o Mercado Pago entra como sexto acordeão, nascido fechado
-    // como os demais (mesma decisão do dono de 02/09).
-    expect(cabecalhos.length).toBe(6);
+    // "Nome, logo e cores" e "Atendimento" SAÍRAM em 22/09/2026 (duplicados
+    // de AdminAboutStoreView): sobram Formas de pagamento (25/09/2026,
+    // migration 20261174000000), Mercado Pago e Minha loja está no ar? — e,
+    // desde o plano 2026-09-26, Trocas e devoluções (grupo Regras de troca e
+    // devolução). Transportadoras e Consultas de frete foram para a tela de
+    // Frete em 09/10/2026 (H5). O quinto é o termômetro do PIX, no topo de
+    // Pagamentos desde H6: a linha está à vista, o diagnóstico dele fechado.
+    expect(cabecalhos.length).toBe(5);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }
-    // Fechado = conteúdo fora do DOM.
+    // Os campos de identidade/horário nem existem mais nesta tela (não é
+    // "fechado", é ausente).
     expect(hospedeiro.querySelector("#store-business-hours")).toBeNull();
     expect(hospedeiro.querySelector("#store-name")).toBeNull();
-    expect(hospedeiro.textContent).not.toContain("Pagamento online (PIX)");
+    expect(hospedeiro.textContent).not.toContain(
+      "Ligado e com a chave pública da loja",
+    );
     expect(hospedeiro.querySelector("table")).toBeNull();
   });
 
-  it("linha de estado no cabeçalho: Entrega e frete diz 'Ativo: <provedor>' sem abrir", async () => {
-    mockConfig.shippingProvider = "melhor_envio";
+  it("o estado do frete é o subtítulo do grupo, sem acordeão de Transportadoras (H5)", async () => {
+    reiniciarConfig();
+    preencherMarcaEEndereco();
+    estadoDeFrete.ligados = ["melhor_envio"];
+    estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
     await renderizar();
-    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
-    expect(cabecalho).toBeTruthy();
-    expect(cabecalho.textContent).toContain("Ativo: Melhor Envio");
+    expect(cabecalhoDaSecao("Transportadoras")).toBeUndefined();
+    const entrega = [...hospedeiro.querySelectorAll("section")].find(
+      (s) => s.querySelector(":scope > h2")?.textContent === "Entrega e frete",
+    );
+    expect(entrega?.querySelector(":scope > p")?.textContent).toBe(
+      "R$ 10 por entrega · Melhor Envio ligado",
+    );
+    reiniciarConfig();
   });
 
-  it("onSetDirty soma as pendências: mexer no horário liga a guarda, salvar desliga", async () => {
-    const onSetDirty = vi.fn();
-    await renderizar(onSetDirty);
-    expect(onSetDirty).toHaveBeenLastCalledWith(false);
+  // As pendências de horário e identidade SAÍRAM da soma de onSetDirty
+  // desta tela em 22/09/2026, junto com os acordeões: os dois editores
+  // moram só em AdminAboutStoreView agora, e a pendência deles é somada
+  // por ELA (provado em admin-sobre-a-loja-salva-sem-apagar.test.tsx e em
+  // admin-settings-identidade-da-loja.test.tsx). onSetDirty desta tela
+  // continua somando pagamentos e devoluções (sem teste dedicado aqui:
+  // cobertos pelos vizinhos de cada seção); a pendência das transportadoras
+  // é somada pela tela de Frete desde H5 (frete-um-lugar-so.test.tsx).
 
-    await act(async () => {
-      cabecalhoDaSecao("Atendimento")!.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    await digitarNoCampo("store-business-hours", "Ter-Sáb: 8h às 17h");
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
-
-    const salvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar horário"),
-    ) as HTMLButtonElement;
-    await act(async () => {
-      salvar.click();
-      await esperarMicrotarefas();
-    });
-    expect(onSetDirty).toHaveBeenLastCalledWith(false);
-  });
-
-  it("onSetDirty soma as pendências: a identidade também conta", async () => {
-    const onSetDirty = vi.fn();
-    await renderizar(onSetDirty);
-
-    await act(async () => {
-      cabecalhoDaSecao("Nome, logo e cores")!.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    await digitarNoCampo("store-name", "Loja com outro nome");
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
-  });
-
-  it("atalhos de vitrine continuam portas role=button com onNavigate", async () => {
+  it("as portas continuam role=button com onNavigate (20/09: +Sobre a Loja; 09/10: Minha loja e +Entrega e frete)", async () => {
     const onNavigate = vi.fn();
     await renderizar(undefined, onNavigate);
 
     const portas = [...hospedeiro.querySelectorAll('[role="button"]')];
-    expect(portas.length).toBe(2);
+    expect(portas.length).toBe(4);
     await act(async () => {
       for (const porta of portas) {
         porta.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -481,5 +784,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     const destinos = onNavigate.mock.calls.map((chamada) => chamada[0]);
     expect(destinos).toContain("admin-banners");
     expect(destinos).toContain("admin-carousels");
+    expect(destinos).toContain("admin-about-store");
+    expect(destinos).toContain("admin-shipping");
   });
 });

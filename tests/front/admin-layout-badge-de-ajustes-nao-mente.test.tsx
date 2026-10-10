@@ -33,17 +33,34 @@ vi.mock("@/lib/supabase", () => ({
       builder.select = vi.fn(() => builder);
       builder.eq = vi.fn(() => builder);
       builder.in = vi.fn(() => builder);
+      builder.or = vi.fn(() => builder);
       builder.is = vi.fn(() => builder);
       // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
       builder.then = (resolve: any, reject?: any) =>
         Promise.resolve({ count: 0, error: null }).then(resolve, reject);
       return builder;
     }),
-    rpc: vi.fn(() =>
-      Promise.resolve({
-        data: { total_count: PERGUNTAS_PENDENTES_REAIS },
-        error: null,
-      }),
+    rpc: vi.fn((nome: string) =>
+      Promise.resolve(
+        nome === "admin_devolucoes_listar"
+          ? {
+              data: {
+                total: 0,
+                itens: [],
+                contagem: {
+                  solicitada: 0,
+                  aprovada: 0,
+                  em_transito: 0,
+                  recebida: 0,
+                },
+              },
+              error: null,
+            }
+          : {
+              data: { total_count: PERGUNTAS_PENDENTES_REAIS },
+              error: null,
+            },
+      ),
     ),
     channel: vi.fn(() => ({
       on: vi.fn().mockReturnThis(),

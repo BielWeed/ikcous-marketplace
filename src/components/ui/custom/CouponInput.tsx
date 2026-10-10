@@ -1,4 +1,4 @@
-import { Tag, X } from "lucide-react";
+import { Check, Tag, X } from "lucide-react";
 import { memo, useState } from "react";
 
 interface CouponInputProps {
@@ -6,64 +6,93 @@ interface CouponInputProps {
   onRemove: () => void;
   appliedCoupon?: { code: string; discount: number } | null;
   error?: string;
+  /** Uma validação está em voo — o botão trava (toque duplo não valida duas vezes). */
+  aplicando?: boolean;
 }
+
+// Espaço inseparável: "R$" nunca quebra longe do número.
+const formatarReais = (valor: number) =>
+  `R$\u00a0${valor.toFixed(2).replace(".", ",")}`;
 
 export const CouponInput = memo(function CouponInput({
   onApply,
   onRemove,
   appliedCoupon,
   error,
+  aplicando = false,
 }: CouponInputProps) {
   const [code, setCode] = useState("");
   const [isFocused, setIsFocused] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (aplicando) return;
     if (code.trim()) {
       onApply(code.trim().toUpperCase());
     }
   };
 
   if (appliedCoupon) {
+    // Frente B (28/09/2026): cores AA — o "-R$ X aplicado" em green-600 sobre
+    // green-50 media 3,15:1; emerald-800 sobre emerald-50 passa de 7:1.
+    // Cupom restaurado do rascunho chega com desconto 0 até a revalidação
+    // responder — "R$ 0,00 aplicado" era mentira; agora diz que está
+    // conferindo.
     return (
-      <div className="flex items-center justify-between rounded-xl border border-green-200 bg-green-50 p-3">
-        <div className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-green-500">
-            <Tag className="size-4 text-white" />
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-600">
+            <Check className="size-4 text-white" strokeWidth={3} />
           </div>
-          <div>
-            <p className="text-sm font-medium text-green-800">
-              {appliedCoupon.code}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-emerald-900">
+              {appliedCoupon.code}{" "}
+              <span className="font-medium text-emerald-800">aplicado</span>
             </p>
-            <p className="text-xs text-green-600">
-              -R$ {appliedCoupon.discount.toFixed(2).replace(".", ",")} aplicado
+            <p className="text-xs font-semibold text-emerald-800">
+              {appliedCoupon.discount > 0
+                ? `Você economiza ${formatarReais(appliedCoupon.discount)}`
+                : "Conferindo o desconto…"}
             </p>
           </div>
         </div>
-        {/* `after:-inset-1.5`: área de toque de 44px (32px do botão + 12px)
-            sem mudar o visual discreto do X. */}
+        {/* Laudo de acessibilidade 03/09, achado 2: o botão diz o que faz.
+            Frente B: o X virou a palavra "Remover" (alvo de 44px). */}
         <button
+          type="button"
           onClick={onRemove}
-          // Laudo de acessibilidade 03/09, achado 2: o X era um "botão" sem
-          // nome — não se sabia que ele removia o cupom aplicado.
           aria-label="Remover cupom"
-          className="relative rounded-lg p-2 text-green-600 transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:bg-green-100"
+          className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-semibold text-emerald-900 underline underline-offset-2 transition-colors hover:bg-emerald-100"
         >
-          <X className="size-4" />
+          Remover
         </button>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
+    <form onSubmit={handleSubmit} className="space-y-1.5">
+      {/* Frente B: o campo ganhou rótulo de verdade (antes só placeholder). */}
+      <label
+        htmlFor="coupon-code-input"
+        className="block text-xs font-semibold text-zinc-700"
+      >
+        Tem um código de cupom?
+      </label>
+      {/* Uma classe de borda/fundo por estado (sem duas brigando na mesma
+          string — a ordem do CSS gerado decidia, e o erro não aparecia). */}
       <div
-        className={`flex items-center gap-2 rounded-xl border bg-gray-50 p-2 transition-all ${
-          isFocused ? "border-black ring-2 ring-black/5" : "border-gray-200"
-        } ${error ? "border-red-300 bg-red-50" : ""}`}
+        className={`flex items-center gap-2 rounded-xl border p-1.5 transition-all ${
+          error
+            ? "border-red-600 bg-red-50"
+            : isFocused
+              ? "border-zinc-900 bg-white ring-2 ring-black/5"
+              : "border-zinc-400 bg-white"
+        }`}
       >
         <Tag
-          className={`ml-2 size-4 ${error ? "text-red-400" : "text-gray-400"}`}
+          aria-hidden="true"
+          className={`ml-2 size-4 shrink-0 ${error ? "text-red-700" : "text-zinc-500"}`}
         />
         <input
           id="coupon-code-input"
@@ -73,7 +102,12 @@ export const CouponInput = memo(function CouponInput({
           onChange={(e) => setCode(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          placeholder="Cupom de desconto"
+          placeholder="Digite o código"
+          autoComplete="off"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="done"
           // Laudo de acessibilidade 03/09, achado 9: com erro, o campo se
           // declara inválido e aponta a mensagem (id abaixo).
           aria-invalid={error ? true : undefined}
@@ -84,22 +118,23 @@ export const CouponInput = memo(function CouponInput({
         />
         <button
           type="submit"
-          disabled={!code.trim()}
-          className="flex min-h-[44px] items-center rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-300"
+          disabled={!code.trim() || aplicando}
+          className="flex min-h-[44px] items-center rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600"
         >
-          Aplicar
+          {aplicando ? "Aplicando…" : "Aplicar"}
         </button>
       </div>
       {error && (
         // Laudo de acessibilidade 03/09, achado 9: a recusa do cupom era
         // silenciosa para leitor de tela — role="alert" fala na hora, o
         // mesmo tratamento da recusa do pedido (SaidaDaRecusa.tsx).
+        // Frente B: red-500 media 3,76:1 no branco; red-700 passa de 6:1.
         <p
           id="erro-cupom"
           role="alert"
-          className="flex items-center gap-1 text-xs text-red-500"
+          className="flex items-center gap-1 text-xs text-red-700"
         >
-          <X className="size-3" />
+          <X aria-hidden="true" className="size-3 shrink-0" />
           {error}
         </p>
       )}

@@ -1,6 +1,6 @@
-import { toast } from "sonner";
 import { useOrders } from "@/hooks/useOrders";
 import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("sonner", () => ({

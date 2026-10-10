@@ -10,10 +10,11 @@
 // lojista salva sem desconfiar. O CEP de Monte Carmelo ficava gravado no
 // banco DELA, e a validação que a Tarefa 7 construiu nunca disparava.
 //
-// Este teste prova: o campo abre vazio quando a loja não configurou, abre
-// com o valor salvo quando configurou, o formulário não se marca como
-// "alterado" só por abrir sem CEP, e a tela avisa que o campo é obrigatório
-// para cotar frete.
+// D6 (painel simples): o CEP deixou de ser CAMPO desta tela — é o CEP de Minha
+// loja, e Frete só o LÊ. A promessa do arquivo continua: a tela nunca inventa
+// CEP. Este teste prova: sem CEP configurado ela não mostra CEP nenhum, com
+// CEP mostra exatamente o salvo, abrir sem CEP não suja o formulário, e a
+// tela avisa que sem ele a loja não vende (e leva a Minha loja).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,7 +53,17 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
-      select: () => Promise.resolve({ data: [], error: null }),
+      // AdminShippingView-126: a tela filtra credenciais com .not()/.neq()
+      // em credentials->>token; o dublê tem de aceitar a cadeia, senão o
+      // TypeError cai no catch e liga credsErro em silêncio.
+      select: () => {
+        const consulta = (): any =>
+          Object.assign(Promise.resolve({ data: [], error: null }), {
+            not: () => consulta(),
+            neq: () => consulta(),
+          });
+        return consulta();
+      },
     }),
     functions: { invoke: vi.fn() },
   },
@@ -101,24 +112,21 @@ describe("AdminShippingView — não inventa CEP de origem", () => {
     });
   }
 
-  function pegarCampoCep(): HTMLInputElement {
-    const campo = hospedeiro.querySelector("#origin-cep") as HTMLInputElement;
-    expect(campo).toBeDefined();
-    return campo;
-  }
-
-  it("abre com o CEP de origem vazio quando a loja não configurou", async () => {
+  it("não mostra CEP nenhum quando a loja não configurou (e não inventa o de Monte Carmelo)", async () => {
     mockConfig.originCep = undefined;
     await abrirTela();
 
-    expect(pegarCampoCep().value).toBe("");
+    expect(hospedeiro.querySelector("#origin-cep")).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("38500-000");
+    expect(hospedeiro.textContent).not.toContain("Entregas saem de");
   });
 
-  it("abre com o CEP de origem salvo quando a loja configurou", async () => {
+  it("mostra exatamente o CEP salvo quando a loja configurou", async () => {
     mockConfig.originCep = "38400-000";
     await abrirTela();
 
-    expect(pegarCampoCep().value).toBe("38400-000");
+    expect(hospedeiro.querySelector("#origin-cep")).toBeNull();
+    expect(hospedeiro.textContent).toContain("Entregas saem de: CEP 38400-000");
   });
 
   it("não marca o formulário como alterado só por abrir sem CEP configurado", async () => {

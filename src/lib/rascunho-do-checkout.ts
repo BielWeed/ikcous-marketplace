@@ -41,8 +41,27 @@ export interface RascunhoDoCheckout {
   notas: string;
   /** Código do cupom aplicado — o desconto é revalidado no restore. */
   cupom: string | null;
+  /**
+   * De QUEM era o cupom (id da conta; `null` = convidado). Frente B,
+   * 28/09/2026: com cupom exclusivo, o código de uma conta não pode aparecer
+   * na tela de outra conta que abra o checkout na mesma aba — o restore só
+   * devolve o cupom para a MESMA conta. Opcional: rascunho antigo, sem o
+   * campo, conta como convidado.
+   */
+  contaDoCupom?: string | null;
 }
 
+// 🔴 CPF NUNCA ENTRA AQUI (checkout compacto + CPF, 23/09/2026). Regra da
+// casa: CPF não vai para notas do pedido, URL, console.log, analytics,
+// toast NEM storage do navegador — e este módulo é storage do navegador
+// (`sessionStorage`, ver o comentário do topo do arquivo). Diferente do
+// nome/WhatsApp/endereço, que sobrevivem ao vai-e-volta carrinho ⇄
+// checkout de propósito, o CPF vive SÓ no estado do react-hook-form do
+// CheckoutView: se a aba recarrega ou o componente desmonta no meio do
+// preenchimento, o campo volta vazio e a pessoa digita de novo — o custo
+// aceito pela regra de dado sensível. `tests/front/checkout-compacto-e-
+// cpf.test.tsx` ("CPF NUNCA entra no rascunho da sessão") tranca isto:
+// nenhum CPF digitado aparece no `sessionStorage` depois de salvar.
 export function rascunhoVazio(): RascunhoDoCheckout {
   return {
     nome: "",
@@ -56,6 +75,7 @@ export function rascunhoVazio(): RascunhoDoCheckout {
     complemento: "",
     notas: "",
     cupom: null,
+    contaDoCupom: null,
   };
 }
 
@@ -82,6 +102,10 @@ function higienizar(cru: unknown): RascunhoDoCheckout | null {
     complemento: eString(d.complemento),
     notas: eString(d.notas),
     cupom: typeof cupom === "string" && cupom !== "" ? cupom : null,
+    contaDoCupom:
+      typeof d.contaDoCupom === "string" && d.contaDoCupom !== ""
+        ? d.contaDoCupom
+        : null,
   };
 }
 

@@ -1,5 +1,6 @@
 import { AdminLayout } from "@/components/layouts/AdminLayout";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
+import { NOMES_DO_PAINEL, type TelaDoPainel } from "@/config/nomes-do-painel";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -28,6 +29,26 @@ const AdminOrders = lazyWithPreload(() =>
     default: m.AdminOrdersView,
   })),
 );
+const AdminPdv = lazyWithPreload(() =>
+  import("@/views/admin/AdminPdvView").then((m) => ({
+    default: m.AdminPdvView,
+  })),
+);
+const AdminCrm = lazyWithPreload(() =>
+  import("@/views/admin/AdminCrmView").then((m) => ({
+    default: m.AdminCrmView,
+  })),
+);
+const AdminFinanceiro = lazyWithPreload(() =>
+  import("@/views/admin/AdminFinanceiroView").then((m) => ({
+    default: m.AdminFinanceiroView,
+  })),
+);
+const AdminDevolucoes = lazyWithPreload(() =>
+  import("@/views/admin/AdminDevolucoesView").then((m) => ({
+    default: m.AdminDevolucoesView,
+  })),
+);
 const AdminCoupons = lazyWithPreload(() =>
   import("@/views/admin/AdminCouponsView").then((m) => ({
     default: m.AdminCouponsView,
@@ -53,6 +74,11 @@ const AdminShipping = lazyWithPreload(() =>
     default: m.AdminShippingView,
   })),
 );
+const AdminShippingNational = lazyWithPreload(() =>
+  import("@/views/admin/AdminShippingNationalView").then((m) => ({
+    default: m.AdminShippingNationalView,
+  })),
+);
 const AdminSettings = lazyWithPreload(() =>
   import("@/views/admin/AdminSettingsView").then((m) => ({
     default: m.AdminSettingsView,
@@ -63,9 +89,9 @@ const AdminReviews = lazyWithPreload(() =>
     default: m.AdminReviewsView,
   })),
 );
-const AdminWhatsAppConfig = lazyWithPreload(() =>
-  import("@/views/admin/AdminWhatsAppConfigView").then((m) => ({
-    default: m.AdminWhatsAppConfigView,
+const AdminAboutStore = lazyWithPreload(() =>
+  import("@/views/admin/AdminAboutStoreView").then((m) => ({
+    default: m.AdminAboutStoreView,
   })),
 );
 const AdminQA = lazyWithPreload(() =>
@@ -149,6 +175,13 @@ function TabWrapper({ active, children, index, activeIndex }: TabWrapperProps) {
   );
 }
 
+function nomeDaTelaDoPainel(view: string | undefined): string {
+  if (view !== undefined && Object.hasOwn(NOMES_DO_PAINEL, view)) {
+    return NOMES_DO_PAINEL[view as TelaDoPainel];
+  }
+  return "Painel";
+}
+
 export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   const isReady = useDeferredRender(150);
   const isDashboard = view === "admin-dashboard" || view === "admin";
@@ -157,23 +190,9 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
     return <div className="size-full bg-[#09090b]" />;
   }
 
-  let title = "Painel";
-  if (view === "admin-dashboard" || view === "admin") title = "Dashboard";
-  else if (view === "admin-products") title = "Produtos";
-  else if (view === "admin-orders") title = "Pedidos";
-  else if (view === "admin-customers") title = "Clientes";
-  else if (view === "admin-settings") title = "Ajustes";
-  else if (view === "admin-coupons") title = "Cupons";
-  else if (view === "admin-coupon-form") title = "Campanha";
-  else if (view === "admin-banners") title = "Banners";
-  else if (view === "admin-carousels") title = "Vitrines";
-  else if (view === "admin-shipping") title = "Frete";
-  else if (view === "admin-reviews") title = "Avaliações";
-  else if (view === "admin-qa") title = "Suporte Q&A";
-  else if (view === "admin-push") title = "Avisar clientes";
-  else if (view === "admin-notifications") title = "Notificações";
-  else if (view === "admin-product-form") title = "Produto";
-  else if (view === "admin-user-detail") title = "Detalhes";
+  // Nome único do painel: o mesmo do menu e do título da tela carregada.
+  // Tela desconhecida (ou ainda sem `view`) cai no nome genérico.
+  const title = nomeDaTelaDoPainel(view);
 
   if (isDashboard) {
     return (
@@ -572,6 +591,61 @@ export function AdminArea({
                         />
                       </LocalErrorBoundary>
                     );
+                  case "admin-pdv":
+                    return (
+                      <LocalErrorBoundary key="admin-pdv">
+                        <PreloadedOrLazy
+                          component={AdminPdv}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-pdv",
+                            onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-crm":
+                    return (
+                      <LocalErrorBoundary key="admin-crm">
+                        <PreloadedOrLazy
+                          component={AdminCrm}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-crm",
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-financeiro":
+                    return (
+                      <LocalErrorBoundary key="admin-financeiro">
+                        <PreloadedOrLazy
+                          component={AdminFinanceiro}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-financeiro",
+                            onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-devolucoes":
+                    return (
+                      <LocalErrorBoundary key="admin-devolucoes">
+                        <PreloadedOrLazy
+                          component={AdminDevolucoes}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-devolucoes",
+                            selectedDevolucaoId: selectedProductId,
+                            onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
                   case "admin-banners":
                     return (
                       <LocalErrorBoundary key="admin-banners">
@@ -607,6 +681,19 @@ export function AdminArea({
                           props={{
                             onNavigate: onNavigate,
                             active: currentView === "admin-shipping",
+                            onSetDirty: setIsAdminDirty,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-shipping-national":
+                    return (
+                      <LocalErrorBoundary key="admin-shipping-national">
+                        <PreloadedOrLazy
+                          component={AdminShippingNational}
+                          props={{
+                            onNavigate: onNavigate,
+                            active: currentView === "admin-shipping-national",
                             onSetDirty: setIsAdminDirty,
                           }}
                         />
@@ -675,14 +762,34 @@ export function AdminArea({
                         />
                       </LocalErrorBoundary>
                     );
+                  // APELIDO (painel simples, D11): o antigo Atendimento é o
+                  // bloco Contato de Minha loja. A rota continua abrindo (link
+                  // antigo, push já enviado) e cai direto no bloco.
                   case "admin-whatsapp-config":
                     return (
                       <LocalErrorBoundary key="admin-whatsapp-config">
                         <PreloadedOrLazy
-                          component={AdminWhatsAppConfig}
+                          component={AdminAboutStore}
                           props={{
+                            onNavigate,
                             active: currentView === "admin-whatsapp-config",
                             onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
+                            secaoInicial: "contato",
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-about-store":
+                    return (
+                      <LocalErrorBoundary key="admin-about-store">
+                        <PreloadedOrLazy
+                          component={AdminAboutStore}
+                          props={{
+                            onNavigate,
+                            active: currentView === "admin-about-store",
+                            onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
                           }}
                         />
                       </LocalErrorBoundary>

@@ -7,7 +7,7 @@ Uma plataforma de marketplace moderna, rápida e responsiva, focada em produtos 
 - **🚀 Performance Extrema**: Construído com Vite + React 19 para carregamento instantâneo.
 - **📱 PWA Ready**: Instalável no celular para uma experiência de aplicativo nativo.
 - **🔔 Notificações Push**: Sistema de avisos para avaliações respondidas e promoções via Web Push.
-- **💳 Checkout Fluído**: Integração direta com WhatsApp para finalização de pedidos rápida e segura.
+- **💳 Checkout com Pix no app**: pagamento pelo Mercado Pago (Orders API + Payment Brick embutido na tela de checkout), com opção de o lojista registrar pagamento recebido na entrega.
 - **🛡️ Painel Admin Premium**: Gestão completa de produtos, categorias, cupons, Q&A e avaliações com estética de alto nível.
 - **💬 Interatividade**: Sistema de Perguntas e Respostas (Q&A) e avaliações de clientes.
 
@@ -25,7 +25,7 @@ Uma plataforma de marketplace moderna, rápida e responsiva, focada em produtos 
 - `/src/hooks`: Lógica de negócios encapsulada (Supabase integration).
 - `/src/views`: Páginas principais do Marketplace e Admin.
 - `/src/contexts`: Gerenciamento de estado global (Auth, etc).
-- `/supabase/functions`: Lógica de servidor (Push Notifications).
+- `/supabase/functions`: Lógica de servidor — 12 edge functions (pagamento via Mercado Pago, frete, notificações por e-mail/WhatsApp e Web Push, entre outras).
 
 ## 🚀 Como Executar
 

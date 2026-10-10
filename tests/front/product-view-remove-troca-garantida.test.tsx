@@ -146,10 +146,11 @@ describe("ProductView — remove a promessa de troca que o app nao cumpre", () =
 
     expect(hospedeiro.textContent).not.toContain("Troca garantida");
     // Os dois beneficios verdadeiros continuam de pe: entrega e estoque.
+    // "Envio rapido" saiu do texto (ProductView-1253): promessa que a loja
+    // nao cumpre, mesma regua ja aplicada em CartView/HomeView.
     expect(hospedeiro.textContent).toContain("Entrega em Sao Paulo, SP");
-    expect(hospedeiro.textContent).toContain(
-      "Produto em estoque - Envio rápido",
-    );
+    expect(hospedeiro.textContent).toContain("Produto em estoque");
+    expect(hospedeiro.textContent).not.toContain("Envio rápido");
   });
 
   it("loja com cobertura NACIONAL e cidade configurada nao mostra 'Entrega em' (#571)", async () => {
@@ -173,8 +174,6 @@ describe("ProductView — remove a promessa de troca que o app nao cumpre", () =
 
     expect(hospedeiro.textContent).not.toContain("Entrega em");
     // O que sumiu foi SÓ o bloco de entrega — o estoque continua de pé.
-    expect(hospedeiro.textContent).toContain(
-      "Produto em estoque - Envio rápido",
-    );
+    expect(hospedeiro.textContent).toContain("Produto em estoque");
   });
 });

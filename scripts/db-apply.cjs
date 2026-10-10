@@ -1611,6 +1611,819 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // Frente pedidos-4 (janela de cancelados pela data do CANCELAMENTO +
+  // colunas mínimas): o primeiro marcador é a janela certa — sobre o
+  // COALESCE(historico, updated_at); trocar por o.created_at é exatamente o
+  // BLOQUEIA da revisão de 17/09 (pedido criado há 100 dias e cancelado
+  // ontem sumiria da lista de pendências). O fora_da_janela é o número que
+  // impede o recorte de mentir; e o new_status = 'cancelled' aparece 2x no
+  // corpo (contagem e dados) — se cair para 1, uma das duas JOIN LATERAL
+  // perdeu o filtro e a data de cancelamento vira updated_at puro.
+  "20261164000000_a_varredura_de_cancelados_enxerga_o_cancelamento.sql": [
+    {
+      funcao: "get_admin_orders_cancelados_recentes",
+      esperado: [
+        "COALESCE(h.cancelado_em, o.updated_at) >= now() - make_interval(days => p_dias)",
+        "'fora_da_janela', v_fora_da_janela",
+        { texto: "hi.new_status = 'cancelled'", vezes: 2 },
+      ],
+    },
+  ],
+  // Frente zxing-e-migrations (fila do bastão 19/09, B.3): as quatro
+  // migrations do lote do código de barras/PDV vieram de C1 sem entrada em
+  // VERIFICACOES (medido 20/09: 20261160..20261163 ausentes; só a 20261164
+  // tinha). Cada marcador abaixo foi escolhido para SABOTAR: se a mudança
+  // da migration sumir do corpo vivo, a entrada reprova — as provas moram
+  // em tests/db_apply_verificacoes_2026116x_test.ts.
+  "20261160000000_o_codigo_de_barras_e_o_canal_nascem_no_banco.sql": [
+    {
+      // A função foi RECREADA para expor a coluna nova na projeção — sem o
+      // `p.codigo_barras` no SELECT, o front bipa e a recomendação nasce
+      // sem o código (e o índice parcial das linhas 335-341 fica sem leitor).
+      funcao: "get_product_recommendations",
+      esperado: [{ texto: "p.codigo_barras", vezes: 1 }],
+    },
+  ],
+  "20261161000000_o_balcao_acha_o_produto_pelo_codigo.sql": [
+    {
+      // A resposta honesta da RPC: `origem` diz onde o código viveu
+      // (produto/variante) — sem ele o balcão não distingue bip de variante
+      // de bip de produto na tela de escolha.
+      funcao: "buscar_por_codigo_barras",
+      esperado: ["'origem', v_origem,"],
+    },
+  ],
+  "20261162000000_a_venda_no_balcao_nasce_inteira.sql": [
+    {
+      // A resposta idempotente da RPC: `ja_existia` é o que faz a
+      // retentativa pós-F5 devolver o MESMO pedido em vez de debitar
+      // estoque duas vezes (chave de idempotência, corpo :399-415).
+      funcao: "registrar_venda_presencial",
+      esperado: ["'ja_existia', v_ja_existia,"],
+    },
+  ],
+  "20261163000000_a_lista_de_pedidos_filtra_por_canal.sql": [
+    {
+      // O filtro de canal nas TRÊS janelas da lista (contagem, dados e a
+      // contagem total — medida no corpo vivo em 20/09) — cair abaixo é uma
+      // das consultas sem filtro, e a página do balcão conta pedido que a
+      // lista não mostra (ou o contrário).
+      funcao: "get_admin_orders_paged",
+      esperado: [
+        { texto: "AND (p_canal = 'all' OR o.canal = p_canal)", vezes: 3 },
+      ],
+    },
+  ],
+  // Frente zxing-e-migrations (fila do bastão 19/09, B.1): a loja nova nasce
+  // com frete grátis DESLIGADO no banco — o INSERT da RPC sem a chave no
+  // payload gravava 100 (promessa que ninguém escolheu) enquanto o front já
+  // nascia desligado (presetDoConfig(0)). O marcador é a linha do INSERT com
+  // o fallback 0 (única ocorrência: o galho do UPDATE não usa COALESCE);
+  // voltar para 100 reabre o furo no primeiro minuto da loja. Sabotagem
+  // provada em tests/upsert_store_config_frete_gratis_zero_test.ts.
+  "20261165000000_a_loja_nasce_com_frete_gratis_desligado.sql": [
+    {
+      funcao: "upsert_store_config",
+      esperado: ["COALESCE((config_json->>'free_shipping_min')::numeric, 0)"],
+    },
+  ],
+  // Frente zxing-e-migrations (fila do bastão 19/09, B.2): o gatilho de
+  // limpeza do cache de cotações — o MESMO TTL de 2h que a leitura do edge
+  // aceita (twoHoursAgo); um gatilho que não apaga é um gatilho que a
+  // tabela cresce sem dono. A UNIQUE e o dedup ficam presos no teste do par
+  // (tests/shipping_quotes_cache_unique_test.ts); a sabotagem da entrada
+  // também mora lá.
+  "20261166000000_o_cache_de_cotacao_nao_guarda_repeticao.sql": [
+    {
+      funcao: "limpar_cotacoes_fora_da_janela",
+      esperado: [
+        "DELETE FROM public.shipping_quotes_cache WHERE created_at < now() - interval '2 hours'",
+      ],
+    },
+  ],
+  // Frente "Sobre a Loja" (pedido do dono 20/09): endereço e descrição da
+  // loja saem da página pública. O marcador é o par de CASEs do ON CONFLICT
+  // — o coração do aceite "salvar um campo não apaga os outros" (só
+  // sobrescreve a coluna que veio no payload). O INSERT sem COALESCE
+  // (ausência grava NULL) acompanha no teste do par
+  // (tests/upsert_store_config_endereco_e_descricao_test.ts).
+  "20261167000000_sobre_a_loja_ganha_endereco_e_descricao.sql": [
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        "store_address = CASE WHEN config_json ? 'store_address'",
+        "store_description = CASE WHEN config_json ? 'store_description'",
+      ],
+    },
+  ],
+  // Retirada na loja (release 1.5.3, 22/09/2026): as DUAS RPCs do pedido
+  // passam a reconhecer o id 'store-pickup'. Cada marcador é um dos
+  // requisitos que o servidor revalida (id canônico, chave habilitada com
+  // COALESCE fail-closed, endereço físico, frete ZERO amarrado ao ramo do
+  // bloco 4, retrato do endereço no INSERT) — contagens EXATAS medidas no
+  // .sql da própria migration. "Opção de entrega inválida…" 5x (2 da 20261168
+  // + 3 recusas da retirada) e "Entrega local não disponível…" 3x (2 da
+  // 20261168 + a da retirada): voltar ao corpo da 20261168 derruba as duas
+  // contagens. Sabotagem provada em tests/migration_retirada_na_loja_test.ts.
+  "20261169000000_a_retirada_na_loja_nasce_no_servidor.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto: "IF p_shipping_option_id IS DISTINCT FROM 'store-pickup' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF COALESCE('store-pickup' = ANY(COALESCE(v_store_config.enabled_shipping_methods, '{}'::text[])), false) = false THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF NULLIF(btrim(COALESCE(v_store_config.store_address, '')), '') IS NULL THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "ELSIF p_shipping_option_id = 'store-pickup' THEN\n        v_dest_cep := regexp_replace(COALESCE(p_destination_cep, ''), '\\D', '', 'g');\n        v_shipping_validated := 0;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "THEN jsonb_build_object('pickup_address', btrim(v_store_config.store_address))",
+          vezes: 1,
+        },
+        {
+          texto:
+            "Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.",
+          vezes: 5,
+        },
+        {
+          texto: "Entrega local não disponível para o CEP informado.",
+          vezes: 3,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto: "IF p_shipping_option_id IS DISTINCT FROM 'store-pickup' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF COALESCE('store-pickup' = ANY(COALESCE(v_store_config.enabled_shipping_methods, '{}'::text[])), false) = false THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF NULLIF(btrim(COALESCE(v_store_config.store_address, '')), '') IS NULL THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "ELSIF p_shipping_option_id = 'store-pickup' THEN\n        v_dest_cep := regexp_replace(COALESCE(p_destination_cep, ''), '\\D', '', 'g');\n        v_shipping_validated := 0;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "THEN jsonb_build_object('pickup_address', btrim(v_store_config.store_address))",
+          vezes: 1,
+        },
+        {
+          texto:
+            "Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.",
+          vezes: 5,
+        },
+        {
+          texto: "Entrega local não disponível para o CEP informado.",
+          vezes: 3,
+        },
+        // A reserva de 30 min do pagamento online (a única diferença da v24
+        // para a v23) tem de sobreviver ao REPLACE.
+        { texto: "'aguardando', now() + interval '30 minutes'", vezes: 1 },
+      ],
+    },
+  ],
+  // A cotação de frete confere a revisão (Emenda R3 do root, 23/09/2026,
+  // pacote M da release 1.5.7 v2): no ramo único de cotação de
+  // transportadora (o mesmo bloco que já casava opt->>'id' no cache — não
+  // cobre 'local-delivery' nem 'store-pickup'), a RPC passa a exigir que a
+  // revisão carimbada na opção bata com a revisão ATUAL da loja, quando a
+  // linha 'store_shipping_credentials' provider='_revisao' existir. Sem
+  // essa linha, o comportamento é IDÊNTICO ao de hoje — a checagem nem
+  // roda. Os cinco marcadores, todos MEDIDOS contra o .sql da própria
+  // migration (0 ocorrência no corpo anterior, 20261169000000):
+  //   1. o SELECT que já buscava (opt->>'price')::numeric passa a trazer
+  //      opt->>'revisaoCredenciais' na MESMA linha de cache, para a MESMA
+  //      variável nova — sem isto a checagem nunca teria o valor da
+  //      cotação para comparar.
+  //   2. a leitura da linha '_revisao' (contígua: SELECT + FROM + WHERE) —
+  //      sem isto a checagem nunca teria a revisão ATUAL para comparar.
+  //   3. o bloco CONDIÇÃO+CONSEQUÊNCIA (o IF que compara as duas revisões
+  //      seguido do RAISE): marcador contíguo, não solto, pelo mesmo motivo
+  //      de outras entradas deste mapa (ex.: 20260729000002) — um RAISE
+  //      "FRETE_COTACAO_DESATUALIZADA" solto continuaria "ok" mesmo se a
+  //      condição virasse `IF false THEN` (a checagem nunca dispararia de
+  //      verdade, e o marcador solto não perceberia).
+  //   4 e 5. as duas variáveis novas do DECLARE (v_revisao_credenciais e
+  //      v_revisao_atual, com o `text;` da declaração — não a prosa do
+  //      comentário que as cita sem esse sufixo, medido: prosa e código não
+  //      colidem). Sobrevivem sozinhas a pouco, mas custam nada e reforçam
+  //      que a variável não foi renomeada nem removida por um REPLACE
+  //      futuro.
+  // Achado documentado (não é o que este mapa cobre, e não impede a
+  // entrada): em v23 este ramo é código MORTO no estado atual — o bloco
+  // 2-ter (20261168000000, anterior a esta) recusa toda opção de
+  // transportadora antes de alcançar aqui. O marcador prova que o CÓDIGO
+  // está lá, byte a byte, nas duas funções — não que o ramo é alcançável
+  // (isso é coberto por tests/frete-revisao-database/run.cjs, RPC real).
+  "20261170000000_a_cotacao_de_frete_confere_a_revisao.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        "SELECT (opt->>'price')::numeric, opt->>'revisaoCredenciais'\n          INTO v_shipping_validated, v_revisao_credenciais",
+        "SELECT credentials->>'revisao' INTO v_revisao_atual\n          FROM public.store_shipping_credentials\n         WHERE provider = '_revisao';",
+        "IF v_revisao_atual IS NOT NULL\n           AND v_revisao_credenciais IS DISTINCT FROM v_revisao_atual THEN\n            RAISE EXCEPTION 'FRETE_COTACAO_DESATUALIZADA: a configuração de frete da loja mudou depois desta cotação. Calcule o frete novamente e refaça o pedido.'",
+        "v_revisao_credenciais text;",
+        "v_revisao_atual text;",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "SELECT (opt->>'price')::numeric, opt->>'revisaoCredenciais'\n          INTO v_shipping_validated, v_revisao_credenciais",
+        "SELECT credentials->>'revisao' INTO v_revisao_atual\n          FROM public.store_shipping_credentials\n         WHERE provider = '_revisao';",
+        "IF v_revisao_atual IS NOT NULL\n           AND v_revisao_credenciais IS DISTINCT FROM v_revisao_atual THEN\n            RAISE EXCEPTION 'FRETE_COTACAO_DESATUALIZADA: a configuração de frete da loja mudou depois desta cotação. Calcule o frete novamente e refaça o pedido.'",
+        "v_revisao_credenciais text;",
+        "v_revisao_atual text;",
+      ],
+    },
+  ],
+  // O frete nacional ganha estratégia própria (T1/banco, estratégias de
+  // frete local e nacional, 23/09/2026): 5 colunas novas em store_config
+  // (contrato do plano), a regra LOCAL (sentinelas de free_shipping_min)
+  // some do topo do bloco 4 e passa a valer só dentro de local-delivery, e
+  // o ramo de transportadora ganha o portão de CEP nacional + o carimbo
+  // estrategiaNacional conferido contra as 5 colunas atuais (ou, na
+  // ausência do carimbo, contra o espelho legado). Cada marcador é
+  // CONTÍGUO e mede CÓDIGO, nunca prosa solta — todos 0 ocorrência no corpo
+  // anterior (20261170000000 / 20261167000000), medido contra o .sql desta
+  // própria migration:
+  //   1. as três variáveis novas do DECLARE (v_estrategia_nacional +
+  //      v_espelho_strategy contíguas, v_subtotal_cotacao à parte — a
+  //      terceira nasceu na EMENDA pós-revisão T1, 23/09, separada da dupla
+  //      original por uma linha de comentário no meio).
+  //   2. o cálculo do espelho legado (v_espelho_strategy), bloco CASE
+  //      inteiro — sem ele a checagem do carimbo ausente não tem com que
+  //      comparar.
+  //   3. o portão de CEP nacional (conhecido e não local) + a mensagem.
+  //   4. a checagem de CEP salvo × CEP do payload para endereço de conta.
+  //   5. o atalho free-shipping-promo, sem cache.
+  //   6. o SELECT do cache passa a trazer o carimbo estrategiaNacional E o
+  //      subtotalCotacao (EMENDA) na MESMA linha do preço e da revisão de
+  //      credenciais.
+  //   7. a comparação completa do espelho legado (carimbo VERDADEIRAMENTE
+  //      ausente — SQL NULL, chave nunca escrita).
+  //   8. EMENDA (revisão T1): o ELSIF que separa carimbo presente-mas-não-
+  //      objeto (json null, array, string) do carimbo ausente — sem isto um
+  //      `estrategiaNacional: null` explícito caía no ramo do espelho.
+  //   9. EMENDA (revisão T1): a comparação das 5 colunas envolta em
+  //      COALESCE(...,false) — sem isto um carimbo incompleto (`{}` ou
+  //      campo faltando) fazia `IF NOT (...)` virar `IF NULL` e nunca
+  //      disparar o RAISE (bug fail-open apanhado na revisão).
+  //   10. EMENDA (revisão T1): a checagem de subtotal velho — mesmo com as
+  //       5 colunas batendo, acima_de_valor/desconto_na_mais_barata com
+  //       mínimo > 0 exige subtotalCotacao do MESMO lado do mínimo que o
+  //       subtotal atual.
+  //   11. FRETE_COTACAO_DESATUALIZADA: 1 ocorrência pré-existente (checagem
+  //       _revisao da 20261170000000, que PERMANECE) + 4 novas (ausente sem
+  //       espelho, carimbo não-objeto, carimbo objeto divergente/incompleto,
+  //       subtotal velho) = 5.
+  //   12. a sentinela local-delivery MOVIDA para dentro do is_local_cep —
+  //       prova que ela deixou de decidir para QUALQUER id (o defeito que
+  //       esta migration fecha) e passou a decidir só dentro do ramo local.
+  // upsert_store_config: as 5 colunas no INSERT (lista + VALUES com os
+  // defaults do contrato) e o bloco inteiro dos 5 CASE do ON CONFLICT —
+  // contíguo, prova que salvar frete local não apaga o nacional e
+  // vice-versa (mesmo aceite das colunas de endereço/descrição).
+  "20261171000000_o_frete_nacional_ganha_estrategia_propria.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        "v_estrategia_nacional jsonb;\n    v_espelho_strategy text;",
+        "v_subtotal_cotacao numeric;",
+        "v_espelho_strategy := CASE\n        WHEN v_free_shipping_min = 0.01 THEN 'sempre'\n        WHEN v_free_shipping_min < 0 THEN 'por_produto'\n        WHEN v_free_shipping_min > 0 THEN 'acima_de_valor'\n        ELSE 'desligado'\n    END;",
+        {
+          texto:
+            "IF v_dest_cep = '' OR COALESCE(public.is_local_cep(v_store_config.origin_cep, v_dest_cep, v_store_config.local_cep_range), false) THEN\n            RAISE EXCEPTION 'Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.'",
+          vezes: 1,
+        },
+        "AND EXISTS (\n               SELECT 1 FROM public.user_addresses\n                WHERE id = p_address_id AND user_id = v_user_id\n                  AND regexp_replace(cep, '\\D', '', 'g') <> regexp_replace(p_address_data->>'cep', '\\D', '', 'g')\n           )",
+        "IF p_shipping_option_id = 'free-shipping-promo' THEN\n            IF v_store_config.national_shipping_strategy = 'por_produto' AND v_has_free_shipping_item = true THEN\n                v_shipping_validated := 0;",
+        "SELECT (opt->>'price')::numeric, opt->>'revisaoCredenciais', opt->'estrategiaNacional', (opt->>'subtotalCotacao')::numeric\n              INTO v_shipping_validated, v_revisao_credenciais, v_estrategia_nacional, v_subtotal_cotacao",
+        "IF NOT (\n                    v_store_config.national_shipping_strategy = v_espelho_strategy\n                    AND (v_store_config.national_shipping_strategy <> 'acima_de_valor' OR v_store_config.national_shipping_min = v_free_shipping_min)\n                    AND (v_store_config.national_shipping_strategy = 'desligado' OR v_store_config.national_benefit_scope = 'todas')\n                    AND v_store_config.national_discount_type IS NULL\n                ) THEN",
+        "ELSIF jsonb_typeof(v_estrategia_nacional) <> 'object' THEN",
+        "IF NOT COALESCE(\n                    (v_estrategia_nacional->>'estrategia') = v_store_config.national_shipping_strategy\n                    AND (v_estrategia_nacional->>'minimo')::numeric = v_store_config.national_shipping_min\n                    AND (v_estrategia_nacional->>'tipoDesconto') IS NOT DISTINCT FROM v_store_config.national_discount_type\n                    AND (v_estrategia_nacional->>'valorDesconto')::numeric = v_store_config.national_discount_value\n                    AND (v_estrategia_nacional->>'alcance') = v_store_config.national_benefit_scope,\n                    false\n                ) THEN",
+        "IF v_store_config.national_shipping_strategy IN ('acima_de_valor', 'desconto_na_mais_barata')\n                   AND v_store_config.national_shipping_min > 0\n                   AND (\n                       v_subtotal_cotacao IS NULL\n                       OR (v_calculated_subtotal >= v_store_config.national_shipping_min)\n                          IS DISTINCT FROM (v_subtotal_cotacao >= v_store_config.national_shipping_min)\n                   )\n                THEN",
+        { texto: "FRETE_COTACAO_DESATUALIZADA", vezes: 5 },
+        "IF public.is_local_cep(v_store_config.origin_cep, v_dest_cep, v_store_config.local_cep_range) THEN\n            IF (v_free_shipping_min < 0 AND v_has_free_shipping_item = true)\n               OR v_free_shipping_min = 0.01\n               OR (v_free_shipping_min > 0 AND v_calculated_subtotal >= v_free_shipping_min)\n            THEN\n                v_shipping_validated := 0;\n            ELSE\n                v_shipping_validated := COALESCE(v_store_config.local_delivery_fee, 0);\n            END IF;",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "v_estrategia_nacional jsonb;\n    v_espelho_strategy text;",
+        "v_subtotal_cotacao numeric;",
+        "v_espelho_strategy := CASE\n        WHEN v_free_shipping_min = 0.01 THEN 'sempre'\n        WHEN v_free_shipping_min < 0 THEN 'por_produto'\n        WHEN v_free_shipping_min > 0 THEN 'acima_de_valor'\n        ELSE 'desligado'\n    END;",
+        {
+          texto:
+            "IF v_dest_cep = '' OR COALESCE(public.is_local_cep(v_store_config.origin_cep, v_dest_cep, v_store_config.local_cep_range), false) THEN\n            RAISE EXCEPTION 'Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.'",
+          vezes: 1,
+        },
+        "AND EXISTS (\n               SELECT 1 FROM public.user_addresses\n                WHERE id = p_address_id AND user_id = v_user_id\n                  AND regexp_replace(cep, '\\D', '', 'g') <> regexp_replace(p_address_data->>'cep', '\\D', '', 'g')\n           )",
+        "IF p_shipping_option_id = 'free-shipping-promo' THEN\n            IF v_store_config.national_shipping_strategy = 'por_produto' AND v_has_free_shipping_item = true THEN\n                v_shipping_validated := 0;",
+        "SELECT (opt->>'price')::numeric, opt->>'revisaoCredenciais', opt->'estrategiaNacional', (opt->>'subtotalCotacao')::numeric\n              INTO v_shipping_validated, v_revisao_credenciais, v_estrategia_nacional, v_subtotal_cotacao",
+        "IF NOT (\n                    v_store_config.national_shipping_strategy = v_espelho_strategy\n                    AND (v_store_config.national_shipping_strategy <> 'acima_de_valor' OR v_store_config.national_shipping_min = v_free_shipping_min)\n                    AND (v_store_config.national_shipping_strategy = 'desligado' OR v_store_config.national_benefit_scope = 'todas')\n                    AND v_store_config.national_discount_type IS NULL\n                ) THEN",
+        "ELSIF jsonb_typeof(v_estrategia_nacional) <> 'object' THEN",
+        "IF NOT COALESCE(\n                    (v_estrategia_nacional->>'estrategia') = v_store_config.national_shipping_strategy\n                    AND (v_estrategia_nacional->>'minimo')::numeric = v_store_config.national_shipping_min\n                    AND (v_estrategia_nacional->>'tipoDesconto') IS NOT DISTINCT FROM v_store_config.national_discount_type\n                    AND (v_estrategia_nacional->>'valorDesconto')::numeric = v_store_config.national_discount_value\n                    AND (v_estrategia_nacional->>'alcance') = v_store_config.national_benefit_scope,\n                    false\n                ) THEN",
+        "IF v_store_config.national_shipping_strategy IN ('acima_de_valor', 'desconto_na_mais_barata')\n                   AND v_store_config.national_shipping_min > 0\n                   AND (\n                       v_subtotal_cotacao IS NULL\n                       OR (v_calculated_subtotal >= v_store_config.national_shipping_min)\n                          IS DISTINCT FROM (v_subtotal_cotacao >= v_store_config.national_shipping_min)\n                   )\n                THEN",
+        { texto: "FRETE_COTACAO_DESATUALIZADA", vezes: 5 },
+        "IF public.is_local_cep(v_store_config.origin_cep, v_dest_cep, v_store_config.local_cep_range) THEN\n            IF (v_free_shipping_min < 0 AND v_has_free_shipping_item = true)\n               OR v_free_shipping_min = 0.01\n               OR (v_free_shipping_min > 0 AND v_calculated_subtotal >= v_free_shipping_min)\n            THEN\n                v_shipping_validated := 0;\n            ELSE\n                v_shipping_validated := COALESCE(v_store_config.local_delivery_fee, 0);\n            END IF;",
+      ],
+    },
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        "national_shipping_strategy, national_shipping_min,\n    national_discount_type, national_discount_value, national_benefit_scope",
+        "COALESCE(config_json->>'national_shipping_strategy', 'desligado'),\n    COALESCE((config_json->>'national_shipping_min')::numeric, 0),\n    config_json->>'national_discount_type',\n    COALESCE((config_json->>'national_discount_value')::numeric, 0),\n    COALESCE(config_json->>'national_benefit_scope', 'mais_barata')",
+        "national_shipping_strategy = CASE WHEN config_json ? 'national_shipping_strategy'\n      THEN config_json->>'national_shipping_strategy'\n      ELSE store_config.national_shipping_strategy END,\n    national_shipping_min = CASE WHEN config_json ? 'national_shipping_min'\n      THEN (config_json->>'national_shipping_min')::numeric\n      ELSE store_config.national_shipping_min END,\n    national_discount_type = CASE WHEN config_json ? 'national_discount_type'\n      THEN config_json->>'national_discount_type'\n      ELSE store_config.national_discount_type END,\n    national_discount_value = CASE WHEN config_json ? 'national_discount_value'\n      THEN (config_json->>'national_discount_value')::numeric\n      ELSE store_config.national_discount_value END,\n    national_benefit_scope = CASE WHEN config_json ? 'national_benefit_scope'\n      THEN config_json->>'national_benefit_scope'\n      ELSE store_config.national_benefit_scope END,",
+      ],
+    },
+  ],
+  // O CPF do destinatário mora no pedido (checkout compacto + CPF,
+  // 23/09/2026, REBASEADA sobre a 20261171000000 -- ver o cabeçalho da
+  // migration). Ao contrário do rascunho anterior (que acrescentava
+  // `p_customer_cpf` à assinatura), esta versão não muda ASSINATURA
+  // nenhuma -- o CPF viaja dentro do jsonb `p_address_data` já existente,
+  // então tanto v23 quanto v24 ganham CORPO novo (não só a v24) e os dois
+  // entram aqui. A 20261171000000 (migration-base, logo acima) tem a
+  // entrada própria dela, mantida intacta.
+  "20261172000000_o_cpf_do_destinatario_mora_no_pedido.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        "v_address_data_sem_cpf jsonb := CASE\n        WHEN p_address_data IS NULL THEN NULL\n        WHEN jsonb_typeof(p_address_data) <> 'object' THEN p_address_data\n        WHEN (p_address_data - 'cpf') = '{}'::jsonb THEN NULL\n        ELSE (p_address_data - 'cpf')\n    END;",
+        "'address', v_address_data_sem_cpf,",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "v_customer_cpf_digits text := NULLIF(regexp_replace(COALESCE(p_address_data->>'cpf', ''), '\\D', '', 'g'), '');",
+        // A checagem mora FORA do 2-ter (não dentro do ELSE dele) — ver o
+        // cabeçalho da 20261172000000, item (b), e o contrato da 20261171
+        // ("não mexer... no 2-ter").
+        "IF v_opcao NOT IN ('local-delivery', 'store-pickup') AND v_customer_cpf_digits IS NOT NULL THEN\n        IF length(v_customer_cpf_digits) <> 11",
+        "SELECT array_agg(substr(v_customer_cpf_digits, gs, 1)::int ORDER BY gs)\n          INTO v_cpf_digitos\n          FROM generate_series(1, 11) AS gs;",
+        "CASE WHEN v_opcao NOT IN ('local-delivery', 'store-pickup') AND v_customer_cpf_digits IS NOT NULL\n                THEN jsonb_build_object('cpf', v_customer_cpf_digits)",
+        // Sem este, a v24 poderia gravar o p_address_data CRU (com o cpf
+        // dentro do endereço) e a verificação passaria — revisão Opus 23/09.
+        "'address', v_address_data_sem_cpf,",
+      ],
+    },
+  ],
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration 20261174000000):
+  // lojista liga/desliga pix/card/cash na entrega por loja; forma_de_
+  // pagamento_aceita vira a fonte única do invariante, chamada logo no
+  // começo de v23/v24 (B3: depois da idempotência, antes da posse do
+  // endereço); upsert_store_config ganha o par v_has_.../v_... com o fix do
+  // B1 (candidato do INSERT usa o valor ATUAL da linha, não um array fixo,
+  // para a trigger BEFORE INSERT não recusar um salvamento não relacionado
+  // numa loja que já vende só pelo app).
+  "20261174000000_formas_de_pagamento_por_loja.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        "IF NOT public.forma_de_pagamento_aceita(p_payment_method) THEN\n        RAISE EXCEPTION 'Esta forma de pagamento não está disponível nesta loja. Escolha outra.';",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "IF NOT public.forma_de_pagamento_aceita(p_payment_method) THEN\n        RAISE EXCEPTION 'Esta forma de pagamento não está disponível nesta loja. Escolha outra.';",
+      ],
+    },
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        "v_has_formas_pagamento := config_json ? 'formas_pagamento_entrega'\n    AND config_json->'formas_pagamento_entrega' IS NOT NULL\n    AND jsonb_typeof(config_json->'formas_pagamento_entrega') = 'array';",
+        "IF v_has_formas_pagamento THEN\n    SELECT COALESCE(array_agg(x), '{}'::text[]) INTO v_formas_pagamento\n    FROM jsonb_array_elements_text(config_json->'formas_pagamento_entrega') x;\n  ELSE\n    SELECT formas_pagamento_entrega INTO v_formas_pagamento\n      FROM public.store_config WHERE id = 1;\n    v_formas_pagamento := COALESCE(v_formas_pagamento, ARRAY['pix','card','cash']::text[]);\n  END IF;",
+        "formas_pagamento_entrega = CASE WHEN v_has_formas_pagamento\n      THEN v_formas_pagamento\n      ELSE store_config.formas_pagamento_entrega END,",
+      ],
+    },
+  ],
+  // A DEVOLUÇÃO NASCE NO PEDIDO (26/09/2026, migration 20261175000000):
+  // marcadores que somem se a regra for tirada — tipo decidido no servidor,
+  // foto só da própria pasta, reembolso com trava de saldo e reestoque único.
+  //
+  // SEGUNDA REVISÃO (mesmo dia, rodada 2): quatro marcadores atualizados ou
+  // novos, achados 1/2/3/4 — ver os comentários de cada achado no próprio
+  // .sql. O marcador de v_disponivel do achado 3 SUBSTITUI o antigo (que
+  // terminava em `- v_em_voo;` sem o `- v_ja_manual`); deixá-lo como estava
+  // faria este mapa gritar "divergência" para sempre depois do REPLACE.
+  "20261175000000_a_devolucao_nasce_no_pedido.sql": [
+    {
+      funcao: "solicitar_devolucao",
+      esperado: [
+        "OR split_part(v_foto, '/', 1) <> v_uid::text",
+        "RAISE EXCEPTION 'Fora do prazo de arrependimento a loja aceita troca ou vale-troca.' USING ERRCODE = '22023';",
+      ],
+    },
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        "IF v_reestocar AND v_di.reestocado_em IS NULL THEN",
+        // Achado 3: desconta o reembolso manual JÁ CONCLUÍDO de outra
+        // devolução do mesmo pedido (marcador atualizado — o antigo parava
+        // em `- v_em_voo;`).
+        "v_disponivel := v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo - v_ja_manual;",
+        // Achado 4: stock_returned_at só desliga o REESTOQUE do item — não
+        // bloqueia mais a conclusão inteira (o bloqueio antigo virou
+        // comentário; sem este marcador, a trava certa podia sumir de novo
+        // e o mapa continuaria "ok" olhando só para o texto de cima).
+        "AND v_condicao <> 'ausente'\n                   AND v_o.stock_returned_at IS NULL;",
+      ],
+    },
+    {
+      // Achado 2 (rodada 2): manual é TERMINAL, refund_id é obrigatório para
+      // reemitir, e a reemissão pelo Mercado Pago revalida o pedido (status
+      // + pagamento + 180 dias) igual à conclusão — sem isto, um reembolso
+      // já resolvido por fora podia sair de novo pelo MP, ou um pedido morto
+      // podia reemitir para sempre.
+      funcao: "admin_devolucao_reemitir_reembolso",
+      esperado: [
+        "IF v_d.reembolso_manual THEN\n    RAISE EXCEPTION 'Esta devolução já foi resolvida manualmente (fora do app); não há reembolso para reemitir.'",
+        "IF v_d.refund_id IS NULL THEN\n    RAISE EXCEPTION 'Esta devolução não tem um reembolso recusado para reemitir.' USING ERRCODE = '22023';",
+        "IF NOT v_pago_pelo_app THEN\n    RAISE EXCEPTION 'Este pedido não é mais elegível para reembolso pelo Mercado Pago (prazo de 180 dias ou forma de pagamento). Reemita como manual (p_manual = true).'",
+        // Achado 3: mesma trava de saldo descontando reembolso manual de
+        // outra devolução do mesmo pedido.
+        "v_disponivel := GREATEST(v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo - v_ja_manual, 0);",
+      ],
+    },
+    {
+      // Achado 1 (rodada 2): redefinição nascida em 20261164000000 — o balde
+      // "Devolver agora" do painel precisa saber quanto já voltou por
+      // devolução manual, ou dobra a cobrança visual do valor a estornar.
+      funcao: "get_admin_orders_cancelados_recentes",
+      esperado: [
+        "'valor_devolvido_por_devolucao', c.valor_devolvido_por_devolucao",
+        "COALESCE((SELECT sum(d.valor_reembolso) FROM public.devolucoes d\n                              WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0)\n                     AS valor_devolvido_por_devolucao",
+        // Achado A4 (rodada 3): o front também precisa do estorno CONFIRMADO
+        // (ledger) para calcular o que falta — sem isto, um estorno parcial
+        // já pago pelo MP não descontava do "Devolver agora".
+        "'valor_estornado', c.valor_estornado",
+      ],
+    },
+    {
+      // Achado 3 (rodada 2): redefinição nascida em 2026110000000 — o
+      // "Devolver dinheiro" clássico (pedido cancelado antes do envio) tinha
+      // o MESMO buraco do achado 3 na conclusão: não descontava reembolso
+      // manual já concluído do mesmo pedido.
+      funcao: "solicitar_estorno",
+      esperado: [
+        "SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual\n      FROM public.devolucoes d\n     WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;",
+        "v_saldo := v_total - v_valor_estornado - v_em_curso - v_ja_manual;",
+      ],
+    },
+    {
+      // Achado A2 (rodada 3): redefinição nascida em 2026110000000 — o
+      // estorno AUTOMÁTICO do cancelamento (pedido pago cancelado antes do
+      // envio) abria order_refunds pelo v_total CHEIO, sem saber que uma
+      // devolução deste mesmo pedido já tinha pago parte por fora (pedido
+      // reativado e cancelado de novo). Mesmo desconto dos achados 1/3.
+      funcao: "update_order_status_atomic",
+      esperado: [
+        "SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual\n          FROM public.devolucoes d\n         WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;",
+        "IF v_total - v_ja_manual > 0 THEN\n            INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por)\n            VALUES (p_order_id, v_total - v_ja_manual, 'cancelamento antes do envio',",
+      ],
+    },
+  ],
+  // O CARTÃO ONLINE NASCE (26/09/2026, migration 20261176000000): a vaga só é
+  // solta se a cobrança ainda for a gravada e o pedido seguir aguardando.
+  "20261176000000_o_cartao_online_nasce.sql": [
+    {
+      funcao: "liberar_cobranca_do_pedido",
+      esperado: [
+        "AND gateway_payment_id = p_gateway_payment_id",
+        {
+          texto: "tentativas_de_pagamento = tentativas_de_pagamento + 1,",
+          vezes: 2,
+        },
+      ],
+    },
+    {
+      // Achado 1 (rodada 2): "Já devolvi" recusa quando não sobra mais nada a
+      // devolver (uma devolução manual já tirou tudo, ou o próprio estorno já
+      // saiu por aqui antes) — sem isto, o mesmo dinheiro saía duas vezes.
+      funcao: "registrar_estorno_manual",
+      esperado: [
+        "SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual\n          FROM public.devolucoes d\n         WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;",
+        "IF v_total - v_valor_estornado - v_ja_manual <= 0 THEN\n            RAISE EXCEPTION 'Este pedido não tem mais nada a devolver: o valor já saiu por outro caminho (devolução ou estorno).'",
+      ],
+    },
+    {
+      // Achado 7 (rodada 2): o carimbo do achado F precisa cobrir TAMBÉM o
+      // caminho direto de confirmar_pagamento('estornado'), não só
+      // registrar_estorno_manual — sem isto, fin__movimentos cai de volta no
+      // updated_at para esse caminho, o mesmo buraco do achado F por outra
+      // porta.
+      funcao: "marca_estorno_direto_do_pedido",
+      esperado: [
+        "NEW.estorno_manual_registrado_em := COALESCE(NEW.estorno_manual_registrado_em, now());",
+      ],
+    },
+  ],
+  // O FINANCEIRO DA LOJA NASCE (26/09/2026, migration 20261177000000): o
+  // dinheiro sai das fontes (pedido pago/recebido) e o caixa fechado não se
+  // reescreve.
+  //
+  // SEGUNDA REVISÃO (mesmo dia, rodada 2): achados 1 (dupla contagem de
+  // devolução manual + estorno externo), 4/5 (CMV: só CANCELADO com estoque
+  // de volta some, e o desconto de devolução parcial não pode repetir um
+  // pedido já excluído por inteiro), 8 (gaveta só conta pedido com dinheiro
+  // DE VERDADE recebido) e 13 (política de quebra x sobra na abertura, dona
+  // decidiu por escrito).
+  "20261177000000_o_financeiro_da_loja_nasce.sql": [
+    {
+      funcao: "fin__movimentos",
+      esperado: [
+        "AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+        // Achado 1: desconta o que uma devolução CONCLUÍDA com reembolso
+        // manual do mesmo pedido já tirou da loja.
+        "(v.total - COALESCE(v.valor_estornado, 0) - COALESCE(dm.valor, 0))::numeric,",
+      ],
+    },
+    {
+      funcao: "fin_lancamento_cancelar",
+      esperado: ["WHERE s.id = v_l.caixa_sessao_id AND s.status = 'fechado'"],
+    },
+    {
+      // Achados 1 e 8: a gaveta desconta a devolução manual concluída do
+      // mesmo pedido, e só conta estorno externo de pedido que teve dinheiro
+      // DE VERDADE na mão (pagamento_recebido_em IS NOT NULL).
+      funcao: "fin__caixa_calculo",
+      esperado: [
+        "SELECT COALESCE(sum(o.total - COALESCE(o.valor_estornado, 0) - COALESCE(dm.valor, 0)), 0) INTO v_estornos_externos",
+        "AND o.pagamento_recebido_em IS NOT NULL",
+      ],
+    },
+    {
+      // Achados 4 e 5: só CANCELADO com estoque de volta some do CMV (não
+      // stock_returned_at sozinho — a política P1 reativa pedido de verdade
+      // entregue com esse carimbo ainda ligado), e o desconto de devolução
+      // parcial (cmv_volta) não pode repetir um pedido já excluído inteiro.
+      funcao: "fin_dre",
+      esperado: [
+        "AND NOT (o2.status = 'cancelled' AND o2.stock_returned_at IS NOT NULL)),",
+        "AND NOT (o3.status = 'cancelled' AND o3.stock_returned_at IS NOT NULL)),",
+      ],
+    },
+    {
+      // Achado 13 (política do dono, por escrito): falta na abertura CONTRA
+      // o último fechamento é Quebra de caixa DE VERDADE (pesa na DRE);
+      // sobra, ou falta na 1ª abertura (sem fechamento anterior para
+      // comparar), é fora_dre — troco que já existia fora do fluxo da loja.
+      // Achado A1 (rodada 3): a categoria decide com a MESMA base do
+      // tipo/valor (v_valor contra v_saldo) — o marcador antigo comparava
+      // contra v_referencia (que priorizava v_ultimo_contado), e um
+      // movimento de caixa registrado com a sessão FECHADA fazia v_saldo
+      // divergir do último contado, trocando sobra por falta.
+      funcao: "fin_caixa_abrir",
+      esperado: [
+        "SELECT s.valor_contado INTO v_ultimo_contado",
+        "WHEN v_valor > COALESCE(v_saldo, 0)\n        THEN 'f2000000-0000-4000-8000-000000000006'::uuid -- fora_dre: sobra/aporte",
+        "WHEN v_ultimo_contado IS NOT NULL\n        THEN 'f2000000-0000-4000-8000-000000000031'::uuid -- Quebra de caixa (financeiro, na DRE)",
+      ],
+    },
+  ],
+  // O CRM E O INÍCIO LEEM A LOJA (26/09/2026, migration 20261178000000): só
+  // venda com dinheiro reconhecido e pedido vivo entra no CRM.
+  "20261178000000_o_crm_e_o_inicio_leem_a_loja.sql": [
+    {
+      funcao: "crm__vendas",
+      esperado: ["AND o.status NOT IN ('cancelled', 'returned')"],
+    },
+  ],
+  // O CLIENTE NÃO CANCELA COM CARTÃO VIVO (achado independente de risco,
+  // dinheiro; 26/09/2026, migration 20261180000000): o cliente (nunca o
+  // admin) não cancela um pedido 'aguardando' com cartão ainda em jogo
+  // (cobrança gravada ou sentinela de verificação).
+  "20261180000000_cliente_nao_cancela_com_cartao_vivo.sql": [
+    {
+      funcao: "update_order_status_atomic",
+      esperado: [
+        "SELECT status, user_id, cancelled_after_shipping, payment_status, paid_at, total,\n           metodo_online, gateway_payment_id\n      INTO v_old_status, v_user_id, v_cancelled_after_shipping, v_payment_status, v_paid_at, v_total,\n           v_metodo_online, v_gateway_payment_id",
+        "IF v_payment_status = 'aguardando'\n           AND (\n                v_metodo_online IN ('credito', 'debito')\n                OR v_gateway_payment_id LIKE 'verificando:%'\n           )\n        THEN\n            RAISE EXCEPTION 'Este pedido tem uma cobrança no cartão em confirmação com o banco. Aguarde a confirmação ou fale com a loja antes de cancelar.';",
+      ],
+    },
+  ],
+  // O PEDIDO POR WHATSAPP FECHA PARA ANON (achado LGPD, alto — auditoria de
+  // 26/09/2026, migration 20261181000000). O REVOKE de get_orders_by_whatsapp_v3
+  // não muda corpo de função nenhuma (só ACL, fora do que este mapa confere) —
+  // só get_orders_by_otp_v1 entra aqui, pelo CORPO NOVO que tira `cpf` de
+  // `customer_data` (raiz e dentro de `address`, quando `address` é objeto).
+  // RODADA 2 (revisão de risco): três marcadores novos — achado 4 (customer_data
+  // escalar sai intocado, sem explodir "cannot delete from scalar") e achado 5
+  // ({} depois do strip vira JSON null, não {}, para o mapper do front cair no
+  // endereço do JOIN em vez de um objeto vazio truthy).
+  "20261181000000_pedido_por_whatsapp_fecha_para_anon.sql": [
+    {
+      funcao: "get_orders_by_otp_v1",
+      esperado: [
+        "WHEN jsonb_typeof(o.customer_data) <> 'object' THEN o.customer_data",
+        "WHEN jsonb_typeof(o.customer_data -> 'address') = 'object' THEN",
+        "WHEN ((o.customer_data -> 'address') - 'cpf') = '{}'::jsonb THEN NULL",
+        "ELSE (o.customer_data -> 'address') - 'cpf'",
+        "                        ELSE\n                            o.customer_data - 'cpf'\n                    END",
+      ],
+    },
+  ],
+  // CANCELAR_DEVOLUCAO BARRA A COMPRA EM VOO (achado A1 da revisão de risco
+  // pré-publicação de 26/09/2026 sobre a etiqueta reversa do Melhor Envio).
+  // RODADA 2 (achados R1/R2/N3, scratchpad rev79/): o guard só barra id REAL
+  // (a fase de reserva não pode travar o cliente para sempre — Sandbox do
+  // Melhor Envio nunca gera o código da reversa) e a RPC nova dá à loja uma
+  // saída para um vínculo preso sem código.
+  // RODADA 3 (achados R5/N-a): a RPC nova também recusa soltar um vínculo com
+  // pagamento CONFIRMADO no Melhor Envio (marcador gravado pela edge — achado
+  // R5, dinheiro) e a nota distingue reserva de vínculo real (achado N-a).
+  // RODADA 4 (achados 1/3/4, scratchpad rev79/ataque3.cjs): a assinatura
+  // ganha `p_conferi_no_melhor_envio`, o gate também exige `auth.uid() IS NOT
+  // NULL` (achado 3 — is_admin() sozinho aceita service_role/postgres sem
+  // sessão) e o guard do marcador troca LIKE por strpos (achado 4), além de
+  // um segundo guard para o marcador de pagamento INDETERMINADO (achado 1c).
+  // RODADA 5 (achados 1/3, scratchpad rev79/ataque4.cjs): o guard do marcador
+  // INDETERMINADO vira "negar por padrão" — QUALQUER id real exige
+  // `p_conferi_no_melhor_envio`, com ou sem marcador — e a âncora do
+  // indeterminado muda de texto (neutro, achado 3).
+  "20261179000000_cancelar_devolucao_barra_compra_em_voo.sql": [
+    {
+      funcao: "cancelar_devolucao",
+      esperado: [
+        "IF v_d.me_reverse_id IS NOT NULL AND v_d.me_reverse_id NOT LIKE 'reservando:%' AND v_d.codigo_postagem IS NULL THEN",
+        "PERFORM public.devolucao__registrar_evento(\n      p_id, 'cancelada', 'cancelada', 'sistema',",
+        "(envio reverso ' || COALESCE(v_d.me_reverse_id, 'sem id registrado') ||",
+      ],
+    },
+    {
+      funcao: "admin_devolucao_liberar_vinculo_reverso",
+      esperado: [
+        "IF NOT public.is_admin() OR auth.uid() IS NULL THEN",
+        "IF v_d.codigo_postagem IS NOT NULL THEN",
+        "IF EXISTS (SELECT 1 FROM public.devolucao_eventos WHERE devolucao_id = p_id AND ator = 'sistema' AND strpos(nota, 'confirmou o pagamento do envio reverso ' || v_d.me_reverse_id || ';') > 0) THEN",
+        // Achado 1 (rodada 5, "negar por padrão"): substitui o guard antigo,
+        // que só recusava com o marcador indeterminado presente.
+        // Achado 2 (rodada 6a, G8): `IS NOT TRUE` — `NOT p_conferi_no_melhor_envio`
+        // deixava um NULL explícito passar batido (NOT NULL é NULL, não TRUE).
+        "IF v_d.me_reverse_id NOT LIKE 'reservando:%' AND p_conferi_no_melhor_envio IS NOT TRUE THEN",
+        "strpos(nota, 'Pagamento do envio reverso ' || v_d.me_reverse_id || ' em verificação;')",
+        "UPDATE public.devolucoes SET me_reverse_id = NULL WHERE id = p_id;",
+        "WHEN v_d.me_reverse_id LIKE 'reservando:%' THEN",
+      ],
+    },
+  ],
+  // O CRM VÊ TODO MUNDO (pedido do dono, 27/09/2026, migration
+  // 20261183000000): "Todos os clientes" passa a listar quem pagou (RFM
+  // intocado), quem pediu e não pagou e quem se cadastrou e nunca comprou.
+  "20261183000000_o_crm_ve_todo_mundo.sql": [
+    {
+      funcao: "crm__nunca_comprou",
+      esperado: [
+        "WHERE COALESCE(p.role, 'customer') = 'customer'",
+        "AND NOT EXISTS (\n       SELECT 1 FROM public.marketplace_orders o\n        WHERE o.user_id = p.id AND o.created_at <= p_ate\n     )",
+      ],
+    },
+    {
+      funcao: "crm_clientes",
+      esperado: [
+        "'pediu_nao_pagou'::text AS segmento",
+        "'nunca_comprou'::text AS segmento",
+        "UNION ALL SELECT * FROM nao_pagos",
+        "UNION ALL SELECT * FROM nunca",
+      ],
+    },
+    {
+      funcao: "crm_visao",
+      esperado: [
+        "SELECT 'pediu_nao_pagou', count(*), COALESCE(sum(valor_em_aberto), 0) FROM nao_pagos",
+        "SELECT 'nunca_comprou', count(*), 0 FROM nunca",
+      ],
+    },
+  ],
+  // O CARTÃO EM ANÁLISE SEGURA A EXPIRAÇÃO (dinheiro; 02/10/2026, migration
+  // 20261186000000): a varredura não cancela pedido cujo cartão o banco ainda
+  // pode aprovar (sentinela `verificando:` ou vaga de crédito/débito) enquanto
+  // o pedido estiver dentro da janela de 24 h da reconciliação.
+  "20261186000000_cartao_em_analise_segura_a_expiracao.sql": [
+    {
+      funcao: "expirar_pedidos_vencidos",
+      esperado: [
+        // As guardas que a 20260901000000 já tinha têm de sobreviver ao
+        // REPLACE: sem elas a varredura alcançaria pedido pago ou cancelado.
+        "WHERE payment_status = 'aguardando'",
+        "AND status = 'pending'",
+        // O predicado novo, amarrado como UM bloco (do teto de 24 h ao
+        // SKIP LOCKED): se alguém tirar o COALESCE, trocar a lista do IN ou
+        // soltar o OR, esta string contígua deixa de casar. Sem o COALESCE,
+        // `NOT (NULL)` é NULL e o pedido sem `metodo_online` some da varredura.
+        "AND (\n                expires_at <= now() - interval '24 hours'\n                OR NOT COALESCE(\n                     gateway_payment_id LIKE 'verificando:%'\n                     OR (\n                          gateway_payment_id IS NOT NULL\n                          AND metodo_online IN ('credito', 'debito')\n                        ),\n                     false\n                   )\n              )\n        FOR UPDATE SKIP LOCKED",
+        // O laço que devolve o estoque e grava expirado/cancelled continua o
+        // mesmo (a única mudança é QUAIS pedidos entram nele).
+        `PERFORM public.devolver_estoque(v_pedido.id);
+
+        UPDATE public.marketplace_orders
+           SET payment_status = 'expirado',`,
+      ],
+    },
+  ],
+  // "JÁ ESTORNEI" FECHA A CORRIDA COM O CRON (dinheiro; 02/10/2026, migration
+  // 20261189000000): o registro manual trava as linhas vivas do ledger antes
+  // do pedido e leva a linha `solicitado` a `recusado` — as marcas do cron e
+  // da edge (UPDATE condicional por status) passam a achar 0 linhas e o
+  // estorno não é POSTADO em cima da devolução feita por fora.
+  "20261189000000_ja_estornei_fecha_a_corrida_com_o_cron.sql": [
+    {
+      funcao: "registrar_estorno_manual",
+      esperado: [
+        // A pré-trava das linhas vivas (ordem linha -> pedido, a mesma de
+        // concluir_estorno): sem ela a marca do cron não espera o clique.
+        "FOR UPDATE OF viva;",
+        // A linha que ninguém pediu ao MP ainda sai da fila: sem isto a marca
+        // condicional do cron ainda casa e o POST sai com a leitura velha.
+        "ultimo_erro = 'A loja registrou a devolução feita fora do app'",
+      ],
+    },
+  ],
+  // A RECONCILIAÇÃO ALCANÇA O CARTÃO TARDIO (dinheiro; 02/10/2026, migration
+  // 20261190000000): janela de 14 dias SÓ para o cartão possivelmente vivo
+  // (D2), rodízio pela tabela de visitas (D3) e a cobrança terminal no MP
+  // fora da fila — mais o carimbo que a edge chama no fim de cada ciclo.
+  "20261190000000_a_reconciliacao_alcanca_o_cartao_tardio.sql": [
+    {
+      funcao: "pagamentos_a_reconciliar",
+      esperado: [
+        // Sem a janela longa o cartão aprovado dias depois some da fila (D2).
+        "o.expires_at > now() - interval '14 days'",
+        // Sem a marca POR COBRANÇA, ou a terminal fica sendo consultada por
+        // 14 dias, ou (pior) uma cobrança NOVA na vaga fica escondida.
+        "AND (v.cobranca_terminal IS NULL OR v.cobranca_terminal <> o.gateway_payment_id)",
+        // Sem o rodízio o LIMIT 100 volta a matar o candidato velho (D3).
+        "ORDER BY (o.status = 'pending') DESC, v.visitado_em ASC NULLS FIRST, o.expires_at DESC",
+      ],
+    },
+    {
+      funcao: "marcar_visitas_da_reconciliacao",
+      esperado: [
+        // O carimbo do rodízio, ordenado (dois ciclos sobrepostos sem deadlock).
+        "ON CONFLICT (order_id) DO UPDATE SET visitado_em = EXCLUDED.visitado_em;",
+      ],
+    },
+  ],
+  // O AVISO DE COBRANÇA DUPLICADA SAI UMA VEZ, E QUEM CHEGA JUNTO ESPERA O
+  // RESULTADO DA OUTRA ENTREGA (aviso de dinheiro ao admin; 02/10/2026,
+  // migration 20261191000000; a entrega não é garantida — os limites estão no
+  // cabeçalho da migration): a reserva com
+  // prazo que o webhook chama antes do push "Cobrança de cartão duplicada?",
+  // e o confirmar/liberar que ele chama depois.
+  "20261191000000_aviso_de_cobranca_duplicada_sai_uma_vez.sql": [
+    {
+      funcao: "reservar_aviso_ao_lojista",
+      esperado: [
+        // Sem o prazo, ou a reserva morta nunca mais avisa (aviso perdido),
+        // ou duas entregas avisam juntas; sem `enviado = false`, o aviso
+        // entregue volta a cada 2 minutos.
+        "WHERE a.enviado = false",
+        "AND a.reservado_em < now() - interval '2 minutes';",
+        // Os três estados (rodada 3): quem não pegou a vaga sabe se espera
+        // ('em_envio') ou se o aviso já saiu ('enviado').
+        "RETURN 'reservado';",
+        "RETURN 'em_envio';",
+      ],
+    },
+    {
+      funcao: "confirmar_aviso_ao_lojista",
+      esperado: ["SET enviado = true"],
+    },
+    {
+      funcao: "liberar_aviso_ao_lojista",
+      esperado: [
+        // Nunca apaga aviso já entregue.
+        "AND enviado = false;",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

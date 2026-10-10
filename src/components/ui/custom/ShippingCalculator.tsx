@@ -1,16 +1,38 @@
-import { useCartState } from "@/contexts/CartContext";
+import {
+  LogoDaTransportadora,
+  SeloDoAgregador,
+} from "@/components/shipping/MarcaDoFrete";
+import { useContextoDoFreteDaLoja } from "@/contexts/ContextoDoFreteDaLoja";
+import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { opcaoMaisBarata } from "@/lib/auto-selecao-de-frete";
+import {
+  type OrigemDaEscolhaDoFrete,
+  resolverEscolhaDoFrete,
+} from "@/lib/auto-selecao-de-frete";
+import { destaquesDoFrete } from "@/lib/destaques-do-frete";
+import { precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
+import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import { marcaDoFrete } from "@/lib/marca-do-frete";
 import {
   codigoDoErroDeEdgeFunction,
   mensagemAmigavelErroEdgeFunction,
 } from "@/lib/mensagens-erro";
+import { precoVendido } from "@/lib/preco-vendido";
+import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
 import type { CartItem, ShippingOption } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, Check, Search, Sparkles, Truck } from "lucide-react";
+import { motion } from "framer-motion";
+import {
+  AlertCircle,
+  Check,
+  MapPin,
+  RefreshCw,
+  Sparkles,
+  Store,
+  Truck,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
@@ -54,21 +76,50 @@ const SHIPPING_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
  */
 const MENSAGEM_SEM_CONEXAO_FRETE = "Sem conexão com a internet.";
 const MENSAGEM_FALHA_AO_COTAR = "Falha ao cotar frete.";
+// Sem campo de CEP na tela, o conselho é conferir o CEP DO ENDEREÇO — a
+// frase antiga ("Confira o número") apontava para um campo que não existe.
 const MENSAGEM_CEP_NAO_ENCONTRADO =
-  "CEP não encontrado. Confira o número e tente de novo.";
+  "CEP não encontrado. Confira o CEP do endereço de entrega.";
+
+/**
+ * CACHE V2 (release 1.5.3 — retirada na loja). O PWA atualiza por "prompt":
+ * a 1.5.2 segue aberta ao lado da 1.5.3, no MESMO localStorage. A 1.5.2 lê
+ * `ikcous_shipping_cache_<CEP>` e auto-seleciona a opção mais barata — se a
+ * 1.5.3 gravasse ali uma lista com a retirada (R$ 0), a 1.5.2 escolheria a
+ * retirada sem chamar a edge. Por isso a 1.5.3 lê e grava SÓ nesta chave
+ * (que a 1.5.2 nunca lê) e nunca toca a antiga. O prefixo é o mesmo de
+ * sempre: o logout (`AuthContext.tsx`) limpa as duas pela varredura por
+ * `ikcous_shipping_cache_`.
+ */
+export function chaveDoCacheDeFrete(cepSoDigitos: string): string {
+  return `ikcous_shipping_cache_v2_${cepSoDigitos}`;
+}
 
 interface EnvelopeDeCacheDeFrete {
+  /**
+   * `contextoDaLojaParaFrete` (src/contexts/ContextoDoFreteDaLoja.ts) da loja
+   * quando a cotação saiu.
+   */
+  contexto: string;
   /** Assinatura do carrinho que gerou esta cotação (mesmo formato de `cartSignature`). */
   assinatura: string;
   /** `Date.now()` de quando a cotação foi gravada. */
   gravadoEm: number;
   opcoes: ShippingOption[];
+  /**
+   * R1-2 (release 1.5.7): a revisão da configuração de frete sob a qual
+   * ESTA cotação foi feita — vem de `data.revisaoConfig` na resposta da
+   * edge. `null`/ausente (edge sem o campo, ou envelope de antes desta
+   * release) trava a leitura em `cotacaoAindaBateComARevisao`: sem saber a
+   * revisão de então, não dá para provar que ainda é a de agora.
+   */
+  revisaoConfig?: string | null;
 }
 
 /**
  * Decide se uma entrada do cache local pode virar preço na tela.
  *
- * A chave (`ikcous_shipping_cache_<CEP>`) diz só o CEP. Quem responde "de qual
+ * A chave (`chaveDoCacheDeFrete`) diz só o CEP. Quem responde "de qual
  * carrinho isto veio?" e "quando foi cotado?" é o próprio conteúdo — por isso a
  * validação mora aqui e não na chave: manter UMA entrada por CEP preserva os
  * dois consumidores que já dependem do formato exato da chave (o `removeItem`
@@ -89,10 +140,20 @@ export function cotacaoCacheadaQueAindaServe(
   bruto: unknown,
   assinaturaAtual: string,
   agora: number,
+  contextoAtual: string,
 ): ShippingOption[] | null {
   if (!bruto || typeof bruto !== "object") return null;
 
   const envelope = bruto as Partial<EnvelopeDeCacheDeFrete>;
+
+  // Envelope sem contexto (formato anterior à 1.5.3) ou de outra config da
+  // loja: não se sabe se a lista ainda é a que a edge daria agora — recota.
+  if (
+    typeof envelope.contexto !== "string" ||
+    envelope.contexto !== contextoAtual
+  ) {
+    return null;
+  }
 
   if (
     typeof envelope.assinatura !== "string" ||
@@ -120,75 +181,267 @@ export function cotacaoCacheadaQueAindaServe(
   return envelope.opcoes as ShippingOption[];
 }
 
+/**
+ * A ÚLTIMA guarda antes de servir um acerto de cache (R1-2): mesmo com
+ * contexto, assinatura e validade batendo, a lojista pode ter mudado a
+ * configuração do frete (ligado/desligado provedor, trocado serviço,
+ * mudado seguro) DEPOIS que esta cotação foi gravada — e o preço mudaria.
+ * `revisaoAtual` vem de `buscarRevisaoConfigFrete()`, chamada fresca a cada
+ * tentativa de servir cache; `revisaoDoCache` vem do envelope.
+ *
+ * Fail closed: só serve quando as DUAS são texto não vazio e IGUAIS. Se a
+ * revisão atual não carregou (rede fora do ar, edge sem o campo ainda) ou o
+ * envelope é de antes desta guarda existir, a resposta é `false` — recotar
+ * custa uma chamada a mais; servir errado custa cobrar frete que a lojista
+ * já mudou.
+ */
+export function cotacaoAindaBateComARevisao(
+  revisaoDoCache: unknown,
+  revisaoAtual: string | null,
+): boolean {
+  return (
+    typeof revisaoAtual === "string" &&
+    revisaoAtual.length > 0 &&
+    typeof revisaoDoCache === "string" &&
+    revisaoDoCache === revisaoAtual
+  );
+}
+
+/**
+ * Em que pé está o frete do destino corrente. O pai que FECHA pedido
+ * (checkout) usa isto para travar o Finalizar enquanto a cotação ainda não
+ * é do destino/carrinho de agora:
+ *   - `sem-destino`: não há endereço (ou CEP completo) para cotar;
+ *   - `ocioso`: há destino, mas o carrinho está vazio;
+ *   - `cotando`: cotação em voo OU recotação agendada (carrinho mudou) — o
+ *     preço na tela, se houver, é de outra rodada;
+ *   - `pronto`: há opções do destino e do carrinho correntes;
+ *   - `vazio`: a cotação voltou sem opção nenhuma;
+ *   - `erro`: a cotação falhou (há "Tentar de novo").
+ */
+export type StatusDaCotacao =
+  | "sem-destino"
+  | "ocioso"
+  | "cotando"
+  | "pronto"
+  | "vazio"
+  | "erro";
+
+export interface DestinoExibido {
+  /** Apelido do endereço cadastrado ("Casa", "Trabalho"). */
+  apelido?: string | null;
+  /** Uma linha: rua, número, bairro, cidade/UF, CEP. */
+  resumo?: string | null;
+}
+
 interface ShippingCalculatorProps {
   cart: CartItem[];
   selectedOption: ShippingOption | null;
-  onSelectOption: (option: ShippingOption | null) => void;
+  /**
+   * `selectedOption` foi um TOQUE da cliente (`true`) ou a regra da casa
+   * que escolheu sozinha (`false`)? Vive no CartContext ao lado da opção —
+   * sobrevive à remontagem (carrinho → checkout → volta). Só a escolha da
+   * cliente é preservada numa cotação nova; a automática é refeita contra
+   * a lista de agora (a mais barata). Sem a prop, vale só o que foi tocado
+   * NESTA montagem.
+   */
+  selecaoEscolhidaPelaCliente?: boolean;
+  /** `origem` diz quem escolheu — o pai guarda junto com a opção. */
+  onSelectOption: (
+    option: ShippingOption | null,
+    origem?: OrigemDaEscolhaDoFrete,
+  ) => void;
   onCepValidated?: (cep: string) => void;
+  /**
+   * CEP do destino efetivo de entrega (endereço escolhido ou principal; para
+   * o convidado, o CEP completo do formulário). É a ÚNICA fonte do destino:
+   * não existe mais campo de CEP aqui. Chegou ou trocou ⇒ a cotação anterior
+   * cai na hora e a nova sai sozinha; sumiu ⇒ nada de preço na tela.
+   */
+  cepDestino?: string | null;
+  /**
+   * CEP para o qual a opção `selectedOption` foi cotada (`shippingCep` do
+   * CartContext). Remontar a calculadora no MESMO destino não derruba a
+   * escolha da cliente — a recotação devolve o objeto fresco do mesmo
+   * serviço. Escolha de OUTRO destino cai.
+   */
+  cepDaSelecao?: string | null;
+  /** O que mostrar como destino ("Entrega para Casa" + resumo). */
+  destino?: DestinoExibido | null;
+  /** Botão/ação ao lado do destino (trocar ou cadastrar endereço). */
+  acaoDoEndereco?: React.ReactNode;
+  /** Texto quando não há destino para cotar. */
+  mensagemSemDestino?: string;
+  onStatusChange?: (status: StatusDaCotacao) => void;
+  /**
+   * R1-2/R2-8: incrementar este número força uma recotação de REDE do
+   * destino atual, ignorando o cache do navegador — o checkout usa isto
+   * quando descobre, antes de criar o pedido, que a configuração de frete
+   * mudou desde que a opção escolhida foi cotada. `undefined` (padrão) ou
+   * valor repetido não fazem nada.
+   */
+  forcarNovaCotacaoEm?: number;
+  /**
+   * CHECKOUT COMPACTO (23/09/2026): usada SÓ pelo checkout — o carrinho
+   * continua igual, sem a prop. Com `modoResumo` e a cotação PRONTA e uma
+   * opção ESCOLHIDA, a lista de opções fica escondida atrás de um resumo
+   * (logo/nome + "via" + prazo + preço + botão "Trocar"); qualquer outro
+   * estado — carregando, erro, vazio, sem destino, sem seleção — mostra o
+   * corpo INTEIRO de sempre, nunca esconde erro nem "Tentar de novo".
+   * Escolher outra opção na lista expandida recolhe de volta ao resumo,
+   * já com a opção nova.
+   */
+  modoResumo?: boolean;
 }
 
+function soDigitosDoCep(valor: string | null | undefined): string {
+  return (valor ?? "").replace(/\D/g, "");
+}
+
+// FRETE V3 (T3, 23/09/2026): não existe mais um "isFree" GLOBAL vindo de
+// fora — cada modalidade tem sua própria regra (local recalcula aqui,
+// nacional já vem final da edge), e por isso não há mais wrapper de
+// contexto: a calculadora sempre lê a `config` da loja diretamente (abaixo)
+// e decide o preço CARTÃO A CARTÃO. Ver
+// tests/front/shipping-calculator-preco-por-modalidade.test.tsx.
 export function ShippingCalculator({
   cart,
   selectedOption,
+  selecaoEscolhidaPelaCliente,
   onSelectOption,
   onCepValidated,
+  cepDestino,
+  cepDaSelecao,
+  destino,
+  acaoDoEndereco,
+  mensagemSemDestino = "Cadastre um endereço de entrega para ver o frete e o prazo.",
+  onStatusChange,
+  forcarNovaCotacaoEm,
+  modoResumo,
 }: ShippingCalculatorProps) {
+  // Fora do StoreProvider (peça montada sozinha em teste/storybook) o
+  // `useStore` real quebraria — mas todo chamador de produção (CartView,
+  // CheckoutView) já vive dentro dele, mesmo contrato de hoje.
+  const { config } = useStore();
   const isOffline = useOnlineStatus();
-  const [cep, setCep] = useState(() => {
-    return localStorage.getItem("ikcous_last_shipping_cep") || "";
-  });
+  // Contexto da loja da cotação (cache v2). Fora do StoreProvider (peça
+  // montada sozinha) vale o contexto "sem config" — estável, o cache segue
+  // servindo.
+  const contextoDaLoja = useContextoDoFreteDaLoja();
+  const contextoDaLojaRef = useRef(contextoDaLoja);
+  contextoDaLojaRef.current = contextoDaLoja;
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   // HONESTIDADE (onda D-1): guarda se a ÚLTIMA cotação concluída voltou sem
   // opção nenhuma (edge devolve `options: []` — loja sem transportadora
   // conectada, frente C). É o que permite mostrar o estado "A calcular" em
-  // vez de silêncio abaixo do formulário.
+  // vez de silêncio.
   const [cotouSemOpcoes, setCotouSemOpcoes] = useState(false);
+  // DESTAQUES (release 1.5.7): a lista nasce recolhida — só os destaques (e
+  // a retirada/local, que seguem à parte) aparecem; "+ Ver outras opções"
+  // revela o resto. Recolher de novo NÃO esconde a escolha atual (mais
+  // abaixo, na hora de montar a lista): contrato §6, "recolher não troca a
+  // escolha".
+  const [outrasExpandidas, setOutrasExpandidas] = useState(false);
+  // MODO RESUMO (checkout compacto): começa recolhido — `podeResumir`,
+  // calculado mais abaixo (depende de `status`), é quem decide se o resumo
+  // chega a aparecer. `Trocar` abre; escolher uma opção nova na lista
+  // aberta fecha de novo (ver o onClick de `renderizarCartaoDeOpcao`).
+  const [detalhesAbertosNoResumo, setDetalhesAbertosNoResumo] = useState(false);
 
   // Lacre de sequência: cada `calculateShipping` tira um número; só quem tem
   // o número MAIS RECENTE pode escrever o resultado na tela. Sem isso, duas
   // cotações em voo ao mesmo tempo (ex.: carrinho vai para 2un e, antes da
-  // resposta chegar, vai para 3un de novo) correm risco de a mais VELHA
-  // responder por último e sobrescrever a mais nova — e o preço errado fica
-  // preso na tela até a próxima mudança de carrinho. Ver
-  // tests/front/shipping-calculator-nao-sobrescreve-com-cotacao-antiga.test.tsx.
+  // resposta chegar, vai para 3un de novo — ou o endereço troca de cidade)
+  // correm risco de a mais VELHA responder por último e sobrescrever a mais
+  // nova. Ver tests/front/shipping-calculator-nao-sobrescreve-com-cotacao-antiga.test.tsx.
   const reqRef = useRef(0);
 
-  // Timer do debounce de recotação por mudança de carrinho (efeito abaixo,
-  // `SHIPPING_RECALC_DEBOUNCE_MS`). Guardado em ref para que
-  // `calculateShipping` possa CANCELAR um debounce ainda pendente assim que
-  // uma cotação de verdade começa — manual (form) ou automática (o próprio
-  // timer). Sem isso, o lacre de sequência acima não protege contra um caso
-  // específico: o timer pode ser, ao disparar, a chamada MAIS RECENTE por
-  // número — e ainda assim carregar, na closure, um `cep` que a cliente já
-  // substituiu enquanto o timer esperava. Ver
+  // CEP (só dígitos) que as cotações desta calculadora estão servindo. Ref, e
+  // não estado: o timer da recotação por carrinho e o "Tentar de novo" leem o
+  // destino de AGORA — um closure antigo cotaria o endereço anterior.
+  const cepAdotadoRef = useRef<string | null>(null);
+  // Assinatura do carrinho da cotação que está na tela: opções de outro
+  // carrinho nunca contam como "pronto".
+  const assinaturaCotadaRef = useRef<string | null>(null);
+
+  // Timer do debounce de recotação por mudança de carrinho. Guardado em ref
+  // para que `calculateShipping` possa CANCELAR um debounce ainda pendente
+  // assim que uma cotação de verdade começa. Ver
   // tests/front/shipping-calculator-cotacao-manual-cancela-debounce-pendente.test.tsx.
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-format CEP: 99999-999
-  const handleCepChange = (val: string) => {
-    const clean = val.replace(/\D/g, "");
-    if (clean.length <= 5) {
-      setCep(clean);
-    } else {
-      setCep(`${clean.slice(0, 5)}-${clean.slice(5, 8)}`);
+  // A seleção VIVA: a prop muda a cada clique numa opção, mas o
+  // `calculateShipping` em execução fecha sobre a seleção do render em que
+  // a COTAÇÃO saiu. Com cotação em voo, um clique novo era REVERTIDO pela
+  // resposta. Este ref espelha a prop POR RENDER e é a ENTRADA de
+  // `resolverEscolhaDoFrete` — mesma modalidade na lista nova ⇒ objeto NOVO
+  // (preço fresco); modalidade sumida ⇒ a mais barata; seleção nula ⇒ a mais
+  // barata.
+  const selecaoVivaRef = useRef(selectedOption);
+  selecaoVivaRef.current = selectedOption;
+
+  // QUEM ESCOLHEU a seleção viva (captura do dono, 23/09/2026). Com a prop
+  // (CartContext), ela é a fonte — espelhada por render como a seleção. Sem
+  // a prop, a memória é o id tocado NESTA montagem. Os dois refs são
+  // gravados também no clique, síncronos: uma resposta que pousa antes do
+  // re-render do pai já enxerga a escolha da cliente.
+  const idTocadoNestaMontagemRef = useRef<string | null>(null);
+  const escolhaDaClienteViaPropRef = useRef(selecaoEscolhidaPelaCliente);
+  escolhaDaClienteViaPropRef.current = selecaoEscolhidaPelaCliente;
+  const selecaoVivaEhDaCliente = (): boolean => {
+    const viva = selecaoVivaRef.current;
+    if (!viva) return false;
+    return (
+      escolhaDaClienteViaPropRef.current ??
+      idTocadoNestaMontagemRef.current === viva.id
+    );
+  };
+
+  // Aplica a escolha resolvida contra uma lista NOVA: a da cliente, se ela
+  // ainda está na lista (objeto fresco); senão a mais barata, como escolha
+  // automática. Lista sem nada auto-selecionável (só a retirada) derruba a
+  // escolha anterior, que é preço de OUTRA cotação.
+  const aplicarEscolhaContra = (lista: ShippingOption[]) => {
+    const { opcao, origem } = resolverEscolhaDoFrete(
+      selecaoVivaRef.current,
+      lista,
+      selecaoVivaEhDaCliente(),
+    );
+    if (origem === "automatica") idTocadoNestaMontagemRef.current = null;
+    if (opcao) {
+      onSelectOption(opcao, origem);
+    } else if (selecaoVivaRef.current) {
+      onSelectOption(null);
     }
   };
 
-  const calculateShipping = async (e?: React.FormEvent, skipHaptic = false) => {
-    if (e) e.preventDefault();
-
-    const cleanCep = cep.replace(/\D/g, "");
-    if (cleanCep.length !== 8) {
-      setError("CEP deve conter 8 dígitos.");
-      return;
+  // Tira a tela da cotação anterior: resposta em voo vira obsoleta (lacre),
+  // debounce pendente morre e nada do destino antigo continua clicável.
+  // Resposta obsoleta não roda o `finally` (guarda do lacre), então o
+  // `loading` é limpo AQUI.
+  const invalidarCotacao = () => {
+    reqRef.current += 1;
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
     }
+    setLoading(false);
+    setError(null);
+    setOptions([]);
+    setCotouSemOpcoes(false);
+    setOutrasExpandidas(false);
+  };
 
-    // Esta chamada já cobre o carrinho e o CEP correntes — qualquer debounce
-    // ainda não disparado passa a ser redundante na melhor hipótese e ERRADO
-    // na pior (se o CEP mudou desde que o timer foi agendado). Cancelar aqui
-    // fecha a janela: nenhum timer sobrevive a uma cotação de verdade.
+  const calculateShipping = async (cepAlvo: string, skipHaptic = true) => {
+    const cleanCep = soDigitosDoCep(cepAlvo);
+    if (cleanCep.length !== 8) return;
+    const cepFormatado = `${cleanCep.slice(0, 5)}-${cleanCep.slice(5, 8)}`;
+
+    // Esta chamada já cobre o carrinho e o destino correntes — qualquer
+    // debounce ainda não disparado passa a ser redundante na melhor hipótese
+    // e ERRADO na pior. Nenhum timer sobrevive a uma cotação de verdade.
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
@@ -205,45 +458,58 @@ export function ShippingCalculator({
     // número, esta aqui é obsoleta e não escreve nada, nem `loading`.
     const meuId = ++reqRef.current;
 
-    const cacheKey = `ikcous_shipping_cache_${cleanCep}`;
+    const cacheKey = chaveDoCacheDeFrete(cleanCep);
+    // O contexto de QUANDO esta cotação saiu: é ele que vai no envelope. Se
+    // o contexto mudar no meio, o efeito de contexto dispara outra cotação,
+    // o lacre (`reqRef`) aposenta esta, e ela não grava nada.
+    const contextoDaCotacao = contextoDaLojaRef.current;
 
     try {
-      // 1. Check local cache first if offline or as speedup
-      //
-      // Este acerto não só mostra o preço: ele já SELECIONA a opção logo
-      // abaixo, e é ela que vai para o pedido. Por isso a entrada precisa ser
-      // do carrinho de agora e estar dentro da validade — ver
-      // `cotacaoCacheadaQueAindaServe`. Até 22/08/2026 bastava ser uma lista
-      // não vazia gravada sob este CEP, de qualquer carrinho e de qualquer
-      // época.
+      // 1. Cache local primeiro. Este acerto não só mostra o preço: ele já
+      // SELECIONA a opção logo abaixo, e é ela que vai para o pedido. Por
+      // isso a entrada precisa ser do carrinho de agora e estar dentro da
+      // validade — ver `cotacaoCacheadaQueAindaServe`. A chave é o CEP (o
+      // destino) e o envelope carrega a assinatura do carrinho (os itens).
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         try {
+          const envelopeCru = JSON.parse(cached) as unknown;
           const opcoesEmCache = cotacaoCacheadaQueAindaServe(
-            JSON.parse(cached),
+            envelopeCru,
             cartSignature,
             Date.now(),
+            contextoDaCotacao,
           );
           if (opcoesEmCache) {
-            // Sem lacre aqui de propósito: até este ponto só rodou
-            // `localStorage.getItem`/`JSON.parse`, ambos síncronos — nenhum
-            // `await` passou, então `meuId` ainda é garantidamente o valor
-            // mais recente de `reqRef.current`. A guarda existia mas nunca
-            // podia disparar; ela só escondia o fato de que este ramo não
-            // precisa de proteção.
-            setOptions(opcoesEmCache);
-
-            // Auto-select first/cheapest option if none selected
-            const hasMatch = opcoesEmCache.some(
-              (opt) => opt.id === selectedOption?.id,
-            );
-            if (!hasMatch) {
-              onSelectOption(opcoesEmCache[0]);
+            // R1-2: contexto, assinatura e validade batem, mas isso não
+            // basta mais — a lojista pode ter mudado a configuração do
+            // frete DEPOIS que esta cotação foi gravada (até 2h atrás).
+            // Confirma a revisão antes de confiar no preço. Sem rede
+            // (offline), a confirmação não tem como acontecer: cai direto
+            // para a cotação de rede abaixo, que vai mostrar o aviso de
+            // conexão — em vez de arriscar um preço que a lojista já mudou.
+            const revisaoDoCache = (
+              envelopeCru as Partial<EnvelopeDeCacheDeFrete>
+            ).revisaoConfig;
+            const revisaoAtual = isOffline
+              ? null
+              : await buscarRevisaoConfigFrete();
+            // Lacre: uma chamada mais nova pode ter começado durante o
+            // `await` acima.
+            if (meuId !== reqRef.current) return;
+            if (cotacaoAindaBateComARevisao(revisaoDoCache, revisaoAtual)) {
+              setOptions(opcoesEmCache);
+              setCotouSemOpcoes(false);
+              assinaturaCotadaRef.current = cartSignature;
+              aplicarEscolhaContra(opcoesEmCache);
+              onCepValidated?.(cepFormatado);
+              setLoading(false);
+              localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
+              return;
             }
-            onCepValidated?.(cep);
-            setLoading(false);
-            localStorage.setItem("ikcous_last_shipping_cep", cep);
-            return;
+            // Revisão não confere (ou não deu para confirmar): o cache NÃO
+            // serve — segue para a cotação de rede abaixo, como se este
+            // acerto de cache nunca tivesse existido.
           }
         } catch (e) {
           console.error("Error parsing cached shipping options:", e);
@@ -258,17 +524,25 @@ export function ShippingCalculator({
       const { data, error: funcError } = await supabase.functions.invoke(
         "calculate-shipping",
         {
-          body: { cep: cleanCep, cart: cart },
+          // `aceitaRetirada`: o sinal de que ESTE app entende a retirada na
+          // loja (nunca a auto-seleciona). Sem ele, a edge não a oferece — é
+          // o que protege o app 1.5.2 ainda no ar.
+          // `contratoCliente: 3` (release 1.5.7): o sinal de que este app
+          // entende vários provedores ao mesmo tempo e prazo 0 canônico
+          // ("no mesmo dia") — CONTRATO-1.5.7.md §2 e EMENDA R1-4.
+          body: {
+            cep: cleanCep,
+            cart: cart,
+            aceitaRetirada: true,
+            contratoCliente: 3,
+          },
         },
       );
 
       if (funcError) {
         // Relançado sem embrulho: `mensagemAmigavelErroEdgeFunction`, logo
-        // abaixo no `catch`, decide pelo `.name` do próprio erro do SDK
-        // (FunctionsFetchError/FunctionsRelayError/FunctionsHttpError) —
-        // embrulhar aqui em `new Error(...)` perderia esse `.name` e a
-        // tradução cairia sempre no genérico, mesmo quando a causa real é
-        // sabidamente falta de rede.
+        // abaixo no `catch`, decide pelo `.name` do próprio erro do SDK —
+        // embrulhar aqui perderia esse `.name`.
         throw funcError;
       }
       if (!data || !data.options) {
@@ -278,34 +552,42 @@ export function ShippingCalculator({
       const calculatedOptions: ShippingOption[] = data.options;
       if (meuId !== reqRef.current) return;
       setOptions(calculatedOptions);
-      // HONESTIDADE (onda D-1): cotação concluída VAZIA (loja sem credencial/
-      // origem — frente C) não pode ficar em silêncio; ver `cotouSemOpcoes`.
+      assinaturaCotadaRef.current = cartSignature;
       setCotouSemOpcoes(calculatedOptions.length === 0);
+      // Resposta vazia não preserva a escolha anterior: ela é preço de
+      // outra cotação.
+      if (calculatedOptions.length === 0 && selecaoVivaRef.current) {
+        onSelectOption(null);
+      }
 
       // Save to cache — junto com de QUAL carrinho esta cotação é e QUANDO ela
       // foi feita. Sem esses dois campos a leitura acima não tem como recusar
       // uma lista de outro carrinho ou de outro dia.
       const envelope: EnvelopeDeCacheDeFrete = {
+        contexto: contextoDaCotacao,
         assinatura: cartSignature,
         gravadoEm: Date.now(),
         opcoes: calculatedOptions,
+        // R1-2: a resposta traz a revisão sob a qual ELA foi calculada —
+        // sem isto, a próxima leitura deste envelope nunca teria como
+        // confirmar que a configuração continua a mesma.
+        revisaoConfig:
+          typeof data.revisaoConfig === "string" ? data.revisaoConfig : null,
       };
       localStorage.setItem(cacheKey, JSON.stringify(envelope));
-      localStorage.setItem("ikcous_last_shipping_cep", cep);
+      localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
 
       // Auto-select: MENOR PREÇO, não o primeiro da lista (laudo 31/08,
-      // menor E — o comentário antigo dizia "cheapest" e o código pegava
-      // options[0]: o cliente nascia travado na opção cara). Empate, menor
-      // prazo. Regra pura em auto-selecao-de-frete.ts, provada por teste.
+      // menor E). Escolha da CLIENTE com o mesmo id na resposta nova = a
+      // mesma escolha, com o objeto FRESCO; escolha automática ou id sumido
+      // = a mais barata DESTA lista. A entrada é a seleção VIVA — o clique
+      // dado com a cotação em voo não é desfeito. RETIRADA NA LOJA (1.5.3):
+      // lista só com a retirada derruba a escolha anterior (nunca é o app
+      // quem escolhe a retirada).
       if (calculatedOptions.length > 0) {
-        const hasMatch = calculatedOptions.some(
-          (opt) => opt.id === selectedOption?.id,
-        );
-        if (!hasMatch) {
-          onSelectOption(opcaoMaisBarata(calculatedOptions)!);
-        }
+        aplicarEscolhaContra(calculatedOptions);
       }
-      onCepValidated?.(cep);
+      onCepValidated?.(cepFormatado);
     } catch (err: any) {
       if (meuId !== reqRef.current) return;
       const codigo = await codigoDoErroDeEdgeFunction(err);
@@ -324,23 +606,16 @@ export function ShippingCalculator({
             }),
       );
 
-      // COTAÇÃO QUE FALHA NÃO VIRA PREÇO INVENTADO.
-      //
-      // Até 18/08/2026 este ponto montava uma opção própria de R$ 15 e a
-      // auto-selecionava. Dois estragos: R$ 15 valia para o Brasil inteiro (e a
-      // diferença saía do bolso da lojista), e — pior — a opção selecionada
-      // SOBRESCREVE a taxa que ela configurou: o `shippingFee` do CartContext
-      // só cai para `config.shippingFee` enquanto NÃO há opção escolhida.
-      //
-      // Sem opção nenhuma aqui, o erro aparece na tela e o frete volta a ser o
-      // número que a própria loja definiu no painel. A trava está em
+      // COTAÇÃO QUE FALHA NÃO VIRA PREÇO INVENTADO: nenhuma opção própria é
+      // montada nem selecionada. O erro aparece com "Tentar de novo" e o
+      // frete fica "a calcular". Trava em
       // tests/front/shipping-calculator-sem-preco-inventado.test.tsx.
       setOptions([]);
+      setCotouSemOpcoes(false);
       onSelectOption(null);
     } finally {
       // Uma resposta obsoleta não pode apagar o `loading` de uma requisição
-      // mais nova que ainda está em voo — senão o spinner sumiria enquanto a
-      // cotação que importa continua esperando a transportadora.
+      // mais nova que ainda está em voo.
       if (meuId === reqRef.current) {
         setLoading(false);
       }
@@ -348,15 +623,10 @@ export function ShippingCalculator({
   };
 
   // Assinatura estável do carrinho: muda quando produto, variante OU
-  // QUANTIDADE mudam — não só quando um item entra ou sai. Mesma forma de
-  // `getCartHash` em supabase/functions/calculate-shipping/index.ts:
-  // itens ordenados por `productId+variantId`, cada um
-  // `${productId}:${variantId}:${quantity}`, juntos por vírgula.
-  //
-  // Até 21/08/2026 o efeito abaixo dependia só de `cart.length`, então subir
-  // a quantidade de um item que já estava no carrinho (1 → 10 unidades) não
-  // recotava: a tela continuava mostrando o frete de 1 unidade e o pedido
-  // fechava com esse valor, com a diferença saindo do bolso da lojista.
+  // QUANTIDADE mudam. Mesma forma de `getCartHash` em
+  // supabase/functions/calculate-shipping/index.ts: itens ordenados por
+  // `productId+variantId`, cada um `${productId}:${variantId}:${quantity}`,
+  // juntos por vírgula.
   const cartSignature = useMemo(() => {
     if (cart.length === 0) return "";
     const sorted = [...cart].sort((a, b) => {
@@ -372,223 +642,683 @@ export function ShippingCalculator({
       .join(",");
   }, [cart]);
 
-  // Reage a QUALQUER mudança que afete o frete (produto, variante ou
-  // quantidade), com debounce: o componente não tinha nenhum, e o cache DO
-  // SERVIDOR (`shipping_quotes_cache`, indexado pelo hash do carrinho) —
-  // então cada clique em "+"/"-" trocava a quantidade, virava cache miss lá
-  // e batia a transportadora de novo. Uma rajada de 1 → 10 cliques virava 10
-  // cotações reais. `clearTimeout` no cleanup cancela a cotação pendente se
-  // o carrinho mudar de novo antes dela disparar (ou o componente
-  // desmontar).
-  //
-  // Deps só `[cartSignature]`, de propósito — igual ao código anterior a
-  // esta correção. `cep` NÃO entra: submeter um CEP novo já cota na hora,
-  // via `calculateShipping` chamado direto pelo `<form>` (linha abaixo). Se
-  // `cep` também fosse dependência, cada CEP digitado agendaria uma SEGUNDA
-  // cotação (esta, com debounce) por cima da imediata — foi o que a suíte
-  // "controle negativo" pegou na primeira versão desta correção.
-  //
-  // A closure QUE FICA obsoleta: o efeito só dispara de novo quando o
-  // CARRINHO muda, e nesse instante ele fecha sobre o `cep` do render
-  // corrente — nunca sobre o `cep` da montagem. Mas os `SHIPPING_RECALC_
-  // DEBOUNCE_MS` (700ms) entre o agendamento e o disparo do timer são uma
-  // janela de verdade: se a cliente TROCAR o CEP manualmente dentro dela, o
-  // timer dispara com o `cep` de QUANDO FOI AGENDADO, não o atual — e essa
-  // chamada, por ter sido a última a tirar número no lacre de sequência
-  // acima, VENCE. É por isso que `calculateShipping` cancela qualquer
-  // debounce pendente assim que uma cotação de verdade começa
-  // (`debounceTimerRef`, no topo do componente): nenhum closure velho chega
-  // a rodar.
-  useEffect(() => {
-    const cleanCep = cep.replace(/\D/g, "");
-    if (cleanCep.length !== 8 || cart.length === 0) return;
+  // Assinatura já atendida. A montagem NÃO conta como mudança de carrinho:
+  // quem cota na montagem é a adoção do destino (efeito abaixo), que pode
+  // servir do cache — apagar o cache aqui na montagem obrigava toda volta ao
+  // carrinho a bater na transportadora de novo.
+  const assinaturaVistaRef = useRef(cartSignature);
 
-    // Invalida CEDO (síncrono, assim que o carrinho muda), não dentro do
-    // timer. O cache que esta linha apaga é o `ikcous_shipping_cache_<CEP>`
-    // (ver `cacheKey` em `calculateShipping`), indexado só pelo CEP — uma
-    // quantidade nova é HIT nele, não miss, porque ele não sabe o que tem no
-    // carrinho. Até 21/08/2026 o `removeItem` ficava dentro do `setTimeout`:
-    // se a cliente clicasse "Calcular" manualmente durante a janela de
-    // debounce (até 700ms depois de mudar o carrinho), o cache antigo ainda
-    // estava lá e devolvia o preço da quantidade anterior. Invalidar aqui
-    // fecha essa janela; só a CHAMADA à transportadora continua adiada.
-    localStorage.removeItem(`ikcous_shipping_cache_${cleanCep}`);
+  // Reage a QUALQUER mudança do carrinho (produto, variante ou quantidade),
+  // com debounce: uma rajada de cliques em "+"/"-" vira UMA cotação. Enquanto
+  // o timer espera, o status é "cotando" — o preço na tela é do carrinho
+  // anterior e o checkout não fecha com ele.
+  useEffect(() => {
+    if (assinaturaVistaRef.current === cartSignature) return;
+    assinaturaVistaRef.current = cartSignature;
+    const alvo = cepAdotadoRef.current;
+    if (!alvo || cart.length === 0) return;
+
+    // Invalida CEDO (síncrono), não dentro do timer: o cache é indexado pelo
+    // CEP e uma cotação que começasse na janela do debounce não pode achar o
+    // preço da quantidade anterior.
+    localStorage.removeItem(chaveDoCacheDeFrete(alvo));
+    setLoading(true);
+    setError(null);
 
     const timer = setTimeout(() => {
-      calculateShipping(undefined, true);
+      const cepDeAgora = cepAdotadoRef.current;
+      if (cepDeAgora) calculateShipping(cepDeAgora, true);
     }, SHIPPING_RECALC_DEBOUNCE_MS);
     debounceTimerRef.current = timer;
 
     return () => {
       clearTimeout(timer);
-      debounceTimerRef.current = null;
+      if (debounceTimerRef.current === timer) debounceTimerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartSignature]);
 
-  // FRETE V2 (onda D-1, 03/09 — dossiê frete-v2-0309): a regra de grátis tem
-  // FONTE ÚNICA — o memo `freteGratis` do CartContext, que lê o preset do
-  // lojista via `presetDoConfig` (presets-de-frete-gratis.ts; modelo
-  // EXCLUSIVO: a estratégia escolhida é a única que vale). Até hoje este
-  // componente mantinha a cópia ANTIGA da regra (item marcado INCONDICIONAL
-  // + trava `Boolean(user)`): com o preset "acima_de_valor", um convidado no
-  // limite via as opções a preço cheio aqui enquanto o total saía grátis —
-  // regra escrita em dois lugares diverge (lição #53). A trava de login
-  // morre junto: convidado tem o MESMO direito do logado na exibição (a
-  // entrega dele é local de qualquer forma, e o frete local entra na mesma
-  // regra — decisão da frente B no CartContext).
-  const { freteGratis: isFree } = useCartState();
+  // O CONTEXTO DA LOJA mudou (provedor, transportadoras, retirada, endereço —
+  // chegou o config real, ou a lojista salvou em outra aba): a lista na tela
+  // pode não ser mais a que a edge daria. Recota o destino adotado — o cache
+  // v2 recusa o envelope do contexto velho, e a resposta em voo do contexto
+  // velho morre no lacre. A montagem não conta (quem cota nela é a adoção
+  // do destino).
+  const contextoVistoRef = useRef(contextoDaLoja);
+  useEffect(() => {
+    if (contextoVistoRef.current === contextoDaLoja) return;
+    contextoVistoRef.current = contextoDaLoja;
+    const alvo = cepAdotadoRef.current;
+    if (!alvo || cart.length === 0) return;
+    calculateShipping(alvo, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextoDaLoja]);
 
-  return (
-    <div className="w-full space-y-4 rounded-3xl border border-zinc-100 bg-zinc-50/50 p-4">
-      <div className="flex items-center gap-2">
-        <Truck className="size-4 text-zinc-500" />
-        <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
-          Calcular Frete & Prazo
-        </span>
-      </div>
+  // FORÇAR RECOTAÇÃO (R1-2/R2-8): o checkout, antes de criar o pedido,
+  // descobre que a opção escolhida veio de uma cotação com revisão
+  // diferente da atual e incrementa esta prop. Remove o cache do destino
+  // adotado (senão a leitura de cache do PRÓXIMO `calculateShipping`
+  // acharia a MESMA entrada desatualizada) e recota de rede — se o id
+  // escolhido sumiu da lista nova, `resolverEscolhaDoFrete` já escolhe a
+  // mais barata dela sozinho (só limpa de vez se a lista nova vier vazia).
+  const forcarNovaCotacaoVistoRef = useRef(forcarNovaCotacaoEm);
+  useEffect(() => {
+    if (forcarNovaCotacaoEm === undefined) return;
+    if (forcarNovaCotacaoVistoRef.current === forcarNovaCotacaoEm) return;
+    forcarNovaCotacaoVistoRef.current = forcarNovaCotacaoEm;
+    const alvo = cepAdotadoRef.current;
+    if (!alvo || cart.length === 0) return;
+    localStorage.removeItem(chaveDoCacheDeFrete(alvo));
+    calculateShipping(alvo, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forcarNovaCotacaoEm]);
 
-      <form onSubmit={calculateShipping} className="flex gap-2">
-        <div className="relative flex-1">
-          <input
-            id="shipping-calculator-cep"
-            name="cep"
-            type="tel"
-            value={cep}
-            onChange={(e) => handleCepChange(e.target.value)}
-            placeholder="00000-000"
-            maxLength={9}
-            // Laudo de acessibilidade 05/09, M2: o campo se explicava só pelo
-            // placeholder "00000-000", que some ao digitar — para leitor de
-            // tela era "edição, texto" sem dizer o quê.
-            aria-label="CEP de destino"
-            className="w-full rounded-2xl border border-zinc-200 bg-white py-2.5 pl-9 pr-4 text-xs font-semibold text-zinc-800 transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
-          />
-          <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-400" />
-        </div>
-        <button
-          type="submit"
-          disabled={loading || cep.replace(/\D/g, "").length !== 8}
-          className="shrink-0 select-none rounded-2xl bg-primary px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
-        >
-          {loading ? "Cotando..." : "Calcular"}
-        </button>
-      </form>
+  // Resposta atrasada não sobrevive ao desmonte: sem o lacre, a cotação em
+  // voo gravava `ikcous_last_shipping_cep` e o cache DEPOIS que o destino
+  // já era outro. Zerar o destino adotado faz a remontagem (inclusive a do
+  // StrictMode) adotar e cotar de novo, em vez de ficar presa no lacre.
+  useEffect(() => {
+    return () => {
+      reqRef.current += 1;
+      cepAdotadoRef.current = null;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+    };
+  }, []);
 
-      {error && (
-        // Laudo de acessibilidade 05/09, M1: o erro do frete aparecia em
-        // pixels, em silêncio — `role="alert"` fala na hora (mesmo
-        // tratamento da recusa do cupom em CouponInput.tsx).
-        <div
-          role="alert"
-          className="flex items-start gap-1.5 rounded-2xl border border-amber-100 bg-amber-50 p-2.5 text-[9.5px] font-medium text-amber-800"
-        >
-          <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-          <span>{error}</span>
-        </div>
-      )}
+  // A FONTE DO DESTINO É O ENDEREÇO DE ENTREGA. Destino chegou ou trocou: a
+  // cotação anterior cai NA HORA (opções, erro, resposta em voo) e a nova
+  // sai sozinha. A escolha da cliente só sobrevive se foi cotada para ESTE
+  // mesmo CEP (`cepDaSelecao`) — voltar ao carrinho não desfaz a modalidade;
+  // trocar de endereço, sim (a mais barata do destino novo vence). Destino
+  // sumiu: nada de preço de endereço que não existe mais.
+  useEffect(() => {
+    const limpo = soDigitosDoCep(cepDestino);
+    const anterior = cepAdotadoRef.current;
 
-      {/* Shipping Options list */}
-      <AnimatePresence mode="popLayout">
-        {options.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -5 }}
-            className="space-y-2"
-          >
-            {options.map((option) => {
-              const isSelected = selectedOption?.id === option.id;
-              const priceToDisplay = isFree ? 0 : option.price;
+    if (limpo.length !== 8) {
+      if (anterior === null) return;
+      cepAdotadoRef.current = null;
+      invalidarCotacao();
+      if (selecaoVivaRef.current) {
+        selecaoVivaRef.current = null;
+        onSelectOption(null);
+      }
+      return;
+    }
 
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  // Laudo de acessibilidade 05/09, A1 (ALTA): escolher
-                  // PAC/SEDEX/GRÁTIS não era anunciado — o "selecionado" era
-                  // só borda/fundo colorido. `aria-pressed` no botão da opção
-                  // é o MESMO padrão que a onda 1 (03/09) aplicou às
-                  // variantes e que o pagamento resolveu com radiogroup.
-                  aria-pressed={isSelected}
-                  onClick={() => {
-                    haptic.light();
-                    onSelectOption(option);
-                  }}
-                  className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
-                    isSelected
-                      ? "border-primary bg-primary text-white shadow-md shadow-black/10"
-                      : "border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
+    if (anterior === limpo) return;
+    cepAdotadoRef.current = limpo;
+    invalidarCotacao();
+
+    const selecao = selecaoVivaRef.current;
+    const selecaoValeAqui = !!selecao && soDigitosDoCep(cepDaSelecao) === limpo;
+    if (selecao && !selecaoValeAqui) {
+      // O ref também cai: uma resposta do cache (síncrona, ainda neste
+      // tick) não pode "preservar" a modalidade de outro destino.
+      selecaoVivaRef.current = null;
+      onSelectOption(null);
+    }
+    if (cart.length === 0) return;
+    calculateShipping(limpo, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cepDestino]);
+
+  const tentarDeNovo = () => {
+    const alvo = cepAdotadoRef.current;
+    if (alvo) calculateShipping(alvo, false);
+  };
+
+  const destinoValido = soDigitosDoCep(cepDestino).length === 8;
+  // Derivado EM RENDER: no primeiro pintar depois de o destino aparecer,
+  // antes de o efeito de adoção rodar, o status já é "cotando" — nunca
+  // "pronto" com opções que não são deste destino.
+  const status: StatusDaCotacao = !destinoValido
+    ? "sem-destino"
+    : cart.length === 0
+      ? "ocioso"
+      : cepAdotadoRef.current !== soDigitosDoCep(cepDestino) || loading
+        ? "cotando"
+        : error
+          ? "erro"
+          : options.length > 0 && assinaturaCotadaRef.current === cartSignature
+            ? "pronto"
+            : cotouSemOpcoes
+              ? "vazio"
+              : "cotando";
+
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
+
+  // MODO RESUMO: só cabe resumir quando há UMA opção pronta e ESCOLHIDA —
+  // "cotando"/"erro"/"vazio"/"sem-destino"/"ocioso" continuam mostrando o
+  // corpo inteiro (a guarda do pedido do dono: nunca esconder erro nem
+  // "Tentar de novo"). `detalhesAbertosNoResumo` é o override manual do
+  // "Trocar"; volta a `false` sozinho ao escolher uma opção nova (ver o
+  // onClick de `renderizarCartaoDeOpcao`).
+  const podeMostrarResumoDaOpcao =
+    !!modoResumo && status === "pronto" && !!selectedOption;
+  const exibindoResumoDaOpcao =
+    podeMostrarResumoDaOpcao && !detalhesAbertosNoResumo;
+
+  const cepExibido = destinoValido
+    ? `${soDigitosDoCep(cepDestino).slice(0, 5)}-${soDigitosDoCep(cepDestino).slice(5, 8)}`
+    : null;
+  const apelido = destino?.apelido?.trim();
+  const titulo = apelido ? `Entrega para ${apelido}` : "Entrega";
+  const resumo =
+    destino?.resumo?.trim() || (cepExibido ? `CEP ${cepExibido}` : null);
+
+  // FRETE V3 (T3, 23/09): preço FINAL por CARTÃO. Local recalcula aqui a
+  // regra de sempre (`precoFinalDaOpcao`, mesma conta do CartContext);
+  // nacional só repassa o que a edge já mandou pronto (contrato §3: o
+  // front NUNCA recalcula preço de transportadora).
+  const subtotalDoCarrinho = useMemo(
+    () =>
+      cart.reduce(
+        (soma, item) =>
+          soma +
+          precoVendido(
+            item.product,
+            item.product.variants?.find((v) => v.id === item.variantId),
+          ) *
+            item.quantity,
+        0,
+      ),
+    [cart],
+  );
+  const temItemMarcado = useMemo(
+    () => cart.some((item) => item.product.freeShipping),
+    [cart],
+  );
+  const contextoDoPreco = {
+    config,
+    subtotal: subtotalDoCarrinho,
+    temItemMarcado,
+  };
+  // Alguma opção NACIONAL foi beneficiada (grátis ou desconto) só na "mais
+  // barata"? As demais nacionais da lista ganham uma nota dizendo que o
+  // benefício não é delas (contrato §5, alcance='mais_barata').
+  const algumaNacionalBeneficiadaSoNaMaisBarata = options.some((o) => {
+    if (ehModalidadeDaLoja(o.id)) return false;
+    const cheio = o.precoCheio;
+    const beneficiada = typeof cheio === "number" && cheio > o.price;
+    return beneficiada && o.estrategiaNacional?.alcance === "mais_barata";
+  });
+
+  // DESTAQUES (release 1.5.7 — CONTRATO-1.5.7.md §6, R1-7, R2-4): a
+  // retirada nunca disputa destaque (ela é modalidade da loja, aparece à
+  // parte, como sempre); a entrega local participa do ranking igual a
+  // qualquer transportadora.
+  const opcaoDeRetirada = options.find((o) => ehRetiradaNaLoja(o.id)) ?? null;
+  const destaques = destaquesDoFrete(options);
+  const cartoesDeDestaque = [
+    ...(destaques.maisBarata ? [destaques.maisBarata] : []),
+    ...(!destaques.mesmaOferta && destaques.maisRapida
+      ? [destaques.maisRapida]
+      : []),
+  ];
+  // Recolhida, a lista de "outras" some — MENOS a opção que a cliente já
+  // escolheu: recolher não pode tirar a escolha da vista nem trocá-la
+  // (contrato §6).
+  const outrasVisiveis = outrasExpandidas
+    ? destaques.outras
+    : destaques.outras.filter((o) => o.id === selectedOption?.id);
+
+  function selosDoCartao(id: string): string[] {
+    const selos: string[] = [];
+    if (destaques.maisBarata?.id === id) selos.push("Mais barata");
+    if (destaques.maisRapida?.id === id) selos.push("Mais rápida");
+    return selos;
+  }
+
+  function renderizarCartaoDeOpcao(option: ShippingOption) {
+    const isSelected = selectedOption?.id === option.id;
+    // RETIRADA NA LOJA (release 1.5.3): sem prazo de entrega (não
+    // há entrega) e sem "pronto agora" — o endereço REAL da loja
+    // que a edge mandou e o aviso neutro de esperar a loja.
+    const retirada = ehRetiradaNaLoja(option.id);
+    const selos = retirada ? [] : selosDoCartao(option.id);
+    // NOME E LOGO (pedido do dono, 23/09/2026): título limpo SEM repetir
+    // transportadora/serviço no subtítulo ("Loggi Express", não "Loggi —
+    // Express" + "Loggi — Express · via Melhor Envio"); logo oficial da
+    // transportadora REAL à esquerda e, menor, o do agregador no "via".
+    // Só exibição — o objeto `option` segue intacto para o pedido.
+    const marca = retirada ? null : marcaDoFrete(option);
+    const titulo = marca?.titulo || option.name;
+
+    // Preço FINAL desta modalidade, e o que exibir em volta dele. Cada
+    // cartão decide sozinho — nunca mais um "isFree" carimbado em TODA a
+    // lista pela regra de outra modalidade (o bug da onda D-1/T2).
+    const precoFinal = precoFinalDaOpcao(option, contextoDoPreco);
+    const gratisDesteCartao = !retirada && precoFinal === 0;
+    const nacional = !ehModalidadeDaLoja(option.id);
+    const precoCheio = nacional ? option.precoCheio : undefined;
+    const temDescontoNaoGratis =
+      !gratisDesteCartao &&
+      typeof precoCheio === "number" &&
+      precoCheio > precoFinal;
+    // Esta opção é nacional, NÃO foi beneficiada, e alguma outra da lista
+    // foi — a nota "vale só na mais barata" explica por que ESTA aqui
+    // continua no preço cheio.
+    const naoBeneficiadaComAvisoDeAlcance =
+      nacional &&
+      !gratisDesteCartao &&
+      !temDescontoNaoGratis &&
+      algumaNacionalBeneficiadaSoNaMaisBarata;
+
+    return (
+      <button
+        key={option.id}
+        type="button"
+        // Laudo de acessibilidade 05/09, A1 (ALTA): a escolha é
+        // anunciada por `aria-pressed`.
+        aria-pressed={isSelected}
+        onClick={() => {
+          haptic.light();
+          selecaoVivaRef.current = option;
+          idTocadoNestaMontagemRef.current = option.id;
+          escolhaDaClienteViaPropRef.current =
+            escolhaDaClienteViaPropRef.current === undefined ? undefined : true;
+          onSelectOption(option, "cliente");
+          // MODO RESUMO: escolher uma opção na lista aberta volta ao
+          // resumo compacto, já com a nova opção — a pessoa não precisa
+          // recolher manualmente depois de decidir.
+          if (modoResumo) setDetalhesAbertosNoResumo(false);
+        }}
+        className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
+          isSelected
+            ? "border-primary bg-primary text-white shadow-md shadow-black/10"
+            : "border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          {marca?.transportadora ? (
+            <span className="relative shrink-0">
+              <LogoDaTransportadora
+                slug={marca.transportadora.slug}
+                nome={marca.transportadora.nome}
+                tamanho={28}
+                className="w-12 border border-zinc-100"
+              />
+              {isSelected && (
+                <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-white text-primary shadow-sm">
+                  <Check className="size-3" aria-hidden="true" />
+                </span>
+              )}
+            </span>
+          ) : (
+            <div
+              className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
+                isSelected
+                  ? "border-white/20 bg-white/20 text-white"
+                  : "border-zinc-100 bg-zinc-50 text-zinc-500"
+              }`}
+            >
+              {isSelected ? (
+                <Check className="size-4" />
+              ) : retirada ? (
+                <Store className="size-4" />
+              ) : (
+                <Truck className="size-4" />
+              )}
+            </div>
+          )}
+          <div>
+            {selos.length > 0 && (
+              <div className="mb-0.5 flex flex-wrap gap-1">
+                {selos.map((selo) => (
+                  <span
+                    key={selo}
+                    className={`rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${
+                      isSelected
+                        ? "bg-white/20 text-white"
+                        : "bg-emerald-100 text-emerald-700"
+                    }`}
+                  >
+                    {selo}
+                  </span>
+                ))}
+              </div>
+            )}
+            <span className="block text-[11px] font-bold leading-snug">
+              {titulo}
+            </span>
+            {/* Subtítulo SÓ quando acrescenta (Correios · PAC atrás de
+                "Entrega econômica"); o "via" é selo à parte, com o logo do
+                agregador — nunca a transportadora de novo. */}
+            {(marca?.subtitulo || marca?.agregador) && (
+              <span
+                className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[9px] leading-snug ${
+                  isSelected ? "text-zinc-200" : "text-zinc-500"
+                }`}
+              >
+                {marca.subtitulo && <span>{marca.subtitulo}</span>}
+                {marca.subtitulo && marca.agregador && (
+                  <span aria-hidden="true">·</span>
+                )}
+                {marca.agregador && (
+                  <SeloDoAgregador
+                    slug={marca.agregador.slug}
+                    nome={marca.agregador.nome}
+                    className={`text-[9px] ${isSelected ? "text-zinc-200" : "text-zinc-500"}`}
+                  />
+                )}
+              </span>
+            )}
+            {retirada ? (
+              <>
+                {option.pickupAddress && (
+                  <span
+                    className={`mt-0.5 block text-[10px] leading-snug ${
+                      isSelected ? "text-zinc-200" : "text-zinc-500"
+                    }`}
+                  >
+                    Retire em: {option.pickupAddress}
+                  </span>
+                )}
+                <span
+                  className={`mt-0.5 block text-[9px] leading-snug ${
+                    isSelected ? "text-zinc-300" : "text-zinc-400"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
-                        isSelected
-                          ? "border-white/20 bg-white/20 text-white"
-                          : "border-zinc-100 bg-zinc-50 text-zinc-500"
-                      }`}
-                    >
-                      {isSelected ? (
-                        <Check className="size-4" />
-                      ) : (
-                        <Truck className="size-4" />
-                      )}
-                    </div>
-                    <div>
-                      <span className="block text-[11px] font-bold leading-snug">
-                        {option.name}
-                      </span>
-                      <span
-                        className={`mt-0.5 block text-[9px] leading-none ${
-                          isSelected ? "text-zinc-300" : "text-zinc-400"
-                        }`}
-                      >
-                        Entrega em até {option.deliveryDays}{" "}
-                        {option.deliveryDays > 1 ? "dias úteis" : "dia útil"}
-                      </span>
-                    </div>
-                  </div>
+                  Aguarde a confirmação da loja para retirar
+                </span>
+              </>
+            ) : (
+              <span
+                className={`mt-0.5 block text-[9px] leading-none ${
+                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                }`}
+              >
+                {/* Prazo 0 (release 1.5.7, EMENDA R1-4): "no mesmo dia" —
+                    nunca "até 0 dia útil", um prazo que não existe. */}
+                {option.deliveryDays === 0
+                  ? "Entrega no mesmo dia"
+                  : `Entrega em até ${option.deliveryDays} ${
+                      option.deliveryDays > 1 ? "dias úteis" : "dia útil"
+                    }`}
+              </span>
+            )}
+            {/* Contrato §5: a mesma nota vale para toda nacional NÃO
+                beneficiada, ao lado de outra que foi -- explica por que
+                esta continua no preço cheio, em vez de a cliente achar que
+                é um erro. */}
+            {naoBeneficiadaComAvisoDeAlcance && (
+              <span
+                className={`mt-0.5 block text-[9px] leading-snug ${
+                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                }`}
+              >
+                O benefício da loja vale só na opção mais barata.
+              </span>
+            )}
+          </div>
+        </div>
 
-                  <div className="flex flex-col justify-center text-right">
-                    {isFree ? (
-                      <div className="flex items-center gap-1">
-                        <Sparkles className="size-3 fill-emerald-500/20 text-emerald-500" />
-                        <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
-                          GRÁTIS
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs font-black tracking-tight">
-                        {formatCurrency(priceToDisplay)}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
+        <div className="flex flex-col items-end justify-center text-right">
+          {retirada ? (
+            <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
+              Grátis
+            </span>
+          ) : gratisDesteCartao ? (
+            <div className="flex items-center gap-1">
+              <Sparkles className="size-3 fill-emerald-500/20 text-emerald-500" />
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
+                GRÁTIS
+              </span>
+            </div>
+          ) : temDescontoNaoGratis ? (
+            <div className="flex flex-col items-end">
+              <span
+                className={`text-[9px] font-semibold leading-none line-through ${
+                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                }`}
+              >
+                {formatCurrency(precoCheio as number)}
+              </span>
+              <span className="text-xs font-black tracking-tight">
+                {formatCurrency(precoFinal)}
+              </span>
+              <span
+                className={`text-[8px] font-black uppercase tracking-wide ${
+                  isSelected ? "text-white/80" : "text-emerald-600"
+                }`}
+              >
+                Desconto da loja
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs font-black tracking-tight">
+              {formatCurrency(precoFinal)}
+            </span>
+          )}
+        </div>
+      </button>
+    );
+  }
 
-      {/* Exibição honesta (onda D-1): sem opção de entrega E sem grátis da
-          loja, o estado é "A calcular" — nunca silêncio nem preço inventado.
-          Aparece só depois de uma cotação real que voltou vazia (loja sem
-          transportadora conectada, resposta honesta da edge da frente C);
-          com erro na tela, o erro já é o aviso. */}
-      {!isFree &&
-        cotouSemOpcoes &&
-        !loading &&
-        !error &&
-        options.length === 0 && (
-          <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[9.5px] font-medium text-zinc-500">
-            <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
-            <span>
-              A calcular: nenhuma opção de entrega para este CEP — combine a
-              entrega com a loja.
+  // MODO RESUMO: uma linha compacta com a opção JÁ escolhida — logo/nome
+  // limpo, "via <agregador>", prazo, preço e o botão "Trocar" (abre a
+  // lista completa, exatamente o corpo de sempre). Mesma composição visual
+  // de `renderizarCartaoDeOpcao`, sem o clique de seleção nem o destaque
+  // "Mais barata"/"Mais rápida" — aqui já não há lista para destacar
+  // dentro dela.
+  function renderizarResumoDaOpcao() {
+    if (!selectedOption) return null;
+    const option = selectedOption;
+    const retirada = ehRetiradaNaLoja(option.id);
+    const marca = retirada ? null : marcaDoFrete(option);
+    const tituloDaOpcao = marca?.titulo || option.name;
+    // Mesma régua do cartão (`renderizarCartaoDeOpcao`): preço FINAL da
+    // modalidade por `precoFinalDaOpcao` (FRETE V3) — nunca um "isFree"
+    // global.
+    const precoExibido = precoFinalDaOpcao(option, contextoDoPreco);
+
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-100 bg-white p-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {marca?.transportadora ? (
+            <LogoDaTransportadora
+              slug={marca.transportadora.slug}
+              nome={marca.transportadora.nome}
+              tamanho={28}
+              className="w-12 shrink-0 border border-zinc-100"
+            />
+          ) : (
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-100 bg-zinc-50 text-zinc-500">
+              {retirada ? (
+                <Store className="size-4" />
+              ) : (
+                <Truck className="size-4" />
+              )}
+            </div>
+          )}
+          <div className="min-w-0">
+            <span className="block truncate text-[11px] font-bold leading-snug text-zinc-800">
+              {tituloDaOpcao}
+            </span>
+            {(marca?.subtitulo || marca?.agregador) && (
+              <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[9px] leading-snug text-zinc-500">
+                {marca?.subtitulo && <span>{marca.subtitulo}</span>}
+                {marca?.subtitulo && marca?.agregador && (
+                  <span aria-hidden="true">·</span>
+                )}
+                {marca?.agregador && (
+                  <SeloDoAgregador
+                    slug={marca.agregador.slug}
+                    nome={marca.agregador.nome}
+                    className="text-[9px] text-zinc-500"
+                  />
+                )}
+              </span>
+            )}
+            <span className="mt-0.5 block text-[9px] leading-snug text-zinc-400">
+              {retirada
+                ? option.pickupAddress
+                  ? `Retire em: ${option.pickupAddress}`
+                  : "Aguarde a confirmação da loja para retirar"
+                : option.deliveryDays === 0
+                  ? "Entrega no mesmo dia"
+                  : `Entrega em até ${option.deliveryDays} ${
+                      option.deliveryDays > 1 ? "dias úteis" : "dia útil"
+                    }`}
             </span>
           </div>
-        )}
-    </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {retirada || precoExibido === 0 ? (
+            <span className="text-xs font-black uppercase tracking-wider text-emerald-500">
+              Grátis
+            </span>
+          ) : (
+            <span className="text-xs font-black tracking-tight text-zinc-800">
+              {formatCurrency(precoExibido)}
+            </span>
+          )}
+          {/* Alvo ≥44px (laudo de acessibilidade — toque confiável no
+              celular): `min-h-11` = 44px na escala do Tailwind deste
+              projeto. */}
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light();
+              setDetalhesAbertosNoResumo(true);
+            }}
+            className="flex min-h-11 items-center rounded-xl bg-zinc-900 px-3 text-[10px] font-black uppercase tracking-wider text-white transition-opacity hover:opacity-90"
+          >
+            Trocar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <section
+      aria-label="Entrega e frete"
+      className="w-full space-y-3 rounded-3xl border border-zinc-100 bg-zinc-50/50 p-4"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <MapPin className="mt-0.5 size-4 shrink-0 text-zinc-500" />
+          <div className="min-w-0">
+            <span className="block text-[11px] font-black uppercase tracking-wider text-zinc-700">
+              {titulo}
+            </span>
+            {destinoValido && resumo && (
+              <span className="mt-0.5 block text-[11px] font-medium leading-snug text-zinc-500">
+                {resumo}
+              </span>
+            )}
+          </div>
+        </div>
+        {acaoDoEndereco && <div className="shrink-0">{acaoDoEndereco}</div>}
+      </div>
+
+      {exibindoResumoDaOpcao ? (
+        renderizarResumoDaOpcao()
+      ) : (
+        <>
+          {!destinoValido && (
+            <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-600">
+              <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
+              <span>{mensagemSemDestino}</span>
+            </div>
+          )}
+
+          {destinoValido && loading && (
+            // Laudo de acessibilidade 05/09: estado de espera anunciado sem
+            // roubar o foco.
+            <div
+              role="status"
+              className="flex items-center gap-2 text-[11px] font-semibold text-zinc-500"
+            >
+              <span className="size-3 animate-spin rounded-full border-2 border-zinc-200 border-t-primary" />
+              Calculando frete e prazo...
+            </div>
+          )}
+
+          {/* FRETE V3 (T3, 23/09): a supressão por "isFree" GLOBAL morreu com
+              ele — toda modalidade grátis (local, `free-shipping-promo`, ou
+              nacional já a R$ 0) chega como uma OPÇÃO de verdade na lista
+              (`options.length > 0`), nunca como lista vazia. Sem essa
+              modalidade "escondendo" o erro, ele volta a aparecer sempre que
+              houver — o que é o correto: se a cotação falhou, a cliente
+              precisa saber, mesmo que outra modalidade (local) já esteja OK. */}
+          {destinoValido && error && (
+            <div className="flex items-start justify-between gap-2 rounded-2xl border border-amber-100 bg-amber-50 p-2.5 text-[11px] font-medium text-amber-800">
+              {/* Laudo de acessibilidade 05/09, M1: `role="alert"` fala na hora
+                  — só a frase; o botão fica fora do que é anunciado. */}
+              <div role="alert" className="flex items-start gap-1.5">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+                <span>{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={tentarDeNovo}
+                disabled={loading}
+                className="flex shrink-0 select-none items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
+              >
+                <RefreshCw className="size-3" />
+                Tentar de novo
+              </button>
+            </div>
+          )}
+
+          {/* Lista de opções. SEM animação de saída de propósito: trocar de
+              endereço invalida a cotação na hora, e uma saída animada deixava as
+              opções do destino ANTERIOR na tela — e clicáveis — durante o fade. */}
+          {destinoValido && options.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-2"
+            >
+              {opcaoDeRetirada && renderizarCartaoDeOpcao(opcaoDeRetirada)}
+              {cartoesDeDestaque.map(renderizarCartaoDeOpcao)}
+              {outrasVisiveis.map(renderizarCartaoDeOpcao)}
+              {/* "+ Ver outras opções" — discreto de propósito (o pedido do
+                  dono): não compete visualmente com os cartões de destaque.
+                  Só aparece quando existe algo além dos destaques/retirada.
+                  Recolher não troca a escolha (a opção escolhida continua
+                  visível em `outrasVisiveis` mesmo fechada). */}
+              {destaques.outras.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setOutrasExpandidas((v) => !v)}
+                  className="w-full select-none py-1 text-center text-[10px] font-semibold text-zinc-400 underline-offset-2 hover:text-zinc-600 hover:underline"
+                >
+                  {outrasExpandidas
+                    ? "Ver menos opções"
+                    : `+ Ver outras opções (${destaques.outras.length})`}
+                </button>
+              )}
+            </motion.div>
+          )}
+
+          {/* Exibição honesta (onda D-1): sem opção de entrega nenhuma, o
+              estado é "A calcular" — nunca silêncio nem preço inventado. FRETE
+              V3 (T3, 23/09): a supressão por "isFree" GLOBAL saiu daqui pelo
+              mesmo motivo do bloco de erro acima. */}
+          {destinoValido &&
+            cotouSemOpcoes &&
+            !loading &&
+            !error &&
+            options.length === 0 && (
+              <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-500">
+                <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
+                <span>
+                  A calcular: nenhuma opção de entrega para este endereço —
+                  combine a entrega com a loja.
+                </span>
+              </div>
+            )}
+        </>
+      )}
+    </section>
   );
 }

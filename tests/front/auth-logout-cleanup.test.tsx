@@ -286,6 +286,12 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
       "ikcous_shipping_cache_01310100",
       JSON.stringify([{ id: "y" }]),
     );
+    // Release 1.5.3: o cache de frete ganhou a chave v2 (com o contexto da
+    // loja) sob o MESMO prefixo — o logout a leva junto.
+    localStorage.setItem(
+      "ikcous_shipping_cache_v2_38500000",
+      JSON.stringify({ contexto: "x", assinatura: "a", gravadoEm: 0 }),
+    );
 
     const cb = callback();
     await act(async () => {
@@ -375,4 +381,247 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
 
     expect(localStorage.getItem("ikcous_is_admin_user-a")).not.toBe("true");
   });
+});
+
+// R12 (04/10/2026) — a gaveta de imagens do service worker guardava endereço
+// ASSINADO de bucket privado (foto de devolução, por `createSignedUrl`), e a
+// cópia sobrevivia ao logout no aparelho. A limpeza local de sessão passa a
+// pedir ao SW que jogue fora tudo que não é público — e o logout não pode
+// depender de o SW existir, responder ou funcionar.
+describe("AuthContext — pedido de purga ao service worker no logout (R12)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.stubGlobal("localStorage", criarLocalStorageFake());
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    // A propriedade foi definida no próprio objeto pelo teste e precisa SUMIR
+    // (não virar undefined) para o `"serviceWorker" in navigator` do próximo
+    // teste voltar a ser false.
+    Reflect.deleteProperty(navigator, "serviceWorker");
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function instalarServiceWorker(serviceWorker: unknown) {
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      get: () => serviceWorker,
+    });
+  }
+
+  function swQueRecebe() {
+    const postMessage = vi.fn();
+    instalarServiceWorker({
+      controller: null,
+      getRegistration: vi.fn().mockResolvedValue({ active: { postMessage } }),
+    });
+    return postMessage;
+  }
+
+  async function montarLogadoComo(userId: string) {
+    const { AuthContext, AuthProvider } = await montarProvider();
+    const { supabase } = await import("@/lib/supabase");
+    (
+      supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ data: { session: null }, error: null });
+    (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    let callback: AuthChangeCallback = () => {};
+    (
+      supabase.auth.onAuthStateChange as unknown as ReturnType<typeof vi.fn>
+    ).mockImplementation((cb: AuthChangeCallback) => {
+      callback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+    const aoAtualizar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <AuthProvider>
+          <Sonda authContext={AuthContext} aoAtualizar={aoAtualizar} />
+        </AuthProvider>,
+      );
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      callback("SIGNED_IN", sessaoDe(userId));
+      await esperarMicrotarefas();
+    });
+    return { supabase, callback: () => callback, aoAtualizar };
+  }
+
+  it("6. SIGNED_OUT pede ao SW ativo a purga, só com o tipo (nenhuma URL)", async () => {
+    const postMessage = swQueRecebe();
+    const { callback } = await montarLogadoComo("user-a");
+    postMessage.mockClear();
+
+    const cb = callback();
+    await act(async () => {
+      cb("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "PURGAR_ARQUIVOS_PRIVADOS",
+    });
+  });
+
+  it("7. logout com signOut falhando (sem evento SIGNED_OUT) também pede a purga", async () => {
+    const postMessage = swQueRecebe();
+    const { supabase, aoAtualizar } = await montarLogadoComo("user-a");
+    postMessage.mockClear();
+    (
+      supabase.auth.signOut as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ error: { message: "Failed to fetch" } });
+
+    await act(async () => {
+      await ultimoEstado(aoAtualizar)!.logout();
+      await esperarMicrotarefas();
+    });
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "PURGAR_ARQUIVOS_PRIVADOS",
+    });
+  });
+
+  it("8. troca direta de conta na mesma aba (user-a -> user-b) também pede a purga", async () => {
+    const postMessage = swQueRecebe();
+    const { callback } = await montarLogadoComo("user-a");
+    postMessage.mockClear();
+
+    const cb = callback();
+    await act(async () => {
+      cb("SIGNED_IN", sessaoDe("user-b"));
+      await esperarMicrotarefas();
+    });
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "PURGAR_ARQUIVOS_PRIVADOS",
+    });
+  });
+
+  it("10. com controller vivo e getRegistration rejeitando, a mensagem chega pelo controller e o logout conclui", async () => {
+    const doController = vi.fn();
+    instalarServiceWorker({
+      controller: { postMessage: doController },
+      getRegistration: vi.fn().mockRejectedValue(new Error("InvalidState")),
+    });
+    const { supabase, aoAtualizar } = await montarLogadoComo("user-a");
+    doController.mockClear();
+    (
+      supabase.auth.signOut as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ error: { message: "Failed to fetch" } });
+
+    await act(async () => {
+      await ultimoEstado(aoAtualizar)!.logout();
+      await esperarMicrotarefas();
+    });
+
+    expect(doController).toHaveBeenCalledWith({
+      type: "PURGAR_ARQUIVOS_PRIVADOS",
+    });
+    expect(ultimoEstado(aoAtualizar)!.hasSession).toBe(false);
+  });
+
+  it("11. controller que lança não impede o caminho da registration (SW em espera também recebe)", async () => {
+    const doEmEspera = vi.fn();
+    instalarServiceWorker({
+      controller: {
+        postMessage: () => {
+          throw new Error("controller morto");
+        },
+      },
+      getRegistration: vi.fn().mockResolvedValue({
+        active: null,
+        waiting: { postMessage: doEmEspera },
+      }),
+    });
+    const { callback } = await montarLogadoComo("user-a");
+    doEmEspera.mockClear();
+
+    const cb = callback();
+    await act(async () => {
+      cb("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+
+    expect(doEmEspera).toHaveBeenCalledWith({
+      type: "PURGAR_ARQUIVOS_PRIVADOS",
+    });
+  });
+
+  it.each([
+    [
+      "getRegistration rejeita",
+      () =>
+        instalarServiceWorker({
+          controller: null,
+          getRegistration: vi.fn().mockRejectedValue(new Error("sem SW")),
+        }),
+    ],
+    [
+      "postMessage lança",
+      () =>
+        instalarServiceWorker({
+          controller: null,
+          getRegistration: vi.fn().mockResolvedValue({
+            active: {
+              postMessage: () => {
+                throw new Error("SW morto");
+              },
+            },
+          }),
+        }),
+    ],
+    [
+      "ler navigator.serviceWorker lança",
+      () =>
+        Object.defineProperty(navigator, "serviceWorker", {
+          configurable: true,
+          get: () => {
+            throw new Error("SecurityError");
+          },
+        }),
+    ],
+    ["navegador sem service worker", () => {}],
+  ])(
+    "9. %s: o logout termina igual — deslogado e sem token local",
+    async (_nome, prepararSw) => {
+      prepararSw();
+      const { supabase, aoAtualizar } = await montarLogadoComo("user-a");
+      localStorage.setItem(
+        "sb-teste-auth-token",
+        JSON.stringify({ access_token: "tok-user-a" }),
+      );
+      (
+        supabase.auth.signOut as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({ error: { message: "Failed to fetch" } });
+
+      await act(async () => {
+        await ultimoEstado(aoAtualizar)!.logout();
+        await esperarMicrotarefas();
+      });
+
+      const final = ultimoEstado(aoAtualizar)!;
+      expect(final.hasSession).toBe(false);
+      expect(final.userId).toBeNull();
+      expect(todasAsChaves().some((k) => k.includes("-auth-token"))).toBe(
+        false,
+      );
+    },
+  );
 });

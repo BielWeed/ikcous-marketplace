@@ -29,49 +29,75 @@
  * meses — como a regra de frete grátis, que chegou a estar escrita em sete
  * lugares (#53).
  *
- * SEM PUSH AQUI
+ * EFEITOS DO PAGAMENTO CONFIRMADO: OS MESMOS DO WEBHOOK (FASE 2, 04/10/2026)
  *
- * Quem avisa o lojista é o `webhook-mercadopago`. Se esta função também
- * avisasse, um pedido que o webhook JÁ confirmou (e que só está na fila de
- * candidatos por causa de uma corrida improvável) geraria dois avisos do
- * mesmo pedido. O `pago_apos_expirar` encontrado aqui aparece na fila de
- * atenção da Task 9 — não é um push perdido, é um push que não é desta
- * função.
+ * Quando ESTA função é quem confirma (a RPC devolve 'pago' ou
+ * 'pago_apos_expirar' para ela — e só para um chamador, sob FOR UPDATE), os
+ * efeitos saem do módulo ÚNICO `_shared/efeitos-do-pagamento.ts`, o mesmo que
+ * o webhook e a confirmação imediata usam: push ao lojista ("Pedido pago" /
+ * "Pagamento fora do fluxo"), comprovante ao cliente ('pago') ou aviso honesto
+ * de pagamento atrasado ('pago_apos_expirar'). Quem recebe 'ja_pago' (o
+ * webhook chegou antes) não dispara nada: não existe push em dobro.
  *
- * COMPROVANTE AO CLIENTE: AQUI SIM (PEÇA 5, revisão de
- * dinheiro-não-recebido, 12/09/2026)
+ * ATÉ 04/10 o cron NÃO avisava o lojista de venda 'pago' ("`pago` continua sem
+ * push daqui: o webhook é quem avisa venda normal") — o argumento "o webhook
+ * já avisou" não vale, porque o cron só vê o pedido que o webhook PERDEU, e
+ * a RPC só devolve 'pago' para quem fez a transição. Um pedido fechado por
+ * aqui (c35ce4dd) ficava sem aviso nenhum ao lojista. O teto de 5 s do push e
+ * o "falha aberto" (push fora do ar nunca para a reconciliação) agora são do
+ * módulo.
  *
- * O push acima fica de fora porque não tem trava contra duplicidade — dois
- * pushes do mesmo pedido viram spam sem jeito de evitar. O comprovante ao
- * CLIENTE é diferente: `reivindicar_email_de_confirmacao` (RPC, UPDATE
- * condicional atômico) é uma reserva ÚNICA por pedido, e o
- * `webhook-mercadopago` já compete por ela do mesmo jeito. ANTES desta peça,
- * um pagamento que o webhook perdeu — a razão de esta função existir — e que
- * a reconciliação confirmava fechava o pedido como pago sem o cliente
- * receber NADA: o botão manual de reenvio do painel depende do lojista notar
- * a ausência, e nada avisa. Por isso, a partir daqui, todo 'pago' confirmado
- * aqui chama `enviarComprovantePedido` (`_shared/comprovante.ts`, o MESMO
- * caminho do webhook) e todo 'pago_apos_expirar' chama um aviso PRÓPRIO
- * (`dispararAvisoDePagamentoAtrasadoReal`, abaixo) — que não pode reusar o
- * comprovante padrão pelo mesmo motivo documentado ao lado da chamada
- * equivalente em `webhook-mercadopago/index.ts`: o texto padrão mentiria
- * duas vezes ("aguardando confirmação", "entra na fila de separação") para
- * um pedido já confirmado e `status='cancelled'`.
+ * RECONSULTA DE CONTESTAÇÃO PRESA (FASE 2, R3 do Lote A): uma reserva de
+ * contestação (linha `sistema` em `em_processamento`) só se resolve quando o
+ * MP notifica a decisão. Se a notificação não vier, a reserva trava o saldo do
+ * pedido para sempre. Este cron reconsulta o caso (`reconsulta-de-contestacao.ts`)
+ * e entrega o resultado ao banco pelo MESMO caminho do webhook
+ * (`registrarContestacao`, `_shared/contestacao.ts`).
+ *
+ * COMPROVANTE AO CLIENTE (PEÇA 5, revisão de dinheiro-não-recebido,
+ * 12/09/2026): ANTES dela, um pagamento que o webhook perdeu — a razão de
+ * esta função existir — e que a reconciliação confirmava fechava o pedido
+ * como pago sem o cliente receber NADA. A reserva `reivindicar_email_de_
+ * confirmacao` é única por pedido (webhook e cron competem por ela), e o
+ * 'pago_apos_expirar' recebe um texto PRÓPRIO, nunca o comprovante padrão
+ * (mentiria "aguardando confirmação" e "entra na fila de separação" para um
+ * pedido já confirmado e `cancelled`).
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  buscarOrdersDoPedido,
   consultarOrder,
   consultarPagamento,
   extrairValorDaOrder,
   fetchComTempo,
   idEhClassico,
+  limiteInferiorDoSentinela,
   mapearStatus,
   mapearStatusOrder,
+  parcelasDaOrder,
+  recusaLiberaAVaga,
+  resolverSentinela,
+  tipoDoPagamentoDaOrder,
   TOLERANCIA_DE_VALOR,
+  vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { readKey } from "../_shared/webpush.ts";
 import {
+  avisarAdminUmaVez,
+  dispararPushContadoReal,
+} from "../_shared/aviso-ao-lojista.ts";
+import {
+  reconsultarContestacoesPresas,
+  type ResumoDaReconsulta,
+} from "../_shared/reconsulta-de-contestacao.ts";
+import { STATUS_DA_CONTESTACAO } from "../_shared/contestacao.ts";
+// Tarefa mp-2 (15/09/2026): a chave do Mercado Pago pode ser a do LOJISTA
+// (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
+// fecha a porta quando não dá para decidir com segurança, é este módulo.
+import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
+import {
+  autorizacaoPeloBanco,
   confirmarPorConsulta,
   consultarTransacaoDaOrder,
   executarEstorno,
@@ -79,15 +105,20 @@ import {
   type PedidoParaEstorno,
   type ResultadoEstorno,
 } from "../_shared/estorno.ts";
-// PEÇA 5 (12/09/2026): `enviarComprovantePedido` é o MESMO caminho que
-// `webhook-mercadopago` já usa para 'pago'. `enviarEmail`/
-// `remetenteConfigurado`/`escaparHtml`/`numeroDoPedido` são para o aviso
-// PRÓPRIO de 'pago_apos_expirar' (`dispararAvisoDePagamentoAtrasadoReal`,
-// abaixo) — ver o comentário dela para o porquê de não reusar o comprovante
-// padrão.
-import { enviarComprovantePedido } from "../_shared/comprovante.ts";
-import { enviarEmail, remetenteConfigurado } from "../_shared/smtp.ts";
-import { escaparHtml, numeroDoPedido } from "../_shared/pedido.ts";
+// FASE 2 (04/10/2026): os efeitos do pagamento confirmado (push ao lojista,
+// comprovante ao cliente, aviso de pagamento atrasado) saem do módulo ÚNICO
+// dos três caminhos que confirmam — o MESMO que o webhook usa.
+import {
+  aplicarEfeitosDoPagamentoConfirmado,
+  type DepsDosEfeitos,
+  desfechoComEfeito,
+  TETO_DO_PUSH_MS,
+} from "../_shared/efeitos-do-pagamento.ts";
+// Os testes antigos importam estes dois DAQUI: a definição é uma só.
+export {
+  assuntoDoAvisoDePagamentoAtrasado,
+  htmlDoAvisoDePagamentoAtrasado,
+} from "../_shared/efeitos-do-pagamento.ts";
 
 /** Único texto do app que manda o lojista ao painel do MP (Restrições
  * globais do plano) — só depois de 5 tentativas sem confirmação. */
@@ -124,7 +155,9 @@ async function gravarDesfechoDoEstorno(
   if (resultado.tipo === "concluido") {
     const { error } = await supabase.rpc("concluir_estorno", {
       p_refund_id: refundId,
-      p_mp_refund_id: resultado.mp_refund_id,
+      // '' (refund sem id legível na resposta) vira NULL — o COALESCE da RPC
+      // preserva o que já existia (revisão de 29/09).
+      p_mp_refund_id: resultado.mp_refund_id || null,
       p_mp_status: resultado.mp_status,
       p_mp_status_detail: resultado.mp_status_detail,
     });
@@ -197,7 +230,7 @@ async function gravarDesfechoDoEstorno(
   // 4296/order_already_refunded (o MP contradisse a si mesmo) — é terminal
   // mesmo (a alternativa B do I-A garante que o caminho DIRETO desta função
   // nunca produz `falhou` por "ainda não apareceu").
-  const { error } = await supabase
+  let terminal = supabase
     .from("order_refunds")
     .update({
       status: resultado.tipo,
@@ -206,6 +239,11 @@ async function gravarDesfechoDoEstorno(
     })
     .eq("id", refundId)
     .in("status", ["em_processamento"]);
+  // R1 (20261196000000): `recusado` = nenhum POST saiu. Se outro executor
+  // autorizou um POST desta linha depois da nossa leitura, o carimbo existe
+  // e 0 linhas voltam — a reserva fica (a linha é incerta agora).
+  if (resultado.tipo === "recusado") terminal = terminal.is("post_autorizado_em", null);
+  const { error } = await terminal;
   if (error) {
     console.error("reconciliar-pagamentos: falha ao gravar o desfecho terminal do estorno", refundId, error);
   }
@@ -236,193 +274,108 @@ function segredoConfere(esperado: string, recebido: string): boolean {
 }
 
 /**
- * PEÇA 5 (revisão de dinheiro-não-recebido, 12/09/2026): manda ao CLIENTE o
- * comprovante de um pedido que a RECONCILIAÇÃO confirmou como 'pago' — o
- * MESMO caminho que `webhook-mercadopago` usa (`enviarComprovantePedido`,
- * `_shared/comprovante.ts`), inclusive a MESMA trava anti-duplicata
- * (`reivindicar_email_de_confirmacao`): os dois competem pela mesma reserva,
- * então o mesmo pedido nunca recebe dois comprovantes.
+ * Resolve um SENTINELA na reconciliação — só no sentido de ADOTAR um cartão
+ * já CAPTURADO (auditoria de 30/09/2026, item 2; ver o comentário no laço do
+ * handler). Devolve o id da order adotada, ou `null` quando não há nada a
+ * adotar (busca falhou/vazia/inconclusiva, order viva ou morta, ou outra
+ * escrita trocou a vaga no meio do caminho — nunca sobrescreve: o UPDATE
+ * exige o MESMO sentinela no WHERE).
  *
- * Erros aqui NUNCA sobem: o pedido já está 'pago' no banco quando isto roda
- * — uma falha de e-mail não pode abortar o resto do lote de reconciliação.
+ * `metodo_online`/`parcelas` gravados JUNTO do id, lidos da ORDER — mesma
+ * regra da adoção do webhook e da resolução do criar-pagamento (Achado S3):
+ * sem isto, o comprovante e o Financeiro contariam a venda como PIX.
+ *
+ * Falha de BANCO sobe (throw) — o catch do laço conta em `falhas` e o
+ * candidato volta no próximo ciclo, igual ao resto deste arquivo.
  */
-async function dispararComprovanteReal(args: {
+async function adotarCartaoCapturadoDoSentinela(args: {
   supabase: ReturnType<typeof createClient>;
-  orderId: string;
-}): Promise<void> {
-  try {
-    const desfecho = await enviarComprovantePedido({ supabase: args.supabase, orderId: args.orderId });
-    if (!desfecho.ok) {
-      console.error(
-        "reconciliar-pagamentos: comprovante ao cliente não enviado",
-        { orderId: args.orderId, motivo: desfecho.motivo },
-      );
-    }
-  } catch (erro) {
+  token: string;
+  pedidoId: string;
+  sentinela: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string | null> {
+  const { data: pedido, error: erroPedido } = await args.supabase
+    .from("marketplace_orders")
+    .select("created_at, total, total_amount")
+    .eq("id", args.pedidoId)
+    .maybeSingle();
+  if (erroPedido) throw erroPedido;
+
+  const busca = await buscarOrdersDoPedido({
+    token: args.token,
+    pedidoId: args.pedidoId,
+    desde: String((pedido as Record<string, unknown> | null)?.created_at ?? ""),
+    fetchImpl: args.fetchImpl,
+  });
+  if (!busca.ok) return null;
+
+  const resolucao = resolverSentinela(busca.orders, limiteInferiorDoSentinela(args.sentinela));
+  if (resolucao === null || resolucao.acao !== "gravar") return null;
+  const order = resolucao.order;
+  if (String(order.status ?? "") !== "processed") return null;
+  const idOrder = order.id === null || order.id === undefined ? "" : String(order.id);
+  if (idOrder.length === 0) return null;
+
+  // Revisão de 30/09/2026 (MENOR 1): `processed` na BUSCA não basta — um
+  // `processed:partially_refunded` (estorno parcial à mão no painel) ou um
+  // valor que não bate com o pedido nunca seria confirmado pelo laço, e a
+  // vaga já teria perdido o sentinela para ele: o webhook do cartão certo
+  // cairia em `cartao_divergente`. Mesma régua da adoção do webhook: só
+  // adota o que a RECONSULTA por id mapeia como "pago" e com valor que bate.
+  const reconsulta = await consultarOrder({
+    token: args.token,
+    orderId: idOrder,
+    fetchImpl: args.fetchImpl,
+    corpoNoLog: false,
+  });
+  if (!reconsulta.ok) return null;
+  const orderReconsultada = reconsulta.order as Record<string, unknown>;
+  const statusReconsultado = mapearStatusOrder(
+    String(orderReconsultada.status ?? ""),
+    String(orderReconsultada.status_detail ?? ""),
+  );
+  if (statusReconsultado !== "pago") return null;
+  const linha = pedido as Record<string, unknown> | null;
+  const brutoTotal = linha?.total ?? linha?.total_amount;
+  const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
+  const valorAprovado = extrairValorDaOrder(orderReconsultada);
+  if (
+    typeof valorAprovado === "number" &&
+    Number.isFinite(totalDoPedido) &&
+    Math.abs(valorAprovado - totalDoPedido) > TOLERANCIA_DE_VALOR
+  ) {
     console.error(
-      "reconciliar-pagamentos: falha ao disparar comprovante ao cliente",
-      args.orderId,
-      erro,
+      "reconciliar-pagamentos: cartão capturado atrás do sentinela com VALOR divergente — não adotado; conferir no painel do MP",
+      { orderId: args.pedidoId, idOrder, valorAprovado, totalDoPedido },
     );
+    return null;
   }
-}
 
-/**
- * PEÇA 5: o texto HONESTO para 'pago_apos_expirar' — nunca o comprovante
- * padrão (`htmlDoPedido`, `_shared/comprovante.ts`), que mentiria "aguardando
- * confirmação" e "entra na fila de separação" para um pedido já confirmado e
- * `status='cancelled'`.
- *
- * DUPLICADA de propósito em `webhook-mercadopago/index.ts` (mesmo nome,
- * mesmo texto) — `_shared/comprovante.ts` não é arquivo desta peça (outro
- * executor do mesmo lote edita em paralelo), e os dois arquivos chamam
- * `serve()` no topo (importar um de dentro do outro subiria um segundo
- * servidor HTTP dentro da function errada — a mesma razão que já tirou
- * `numeroDoPedido`/`formatarBRL` de `_shared/pedido.ts` para as cópias
- * antigas de `notify-new-order`/`webhook-mercadopago`). Consolidar as duas
- * cópias em `_shared/comprovante.ts` é candidato a tarefa própria, com
- * revisão própria — a sessão principal decide, não este executor.
- *
- * MESMA trava anti-duplicata do comprovante padrão: `reivindicar_email_de_
- * confirmacao` é uma reserva ÚNICA por pedido — os dois textos (este e o
- * padrão) competem pela MESMA reserva, e o webhook (que chama a cópia
- * gêmea desta função) compete pela mesma reserva também.
- *
- * NUNCA afirmar "prazo" nem "automaticamente" aqui (achado bloqueante da
- * revisão, 12/09/2026): `confirmar_pagamento` devolve 'pago_apos_expirar' por
- * DOIS caminhos (migration 20260810000000, linhas 118-125 e 173-180) — a
- * varredura de 30 min (aí sim é "prazo" e "automático") E o cliente que
- * CANCELA pelo app com o QR na mão e paga o PIX segundos depois, dentro da
- * janela (aí "prazo" e "automático" são as duas mentiras). Mesmo motivo do
- * "fora do fluxo", não "fora do prazo" do push em `webhook-mercadopago/
- * index.ts`: só "já estava cancelado" e "estoque já tinha voltado" são
- * verdade nos dois casos. EXPORTADA (como a cópia gêmea) para o teste
- * conferir o TEXTO sem tocar SMTP nem banco.
- */
-export function htmlDoAvisoDePagamentoAtrasado(args: {
-  orderId: string;
-  nomeDaLoja: string;
-}): string {
-  const { orderId, nomeDaLoja } = args;
-  const loja = String(nomeDaLoja ?? "").trim();
-  return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; border: 1px solid #e4e4e7; border-radius: 24px; color: #18181b;">
-      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a1a1aa;">
-        Pedido ${escaparHtml(numeroDoPedido(orderId))}
-      </p>
-      ${loja ? `<p style="margin: 0 0 20px; font-size: 18px; font-weight: 800;">${escaparHtml(loja)}</p>` : ""}
-      <p style="margin: 0 0 16px; font-size: 14px; line-height: 20px; color: #3f3f46;">
-        Recebemos a confirmação do seu pagamento para este pedido, mas ele já estava cancelado e o estoque já tinha voltado para a loja quando o pagamento foi confirmado — por isso não entrou na fila de separação.
-      </p>
-      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #3f3f46;">
-        A loja já foi avisada do pagamento e vai entrar em contato para resolver (reenvio, se ainda houver estoque, ou devolução do valor pago).
-      </p>
-    </div>
-  `;
-}
+  const tipo = tipoDoPagamentoDaOrder(orderReconsultada);
+  // INVARIANTE DA VAGA: só a RPC `liberar_cobranca_do_pedido` esvazia a vaga,
+  // e só por prova ou cancelamento confirmado. Esta adoção é CAS — TROCA o
+  // sentinela (conferido no WHERE) pelo id da order, nunca grava NULL.
+  const { data: adotado, error: erroAdocao } = await args.supabase
+    .from("marketplace_orders")
+    .update({
+      gateway_payment_id: idOrder,
+      metodo_online: tipo === "credit_card" ? "credito" : tipo === "debit_card" ? "debito" : null,
+      parcelas: parcelasDaOrder(orderReconsultada),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", args.pedidoId)
+    .eq("gateway_payment_id", args.sentinela)
+    .select("id")
+    .maybeSingle();
+  if (erroAdocao) throw erroAdocao;
+  if (!adotado) return null;
 
-export function assuntoDoAvisoDePagamentoAtrasado(orderId: string, nomeDaLoja: string): string {
-  const loja = String(nomeDaLoja ?? "").trim();
-  const numero = numeroDoPedido(orderId);
-  return loja ? `Pedido ${numero} · ${loja}` : `Pedido ${numero}`;
-}
-
-/**
- * Manda ao CLIENTE um aviso HONESTO de pagamento confirmado FORA do prazo,
- * pela RECONCILIAÇÃO (PEÇA 5, 12/09/2026) — cópia gêmea de
- * `dispararAvisoDePagamentoAtrasadoReal` em `webhook-mercadopago/index.ts`
- * (ver o docstring de `htmlDoAvisoDePagamentoAtrasado`, acima, para o porquê
- * da duplicação). Mesma forma de erro do resto deste arquivo: nunca lança
- * para quem chama.
- */
-async function dispararAvisoDePagamentoAtrasadoReal(args: {
-  supabase: ReturnType<typeof createClient>;
-  orderId: string;
-}): Promise<void> {
-  const { supabase, orderId } = args;
-  try {
-    if (!remetenteConfigurado()) {
-      console.error(
-        "reconciliar-pagamentos: SMTP não configurado — aviso de pagamento atrasado não enviado",
-        orderId,
-      );
-      return;
-    }
-
-    const { data: pedido, error: erroPedido } = await supabase
-      .from("marketplace_orders")
-      .select("id, user_id, customer_data")
-      .eq("id", orderId)
-      .maybeSingle();
-    if (erroPedido) throw erroPedido;
-    if (!pedido) {
-      console.warn(
-        "reconciliar-pagamentos: pedido do aviso de pagamento atrasado não encontrado",
-        orderId,
-      );
-      return;
-    }
-
-    let destinatario = String(
-      (pedido as Record<string, unknown>).customer_data
-        ? ((pedido as Record<string, unknown>).customer_data as Record<string, unknown>).email ?? ""
-        : "",
-    ).trim();
-    if (!destinatario && (pedido as Record<string, unknown>).user_id) {
-      const { data: conta } = await supabase.auth.admin.getUserById(
-        String((pedido as Record<string, unknown>).user_id),
-      );
-      destinatario = String(conta?.user?.email ?? "").trim();
-    }
-    if (!destinatario) {
-      console.warn(
-        "reconciliar-pagamentos: pedido pago_apos_expirar sem e-mail de cliente",
-        orderId,
-      );
-      return;
-    }
-
-    const { data: reservou, error: erroReserva } = await supabase.rpc(
-      "reivindicar_email_de_confirmacao",
-      { p_order_id: orderId },
-    );
-    if (erroReserva) throw erroReserva;
-    if (reservou !== true) return; // já enviado (padrão ou este mesmo aviso)
-
-    const { data: config } = await supabase
-      .from("store_config")
-      .select("store_name")
-      .limit(1)
-      .maybeSingle();
-    const nomeDaLoja = (config as Record<string, unknown> | null)?.store_name ?? "";
-
-    try {
-      await enviarEmail({
-        para: destinatario,
-        assunto: assuntoDoAvisoDePagamentoAtrasado(orderId, String(nomeDaLoja ?? "")),
-        html: htmlDoAvisoDePagamentoAtrasado({ orderId, nomeDaLoja: String(nomeDaLoja ?? "") }),
-      });
-    } catch (erroEnvio) {
-      await supabase
-        .rpc("liberar_email_de_confirmacao", { p_order_id: orderId })
-        .then(undefined, (erroLiberar: unknown) => {
-          console.error(
-            "reconciliar-pagamentos: liberar reserva do aviso de pagamento atrasado falhou",
-            orderId,
-            erroLiberar,
-          );
-        });
-      throw erroEnvio;
-    }
-
-    console.log(`reconciliar-pagamentos: aviso de pagamento atrasado enviado para ${orderId}`);
-  } catch (erro) {
-    console.error(
-      "reconciliar-pagamentos: falha ao enviar aviso de pagamento atrasado ao cliente",
-      orderId,
-      erro,
-    );
-  }
+  console.warn(
+    "reconciliar-pagamentos: cartao_adotado — cobrança CAPTURADA atrás do sentinela, sem notificação do webhook; vaga trocada pelo id real",
+    { orderId: args.pedidoId, idOrder },
+  );
+  return idOrder;
 }
 
 /**
@@ -437,8 +390,13 @@ async function handler(
   deps: {
     supabase?: ReturnType<typeof createClient>;
     fetchImpl?: typeof fetch;
-    enviarComprovante?: typeof dispararComprovanteReal;
-    enviarAvisoAtrasado?: typeof dispararAvisoDePagamentoAtrasadoReal;
+    enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
+    enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
+    enviarPush?: DepsDosEfeitos["enviarPush"];
+    // O push contado do aviso ao admin uma vez (contestação presa).
+    enviarPushContado?: typeof dispararPushContadoReal;
+    // Fixa o seller ID (X-Caller-Id) no teste; ausente: `GET /users/me` do próprio token.
+    vendedorId?: string | null;
   } = {},
 ): Promise<Response> {
   // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
@@ -471,6 +429,25 @@ async function handler(
       readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
     );
 
+  // Tarefa mp-2 (15/09/2026): de QUEM é a chave que este cron usa para
+  // perguntar ao MP — a do LOJISTA (cadastrada na tela de Ajustes, guardada
+  // cifrada em app_settings) ou, só quando não existe cadastro nenhum, o
+  // MP_ACCESS_TOKEN da plataforma. UMA resolução por ciclo, aqui fora do
+  // laço: é a mesma loja para todos os candidatos (app único, banco por
+  // cliente), e resolver por candidato seria uma leitura de app_settings por
+  // pedido sem mudar resposta nenhuma.
+  const credenciaisMp = await resolverCredenciaisMp(supabase);
+  if (!credenciaisMp.token) {
+    // Log só com origem e motivo — token nenhum, de ninguém, entra aqui. O
+    // ciclo NÃO aborta, e a resposta continua contando tudo: cada candidato
+    // de pagamento vira `falhas++` e cada linha da fila de estornos (mais
+    // abaixo) vira `estornos.falhos++` — o rótulo honesto de "não deu para
+    // verificar", nunca `ignorados`, e nunca uma chamada ao MP sem chave.
+    console.error(
+      `reconciliar-pagamentos: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+    );
+  }
+
   // Em try: uma REJEIÇÃO (rede, cliente mal configurado) não pode escapar do
   // handler inteiro — o `webhook-mercadopago` envolve a chamada equivalente
   // pelo mesmo motivo.
@@ -488,15 +465,41 @@ async function handler(
   let confirmados = 0;
   let ignorados = 0;
   let falhas = 0;
+  // Fase 3.5 (cartão): quantos dos `ignorados` foram recusas de cartão cuja
+  // vaga a reconciliação LIBEROU (a RPC devolveu true) — SUBCONJUNTO de
+  // `ignorados`, informativo: a invariante lá embaixo não muda.
+  let cobrancasLiberadas = 0;
+  // C-D (02/10/2026): o carimbo do rodízio e da cobrança terminal, gravado
+  // UMA vez depois do laço (`marcar_visitas_da_reconciliacao`).
+  const visitados: string[] = [];
+  const terminais: string[] = [];
+  const cobrancasTerminais: string[] = [];
 
   // Cada candidato dentro do seu próprio try: a reconciliação existe
   // exatamente para pegar o que já falhou uma vez (o webhook não confirmou),
   // então um segundo candidato não pode perder a vez porque o primeiro deu
   // erro de rede.
-  for (const candidato of candidatos ?? []) {
+  for (const candidatoDaFila of candidatos ?? []) {
+    // `let`, não `const`: um SENTINELA resolvido para uma cobrança de cartão
+    // CAPTURADA troca `gateway_payment_id` pelo id real antes do resto do
+    // laço (ver `adotarCartaoCapturadoDoSentinela`, abaixo).
+    let candidato = candidatoDaFila;
     verificados++;
+    // Todo candidato que a fila entregou conta como visitado, qualquer que
+    // seja o desfecho: é o rodízio que impede o LIMIT 100 de deixar sempre os
+    // mesmos de fora (D3).
+    visitados.push(candidatoDaFila.order_id);
     try {
-      const mpToken = Deno.env.get("MP_ACCESS_TOKEN") ?? "";
+      const mpToken = credenciaisMp.token;
+      if (!mpToken) {
+        // Falha FECHADA (tarefa mp-2): com chave do lojista cadastrada e
+        // ilegível, consultar o MP com a chave da PLATAFORMA devolveria 404
+        // para toda order dele — a rede de segurança calada, e um pedido
+        // pago virando `expirado`. Pular contando falha deixa o candidato na
+        // fila para o próximo ciclo, depois de alguém consertar o cofre.
+        falhas++;
+        continue;
+      }
 
       // Tarefa 4 (CHECKOUT-070), correção pós-revisão: discrimina pela FORMA
       // do id (`idEhClassico`, `_shared/mercadopago.ts`), não pelo código de
@@ -522,6 +525,61 @@ async function handler(
       // undefined quando o corpo não trouxe número. A conferência contra o
       // total do pedido fica logo abaixo do filtro de 'expirado'.
       let valorAprovado: number | undefined;
+      // Fase 3.5: recusa/expiração de order de CARTÃO (ou order cancelada —
+      // a troca PIX -> cartão da criar-pagamento) só LIBERA a vaga, nunca
+      // chega a `confirmar_pagamento('recusado')`, que cancelaria o pedido.
+      // Mesma regra do webhook (`recusaLiberaAVaga`, _shared/mercadopago.ts).
+      // Só a Orders API liga isto: o candidato clássico é PIX legado.
+      let liberarAVaga = false;
+      // Lote A (04/10/2026, R1/A2): o `status` CRU que o MP devolveu, nas duas
+      // rotas — a guarda da contestação (abaixo) olha ESTE, não o mapeado.
+      let statusBrutoConfiavel = "";
+
+      // Achado S5/N3 (3ª revisão de risco, 26/09/2026): a vaga pode estar
+      // com o SENTINELA (`verificando:...`, Achado B2) em vez de um id de
+      // order de verdade — `consultarOrder` com ele SEMPRE falha (400
+      // `invalid_path_param`). Até 30/09/2026 este ponto só pulava o
+      // candidato (`ignorados++`) e deixava tudo com a ADOÇÃO do webhook e
+      // com `resolverVagaEmVerificacao` (criar-pagamento, só quando o
+      // cliente volta a mexer no pedido).
+      //
+      // O BURACO QUE ISSO DEIXAVA (auditoria de 30/09/2026 do cartão da
+      // proxima/base, item 2): um cartão CAPTURADO atrás do sentinela só
+      // era registrado pela notificação `order` do webhook. Notificação
+      // perdida (ou painel do MP inscrito só no tópico `payment`, cuja rota
+      // não adota) e cliente que não volta = pedido expira com o dinheiro
+      // capturado e sem registro — e esta fila, a rede de segurança, pulava
+      // exatamente esse caso.
+      //
+      // AGORA: busca as orders de cartão do pedido (MESMA regra do
+      // criar-pagamento — `buscarOrdersDoPedido` + `resolverSentinela`, fonte
+      // única em _shared) e, SÓ quando a order resolvida está CAPTURADA
+      // (`processed` na busca E "pago", com valor que bate, na reconsulta
+      // por id — mesma régua da adoção do webhook), troca o sentinela pelo
+      // id real e segue o laço normal:
+      // a reconsulta por id, a conferência de valor e `confirmar_pagamento`
+      // decidem como para qualquer outro candidato. Order viva (em análise),
+      // morta ou busca inconclusiva: fica como estava (ignorado) — liberar
+      // a vaga ou esperar a análise continua com quem já decide isso hoje.
+      // Nenhum push NESTE passo: o aviso da cobrança em dúvida já saiu uma
+      // vez, na escrita do sentinela. Adotado aqui, o candidato segue o laço
+      // e, se `confirmar_pagamento` devolver `pago_apos_expirar`, ganha o
+      // push "Pagamento fora do fluxo" como qualquer outro (ver "PUSH AO
+      // ADMIN" no cabeçalho).
+      if (vagaEmVerificacao(candidato.gateway_payment_id)) {
+        const idAdotado = await adotarCartaoCapturadoDoSentinela({
+          supabase,
+          token: mpToken,
+          pedidoId: candidato.order_id,
+          sentinela: candidato.gateway_payment_id,
+          fetchImpl: deps.fetchImpl,
+        });
+        if (idAdotado === null) {
+          ignorados++;
+          continue;
+        }
+        candidato = { ...candidato, gateway_payment_id: idAdotado };
+      }
 
       if (idEhClassico(candidato.gateway_payment_id)) {
         // Candidato LEGADO, criado antes da migração para a Orders API — vai
@@ -545,14 +603,23 @@ async function handler(
         }
         statusMapeado = mapearStatus(consultaClassica.status);
         statusBrutoParaLog = consultaClassica.status;
+        statusBrutoConfiavel = String(consultaClassica.status ?? "");
         valorAprovado = typeof consultaClassica.valor === "number" ? consultaClassica.valor : undefined;
       } else {
         // Candidato NOVO — `gateway_payment_id` é um id de ORDER (prefixo
         // ORD/ORDTST) desde a Tarefa 2.
+        //
+        // N1 (3ª/4ª revisão de risco, 26/09/2026): este candidato PODE ser
+        // de CARTÃO (payer com e-mail e CPF do titular, ver `_shared/
+        // mercadopago.ts`) — `corpoNoLog: false` troca o corpo cru por um
+        // resumo sem dado pessoal no log de erro, mesma proteção que
+        // `criar-pagamento`/`webhook-mercadopago` já aplicam nos pontos que
+        // podem reconsultar uma order de cartão.
         const consultaOrder = await consultarOrder({
           token: mpToken,
           orderId: candidato.gateway_payment_id,
           fetchImpl: deps.fetchImpl,
+          corpoNoLog: false,
         });
 
         if (!consultaOrder.ok) {
@@ -577,7 +644,9 @@ async function handler(
         const statusDetailRaiz = String(order.status_detail ?? "");
         statusMapeado = mapearStatusOrder(statusRaiz, statusDetailRaiz);
         statusBrutoParaLog = `${statusRaiz}:${statusDetailRaiz}`;
+        statusBrutoConfiavel = statusRaiz;
         valorAprovado = extrairValorDaOrder(order);
+        liberarAVaga = recusaLiberaAVaga(order, statusMapeado);
       }
 
       // Usa o status que o MP DEVOLVEU, nunca inventa um. Status
@@ -585,11 +654,66 @@ async function handler(
       // webhook: fica para o próximo ciclo de reconciliação. Mas "não
       // decide" não é "não conta": entra em ignorados (não confirmou, não é
       // falha), para o corpo continuar auditável sem abrir o log.
+      // CONTESTAÇÃO (chargeback) NÃO PASSA POR `confirmar_pagamento` — Lote A
+      // (04/10/2026, R1/A2). O mapa compartilhado (`_shared/mercadopago.ts`)
+      // traduz todo `charged_back` para 'estornado' (e continua assim: o
+      // checkout da `criar-pagamento` depende dele), mas aqui 'estornado' é
+      // IRREVERSÍVEL — e no pedido 'aguardando'+'pending' a RPC ainda CANCELA
+      // e devolve o estoque — para uma disputa que pode estar em análise
+      // (`in_process`) ou ganha pela loja (`reimbursed`, valor creditado ao
+      // vendedor — doc transaction-status do MP). Quem registra a contestação
+      // é o ledger, pelo webhook (`registrarDesfechoDoEstorno`); o pedido só
+      // vira 'estornado' por `concluir_estorno`, com o total coberto. Aqui o
+      // candidato é ignorado com log — fica na fila até expirar ou o webhook
+      // resolver, nunca é cancelado por isto.
+      if (statusBrutoConfiavel === STATUS_DA_CONTESTACAO) {
+        console.warn(
+          "reconciliar-pagamentos: contestação (chargeback) no MP — NÃO chama confirmar_pagamento (o ledger da contestação é do webhook)",
+          candidato.order_id,
+          statusBrutoParaLog,
+        );
+        ignorados++;
+        continue;
+      }
+
       if (statusMapeado === null) {
         console.warn(
           "reconciliar-pagamentos: status desconhecido do MP",
           candidato.order_id,
           statusBrutoParaLog,
+        );
+        ignorados++;
+        continue;
+      }
+
+      // CARTÃO RECUSADO NÃO MATA O PEDIDO (Fase 3.5) — o webhook que perdeu
+      // a recusa é recuperado aqui do MESMO jeito: libera a vaga desta
+      // cobrança (a RPC só solta se ela ainda for a gravada e o pedido ainda
+      // estiver 'aguardando'; pedido já expirado devolve false). Conta em
+      // `ignorados` (não confirmou, não falhou) — a invariante continua
+      // fechando. Erro da RPC sobe para o catch e vira `falhas`, e o
+      // candidato volta no próximo ciclo.
+      if (liberarAVaga) {
+        const { data: liberou, error: erroLiberar } = await supabase.rpc(
+          "liberar_cobranca_do_pedido",
+          {
+            p_order_id: candidato.order_id,
+            p_gateway_payment_id: candidato.gateway_payment_id,
+          },
+        );
+        if (erroLiberar) throw erroLiberar;
+        if (liberou === true) cobrancasLiberadas++;
+        // A order (consultada POR ID) está terminal no MP — failed/canceled/
+        // expired, sem dinheiro capturável. Se a vaga não soltou (pedido já
+        // expirado), a fila pula ESTA cobrança dali em diante; outra cobrança
+        // na vaga volta na hora (a marca é do id, não do pedido).
+        terminais.push(candidato.order_id);
+        cobrancasTerminais.push(candidato.gateway_payment_id);
+        console.log(
+          "reconciliar-pagamentos: recusa de cartão (ou order cancelada) — vaga liberada, não confirma 'recusado'",
+          candidato.order_id,
+          statusBrutoParaLog,
+          liberou === true,
         );
         ignorados++;
         continue;
@@ -608,6 +732,9 @@ async function handler(
           "reconciliar-pagamentos: order expirada no MP — não chama confirmar_pagamento (RPC não trata 'expirado')",
           candidato.order_id,
         );
+        // Terminal no MP (só a Orders API chega aqui): sai da fila, ver acima.
+        terminais.push(candidato.order_id);
+        cobrancasTerminais.push(candidato.gateway_payment_id);
         ignorados++;
         continue;
       }
@@ -681,24 +808,32 @@ async function handler(
       });
       if (erroRpc) throw erroRpc;
 
-      // Os MESMOS dois valores que webhook-mercadopago/index.ts usa para
-      // decidir o push (linha ~302) — divergir os dois critérios é a doença
-      // do #53 de novo.
+      // Só 'pago' e 'pago_apos_expirar' são a transição DESTA chamada (a RPC
+      // devolve isso para UM chamador só, sob FOR UPDATE) — os MESMOS dois
+      // valores que o webhook usa, pela MESMA função (`desfechoComEfeito`,
+      // `_shared/efeitos-do-pagamento.ts`): divergir os dois critérios foi a
+      // doença do #53 de novo.
       const resultado = resultadoRpc as string;
-      if (resultado === "pago" || resultado === "pago_apos_expirar") {
+      if (desfechoComEfeito(resultado)) {
         confirmados++;
-        // PEÇA 5 (12/09/2026): o cliente não pode ficar mudo quando é a
-        // RECONCILIAÇÃO quem confirma — ver o comentário "COMPROVANTE AO
-        // CLIENTE: AQUI SIM" no topo do arquivo. 'pago' recebe o comprovante
-        // padrão; 'pago_apos_expirar' recebe o aviso honesto (nunca o
-        // padrão — mentiria).
-        if (resultado === "pago") {
-          const enviarComprovante = deps.enviarComprovante ?? dispararComprovanteReal;
-          await enviarComprovante({ supabase, orderId: candidato.order_id });
-        } else {
-          const enviarAvisoAtrasado = deps.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
-          await enviarAvisoAtrasado({ supabase, orderId: candidato.order_id });
-        }
+        // FASE 2 (04/10/2026): os efeitos saem do módulo ÚNICO dos três
+        // caminhos que confirmam pagamento — push ao lojista ("Pedido pago" ou
+        // "Pagamento fora do fluxo"), comprovante ao cliente ('pago') ou o
+        // aviso honesto de pagamento atrasado ('pago_apos_expirar'). Antes o
+        // cron só avisava o lojista em 'pago_apos_expirar', e uma venda 'pago'
+        // fechada por aqui (webhook perdido) passava em silêncio — o pedido
+        // c35ce4dd. Nada aqui lança: o pedido JÁ está pago, e falha de push ou
+        // de e-mail não pode virar `falhas` nem interromper o laço.
+        await aplicarEfeitosDoPagamentoConfirmado({
+          supabase,
+          orderId: candidato.order_id,
+          resultado,
+          enviarPush: deps.enviarPush,
+          enviarComprovante: deps.enviarComprovante,
+          enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
+          // Um push service lento não pode prender o laço de candidatos.
+          tetoDoPushMs: TETO_DO_PUSH_MS,
+        });
       } else {
         // 'divergente' e 'inexistente' significam que o candidato não bate
         // com o pedido — ninguém deveria descobrir isso só pela contagem.
@@ -714,6 +849,22 @@ async function handler(
     } catch (erro) {
       console.error("reconciliar-pagamentos: falha ao processar candidato", candidato.order_id, erro);
       falhas++;
+    }
+  }
+
+  // C-D (02/10/2026): carimba o rodízio e as cobranças terminais. NÃO FATAL:
+  // uma falha aqui só loga — nunca vira `falhas`, nunca muda contagem nem a
+  // resposta (o pior caso é a fila não girar neste ciclo, como era antes).
+  if (visitados.length > 0) {
+    try {
+      const { error: erroVisitas } = await supabase.rpc("marcar_visitas_da_reconciliacao", {
+        p_visitados: visitados,
+        p_terminais: terminais,
+        p_cobrancas_terminais: cobrancasTerminais,
+      });
+      if (erroVisitas) throw erroVisitas;
+    } catch (erro) {
+      console.error("reconciliar-pagamentos: marcar_visitas_da_reconciliacao falhou (não fatal)", erro);
     }
   }
 
@@ -734,7 +885,9 @@ async function handler(
     const doisMinutosAtras = new Date(Date.now() - 2 * 60 * 1000).toISOString();
     const { data: refundsPendentes, error: erroRefunds } = await supabase
       .from("order_refunds")
-      .select("id, order_id, amount, status, tentativas, mp_refund_id")
+      // post_autorizado_em/criada_sob_autorizacao (R1, 20261196000000): o
+      // executor decide por elas se a linha pode já ter chegado ao MP.
+      .select("id, order_id, amount, status, tentativas, mp_refund_id, post_autorizado_em, criada_sob_autorizacao")
       .in("status", ["solicitado", "em_processamento"])
       // T5 (webhook): linha `solicitado_por = 'sistema'` é dinheiro que JÁ
       // se moveu FORA do app (estorno no painel do MP, chargeback) — o cron
@@ -753,7 +906,10 @@ async function handler(
       .limit(20);
     if (erroRefunds) throw erroRefunds;
 
-    const mpToken = Deno.env.get("MP_ACCESS_TOKEN") ?? "";
+    // MESMA credencial resolvida lá em cima (tarefa mp-2): o estorno sai da
+    // conta que recebeu — devolver dinheiro pela conta da plataforma tiraria
+    // de quem NÃO vendeu, e por isso aqui também não há reserva de token.
+    const mpToken = credenciaisMp.token ?? "";
     // Mesmo timeout de 15s de toda chamada ao MP (Restrições globais) — o
     // `buscar` injetado pelos testes (`deps.fetchImpl`) nunca vê o `fetch`
     // cru por fora deste envelope, igual à edge do clique (T3).
@@ -771,6 +927,17 @@ async function handler(
     // Buscar CRU (`deps.fetchImpl ?? fetch`, nunca `buscarEstorno`):
     // `consultarTransacaoDaOrder` já embute o próprio `fetchComTempo` por
     // dentro de `consultarOrder` — envolver de novo duplicaria o timeout.
+    // Lote A (04/10/2026, achado causal do 01765261): o pedido "fresco" lido
+    // por item ainda envelhece até o POST (o GET da transação fica no meio,
+    // e o webhook pode registrar um refund do painel nesse tempo). O
+    // executor pergunta ao banco — RPC autorizar_post_do_estorno, linha e
+    // pedido travados — imediatamente antes do POST; não cabe = nada sai, a
+    // linha fica em_processamento (o próximo ciclo CONSULTA o MP antes de
+    // qualquer repetição) e o motivo vai para ultimo_erro.
+    const autorizarPostDoCron = autorizacaoPeloBanco((nome, argumentos) =>
+      supabase.rpc(nome, argumentos)
+    );
+
     const consultarTransacaoDaOrderDoCron = (orderId: string) =>
       consultarTransacaoDaOrder({
         orderId,
@@ -780,6 +947,19 @@ async function handler(
 
     for (const refund of refundsPendentes ?? []) {
       refundsVistos++;
+      // Falha FECHADA também na fila de estornos (tarefa mp-2), pelo MESMO
+      // motivo do laço de pagamentos — e com um preço a mais aqui: sair com
+      // Bearer vazio faria o MP recusar e a linha voltaria para a fila
+      // GASTANDO uma `tentativas` por ciclo, até o teto de 5. Passado o teto
+      // a linha entra no regime "só consulta" e o cron nunca mais repete o
+      // POST, mesmo depois de alguém devolver o cofre ao lugar: uma
+      // indisponibilidade de configuração teria consumido, sozinha, o
+      // orçamento de tentativas de uma devolução de dinheiro. Pular contando
+      // falha deixa a linha intacta para o próximo ciclo.
+      if (!mpToken) {
+        refundsFalhos++;
+        continue;
+      }
       // Cada linha no seu próprio try: a reconciliação de estornos existe
       // para pegar o que já falhou uma vez — um item não pode custar a vez
       // do seguinte (mesma defesa do laço de pagamentos acima).
@@ -867,6 +1047,8 @@ async function handler(
             status: "em_processamento",
             mp_refund_id: (refund.mp_refund_id as string | null) ?? null,
             tentativas: Number(refund.tentativas ?? 0) + 1,
+            post_autorizado_em: (refund.post_autorizado_em as string | null) ?? null,
+            criada_sob_autorizacao: (refund.criada_sob_autorizacao as boolean | null) ?? null,
           };
           const resultado = await executarEstorno({
             linha,
@@ -875,6 +1057,7 @@ async function handler(
             buscar: buscarEstorno,
             consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
             idsJaReivindicados,
+            autorizarAntesDoPost: autorizarPostDoCron,
           });
           const desfecho = await gravarDesfechoDoEstorno(
             supabase,
@@ -899,6 +1082,8 @@ async function handler(
           status: "em_processamento",
           mp_refund_id: (refund.mp_refund_id as string | null) ?? null,
           tentativas: tentativasAtuais,
+          post_autorizado_em: (refund.post_autorizado_em as string | null) ?? null,
+          criada_sob_autorizacao: (refund.criada_sob_autorizacao as boolean | null) ?? null,
         };
         const confirmacao = await confirmarPorConsulta({
           buscar: buscarEstorno,
@@ -976,6 +1161,7 @@ async function handler(
           buscar: buscarEstorno,
           consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
           idsJaReivindicados,
+          autorizarAntesDoPost: autorizarPostDoCron,
         });
         const desfechoRetry = await gravarDesfechoDoEstorno(
           supabase,
@@ -999,6 +1185,37 @@ async function handler(
     console.error("reconciliar-pagamentos: varredura de devoluções pendentes falhou", erro);
   }
 
+  // ─── PASSO NOVO (FASE 2, R3 do Lote A): reconsulta das contestações
+  // (chargeback) PRESAS — a reserva `sistema` em `em_processamento` que o MP
+  // nunca resolveu por notificação. Só GET ao MP; o resultado vai ao banco
+  // pelo MESMO caminho do webhook (`registrarContestacao`). TRY PRÓPRIO: uma
+  // falha aqui não apaga o resultado dos pagamentos nem dos estornos acima.
+  // Sem token (credencial do lojista ilegível) não consulta o MP com a chave
+  // errada — a mesma falha FECHADA dos dois passos anteriores.
+  let contestacoes: ResumoDaReconsulta = { vistas: 0, reconsultadas: 0, emAberto: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 };
+  if (credenciaisMp.token) {
+    try {
+      contestacoes = await reconsultarContestacoesPresas({
+        supabase,
+        token: credenciaisMp.token,
+        vendedorId: deps.vendedorId,
+        fetchImpl: deps.fetchImpl,
+        avisar: (chave, aviso) =>
+          avisarAdminUmaVez({
+            supabase,
+            enviarPushContado: deps.enviarPushContado ??
+              ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+            chave,
+            aviso,
+            rotulo: "reconciliar-pagamentos",
+          }),
+        rotulo: "reconciliar-pagamentos",
+      });
+    } catch (erro) {
+      console.error("reconciliar-pagamentos: reconsulta de contestações presas falhou", erro);
+    }
+  }
+
   // Contagem verdadeira: responder sucesso sem verificar nada é como este
   // projeto passou meses achando que o push funcionava (#80). `ok` continua
   // `true` mesmo com falhas — decisão da sessão principal, pendência
@@ -1007,8 +1224,10 @@ async function handler(
   // INVARIANTE (não quebrar): confirmados + ignorados + falhas === verificados.
   // Todo `continue` e todo fim de iteração do loop acima incrementa
   // exatamente um dos três — inclusive o status que o MP devolve fora do
-  // mapa (ignorados), o 404 nos dois endpoints (falhas) e a order 'expirado'
-  // que a Tarefa 4 passou a filtrar ANTES da RPC (ignorados, sem chamá-la).
+  // mapa (ignorados), o 404 nos dois endpoints (falhas), a order 'expirado'
+  // que a Tarefa 4 passou a filtrar ANTES da RPC (ignorados, sem chamá-la) e
+  // a recusa de cartão cuja vaga foi liberada (ignorados — `cobrancasLiberadas`
+  // é só o subconjunto que a RPC de fato soltou, fora da soma).
   // Sem essa invariante o corpo não é auditável sem abrir o log: um
   // candidato "sumiria" do total.
   return json(
@@ -1018,12 +1237,14 @@ async function handler(
       confirmados,
       ignorados,
       falhas,
+      cobrancasLiberadas,
       estornos: {
         vistos: refundsVistos,
         concluidos: refundsConcluidos,
         adiados: refundsAdiados,
         falhos: refundsFalhos,
       },
+      contestacoes,
     },
     200,
   );

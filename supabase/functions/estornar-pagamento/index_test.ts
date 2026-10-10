@@ -24,6 +24,16 @@
 //       CONDICIONAL (só 'em_processamento') — e 0 linhas no desfecho
 //       responde 409 estorno_ja_tratado (M1/M2 do laudo do PR #439)
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts"
+// Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
+// do lojista nos testes M1/M2 do fim deste arquivo. Desde a tarefa mp-6 o
+// fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a mesma
+// montagem copiada em cinco suítes, e cópia de fixture envelhece calada
+// quando a forma do registro em app_settings muda.
+import {
+    CHAVE_CIFRA_TESTE,
+    registroMpDeTeste,
+    TOKEN_LOJISTA_FALSO,
+} from "../_shared/credenciais-mp_fixtures.ts"
 
 // ── Costura de REDE para a porta de admin (verifyIsAdmin monta os PRÓPRIOS
 // clients do supabase-js — a costura deps não os cobre). Mesma estratégia do
@@ -39,8 +49,16 @@ const REFUND_ID = "11111111-1111-4111-8111-111111111111"
 const TEXTO_202 = "O Mercado Pago ainda está processando; eu confiro de novo em até 10 minutos."
 
 function respostaAdminFalsa(): Response {
+    // Admin de verdade: o papel ATUAL nas duas fontes (app_metadata aqui e
+    // profiles abaixo) — a porta exige as duas desde a 20261197000000.
     return new Response(
-        JSON.stringify({ id: ID_ADMIN, email: "admin@teste.local", aud: "authenticated", role: "authenticated" }),
+        JSON.stringify({
+            id: ID_ADMIN,
+            email: "admin@teste.local",
+            aud: "authenticated",
+            role: "authenticated",
+            app_metadata: { provider: "email", role: "admin" },
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } },
     )
 }
@@ -75,8 +93,47 @@ const fetchClienteFalso = ((input: any) => {
     return new Response(JSON.stringify({ message: "fora do roteiro" }), { status: 404 })
 }) as any
 
+/**
+ * Papel ATUAL nas duas fontes (20261197000000): `app_metadata.role` do usuário
+ * que o GET /user do Auth carrega do BANCO, e `profiles.role`. O JWT do
+ * pedido (AUTH_JWT_VELHO_ADMIN) diz admin nos dois casos — ele não decide.
+ */
+function fetchPapeisFalso(papelNoAuth: string, papelNoPerfil: string) {
+    return ((input: any) => {
+        const url = String(input instanceof Request ? input.url : input)
+        if (url.includes("/auth/v1/user")) {
+            return new Response(
+                JSON.stringify({
+                    id: ID_ADMIN,
+                    email: "admin@teste.local",
+                    aud: "authenticated",
+                    role: "authenticated",
+                    app_metadata: { provider: "email", role: papelNoAuth },
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            )
+        }
+        if (url.includes("/rest/v1/profiles")) {
+            return new Response(
+                JSON.stringify({ id: ID_ADMIN, role: papelNoPerfil }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            )
+        }
+        return new Response(JSON.stringify({ message: "fora do roteiro" }), { status: 404 })
+    }) as any
+}
+
+// JWT (não assinado — o Auth falso não confere) cujo payload ainda diz
+// app_metadata.role = 'admin': o "JWT velho" de um admin rebaixado.
+const AUTH_JWT_VELHO_ADMIN = "Bearer " + [
+    btoa(JSON.stringify({ alg: "HS256", typ: "JWT" })),
+    btoa(JSON.stringify({ sub: ID_ADMIN, role: "authenticated", app_metadata: { role: "admin" } })),
+    "assinatura-de-teste",
+].join(".")
+
 globalThis.fetch = fetchAdminFalso
 const { handler } = await import("./index.ts")
+const { MOTIVO_LINHA_INCERTA, MOTIVO_SALDO_MUDOU_ANTES_DO_POST, MOTIVO_SALDO_NAO_COBRE_MAIS } = await import("../_shared/estorno.ts")
 globalThis.fetch = fetchNativo
 
 async function comFetch(fetchFalso: any, executar: () => Promise<any>): Promise<any> {
@@ -155,9 +212,27 @@ function clienteSupaFalso(opts: {
     // esta opção preservam o comportamento de antes (nenhum id excluído).
     idsJaReivindicados?: string[]
     erroIdsJaReivindicados?: any
+    // Tarefa mp-2: o registro CIFRADO do lojista, como ele dorme em
+    // app_settings (_shared/credenciais-mp.ts). Default ausente — a loja que
+    // ainda roda pelas chaves da plataforma, que é o que todos os testes
+    // anteriores a esta tarefa exercitam.
+    registroMp?: any
+    // Lote A (04/10/2026): a resposta de autorizar_post_do_estorno (a
+    // pergunta do executor ao banco antes do POST). Default: autorizado com o
+    // MESMO pedido desta fixture (o banco não mudou nada no meio).
+    autorizacao?: any
+    // R1 (20261196000000): devolve a linha só com as colunas que o SELECT da
+    // edge pediu — tirar uma coluna do SELECT tira o campo da linha, como no
+    // PostgREST de verdade.
+    projetarColunas?: boolean
 } = {}) {
     const registro = {
         leiturasLinha: 0,
+        // Colunas pedidas pelo .select() da LEITURA DA LINHA (a primeira
+        // leitura simples) — o F12 confere que 'solicitado_por' segue no
+        // SELECT da edge (gate 2b depende dela).
+        colunasDaLinha: null as string | null,
+        leiturasRegistroMp: 0,
         leiturasPedido: 0,
         leiturasIdsReivindicados: 0,
         filtrosIdsReivindicados: [] as any[],
@@ -165,12 +240,22 @@ function clienteSupaFalso(opts: {
         finais: [] as any[],
         atualizacoes: [] as any[],
         rpcs: [] as any[],
+        // Fora de `rpcs` de propósito: os testes antigos contam em `rpcs` só
+        // a concluir_estorno.
+        autorizacoes: [] as any[],
     }
     let chamadasDeMarca = 0
     let chamadasDeFim = 0
     const promessa = (valor: any) => Promise.resolve(valor)
     const cliente: any = {
         rpc(nome: string, args?: any) {
+            if (nome === "autorizar_post_do_estorno") {
+                registro.autorizacoes.push(args)
+                return promessa({
+                    data: opts.autorizacao ?? { decisao: "autorizado", pedido: opts.pedido },
+                    error: null,
+                })
+            }
             registro.rpcs.push({ nome, args })
             return promessa({ data: opts.rpcResultado ?? { concluido: true }, error: opts.rpcErro ?? null })
         },
@@ -178,6 +263,11 @@ function clienteSupaFalso(opts: {
             const no: any = { tabela, acao: null, valores: null, filtros: [] as any[] }
             const api: any = {
                 select(_colunas?: string) {
+                    // Revisão de 29/09 (achado MÉDIO): capturar as colunas —
+                    // o dublê devolve a linha INTEIRA, e sem isto remover
+                    // 'solicitado_por' do SELECT da edge desarmaria o gate 2b
+                    // (dinheiro) com a suíte verde.
+                    no.colunas = _colunas ?? null
                     return api
                 },
                 update(valores: any) {
@@ -204,6 +294,11 @@ function clienteSupaFalso(opts: {
                     no.filtros.push({ metodo: "in", coluna, valores })
                     return api
                 },
+                // R1: `.is('post_autorizado_em', null)` na escrita do recusado.
+                is(coluna: string, valor: any) {
+                    no.filtros.push({ metodo: "is", coluna, valor })
+                    return api
+                },
                 maybeSingle() {
                     return api
                 },
@@ -218,6 +313,18 @@ function clienteSupaFalso(opts: {
         },
     }
     function resolver(no: any) {
+        // Tarefa mp-2: a leitura das credenciais do lojista passa pelo MESMO
+        // client. Ramo PRÓPRIO — sem ele a leitura cairia no ramo da "leitura
+        // simples da linha" abaixo, somando em `leiturasLinha` e disparando o
+        // `linhaFinal` da 2a leitura: todos os testes de estado da linha
+        // passariam a medir outra coisa em silêncio.
+        if (no.tabela === "app_settings") {
+            registro.leiturasRegistroMp++
+            return promessa({
+                data: opts.registroMp ? { value: JSON.stringify(opts.registroMp) } : null,
+                error: null,
+            })
+        }
         if (no.tabela === "marketplace_orders") {
             registro.leiturasPedido++
             return promessa({ data: opts.pedido ?? null, error: null })
@@ -236,12 +343,22 @@ function clienteSupaFalso(opts: {
         }
         if (no.acao === null) {
             registro.leiturasLinha++
+            if (registro.leiturasLinha === 1) {
+                registro.colunasDaLinha = no.colunas
+            }
             // A 2a+ leitura simples (409 unificado do laudo do PR #439:
             // index.ts releu o status quando o UPDATE terminal perdeu a
             // linha) devolve linhaFinal se configurada — representa o que
             // o cron/webhook gravou no meio, não a linha original.
             if (registro.leiturasLinha > 1 && "linhaFinal" in opts) {
                 return promessa({ data: opts.linhaFinal ?? null, error: null })
+            }
+            if (opts.projetarColunas && opts.linha && typeof no.colunas === "string") {
+                const colunas = no.colunas.split(",").map((c: string) => c.trim())
+                const projetada = Object.fromEntries(
+                    Object.entries(opts.linha).filter(([k]) => colunas.includes(k)),
+                )
+                return promessa({ data: projetada, error: null })
             }
             return promessa({ data: opts.linha ?? null, error: null })
         }
@@ -357,6 +474,63 @@ Deno.test("F2 - JWT de cliente comum responde 401", async () => {
     assertEquals(registro.leiturasLinha, 0)
 })
 
+// ── F2b/F2c/F2d: admin REBAIXADO com JWT velho dizendo admin -> 401 ────────
+// A MESMA regra de public.is_admin_atual() (20261197000000): o papel 'admin'
+// AGORA nas DUAS fontes. Papéis contraditórios não autorizam dinheiro — nas
+// duas direções: nenhuma leitura/escrita no ledger, nenhuma RPC, nenhum POST
+// ao MP (MP falso conta as chamadas).
+
+for (const [rotulo, papelNoAuth, papelNoPerfil] of [
+    ["F2b - só auth.users rebaixado (profiles ainda admin)", "customer", "admin"],
+    ["F2c - só profiles rebaixado (auth.users ainda admin)", "admin", "customer"],
+    ["F2d - rebaixado nas duas fontes", "customer", "customer"],
+] as const) {
+    Deno.test(`${rotulo}: JWT velho dizendo admin responde 401, sem ledger e sem MP`, async () => {
+        const { cliente, registro } = clienteSupaFalso({ linha: LINHA_SOLICITADA, pedido: PEDIDO_PAGO })
+        const executor = executorFalso(
+            { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
+            { chamarMp: true },
+        )
+        const mp = fetchMpFalso()
+        const resposta = await comEnv({}, () =>
+            comFetch(fetchPapeisFalso(papelNoAuth, papelNoPerfil), () =>
+                handler(requisicao({ refund_id: REFUND_ID }, AUTH_JWT_VELHO_ADMIN), {
+                    supabase: cliente,
+                    executarEstorno: executor.fn,
+                    buscar: mp.buscar,
+                }),
+            ),
+        )
+        assertEquals(resposta.status, 401)
+        assertEquals(registro.leiturasLinha, 0)
+        assertEquals(registro.marcas.length, 0)
+        assertEquals(registro.rpcs.length, 0)
+        assertEquals(executor.registro.chamadas.length, 0)
+        assertEquals(mp.registro.chamadas, 0)
+    })
+}
+
+Deno.test("F2e - CONTROLE: papel 'admin' nas duas fontes, com o MESMO JWT, passa a porta e conclui", async () => {
+    const { cliente, registro } = clienteSupaFalso({ linha: LINHA_SOLICITADA, pedido: PEDIDO_PAGO })
+    const executor = executorFalso(
+        { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
+        { chamarMp: true },
+    )
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchPapeisFalso("admin", "admin"), () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_JWT_VELHO_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals(registro.marcas.length, 1)
+    assertEquals(mp.registro.chamadas, 1)
+})
+
 // ── F3: refund_id inexistente -> 404 ───────────────────────────────────────
 
 Deno.test("F3 - refund_id inexistente responde 404", async () => {
@@ -434,10 +608,13 @@ Deno.test("F5 - fluxo feliz conclui via RPC e responde {status, valor, texto} se
     assertEquals(registro.marcas[0].valores.tentativas, 1)
     // E a marca é CONDICIONAL (I2 do laudo do PR #439): os filtros exigem o id
     // E o estado vivo — sem o .in de status, dois cliques simultâneos chamam o
-    // MP duas vezes; apagar esta linha da edge derruba esta asserção.
+    // MP duas vezes; apagar esta linha da edge derruba esta asserção. Desde a
+    // defesa em profundidade de 29/09, a marca também EXCLUI linha de sistema
+    // (.neq do cron — se o gate 2b for pulado num dia, a marca devolve 0).
     assertEquals(registro.marcas[0].filtros, [
         { metodo: "eq", coluna: "id", valor: REFUND_ID },
         { metodo: "in", coluna: "status", valores: ["solicitado", "em_processamento"] },
+        { metodo: "neq", coluna: "solicitado_por", valor: "sistema" },
     ])
     // E a conclusão é ATÔMICA pela RPC (a edge não soma valor_estornado na mão).
     assertEquals(registro.rpcs.length, 1)
@@ -668,6 +845,8 @@ Deno.test("F9 - segunda chamada que perde a marca responde 409 e o MP so' e' cha
     assertEquals(registro.marcas[1].filtros, [
         { metodo: "eq", coluna: "id", valor: REFUND_ID },
         { metodo: "in", coluna: "status", valores: ["solicitado", "em_processamento"] },
+        // Defesa em profundidade de 29/09: a marca também exclui sistema.
+        { metodo: "neq", coluna: "solicitado_por", valor: "sistema" },
     ])
 })
 
@@ -745,10 +924,13 @@ Deno.test("F11 - recusado grava estado terminal com motivo e o update so' pega l
     assertEquals(registro.finais[0].valores.ultimo_erro, "o cartão do estorno foi negado pelo banco emissor")
     // ...e é CONDICIONAL (M1): id E status='em_processamento' — estado
     // terminal só substitui a marca; concluído por cron/webhook no meio
-    // NÃO é sobrescrito.
+    // NÃO é sobrescrito. R1 (20261196000000): o `recusado` exige também
+    // post_autorizado_em IS NULL — se outro executor autorizou um POST desta
+    // linha no meio, 0 linhas e a reserva fica.
     assertEquals(registro.finais[0].filtros, [
         { metodo: "eq", coluna: "id", valor: REFUND_ID },
         { metodo: "in", coluna: "status", valores: ["em_processamento"] },
+        { metodo: "is", coluna: "post_autorizado_em", valor: null },
     ])
     // Estado terminal não passa pela RPC de soma — recusado é recusado.
     assertEquals(registro.rpcs.length, 0)
@@ -896,4 +1078,355 @@ Deno.test("T-1b - SEM outra linha reivindicando o refund (idsJaReivindicados vaz
     assertEquals(resposta.status, 200)
     const corpo = await resposta.json()
     assertEquals(corpo.status, "concluido")
+})
+
+// ── Tarefa mp-2 (15/09/2026): de QUEM é o token que devolve o dinheiro ─────
+//
+// A chave do lojista (Ajustes > Pagamentos > Mercado Pago) passou a valer:
+// `resolverCredenciaisMp` (_shared/credenciais-mp.ts) escolhe entre a chave
+// do LOJISTA (registro cifrado em app_settings) e a da PLATAFORMA
+// (MP_ACCESS_TOKEN), e FECHA quando existe cadastro que não dá para decifrar.
+// Aqui isso decide de qual conta o dinheiro volta — estornar pela conta
+// errada é dinheiro que sai de quem não vendeu.
+//
+// M1 prova o token decifrado chegando ao executor E ao Bearer do MP (o
+// ambiente tem o token da plataforma, DIFERENTE de propósito: sem isso a
+// asserção passaria por coincidência). M2 prova a falha fechada — e que a
+// linha NÃO é marcada em_processamento, a mesma razão do passo 4 da edge:
+// nada fica preso na fila por falta de configuração.
+
+// O fixture compartilhado recebe o cofre por parâmetro (`envFalso` lá
+// dentro), então montar o registro NÃO precisa mais de `comEnv` em volta —
+// só a chamada do handler precisa, que é quem lê o Deno.env de verdade.
+
+Deno.test("M1 - com chave do LOJISTA cadastrada, o token do executor e o Bearer do MP sao o DECIFRADO dele, nunca o MP_ACCESS_TOKEN da plataforma", async () => {
+    const { cliente } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        registroMp: await registroMpDeTeste(),
+    })
+    const executor = executorFalso(
+        { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
+        { chamarMp: true },
+    )
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({ MP_CHAVES_ENCRYPTION_KEY: CHAVE_CIFRA_TESTE }, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals(executor.registro.chamadas[0].token, TOKEN_LOJISTA_FALSO)
+    assertEquals(mp.registro.headers[0].Authorization, `Bearer ${TOKEN_LOJISTA_FALSO}`)
+})
+
+Deno.test("M2 - chave do lojista cadastrada + cofre ausente: falha FECHADA (500), executor nao chamado e linha NAO marcada", async () => {
+    const registroCifrado = await registroMpDeTeste()
+    const { cliente, registro } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        registroMp: registroCifrado,
+    })
+    const executor = executorFalso({ tipo: "concluido" }, { chamarMp: true })
+    const mp = fetchMpFalso()
+    // Sem MP_CHAVES_ENCRYPTION_KEY no ambiente, e COM o MP_ACCESS_TOKEN da
+    // plataforma (o `prepararEnv` sempre o define) — é essa combinação que
+    // distingue "falhou fechado" de "caiu na chave da plataforma".
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY")
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 500)
+    assertEquals(executor.registro.chamadas.length, 0)
+    assertEquals(mp.registro.chamadas, 0)
+    // Passo 4 da edge: sem token não há execução — e uma linha marcada
+    // em_processamento sem chamada é fila parada à toa.
+    assertEquals(registro.marcas.length, 0)
+})
+
+// ── F12 (missão pagamentos, 29/09/2026): linha de RASTREIO de chargeback ────
+// (solicitado_por 'sistema', VIVA) NÃO é executável pelo clique do lojista.
+// O webhook nasce linhas 'sistema' em_processamento para CONTABILIZAR
+// chargeback em análise (dinheiro que já se moveu por fora do app);
+// executá-la aqui seria um POST de refund NOVO durante a disputa aberta —
+// dupla saída se o banco liquidar a favor da loja. O cron já exclui essas
+// linhas com este motivo; este teste trava a MESMA regra na porta do clique.
+
+Deno.test("F12 - linha solicitado_por 'sistema' (chargeback em_processamento) responde 409 estorno_de_sistema SEM marcar, SEM executor e SEM MP", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, status: "em_processamento", solicitado_por: "sistema" },
+        pedido: PEDIDO_PAGO,
+    })
+    const executor = executorFalso({ tipo: "concluido" })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 409)
+    const corpo = await resposta.json()
+    assertEquals(corpo.erro, "estorno_de_sistema")
+    assertEquals(corpo.status, "em_processamento")
+    assertEquals(executor.registro.chamadas.length, 0)
+    assertEquals(mp.registro.chamadas, 0)
+    // Nada é marcado: a linha de contabilidade segue como está, e o cron
+    // continua sendo o único caminho de conclusão dela (pela consulta, sem POST).
+    assertEquals(registro.marcas.length, 0)
+    // Revisão de 29/09 (achado MÉDIO): o dublê devolve a linha inteira e
+    // ignora colunas — sem esta asserção, REMOVER 'solicitado_por' do SELECT
+    // da edge desarmaria o gate 2b (undefined !== 'sistema') com a suíte
+    // verde. A coluna que sustenta o gate fica PRESA aqui.
+    assertEquals(String(registro.colunasDaLinha).includes("solicitado_por"), true)
+})
+
+Deno.test("F12b - defesa em profundidade: a MARCA de uma linha legítima carrega .neq('solicitado_por','sistema') — o MESMO filtro do cron", async () => {
+    // Se uma refatura futura pular o gate 2b, a marca de uma linha de
+    // rastreio precisa devolver 0 linhas (nada executado). Este teste prende
+    // o filtro na marca de um fluxo NORMAL (linha de cliente, executada):
+    // os filtros da marca têm de incluir o .neq do cron.
+    const { cliente, registro } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+    })
+    const executor = executorFalso({ tipo: "concluido" })
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: fetchMpFalso().buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals(registro.marcas.length, 1)
+    const temNeqSistema = registro.marcas[0].filtros.some(
+        (f: any) => f.metodo === "neq" && f.coluna === "solicitado_por" && f.valor === "sistema",
+    )
+    assertEquals(temNeqSistema, true)
+})
+
+
+// ── LEASE (Lote A, 04/10/2026 — achado causal do 01765261): a edge entrega
+// ao executor a pergunta ao banco feita IMEDIATAMENTE antes do POST
+// (autorizar_post_do_estorno). Com o módulo REAL (sem injetar o executor):
+// o banco dizendo "não cabe mais" => nenhum POST, 202, a linha fica
+// em_processamento com o motivo em ultimo_erro — nunca terminal.
+
+Deno.test("LEASE-E1 - o banco diz que o POST não cabe mais numa linha que NUNCA teve POST: NENHUM POST, recusado (R1), escrita condicionada ao carimbo", async () => {
+    // R1 (revisão Opus de 14d77a5b): antes, 202 e a linha preservada — e
+    // sem POST nenhum ela ficava reservada para sempre. A linha INCERTA no
+    // mesmo nao_cabe segue preservada: LEASE-E1b, abaixo.
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, amount: 20 },
+        pedido: { ...PEDIDO_ORDER, valor_estornado: 20 },
+        autorizacao: { decisao: "nao_cabe", disponivel: 10 },
+    })
+    const mp = fetchOrderRefundFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "recusado")
+    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "POST").length, 0, "nenhum POST saiu")
+    assertEquals(registro.autorizacoes, [{ p_refund_id: REFUND_ID, p_valor: 20 }])
+    assertEquals(registro.finais.length, 1)
+    assertEquals(registro.finais[0].valores.ultimo_erro, MOTIVO_SALDO_NAO_COBRE_MAIS)
+    assertEquals(
+        registro.finais[0].filtros.some((f: any) => f.metodo === "is" && f.coluna === "post_autorizado_em" && f.valor === null),
+        true,
+        "o recusado só pega linha sem POST autorizado",
+    )
+    assertEquals(registro.rpcs.length, 0, "nada concluído")
+})
+
+Deno.test("LEASE-E1b - a MESMA situação numa linha com POST autorizado antes (post_autorizado_em, pelo SELECT real): 202, linha preservada, nada terminal", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: {
+            ...LINHA_SOLICITADA,
+            amount: 20,
+            status: "em_processamento",
+            tentativas: 1,
+            criada_sob_autorizacao: true,
+            post_autorizado_em: "2026-10-04T10:00:00Z",
+        },
+        pedido: { ...PEDIDO_ORDER, valor_estornado: 20 },
+        autorizacao: { decisao: "nao_cabe", disponivel: 10 },
+        // A linha chega ao executor SÓ com o que o SELECT da edge pediu: sem
+        // post_autorizado_em no SELECT, ela pareceria nunca enviada.
+        projetarColunas: true,
+    })
+    const mp = fetchOrderRefundFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                buscar: mp.buscar,
+                // SEM executarEstorno: o módulo real, igual ao F5b.
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 202)
+    assertEquals((await resposta.json()).status, "em_processamento")
+    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "POST").length, 0, "nenhum POST saiu")
+    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "GET").length, 1, "o GET da transação veio ANTES da pergunta")
+    assertEquals(registro.autorizacoes, [{ p_refund_id: REFUND_ID, p_valor: 20 }])
+    assertEquals(registro.finais.length, 0, "nada terminal")
+    assertEquals(registro.rpcs.length, 0, "nada concluído")
+    const adiamento = registro.atualizacoes.find((u: any) => u.valores && "ultimo_erro" in u.valores)
+    assertEquals(String(adiamento?.valores.ultimo_erro).startsWith(MOTIVO_SALDO_MUDOU_ANTES_DO_POST), true)
+    assertEquals(String(adiamento?.valores.ultimo_erro).includes(MOTIVO_LINHA_INCERTA), true)
+    assertEquals(adiamento?.filtros.some((f: any) => f.metodo === "in" && f.valores.includes("em_processamento")), true)
+})
+
+Deno.test("LEASE-E2 - com executor injetado, a edge passa autorizarAntesDoPost e ela pergunta ao banco pela linha e pelo valor", async () => {
+    const { cliente, registro } = clienteSupaFalso({ linha: { ...LINHA_SOLICITADA, amount: 30 }, pedido: PEDIDO_PAGO })
+    let resposta: any = null
+    const executor = async (args: any) => {
+        resposta = await args.autorizarAntesDoPost(args.linha)
+        return { tipo: "tentar_depois", motivo: "teste" }
+    }
+    await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor,
+                buscar: fetchMpFalso().buscar,
+            }),
+        ),
+    )
+    assertEquals(registro.autorizacoes, [{ p_refund_id: REFUND_ID, p_valor: 30 }])
+    assertEquals(resposta?.decisao, "autorizado")
+    assertEquals(resposta?.pedido?.id, PEDIDO_PAGO.id)
+})
+
+
+// ── LINHA INCERTA (Lote A, 04/10/2026 — achado do coordenador em 1a823e3f):
+// o clique numa linha que JÁ estava em_processamento (tentativas lidas >= 1:
+// a edge marca 2) com o pedido já sem saldo NUNCA vira recusado — a reserva
+// fica. Linha nova (solicitado, tentativas 0) sem saldo: recusado como antes.
+// Módulo REAL do executor (sem injetar), igual ao F5b.
+
+Deno.test("INCERTA-E1 - clique numa linha já em processamento (POST anterior possível) com o pedido em 90: 202, ZERO POST, nada terminal, motivo no ultimo_erro", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, amount: 20, status: "em_processamento", tentativas: 1 },
+        pedido: { ...PEDIDO_PAGO, valor_estornado: 90 },
+    })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 202)
+    assertEquals((await resposta.json()).status, "em_processamento")
+    assertEquals(mp.registro.chamadas, 0, "zero chamada ao MP")
+    assertEquals(registro.finais.length, 0, "nada terminal: a reserva fica")
+    const adiamento = registro.atualizacoes.find((u: any) => u.valores && "ultimo_erro" in u.valores)
+    assertEquals(String(adiamento?.valores.ultimo_erro).includes(MOTIVO_LINHA_INCERTA), true)
+})
+
+Deno.test("INCERTA-E2 (controle) - linha NOVA (solicitado, tentativas 0) com o pedido em 90: recusado como antes, zero chamada ao MP", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, amount: 20 },
+        pedido: { ...PEDIDO_PAGO, valor_estornado: 90 },
+    })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "recusado")
+    assertEquals(mp.registro.chamadas, 0)
+    assertEquals(registro.finais.length, 1)
+    assertEquals(registro.finais[0].valores.status, "recusado")
+})
+
+// ── R1 (revisão Opus de 14d77a5b): linha nascida depois da 20261196000000
+// que só passou por tentativas SEM POST (tentativas 2, sem carimbo) não é
+// incerta — a guarda a recusa e a reserva é liberada. A coluna
+// criada_sob_autorizacao tem de vir no SELECT da edge: sem ela a linha cai
+// no critério LEGADO (tentativas > 1 = incerta) e fica presa.
+
+Deno.test("R1-E1 - linha nova (criada_sob_autorizacao) com tentativas 2 e sem POST autorizado, pedido em 90: recusado, zero chamada ao MP", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: {
+            ...LINHA_SOLICITADA,
+            amount: 20,
+            status: "em_processamento",
+            tentativas: 2,
+            criada_sob_autorizacao: true,
+            post_autorizado_em: null,
+        },
+        pedido: { ...PEDIDO_PAGO, valor_estornado: 90 },
+        projetarColunas: true,
+    })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "recusado")
+    assertEquals(mp.registro.chamadas, 0, "zero chamada ao MP")
+    assertEquals(registro.finais.length, 1)
+    assertEquals(registro.finais[0].valores.status, "recusado")
+    assertEquals(
+        registro.finais[0].filtros.some((f: any) => f.metodo === "is" && f.coluna === "post_autorizado_em" && f.valor === null),
+        true,
+    )
+    assertEquals(
+        String(registro.colunasDaLinha).includes("post_autorizado_em") &&
+            String(registro.colunasDaLinha).includes("criada_sob_autorizacao"),
+        true,
+        "o SELECT da linha traz as duas colunas do critério",
+    )
+})
+
+Deno.test("R1-E2 - o recusado perdeu a corrida para um POST autorizado no meio (0 linhas no UPDATE condicionado): 409 com o estado real, nada sobrescrito", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, amount: 20 },
+        linhaFinal: { status: "em_processamento" },
+        pedido: { ...PEDIDO_ORDER, valor_estornado: 20 },
+        autorizacao: { decisao: "nao_cabe", disponivel: 10 },
+        finais: [0],
+    })
+    const mp = fetchOrderRefundFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 409)
+    assertEquals(await resposta.json(), { erro: "estorno_ja_tratado", status: "em_processamento" })
+    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "POST").length, 0)
+    // A escrita que perdeu era a do recusado condicionada ao carimbo.
+    assertEquals(registro.finais.length, 1)
+    assertEquals(
+        registro.finais[0].filtros.some((f: any) => f.metodo === "is" && f.coluna === "post_autorizado_em"),
+        true,
+    )
 })

@@ -1,3 +1,4 @@
+import { SUPERFICIE_DO_CRM } from "@/components/admin/crm/PecasDoCrm";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -129,24 +130,25 @@ export const OperationalPerformanceChart = memo(
     return (
       <div
         className={cn(
-          "admin-glass pt-0 pb-6 px-4 sm:pt-0 sm:pb-10 sm:px-10 sm:rounded-[3rem] border border-white/5 space-y-4 sm:space-y-6 relative overflow-hidden group",
+          SUPERFICIE_DO_CRM,
+          "pt-4 pb-6 px-4 sm:pt-5 sm:pb-10 sm:px-10 space-y-4 sm:space-y-6 relative overflow-hidden group",
           className,
         )}
       >
         <div className="absolute -bottom-20 -right-20 size-96 rounded-full bg-admin-gold/[0.02] blur-[100px]" />
 
-        <div className="relative z-10 mt-5 flex flex-row items-center justify-between px-2 sm:px-0">
+        <div className="relative z-10 flex flex-row items-center justify-between px-2 sm:px-0">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
-            <div className="-mt-1 sm:-mt-2">
-              <h3 className="bg-gradient-to-r from-white via-white to-white/40 bg-clip-text pr-2 text-xl font-black uppercase italic leading-tight tracking-tighter text-transparent sm:text-3xl">
+            <div>
+              <h3 className="text-sm font-semibold leading-snug text-white">
                 Performance
               </h3>
-              <div className="mt-0.5 flex items-center gap-2 sm:mt-1">
+              <div className="mt-0.5 flex items-center gap-2">
                 <span className="size-1.5 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)]" />
-                <p className="text-[8px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:text-[10px]">
+                <p className="text-xs leading-relaxed text-zinc-400">
                   {chartMode === "revenue"
-                    ? "Fluxo Operacional"
-                    : "Retorno sobre Estoque"}
+                    ? "Fluxo operacional"
+                    : "Retorno sobre estoque"}
                 </p>
               </div>
             </div>
@@ -156,7 +158,7 @@ export const OperationalPerformanceChart = memo(
                 stats?.today?.revenueTrend !== undefined) && (
                 <div className="hidden items-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 sm:flex">
                   <Activity className="size-3 text-emerald-500" />
-                  <span className="text-[10px] font-black uppercase leading-none tracking-widest text-emerald-500">
+                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-emerald-500">
                     {(stats?.growth ?? stats?.today?.revenueTrend ?? 0) >= 0
                       ? "+"
                       : ""}
@@ -177,7 +179,7 @@ export const OperationalPerformanceChart = memo(
                   key={t}
                   onClick={() => handleTimeframeChange(t)}
                   className={cn(
-                    "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all select-none",
+                    "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all select-none",
                     timeframe === t
                       ? "bg-white text-black shadow-lg"
                       : "text-zinc-400 hover:text-white hover:bg-white/5",
@@ -189,11 +191,11 @@ export const OperationalPerformanceChart = memo(
             </div>
 
             {/* Toggle Chart Mode Buttons */}
-            <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-white/10 bg-white/5 p-1 sm:gap-2">
+            <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1 rounded-2xl border border-white/10 bg-white/5 p-1 sm:gap-2">
               <button
                 onClick={() => handleChartModeChange("revenue")}
                 className={cn(
-                  "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all select-none",
+                  "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all select-none",
                   chartMode === "revenue"
                     ? "bg-white text-black shadow-lg"
                     : "text-zinc-400 hover:text-white hover:bg-white/5",
@@ -204,13 +206,13 @@ export const OperationalPerformanceChart = memo(
               <button
                 onClick={() => handleChartModeChange("roi")}
                 className={cn(
-                  "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all select-none",
+                  "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all select-none",
                   chartMode === "roi"
                     ? "bg-emerald-500 text-black shadow-lg"
                     : "text-zinc-400 hover:text-white hover:bg-white/5",
                 )}
               >
-                ROI do Estoque
+                Retorno do estoque
               </button>
             </div>
           </div>
@@ -223,14 +225,14 @@ export const OperationalPerformanceChart = memo(
             <div className="h-3.5 w-28 rounded-lg bg-white/5" />
           </div>
         ) : (
-          <div className="relative z-10 mt-2 flex h-auto select-none flex-wrap items-center gap-x-5 gap-y-1.5 px-2 text-[9px] font-bold uppercase tracking-wider text-zinc-400 duration-300 animate-in fade-in slide-in-from-top-2 sm:h-5 sm:px-0 sm:text-xs">
+          <div className="relative z-10 mt-2 flex h-auto select-none flex-wrap items-center gap-x-5 gap-y-1.5 px-2 text-[11px] font-bold uppercase tracking-wider text-zinc-400 duration-300 animate-in fade-in slide-in-from-top-2 sm:h-5 sm:px-0 sm:text-xs">
             {chartMode === "revenue" ? (
               <>
                 <div className="flex items-center gap-1.5">
                   <span className="size-1.5 rounded-full bg-emerald-500" />
                   <span>
                     Faturamento Total:{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       R${" "}
                       {periodTotals.revenue.toLocaleString("pt-BR", {
                         maximumFractionDigits: 0,
@@ -242,7 +244,7 @@ export const OperationalPerformanceChart = memo(
                   <span className="size-1.5 rounded-full bg-zinc-400" />
                   <span>
                     Pedidos:{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       {periodTotals.orders}
                     </strong>
                   </span>
@@ -250,8 +252,8 @@ export const OperationalPerformanceChart = memo(
                 <div className="flex items-center gap-1.5">
                   <span className="size-1.5 rounded-full bg-admin-gold" />
                   <span>
-                    Ticket Médio:{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    Valor médio por venda:{" "}
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       R${" "}
                       {periodTotals.avgTicket.toLocaleString("pt-BR", {
                         maximumFractionDigits: 0,
@@ -266,7 +268,7 @@ export const OperationalPerformanceChart = memo(
                   <span className="size-1.5 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" />
                   <span>
                     Estoque At. (Custo):{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       R${" "}
                       {(stats.inventory?.totalCost ?? 0).toLocaleString(
                         "pt-BR",
@@ -279,7 +281,7 @@ export const OperationalPerformanceChart = memo(
                   <span className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
                   <span>
                     Lucro Acumulado:{" "}
-                    <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
+                    <strong className="text-[11px] font-black tabular-nums tracking-tight text-white sm:text-sm">
                       R${" "}
                       {processedRoiData[
                         processedRoiData.length - 1
@@ -322,7 +324,7 @@ export const OperationalPerformanceChart = memo(
               <div className="flex size-16 items-center justify-center rounded-2xl border border-admin-gold/10 bg-admin-gold/5">
                 <BarChart3 className="size-8 text-admin-gold/30" />
               </div>
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">
+              <p className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-600">
                 Nenhum dado disponível no período
               </p>
             </div>
@@ -381,7 +383,7 @@ export const OperationalPerformanceChart = memo(
                         return (
                           <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-white/10 backdrop-blur-3xl">
                             <div className="flex items-center gap-2">
-                              <span className="whitespace-nowrap text-[7px] font-black uppercase leading-none tracking-[0.2em] text-white/50">
+                              <span className="whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em] text-white/50">
                                 {data.full_date || data.date}
                               </span>
                               <div className="h-px flex-1 bg-white/10" />
@@ -391,10 +393,10 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5">
                                 <div className="size-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[5.5px] font-black uppercase leading-none tracking-widest text-white/40">
+                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-white/40">
                                     Receita
                                   </span>
-                                  <span className="mt-0.5 whitespace-nowrap text-[10px] font-black italic leading-tight tracking-tighter text-white">
+                                  <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
                                     R$
                                     {(data.revenue || 0).toLocaleString(
                                       "pt-BR",
@@ -407,10 +409,10 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1">
                                 <div className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[5.5px] font-black uppercase leading-none tracking-widest text-emerald-500/50">
+                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-emerald-500/50">
                                     Pedidos
                                   </span>
-                                  <span className="mt-0.5 text-[10px] font-black italic leading-tight tracking-tighter text-emerald-500">
+                                  <span className="mt-0.5 text-[11px] font-black italic leading-tight tracking-tighter text-emerald-500">
                                     {orderCount}
                                   </span>
                                 </div>
@@ -520,7 +522,7 @@ export const OperationalPerformanceChart = memo(
                         return (
                           <div className="bg-zinc-950/98 pointer-events-none z-50 flex inline-flex select-none flex-col gap-1.5 rounded-xl border border-white/10 px-2.5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.6)] ring-1 ring-white/10 backdrop-blur-3xl">
                             <div className="flex items-center gap-2">
-                              <span className="whitespace-nowrap text-[7px] font-black uppercase leading-none tracking-[0.2em] text-white/50">
+                              <span className="whitespace-nowrap text-[11px] font-black uppercase leading-none tracking-[0.2em] text-white/50">
                                 {data.full_date || data.date}
                               </span>
                               <div className="h-px flex-1 bg-white/10" />
@@ -530,10 +532,10 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5">
                                 <div className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[5.5px] font-black uppercase leading-none tracking-widest text-emerald-500/70">
+                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-emerald-500/70">
                                     Lucro Acumulado
                                   </span>
-                                  <span className="mt-0.5 whitespace-nowrap text-[10px] font-black italic leading-tight tracking-tighter text-white">
+                                  <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
                                     R$
                                     {data.cumulativeProfit.toLocaleString(
                                       "pt-BR",
@@ -549,10 +551,10 @@ export const OperationalPerformanceChart = memo(
                               <div className="flex items-center gap-1.5">
                                 <div className="size-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
                                 <div className="flex flex-col">
-                                  <span className="text-[5.5px] font-black uppercase leading-none tracking-widest text-amber-500/70">
+                                  <span className="text-[11px] font-black uppercase leading-none tracking-widest text-amber-500/70">
                                     Valor Investido (Estoque)
                                   </span>
-                                  <span className="mt-0.5 whitespace-nowrap text-[10px] font-black italic leading-tight tracking-tighter text-white">
+                                  <span className="mt-0.5 whitespace-nowrap text-[11px] font-black italic leading-tight tracking-tighter text-white">
                                     R$
                                     {data.inventoryCost.toLocaleString(
                                       "pt-BR",

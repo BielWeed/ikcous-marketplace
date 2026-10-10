@@ -199,6 +199,72 @@ export type Database = {
         };
         Relationships: [];
       };
+      assinatura_da_loja: {
+        Row: {
+          atualizado_em: string;
+          ciclo: string;
+          gerenciar_url: string | null;
+          id: number;
+          inicio_em: string | null;
+          observacao: string | null;
+          plano: string;
+          proxima_cobranca_em: string | null;
+          recursos: string[];
+          status: string;
+          suporte_whatsapp: string | null;
+          teste_ate: string | null;
+          valor_mensal: number | null;
+        };
+        Insert: {
+          atualizado_em?: string;
+          ciclo?: string;
+          gerenciar_url?: string | null;
+          id?: number;
+          inicio_em?: string | null;
+          observacao?: string | null;
+          plano: string;
+          proxima_cobranca_em?: string | null;
+          recursos?: string[];
+          status: string;
+          suporte_whatsapp?: string | null;
+          teste_ate?: string | null;
+          valor_mensal?: number | null;
+        };
+        Update: {
+          atualizado_em?: string;
+          ciclo?: string;
+          gerenciar_url?: string | null;
+          id?: number;
+          inicio_em?: string | null;
+          observacao?: string | null;
+          plano?: string;
+          proxima_cobranca_em?: string | null;
+          recursos?: string[];
+          status?: string;
+          suporte_whatsapp?: string | null;
+          teste_ate?: string | null;
+          valor_mensal?: number | null;
+        };
+        Relationships: [];
+      };
+      avisos_ao_lojista: {
+        Row: {
+          chave: string;
+          enviado: boolean;
+          reservado_em: string;
+        };
+        Insert: {
+          chave: string;
+          enviado?: boolean;
+          reservado_em?: string;
+        };
+        Update: {
+          chave?: string;
+          enviado?: boolean;
+          reservado_em?: string;
+        };
+        Relationships: [];
+      };
       banners: {
         Row: {
           active: boolean | null;
@@ -337,9 +403,75 @@ export type Database = {
         };
         Relationships: [];
       };
+      config_pagamento_cartao: {
+        Row: {
+          credito: boolean;
+          debito: boolean;
+          id: number;
+          parcelas_max: number;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          credito?: boolean;
+          debito?: boolean;
+          id?: number;
+          parcelas_max?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          credito?: boolean;
+          debito?: boolean;
+          id?: number;
+          parcelas_max?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+      contestacoes_decisao_final: {
+        Row: {
+          decidido_em: string;
+          decisao: string;
+          mp_chargeback_case_id: string;
+          mp_chargeback_id: string;
+          order_id: string;
+          origem: string;
+          valor_do_caso: number | null;
+        };
+        Insert: {
+          decidido_em?: string;
+          decisao: string;
+          mp_chargeback_case_id: string;
+          mp_chargeback_id: string;
+          order_id: string;
+          origem: string;
+          valor_do_caso?: number | null;
+        };
+        Update: {
+          decidido_em?: string;
+          decisao?: string;
+          mp_chargeback_case_id?: string;
+          mp_chargeback_id?: string;
+          order_id?: string;
+          origem?: string;
+          valor_do_caso?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "contestacoes_decisao_final_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       coupons: {
         Row: {
           active: boolean | null;
+          alcance: string;
           code: string;
           created_at: string;
           id: string;
@@ -347,12 +479,12 @@ export type Database = {
           type: string;
           usage_count: number | null;
           usage_limit: number | null;
-          used_count: number | null;
           valid_until: string | null;
           value: number;
         };
         Insert: {
           active?: boolean | null;
+          alcance?: string;
           code: string;
           created_at?: string;
           id?: string;
@@ -360,12 +492,12 @@ export type Database = {
           type: string;
           usage_count?: number | null;
           usage_limit?: number | null;
-          used_count?: number | null;
           valid_until?: string | null;
           value: number;
         };
         Update: {
           active?: boolean | null;
+          alcance?: string;
           code?: string;
           created_at?: string;
           id?: string;
@@ -373,11 +505,273 @@ export type Database = {
           type?: string;
           usage_count?: number | null;
           usage_limit?: number | null;
-          used_count?: number | null;
           valid_until?: string | null;
           value?: number;
         };
         Relationships: [];
+      };
+      cupom_clientes: {
+        Row: {
+          coupon_id: string;
+          criado_em: string;
+          user_id: string;
+        };
+        Insert: {
+          coupon_id: string;
+          criado_em?: string;
+          user_id: string;
+        };
+        Update: {
+          coupon_id?: string;
+          criado_em?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cupom_clientes_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cupom_clientes_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      devolucao_eventos: {
+        Row: {
+          ator: string;
+          created_at: string;
+          created_by: string | null;
+          de_status: string | null;
+          devolucao_id: string;
+          id: number;
+          nota: string | null;
+          para_status: string;
+        };
+        Insert: {
+          ator: string;
+          created_at?: string;
+          created_by?: string | null;
+          de_status?: string | null;
+          devolucao_id: string;
+          id?: number;
+          nota?: string | null;
+          para_status: string;
+        };
+        Update: {
+          ator?: string;
+          created_at?: string;
+          created_by?: string | null;
+          de_status?: string | null;
+          devolucao_id?: string;
+          id?: number;
+          nota?: string | null;
+          para_status?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "devolucao_eventos_devolucao_id_fkey";
+            columns: ["devolucao_id"];
+            isOneToOne: false;
+            referencedRelation: "devolucoes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      devolucao_itens: {
+        Row: {
+          condicao: string | null;
+          devolucao_id: string;
+          id: string;
+          image_url: string | null;
+          order_item_id: string;
+          product_id: string | null;
+          product_name: string | null;
+          quantidade: number;
+          reestocado_em: string | null;
+          reestocar: boolean | null;
+          valor_unitario: number;
+          variant_id: string | null;
+        };
+        Insert: {
+          condicao?: string | null;
+          devolucao_id: string;
+          id?: string;
+          image_url?: string | null;
+          order_item_id: string;
+          product_id?: string | null;
+          product_name?: string | null;
+          quantidade: number;
+          reestocado_em?: string | null;
+          reestocar?: boolean | null;
+          valor_unitario: number;
+          variant_id?: string | null;
+        };
+        Update: {
+          condicao?: string | null;
+          devolucao_id?: string;
+          id?: string;
+          image_url?: string | null;
+          order_item_id?: string;
+          product_id?: string | null;
+          product_name?: string | null;
+          quantidade?: number;
+          reestocado_em?: string | null;
+          reestocar?: boolean | null;
+          valor_unitario?: number;
+          variant_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "devolucao_itens_devolucao_id_fkey";
+            columns: ["devolucao_id"];
+            isOneToOne: false;
+            referencedRelation: "devolucoes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "devolucao_itens_order_item_id_fkey";
+            columns: ["order_item_id"];
+            isOneToOne: false;
+            referencedRelation: "marketplace_order_items";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      devolucoes: {
+        Row: {
+          aprovada_em: string | null;
+          codigo_postagem: string | null;
+          codigo_rastreio: string | null;
+          coleta_em: string | null;
+          concluida_em: string | null;
+          created_at: string;
+          detalhe: string | null;
+          encerrada_em: string | null;
+          entregue_em: string | null;
+          etiqueta_url: string | null;
+          fotos: string[];
+          id: string;
+          me_reverse_id: string | null;
+          mensagem_loja: string | null;
+          metodo_retorno: string;
+          modalidade: string;
+          motivo: string;
+          observacao_inspecao: string | null;
+          order_id: string;
+          politica: Json;
+          postada_em: string | null;
+          prazo_ate: string;
+          protocolo: string;
+          recebida_em: string | null;
+          reembolso_manual: boolean;
+          refund_id: string | null;
+          resolucao_desejada: string;
+          resolucao_final: string | null;
+          status: string;
+          tipo: string;
+          updated_at: string;
+          user_id: string;
+          valor_frete_ida: number;
+          valor_itens: number;
+          valor_reembolso: number | null;
+        };
+        Insert: {
+          aprovada_em?: string | null;
+          codigo_postagem?: string | null;
+          codigo_rastreio?: string | null;
+          coleta_em?: string | null;
+          concluida_em?: string | null;
+          created_at?: string;
+          detalhe?: string | null;
+          encerrada_em?: string | null;
+          entregue_em?: string | null;
+          etiqueta_url?: string | null;
+          fotos?: string[];
+          id?: string;
+          me_reverse_id?: string | null;
+          mensagem_loja?: string | null;
+          metodo_retorno: string;
+          modalidade: string;
+          motivo: string;
+          observacao_inspecao?: string | null;
+          order_id: string;
+          politica: Json;
+          postada_em?: string | null;
+          prazo_ate: string;
+          protocolo: string;
+          recebida_em?: string | null;
+          reembolso_manual?: boolean;
+          refund_id?: string | null;
+          resolucao_desejada: string;
+          resolucao_final?: string | null;
+          status?: string;
+          tipo: string;
+          updated_at?: string;
+          user_id: string;
+          valor_frete_ida?: number;
+          valor_itens: number;
+          valor_reembolso?: number | null;
+        };
+        Update: {
+          aprovada_em?: string | null;
+          codigo_postagem?: string | null;
+          codigo_rastreio?: string | null;
+          coleta_em?: string | null;
+          concluida_em?: string | null;
+          created_at?: string;
+          detalhe?: string | null;
+          encerrada_em?: string | null;
+          entregue_em?: string | null;
+          etiqueta_url?: string | null;
+          fotos?: string[];
+          id?: string;
+          me_reverse_id?: string | null;
+          mensagem_loja?: string | null;
+          metodo_retorno?: string;
+          modalidade?: string;
+          motivo?: string;
+          observacao_inspecao?: string | null;
+          order_id?: string;
+          politica?: Json;
+          postada_em?: string | null;
+          prazo_ate?: string;
+          protocolo?: string;
+          recebida_em?: string | null;
+          reembolso_manual?: boolean;
+          refund_id?: string | null;
+          resolucao_desejada?: string;
+          resolucao_final?: string | null;
+          status?: string;
+          tipo?: string;
+          updated_at?: string;
+          user_id?: string;
+          valor_frete_ida?: number;
+          valor_itens?: number;
+          valor_reembolso?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "devolucoes_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "devolucoes_refund_id_fkey";
+            columns: ["refund_id"];
+            isOneToOne: false;
+            referencedRelation: "order_refunds";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       favorites: {
         Row: {
@@ -399,6 +793,241 @@ export type Database = {
           user_id?: string;
         };
         Relationships: [];
+      };
+      fin_caixa_sessoes: {
+        Row: {
+          aberto_em: string;
+          aberto_por: string | null;
+          conta_id: string;
+          diferenca: number | null;
+          fechado_em: string | null;
+          fechado_por: string | null;
+          id: string;
+          observacao: string | null;
+          status: string;
+          valor_abertura: number;
+          valor_contado: number | null;
+          valor_esperado: number | null;
+        };
+        Insert: {
+          aberto_em?: string;
+          aberto_por?: string | null;
+          conta_id: string;
+          diferenca?: number | null;
+          fechado_em?: string | null;
+          fechado_por?: string | null;
+          id?: string;
+          observacao?: string | null;
+          status?: string;
+          valor_abertura: number;
+          valor_contado?: number | null;
+          valor_esperado?: number | null;
+        };
+        Update: {
+          aberto_em?: string;
+          aberto_por?: string | null;
+          conta_id?: string;
+          diferenca?: number | null;
+          fechado_em?: string | null;
+          fechado_por?: string | null;
+          id?: string;
+          observacao?: string | null;
+          status?: string;
+          valor_abertura?: number;
+          valor_contado?: number | null;
+          valor_esperado?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fin_caixa_sessoes_conta_id_fkey";
+            columns: ["conta_id"];
+            isOneToOne: false;
+            referencedRelation: "fin_contas";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      fin_categorias: {
+        Row: {
+          ativa: boolean;
+          created_at: string;
+          grupo_dre: string;
+          id: string;
+          natureza: string;
+          nome: string;
+          ordem: number;
+          sistema: boolean;
+        };
+        Insert: {
+          ativa?: boolean;
+          created_at?: string;
+          grupo_dre: string;
+          id?: string;
+          natureza: string;
+          nome: string;
+          ordem?: number;
+          sistema?: boolean;
+        };
+        Update: {
+          ativa?: boolean;
+          created_at?: string;
+          grupo_dre?: string;
+          id?: string;
+          natureza?: string;
+          nome?: string;
+          ordem?: number;
+          sistema?: boolean;
+        };
+        Relationships: [];
+      };
+      fin_contas: {
+        Row: {
+          ativa: boolean;
+          created_at: string;
+          id: string;
+          nome: string;
+          ordem: number;
+          saldo_inicial: number;
+          saldo_inicial_em: string;
+          sistema: boolean;
+          tipo: string;
+          updated_at: string;
+        };
+        Insert: {
+          ativa?: boolean;
+          created_at?: string;
+          id?: string;
+          nome: string;
+          ordem?: number;
+          saldo_inicial?: number;
+          saldo_inicial_em?: string;
+          sistema?: boolean;
+          tipo: string;
+          updated_at?: string;
+        };
+        Update: {
+          ativa?: boolean;
+          created_at?: string;
+          id?: string;
+          nome?: string;
+          ordem?: number;
+          saldo_inicial?: number;
+          saldo_inicial_em?: string;
+          sistema?: boolean;
+          tipo?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      fin_lancamentos: {
+        Row: {
+          caixa_sessao_id: string | null;
+          cancelado_em: string | null;
+          cancelado_por: string | null;
+          categoria_id: string | null;
+          conta_destino_id: string | null;
+          conta_id: string;
+          created_at: string;
+          criado_por: string | null;
+          data_competencia: string;
+          data_realizacao: string | null;
+          data_vencimento: string | null;
+          descricao: string;
+          forma_pagamento: string | null;
+          grupo_parcelas: string | null;
+          id: string;
+          motivo_cancelamento: string | null;
+          observacao: string | null;
+          origem: string;
+          parcela: number | null;
+          parcelas: number | null;
+          status: string;
+          tipo: string;
+          updated_at: string;
+          valor: number;
+        };
+        Insert: {
+          caixa_sessao_id?: string | null;
+          cancelado_em?: string | null;
+          cancelado_por?: string | null;
+          categoria_id?: string | null;
+          conta_destino_id?: string | null;
+          conta_id: string;
+          created_at?: string;
+          criado_por?: string | null;
+          data_competencia: string;
+          data_realizacao?: string | null;
+          data_vencimento?: string | null;
+          descricao: string;
+          forma_pagamento?: string | null;
+          grupo_parcelas?: string | null;
+          id?: string;
+          motivo_cancelamento?: string | null;
+          observacao?: string | null;
+          origem?: string;
+          parcela?: number | null;
+          parcelas?: number | null;
+          status: string;
+          tipo: string;
+          updated_at?: string;
+          valor: number;
+        };
+        Update: {
+          caixa_sessao_id?: string | null;
+          cancelado_em?: string | null;
+          cancelado_por?: string | null;
+          categoria_id?: string | null;
+          conta_destino_id?: string | null;
+          conta_id?: string;
+          created_at?: string;
+          criado_por?: string | null;
+          data_competencia?: string;
+          data_realizacao?: string | null;
+          data_vencimento?: string | null;
+          descricao?: string;
+          forma_pagamento?: string | null;
+          grupo_parcelas?: string | null;
+          id?: string;
+          motivo_cancelamento?: string | null;
+          observacao?: string | null;
+          origem?: string;
+          parcela?: number | null;
+          parcelas?: number | null;
+          status?: string;
+          tipo?: string;
+          updated_at?: string;
+          valor?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fin_lancamentos_caixa_sessao_id_fkey";
+            columns: ["caixa_sessao_id"];
+            isOneToOne: false;
+            referencedRelation: "fin_caixa_sessoes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fin_lancamentos_categoria_id_fkey";
+            columns: ["categoria_id"];
+            isOneToOne: false;
+            referencedRelation: "fin_categorias";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fin_lancamentos_conta_destino_id_fkey";
+            columns: ["conta_destino_id"];
+            isOneToOne: false;
+            referencedRelation: "fin_contas";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fin_lancamentos_conta_id_fkey";
+            columns: ["conta_id"];
+            isOneToOne: false;
+            referencedRelation: "fin_contas";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       marketplace_ai_state: {
         Row: {
@@ -569,6 +1198,7 @@ export type Database = {
       marketplace_orders: {
         Row: {
           address_id: string | null;
+          canal: string;
           cancelled_after_shipping: boolean;
           confirmation_email_sent_at: string | null;
           coupon_code: string | null;
@@ -579,15 +1209,18 @@ export type Database = {
           customer_name: string;
           customer_phone: string | null;
           discount: number | null;
+          estorno_manual_registrado_em: string | null;
           expires_at: string | null;
           gateway_payment_id: string | null;
           id: string;
           idempotency_key: string | null;
+          metodo_online: string | null;
           notes: string | null;
           observation: string | null;
           pagamento_recebido_em: string | null;
           pagamento_recebido_por: string | null;
           paid_at: string | null;
+          parcelas: number | null;
           payment_method: string | null;
           payment_status: string | null;
           returned_to_seller_at: string | null;
@@ -598,15 +1231,18 @@ export type Database = {
           status: string;
           stock_returned_at: string | null;
           subtotal: number;
+          tentativas_de_pagamento: number;
           total: number;
           total_amount: number | null;
           tracking_code: string | null;
           updated_at: string;
           user_id: string | null;
           valor_estornado: number;
+          vendedor_id: string | null;
         };
         Insert: {
           address_id?: string | null;
+          canal?: string;
           cancelled_after_shipping?: boolean;
           confirmation_email_sent_at?: string | null;
           coupon_code?: string | null;
@@ -617,15 +1253,18 @@ export type Database = {
           customer_name: string;
           customer_phone?: string | null;
           discount?: number | null;
+          estorno_manual_registrado_em?: string | null;
           expires_at?: string | null;
           gateway_payment_id?: string | null;
           id?: string;
           idempotency_key?: string | null;
+          metodo_online?: string | null;
           notes?: string | null;
           observation?: string | null;
           pagamento_recebido_em?: string | null;
           pagamento_recebido_por?: string | null;
           paid_at?: string | null;
+          parcelas?: number | null;
           payment_method?: string | null;
           payment_status?: string | null;
           returned_to_seller_at?: string | null;
@@ -636,15 +1275,18 @@ export type Database = {
           status?: string;
           stock_returned_at?: string | null;
           subtotal: number;
+          tentativas_de_pagamento?: number;
           total: number;
           total_amount?: number | null;
           tracking_code?: string | null;
           updated_at?: string;
           user_id?: string | null;
           valor_estornado?: number;
+          vendedor_id?: string | null;
         };
         Update: {
           address_id?: string | null;
+          canal?: string;
           cancelled_after_shipping?: boolean;
           confirmation_email_sent_at?: string | null;
           coupon_code?: string | null;
@@ -655,15 +1297,18 @@ export type Database = {
           customer_name?: string;
           customer_phone?: string | null;
           discount?: number | null;
+          estorno_manual_registrado_em?: string | null;
           expires_at?: string | null;
           gateway_payment_id?: string | null;
           id?: string;
           idempotency_key?: string | null;
+          metodo_online?: string | null;
           notes?: string | null;
           observation?: string | null;
           pagamento_recebido_em?: string | null;
           pagamento_recebido_por?: string | null;
           paid_at?: string | null;
+          parcelas?: number | null;
           payment_method?: string | null;
           payment_status?: string | null;
           returned_to_seller_at?: string | null;
@@ -674,12 +1319,14 @@ export type Database = {
           status?: string;
           stock_returned_at?: string | null;
           subtotal?: number;
+          tentativas_de_pagamento?: number;
           total?: number;
           total_amount?: number | null;
           tracking_code?: string | null;
           updated_at?: string;
           user_id?: string | null;
           valor_estornado?: number;
+          vendedor_id?: string | null;
         };
         Relationships: [
           {
@@ -739,12 +1386,17 @@ export type Database = {
           amount: number;
           concluido_em: string | null;
           created_at: string;
+          criada_sob_autorizacao: boolean | null;
           id: string;
           motivo: string | null;
+          mp_chargeback_case_id: string | null;
+          mp_chargeback_id: string | null;
+          mp_chargeback_valor_do_caso: number | null;
           mp_refund_id: string | null;
           mp_status: string | null;
           mp_status_detail: string | null;
           order_id: string;
+          post_autorizado_em: string | null;
           solicitado_por: string;
           status: string;
           tentativas: number;
@@ -755,12 +1407,17 @@ export type Database = {
           amount: number;
           concluido_em?: string | null;
           created_at?: string;
+          criada_sob_autorizacao?: boolean | null;
           id?: string;
           motivo?: string | null;
+          mp_chargeback_case_id?: string | null;
+          mp_chargeback_id?: string | null;
+          mp_chargeback_valor_do_caso?: number | null;
           mp_refund_id?: string | null;
           mp_status?: string | null;
           mp_status_detail?: string | null;
           order_id: string;
+          post_autorizado_em?: string | null;
           solicitado_por: string;
           status?: string;
           tentativas?: number;
@@ -771,12 +1428,17 @@ export type Database = {
           amount?: number;
           concluido_em?: string | null;
           created_at?: string;
+          criada_sob_autorizacao?: boolean | null;
           id?: string;
           motivo?: string | null;
+          mp_chargeback_case_id?: string | null;
+          mp_chargeback_id?: string | null;
+          mp_chargeback_valor_do_caso?: number | null;
           mp_refund_id?: string | null;
           mp_status?: string | null;
           mp_status_detail?: string | null;
           order_id?: string;
+          post_autorizado_em?: string | null;
           solicitado_por?: string;
           status?: string;
           tentativas?: number;
@@ -884,9 +1546,102 @@ export type Database = {
           },
         ];
       };
+      pedido_cobranca_ao_cancelar: {
+        Row: {
+          cancelado_em: string;
+          gateway_payment_id: string | null;
+          metodo_online: string | null;
+          order_id: string;
+          payment_status: string | null;
+          tentativas: number;
+        };
+        Insert: {
+          cancelado_em?: string;
+          gateway_payment_id?: string | null;
+          metodo_online?: string | null;
+          order_id: string;
+          payment_status?: string | null;
+          tentativas: number;
+        };
+        Update: {
+          cancelado_em?: string;
+          gateway_payment_id?: string | null;
+          metodo_online?: string | null;
+          order_id?: string;
+          payment_status?: string | null;
+          tentativas?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pedido_cobranca_ao_cancelar_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: true;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      politica_devolucao: {
+        Row: {
+          aceita_troca: boolean;
+          aceita_vale: boolean;
+          categorias_sem_troca: string[];
+          endereco_devolucao: string | null;
+          exige_fotos_vicio: boolean;
+          frete_troca_pago_por: string;
+          id: number;
+          metodos_locais: string[];
+          metodos_nacionais: string[];
+          prazo_arrependimento_dias: number;
+          prazo_troca_dias: number;
+          prazo_vicio_dias: number;
+          reembolso_momento: string;
+          texto_politica: string | null;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          aceita_troca?: boolean;
+          aceita_vale?: boolean;
+          categorias_sem_troca?: string[];
+          endereco_devolucao?: string | null;
+          exige_fotos_vicio?: boolean;
+          frete_troca_pago_por?: string;
+          id?: number;
+          metodos_locais?: string[];
+          metodos_nacionais?: string[];
+          prazo_arrependimento_dias?: number;
+          prazo_troca_dias?: number;
+          prazo_vicio_dias?: number;
+          reembolso_momento?: string;
+          texto_politica?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          aceita_troca?: boolean;
+          aceita_vale?: boolean;
+          categorias_sem_troca?: string[];
+          endereco_devolucao?: string | null;
+          exige_fotos_vicio?: boolean;
+          frete_troca_pago_por?: string;
+          id?: number;
+          metodos_locais?: string[];
+          metodos_nacionais?: string[];
+          prazo_arrependimento_dias?: number;
+          prazo_troca_dias?: number;
+          prazo_vicio_dias?: number;
+          reembolso_momento?: string;
+          texto_politica?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
       product_variants: {
         Row: {
           active: boolean | null;
+          codigo_barras: string | null;
           created_at: string;
           id: string;
           image_url: string | null;
@@ -899,6 +1654,7 @@ export type Database = {
         };
         Insert: {
           active?: boolean | null;
+          codigo_barras?: string | null;
           created_at?: string;
           id?: string;
           image_url?: string | null;
@@ -911,6 +1667,7 @@ export type Database = {
         };
         Update: {
           active?: boolean | null;
+          codigo_barras?: string | null;
           created_at?: string;
           id?: string;
           image_url?: string | null;
@@ -952,6 +1709,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string;
@@ -984,6 +1742,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string;
@@ -1016,6 +1775,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string;
@@ -1235,6 +1995,32 @@ export type Database = {
           },
         ];
       };
+      reconciliacao_visitas: {
+        Row: {
+          cobranca_terminal: string | null;
+          order_id: string;
+          visitado_em: string;
+        };
+        Insert: {
+          cobranca_terminal?: string | null;
+          order_id: string;
+          visitado_em: string;
+        };
+        Update: {
+          cobranca_terminal?: string | null;
+          order_id?: string;
+          visitado_em?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reconciliacao_visitas_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: true;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       review_votes: {
         Row: {
           created_at: string;
@@ -1422,6 +2208,11 @@ export type Database = {
           manutencao: boolean;
           min_app_version: string | null;
           mp_public_key: string | null;
+          national_benefit_scope: string;
+          national_discount_type: string | null;
+          national_discount_value: number;
+          national_shipping_min: number;
+          national_shipping_strategy: string;
           origin_cep: string | null;
           pagamento_online: boolean;
           primary_color: string | null;
@@ -1434,9 +2225,11 @@ export type Database = {
           shipping_coverage: string;
           shipping_fee: number | null;
           shipping_provider: string;
+          store_address: string | null;
           store_city: string | null;
           store_name: string | null;
           store_state: string | null;
+          store_description: string | null;
           theme_mode: string | null;
           updated_at: string | null;
           vapid_public_key: string | null;
@@ -1458,6 +2251,11 @@ export type Database = {
           manutencao?: boolean;
           min_app_version?: string | null;
           mp_public_key?: string | null;
+          national_benefit_scope?: string;
+          national_discount_type?: string | null;
+          national_discount_value?: number;
+          national_shipping_min?: number;
+          national_shipping_strategy?: string;
           origin_cep?: string | null;
           pagamento_online?: boolean;
           primary_color?: string | null;
@@ -1470,9 +2268,11 @@ export type Database = {
           shipping_coverage?: string;
           shipping_fee?: number | null;
           shipping_provider?: string;
+          store_address?: string | null;
           store_city?: string | null;
           store_name?: string | null;
           store_state?: string | null;
+          store_description?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -1494,6 +2294,11 @@ export type Database = {
           manutencao?: boolean;
           min_app_version?: string | null;
           mp_public_key?: string | null;
+          national_benefit_scope?: string;
+          national_discount_type?: string | null;
+          national_discount_value?: number;
+          national_shipping_min?: number;
+          national_shipping_strategy?: string;
           origin_cep?: string | null;
           pagamento_online?: boolean;
           primary_color?: string | null;
@@ -1506,9 +2311,11 @@ export type Database = {
           shipping_coverage?: string;
           shipping_fee?: number | null;
           shipping_provider?: string;
+          store_address?: string | null;
           store_city?: string | null;
           store_name?: string | null;
           store_state?: string | null;
+          store_description?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -1650,6 +2457,11 @@ export type Database = {
           manutencao: boolean | null;
           min_app_version: string | null;
           mp_public_key: string | null;
+          national_benefit_scope: string | null;
+          national_discount_type: string | null;
+          national_discount_value: number | null;
+          national_shipping_min: number | null;
+          national_shipping_strategy: string | null;
           origin_cep: string | null;
           pagamento_online: boolean | null;
           primary_color: string | null;
@@ -1658,6 +2470,8 @@ export type Database = {
           branding_assets: Json | null;
           push_marketing_enabled: boolean | null;
           real_time_sales_alerts: boolean | null;
+          store_address: string | null;
+          store_description: string | null;
           share_text: string | null;
           shipping_coverage: string | null;
           shipping_fee: number | null;
@@ -1686,6 +2500,11 @@ export type Database = {
           manutencao?: boolean | null;
           min_app_version?: string | null;
           mp_public_key?: string | null;
+          national_benefit_scope?: string | null;
+          national_discount_type?: string | null;
+          national_discount_value?: number | null;
+          national_shipping_min?: number | null;
+          national_shipping_strategy?: string | null;
           origin_cep?: string | null;
           pagamento_online?: boolean | null;
           primary_color?: string | null;
@@ -1722,6 +2541,11 @@ export type Database = {
           manutencao?: boolean | null;
           min_app_version?: string | null;
           mp_public_key?: string | null;
+          national_benefit_scope?: string | null;
+          national_discount_type?: string | null;
+          national_discount_value?: number | null;
+          national_shipping_min?: number | null;
+          national_shipping_strategy?: string | null;
           origin_cep?: string | null;
           pagamento_online?: boolean | null;
           primary_color?: string | null;
@@ -1751,6 +2575,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string | null;
@@ -1783,6 +2608,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string | null;
@@ -1815,6 +2641,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           custo?: number | null;
           data_cadastro?: string | null;
@@ -1850,6 +2677,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           data_cadastro: string | null;
           descricao: string | null;
@@ -1878,6 +2706,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           data_cadastro?: string | null;
           descricao?: string | null;
@@ -1906,6 +2735,7 @@ export type Database = {
           calculated_points?: number | null;
           categoria?: string | null;
           codigo?: string | null;
+          codigo_barras?: string | null;
           comprimento_cm?: number | null;
           data_cadastro?: string | null;
           descricao?: string | null;
@@ -2078,6 +2908,107 @@ export type Database = {
             Returns: undefined;
           };
       check_is_admin: { Args: never; Returns: boolean };
+      admin_devolucao_concluir: {
+        Args: {
+          p_id: string;
+          p_itens: Json;
+          p_observacao?: string | null;
+          p_resolucao: string;
+          p_valor_reembolso?: number | null;
+        };
+        Returns: Json;
+      };
+      admin_devolucao_decidir: {
+        Args: {
+          p_aprovar: boolean;
+          p_coleta_em?: string | null;
+          p_id: string;
+          p_mensagem?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_devolucao_liberar_vinculo_reverso: {
+        Args: { p_conferi_no_melhor_envio?: boolean; p_id: string };
+        Returns: Json;
+      };
+      admin_devolucao_reemitir_reembolso: {
+        Args: { p_devolucao_id: string; p_manual?: boolean };
+        Returns: Json;
+      };
+      admin_devolucao_registrar: {
+        Args: {
+          p_codigo?: string | null;
+          p_evento: string;
+          p_id: string;
+          p_nota?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_devolucao_reprovar: {
+        Args: { p_id: string; p_motivo: string };
+        Returns: Json;
+      };
+      admin_devolucoes_listar: {
+        Args: {
+          p_busca?: string | null;
+          p_limite?: number;
+          p_offset?: number;
+          p_status?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_cupom_clientes: {
+        Args: { p_coupon_id: string };
+        Returns: {
+          email: string | null;
+          nome: string | null;
+          user_id: string;
+        }[];
+      };
+      admin_cupom_definir_clientes: {
+        Args: { p_clientes: string[]; p_coupon_id: string };
+        Returns: number;
+      };
+      cupons_do_checkout: {
+        Args: { p_subtotal: number };
+        Returns: {
+          aplica: boolean;
+          codigo: string;
+          desconto: number;
+          exclusivo: boolean;
+          falta: number;
+          minimo: number;
+          tipo: string;
+          valido_ate: string | null;
+          valor: number;
+        }[];
+      };
+      anular_venda_presencial: {
+        Args: { p_motivo: string; p_order_id: string };
+        Returns: Json;
+      };
+      assinatura_da_loja_ler: {
+        Args: never;
+        Returns: Json;
+      };
+      autorizar_post_do_estorno: {
+        Args: { p_refund_id: string; p_valor: number };
+        Returns: Json;
+      };
+      cancelar_devolucao: {
+        Args: { p_id: string };
+        Returns: Json;
+      };
+      cancelar_pedido_com_cobranca: {
+        Args: {
+          p_ator: string;
+          p_notes?: string;
+          p_order_id: string;
+          p_pagamento_esperado: string;
+          p_vaga_esperada: string;
+        };
+        Returns: Json;
+      };
       check_user_confirmation_status: {
         Args: { p_email: string };
         Returns: Json;
@@ -2090,6 +3021,10 @@ export type Database = {
           p_refund_id: string;
         };
         Returns: Json;
+      };
+      confirmar_aviso_ao_lojista: {
+        Args: { p_chave: string };
+        Returns: boolean;
       };
       confirmar_pagamento: {
         Args: { p_order_id: string; p_payment_id: string; p_status: string };
@@ -2162,6 +3097,23 @@ export type Database = {
         };
         Returns: string;
       };
+      buscar_por_codigo_barras: {
+        Args: { p_codigo: string };
+        Returns: Json;
+      };
+      crm_clientes: {
+        Args: {
+          p_busca?: string | null;
+          p_limite?: number;
+          p_offset?: number;
+          p_segmento?: string | null;
+        };
+        Returns: Json;
+      };
+      crm_visao: {
+        Args: { p_fim: string; p_inicio: string };
+        Returns: Json;
+      };
       decrement_stock: {
         Args: { p_id: string; quantity: number };
         Returns: undefined;
@@ -2172,6 +3124,91 @@ export type Database = {
       expirar_pedidos_vencidos: { Args: never; Returns: number };
       f_digitos: { Args: { "": string }; Returns: string };
       f_unaccent: { Args: { "": string }; Returns: string };
+      devolucao_detalhe: {
+        Args: { p_id: string };
+        Returns: Json;
+      };
+      devolucao_elegibilidade: {
+        Args: { p_order_id: string };
+        Returns: Json;
+      };
+      devolucoes_do_pedido: {
+        Args: { p_order_id: string };
+        Returns: Json;
+      };
+      fin_caixa_abrir: {
+        Args: { p_conta_id?: string | null; p_valor_abertura: number };
+        Returns: Json;
+      };
+      fin_caixa_atual: {
+        Args: never;
+        Returns: Json;
+      };
+      fin_caixa_fechar: {
+        Args: { p_observacao?: string | null; p_valor_contado: number };
+        Returns: Json;
+      };
+      fin_caixa_historico: {
+        Args: { p_limite?: number };
+        Returns: Json;
+      };
+      fin_caixa_movimentar: {
+        Args: {
+          p_conta_contrapartida?: string | null;
+          p_descricao: string;
+          p_tipo: string;
+          p_valor: number;
+        };
+        Returns: Json;
+      };
+      fin_categoria_salvar: {
+        Args: { p: Json };
+        Returns: Json;
+      };
+      fin_categorias_listar: {
+        Args: never;
+        Returns: Json;
+      };
+      fin_conta_salvar: {
+        Args: { p: Json };
+        Returns: Json;
+      };
+      fin_contas_listar: {
+        Args: never;
+        Returns: Json;
+      };
+      fin_dre: {
+        Args: { p_fim: string; p_inicio: string };
+        Returns: Json;
+      };
+      fin_extrato: {
+        Args: { p_conta_id?: string | null; p_fim: string; p_inicio: string };
+        Returns: Json;
+      };
+      fin_lancamento_baixar: {
+        Args: {
+          p_conta_id?: string | null;
+          p_data?: string | null;
+          p_id: string;
+        };
+        Returns: Json;
+      };
+      fin_lancamento_cancelar: {
+        Args: { p_id: string; p_motivo: string };
+        Returns: Json;
+      };
+      fin_lancamento_salvar: {
+        Args: { p: Json };
+        Returns: Json;
+      };
+      fin_previstos: {
+        Args: { p_tipo: string };
+        Returns: Json;
+      };
+      fin_resumo: {
+        Args: { p_fim: string; p_inicio: string };
+        Returns: Json;
+      };
       generate_order_otp_v1: {
         Args: { p_email: string; p_order_fragment: string; p_whatsapp: string };
         Returns: boolean;
@@ -2188,6 +3225,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string;
@@ -2248,8 +3286,17 @@ export type Database = {
         };
         Returns: Json;
       };
+      get_admin_orders_cancelados_recentes: {
+        Args: {
+          p_dias?: number | null;
+          p_page?: number;
+          p_page_size?: number;
+        };
+        Returns: Json;
+      };
       get_admin_orders_paged: {
         Args: {
+          p_canal?: string;
           p_end_date?: string;
           p_page?: number;
           p_page_size?: number;
@@ -2346,6 +3393,10 @@ export type Database = {
           whatsapp: string;
         }[];
       };
+      get_my_cpf: {
+        Args: never;
+        Returns: string;
+      };
       get_orders_by_otp_v1: {
         Args: { p_email: string; p_otp: string };
         Returns: Json;
@@ -2375,6 +3426,7 @@ export type Database = {
           calculated_points: number | null;
           categoria: string | null;
           codigo: string | null;
+          codigo_barras: string | null;
           comprimento_cm: number | null;
           custo: number | null;
           data_cadastro: string;
@@ -2460,6 +3512,11 @@ export type Database = {
       };
       increment_helpful: { Args: { review_id: string }; Returns: undefined };
       is_admin: { Args: never; Returns: boolean };
+      is_admin_atual: { Args: never; Returns: boolean };
+      informar_envio_devolucao: {
+        Args: { p_codigo_rastreio: string; p_id: string };
+        Returns: Json;
+      };
       is_local_cep: {
         Args: {
           p_dest_cep: string;
@@ -2468,9 +3525,22 @@ export type Database = {
         };
         Returns: boolean;
       };
+      liberar_aviso_ao_lojista: { Args: { p_chave: string }; Returns: boolean };
+      liberar_cobranca_do_pedido: {
+        Args: { p_gateway_payment_id?: string | null; p_order_id: string };
+        Returns: boolean;
+      };
       liberar_email_de_confirmacao: {
         Args: { p_order_id: string };
         Returns: undefined;
+      };
+      marcar_visitas_da_reconciliacao: {
+        Args: {
+          p_cobrancas_terminais?: string[];
+          p_terminais?: string[];
+          p_visitados: string[];
+        };
+        Returns: number;
       };
       pagamentos_a_reconciliar: {
         Args: never;
@@ -2478,6 +3548,25 @@ export type Database = {
           gateway_payment_id: string;
           order_id: string;
         }[];
+      };
+      painel_inicio: {
+        Args: never;
+        Returns: Json;
+      };
+      pedido__mudar_status: {
+        Args: {
+          p_ator: string;
+          p_ator_admin: boolean;
+          p_new_status: string;
+          p_notes: string;
+          p_order_id: string;
+          p_pela_edge: boolean;
+        };
+        Returns: Json;
+      };
+      pedido__saldo_a_estornar: {
+        Args: { p_order_id: string };
+        Returns: number;
       };
       perfil_publico_avaliacoes: {
         Args: { p_autor: string };
@@ -2516,9 +3605,44 @@ export type Database = {
         };
         Returns: undefined;
       };
+      registrar_contestacao_no_ledger: {
+        Args: {
+          p_case_id: string;
+          p_casos_na_order: number;
+          p_decisao: string;
+          p_mp_chargeback_id: string;
+          p_order_id: string;
+          p_valor_caso: number;
+          p_valor_estimado: number;
+        };
+        Returns: Json;
+      };
+      registrar_estorno_externo_do_mp: {
+        Args: {
+          p_mp_refund_id: string;
+          p_mp_status: string;
+          p_mp_status_detail: string;
+          p_order_id: string;
+          p_valor: number;
+        };
+        Returns: Json;
+      };
       registrar_estorno_manual: { Args: { p_order_id: string }; Returns: Json };
       registrar_pagamento_recebido: {
         Args: { p_order_id: string; p_recebido: boolean };
+        Returns: Json;
+      };
+      registrar_venda_presencial: {
+        Args: {
+          p_cliente_nome?: string | null;
+          p_cliente_user_id?: string | null;
+          p_cliente_whatsapp?: string | null;
+          p_desconto?: number;
+          p_idempotency_key?: string | null;
+          p_itens: unknown;
+          p_observacao?: string | null;
+          p_pagamento: string;
+        };
         Returns: Json;
       };
       reivindicar_email_de_confirmacao: {
@@ -2543,11 +3667,37 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: Json;
       };
+      reservar_aviso_ao_lojista: { Args: { p_chave: string }; Returns: string };
+      rls_admin_atual: { Args: never; Returns: boolean };
+      salvar_config_pagamento_cartao: {
+        Args: { p_credito: boolean; p_debito: boolean; p_parcelas_max: number };
+        Returns: Json;
+      };
+      salvar_politica_de_devolucao: {
+        Args: { p: Json };
+        Returns: Json;
+      };
       save_store_identity: {
         Args: {
           expected_revision: string;
           expected_identity: Json;
           desired_identity: Json;
+        };
+        Returns: Json;
+      };
+      set_my_cpf: {
+        Args: { p_cpf: string };
+        Returns: undefined;
+      };
+      solicitar_devolucao: {
+        Args: {
+          p_detalhe?: string | null;
+          p_fotos?: string[];
+          p_itens: Json;
+          p_metodo: string;
+          p_motivo: string;
+          p_order_id: string;
+          p_resolucao: string;
         };
         Returns: Json;
       };
@@ -2579,6 +3729,7 @@ export type Database = {
         Returns: Json;
       };
       upsert_store_config: { Args: { config_json: Json }; Returns: Json };
+      vaga_do_cupom_presa: { Args: { p_code: string }; Returns: Json };
       validate_coupon_secure: {
         Args: { p_code: string; p_subtotal: number };
         Returns: {

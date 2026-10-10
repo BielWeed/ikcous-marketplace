@@ -21,7 +21,12 @@ export default defineConfig([
     // máquina do Gabriel dava 14 erros e 1106 warnings, contra os 7 e 553
     // reais que o CI mede (onde essas pastas não existem). Contagem local
     // que não bate com a do CI torna impossível ter catraca de lint.
+    // `.worktrees` é o mesmo caso no endereço NOVO (worktrees de agentes,
+    // comando /wt): uma worktree viva na árvore dobrou a contagem local de
+    // warnings (medido em 20/09: 467 → 937) sem o CI ver nada — a catraca
+    // local perdia a utilidade até a worktree ir embora.
     ".claude",
+    ".worktrees",
     ".serena",
     ".playwright-mcp",
     "scratch",

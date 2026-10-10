@@ -1,0 +1,1462 @@
+diff --git a/.size-limit.cjs b/.size-limit.cjs
+index 551c479..433a99f 100644
+--- a/.size-limit.cjs
++++ b/.size-limit.cjs
+@@ -13,6 +13,18 @@ if (version.source !== mode || version.promotable !== (mode === "database"))
+   throw new Error("IDENTITY_OUTPUT: fonte do artefato diverge do modo");
+ 
+ module.exports = [
+-  { path: `${output}/assets/*.js`, limit: "800 kB" },
++  // webpack:false nas duas entradas: sem isso o size-limit jogava os ~107
++  // chunks .js num projeto webpack vazio, fundia tudo e comprimia em brotli
++  // UMA VEZ SÓ — número que ninguém baixa. O navegador recebe 107 respostas
++  // brotli independentes (uma por chunk, cada uma com seu próprio
++  // dicionário), então a medida honesta é a soma do brotli de cada arquivo
++  // — que é exatamente o que @size-limit/file faz quando webpack:false
++  // desliga o empacotamento (a entrada de CSS abaixo já fazia isso certo).
++  // O número fundido, ~606 kB, subestimava a entrega real em ~170 kB
++  // (28%) e deixava passar dependência nova que estouraria o teto no CDN
++  // sem o portão perceber. Teto continua 800 kB (decisão do dono, D8); o
++  // histórico anterior de "515 kB"/"606 kB" media o artefato fundido e não
++  // é comparável a este número por arquivo.
++  { path: `${output}/assets/*.js`, limit: "800 kB", webpack: false },
+   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },
+ ];
+diff --git a/src/components/pwa/PWAUpdateGate.tsx b/src/components/pwa/PWAUpdateGate.tsx
+index ef6bfca..ac1c63b 100644
+--- a/src/components/pwa/PWAUpdateGate.tsx
++++ b/src/components/pwa/PWAUpdateGate.tsx
+@@ -2,10 +2,56 @@ import { useAuth } from "@/hooks/useAuth";
+ import { useRealtimeUpdate } from "@/hooks/useRealtimeUpdate";
+ import { useUpdateCheck } from "@/hooks/useUpdateCheck";
+ import type { View } from "@/types";
+-import { memo, useCallback } from "react";
++import { memo, useCallback, useEffect, useState } from "react";
+ 
+ import { UpdateNotification } from "./UpdateNotification";
+ 
++// UpdateNotification-138: o modal era sem saída porque `needRefresh` (o
++// `updateAvailable` abaixo) NUNCA volta a false sozinho (useUpdateCheck.ts
++// descarta o setter) — uma vez true, ficava true para sempre. "Depois"
++// precisa de um sinal PRÓPRIO, independente do hook, para segurar o aviso.
++//
++// Guardado em storage (não só em estado do componente) porque o lojista
++// pode trocar de tela sem desmontar o gate (ele vive acima da troca de
++// view), mas TAMBÉM porque um F5 no meio da hora não pode reabrir o modal
++// na cara dele — senão o "Depois" vira teatro.
++const CHAVE_SNOOZE = "pwa_update_snooze_until";
++const UMA_HORA_MS = 60 * 60 * 1000;
++
++// Lê o soneca de QUALQUER um dos dois storages (o mais no futuro vence) —
++// modo privado/anônimo pode bloquear um dos dois, e a instrução pede os
++// dois com try/catch em vez de escolher um só.
++function lerSnoozeArmazenado(): number {
++  let doLocal = 0;
++  let daSessao = 0;
++  try {
++    doLocal = Number(localStorage.getItem(CHAVE_SNOOZE)) || 0;
++  } catch {
++    // Storage indisponível (modo privado, política do navegador): sem
++    // soneca lembrado, o aviso segue o comportamento de hoje.
++  }
++  try {
++    daSessao = Number(sessionStorage.getItem(CHAVE_SNOOZE)) || 0;
++  } catch {
++    // idem
++  }
++  return Math.max(doLocal, daSessao);
++}
++
++function gravarSnoozeArmazenado(ate: number): void {
++  try {
++    localStorage.setItem(CHAVE_SNOOZE, String(ate));
++  } catch {
++    // Sem persistir entre reloads não é o fim do mundo: o estado em
++    // memória (abaixo) já esconde o aviso nesta sessão de componente.
++  }
++  try {
++    sessionStorage.setItem(CHAVE_SNOOZE, String(ate));
++  } catch {
++    // idem
++  }
++}
++
+ // O aviso de atualização nunca interrompe o fechamento de um pedido (decisão
+ // do dono, 03/09): nessas telas ele fica armado e aparece na próxima tela
+ // segura. O pagamento é etapa do checkout — não existe view separada.
+@@ -49,10 +95,48 @@ export const PWAUpdateManager = memo(function PWAUpdateManager({
+ 
+   useRealtimeUpdate(handleUpdate, user?.id);
+ 
++  // O instante-limite mora em storage (lido só na primeira montagem, sem
++  // Date.now no corpo da função — regra de pureza do render); `emSoneca` é
++  // que decide o `show`, e SÓ é escrito de dentro de efeito/callback.
++  const [sonecaAte, setSonecaAte] = useState<number>(() =>
++    lerSnoozeArmazenado(),
++  );
++  const [emSoneca, setEmSoneca] = useState(false);
++
++  // Calcula "ainda vale?" e rearma sozinho quando o prazo vence — sem isto,
++  // um lojista parado na MESMA view por 1h só veria o aviso voltar no
++  // próximo evento (troca de tela, ping do realtime), e "Depois" pareceria
++  // "nunca mais".
++  useEffect(() => {
++    if (sonecaAte <= 0) {
++      setEmSoneca(false);
++      return;
++    }
++    const restanteMs = sonecaAte - Date.now();
++    if (restanteMs <= 0) {
++      setEmSoneca(false);
++      setSonecaAte(0);
++      return;
++    }
++    setEmSoneca(true);
++    const temporizador = setTimeout(() => {
++      setEmSoneca(false);
++      setSonecaAte(0);
++    }, restanteMs);
++    return () => clearTimeout(temporizador);
++  }, [sonecaAte]);
++
++  const handleSnooze = useCallback(() => {
++    const ate = Date.now() + UMA_HORA_MS;
++    gravarSnoozeArmazenado(ate);
++    setSonecaAte(ate);
++  }, []);
++
+   return (
+     <UpdateNotification
+-      show={updateAvailable && !TELAS_DE_COMPRA.has(currentView)}
++      show={updateAvailable && !TELAS_DE_COMPRA.has(currentView) && !emSoneca}
+       onUpdate={() => performNuclearPurge(true)}
++      onSnooze={handleSnooze}
+       newVersion={newVersion}
+     />
+   );
+diff --git a/src/components/pwa/UpdateNotification.tsx b/src/components/pwa/UpdateNotification.tsx
+index 97dd0e8..37d07ed 100644
+--- a/src/components/pwa/UpdateNotification.tsx
++++ b/src/components/pwa/UpdateNotification.tsx
+@@ -4,15 +4,20 @@ import { cn } from "@/lib/utils";
+ import { nucleoSemver } from "@/lib/versao-do-servidor";
+ import { AnimatePresence, motion } from "framer-motion";
+ import { ArrowRight, Rocket } from "lucide-react";
+-import { useCallback, useEffect, useState } from "react";
++import { useCallback, useEffect, useRef, useState } from "react";
+ 
+ interface UpdateNotificationProps {
+   readonly show: boolean;
+   readonly onUpdate: () => void;
++  // UpdateNotification-138: sem isto o cartão era um modal sem saída —
++  // "Depois" é o botão de escape (e o alvo do Escape do teclado, abaixo).
++  readonly onSnooze: () => void;
+   readonly currentVersion?: string;
+   readonly newVersion?: string | null;
+ }
+ 
++const TITULO_ID = "update-notification-titulo";
++
+ declare const __APP_VERSION__: string;
+ // Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
+ // fora dele (runner de teste), o componente segue de pé.
+@@ -22,6 +27,7 @@ const VERSAO_DO_APP =
+ export function UpdateNotification({
+   show,
+   onUpdate,
++  onSnooze,
+   currentVersion,
+   newVersion,
+ }: UpdateNotificationProps) {
+@@ -47,6 +53,47 @@ export function UpdateNotification({
+     setTimeout(() => onUpdate(), 1200);
+   }, [onUpdate]);
+ 
++  // Diálogo de verdade (UpdateNotification-138): foco preso nos dois botões
++  // e Escape == "Depois". O foco inicial vai para "Depois" (não para a ação
++  // que já dispara o reload) — um Enter batido sem querer assim que o
++  // cartão nasce não pode destruir o formulário que o lojista estava
++  // preenchendo.
++  const botaoDepoisRef = useRef<HTMLButtonElement>(null);
++  const botaoAtualizarRef = useRef<HTMLButtonElement>(null);
++
++  useEffect(() => {
++    if (!show || isUpdating) return;
++    botaoDepoisRef.current?.focus();
++  }, [show, isUpdating]);
++
++  useEffect(() => {
++    if (!show) return;
++    const aoTeclar = (e: KeyboardEvent) => {
++      if (e.key === "Escape") {
++        // Enquanto instala (isUpdating), não há mais "depois" possível —
++        // o reload já está a caminho e cancelar no meio deixaria o SW
++        // preso em estado incerto.
++        if (isUpdating) return;
++        e.preventDefault();
++        onSnooze();
++        return;
++      }
++      if (e.key !== "Tab" || isUpdating) return;
++      // Só dois elementos focáveis: Tab/Shift+Tab troca entre eles e o
++      // foco nunca escapa para trás do backdrop.
++      const foco = document.activeElement;
++      if (e.shiftKey && foco === botaoDepoisRef.current) {
++        e.preventDefault();
++        botaoAtualizarRef.current?.focus();
++      } else if (!e.shiftKey && foco === botaoAtualizarRef.current) {
++        e.preventDefault();
++        botaoDepoisRef.current?.focus();
++      }
++    };
++    document.addEventListener("keydown", aoTeclar);
++    return () => document.removeEventListener("keydown", aoTeclar);
++  }, [show, isUpdating, onSnooze]);
++
+   // Animated progress bar during update
+   useEffect(() => {
+     if (!isUpdating) return;
+@@ -73,6 +120,9 @@ export function UpdateNotification({
+ 
+           {/* Notification Card */}
+           <motion.div
++            role="dialog"
++            aria-modal="true"
++            aria-labelledby={TITULO_ID}
+             initial={{ scale: 0.95, opacity: 0, y: 10 }}
+             animate={{ scale: 1, opacity: 1, y: 0 }}
+             exit={{ scale: 0.95, opacity: 0, y: 10 }}
+@@ -95,7 +145,10 @@ export function UpdateNotification({
+               </div>
+ 
+               <div className="space-y-1.5 px-2">
+-                <h3 className="text-lg font-black tracking-tight text-white">
++                <h3
++                  id={TITULO_ID}
++                  className="text-lg font-black tracking-tight text-white"
++                >
+                   Nova Versão Disponível
+                 </h3>
+                 <p className="text-xs leading-relaxed text-zinc-300">
+@@ -135,14 +188,29 @@ export function UpdateNotification({
+                     </div>
+                   </>
+                 ) : (
+-                  <button
+-                    type="button"
+-                    onClick={handleUpdate}
+-                    className="w-full h-12 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-zinc-950 font-black text-xs uppercase tracking-wider transition-all duration-200 hover:brightness-110 active:scale-[0.98] shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer border border-amber-300/40"
+-                  >
+-                    <Rocket className="size-4 text-zinc-950" />
+-                    Atualizar Agora
+-                  </button>
++                  <>
++                    <button
++                      ref={botaoAtualizarRef}
++                      type="button"
++                      onClick={handleUpdate}
++                      className="w-full h-12 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-zinc-950 font-black text-xs uppercase tracking-wider transition-all duration-200 hover:brightness-110 active:scale-[0.98] shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer border border-amber-300/40"
++                    >
++                      <Rocket className="size-4 text-zinc-950" />
++                      Atualizar Agora
++                    </button>
++                    {/* UpdateNotification-138: a saída do modal. Adia 1h em
++                        vez de fechar de vez — needRefresh (useUpdateCheck)
++                        nunca volta a false sozinho, então "fechar sem
++                        adiar" reabriria o mesmo cartão no próximo render. */}
++                    <button
++                      ref={botaoDepoisRef}
++                      type="button"
++                      onClick={onSnooze}
++                      className="h-9 w-full cursor-pointer rounded-xl bg-transparent text-xs font-bold uppercase tracking-wider text-zinc-400 transition-colors duration-200 hover:text-zinc-200"
++                    >
++                      Depois
++                    </button>
++                  </>
+                 )}
+               </div>
+             </div>
+diff --git a/src/hooks/useOrders.ts b/src/hooks/useOrders.ts
+index f768d22..463ae7e 100644
+--- a/src/hooks/useOrders.ts
++++ b/src/hooks/useOrders.ts
+@@ -1077,6 +1077,16 @@ export async function desfechoDoReenvio(
+   return { ok: false, motivo: "envio_falhou" };
+ }
+ 
++/**
++ * Janela do painel de pedidos cancelados (`fetchPedidosCancelados`, abaixo)
++ * — achado central de useOrders-1417 (tarefa useOrders-cancelados-janela-e-
++ * colunas). Módulo, não `useRef`/estado: é uma constante fixa, sem motivo
++ * para viver por instância do hook nem para escapar de teste (exportada só
++ * para o cálculo da janela em `executarBusca` não duplicar o número mágico
++ * em teste e implementação).
++ */
++export const JANELA_PEDIDOS_CANCELADOS_DIAS = 90;
++
+ /** O que `handleRealtimeInsert` deve fazer com um pedido novo, no painel. */
+ export type DecisaoRealtimeInsertAdmin = "inserir" | "recarregar" | "ignorar";
+ 
+@@ -1646,14 +1656,29 @@ export function useOrders(
+    *      `updateOrderStatus` nem pelo canal) — a defasagem passa a ter
+    *      teto de `JANELA_ANTI_REDUNDANCIA_MS`, nunca mais ilimitada.
+    *
+-   * A correção NÃO pode mudar o que a RPC recebe (página/tamanho/filtro):
+-   * o teste "os seis argumentos da primeira página são exatamente os
+-   * fixos" (tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx)
+-   * trava esse contrato com igualdade exata — não é este achado que decide
+-   * mexer nele. Só o SUCESSO grava o instante/gatilho da última busca: uma
+-   * falha (achado B, abaixo) não pode virar cache — a próxima chamada tem
+-   * que tentar de novo, não repetir a lista vazia/incompleta pela janela
+-   * inteira.
++   * ESTA correção (a de cima, gatilho/voo-sujo/releitura) NÃO muda o que a
++   * RPC recebe — só decide QUANDO chamar. Só o SUCESSO grava o
++   * instante/gatilho da última busca: uma falha (achado B, abaixo) não pode
++   * virar cache — a próxima chamada tem que tentar de novo, não repetir a
++   * lista vazia/incompleta pela janela inteira.
++   *
++   * ⚠️ ATUALIZAÇÃO (tarefa useOrders-cancelados-janela-e-colunas — o ACHADO
++   * CENTRAL de useOrders-1417, só agora fechado): o parágrafo acima falava
++   * de OUTRA correção (a do gatilho) e nunca disse que o CONTEÚDO da chamada
++   * — página/tamanho/filtro — era imutável para sempre. `p_start_date`
++   * (abaixo, em `executarBusca`) deixou de ser sempre `""`: sem teto
++   * inferior, a varredura arrastava o histórico INTEIRO da loja a cada
++   * ativação da aba, e isso é o motivo de fundo das "8 chamadas RPC
++   * sequenciais" do laudo de 15/09 — a repetição sem necessidade (que a
++   * correção acima já cortou) só escondia esse custo. O teste "os seis
++   * argumentos da primeira página são exatamente os fixos"
++   * (tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx,
++   * FORA de arquivos_permitidos desta tarefa) travava exatamente o contrato
++   * antigo e fica desatualizado por este commit — quem tem permissão de
++   * editar aquele arquivo precisa atualizar aquele `toEqual` para o novo
++   * `p_start_date`. Nenhum outro teste daquele arquivo depende do valor de
++   * `p_start_date` (só de `p_status`/contagem de chamadas), então este é o
++   * ÚNICO ponto de colisão conhecido.
+    */
+   const buscaCanceladosEmVooRef = useRef<Promise<Order[]> | null>(null);
+   const buscaCanceladosVooIniciadoNoGatilhoRef = useRef(0);
+@@ -1726,6 +1751,15 @@ export function useOrders(
+       // inconsistente — não contra loja real: 25 * 200 = 5000 pedidos
+       // cancelados.
+       const MAX_PAGES = 25;
++      // Achado central de useOrders-1417 (tarefa useOrders-cancelados-janela-
++      // e-colunas): calculado AQUI, a cada busca — não fora de
++      // `executarBusca` — porque "os últimos 90 dias" é relativo ao instante
++      // em que a RPC sai, não ao instante em que o hook montou. Travar a
++      // conta fora daria uma janela cada vez mais velha em sessões abertas
++      // por dias.
++      const dataDeCorteCancelados = new Date(
++        Date.now() - JANELA_PEDIDOS_CANCELADOS_DIAS * 24 * 60 * 60 * 1000,
++      ).toISOString();
+ 
+       setCarregandoPedidosCancelados(true);
+       try {
+@@ -1736,7 +1770,17 @@ export function useOrders(
+           const query = (supabase.rpc as any)("get_admin_orders_paged", {
+             p_search: "",
+             p_status: "cancelled",
+-            p_start_date: "",
++            // ACHADO CENTRAL (useOrders-cancelados-janela-e-colunas): antes
++            // disto, `p_start_date` era SEMPRE "" — sem teto inferior nenhum,
++            // a varredura arrastava o histórico INTEIRO da loja a cada
++            // ativação da aba. Numa loja com 87% dos pedidos cancelados (o
++            // incidente real de 15/09 que abriu useOrders-1417), isso é o
++            // motivo de fundo das "8 chamadas RPC sequenciais" do laudo — a
++            // repetição sem necessidade (que useOrders-1417 já cortou) só
++            // escondia esse custo, não o eliminava. `p_end_date` continua ""
++            // de propósito: o teto de CIMA é sempre "agora" — um pedido
++            // cancelado neste instante não pode ficar de fora.
++            p_start_date: dataDeCorteCancelados,
+             p_end_date: "",
+             p_page: page,
+             p_page_size: PAGE_SIZE,
+diff --git a/src/lib/realtimeSyncEngine.ts b/src/lib/realtimeSyncEngine.ts
+index eaf0b42..e5fb1d2 100644
+--- a/src/lib/realtimeSyncEngine.ts
++++ b/src/lib/realtimeSyncEngine.ts
+@@ -931,42 +931,77 @@ export const RealtimeSyncEngine = {
+         }
+ 
+         if (outOfDateIds.length > 0) {
+-          // Espelha o filtro que `productsQuery` já aplica na consulta de
+-          // RESUMO, no começo deste mesmo método. Entre as duas idas à rede
+-          // existe uma janela: se um produto for excluído (soft-delete) nesse
+-          // intervalo, buscar sem este filtro traz de volta um registro já com
+-          // `deleted_at` preenchido -- e o `putMany` o grava no cofre como se
+-          // estivesse vivo. A view `vw_produtos_public` já filtra por conta
+-          // própria e não expõe a coluna, então o filtro só entra no ramo admin.
+-          let detailQuery = supabase
+-            .from(isAdmin ? "produtos" : ("vw_produtos_public" as any))
+-            .select(
+-              // Laudo #2 (achado da revisão do PR #395): no ramo admin, o
+-              // `*` pedia `custo` — coluna com SELECT NEGADO ao authenticated
+-              // desde o BANCO-010 — e o `const { data }` sem checar `error`
+-              // ENGOLIA o permission denied: o catch-up de detalhes do painel
+-              // falhava em silêncio. Colunas explícitas (as 29 públicas) fazem
+-              // a mesma leitura funcionar; o custo do admin segue vindo por
+-              // vw_produtos_admin/RPCs, que são as portas de propósito.
+-              isAdmin
+-                ? "id, nome, descricao, categoria, codigo, codigo_barras, preco_venda, preco_original, imagem_url, imagem_urls, estoque, estoque_minimo, ativo, deleted_at, data_cadastro, ultima_atualizacao, peso_kg, altura_cm, largura_cm, comprimento_cm, frete_gratis, tags, meta_title, meta_description, rating, review_count, sold, calculated_points, fornecedor_id, is_bestseller, product_variants(*)"
+-                : "*, product_variants(*)",
+-            )
+-            .in("id", outOfDateIds);
+-          if (isAdmin) {
+-            detailQuery = detailQuery.is("deleted_at", null);
+-          }
+-          const { data: rawProducts, error: erroDetalhes } = await detailQuery;
+-          // Laudo #2: o catchup de detalhes não pode engolir falha em
+-          // silêncio — loga e segue (o próximo catchup tenta de novo).
+-          if (erroDetalhes) {
+-            console.error(
+-              "[RealtimeSync] Falha no catchup de detalhes de produtos:",
+-              erroDetalhes.message,
++          // realtimeSyncEngine-955 (achado "catchUp monta um `.in('id',
++          // [...])` sem teto"): `outOfDateIds` vem do resumo do catálogo
++          // INTEIRO (proibido `.limit()` ali, ver comentário acima) — com o
++          // cofre vazio (primeiro boot, ou logo depois de um purge de
++          // versão) ele vira o catálogo inteiro, e o postgrest-js concatena
++          // cada uuid cru (~37 bytes) na query string de UM único GET.
++          // Algumas centenas de produtos já estouram o limite de linha de
++          // requisição do gateway (~8 KB) e o catchup de detalhes falhava
++          // por inteiro. Fatiar em lotes pequenos mantém cada URL sob
++          // controle; cada lote é uma requisição independente, então o
++          // erro de UM não apaga o resultado dos outros — o próximo
++          // catchUp tenta de novo só o que faltou (o id continua
++          // "desatualizado" até o local bater com o servidor).
++          const TAMANHO_DO_LOTE_DE_DETALHES = 100;
++          const lotesDeIds: string[][] = [];
++          for (
++            let inicio = 0;
++            inicio < outOfDateIds.length;
++            inicio += TAMANHO_DO_LOTE_DE_DETALHES
++          ) {
++            lotesDeIds.push(
++              outOfDateIds.slice(inicio, inicio + TAMANHO_DO_LOTE_DE_DETALHES),
+             );
+           }
+ 
+-          if (rawProducts) {
++          const resultadosDosLotes = await Promise.all(
++            lotesDeIds.map(async (idsDoLote) => {
++              // Espelha o filtro que `productsQuery` já aplica na consulta
++              // de RESUMO, no começo deste mesmo método. Entre as duas idas
++              // à rede existe uma janela: se um produto for excluído
++              // (soft-delete) nesse intervalo, buscar sem este filtro traz
++              // de volta um registro já com `deleted_at` preenchido -- e o
++              // `putMany` o grava no cofre como se estivesse vivo. A view
++              // `vw_produtos_public` já filtra por conta própria e não
++              // expõe a coluna, então o filtro só entra no ramo admin.
++              let detailQuery = supabase
++                .from(isAdmin ? "produtos" : ("vw_produtos_public" as any))
++                .select(
++                  // Laudo #2 (achado da revisão do PR #395): no ramo admin,
++                  // o `*` pedia `custo` — coluna com SELECT NEGADO ao
++                  // authenticated desde o BANCO-010 — e o `const { data }`
++                  // sem checar `error` ENGOLIA o permission denied: o
++                  // catch-up de detalhes do painel falhava em silêncio.
++                  // Colunas explícitas (as 29 públicas) fazem a mesma
++                  // leitura funcionar; o custo do admin segue vindo por
++                  // vw_produtos_admin/RPCs, que são as portas de propósito.
++                  isAdmin
++                    ? "id, nome, descricao, categoria, codigo, codigo_barras, preco_venda, preco_original, imagem_url, imagem_urls, estoque, estoque_minimo, ativo, deleted_at, data_cadastro, ultima_atualizacao, peso_kg, altura_cm, largura_cm, comprimento_cm, frete_gratis, tags, meta_title, meta_description, rating, review_count, sold, calculated_points, fornecedor_id, is_bestseller, product_variants(*)"
++                    : "*, product_variants(*)",
++                )
++                .in("id", idsDoLote);
++              if (isAdmin) {
++                detailQuery = detailQuery.is("deleted_at", null);
++              }
++              const { data, error: erroDoLote } = await detailQuery;
++              // Laudo #2 + realtimeSyncEngine-955: erro num lote não pode
++              // engolir os outros — loga e devolve vazio; o próprio lote
++              // falho tenta de novo no próximo catchUp.
++              if (erroDoLote) {
++                console.error(
++                  `[RealtimeSync] Falha no catchup de detalhes de produtos (lote de ${idsDoLote.length} ids):`,
++                  erroDoLote.message,
++                );
++                return [];
++              }
++              return data ?? [];
++            }),
++          );
++          const rawProducts = resultadosDosLotes.flat();
++
++          if (rawProducts.length > 0) {
+             const variantRecord = TABLE_CONFIGS.find(
+               (c) => c.table === "product_variants",
+             );
+diff --git a/src/views/admin/AdminProductFormView.tsx b/src/views/admin/AdminProductFormView.tsx
+index f8ddfc7..f30add1 100644
+--- a/src/views/admin/AdminProductFormView.tsx
++++ b/src/views/admin/AdminProductFormView.tsx
+@@ -29,6 +29,9 @@ import { useStore } from "@/contexts/StoreContext";
+ import { useCategories } from "@/hooks/useCategories";
+ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+ import { useProducts } from "@/hooks/useProducts";
++// Só o TIPO da resposta da RPC do PDV — import "type" some da build, então
++// não puxa `useVendaPresencial.ts` (nem o cliente Supabase) para este chunk.
++import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
+ import { cn } from "@/lib/utils";
+ import type { ProductVariant, View } from "@/types";
+ import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
+@@ -62,7 +65,14 @@ import {
+   Truck,
+   X,
+ } from "lucide-react";
+-import React, { useState, useEffect, useCallback, useRef } from "react";
++import React, {
++  useState,
++  useEffect,
++  useCallback,
++  useRef,
++  lazy,
++  Suspense,
++} from "react";
+ import { createPortal } from "react-dom";
+ import { toast } from "sonner";
+ // achado AdminProductFormView-499: o ImageAdjuster SEMPRE exporta
+@@ -100,6 +110,47 @@ export function arquivoDaImagemRecortada(croppedBlob: Blob): File {
+   });
+ }
+ 
++// C5.2 — formato aceito para o código de barras (decisão do lote pdv-c5,
++// §5.6): depois de aparar e remover espaços INTERNOS, só letras, números e
++// hífen, de 4 a 64 caracteres. EAN/UPC/GTIN são dígitos, mas Code 128/39 têm
++// letras — por isso não restringe a dígitos, e não valida dígito
++// verificador (fora do escopo deste lote).
++const REGEX_CODIGO_BARRAS = /^[A-Za-z0-9-]{4,64}$/;
++const MSG_CODIGO_BARRAS_FORMATO_INVALIDO =
++  "Só letras, números e hífen, de 4 a 64 caracteres.";
++const MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA =
++  "Este código já está em outra variação deste produto.";
++
++/** Mesma string que vai para a RPC (btrim + igualdade exata, migration
++ * 20261161000000) e para o banco — aparar as pontas e remover os espaços
++ * do meio (código colado ou digitado com separador visual). */
++function normalizarCodigoBarras(valor: string): string {
++  return valor.trim().replace(/\s+/g, "");
++}
++
++// C5.3 — o leitor de câmera (LeitorDeCodigo, componente de C2) só entra no
++// chunk desta tela quando o lojista realmente clica em "Ler com a câmera":
++// import DINÂMICO via `React.lazy`, do mesmo jeito que `conferirCodigoNoBanco`
++// (acima) já faz com o cliente Supabase. Estático puxaria o decodificador de
++// código de barras (e a câmera) para todo carregamento do formulário.
++const LeitorDeCodigo = lazy(() =>
++  import("@/components/admin/pdv/LeitorDeCodigo").then((modulo) => ({
++    default: modulo.LeitorDeCodigo,
++  })),
++);
++
++// C5.3 — sem câmera (desktop sem webcam, navegador sem suporte) o botão
++// some: quem lê o código ali é o leitor FÍSICO USB, que digita direto no
++// campo (dispensa o modal). Chamada a cada render de propósito — é barata e
++// `navigator.mediaDevices` pode mudar entre uma leitura e outra (permissão
++// revogada, por exemplo).
++function temCameraDisponivel(): boolean {
++  return (
++    typeof navigator !== "undefined" &&
++    typeof navigator.mediaDevices?.getUserMedia === "function"
++  );
++}
++
+ // Exportado só para o teste chamar direto (não passa pelo componente inteiro)
+ // — continua sendo um detalhe interno desta tela, não uma API pública. Nome
+ // `compressProductImage` (não `compressImage`) de propósito: já existe um
+@@ -238,6 +289,7 @@ interface ProductFormFields {
+   metaTitle: string;
+   metaDescription: string;
+   sku: string;
++  codigoBarras: string;
+   variants: ProductVariant[];
+   weightKg: string;
+   widthCm: string;
+@@ -262,6 +314,7 @@ function isProductFormDirty(
+   if (a.metaTitle !== b.metaTitle) return true;
+   if (a.metaDescription !== b.metaDescription) return true;
+   if (a.sku !== b.sku) return true;
++  if (a.codigoBarras !== b.codigoBarras) return true;
+   if (a.weightKg !== b.weightKg) return true;
+   if (a.widthCm !== b.widthCm) return true;
+   if (a.heightCm !== b.heightCm) return true;
+@@ -280,6 +333,7 @@ function isProductFormDirty(
+       vA.id !== vB.id ||
+       vA.productId !== vB.productId ||
+       vA.sku !== vB.sku ||
++      vA.codigoBarras !== vB.codigoBarras ||
+       vA.name !== vB.name ||
+       vA.value !== vB.value ||
+       vA.stockIncrement !== vB.stockIncrement ||
+@@ -328,6 +382,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+     metaTitle: "",
+     metaDescription: "",
+     sku: "",
++    codigoBarras: "",
+     variants: [] as ProductVariant[],
+     weightKg: "",
+     widthCm: "",
+@@ -350,6 +405,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+     metaTitle: "",
+     metaDescription: "",
+     sku: "",
++    codigoBarras: "",
+     variants: [] as ProductVariant[],
+     weightKg: "",
+     widthCm: "",
+@@ -371,6 +427,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+   const [variantFormData, setVariantFormData] = useState<{
+     pares: ParNoForm[];
+     sku: string;
++    codigoBarras: string;
+     stockIncrement: string;
+     priceOverride: string;
+     active: boolean;
+@@ -378,6 +435,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+   }>({
+     pares: [parNovo()],
+     sku: "",
++    codigoBarras: "",
+     stockIncrement: "0",
+     priceOverride: "",
+     active: true,
+@@ -391,6 +449,30 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+   const [isPromoActive, setIsPromoActive] = useState(false);
+ 
+   const [skuError, setSkuError] = useState("");
++  // C5.2 — três estados para o código de barras do PRODUTO: `ErroLocal`
++  // (formato + duplicidade DENTRO da tela, sem rede) e `ErroRede`
++  // (duplicidade no CATÁLOGO inteiro, achada pela RPC no blur) ficam
++  // separados de propósito — se fossem um só, editar qualquer variação
++  // (que recalcula o `ErroLocal`) apagaria sozinho o aviso de rede que o
++  // blur tinha acabado de encontrar. `AvisoRede` é a falha de conexão, que
++  // NUNCA bloqueia o salvar (só avisa). Ver `codigoBarrasError` mais abaixo,
++  // que combina os dois primeiros para o render e o `isValid`.
++  const [codigoBarrasErroLocal, setCodigoBarrasErroLocal] = useState("");
++  const [codigoBarrasErroRede, setCodigoBarrasErroRede] = useState("");
++  const [codigoBarrasAvisoRede, setCodigoBarrasAvisoRede] = useState("");
++  // Código de barras da VARIANTE em edição no modal: só formato local +
++  // duplicidade no catálogo (a duplicidade DENTRO da tela é uma conta do
++  // produto inteiro, recalculada quando a variante entra em
++  // `formData.variants` — ver o efeito do produto acima).
++  const [variantCodigoBarrasError, setVariantCodigoBarrasError] = useState("");
++  const [variantCodigoBarrasAvisoRede, setVariantCodigoBarrasAvisoRede] =
++    useState("");
++  // C5.3 — qual campo o leitor de câmera está preenchendo agora (`null` =
++  // fechado). Só um de cada vez: o modal de variação já cobre o campo do
++  // produto, então não há como os dois estarem abertos ao mesmo tempo.
++  const [leitorAberto, setLeitorAberto] = useState<
++    "produto" | "variacao" | null
++  >(null);
+   const [priceError, setPriceError] = useState("");
+   const [costError, setCostError] = useState("");
+   const [originalPriceError, setOriginalPriceError] = useState("");
+@@ -618,6 +700,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+             metaTitle: product.metaTitle || "",
+             metaDescription: product.metaDescription || "",
+             sku: product.sku || "",
++            codigoBarras: product.codigoBarras || "",
+             variants: product.variants || [],
+             weightKg: product.weightKg?.toString() || "",
+             widthCm: product.widthCm?.toString() || "",
+@@ -659,6 +742,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+             metaTitle: parsed.metaTitle || "",
+             metaDescription: parsed.metaDescription || "",
+             sku: parsed.sku || "",
++            codigoBarras: parsed.codigoBarras || "",
+             variants: parsed.variants || [],
+             weightKg: parsed.weightKg || "",
+             widthCm: parsed.widthCm || "",
+@@ -691,6 +775,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+                   metaTitle: "",
+                   metaDescription: "",
+                   sku: "",
++                  codigoBarras: "",
+                   variants: [] as ProductVariant[],
+                   weightKg: "",
+                   widthCm: "",
+@@ -748,6 +833,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+             metaDescription:
+               parsed.metaDescription ?? initialData.metaDescription,
+             sku: parsed.sku ?? initialData.sku,
++            codigoBarras: parsed.codigoBarras ?? initialData.codigoBarras,
+             variants: parsed.variants ?? initialData.variants,
+             weightKg: parsed.weightKg ?? initialData.weightKg,
+             widthCm: parsed.widthCm ?? initialData.widthCm,
+@@ -817,6 +903,167 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+     }
+   }, [formData.sku]);
+ 
++  useEffect(() => {
++    // C5.2: formato do código de barras do PRODUTO e duplicidade DENTRO da
++    // tela (o próprio código contra o de cada variação, e as variações
++    // entre si) — sem rede. A duplicidade contra o CATÁLOGO inteiro mora em
++    // `conferirCodigoNoBanco` (chamada no blur), que escreve em
++    // `codigoBarrasErroRede`, um estado À PARTE: se estivesse aqui,
++    // qualquer mudança em `formData.variants` (editar o estoque de uma
++    // variação, por exemplo) apagaria sozinha o aviso "já está em outro
++    // produto" que o blur tinha acabado de achar.
++    const normalizado = normalizarCodigoBarras(formData.codigoBarras);
++    if (normalizado && !REGEX_CODIGO_BARRAS.test(normalizado)) {
++      setCodigoBarrasErroLocal(MSG_CODIGO_BARRAS_FORMATO_INVALIDO);
++      return;
++    }
++    const vistos = new Set<string>();
++    if (normalizado) vistos.add(normalizado);
++    let duplicadoNaTela = false;
++    for (const variante of formData.variants) {
++      const codigoVariante = normalizarCodigoBarras(
++        variante.codigoBarras || "",
++      );
++      if (!codigoVariante) continue;
++      if (vistos.has(codigoVariante)) {
++        duplicadoNaTela = true;
++        break;
++      }
++      vistos.add(codigoVariante);
++    }
++    setCodigoBarrasErroLocal(
++      duplicadoNaTela ? MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA : "",
++    );
++  }, [formData.codigoBarras, formData.variants]);
++
++  useEffect(() => {
++    // O código do produto mudou: o veredito de rede anterior (achado no
++    // blur de ANTES) ficou velho. Só um blur novo decide de novo — ver
++    // `conferirCodigoNoBanco`.
++    setCodigoBarrasErroRede("");
++    setCodigoBarrasAvisoRede("");
++  }, [formData.codigoBarras]);
++
++  useEffect(() => {
++    // Mesmo formato acima, para o código de barras da VARIANTE em edição no
++    // modal. A duplicidade dela contra o produto e as outras variações só
++    // aparece depois de "Efetivar Variante" (quando ela entra em
++    // `formData.variants` e o efeito de cima recalcula) — este efeito cobre
++    // só o formato, e o mesmo estado é reaproveitado por
++    // `conferirCodigoNoBanco` para o achado de rede (alvo "variacao").
++    const normalizado = normalizarCodigoBarras(variantFormData.codigoBarras);
++    setVariantCodigoBarrasError(
++      normalizado && !REGEX_CODIGO_BARRAS.test(normalizado)
++        ? MSG_CODIGO_BARRAS_FORMATO_INVALIDO
++        : "",
++    );
++    setVariantCodigoBarrasAvisoRede("");
++  }, [variantFormData.codigoBarras]);
++
++  // C5.2: duplicidade pelo CATÁLOGO inteiro, pela MESMA RPC que o PDV usa
++  // para bipar no balcão (AdminPdvView.tsx:170-179) — chamada ao sair do
++  // campo (blur) e, mais tarde (C5.3), depois de uma leitura pela câmera.
++  // Import DINÂMICO de propósito: esta view não tinha outro motivo para
++  // carregar o cliente Supabase (os hooks de dados fazem isso por trás), e
++  // um import ESTÁTICO aqui derrubaria os sete testes desta tela que não
++  // mockam "@/lib/supabase" — o módulo real lança sem as variáveis de
++  // ambiente do Supabase (`src/lib/env.ts`), medido nesta tarefa.
++  async function conferirCodigoNoBanco(
++    codigoNormalizado: string,
++    alvo: "produto" | "variacao",
++  ): Promise<void> {
++    const setErroDeRede =
++      alvo === "produto"
++        ? setCodigoBarrasErroRede
++        : setVariantCodigoBarrasError;
++    const setAviso =
++      alvo === "produto"
++        ? setCodigoBarrasAvisoRede
++        : setVariantCodigoBarrasAvisoRede;
++
++    setAviso("");
++    if (!codigoNormalizado) {
++      setErroDeRede("");
++      return;
++    }
++
++    try {
++      const { supabase } = await import("@/lib/supabase");
++      const { data, error } = await (supabase.rpc as any)(
++        "buscar_por_codigo_barras",
++        { p_codigo: codigoNormalizado },
++      );
++      if (error) throw error;
++      const resposta = data as RespostaDoCodigo;
++
++      if (!resposta.encontrado || !resposta.produto) {
++        setErroDeRede("");
++        return;
++      }
++
++      // O próprio produto/variação em edição nunca conta como duplicado —
++      // mas só na direção certa: um código que já é o do PRODUTO não deixa
++      // de ser duplicado só porque estamos conferindo o campo da VARIAÇÃO
++      // (e vice-versa). Ver pdv-c5.json, decisão (c).
++      const ehOProprio =
++        alvo === "produto"
++          ? resposta.origem === "produto" &&
++            !!productId &&
++            resposta.produto.id === productId
++          : resposta.origem === "variante" &&
++            editingVariant != null &&
++            resposta.variante?.variant_id === editingVariant.id;
++
++      if (ehOProprio) {
++        setErroDeRede("");
++        return;
++      }
++
++      let mensagem = `Este código já está em ${resposta.produto.nome}`;
++      if (resposta.origem === "variante" && resposta.variante) {
++        mensagem += `, variação ${resposta.variante.nome}: ${resposta.variante.valor}`;
++      }
++      setErroDeRede(mensagem);
++    } catch (erro) {
++      // Rede/RPC fora do ar: NÃO bloqueia o salvar — o índice único do
++      // banco é a rede de segurança (C5.1 traduz o 23505 em mensagem
++      // amigável). Só avisa, discreto, para o lojista tentar de novo.
++      console.warn(
++        "[AdminProductFormView] Não consegui conferir o código de barras agora:",
++        erro,
++      );
++      setAviso("Não consegui conferir agora.");
++    }
++  }
++
++  function aoSairDoCampoDeCodigoDeBarras(
++    valorBruto: string,
++    alvo: "produto" | "variacao",
++  ): void {
++    const normalizado = normalizarCodigoBarras(valorBruto);
++    // Formato inválido já tem o próprio erro (efeito acima); chamar a RPC
++    // aqui só teria a resposta assíncrona chegando depois e sobrescrevendo
++    // esse erro local, sem nenhuma corrida clara para decidir quem venceu.
++    if (!normalizado || !REGEX_CODIGO_BARRAS.test(normalizado)) return;
++    void conferirCodigoNoBanco(normalizado, alvo);
++  }
++
++  // C5.3 — a câmera achou um código: preenche o campo do alvo certo (o
++  // produto ou a variação em edição no modal), fecha o leitor e dispara a
++  // MESMA checagem de duplicidade do onBlur (C5.2) — uma leitura é, para
++  // este formulário, equivalente a digitar o código e sair do campo.
++  function aoLerCodigoDeBarras(leitura: { codigo: string }): void {
++    const normalizado = normalizarCodigoBarras(leitura.codigo);
++    if (leitorAberto === "produto") {
++      setFormData((prev) => ({ ...prev, codigoBarras: normalizado }));
++    } else if (leitorAberto === "variacao") {
++      setVariantFormData((prev) => ({ ...prev, codigoBarras: normalizado }));
++    }
++    const alvo = leitorAberto ?? "produto";
++    setLeitorAberto(null);
++    aoSairDoCampoDeCodigoDeBarras(normalizado, alvo);
++  }
++
+   useEffect(() => {
+     // Validar Preço de Venda
+     const price = Number.parseFloat(formData.price);
+@@ -1071,6 +1318,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+       return;
+     }
+ 
++    if (variantCodigoBarrasError) {
++      toast.error(variantCodigoBarrasError);
++      return;
++    }
++
+     const cleanNumberString = (val: string) => {
+       if (!val) return "";
+       let clean = val.replace(",", ".").replace(/[^\d.-]/g, "");
+@@ -1090,12 +1342,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+     const sanitizedVarSku = variantFormData.sku
+       ? variantFormData.sku.trim().toUpperCase().replace(/\s+/g, "-")
+       : undefined;
++    const sanitizedVarCodigoBarras = variantFormData.codigoBarras
++      ? normalizarCodigoBarras(variantFormData.codigoBarras)
++      : undefined;
+ 
+     const vData = {
+       productId: productId || "",
+       name: nomeComposto,
+       value: valorComposto,
+       sku: sanitizedVarSku || undefined,
++      codigoBarras: sanitizedVarCodigoBarras || undefined,
+       stockIncrement: Number.parseInt(sanitizedVarStock) || 0,
+       priceOverride:
+         parsedPriceOverride !== undefined
+@@ -1130,6 +1386,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+     setVariantFormData({
+       pares: [parNovo()],
+       sku: "",
++      codigoBarras: "",
+       stockIncrement: "0",
+       priceOverride: "",
+       active: true,
+@@ -1150,6 +1407,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+       // `dividirEmAtributos` em `variante-composta.ts`.
+       pares: comChaveDeRender(dividirEmAtributos(v.name, v.value)),
+       sku: v.sku || "",
++      codigoBarras: v.codigoBarras || "",
+       stockIncrement: v.stockIncrement.toString(),
+       priceOverride: v.priceOverride?.toString() || "",
+       active: v.active,
+@@ -1249,6 +1507,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+     const sanitizedSku = formData.sku
+       ? formData.sku.trim().toUpperCase().replace(/\s+/g, "-")
+       : undefined;
++    const sanitizedCodigoBarras = formData.codigoBarras
++      ? normalizarCodigoBarras(formData.codigoBarras)
++      : undefined;
+ 
+     /*
+       CAMPO VAZIO VAI COMO `null`, NUNCA COMO `undefined` (ADMIN-050, #96).
+@@ -1280,6 +1541,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+       metaTitle: formData.metaTitle.trim(),
+       metaDescription: formData.metaDescription.trim(),
+       sku: sanitizedSku || null,
++      codigoBarras: sanitizedCodigoBarras || null,
+       variants: formData.variants,
+       sold: productId ? currentProduct?.sold || 0 : 0,
+       /*
+@@ -1329,6 +1591,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+             sku: v.sku
+               ? v.sku.trim().toUpperCase().replace(/\s+/g, "-")
+               : undefined,
++            codigoBarras: v.codigoBarras
++              ? normalizarCodigoBarras(v.codigoBarras)
++              : undefined,
+           }));
+           await upsertVariants(productId, variantsWithSanitizedSku);
+         }
+@@ -1338,6 +1603,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+           sku: v.sku
+             ? v.sku.trim().toUpperCase().replace(/\s+/g, "-")
+             : undefined,
++          codigoBarras: v.codigoBarras
++            ? normalizarCodigoBarras(v.codigoBarras)
++            : undefined,
+         }));
+         await addProduct({
+           ...productData,
+@@ -1386,6 +1654,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+     };
+   }, []);
+ 
++  // Combina os dois estados de erro do código de barras do produto (ver o
++  // comentário perto das declarações de estado, acima) para o render e para
++  // este gate — a duplicidade de REDE não bloqueia sozinha por mais tempo do
++  // que o campo continuar com o mesmo valor que a gerou.
++  const codigoBarrasError = codigoBarrasErroLocal || codigoBarrasErroRede;
++
+   const isValid =
+     formData.name &&
+     formData.description &&
+@@ -1395,6 +1669,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+     Number.parseFloat(formData.price) > 0 &&
+     Number.parseInt(formData.stock) >= 0 &&
+     !skuError &&
++    !codigoBarrasError &&
+     !priceError &&
+     (!costError || costError.startsWith("Aviso")) &&
+     !originalPriceError &&
+@@ -1861,6 +2136,71 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+                       </div>
+                     </div>
+ 
++                    {/* Código de Barras (C5.2) — a caixa da PP tem um código
++                        diferente da caixa da M: cada variação leva o seu.
++                        O botão "Ler com a câmera" (C5.3) usa o slot
++                        reservado ao lado do input. */}
++                    <div className="space-y-2">
++                      <label
++                        htmlFor="variant-codigo-barras"
++                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
++                      >
++                        Código de Barras
++                      </label>
++                      <div className="flex gap-2">
++                        <LocalBufferedInput
++                          id="variant-codigo-barras"
++                          name="variant-codigo-barras"
++                          type="text"
++                          inputMode="numeric"
++                          data-testid="codigo-barras-variacao"
++                          value={variantFormData.codigoBarras}
++                          onFlush={(val) =>
++                            setVariantFormData((p) => ({
++                              ...p,
++                              codigoBarras: normalizarCodigoBarras(val),
++                            }))
++                          }
++                          onBlur={(e) =>
++                            aoSairDoCampoDeCodigoDeBarras(
++                              e.target.value,
++                              "variacao",
++                            )
++                          }
++                          className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
++                          placeholder="EAN, UPC ou GTIN — 7891234567890"
++                        />
++                        {/* C5.3 — some sem câmera: o leitor físico USB digita
++                            direto no campo acima, sem precisar deste botão. */}
++                        {temCameraDisponivel() && (
++                          <button
++                            type="button"
++                            onClick={() => setLeitorAberto("variacao")}
++                            className="flex shrink-0 items-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
++                            title="Ler com a câmera"
++                          >
++                            <Camera className="size-4" />
++                            Ler com a câmera
++                          </button>
++                        )}
++                      </div>
++                      <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
++                        Opcional. É o código impresso na embalagem desta
++                        variação; o PDV lê ele pela câmera.
++                      </span>
++                      {variantCodigoBarrasError && (
++                        <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
++                          {variantCodigoBarrasError}
++                        </span>
++                      )}
++                      {!variantCodigoBarrasError &&
++                        variantCodigoBarrasAvisoRede && (
++                          <span className="ml-1 mt-1 block text-[10px] font-bold text-amber-500">
++                            {variantCodigoBarrasAvisoRede}
++                          </span>
++                        )}
++                    </div>
++
+                     {/* Quantidade em Estoque & Sobrescrever Preço */}
+                     <div className="grid grid-cols-2 gap-4">
+                       <div className="space-y-2">
+@@ -2182,102 +2522,158 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+               </button>
+             </div>
+ 
+-            {/* "+" Button - Only visible when images exist */}
++            {/* "+" Button e "Tirar Foto" - só visíveis quando já há imagens */}
+             {formData.images.length > 0 && (
+-              <label
+-                htmlFor="product-image-upload"
+-                className={cn(
+-                  "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+-                  (isSubmitting || isImageUploading) &&
+-                    "opacity-40 pointer-events-none",
+-                )}
+-                title="Adicionar Mais Imagens"
+-              >
+-                <Plus className="size-5" />
+-                <input
+-                  id="product-image-upload"
+-                  name="product-images"
+-                  type="file"
+-                  accept="image/*"
+-                  multiple
+-                  onChange={handleImageUpload}
+-                  className="hidden"
+-                  disabled={isSubmitting || isImageUploading}
+-                />
+-              </label>
++              <div className="flex items-center gap-2">
++                {/* C5.3 — "Tirar foto": SEGUNDO input, com `capture`, para
++                    não tirar a galeria do celular do input de cima (ver
++                    comentário completo no estado vazio, abaixo). */}
++                <label
++                  htmlFor="product-image-capture"
++                  className={cn(
++                    "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
++                    (isSubmitting || isImageUploading) &&
++                      "opacity-40 pointer-events-none",
++                  )}
++                  title="Tirar Foto"
++                >
++                  <Camera className="size-5" />
++                  <input
++                    id="product-image-capture"
++                    name="product-image-capture"
++                    type="file"
++                    accept="image/*"
++                    capture="environment"
++                    onChange={handleImageUpload}
++                    className="hidden"
++                    disabled={isSubmitting || isImageUploading}
++                  />
++                </label>
++                <label
++                  htmlFor="product-image-upload"
++                  className={cn(
++                    "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
++                    (isSubmitting || isImageUploading) &&
++                      "opacity-40 pointer-events-none",
++                  )}
++                  title="Adicionar Mais Imagens"
++                >
++                  <Plus className="size-5" />
++                  <input
++                    id="product-image-upload"
++                    name="product-images"
++                    type="file"
++                    accept="image/*"
++                    multiple
++                    onChange={handleImageUpload}
++                    className="hidden"
++                    disabled={isSubmitting || isImageUploading}
++                  />
++                </label>
++              </div>
+             )}
+           </div>
+ 
+           <div className="w-full">
+             {formData.images.length === 0 ? (
+-              // Falso positivo: o label TEM texto visível ("Adicionar Fotos do
+-              // Produto" e a instrução de arrastar), e o input com o id casado
+-              // está dentro dele. A regra só olha `depth: 2` por padrão e o
+-              // texto está em label > div > div > p. Pôr `aria-label` aqui
+-              // resolveria o lint e pioraria a acessibilidade: substituiria
+-              // esse texto rico pelo rótulo curto no nome acessível.
+-              // eslint-disable-next-line jsx-a11y/label-has-associated-control
+-              <label
+-                htmlFor="product-image-upload"
+-                onDragOver={(e) => {
+-                  e.preventDefault();
+-                  setIsDragging(true);
+-                }}
+-                onDragLeave={() => setIsDragging(false)}
+-                onDrop={async (e) => {
+-                  e.preventDefault();
+-                  setIsDragging(false);
+-                  if (isOffline) {
+-                    toast.error("Não é possível enviar imagens offline.");
+-                    return;
+-                  }
+-                  if (isImageUploading) return;
+-                  const files = Array.from(e.dataTransfer.files || []);
+-                  await processAndUploadImages(files);
+-                }}
+-                className={cn(
+-                  "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
+-                  isDragging
+-                    ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+-                    : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
+-                  (isSubmitting || isImageUploading) &&
+-                    "opacity-40 pointer-events-none",
+-                )}
+-              >
+-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
+-                <div className="relative z-10 flex flex-col items-center text-center p-6 space-y-3">
+-                  <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all duration-300 shadow-xl">
+-                    <Camera className="size-6" />
+-                  </div>
+-                  <div className="space-y-1">
+-                    <p className="text-xs font-black uppercase tracking-widest text-zinc-300 group-hover/upload:text-emerald-400 transition-colors">
+-                      {isDragging
+-                        ? "Solte para enviar!"
+-                        : "Adicionar Fotos do Produto"}
+-                    </p>
+-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+-                      Arraste as imagens aqui ou clique para buscar
+-                    </p>
+-                  </div>
+-                  <div className="flex items-center gap-3 pt-2 text-[8px] font-black uppercase tracking-widest text-zinc-650">
+-                    <span>Proporção ideal: 4:5</span>
+-                    <span className="size-1 rounded-full bg-zinc-700" />
+-                    <span>Máx: 10 fotos</span>
+-                    <span className="size-1 rounded-full bg-zinc-700" />
+-                    <span>Até 12MB cada</span>
++              <>
++                {/* Falso positivo: o label TEM texto visível ("Adicionar
++                    Fotos do Produto" e a instrução de arrastar), e o input
++                    com o id casado está dentro dele. A regra só olha
++                    `depth: 2` por padrão e o texto está em label > div >
++                    div > p. Pôr `aria-label` aqui resolveria o lint e
++                    pioraria a acessibilidade: substituiria esse texto rico
++                    pelo rótulo curto no nome acessível. */}
++                {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
++                <label
++                  htmlFor="product-image-upload"
++                  onDragOver={(e) => {
++                    e.preventDefault();
++                    setIsDragging(true);
++                  }}
++                  onDragLeave={() => setIsDragging(false)}
++                  onDrop={async (e) => {
++                    e.preventDefault();
++                    setIsDragging(false);
++                    if (isOffline) {
++                      toast.error("Não é possível enviar imagens offline.");
++                      return;
++                    }
++                    if (isImageUploading) return;
++                    const files = Array.from(e.dataTransfer.files || []);
++                    await processAndUploadImages(files);
++                  }}
++                  className={cn(
++                    "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
++                    isDragging
++                      ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
++                      : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
++                    (isSubmitting || isImageUploading) &&
++                      "opacity-40 pointer-events-none",
++                  )}
++                >
++                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
++                  <div className="relative z-10 flex flex-col items-center text-center p-6 space-y-3">
++                    <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all duration-300 shadow-xl">
++                      <Camera className="size-6" />
++                    </div>
++                    <div className="space-y-1">
++                      <p className="text-xs font-black uppercase tracking-widest text-zinc-300 group-hover/upload:text-emerald-400 transition-colors">
++                        {isDragging
++                          ? "Solte para enviar!"
++                          : "Adicionar Fotos do Produto"}
++                      </p>
++                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
++                        Arraste as imagens aqui ou clique para buscar
++                      </p>
++                    </div>
++                    <div className="flex items-center gap-3 pt-2 text-[8px] font-black uppercase tracking-widest text-zinc-650">
++                      <span>Proporção ideal: 4:5</span>
++                      <span className="size-1 rounded-full bg-zinc-700" />
++                      <span>Máx: 10 fotos</span>
++                      <span className="size-1 rounded-full bg-zinc-700" />
++                      <span>Até 12MB cada</span>
++                    </div>
+                   </div>
+-                </div>
+-                <input
+-                  id="product-image-upload"
+-                  name="product-images"
+-                  type="file"
+-                  accept="image/*"
+-                  multiple
+-                  onChange={handleImageUpload}
+-                  className="hidden"
+-                  disabled={isSubmitting || isImageUploading}
+-                />
+-              </label>
++                  <input
++                    id="product-image-upload"
++                    name="product-images"
++                    type="file"
++                    accept="image/*"
++                    multiple
++                    onChange={handleImageUpload}
++                    className="hidden"
++                    disabled={isSubmitting || isImageUploading}
++                  />
++                </label>
++                {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`, fora
++                  do label de cima. O input de galeria (acima) fica SEM
++                  `capture` de propósito — com `capture` o celular deixa de
++                  oferecer a galeria e só abre a câmera. Os dois chamam o
++                  MESMO `handleImageUpload`: a origem do arquivo (câmera ou
++                  galeria) não muda o que a tela faz com ele. */}
++                <label
++                  htmlFor="product-image-capture"
++                  className={cn(
++                    "mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/30 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
++                    (isSubmitting || isImageUploading) &&
++                      "opacity-40 pointer-events-none",
++                  )}
++                >
++                  <Camera className="size-4" />
++                  Tirar Foto
++                  <input
++                    id="product-image-capture"
++                    name="product-image-capture"
++                    type="file"
++                    accept="image/*"
++                    capture="environment"
++                    onChange={handleImageUpload}
++                    className="hidden"
++                    disabled={isSubmitting || isImageUploading}
++                  />
++                </label>
++              </>
+             ) : (
+               <div className="relative w-full">
+                 {/* Single horizontal scroll carousel for ALL images */}
+@@ -2498,6 +2894,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+                 setVariantFormData({
+                   pares: [parNovo()],
+                   sku: "",
++                  codigoBarras: "",
+                   stockIncrement: "0",
+                   priceOverride: "",
+                   active: true,
+@@ -2706,6 +3103,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+                         ser único é o SKU de cada variação.
+                       </span>
+                     </li>
++                    <li className="flex items-start gap-2.5">
++                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
++                      <span>
++                        <b className="text-zinc-350">Código de Barras:</b>{" "}
++                        Opcional — é o código impresso na EMBALAGEM física
++                        (EAN/UPC/GTIN ou Code 128/39), diferente do SKU (que é
++                        uso interno seu). Precisa ser único no catálogo inteiro:
++                        o mesmo código não pode estar em outro produto ou
++                        variação. É o que o leitor do PDV bipa no balcão. Se o
++                        produto tem variações, cadastre o código em CADA
++                        variação — a caixa da PP é diferente da caixa da M.
++                      </span>
++                    </li>
+                     <li className="flex items-start gap-2.5">
+                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                       <span>
+@@ -2845,6 +3255,63 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+               )}
+             </div>
+ 
++            <div className="space-y-1.5 md:space-y-3">
++              <label
++                htmlFor="product-codigo-barras"
++                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
++              >
++                Código de Barras
++              </label>
++              <div className="flex gap-2">
++                <LocalBufferedInput
++                  id="product-codigo-barras"
++                  name="product-codigo-barras"
++                  type="text"
++                  inputMode="numeric"
++                  data-testid="codigo-barras-produto"
++                  value={formData.codigoBarras}
++                  onFlush={(val) =>
++                    setFormData((prev) => ({
++                      ...prev,
++                      codigoBarras: normalizarCodigoBarras(val),
++                    }))
++                  }
++                  onBlur={(e) =>
++                    aoSairDoCampoDeCodigoDeBarras(e.target.value, "produto")
++                  }
++                  placeholder="EAN, UPC ou GTIN — 7891234567890"
++                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
++                />
++                {/* C5.3 — some sem câmera: o leitor físico USB digita direto
++                    no campo acima, sem precisar deste botão. */}
++                {temCameraDisponivel() && (
++                  <button
++                    type="button"
++                    onClick={() => setLeitorAberto("produto")}
++                    className="flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
++                    title="Ler com a câmera"
++                  >
++                    <Camera className="size-4" />
++                    Ler com a câmera
++                  </button>
++                )}
++              </div>
++              <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
++                Opcional. É o código impresso na embalagem; o PDV lê ele pela
++                câmera.
++              </span>
++              {codigoBarrasError && (
++                <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
++                  {codigoBarrasError}
++                </span>
++              )}
++              {!codigoBarrasError && codigoBarrasAvisoRede && (
++                <span className="ml-1 mt-1 block text-[10px] font-bold text-amber-500">
++                  {codigoBarrasAvisoRede}
++                </span>
++              )}
++            </div>
++
+             <div className="space-y-1.5 md:col-span-2 md:space-y-3">
+               <label
+                 htmlFor="product-stock"
+@@ -3451,7 +3918,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+                 <p className="text-xs text-zinc-400">
+                   Nome do produto, descrição detalhada e o{" "}
+                   <strong className="text-white">SKU</strong> (referência
+-                  interna livre; só o SKU de cada variação precisa ser único).
++                  interna livre; só o SKU de cada variação precisa ser único). O{" "}
++                  <strong className="text-white">Código de Barras</strong> é
++                  opcional, identifica a embalagem física, precisa ser único no
++                  catálogo inteiro e é o que o leitor do PDV bipa no balcão.
+                 </p>
+               </div>
+ 
+@@ -3511,6 +3981,14 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+                 único: o sistema recusa salvar um que já exista em qualquer
+                 outra variação já cadastrada (inclusive de produtos excluídos).
+               </li>
++              <li>
++                O Código de Barras (opcional) identifica a EMBALAGEM física do
++                produto — diferente do SKU, que é uso interno seu. Ele precisa
++                ser único no catálogo inteiro (o mesmo código não pode estar em
++                outro produto ou variação) e é o que o leitor do PDV lê no
++                balcão. Se o produto tem variações, cadastre o código em CADA
++                variação: a caixa da PP tem um código diferente da caixa da M.
++              </li>
+             </ul>
+           </div>
+         </div>
+@@ -3545,6 +4023,23 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
+           </AlertDialogFooter>
+         </AlertDialogContent>
+       </AlertDialog>
++
++      {/* C5.3 — o leitor só existe no DOM enquanto está aberto: o
++          `Suspense` acima dele é o que segura o import dinâmico, e
++          `fallback={null}` porque a abertura já é o clique do lojista —
++          não há nada para mostrar no meio tempo além do formulário atrás. */}
++      {leitorAberto !== null && (
++        <Suspense fallback={null}>
++          <LeitorDeCodigo
++            aberto
++            modo="unico"
++            titulo="Ler o código de barras"
++            dica="Aponte para o código da embalagem"
++            aoLer={aoLerCodigoDeBarras}
++            aoFechar={() => setLeitorAberto(null)}
++          />
++        </Suspense>
++      )}
+     </div>
+   );
+ });
+diff --git a/tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx b/tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx
+index 789c154..9695597 100644
+--- a/tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx
++++ b/tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx
+@@ -691,7 +691,23 @@ describe("fetchPedidosCancelados (hook real) — a propriedade que esta rodada e
+     vi.unstubAllGlobals();
+   });
+ 
+-  it("os seis argumentos da primeira página são exatamente os fixos — p_status='cancelled', busca/período vazios", async () => {
++  // pedidos-4 (17/09): a varredura de cancelados ganhou TETO INFERIOR —
++  // `p_start_date` passou de "" (histórico inteiro da loja, achado
++  // useOrders-1417) para "agora − JANELA_PEDIDOS_CANCELADOS_DIAS". O relógio
++  // é travado (só o Date; os timers continuam reais, porque o hook e o act
++  // dependem deles) e o valor esperado nasce do MESMO instante e da MESMA
++  // constante que o hook usa — se a janela mudar, o teste acompanha; se o
++  // teto sumir, o teste acusa.
++  it("os seis argumentos da primeira página são exatamente os fixos — p_status='cancelled', busca vazia e período só com o teto de 90 dias", async () => {
++    const { JANELA_PEDIDOS_CANCELADOS_DIAS } = await import("@/hooks/useOrders");
++    const agora = new Date("2026-09-17T12:00:00.000Z");
++    vi.useFakeTimers({ toFake: ["Date"] });
++    vi.setSystemTime(agora);
++    const corteEsperado = new Date(
++      agora.getTime() - JANELA_PEDIDOS_CANCELADOS_DIAS * 24 * 60 * 60 * 1000,
++    ).toISOString();
++    expect(corteEsperado).toBe("2026-06-19T12:00:00.000Z");
++
+     const chamadas: any[] = [];
+     rpc.mockImplementation((nome: string, args: any) => {
+       if (nome === "get_admin_orders_paged") {
+@@ -716,11 +732,12 @@ describe("fetchPedidosCancelados (hook real) — a propriedade que esta rodada e
+     expect(chamadas[0]).toEqual({
+       p_search: "",
+       p_status: "cancelled",
+-      p_start_date: "",
++      p_start_date: corteEsperado,
+       p_end_date: "",
+       p_page: 0,
+       p_page_size: 200,
+     });
++    vi.useRealTimers();
+   });
+ 
+   it("total_count maior que uma página busca a segunda e acumula tudo — o laço de paginação é real", async () => {

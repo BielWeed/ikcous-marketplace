@@ -1,0 +1,52 @@
+-- ============================================================================
+-- ROLLBACK MANUAL da 20261162000000 — a venda no balcão nasce inteira
+-- (LOTE C1 da venda presencial/PDV, tarefa C1.3)
+-- ============================================================================
+--
+-- O QUE ESTE ARQUIVO DESFAZ: só a criação de
+-- `public.registrar_venda_presencial`. A função é NOVA — não substituiu corpo
+-- nenhum —, então não existe "estado anterior" para reconstruir: desfazer é
+-- derrubar.
+--
+-- O QUE ELE NÃO TOCA, DE PROPÓSITO:
+--   - `marketplace_orders.canal` e `marketplace_orders.vendedor_id`, a CHECK
+--     de canal e o índice parcial de pedidos presenciais: tudo isso é da
+--     20261160000000 (C1.1). Desfazê-los é o rollback DAQUELE arquivo, e
+--     derrubaria junto o que C1.2 e C1.4 já usam.
+--   - `create_marketplace_order_v23`/`v24`, `registrar_pagamento_recebido`,
+--     `registrar_estorno_manual`, `update_order_status_atomic` e
+--     `devolver_estoque`: a migration de ida não encostou em nenhuma delas,
+--     então este rollback também não encosta.
+--   - AS VENDAS JÁ REGISTRADAS. Os pedidos com `canal = 'presencial'` que
+--     nasceram enquanto a função existia CONTINUAM no banco, com itens,
+--     estoque baixado e os dois históricos. Este rollback tira a porta, não
+--     apaga o que passou por ela — apagar dinheiro registrado seria outra
+--     operação, com outra decisão do dono. Nenhum dado é lido, escrito ou
+--     apagado aqui.
+--
+-- EFEITO COLATERAL ESPERADO (é a razão de o rollback ser "manual"): qualquer
+-- tela que já chame a RPC passa a receber «function public.registrar_venda_
+-- presencial(...) does not exist» (SQLSTATE 42883). Na ordem do lote C1 isso
+-- não acontece — C1 inteiro entra ANTES de qualquer chamada em `src/` —, mas
+-- rodar este rollback DEPOIS de C3 estar no ar deixa o balcão sem registrar
+-- venda até a migration voltar.
+--
+-- IDEMPOTÊNCIA: `DROP FUNCTION IF EXISTS` — rodar duas vezes dá o mesmo
+-- estado. A assinatura completa de 8 tipos é OBRIGATÓRIA: sem ela, no dia em
+-- que existir outra sobrecarga o comando erraria com «function name is not
+-- unique», e com o nome errado derrubaria a função errada.
+--
+-- COMO APLICAR: `node scripts/db-apply.cjs <este arquivo>` ou `psql -1`. Sem
+-- `BEGIN`/`COMMIT` de nível superior neste arquivo (regra da casa).
+--
+-- VERIFICAÇÃO pós-rollback:
+--   SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--    WHERE n.nspname = 'public' AND p.proname = 'registrar_venda_presencial';
+--   -- esperado: 0.
+--   SELECT count(*) FROM information_schema.columns
+--    WHERE table_schema = 'public' AND table_name = 'marketplace_orders'
+--      AND column_name IN ('canal','vendedor_id');
+--   -- esperado: 2 (as colunas da C1.1 CONTINUAM lá — este rollback não as toca).
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS public.registrar_venda_presencial(jsonb, text, uuid, text, text, numeric, text, uuid);

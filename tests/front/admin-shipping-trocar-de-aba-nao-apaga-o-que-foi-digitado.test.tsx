@@ -10,13 +10,17 @@
 // Frete → Pedidos → Frete reescrevia o formulário inteiro com o valor salvo e
 // jogava fora o que a pessoa tinha acabado de digitar. Sem aviso nenhum.
 //
+// (D6, painel simples: o CEP da loja saiu desta tela — é de Minha loja. O
+// campo que prova a guarda agora é o "Valor por pedido" da entrega na cidade,
+// que continua sendo digitado aqui.)
+//
 // O que torna isto um defeito e não uma escolha: o componente JÁ SABE que há
 // alteração pendente — calcula `isFormDirty` e reporta ao pai em `:262`. O
 // efeito de reset simplesmente não consultava o valor que está ali do lado.
 //
 // A ARMADILHA DESTE CONSERTO, e por isso ela está escrita aqui: a primeira
 // sincronização NÃO pode ser bloqueada. O `formData` nasce com valores neutros
-// (`freeShippingMin: 0`, `originCep: ""`), então numa loja configurada o
+// (`freeShippingMin: 0`, `localDeliveryFee: 10`), então numa loja configurada o
 // formulário já nasce "sujo" em relação ao config — guardar o efeito só com
 // `isFormDirty` faria a tela NUNCA carregar os valores salvos. Por isso a
 // guarda é "já sincronizei uma vez E o lojista mexeu", nunca só a segunda
@@ -35,7 +39,7 @@ const updateConfig = vi.fn();
 const { estadoDaLoja } = vi.hoisted(() => ({
   estadoDaLoja: {
     atual: {
-      originCep: "38400-000" as string | undefined,
+      localDeliveryFee: 12 as number | undefined,
       freeShippingMin: 150,
       enabledShippingMethods: ["sedex", "pac"] as string[],
     },
@@ -55,7 +59,17 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
-      select: () => Promise.resolve({ data: [], error: null }),
+      // AdminShippingView-126: a tela filtra credenciais com .not()/.neq()
+      // em credentials->>token; o dublê tem de aceitar a cadeia, senão o
+      // TypeError cai no catch e liga credsErro em silêncio.
+      select: () => {
+        const consulta = (): any =>
+          Object.assign(Promise.resolve({ data: [], error: null }), {
+            not: () => consulta(),
+            neq: () => consulta(),
+          });
+        return consulta();
+      },
     }),
     functions: { invoke: vi.fn() },
   },
@@ -79,7 +93,7 @@ describe("AdminShippingView — trocar de aba não apaga o que foi digitado", ()
   beforeEach(() => {
     vi.clearAllMocks();
     estadoDaLoja.atual = {
-      originCep: "38400-000",
+      localDeliveryFee: 12,
       freeShippingMin: 150,
       enabledShippingMethods: ["sedex", "pac"],
     };
@@ -108,16 +122,18 @@ describe("AdminShippingView — trocar de aba não apaga o que foi digitado", ()
     });
   }
 
-  function pegarCampoCep(): HTMLInputElement {
-    const campo = hospedeiro.querySelector("#origin-cep") as HTMLInputElement;
+  function pegarCampoValor(): HTMLInputElement {
+    const campo = hospedeiro.querySelector(
+      "#local-delivery-fee",
+    ) as HTMLInputElement;
     expect(campo).not.toBeNull();
     return campo;
   }
 
   // Escrever num input controlado por React em jsdom exige o setter nativo +
   // evento de input; atribuir `.value` direto não avisa o React.
-  async function digitarNoCep(texto: string) {
-    const campo = pegarCampoCep();
+  async function digitarNoValor(texto: string) {
+    const campo = pegarCampoValor();
     const setter = Object.getOwnPropertyDescriptor(
       globalThis.HTMLInputElement.prototype,
       "value",
@@ -128,12 +144,12 @@ describe("AdminShippingView — trocar de aba não apaga o que foi digitado", ()
     });
   }
 
-  it("o CEP digitado sobrevive a sair da aba e voltar", async () => {
+  it("o valor digitado sobrevive a sair da aba e voltar", async () => {
     await renderizar(true);
-    expect(pegarCampoCep().value).toBe("38400-000");
+    expect(pegarCampoValor().value).toBe("12");
 
-    await digitarNoCep("11111000");
-    expect(pegarCampoCep().value).toBe("11111-000");
+    await digitarNoValor("7");
+    expect(pegarCampoValor().value).toBe("7");
 
     // O lojista vai para Pedidos (a aba de Frete fica viva, só inativa)...
     await renderizar(false);
@@ -141,14 +157,14 @@ describe("AdminShippingView — trocar de aba não apaga o que foi digitado", ()
     await renderizar(true);
 
     // Contra o HEAD (843ca0a) esta asserção reprova: o efeito reescrevia o
-    // formulário com "38400-000" e o trabalho da pessoa sumia.
-    expect(pegarCampoCep().value).toBe("11111-000");
+    // formulário com o valor salvo e o trabalho da pessoa sumia.
+    expect(pegarCampoValor().value).toBe("7");
   });
 
-  it("o CEP digitado sobrevive a uma atualização do config vinda de fora", async () => {
+  it("o valor digitado sobrevive a uma atualização do config vinda de fora", async () => {
     await renderizar(true);
-    await digitarNoCep("22222000");
-    expect(pegarCampoCep().value).toBe("22222-000");
+    await digitarNoValor("9");
+    expect(pegarCampoValor().value).toBe("9");
 
     // O StoreContext recebe uma config nova (realtime, outra aba, um save em
     // outra tela). OBJETO NOVO de propósito: é a identidade que faz o efeito
@@ -156,16 +172,16 @@ describe("AdminShippingView — trocar de aba não apaga o que foi digitado", ()
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 999 };
     await renderizar(true);
 
-    expect(pegarCampoCep().value).toBe("22222-000");
+    expect(pegarCampoValor().value).toBe("9");
   });
 
   it("a PRIMEIRA carga continua trazendo o valor salvo (a guarda não pode travar isso)", async () => {
     // Sem esta prova, a guarda do conserto poderia bloquear a sincronização
     // inicial — o formulário nasce neutro e portanto "sujo" contra uma loja
     // configurada, e a tela abriria eternamente vazia.
-    estadoDaLoja.atual = { ...estadoDaLoja.atual, originCep: "99999-000" };
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, localDeliveryFee: 25 };
     await renderizar(true);
 
-    expect(pegarCampoCep().value).toBe("99999-000");
+    expect(pegarCampoValor().value).toBe("25");
   });
 });

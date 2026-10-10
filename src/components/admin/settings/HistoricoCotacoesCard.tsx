@@ -1,36 +1,147 @@
+import {
+  NOME_DO_PROVEDOR,
+  type ProvedorFrete,
+  buscarConfiguracaoDeFrete,
+} from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useStore } from "@/contexts/StoreContext";
+import {
+  motivoDaCotacao,
+  nomeDoProvedorNoHistorico,
+} from "@/lib/motivo-da-cotacao";
+import { papel } from "@/lib/papeis-aria-da-tabela";
 import { supabase } from "@/lib/supabase";
 import { Boxes, RefreshCw } from "lucide-react";
-import { memo, useCallback, useEffect, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useState } from "react";
+
+// A coluna guarda milissegundos; a lojista lê segundos ("0,3 s"). Sem tempo
+// (0/nulo: consulta que nem chegou a sair) vira "—"; abaixo de um décimo de
+// segundo a casa decimal arredondaria para "0,0 s", então diz "menos de 0,1 s".
+const tempoDeResposta = (ms: number | null | undefined) => {
+  if (!ms) return "—";
+  if (ms < 100) return "menos de 0,1 s";
+  const segundos = (ms / 1000).toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  return `${segundos} s`;
+};
+
+// O histórico guarda o id da transportadora (`melhor_envio`); a lojista lê o
+// nome ("Melhor Envio"). A coluna é texto solto, mas `NOME_DO_PROVEDOR` é
+// indexado pela união fechada `ProvedorFrete`: o cast só deixa o `.get`
+// compilar, e um id desconhecido devolve `undefined` (o texto cai no
+// fallback de `nomeDoProvedorNoHistorico`/`motivoDaCotacao`).
+const nomeDaTransportadora = (id: string) =>
+  NOME_DO_PROVEDOR.get(id as ProvedorFrete);
 
 /**
- * Card "Histórico de cotações de frete" da tela de Ajustes.
+ * Achado HistoricoCotacoesCard-100: a edge function AGUARDA a gravação do
+ * log só para garantir que a linha de erro chegue ao banco — o comentário de
+ * `calculate-shipping/index.ts` chama isso de "a ÚNICA janela que a lojista
+ * tem" para descobrir que precisa conectar/configurar a transportadora. Sem
+ * ler `error_message` aqui, aquela disciplina de `await` não entrega nada: o
+ * selo vermelho "Erro" não distingue "falta credencial" de "Melhor Envio
+ * fora do ar".
  *
- * MODOU DE TELA (frente glm-visual-admin-0209, pedido do Gabriel em
- * 02/09/2026): a tabela de cotações vivia no pé da tela de Frete. Registro
- * técnico de diagnóstico — aqui virou seção colapsável, nascida fechada.
+ * Agrupa execuções CONSECUTIVAS de erro/contingência com o MESMO motivo PARA
+ * O MESMO destino/transportadora: dez tentativas seguidas do MESMO cliente
+ * batendo na mesma credencial ausente são UM diagnóstico, não dez linhas
+ * idênticas repetindo o mesmo texto (a lojista rolando a lista não aprende
+ * nada da nona repetição que não aprendeu na primeira). Sucesso nunca
+ * agrupa — cada cotação boa continua com a própria linha, porque o "quando"
+ * de cada uma tem valor por si.
  *
- * O motivo do estado vazio lê o provedor SALVO (`config.shippingProvider`),
- * nunca uma escolha não salva de outra seção: com a Taxa Única Fixa o
- * histórico é vazio POR DESENHO (a edge function responde direto, sem
- * consultar transportadora), e essa diferença tem de aparecer — consulta que
- * falhou não pode se parecer com histórico vazio de verdade.
+ * RODADA DE CORREÇÃO (achado BLOQUEIA): a chave original comparava só
+ * `status` + `error_message` e por isso colapsava consultas de CLIENTES
+ * DIFERENTES que só coincidem no texto do motivo — caso real: a loja
+ * `flat_fee` remanescente (calculate-shipping/index.ts:941-948) grava a
+ * MESMA `error_message` para todo cliente de fora da cidade, então dez
+ * clientes de dez CEPs diferentes viravam uma única linha exibindo o CEP e
+ * a transportadora só do PRIMEIRO log — um destino inventado para os outros
+ * nove. `provider` e `destination_cep` entram na chave porque são
+ * exatamente as duas colunas que a linha sobrevivente continua exibindo:
+ * só pode dizer "×N" quando as N ocorrências são de fato a MESMA consulta
+ * repetida, não N consultas diferentes com o mesmo motivo.
+ */
+function agruparRepeticoesDeErro(
+  logs: any[],
+): { log: any; repeticoes: number }[] {
+  const grupos: { log: any; repeticoes: number }[] = [];
+  for (const log of logs) {
+    const anterior = grupos[grupos.length - 1];
+    const mesmoMotivoSeguido =
+      anterior !== undefined &&
+      log.status !== "success" &&
+      anterior.log.status === log.status &&
+      (anterior.log.error_message ?? null) === (log.error_message ?? null) &&
+      (anterior.log.provider ?? null) === (log.provider ?? null) &&
+      (anterior.log.destination_cep ?? null) === (log.destination_cep ?? null);
+    if (mesmoMotivoSeguido) {
+      anterior.repeticoes += 1;
+    } else {
+      grupos.push({ log, repeticoes: 1 });
+    }
+  }
+  return grupos;
+}
+
+// RODADA DE CORREÇÃO (achado ANTES DE CRESCER): `error_message` é coluna
+// `text` sem limite e nem sempre é o texto amigável da edge — no ramo de
+// falha de API o valor é o corpo BRUTO da resposta do provedor
+// (`await response.text()` concatenado em "Melhor Envio API retornou
+// ${status}: ${errText}"). Sem corte, um corpo de erro de alguns KB vira um
+// parágrafo empurrando o resto da tabela para fora da tela no celular. O
+// texto INTEIRO continua acessível via `title` no elemento — só o que É
+// EXIBIDO leva o corte.
+const LIMITE_MOTIVO_EXIBIDO = 200;
+function cortarMotivoExibido(motivo: string): string {
+  if (motivo.length <= LIMITE_MOTIVO_EXIBIDO) return motivo;
+  return `${motivo.slice(0, LIMITE_MOTIVO_EXIBIDO)}…`;
+}
+
+/**
+ * Card "Consultas de frete" da tela de Frete (painel "Consultas de frete",
+ * sob "Avançado").
  *
- * Busca no mount: a seção só monta quando o lojista a expande, então cada
- * abertura traz a leitura fresca — o mesmo efeito do "expandia e buscava" da
- * tela antiga, sem controle extra.
+ * MUDOU DE TELA DUAS VEZES: a tabela de cotações vivia no pé da tela de
+ * Frete, foi para Ajustes como seção colapsável (frente
+ * glm-visual-admin-0209, 02/09/2026) e voltou para a tela de Frete no painel
+ * simples (H5, 09/10/2026: o frete mora num lugar só). Registro técnico de
+ * diagnóstico — painel nascido fechado.
  *
- * LOTE E (13/09/2026, peça C — salão e porão): o card `rounded-3xl
- * border-white/5` é da casca (SecaoColapsavel) — aqui sobra conteúdo puro,
- * no mesmo idioma da seção de Transportadoras ao lado.
+ * O motivo do estado vazio lê os provedores LIGADOS (RELEASE 1.5.7 v2,
+ * EMENDA R2: `ler_configuracao_frete`, nunca o espelho
+ * `config.shippingProvider` — que no modo multi não decide mais nada),
+ * nunca uma escolha não salva de outra seção: consulta que falhou não pode
+ * se parecer com histórico vazio de verdade.
+ *
+ * RODADA DE CORREÇÃO (achado ANTES DE CRESCER): o texto do ramo `flat_fee`
+ * dizia que o vazio era "por desenho" (a edge responderia direto, sem
+ * consultar transportadora) — o FRETE V2 (03/09/2026) tornou isso falso.
+ * Hoje `respostaSemCotacaoDeFora` (calculate-shipping/index.ts:941-948)
+ * trata `flat_fee` como "sem transportadora conectada" e GRAVA UM ERRO a
+ * cada tentativa de fora da cidade; zero logs não é silêncio inofensivo, é
+ * silêncio de quem ainda não recebeu tentativa de fora (ou pode ser uma
+ * loja recusando toda venda nacional sem que a lojista saiba).
+ *
+ * Busca no mount: a tela de Frete só monta a seção com o painel aberto,
+ * então cada abertura traz a leitura fresca — o mesmo efeito do "expandia e
+ * buscava" da tela antiga, sem controle extra.
+ *
+ * LOTE E (13/09/2026, peça C — salão e porão): a casca é de quem hospeda
+ * (hoje o `PainelRecolhivel` da tela de Frete) — aqui sobra conteúdo puro,
+ * no mesmo idioma da seção de Transportadoras.
  */
 export const HistoricoCotacoesSection = memo(
   function HistoricoCotacoesSection() {
-    const { config } = useStore();
     const [logs, setLogs] = useState<any[]>([]);
     const [loadingLogs, setLoadingLogs] = useState(false);
     const [logsError, setLogsError] = useState(false);
+    // RELEASE 1.5.7 v2 (EMENDA R2, R2-5): "sem provedor ligado" deixa de vir
+    // do espelho `config.shippingProvider` — no modo multi ele NÃO decide
+    // mais nada (R1-3/R2-1). A verdade vem da MESMA edge que a seção de
+    // Transportadoras usa (`ler_configuracao_frete`).
+    const [algumLigado, setAlgumLigado] = useState<boolean | null>(null);
 
     const fetchLogs = useCallback(async () => {
       setLoadingLogs(true);
@@ -57,10 +168,19 @@ export const HistoricoCotacoesSection = memo(
       fetchLogs();
     }, [fetchLogs]);
 
-    // O provedor SALVO decide a frase do vazio — não o que está digitado em
-    // outra seção sem salvar (a edge function segue na transportadora salva
-    // até alguém gravar a mudança).
-    const provedorSalvo = config?.shippingProvider || "flat_fee";
+    useEffect(() => {
+      buscarConfiguracaoDeFrete().then((resultado) => {
+        setAlgumLigado(
+          resultado.ok ? resultado.config.ligados.length > 0 : null,
+        );
+      });
+    }, []);
+
+    // Calculado uma vez e usado tanto na tabela quanto no rodapé — achado
+    // ANOTADO da rodada de correção: o rodapé contava `logs.length` (a
+    // contagem CRUA) enquanto a tabela já mostrava menos linhas por causa
+    // do agrupamento, e os dois números paravam de bater.
+    const grupos = agruparRepeticoesDeErro(logs);
 
     return (
       <div
@@ -86,74 +206,168 @@ export const HistoricoCotacoesSection = memo(
             Não foi possível carregar o histórico de cotações. Tente novamente
             em "Atualizar".
           </div>
-        ) : logs.length === 0 && provedorSalvo === "flat_fee" ? (
+        ) : logs.length === 0 && algumLigado === false ? (
           <p className="py-4 text-center text-xs text-zinc-400">
-            Nenhuma cotação para mostrar: com a Taxa Única Fixa o app já
-            responde o frete direto, sem consultar transportadora, então não
-            existe cotação para registrar aqui. Este histórico passa a receber
-            linhas se a loja trocar para Melhor Envio ou Frenet.
+            Sem transportadora conectada (a Taxa Única Fixa foi descontinuada):
+            este histórico registra um erro a cada tentativa de entrega fora da
+            cidade. Se está vazio, ainda não houve tentativa de fora — mas
+            nenhuma vai funcionar até você conectar Melhor Envio, Frenet ou
+            SuperFrete.
           </p>
         ) : logs.length === 0 ? (
           <p className="py-4 text-center text-xs italic text-zinc-500">
             Nenhuma cotação registrada recentemente.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-white/5 bg-zinc-950/60">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  <th className="p-2.5">Quando</th>
-                  <th className="p-2.5">Destino</th>
-                  <th className="p-2.5">Transportadora</th>
-                  <th className="p-2.5">Tempo</th>
-                  <th className="p-2.5">Status</th>
+          <div className="rounded-2xl border border-white/5 bg-zinc-950/60 sm:overflow-x-auto">
+            {/* J5 (celular): abaixo de `sm:` cada consulta é um BLOCO (grade de
+              duas colunas: Quando · Status / CEP · Transportadora / Tempo) e
+              a tabela não rola na lateral; de `sm:` para cima volta a ser
+              tabela. `display: block` tira a semântica de tabela do leitor de
+              tela, por isso os papéis ARIA estão escritos. Os cabeçalhos
+              ficam só para leitor de tela (`sr-only`) no celular, onde cada
+              valor já tem a posição que o explica. */}
+            <table
+              {...papel("table")}
+              className="block w-full text-left text-xs sm:table"
+            >
+              <thead
+                {...papel("rowgroup")}
+                className="sr-only sm:not-sr-only sm:table-header-group"
+              >
+                <tr
+                  {...papel("row")}
+                  className="border-b border-white/5 text-[11px] font-black uppercase tracking-wide text-zinc-500 sm:table-row"
+                >
+                  <th {...papel("columnheader")} className="p-2.5">
+                    Quando
+                  </th>
+                  <th {...papel("columnheader")} className="p-2.5">
+                    CEP do cliente
+                  </th>
+                  <th {...papel("columnheader")} className="p-2.5">
+                    Transportadora
+                  </th>
+                  <th {...papel("columnheader")} className="p-2.5">
+                    Tempo
+                  </th>
+                  <th {...papel("columnheader")} className="p-2.5">
+                    Status
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5 text-zinc-300">
-                {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-white/5">
-                    <td className="p-2.5 font-mono text-[11px] text-zinc-400">
-                      {new Date(log.created_at).toLocaleString("pt-BR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </td>
-                    <td className="p-2.5 font-semibold text-white">
-                      {/* Linha com campo nulo não pode derrubar a seção
-                              inteira (achado A2 da revisão adversária: o
-                              original carregou este mesmo risco — guardado
-                              aqui onde ele agora mora). */}
-                      {(log.destination_cep ?? "").replace(
-                        /(\d{5})(\d{3})/,
-                        "$1-$2",
-                      )}
-                    </td>
-                    <td className="p-2.5 capitalize text-zinc-300">
-                      {(log.provider ?? "").replace("_", " ")}
-                    </td>
-                    <td className="p-2.5 font-mono text-zinc-400">
-                      {log.response_time_ms ? `${log.response_time_ms}ms` : "—"}
-                    </td>
-                    <td className="p-2.5">
-                      <span
-                        className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${
-                          log.status === "success"
-                            ? "bg-emerald-500/20 text-emerald-300"
-                            : log.status === "contingency"
-                              ? "bg-amber-500/20 text-amber-300"
-                              : "bg-red-500/20 text-red-300"
-                        }`}
+              <tbody
+                {...papel("rowgroup")}
+                className="block text-zinc-300 sm:table-row-group sm:divide-y sm:divide-white/5"
+              >
+                {grupos.map(({ log, repeticoes }) => (
+                  <Fragment key={log.id}>
+                    <tr
+                      {...papel("row")}
+                      className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-white/5 px-3 pb-1 pt-3 first:border-t-0 hover:bg-white/5 sm:table-row sm:border-t-0 sm:p-0"
+                    >
+                      <td
+                        {...papel("cell")}
+                        className="col-start-1 row-start-1 block whitespace-nowrap font-mono text-[11px] text-zinc-400 sm:table-cell sm:p-2.5"
                       >
-                        {log.status === "success"
-                          ? "Sucesso"
-                          : log.status === "contingency"
-                            ? "Contingência"
-                            : "Erro"}
-                      </span>
-                    </td>
-                  </tr>
+                        {new Date(log.created_at).toLocaleString("pt-BR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+                      <td
+                        {...papel("cell")}
+                        className="col-start-1 row-start-2 block whitespace-nowrap font-semibold text-white sm:table-cell sm:p-2.5"
+                      >
+                        {/* Linha com campo nulo não pode derrubar a seção
+                                inteira (achado A2 da revisão adversária: o
+                                original carregou este mesmo risco — guardado
+                                aqui onde ele agora mora). */}
+                        {(log.destination_cep ?? "").replace(
+                          /(\d{5})(\d{3})/,
+                          "$1-$2",
+                        )}
+                      </td>
+                      <td
+                        {...papel("cell")}
+                        className="col-start-2 row-start-2 block min-w-0 break-words text-right text-zinc-300 sm:table-cell sm:p-2.5 sm:text-left"
+                      >
+                        {nomeDoProvedorNoHistorico(
+                          log.provider,
+                          nomeDaTransportadora,
+                        )}
+                      </td>
+                      <td
+                        {...papel("cell")}
+                        className="col-span-2 col-start-1 row-start-3 block font-mono text-zinc-400 sm:table-cell sm:p-2.5"
+                      >
+                        {tempoDeResposta(log.response_time_ms)}
+                      </td>
+                      <td
+                        {...papel("cell")}
+                        className="col-start-2 row-start-1 block text-right sm:table-cell sm:p-2.5 sm:text-left"
+                      >
+                        <span
+                          className={`inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase ${
+                            log.status === "success"
+                              ? "bg-emerald-500/20 text-emerald-300"
+                              : log.status === "contingency"
+                                ? "bg-amber-500/20 text-amber-300"
+                                : "bg-red-500/20 text-red-300"
+                          }`}
+                        >
+                          {log.status === "success"
+                            ? "Sucesso"
+                            : log.status === "contingency"
+                              ? "Valor de reserva"
+                              : "Erro"}
+                          {repeticoes > 1 ? ` ×${repeticoes}` : ""}
+                        </span>
+                      </td>
+                    </tr>
+                    {/* Achado HistoricoCotacoesCard-100: a edge grava
+                        `error_message` com o motivo ACIONÁVEL ("Conecte a
+                        transportadora...") e aguarda a gravação só para isso
+                        chegar aqui — sem esta linha, o selo vermelho não
+                        distingue "falta credencial" de "Melhor Envio fora do
+                        ar". Segunda linha do <tr>, não coluna nova: o
+                        motivo é texto livre e longo, e uma sexta coluna
+                        estouraria a tabela no celular.
+
+                        RODADA DE CORREÇÃO (achado ANTES DE CRESCER):
+                        `error_message` não tem limite de tamanho — no ramo
+                        de falha de API a edge concatena o corpo BRUTO da
+                        resposta do provedor. `title` no <td> carrega o
+                        texto INTEIRO (hover mostra o motivo completo); o
+                        texto EXIBIDO é cortado em
+                        `LIMITE_MOTIVO_EXIBIDO` caracteres para não empurrar
+                        o resto da tabela para fora da tela no celular. */}
+                    {log.status !== "success" && log.error_message ? (
+                      <tr
+                        {...papel("row")}
+                        className="block bg-white/[0.02] px-3 pb-3 sm:table-row sm:p-0"
+                      >
+                        <td
+                          {...papel("cell")}
+                          colSpan={5}
+                          title={log.error_message}
+                          className="block break-words text-[11px] leading-relaxed text-zinc-400 sm:table-cell sm:px-2.5 sm:pb-2.5 sm:pt-0"
+                        >
+                          <span className="font-bold text-zinc-300">
+                            Motivo:{" "}
+                          </span>
+                          {cortarMotivoExibido(
+                            motivoDaCotacao(
+                              log.error_message,
+                              nomeDaTransportadora,
+                            ),
+                          )}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -163,16 +377,33 @@ export const HistoricoCotacoesSection = memo(
         <div className="flex items-center justify-between text-xs text-zinc-400">
           {logs.length > 0 && (
             <span>
-              Exibindo {logs.length === 1 ? "a" : "as"} {logs.length}{" "}
-              {logs.length === 1 ? "consulta" : "consultas"} mais recente
-              {logs.length === 1 ? "" : "s"}
+              {grupos.length === logs.length ? (
+                // Sem agrupamento nesta leitura: uma linha de dado por
+                // consulta, então a contagem crua já é a verdade da tela.
+                <>
+                  Exibindo {logs.length === 1 ? "a" : "as"} {logs.length}{" "}
+                  {logs.length === 1 ? "consulta" : "consultas"} mais recente
+                  {logs.length === 1 ? "" : "s"}
+                </>
+              ) : (
+                // RODADA DE CORREÇÃO (achado ANOTADO): com agrupamento a
+                // tabela mostra menos linhas do que `logs.length` — dizer só
+                // "Exibindo as N consultas" faria a lojista contar linhas na
+                // tela e não bater com o número. As duas contagens, lado a
+                // lado, continuam corretas nos dois sentidos.
+                <>
+                  {logs.length} consultas recentes em {grupos.length}{" "}
+                  {grupos.length === 1 ? "linha" : "linhas"} — as repetidas
+                  aparecem juntas (×2).
+                </>
+              )}
             </span>
           )}
           <button
             type="button"
             onClick={fetchLogs}
             disabled={loadingLogs}
-            className="ml-auto flex items-center gap-1 font-bold text-admin-gold hover:underline"
+            className="ml-auto flex min-h-11 items-center gap-1 px-3 font-bold text-admin-gold hover:underline"
           >
             <RefreshCw
               className={`size-3 ${loadingLogs ? "animate-spin" : ""}`}

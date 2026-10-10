@@ -1,18 +1,28 @@
-import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
+import {
+  type EstadoDeOperacao,
+  EstadoDeOperacaoProvider,
+} from "@/components/admin/PontoDeOperacao";
 import { Button } from "@/components/ui/button";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useConnectionDiagnostics } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
+import { prefetchPainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import {
   isViewTransitionSupported,
   useViewTransition,
 } from "@/hooks/useViewTransition";
+import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import {
+  FILTRO_POSTGREST_PARA_PREPARAR,
+  STATUS_PARA_PREPARAR,
+} from "@/lib/pedidos-para-preparar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -26,40 +36,60 @@ import { haptic } from "@/utils/haptic";
 import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity,
   ArrowLeft,
   Bell,
   Layers,
   LayoutGrid,
-  Megaphone,
   Package,
   Plus,
+  ScanBarcode,
   Settings,
   ShoppingBag,
+  Store,
   Users,
 } from "lucide-react";
 import React from "react";
 
 /**
- * Pedidos que ainda exigem ação do lojista — espelha o predicado de
- * `today_pending` na RPC `get_admin_analytics_v2` (o cartão "Ações
- * Pendentes" da tela de Pedidos). Um pedido em "Em Separação" ainda
- * precisa ser embalado e enviado, então conta igual a um pedido novo.
- *
- * Achado 10 da auditoria de 20/08/2026: o crachá desta barra e o cartão
- * contavam coisas diferentes ("pending" contra "pending"+"new"+"processing")
- * e discordavam na tela. Exportada para o mesmo texto ser usado nos dois
- * lados em vez de duas listas soltas voltarem a divergir.
- *
- * `"new"` é um valor histórico da coluna `status` no banco — o enum
- * `OrderStatus` do front nunca o modelou — mantido aqui só para bater com
- * o que a RPC de fato soma.
+ * Palavras do selo de conexão (painel simples, G7a). A barra lateral e o
+ * cabeçalho do celular dizem a mesma coisa — "Sem internet / Sincronizado /
+ * Lenta / Online" — e o title explica em frase, sem milissegundo: o lojista
+ * não precisa do número, só de saber se a conexão está boa. A medição em si
+ * (`useConnectionDiagnostics`) não muda.
  */
-export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = [
-  "pending",
-  "new",
-  "processing",
-] as const;
+function rotuloDoSelo(
+  isOffline: boolean,
+  showSyncFlash: boolean,
+  quality: EstadoDeOperacao["quality"],
+): string {
+  if (isOffline) return "Sem internet";
+  if (showSyncFlash) return "Sincronizado";
+  return quality === "slow" ? "Lenta" : "Online";
+}
+
+function tituloDoSelo(
+  isOffline: boolean,
+  showSyncFlash: boolean,
+  quality: EstadoDeOperacao["quality"],
+): string {
+  if (isOffline) return "Sem conexão com o servidor";
+  if (showSyncFlash) return "Sincronização concluída!";
+  return quality === "slow" ? "Conexão lenta" : "Conexão boa";
+}
+
+/**
+ * Pedidos que ainda exigem ação do lojista — alias de `STATUS_PARA_PREPARAR`
+ * (`src/lib/pedidos-para-preparar.ts`), mesmo nome e valor de antes para
+ * quem já importava daqui.
+ *
+ * Achado 10 da auditoria de 20/08/2026: o crachá desta barra e o cartão de
+ * Pedidos contavam coisas diferentes e discordavam na tela. Onda F do painel
+ * simples (F2): a lista de status sozinha ainda contava o PIX/cartão que
+ * espera a CLIENTE pagar; o crachá agora aplica a regra inteira de
+ * `painel_inicio` (status + `FILTRO_POSTGREST_PARA_PREPARAR`) — o mesmo
+ * número do "Pedidos para preparar" do Início.
+ */
+export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = STATUS_PARA_PREPARAR;
 
 /**
  * Retentativa automática quando a rodada de contagens FALHA — sem ela, a
@@ -108,7 +138,9 @@ export function AdminLayout({
   const [pendingOrdersCount, setPendingOrdersCount] = React.useState(0);
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
   const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
-  // Defeito medido em 25/08/2026: quando uma das tres consultas abaixo
+  const [devolucoesSolicitadasCount, setDevolucoesSolicitadasCount] =
+    React.useState(0);
+  // Defeito medido em 25/08/2026: quando uma das consultas abaixo
   // falhava, a contagem dela ficava parada em 0 e o sino apagava — a mesma
   // tela de "nada pendente". Este estado guarda o terceiro caso, que nao e'
   // nem "tem pendencia" nem "nao tem": e' "nao consegui conferir". Ele zera
@@ -138,7 +170,7 @@ export function AdminLayout({
     let timeoutDeRetentativa: ReturnType<typeof setTimeout> | null = null;
     // C4 (laudo novos-ângulos 01/09): uma rajada de eventos de pedido
     // (import, reconciliação, vários pagamentos) chamava fetchInitialCounts
-    // — três consultas — UMA VEZ POR EVENTO. A coalescência agenda a
+    // — consultas de contagem — UMA VEZ POR EVENTO. A coalescência agenda a
     // primeira conferência e absorve as demais da janela: rajada inteira
     // custa UMA conferência. Montagem e retorno de foco continuam
     // imediatos (quem acabou de abrir/voltar precisa do número agora).
@@ -166,18 +198,20 @@ export function AdminLayout({
       // atrasado e não vale mais nada.
       const podeGravar = () => isMounted && rodada === rodadaAtual;
 
-      // Desconhecido nunca e' sucesso: se alguma das tres consultas falhar,
+      // Desconhecido nunca e' sucesso: se alguma das consultas falhar,
       // o sino tem que acender por causa da duvida, mesmo que as contagens
       // que DERAM certo estejam todas zeradas. `falhouAlgumaConsulta` comeca
       // limpo a cada rodada — uma rodada nova que der tudo certo apaga o
       // aviso de falha da rodada anterior.
       let falhouAlgumaConsulta = false;
       try {
-        // Fetch pending orders count
+        // Pedidos para preparar — a regra de `painel_inicio`: status aberto
+        // e pagamento que não espera a cliente (onda F, F2).
         const { count: ordersCount, error: ordersErr } = await supabase
           .from("marketplace_orders")
           .select("*", { count: "exact", head: true })
-          .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE);
+          .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE)
+          .or(FILTRO_POSTGREST_PARA_PREPARAR);
 
         if (ordersErr) {
           falhouAlgumaConsulta = true;
@@ -216,6 +250,23 @@ export function AdminLayout({
         } else if (reviewsCount !== null && podeGravar()) {
           setPendingReviewsCount(reviewsCount);
         }
+
+        // Mesmo critério da lista em useAvisosDoLojista: só solicitada
+        // aguarda a resposta da loja. A contagem vem inteira, sem depender
+        // da página retornada. Resposta inválida também é falha da fonte.
+        const { data: devolucoesData, error: devolucoesErr } =
+          await supabase.rpc("admin_devolucoes_listar", {
+            p_status: "solicitada",
+            p_limite: 1,
+          });
+        const devolucoes = lerListaAdmin(devolucoesData);
+        if (devolucoesErr || !devolucoes) {
+          falhouAlgumaConsulta = true;
+        } else if (podeGravar()) {
+          setDevolucoesSolicitadasCount(
+            contagemDe(devolucoes.contagem, "solicitada"),
+          );
+        }
       } catch (err) {
         console.error("[AdminLayout] Error fetching initial counts:", err);
         falhouAlgumaConsulta = true;
@@ -248,8 +299,8 @@ export function AdminLayout({
     };
 
     // LIMITACAO CONHECIDA, de proposito: nao ha canal de tempo real para
-    // `reviews`. A contagem de avaliacoes sem resposta so e' lida na busca
-    // inicial e nas revalidacoes de `visibilitychange` — uma avaliacao que
+    // `reviews` nem `devolucoes`. Essas contagens são lidas na busca
+    // inicial e nas revalidacoes de `visibilitychange` — uma pendência que
     // chegue com o painel aberto so acende a bolinha na proxima vez que a
     // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
     // no ciclo de vida dos canais, que e' onde moram os defeitos de
@@ -413,6 +464,10 @@ export function AdminLayout({
       }
       prefetchView(view);
       if (view === "admin-dashboard" || view === "admin") {
+        // O Início lê `painel_inicio` (+ assinatura); o dashboard de
+        // métricas que ele era foi para a Visão geral do CRM (26/09/2026).
+        prefetchPainelInicio();
+      } else if (view === "admin-crm") {
         fetchExecutiveSummary(false).catch(() => {});
         fetchCategoryAnalytics(
           "2020-01-01T00:00:00.000Z",
@@ -516,7 +571,7 @@ export function AdminLayout({
   }, [currentView]);
 
   const navItems = [
-    { icon: Activity, label: "Geral", view: "admin-dashboard" },
+    { icon: Store, label: "Início", view: "admin-dashboard" },
     { icon: Package, label: "Pedidos", view: "admin-orders" },
     { icon: ShoppingBag, label: "Produtos", view: "admin-products" },
     { icon: Users, label: "Clientes", view: "admin-customers" },
@@ -547,7 +602,8 @@ export function AdminLayout({
     naoConseguiuConferirAvisos ||
     pendingOrdersCount > 0 ||
     pendingQuestionsCount > 0 ||
-    pendingReviewsCount > 0;
+    pendingReviewsCount > 0 ||
+    devolucoesSolicitadasCount > 0;
 
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
@@ -713,7 +769,7 @@ export function AdminLayout({
       style={
         {
           "--admin-tab-pb": isStandalone
-            ? "calc(5.5rem + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
+            ? "calc(6.25rem + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
             : `calc(6.25rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))`,
         } as React.CSSProperties
       }
@@ -732,7 +788,10 @@ export function AdminLayout({
         <div className="space-y-8">
           <div className="flex select-none flex-col">
             <div className="flex items-center justify-between gap-2">
-              <h1 className="text-xl font-black leading-none tracking-tight text-white">
+              {/* min-w-0 + break-words: o selo (shrink-0) ficou maior; sem isso um
+                  nome de uma palavra só ("Distribuidora…") estoura a borda da
+                  coluna quando o selo diz "Sem internet" ou "Sincronizado". */}
+              <h1 className="min-w-0 break-words text-xl font-black leading-none tracking-tight text-white">
                 {nomeDaLoja(config)}{" "}
                 <span className="text-admin-gold">Admin</span>
               </h1>
@@ -743,13 +802,7 @@ export function AdminLayout({
                     ? "border-emerald-500/50 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.2)] scale-105"
                     : "border-white/5",
                 )}
-                title={
-                  isOffline
-                    ? "Sem conexão com o servidor"
-                    : showSyncFlash
-                      ? "Sincronização concluída!"
-                      : `Latência: ${latency}ms`
-                }
+                title={tituloDoSelo(isOffline, showSyncFlash, quality)}
               >
                 <span
                   className={cn(
@@ -782,33 +835,48 @@ export function AdminLayout({
                 </span>
                 <span
                   className={cn(
-                    "text-[7px] font-black uppercase tracking-widest transition-colors",
+                    "text-[11px] font-black uppercase tracking-wide transition-colors",
                     showSyncFlash ? "text-emerald-400" : "text-zinc-400",
                   )}
                 >
-                  {isOffline
-                    ? "Offline"
-                    : showSyncFlash
-                      ? "Sincronizado"
-                      : quality === "slow"
-                        ? "Lento"
-                        : "Online"}
+                  {rotuloDoSelo(isOffline, showSyncFlash, quality)}
                 </span>
               </div>
             </div>
-            <p className="mt-1.5 text-[9px] font-medium uppercase leading-none tracking-widest text-zinc-500">
-              Navegação Unificada
-            </p>
           </div>
 
           <nav className="flex flex-col gap-1.5">
+            {/* "Vender" NÃO é uma 6ª aba (navItems continua com 5 — plano
+                §5.3): é um botão DESTACADO, irmão do `.map`, para não
+                arrastar os 8 lugares que tratam `navItems` como as tabs
+                principais (ADMIN_TABS_SET, isMainTabNav, o atalho
+                Ctrl+Alt e os TabWrapper de AdminArea.tsx). */}
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light();
+                onNavigate("admin-pdv" as View);
+              }}
+              onMouseEnter={() => handleMouseEnter("admin-pdv")}
+              onMouseLeave={handleMouseLeave}
+              onTouchStart={() => handleMouseEnter("admin-pdv", true)}
+              className="mb-1 flex w-full items-center gap-3.5 rounded-2xl bg-admin-gold px-4 py-3.5 text-left text-[11px] font-black uppercase tracking-widest text-black transition-transform active:scale-95"
+            >
+              <ScanBarcode className="size-4.5" />
+              <span className="flex-grow">Vender</span>
+            </button>
             {navItems.map((item, idx) => {
               const Icon = item.icon;
               const parentView = getParentView(currentView);
+              // Relato do dono em teste real (19/09, print): no PDV a barra
+              // marcava GERAL como ativa. O pai do admin-pdv (dashboard)
+              // existe para o botão VOLTAR, não para herdar destaque —
+              // "Vender" é AÇÃO com botão próprio (o redondo, que se marca
+              // com anel). Na tela dele, nenhuma aba acende.
               const isActive =
                 currentView === item.view ||
                 (item.view === "admin-dashboard" && currentView === "admin") ||
-                parentView === item.view;
+                (parentView === item.view && currentView !== "admin-pdv");
 
               return (
                 <button
@@ -821,7 +889,7 @@ export function AdminLayout({
                   onMouseLeave={handleMouseLeave}
                   onTouchStart={() => handleMouseEnter(item.view, true)}
                   className={cn(
-                    "flex items-center gap-3.5 px-4 py-3.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 text-left font-black uppercase text-[10px] tracking-widest transform-gpu w-full",
+                    "flex items-center gap-3.5 px-4 py-3.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 text-left font-black uppercase text-[11px] tracking-widest transform-gpu w-full",
                     isActive
                       ? "text-admin-gold"
                       : "text-zinc-500 hover:text-zinc-300",
@@ -853,7 +921,7 @@ export function AdminLayout({
                   />
                   <span className="flex-grow">{item.label}</span>
                   {item.view === "admin-orders" && pendingOrdersCount > 0 && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[9px] font-black text-white shadow-[0_0_12px_rgba(239,68,68,0.4)] duration-200 animate-in zoom-in-95">
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-black text-white shadow-[0_0_12px_rgba(239,68,68,0.4)] duration-200 animate-in zoom-in-95">
                       {pendingOrdersCount}
                     </span>
                   )}
@@ -882,7 +950,7 @@ export function AdminLayout({
             }}
             onMouseEnter={() => handleMouseEnter(parentView as any)}
             onMouseLeave={handleMouseLeave}
-            className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
+            className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[11px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
           >
             <ArrowLeft className="size-4 text-zinc-400" />{" "}
             <span>{isSubView ? "Voltar" : "Perfil"}</span>
@@ -903,33 +971,13 @@ export function AdminLayout({
             }}
             onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
             onMouseLeave={handleMouseLeave}
-            className="relative flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
+            className="relative flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[11px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
           >
             <Bell className="size-4 text-admin-gold" />{" "}
             <span>Notificações</span>
             {temAvisoNoSino && (
               <span className="absolute right-4 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
             )}
-          </Button>
-          {/*
-            "Avisar clientes" é a tela que ENVIA push para quem compra — o
-            oposto da tela de cima, que só RECEBE. O rótulo "Push" dizia o
-            mecanismo e não o efeito, e com dois sinos no mesmo bloco os dois
-            botões se confundiriam: por isso o megafone.
-          */}
-          <Button
-            variant="ghost"
-            aria-label="Avisar clientes"
-            onClick={() => {
-              haptic.light();
-              onNavigate("admin-push");
-            }}
-            onMouseEnter={() => handleMouseEnter("admin-push")}
-            onMouseLeave={handleMouseLeave}
-            className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
-          >
-            <Megaphone className="size-4 text-admin-gold" />{" "}
-            <span>Avisar clientes</span>
           </Button>
         </div>
       </aside>
@@ -938,7 +986,7 @@ export function AdminLayout({
       <div className="relative flex h-full flex-1 flex-col overflow-hidden">
         {/* Offline Alert Banner */}
         {isOffline && (
-          <div className="relative z-[70] flex shrink-0 select-none items-center justify-center gap-2 border-b border-red-500/20 bg-red-500/10 px-6 py-2.5 text-center text-[10px] font-black uppercase tracking-widest text-red-400 duration-300 animate-in fade-in slide-in-from-top">
+          <div className="relative z-[70] flex shrink-0 select-none items-center justify-center gap-2 border-b border-red-500/20 bg-red-500/10 px-6 py-2.5 text-center text-[11px] font-black uppercase tracking-widest text-red-400 duration-300 animate-in fade-in slide-in-from-top">
             <span className="size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
             <span>
               Conexão perdida. Criação, edição e exclusão de dados estão
@@ -947,9 +995,11 @@ export function AdminLayout({
           </div>
         )}
 
-        {/* Compact Header - Mobile Only */}
+        {/* Compact Header - Mobile Only. Fundo SÓLIDO e sem blur: é `sticky` e
+            a lista rola por baixo dele (mesmo caso da barra inferior); com
+            95% + blur o texto de baixo ainda se lia atrás dos títulos. */}
         <header
-          className="sticky top-0 z-50 flex-shrink-0 border-b border-white/5 bg-[#09090b]/95 px-3.5 py-0 backdrop-blur-xl shadow-md lg:hidden"
+          className="sticky top-0 z-50 flex-shrink-0 border-b border-white/5 bg-zinc-950 px-3.5 py-0 shadow-md lg:hidden"
           style={
             {
               viewTransitionName: isViewTransitionSupported
@@ -975,11 +1025,16 @@ export function AdminLayout({
                   }}
                   onMouseEnter={() => handleMouseEnter(parentView as any)}
                   onMouseLeave={handleMouseLeave}
-                  className="flex h-7 transform-gpu items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-2.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 active:scale-95"
+                  // Alvo de toque de 44px (painel simples, A3): o botão é o
+                  // envoltório clicável, transparente; a pílula de 28px que
+                  // o lojista vê mora no <span> de dentro.
+                  className="group flex min-h-11 min-w-11 transform-gpu items-center justify-center rounded-full bg-transparent p-0 transition-transform duration-200 hover:bg-transparent active:scale-95 dark:hover:bg-transparent"
                 >
-                  <ArrowLeft className="size-3.5 text-zinc-400" />{" "}
-                  <span className="inline">
-                    {isSubView ? "Voltar" : "Perfil"}
+                  <span className="flex h-7 items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-2.5 text-[11px] font-bold uppercase tracking-widest text-white transition-[background-color] duration-200 group-hover:bg-zinc-800">
+                    <ArrowLeft className="size-3.5 text-zinc-400" />{" "}
+                    <span className="inline">
+                      {isSubView ? "Voltar" : "Perfil"}
+                    </span>
                   </span>
                 </Button>
               </div>
@@ -996,13 +1051,7 @@ export function AdminLayout({
                       ? "border-emerald-500/50 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.2)] scale-105"
                       : "border-white/5",
                   )}
-                  title={
-                    isOffline
-                      ? "Offline"
-                      : showSyncFlash
-                        ? "Sincronizado"
-                        : `Latência: ${latency}ms`
-                  }
+                  title={tituloDoSelo(isOffline, showSyncFlash, quality)}
                 >
                   <span
                     className={cn(
@@ -1035,17 +1084,11 @@ export function AdminLayout({
                   </span>
                   <span
                     className={cn(
-                      "text-[6.5px] font-black uppercase tracking-widest transition-colors",
+                      "text-[11px] font-black uppercase tracking-wide transition-colors",
                       showSyncFlash ? "text-emerald-400" : "text-zinc-400",
                     )}
                   >
-                    {isOffline
-                      ? "Off"
-                      : showSyncFlash
-                        ? "Sync"
-                        : quality === "slow"
-                          ? "Slow"
-                          : "On"}
+                    {rotuloDoSelo(isOffline, showSyncFlash, quality)}
                   </span>
                 </div>
               </div>
@@ -1056,7 +1099,10 @@ export function AdminLayout({
                   variant="ghost"
                   size="icon"
                   aria-label="Notificações"
-                  className="relative size-7 transform-gpu rounded-full border border-white/5 bg-zinc-900 hover:bg-zinc-800 active:scale-95"
+                  // Alvo de toque de 44px (painel simples, A3): o botão é o
+                  // envoltório clicável, transparente; o círculo de 28px que
+                  // o lojista vê mora no <div> de dentro.
+                  className="group relative min-h-11 min-w-11 transform-gpu rounded-full bg-transparent p-0 hover:bg-transparent active:scale-95 dark:hover:bg-transparent"
                   onClick={() => {
                     haptic.light();
                     onNavigate(notificationBellTarget);
@@ -1064,10 +1110,12 @@ export function AdminLayout({
                   onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
                   onMouseLeave={handleMouseLeave}
                 >
-                  <Bell className="size-3.5 text-admin-gold" />
-                  {temAvisoNoSino && (
-                    <span className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
-                  )}
+                  <div className="relative flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900 transition-colors group-hover:bg-zinc-800">
+                    <Bell className="size-3.5 text-admin-gold" />
+                    {temAvisoNoSino && (
+                      <span className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
+                    )}
+                  </div>
                 </Button>
               </div>
             </div>
@@ -1080,7 +1128,7 @@ export function AdminLayout({
                     <LayoutGrid className="size-3" />
                   </div>
                   <h1 className="select-none text-xs font-black uppercase tracking-wider text-white truncate">
-                    Gerenciador de Banners
+                    {NOMES_DO_PAINEL["admin-banners"]}
                   </h1>
                 </div>
 
@@ -1092,7 +1140,7 @@ export function AdminLayout({
                       new CustomEvent("admin:open-new-banner-dialog"),
                     );
                   }}
-                  className="group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] via-amber-450 to-amber-500 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-black shadow-[0_2px_10px_rgba(255,191,0,0.2)] transition-all active:scale-95"
+                  className="group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] via-amber-450 to-amber-500 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-black shadow-[0_2px_10px_rgba(255,191,0,0.2)] transition-all active:scale-95"
                 >
                   <Plus className="size-3 stroke-[3px]" />
                   <span>Novo Banner</span>
@@ -1108,7 +1156,7 @@ export function AdminLayout({
                     <Layers className="size-3" />
                   </div>
                   <h1 className="select-none text-xs font-black uppercase tracking-wider text-white truncate">
-                    Vitrines & Carrosséis
+                    {NOMES_DO_PAINEL["admin-carousels"]}
                   </h1>
                 </div>
               </div>
@@ -1170,7 +1218,13 @@ export function AdminLayout({
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 120, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="admin-glass fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950/95 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl lg:hidden"
+              // Sem `admin-glass` de propósito: a `.admin-glass` (index.css,
+              // @layer utilities) sai DEPOIS do `bg-zinc-950` no CSS final
+              // e vencia o fundo e a borda — a barra ficava translúcida e o
+              // conteúdo aparecia por baixo dos rótulos. Fundo SÓLIDO e sem
+              // blur: com 95% + backdrop-blur o texto de baixo ainda se lia
+              // no render; opaco, o blur não serve a nada.
+              className="fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] lg:hidden"
               style={
                 {
                   bottom: `calc(0.75rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)) * 0.5)`,
@@ -1183,15 +1237,27 @@ export function AdminLayout({
               {navItems.map((item, idx) => {
                 const Icon = item.icon;
                 const parentView = getParentView(currentView);
+                // Mesma regra da sidebar acima (relato do dono, 19/09): o pai
+                // do admin-pdv não herda destaque na barra do celular — na
+                // tela de venda o único marcado é o botão redondo Vender.
                 const isActive =
                   currentView === item.view ||
                   (item.view === "admin-dashboard" &&
                     currentView === "admin") ||
-                  parentView === item.view;
+                  (parentView === item.view && currentView !== "admin-pdv");
 
                 return (
                   <button
                     key={idx}
+                    // Nome acessível da aba; o selo de pedidos entra nele
+                    // ("Pedidos, 3 para preparar") e o selo visual é
+                    // aria-hidden. O selo conta a mesma regra do "Pedidos para
+                    // preparar" do Início (sem PIX/cartão ainda não pago).
+                    aria-label={
+                      item.view === "admin-orders" && pendingOrdersCount > 0
+                        ? `${item.label}, ${pendingOrdersCount} para preparar`
+                        : item.label
+                    }
                     onClick={() => {
                       haptic.light();
                       onNavigate(item.view as View);
@@ -1201,8 +1267,8 @@ export function AdminLayout({
                     onTouchStart={() => handleMouseEnter(item.view, true)}
                     className={cn(
                       "flex flex-col items-center gap-0.5 sm:gap-1 flex-1 py-2.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 transform-gpu",
-                      // Contraste sobre QUALQUER fundo: com o vidro quase
-                      // opaco (zinc-950/95), ícone inativo é zinc-300 (AA
+                      // Contraste sobre QUALQUER fundo: com o fundo
+                      // sólido (zinc-950), ícone inativo é zinc-300 (AA
                       // sobre escuro) — na barra translúcida antiga os
                       // ícones sumiam ao rolar sobre conteúdo claro
                       // (relato do Gabriel, 02/09).
@@ -1237,16 +1303,23 @@ export function AdminLayout({
                       )}
                     />
                     {item.view === "admin-orders" && pendingOrdersCount > 0 && (
-                      <span className="absolute right-2 top-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.5)]">
+                      <span
+                        aria-hidden="true"
+                        className="absolute right-2 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                      >
                         {pendingOrdersCount}
                       </span>
                     )}
                     {/* Badge de perguntas removido da engrenagem: o destino
                         dela (Ajustes) não lista pendência nenhuma — quem
                         acende e leva à lista é o sino (temAvisoNoSino). */}
+                    {/* Rótulo SEMPRE visível (painel simples, A2): a 11px e em
+                        caixa normal — em 360px cada aba tem ~53px (nav de
+                        328px, menos o padding e o Vender de 44px, dividido em
+                        5) e "PRODUTOS" em maiúscula pesada (~57,6px) não cabe. */}
                     <span
                       className={cn(
-                        "text-[9px] font-black uppercase tracking-tighter transition-all hidden sm:inline-block",
+                        "text-[11px] font-bold leading-none transition-all",
                         isActive ? "opacity-100" : "opacity-80",
                       )}
                     >
@@ -1267,6 +1340,28 @@ export function AdminLayout({
                   </button>
                 );
               })}
+              {/* "Vender" fica FORA do `.map` como sexto elemento, redondo e
+                  destacado (mesmo raciocínio da barra lateral: não é uma 6ª
+                  aba). `shrink-0` em vez de `flex-1` — os cinco rótulos das
+                  abas principais não podem ser espremidos por ele numa tela
+                  de 360px (é o que este arquivo tem de provar no teste). */}
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.light();
+                  onNavigate("admin-pdv" as View);
+                }}
+                onMouseEnter={() => handleMouseEnter("admin-pdv")}
+                onMouseLeave={handleMouseLeave}
+                onTouchStart={() => handleMouseEnter("admin-pdv", true)}
+                aria-label="Vender"
+                className={cn(
+                  "flex size-11 shrink-0 items-center justify-center rounded-full bg-admin-gold text-black transition-transform active:scale-95",
+                  currentView === "admin-pdv" && "ring-2 ring-white/70",
+                )}
+              >
+                <ScanBarcode className="size-5" />
+              </button>
             </motion.nav>
           )}
         </AnimatePresence>

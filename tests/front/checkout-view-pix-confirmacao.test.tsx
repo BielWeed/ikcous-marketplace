@@ -41,6 +41,14 @@ let onRealtimeEventCapturado: EventoRealtime | null = null;
 // que não mexem nele exercitam o caminho COM WhatsApp configurado.
 let mockWhatsappNumber: string | undefined = "34999998888";
 
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
@@ -103,27 +111,42 @@ let mockCart = [
 let mockCartTotal = 100;
 let mockShippingFee = 0;
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: mockCart,
-    cartTotal: mockCartTotal,
-    shippingFee: mockShippingFee,
-    clearCart: () => {
-      clearCart();
-      mockCart = [];
-      mockCartTotal = 0;
-      mockShippingFee = 0;
-    },
-    addToCart: (
-      product: unknown,
-      quantity: number,
-      variantId?: string,
-      variantNames?: string,
-    ) => addToCart(product, quantity, variantId, variantNames),
-    selectedShippingOption: null,
-    shippingCep: "38500-000",
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: mockCart,
+      cartTotal: mockCartTotal,
+      shippingFee: mockShippingFee,
+      clearCart: () => {
+        clearCart();
+        mockCart = [];
+        mockCartTotal = 0;
+        mockShippingFee = 0;
+      },
+      addToCart: (
+        product: unknown,
+        quantity: number,
+        variantId?: string,
+        variantNames?: string,
+      ) => addToCart(product, quantity, variantId, variantNames),
+      // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
+      // 21/09/2026): `finalizarBloqueadoPorFrete` passou a exigir a ESCOLHA
+      // de entrega (o servidor recusa id ausente — FRETE V2 EMENDA, ELSIF do
+      // bloco 4), e o frete daqui é R$ 0 legítimo. Sem a opção, o Finalizar
+      // ficaria travado por um motivo que ESTE arquivo não prova — o assunto
+      // dele é o polling do PIX, não a regra de frete.
+      selectedShippingOption: {
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 0,
+        deliveryDays: 1,
+        provider: "local",
+      },
+      shippingCep: "38500-000",
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
@@ -218,6 +241,17 @@ vi.mock("@/lib/flags", () => ({
 vi.mock("@/components/checkout/PagamentoOnline", () => ({
   PagamentoOnline: () => null,
 }));
+
+// Cartão pelo app (26/09/2026): o checkout lê `config_pagamento_cartao` ao
+// montar (useConfigDoCartao) — uma consulta que não é do polling que este
+// arquivo conta em `fromSpy`. A leitura tem suíte própria
+// (config-do-cartao.test.ts); aqui o cartão fica simplesmente desligado.
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { ESTADO_PRONTO_SEM_CARTAO } = await import(
+    "./duble-use-config-do-cartao"
+  );
+  return { useConfigDoCartao: () => ESTADO_PRONTO_SEM_CARTAO };
+});
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
 // dos outros arquivos desta pasta.
@@ -933,7 +967,11 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
       await vi.advanceTimersByTimeAsync(10_000);
     });
 
-    expect(selectSpy).toHaveBeenCalledWith("payment_status, expires_at");
+    // C6 (P1, 02/10/2026): a vaga e o status entram na mesma leitura — é por
+    // ela que a recusa depois do 3DS aparece (vaga solta por prova).
+    expect(selectSpy).toHaveBeenCalledWith(
+      "payment_status, expires_at, gateway_payment_id, status",
+    );
     expect(eqSpy).toHaveBeenCalledWith("id", "ped-999");
   });
 

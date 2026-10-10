@@ -106,12 +106,12 @@ o produto de pior margem.
 **O que a pessoa vê:** na tela de WhatsApp, 30 modelos prontos, todos escritos com `[nome]`,
 `[preco]` e `[link]` — por exemplo *"🔥 Oportunidade Única! Adquira o [nome] por apenas [preco] na
 nossa loja. Clique no link para comprar agora: [link] 🛍️"*
-([AdminWhatsAppConfigView.tsx:30-175](../../src/views/admin/AdminWhatsAppConfigView.tsx)). Ao lado, um
+(`AdminWhatsAppConfigView.tsx:30-175` (arquivo apagado em 09/10/2026; hoje `minha-loja/MensagemDeCompartilhar.tsx` e `modelos-de-mensagem.ts`)). Ao lado, um
 preview de conversa de WhatsApp mostra a mensagem **já preenchida** com o nome, o preço e o link do
 primeiro produto do catálogo.
 
 **O que está errado por trás:** quem preenche os marcadores é
-`getProcessedPreviewText` ([:227-256](../../src/views/admin/AdminWhatsAppConfigView.tsx)), e essa função
+`getProcessedPreviewText` (`AdminWhatsAppConfigView.tsx:227-256` (arquivo apagado em 09/10/2026; hoje `minha-loja/MensagemDeCompartilhar.tsx` e `modelos-de-mensagem.ts`)), e essa função
 **só existe dentro da tela de configuração**. O compartilhamento de verdade é
 [ProductView.tsx:616](../../src/views/customer/ProductView.tsx):
 
@@ -201,7 +201,7 @@ repositório inteiro.
 
 **O que a pessoa vê:** na tela de WhatsApp, o campo "Horário de Funcionamento" com a explicação
 **"Informa aos clientes no PWA o expediente de suporte."**
-([AdminWhatsAppConfigView.tsx:741](../../src/views/admin/AdminWhatsAppConfigView.tsx)). Salva sem erro.
+(`AdminWhatsAppConfigView.tsx:741` (arquivo apagado em 09/10/2026; hoje `minha-loja/MensagemDeCompartilhar.tsx` e `modelos-de-mensagem.ts`)). Salva sem erro.
 
 **O que está errado por trás:** `businessHours` é lido, mapeado e gravado
 (`StoreContext.tsx:221`, `:459`, `realtimeSyncEngine.ts:105`) e **não tem um único consumidor** em
@@ -298,7 +298,7 @@ O modal "Central de Inteligência & KPIs" descreve como "Principais Indicadores 
 **Capital Alocado**, **Lucro Potencial**, **Faturamento** e **Ticket Médio**
 ([AdminDashboardView.tsx:367-415](../../src/views/admin/AdminDashboardView.tsx)). Os cartões que a tela
 realmente tem são **Volume Total**, **Total de Pedidos**, **Ticket Médio** e **Clientes Únicos**
-([KpiSummaryCards.tsx:30-63](../../src/components/admin/dashboard/KpiSummaryCards.tsx)). "Capital
+(`KpiSummaryCards.tsx:30-63`, removido em 28/09/2026). "Capital
 Alocado" e "Lucro Potencial" existem, mas na tela de **Produtos**
 (`AdminProductsView.tsx:312`, `:320`). Só um dos quatro nomes bate.
 

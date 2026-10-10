@@ -15,6 +15,17 @@ tem histórico de velocity: não há CI, não há testes rodando, não há regis
 nenhuma tarefa anterior. Trate os números como ordem de grandeza, não como compromisso. A primeira
 onda serve também para calibrar as outras três.
 
+> **Nota de 15/09/2026:** a premissa acima envelheceu. Hoje existem `.github/workflows/ci.yml`
+> e outros 6 workflows (7 no total, medido em `.github/workflows/`), suíte de testes rodando
+> (baseline desta sessão: 540 casos Deno em `supabase/functions/`, 380 casos Deno em `tests/`,
+> 511 arquivos/4072 testes Vitest em `tests/front/`) e `CHANGELOG.md` registrando 47 releases
+> com escopo e data, de `1.0.1` a `1.35.0` (medido: `grep -c "^## \[" CHANGELOG.md`). O que
+> continua verdade é a segunda metade da frase: **nenhuma dessas fontes foi usada até hoje para
+> medir quanto tempo uma tarefa leva** — o CHANGELOG registra o quê e quando, não o esforço. As
+> estimativas abaixo continuam sem essa calibração; útil como ordem de grandeza melhor que
+> "chute grosso" seria olhar o intervalo de datas entre releases consecutivas no CHANGELOG, o
+> que esta nota não fez.
+
 ---
 
 ## Antes de começar: três pares de tarefas que se sobrepõem

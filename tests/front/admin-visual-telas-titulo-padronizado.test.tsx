@@ -68,3 +68,55 @@ describe("as 8 telas do painel usam o título padrão", () => {
     });
   }
 });
+
+// 26/09/2026: o Início novo (AdminDashboardView, que deixou de ser o
+// dashboard de métricas) e o Dashboard CRM (AdminCrmView, que era um
+// esqueleto com <h1> manual) nascem no mesmo padrão de título.
+const TELAS_DO_INICIO_E_CRM = ["AdminDashboardView.tsx", "AdminCrmView.tsx"];
+
+describe("Início e Dashboard CRM usam o título padrão", () => {
+  for (const tela of TELAS_DO_INICIO_E_CRM) {
+    it(`${tela} importa e usa o AdminPageHeader, sem <h1> manual`, () => {
+      const fonte = new Map(Object.entries(FONTES)).get(
+        `/src/views/admin/${tela}`,
+      );
+      expect(fonte, `falta o fonte de ${tela}`).toBeDefined();
+      expect(fonte).toContain(
+        'import { AdminPageHeader } from "@/components/admin/AdminPageHeader";',
+      );
+      expect(fonte).toContain("<AdminPageHeader");
+      expect(fonte).not.toContain("<h1");
+    });
+  }
+});
+
+// Painel simples (C10-C14, 09/10/2026): o título de cada tela vem de
+// `NOMES_DO_PAINEL`, o nome ÚNICO da tela (o mesmo do menu, do carregando, do
+// Voltar e da ajuda). Texto solto no `titulo` do AdminPageHeader é o que fazia
+// a mesma tela ter 2 a 4 nomes. Teste de fonte global: vale para toda tela
+// `Admin*View.tsx` que usa o cabeçalho padrão — tela nova já nasce obrigada.
+
+describe("o título de toda tela do painel vem do nome único", () => {
+  const telas = Object.entries(FONTES).filter(([, fonte]) =>
+    fonte.includes("<AdminPageHeader"),
+  );
+
+  it("o glob achou as telas do painel (nada de prova vazia)", () => {
+    expect(telas.length).toBeGreaterThanOrEqual(18);
+  });
+
+  for (const [caminho, fonte] of telas) {
+    const nome = caminho.split("/").pop();
+    it(`${nome}: titulo={…NOMES_DO_PAINEL[…]} e nenhum título solto`, () => {
+      expect(
+        fonte,
+        "o titulo do AdminPageHeader tem de citar NOMES_DO_PAINEL[…]",
+      ).toMatch(
+        /<AdminPageHeader[\s\S]{0,400}?titulo=\{[^\n]*NOMES_DO_PAINEL\[/,
+      );
+      expect(fonte, "titulo com texto solto no AdminPageHeader").not.toMatch(
+        /<AdminPageHeader[\s\S]{0,400}?titulo="/,
+      );
+    });
+  }
+});

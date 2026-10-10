@@ -102,10 +102,14 @@ describe("M1 — frete: erro da cotação é anunciado", () => {
   });
 });
 
-describe("M2 — frete: campo de CEP com nome", () => {
-  it("o input de CEP tem aria-label próprio", () => {
+describe("M2 — frete: a região do frete tem nome próprio", () => {
+  // Frete automático (22/09/2026): o campo de CEP saiu (o destino é o
+  // endereço de entrega). O que o leitor de tela precisa agora é achar a
+  // REGIÃO do frete pelo nome — o mesmo papel que o aria-label do campo
+  // cumpria.
+  it("a seção de entrega e frete tem aria-label próprio", () => {
     const src = fonte(SHIPPING);
-    expect(src).toContain('aria-label="CEP de destino"');
+    expect(src).toContain('aria-label="Entrega e frete"');
   });
 });
 

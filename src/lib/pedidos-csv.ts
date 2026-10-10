@@ -2,21 +2,26 @@ import {
   rotuloDoPagamento,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
+import {
+  type FormaDoPedido,
+  rotuloDaFormaDoPedido,
+} from "@/lib/forma-de-pagamento";
 import type { Order as Pedido } from "@/types";
 
-const PAYMENT_METHOD_LABELS = new Map([
-  ["pix", "PIX Instantâneo"],
-  ["card", "Crédito Seguro"],
-  ["cash", "Dinheiro"],
-]);
-
-export function rotuloDaFormaDePagamento(method: string): string {
-  return PAYMENT_METHOD_LABELS.get(method) || "Outro";
+/** A forma do pedido na lista e na planilha — o MESMO rótulo para as duas
+ * (`rotuloDaFormaDoPedido`, achado D4 de 28/09). Recebe o pedido, e não só o
+ * `paymentMethod`, porque "cartão" quer dizer coisa diferente no site e no
+ * balcão. */
+export function rotuloDaFormaDePagamento(pedido: FormaDoPedido): string {
+  return rotuloDaFormaDoPedido(pedido);
 }
 
 const statusPorChave = new Map(Object.entries(statusConfig));
+// "Canal" entra NO FIM, nunca no meio: quem já tem planilha salva com
+// fórmula por posição de coluna perde tudo se as colunas antigas andarem
+// de lugar (lote C4, item 15).
 const CABECALHO =
-  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto";
+  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto;Canal";
 
 function escaparCampo(valor: string): string {
   // Aspas CSV não impedem fórmulas: texto vindo do cliente precisa continuar texto.
@@ -42,8 +47,10 @@ export function pedidosParaCsv(pedidos: Pedido[]): string {
       escaparCampo(
         (statusPorChave.get(pedido.status) ?? statusConfig.pending).label,
       ),
-      escaparCampo(rotuloDaFormaDePagamento(pedido.paymentMethod)),
-      escaparCampo(rotuloDoPagamento(pedido.paymentStatus, pedido.status)),
+      escaparCampo(rotuloDaFormaDePagamento(pedido)),
+      escaparCampo(
+        rotuloDoPagamento(pedido.paymentStatus, pedido.status, pedido.canal),
+      ),
       pedido.total.toFixed(2).replace(".", ","),
       escaparCampo(pedido.customer?.city ?? ""),
       escaparCampo(pedido.customer?.state ?? ""),
@@ -58,6 +65,10 @@ export function pedidosParaCsv(pedidos: Pedido[]): string {
       pedido.subtotal.toFixed(2).replace(".", ","),
       pedido.shipping.toFixed(2).replace(".", ","),
       pedido.discount.toFixed(2).replace(".", ","),
+      // Rótulo em português para humano — quem abre o CSV é o lojista, não
+      // um parser. "Site" (não "Online") porque é a palavra que o resto do
+      // painel usa para o mesmo canal (OrderDetail.tsx, "Pago no site").
+      escaparCampo(pedido.canal === "presencial" ? "Balcão" : "Site"),
     ].join(";"),
   );
   return `\uFEFF${[CABECALHO, ...linhas].join("\r\n")}`;

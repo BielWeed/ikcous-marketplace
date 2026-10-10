@@ -17,7 +17,10 @@ vi.mock("@/lib/supabase", () => ({
       const builder = {
         select: () => builder,
         eq: () => builder,
-        in: () => result,
+        in: () => builder,
+        // O selo de Pedidos encadeia `.in(...).or(...)` (regra única "para
+        // preparar", onda F); o `.or` é quem devolve o resultado.
+        or: () => result,
         is: () => result,
       };
       return builder;
@@ -156,7 +159,7 @@ describe("nome configurado no painel e no endereço", () => {
       );
       await act(async () => raiz.render(<AddressFormView onBack={vi.fn()} />));
       expect(hospedeiro.textContent).toContain(
-        `Onde entregaremos seu produto da ${config.storeName || branding.appName}?`,
+        `Seu pedido da ${config.storeName || branding.appName}:`,
       );
     },
   );

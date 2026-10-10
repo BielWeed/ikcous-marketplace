@@ -1,0 +1,486 @@
+name: Aplicar migrations (Supabase)
+# Título do run localizável por loja: scripts/frota/publicar-release.mjs trata
+# como VENCIDA a evidência de conferência de uma loja anterior a um apply nela.
+run-name: "aplicar em ${{ inputs.projeto }}: ${{ inputs.migracoes }}"
+
+# Aplica migrations NO PROJETO ALVO pela API de gestão do Supabase, com a
+# disciplina da casa: para cada arquivo roda primeiro a PROVA
+# (BEGIN; <sql>; ROLLBACK;) e só então o apply; no fim, verifica que as RPCs
+# novas existem e estão alcançáveis por authenticated. Nenhuma credencial
+# nova: usa o segredo SUPABASE_ACCESS_TOKEN que já publica as functions.
+#
+# Só roda a PEDIDO (workflow_dispatch), nunca em push. O apply de cada arquivo
+# é UMA transação REPEATABLE READ com impressão digital ANTES e DEPOIS no mesmo
+# snapshot (scripts/publicacao/impressao-digital.sql): se o arquivo alterar
+# dado existente, o RAISE acontece antes do COMMIT e nada fica gravado. Cron e
+# webhook mudando pedido enquanto roda não entram na comparação; o que mudou
+# fora do snapshot aparece como ATIVIDADE CONCORRENTE (informativo).
+#
+# ALVO: loja (default), sandbox, ikcous-publicada ou savy. As duas últimas são as
+# LOJAS EXPLÍCITAS, com as mesmas travas. ikcous-publicada (a CAF): ref fixo
+# cafkrminfnokvgjqtkle, segredo SUPABASE_ACCESS_TOKEN_IKCOUS. savy (a loja cliente
+# real, 06/10/2026): ref fixo gnjsrucsmjkajijrakzr, segredo SUPABASE_ACCESS_TOKEN_SAVY
+# (o mesmo que publicar-functions.yml já usa para a Savy). Nas duas: expected_sha
+# (40 hex) igual ao GITHUB_SHA conferido no PRIMEIRO passo, antes de qualquer
+# requisição; sem o segredo próprio, ou com 401/403 da API, o run PARA com
+# "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto"
+# (ou, na Savy, "sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY —
+# bloqueio concreto"), nunca tenta outro segredo nem outro alvo; cada alvo enxerga
+# SÓ o seu segredo (o legado não chega à CAF nem à Savy, e o da Savy não chega a
+# nenhum outro alvo). LEDGER (06/10/2026): para arquivo de MIGRATION o apply registra a
+# versao em supabase_migrations.schema_migrations DENTRO da mesma transacao (mesmo
+# formato de scripts/db-apply.cjs, ON CONFLICT DO NOTHING; falhou um, volta o outro)
+# e a prova BEGIN/ROLLBACK tambem o inclui; rollback-manual-<versao> APAGA a linha daquela versao (DELETE na mesma transacao do corpo do rollback). `loja` e `sandbox` mantêm o mapeamento
+# de ref e o segredo de antes (SUPABASE_ACCESS_TOKEN), MAS o gate de transporte, a
+# guarda de controle de transação do corpo (BEGIN/COMMIT/… de topo recusam) e o
+# envelope REPEATABLE READ com impressão digital passam a valer para TODO alvo,
+# inclusive loja e sandbox. É só mais restritivo: nada que passava antes deixa de
+# ser aplicável por um motivo novo além dessas três travas e do registro no ledger
+# (que falha fechado, atomicamente, se supabase_migrations.schema_migrations faltar).
+#
+# USO: Actions → Run workflow → migracoes = arquivos de supabase/migrations/
+# separados por vírgula, NA ORDEM (fila serializada). Vazio = só fingerprint.
+# Dois formatos de nome, NUNCA misturados no mesmo dispatch: migration
+# (<14 dígitos>_<nome>.sql) ou desfazer da CAF (rollback-manual-<14 dígitos>_
+# <nome>.sql, o mesmo envelope). Os rollbacks têm guardas de ordem próprias:
+# rode do mais novo para o mais antigo (o runbook lista a cadeia).
+
+on:
+  workflow_dispatch:
+    inputs:
+      migracoes:
+        description: "Arquivos em supabase/migrations/ (vírgula, na ordem; vazio = só fingerprint)"
+        required: false
+        default: ""
+      projeto:
+        description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca um ref de texto livre — achado da revisão de risco do conferir-banco-da-loja, rodada 2"
+        required: false
+        type: choice
+        default: loja
+        options:
+          - loja
+          - sandbox
+          - ikcous-publicada
+          - savy
+      expected_sha:
+        description: "So para projeto = ikcous-publicada ou savy: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA); vazio nas outras lojas"
+        required: false
+        default: ""
+
+jobs:
+  aplicar:
+    name: Aplicar migrations
+    runs-on: ubuntu-latest
+    # Mesmo grupo de conferir-banco-da-loja.yml (job `ledger`): nunca aplicar
+    # migration enquanto o ledger está sendo gravado, nem o contrário.
+    concurrency:
+      group: banco-da-loja
+      cancel-in-progress: false
+      # queue: max (não o default "single"): sem isto, disparar A (72),
+      # depois B (73) e C (74) cancela B e aplica só A e C, fora de ordem —
+      # achado da rodada 3 da revisão de risco do conferir-banco-da-loja.
+      queue: max
+    steps:
+      # PRIMEIRO passo, antes de checkout e de qualquer requisição: a CAF e a
+      # Savy explícitas só rodam com expected_sha completo e igual ao GITHUB_SHA
+      # (mesmo padrão e mesma mensagem do publicar-functions.yml).
+      - name: Confere o alvo (expected_sha na CAF e na Savy explícitas)
+        env:
+          PROJETO: ${{ inputs.projeto }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          if [ "$PROJETO" = "ikcous-publicada" ] || [ "$PROJETO" = "savy" ]; then
+            if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+              echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+            fi
+          fi
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      # Cada alvo enxerga SÓ o seu segredo: a expressão `&& … || ''` nunca cai
+      # no outro (segredo vazio dá '', não o segredo do vizinho).
+      - name: "Prova, apply e verificação"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          MIGRACOES: ${{ inputs.migracoes }}
+          PROJETO: ${{ inputs.projeto }}
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            // RESOLVE_REF_INICIO — projeto virou choice loja/sandbox (nunca
+            // mais texto livre no path da URL): achado da revisão de risco
+            // do conferir-banco-da-loja, rodada 2 — 'projeto_ref' cru
+            // habilitava '<ref>/restart#' (POST para outro endpoint) e
+            // 'x/../outroref.../database/query#' (a query indo para OUTRO
+            // projeto), com um token válido para toda a conta.
+            const REFS = { loja: 'cafkrminfnokvgjqtkle', sandbox: 'lofznuxcvezrhxsgjqyg', 'ikcous-publicada': 'cafkrminfnokvgjqtkle', savy: 'gnjsrucsmjkajijrakzr' };
+            const projeto = process.env.PROJETO;
+            if (!Object.hasOwn(REFS, projeto)) {
+              console.error('RECUSADO (projeto desconhecido): ' + projeto); process.exit(1);
+            }
+            const ref = REFS[projeto];
+            if (!/^[a-z]{20}\$/.test(ref)) {
+              console.error('RECUSADO (ref inválido): ' + ref); process.exit(1);
+            }
+            // RESOLVE_REF_FIM
+            // CAF e Savy explícitas: SÓ o segredo próprio de cada uma. Sem ele
+            // PARA — nunca tenta SUPABASE_ACCESS_TOKEN (o de loja/sandbox), o
+            // segredo da outra loja explícita nem outro alvo.
+            const ehCaf = projeto === 'ikcous-publicada';
+            const ehSavy = projeto === 'savy';
+            const SEM_ACESSO_CAF = 'sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto';
+            const SEM_ACESSO_SAVY = 'sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto';
+            const token = ehCaf ? process.env.SUPABASE_ACCESS_TOKEN_IKCOUS : ehSavy ? process.env.SUPABASE_ACCESS_TOKEN_SAVY : process.env.SUPABASE_ACCESS_TOKEN;
+            if (!token) { console.error(ehCaf ? SEM_ACESSO_CAF : ehSavy ? SEM_ACESSO_SAVY : 'SEM SUPABASE_ACCESS_TOKEN'); process.exit(1); }
+
+            async function sql(titulo, query) {
+              const r = await fetch(
+                'https://api.supabase.com/v1/projects/' + ref + '/database/query',
+                {
+                  method: 'POST',
+                  headers: {
+                    Authorization: 'Bearer ' + token,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ query }),
+                  // Sem timeout próprio a chamada ficaria pendurada; com ele,
+                  // o apply vira ESTADO DESCONHECIDO (ver aplicarEnvelope).
+                  signal: AbortSignal.timeout(300000),
+                },
+              );
+              const corpo = await r.text();
+              // 401/403 na CAF ou na Savy explícitas = PARADA com o bloqueio
+              // concreto, sem tentar outro segredo nem outro alvo.
+              if ((ehCaf || ehSavy) && (r.status === 401 || r.status === 403)) {
+                throw new Error(titulo + ' -> HTTP ' + r.status + ': ' + (ehCaf ? SEM_ACESSO_CAF : SEM_ACESSO_SAVY));
+              }
+              // Sucesso = 201 (o documentado em v1-run-a-query) ou 200 (tolerado,
+              // comportamento de versões anteriores). Qualquer outro status,
+              // inclusive outro 2xx (202, 204: sem resultado garantido), PARA.
+              if (r.status !== 201 && r.status !== 200) {
+                throw new Error(titulo + ' -> HTTP ' + r.status + ' (esperado 201, o sucesso documentado; 200 tolerado): ' + corpo.slice(0, 300));
+              }
+              if (corpo.includes('\"error\"') || corpo.includes('\"message\":\"')) {
+                throw new Error(titulo + ' -> ' + corpo.slice(0, 300));
+              }
+              return corpo;
+            }
+
+            // ENVELOPE_INICIO — impressão digital no limite de CADA arquivo.
+            // O apply de cada arquivo (migration OU rollback-manual) é UMA
+            // transação REPEATABLE READ: impressão digital ANTES, o corpo,
+            // impressão digital DEPOIS (mesmo snapshot — o cron e o webhook
+            // mudam pedido legitimamente e não entram na comparação), e o
+            // RAISE EXCEPTION da divergência acontece ANTES do COMMIT: a
+            // transação inteira volta. O SQL mora em
+            // scripts/publicacao/impressao-digital.sql (versionado e testado
+            // em PG local); aqui só se monta o envelope.
+            const CONF = require('./scripts/publicacao/conferir-banco.cjs');
+            function secoesDoEnvelope() {
+              const secoes = {};
+              const texto = fs.readFileSync('scripts/publicacao/impressao-digital.sql', 'utf8');
+              for (const bloco of texto.split(/^-- @@SECAO /m).slice(1)) {
+                const fim = bloco.indexOf('\\n');
+                secoes[bloco.slice(0, fim).trim()] = bloco.slice(fim + 1);
+              }
+              for (const nome of ['abrir', 'fechar', 'fresca', 'gate']) {
+                if (!secoes[nome]) throw new Error('impressao-digital.sql sem a secao ' + nome);
+              }
+              return secoes;
+            }
+            // Pula espaço e comentários (de linha e de bloco ANINHÁVEL, como o
+            // Postgres) até a primeira palavra do comando. Uma regex não
+            // aninha: /* a /* b */ COMMIT; */ é UM comentário só.
+            function inicioDoStatement(s) {
+              let i = 0;
+              for (;;) {
+                while (i < s.length && /\\s/.test(s[i])) i++;
+                if (s.startsWith('--', i)) {
+                  while (i < s.length && s[i] !== '\\n' && s[i] !== '\\r') i++;
+                  continue;
+                }
+                if (s.startsWith('/*', i)) {
+                  let nivel = 1;
+                  i += 2;
+                  while (i < s.length && nivel > 0) {
+                    if (s.startsWith('/*', i)) { nivel++; i += 2; }
+                    else if (s.startsWith('*/', i)) { nivel--; i += 2; }
+                    else i++;
+                  }
+                  continue;
+                }
+                break;
+              }
+              return s.slice(i).toUpperCase();
+            }
+            // Só o que ENCERRA ou REABRE a transação do envelope. SAVEPOINT,
+            // RELEASE e ROLLBACK TO não encerram a transação: passam. Quem
+            // separa os comandos (e portanto ignora COMMIT dentro de
+            // dollar-quote, string, identificador e comentário) é o lexer de
+            // conferir-banco.cjs (dividirEmStatements), o mesmo que a barreira
+            // de só-leitura usa; tests/banco/impressao-digital-viva.cjs mede
+            // o veredito dele contra o Postgres real num corpus adversarial.
+            const CONTROLE_DE_TRANSACAO = /^(BEGIN|START\\s+TRANSACTION|COMMIT|END|ABORT|ROLLBACK(?!\\s+(TO|PREPARED)\\b)|PREPARE\\s+TRANSACTION|SET\\s+TRANSACTION)\\b/;
+            // Recusa o que quebraria o envelope: um COMMIT/ROLLBACK de topo
+            // fecharia a transação ANTES da conferência (a recusa deixaria
+            // de ser possível), e um arquivo sem ';' final engoliria o
+            // primeiro comando da conferência.
+            function conferirCorpo(arquivo, corpo) {
+              for (const s of CONF.dividirEmStatements(corpo)) {
+                if (CONTROLE_DE_TRANSACAO.test(inicioDoStatement(s))) {
+                  throw new Error('RECUSADO (controle de transacao no topo do arquivo; o envelope perderia a recusa antes do COMMIT): ' + arquivo);
+                }
+              }
+              if (CONF.contarStatements(corpo + '\\nSELECT 1') === CONF.contarStatements(corpo)) {
+                throw new Error('RECUSADO (o arquivo termina sem ponto e virgula): ' + arquivo);
+              }
+            }
+            // REGISTRO NO LEDGER (supabase_migrations.schema_migrations), o MESMO
+            // formato de scripts/db-apply.cjs e dos ledger-*.sql: (version, name)
+            // com ON CONFLICT (version) DO NOTHING, version = os 14 dígitos e name
+            // = o resto do nome sem .sql. Vai DENTRO da mesma transação do apply,
+            // entre o corpo e a impressão digital DEPOIS: se o corpo falha, ou se
+            // este INSERT falha (schema ausente, sem permissão), a transação
+            // inteira volta e nada fica gravado; se a impressão digital divergir,
+            // o RAISE também desfaz o registro. DESFAZER (decisão da sessão
+            // principal, 06/10/2026: o ledger é a fonte da prontidão das lojas e
+            // não pode mentir depois de um desfazer): arquivo rollback-manual-
+            // <14 dígitos>_<nome>.sql executa DELETE ... WHERE version = '<14
+            // dígitos>' na MESMA posição e na MESMA transação do corpo do
+            // rollback (se o corpo falhar, a linha fica). A versão sai SÓ do nome
+            // do arquivo, por regex estrita (14 dígitos), nunca de texto livre; o
+            // nome já passou pelo padrão estrito [a-z0-9_-], então entra literal
+            // no SQL sem escape. A impressão digital só olha tabelas do schema
+            // public (impressao-digital.sql): o ledger não conta como dado
+            // existente alterado.
+            function registroNoLedger(arquivo) {
+              const Q = String.fromCharCode(39);
+              const r = /^rollback-manual-([0-9]{14})_[a-z0-9_-]+\\.sql\$/.exec(arquivo || '');
+              if (r) return 'DELETE FROM supabase_migrations.schema_migrations WHERE version = ' + Q + r[1] + Q + ';';
+              const m = /^([0-9]{14})_([a-z0-9_-]+)\\.sql\$/.exec(arquivo || '');
+              if (!m) return '';
+              return 'INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES (' + Q + m[1] + Q + ', ' + Q + m[2] + Q + ') ON CONFLICT (version) DO NOTHING;';
+            }
+            function envelope(corpo, arquivo) {
+              const s = secoesDoEnvelope();
+              const ledger = registroNoLedger(arquivo);
+              return s.abrir + '\\n' + corpo + '\\n' + (ledger ? ledger + '\\n' : '') + s.fechar;
+            }
+            // O apply de UM arquivo, numa ÚNICA requisição (BEGIN … COMMIT no
+            // mesmo corpo): nunca dependemos de estado de sessão entre
+            // requisições — a API não documenta reuso de conexão nem
+            // transação. QUALQUER falha depois de enviar (HTTP fora de
+            // 200/201, corpo com erro, timeout, rede caindo) deixa o estado
+            // DESCONHECIDO: pode ter comitado, ou ter voltado inteira (o RAISE
+            // da impressão digital). PARA o workflow inteiro: sem retry, sem
+            // ROLLBACK em outra requisição (outra requisição não limpa a
+            // conexão da primeira), e a mensagem manda reconciliar por LEITURA.
+            async function aplicarEnvelope(sqlFn, arquivo, corpo) {
+              try {
+                return await sqlFn('apply ' + arquivo, envelope(corpo, arquivo));
+              } catch (e) {
+                throw new Error('FALHOU no apply de ' + arquivo + ': ' + String(e && e.message).slice(0, 300) + ' | ESTADO DESCONHECIDO: a transação pode ter comitado (timeout, rede ou HTTP caindo depois do envio) ou ter voltado inteira (RAISE antes do COMMIT). Reconciliar o estado por LEITURA ANTES de qualquer nova tentativa: a linha desta versão no ledger (supabase migration list) diz se a transação comitou, porque o registro vai na mesma transação; por OBJETO, a consulta de prova da faixa (ex.: 8e-conferir-92-a-202-aplicado, e a 8a-antes-92-a-202-objetos-e-corpos) do workflow conferir-banco-da-loja.yml. Este workflow não repete sozinho.');
+              }
+            }
+            // GATE DE TRANSPORTE (só leitura). Uma ÚNICA requisição
+            // BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; sonda; sleep;
+            // sonda; COMMIT; — seção gate do SQL. As duas sondas voltam NUMA
+            // linha só (a primeira fica numa variável local da transação), e é
+            // essa linha que vale sob QUALQUER formato de multi-statement que a
+            // API use (só a última linha não vazia, array de arrays, ou todas
+            // achatadas). Formato desconhecido não é sucesso.
+            function linhaDasSondas(texto) {
+              let j;
+              try {
+                j = JSON.parse(texto);
+              } catch (e) {
+                throw new Error('resposta do gate não é JSON');
+              }
+              if (!Array.isArray(j)) throw new Error('resposta do gate não é um array');
+              const planas = [];
+              for (const x of j) {
+                if (Array.isArray(x)) planas.push(...x);
+                else planas.push(x);
+              }
+              const candidatas = planas.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && 'sonda1' in l && 'sonda2' in l);
+              if (candidatas.length !== 1) {
+                throw new Error('formato do gate não reconhecido: esperava exatamente 1 linha com sonda1 e sonda2, achou ' + candidatas.length);
+              }
+              return candidatas[0];
+            }
+            function avaliarSondas(texto) {
+              const motivos = [];
+              let s1;
+              let s2;
+              try {
+                const l = linhaDasSondas(texto);
+                s1 = typeof l.sonda1 === 'string' ? JSON.parse(l.sonda1) : l.sonda1;
+                s2 = typeof l.sonda2 === 'string' ? JSON.parse(l.sonda2) : l.sonda2;
+              } catch (e) {
+                return { ok: false, motivos: [e.message] };
+              }
+              if (!s1 || !s2 || typeof s1 !== 'object' || typeof s2 !== 'object') {
+                return { ok: false, motivos: ['sondas ilegíveis'] };
+              }
+              if (s1.isolamento !== 'repeatable read' || s2.isolamento !== 'repeatable read') motivos.push('isolamento não é repeatable read (' + s1.isolamento + ' / ' + s2.isolamento + ')');
+              if (s1.somente_leitura !== 'on' || s2.somente_leitura !== 'on') motivos.push('transaction_read_only não é on (' + s1.somente_leitura + ' / ' + s2.somente_leitura + ')');
+              if (!Number.isInteger(s1.pid) || s1.pid !== s2.pid) motivos.push('backends diferentes (' + s1.pid + ' / ' + s2.pid + '): não é a mesma sessão');
+              if (typeof s1.agora !== 'string' || s1.agora === '' || s1.agora !== s2.agora) motivos.push('now() diferente (' + s1.agora + ' / ' + s2.agora + '): não é a mesma transação');
+              if (typeof s1.relogio !== 'number' || typeof s2.relogio !== 'number' || !(s2.relogio - s1.relogio >= 0.15)) motivos.push('o relógio não avançou ao menos 0,15 s entre as sondas (' + s1.relogio + ' / ' + s2.relogio + '): as duas sondas não rodaram em sequência com o sleep');
+              return { ok: motivos.length === 0, motivos, pid: s1.pid, agora: s1.agora };
+            }
+            async function gateDeTransporte(sqlFn) {
+              const resposta = await sqlFn('gate de transporte', secoesDoEnvelope().gate);
+              const r = avaliarSondas(resposta);
+              if (!r.ok) {
+                throw new Error('GATE DE TRANSPORTE REPROVADO (' + r.motivos.join('; ') + '). O envelope NÃO roda: a API não se comportou como transação única de sessão. Nada foi aplicado.');
+              }
+              console.log('GATE DE TRANSPORTE OK: repeatable read, read only, mesmo backend (pid ' + r.pid + '), now() igual nas duas sondas (' + r.agora + '), relógio avançou.');
+              try {
+                const reg = linhasDaResposta(await sqlFn('registro do gate', 'SELECT pg_backend_pid() AS pid, txid_current_if_assigned()::text AS txid;'));
+                console.log('REGISTRO (não decide nada): segunda requisição, pid=' + (reg[0] && reg[0].pid) + ' txid=' + (reg[0] && reg[0].txid));
+              } catch (e) {
+                console.log('REGISTRO (não decide nada): indisponível (' + String(e.message).slice(0, 120) + ')');
+              }
+            }
+            function linhasDaResposta(texto) {
+              try {
+                const l = JSON.parse(texto);
+                return Array.isArray(l) ? l : [];
+              } catch (e) {
+                return [];
+              }
+            }
+            function imprimirFp(arquivo, texto) {
+              const linhas = linhasDaResposta(texto);
+              if (linhas.length === 0) {
+                console.log('FP ' + arquivo + ': a API não devolveu as linhas da impressão digital; a recusa por divergência continua valendo (o COMMIT só acontece com FP igual).');
+                return;
+              }
+              const medidas = linhas.filter((l) => l.resultado !== 'tabela_nova');
+              for (const l of medidas) {
+                console.log('FP_ANTES  ' + arquivo + ' ' + l.tabela + ' linhas=' + l.linhas_antes + ' md5=' + l.md5_antes);
+              }
+              for (const l of medidas) {
+                console.log('FP_DEPOIS ' + arquivo + ' ' + l.tabela + ' linhas=' + l.linhas_depois + ' md5=' + l.md5_depois + ' colunas_novas=' + l.colunas_novas + ' defaults_alterados=' + l.defaults_alterados + ' ' + l.resultado);
+              }
+              for (const l of linhas.filter((x) => x.resultado === 'tabela_nova')) {
+                console.log('TABELA_NOVA (fora da comparação) ' + arquivo + ' ' + l.tabela + ' linhas=' + l.linhas_depois);
+              }
+            }
+            // ENVELOPE_FIM
+
+            const NOME_MIGRATION = /^[0-9]{14}_[a-z0-9_-]+\\.sql\$/;
+            const NOME_ROLLBACK = /^rollback-manual-[0-9]{14}_[a-z0-9_-]+\\.sql\$/;
+
+            (async () => {
+              const arquivos = process.env.MIGRACOES.split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
+              // Tudo é validado ANTES de qualquer chamada de rede: nome,
+              // mistura, existência e o corpo (a lista inteira passa, ou nada
+              // sai deste computador).
+              for (const arquivo of arquivos) {
+                if (!NOME_MIGRATION.test(arquivo) && !NOME_ROLLBACK.test(arquivo)) {
+                  throw new Error('RECUSADO (nome fora do padrão): ' + arquivo);
+                }
+              }
+              const rollbacks = arquivos.filter((a) => NOME_ROLLBACK.test(a));
+              if (rollbacks.length > 0 && rollbacks.length !== arquivos.length) {
+                throw new Error('RECUSADO (lista mista: migration e rollback-manual no mesmo dispatch — rode um de cada vez): ' + arquivos.join(', '));
+              }
+              // FAIXA HISTÓRICA (06/10/2026): as 7 migrations 20261160..20261166 e os
+              // rollback-manual delas JÁ ESTÃO VIVAS no banco da CAF (só o registro
+              // no ledger falta) e reaplicá-las é regressivo e destrutivo: a 63 faz
+              // DROP FUNCTION e recria o corpo antigo; a 62 e a 65 devolvem corpo
+              // velho; a 66 apaga duplicados do cache e faz ADD CONSTRAINT/CREATE
+              // INDEX/CREATE TRIGGER sem IF NOT EXISTS. O alvo loja e o alvo
+              // ikcous-publicada são o MESMO banco (a CAF): a recusa vale nos
+              // dois, e também na savy (loja cliente real, que já tem as 7 no
+              // banco e no ledger: reaplicar a 62, 63 ou 64 troca o corpo pelo
+              // anterior à 20261199, sem a trava de admin atual). Vale antes de
+              // qualquer requisição. Lojas novas e de teste seguem livres.
+              if (projeto === 'ikcous-publicada' || projeto === 'loja' || projeto === 'savy') {
+                for (const arquivo of arquivos) {
+                  if (/^(rollback-manual-)?2026116[0-6][0-9]{6}_/.test(arquivo)) {
+                    throw new Error('RECUSADO (faixa histórica: só prova 9a + backfill 60-66; a faixa 20261160..20261166 nunca se reaplica nem se desfaz no banco da CAF): ' + arquivo);
+                  }
+                }
+              }
+              const corpos = {};
+              for (const arquivo of arquivos) {
+                const caminho = 'supabase/migrations/' + arquivo;
+                if (!fs.existsSync(caminho)) throw new Error('NÃO EXISTE: ' + caminho);
+                corpos[arquivo] = fs.readFileSync(caminho, 'utf8');
+                conferirCorpo(arquivo, corpos[arquivo]);
+              }
+
+              // 0. GATE DE TRANSPORTE (só leitura) — antes de qualquer outra
+              // chamada ao banco, em todo dispatch. Com migracoes vazio é o
+              // preflight autorizado; reprovado, nada mais roda.
+              await gateDeTransporte(sql);
+
+              // 1. Fingerprint — antes de qualquer DDL.
+              const fp = await sql('fingerprint', \`select
+                  (select count(*)::int from marketplace_orders) as pedidos,
+                  (select count(*)::int from marketplace_orders where status='cancelled') as cancelados\`);
+              console.log('FINGERPRINT (pedidos, cancelados):', fp);
+
+              for (const arquivo of arquivos) {
+                const corpo = corpos[arquivo];
+
+                // 2. PROVA: o arquivo inteiro dentro de BEGIN/ROLLBACK — o
+                // mesmo que o CONTRIBUTING manda rodar à mão antes.
+                console.log('=== PROVA (rollback no fim):', arquivo);
+                // O registro do ledger entra na prova também: um schema_migrations
+                // ausente ou sem permissão aparece AQUI (rollback), não no apply.
+                const registro = registroNoLedger(arquivo);
+                await sql('prova ' + arquivo, 'BEGIN;\\n' + corpo + '\\n' + (registro ? registro + '\\n' : '') + 'ROLLBACK;');
+
+                // 3. APPLY de verdade, dentro do envelope (REPEATABLE READ +
+                // impressão digital antes/depois + RAISE antes do COMMIT).
+                console.log('=== APLICANDO (REPEATABLE READ + impressão digital):', arquivo);
+                const resposta = await aplicarEnvelope(sql, arquivo, corpo);
+                imprimirFp(arquivo, resposta);
+                console.log('=== APLICADA:', arquivo);
+
+                // 4. Leitura FRESCA, fora do snapshot: mostra o que o cron e
+                // o webhook mudaram nesse meio-tempo. Informativo, nunca falha.
+                try {
+                  const agora = linhasDaResposta(await sql('leitura fresca', secoesDoEnvelope().fresca));
+                  console.log('ATIVIDADE CONCORRENTE (informativo, não é falha) depois de ' + arquivo + ':');
+                  for (const l of agora) console.log('  ' + l.tabela + ' linhas_agora=' + l.linhas_agora);
+                } catch (e) {
+                  console.log('ATIVIDADE CONCORRENTE: leitura fresca indisponível (' + e.message.slice(0, 120) + ') — informativo, não é falha');
+                }
+              }
+
+              // 4. VERIFICAÇÃO — só quando houve apply (sem migrations, as
+              // funções novas ainda não existem e o run de fingerprint
+              // falharia à toa).
+              if (arquivos.length > 0) {
+                const verificacao = await sql('verificação', \`select
+                    has_function_privilege('authenticated', 'public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)', 'EXECUTE') as paged8,
+                    has_function_privilege('authenticated', 'public.get_admin_orders_cancelados_recentes(integer,integer,integer)', 'EXECUTE') as cancelados,
+                    has_function_privilege('authenticated', 'public.buscar_por_codigo_barras(text)', 'EXECUTE') as codigo,
+                    has_function_privilege('authenticated', 'public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)', 'EXECUTE') as venda,
+                    exists (select 1 from information_schema.columns where table_name='marketplace_orders' and column_name='canal') as col_canal,
+                    exists (select 1 from information_schema.columns where table_name='produtos' and column_name='codigo_barras') as col_codigo\`);
+                console.log('VERIFICAÇÃO:', verificacao);
+                // (A execução de fumaca das RPCs fica de fora DE PROPÓSITO: o
+                // gate is_admin() delas nega o role postgres da API de
+                // gestão — o RAISE é o próprio gate provando que a função
+                // está instalada; quem executa como admin é o app.)
+              }
+              console.log('FIM: tudo aplicado e verificado.');
+            })().catch((e) => { console.error('FALHOU:', e.message); process.exit(1); });
+          "

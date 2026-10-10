@@ -227,7 +227,7 @@ describe("ShippingProgress -- o botão 'Adicionar' do bloco de frete grátis nã
     await act(async () => {
       raiz.render(
         <ShippingProgress
-          shipping={20}
+          estado="meta"
           savings={0}
           progressPercent={40}
           amountToFree={30}

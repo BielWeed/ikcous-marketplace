@@ -1,7 +1,7 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
 import pngToIco from "png-to-ico";
+import sharp from "sharp";
 
 const ROOT = process.cwd();
 const LOGO_SVG = path.join(ROOT, "public/logo.svg");
@@ -43,7 +43,9 @@ async function renderIco(outFile) {
 
   const svgBuffer = await readFile(LOGO_SVG);
   const pngBuffers = await Promise.all(
-    ICO_SIZES.map((size) => sharp(svgBuffer).resize(size, size).png().toBuffer()),
+    ICO_SIZES.map((size) =>
+      sharp(svgBuffer).resize(size, size).png().toBuffer(),
+    ),
   );
   const icoBuffer = await pngToIco(pngBuffers);
   await writeFile(outPath, icoBuffer);

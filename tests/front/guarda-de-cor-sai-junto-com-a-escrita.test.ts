@@ -98,10 +98,6 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
     porque:
       "declaração do schema do banco (tipos gerados) — regen 04/09: +_retrato_primary_color_20260980 (tabela do retrato, migration 20260980 já aplicada no banco vivo), 3× Row/Insert/Update",
   },
-  "src/types/supabase.ts": {
-    n: 6,
-    porque: "declaração do schema do banco (tipos gerados)",
-  },
   "src/lib/realtimeSyncEngine.ts": {
     n: 2,
     porque: "destrutura primaryColor para LEITURA do cache offline",
@@ -124,6 +120,16 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
     n: 1,
     porque:
       "A5d3b: nome de campo bruto no resumo de conflito, somente leitura; escrita passa por validaCorDaLoja e buildIdentityEditorIntent, sem permitir preto primário",
+  },
+  "src/hooks/useStoreIdentityEditor.ts": {
+    n: 2,
+    porque:
+      "X3 (ícone do app em todos os papéis): lê a cor do rascunho e a salva (primary_color da fotografia, já validada) só para pintar o fundo do maskable em memória; passa por validaCorDaLoja antes e não persiste nada — a escrita continua sendo o save() pela RPC, que recusa preto",
+  },
+  "src/lib/prepareIdentityImage.ts": {
+    n: 1,
+    porque:
+      "X3: tipo da opção primaryColor de prepareIdentityAppIcons — cor de fundo do maskable no canvas, só desenho em memória; nenhuma persistência de cor",
   },
   "src/config/branding.ts": {
     n: 1,

@@ -72,9 +72,9 @@ disso — senão vê dezenas de remoções fantasma e acha que o código mudou n
 ## Ela avisa o CLIENTE, não o lojista
 
 ```js
-const customerWhatsapp = record.customer_data?.whatsapp
+const customerWhatsapp = pedido.customer_data?.whatsapp
 ...
-`Olá *${customerName}*, recebemos seu pedido *#${orderId.slice(-6)}* com sucesso!`
+`Olá *${customerName}*, recebemos seu pedido *${numeroDoPedido(orderId)}* com sucesso!`
 ```
 
 Isso importa porque circulava a leitura de que ela barateava a `PEDIDO-020` (#89,
@@ -147,3 +147,71 @@ nunca `false`.
 custo da Evolution API, número banido, mudança de canal — ele não sobreviveu.
 Isso continua sem resposta; a despublicação da edge function não muda esse
 fato, só encerra a peça que ainda estava no ar sem uso.
+
+## Arquivada por decisão do dono (30/09/2026)
+
+Reavaliada depois de aparecer ATIVA na loja Almeida (publicada por engano no
+deploy em massa de 28/09, versão 3, `verify_jwt` ligado; só devolve erro,
+porque as colunas `whatsapp_api_*` não existem mais e nada a chama). A
+decisão do dono foi **arquivar, não apagar**: pode voltar no futuro, mas
+**só como opção que o lojista assinante escolhe depois de conhecer os
+riscos**. Os riscos que precisam estar na conversa com ele:
+
+- **Número banido:** ela fala com um gateway NÃO oficial do WhatsApp
+  (`/message/sendText/{instancia}` com `apikey`, estilo Evolution API). O
+  WhatsApp pode bloquear o número da loja que manda mensagem automática
+  assim.
+- **Custo:** o gateway precisa de servidor ligado 24h (pago, ou uma máquina
+  sempre ligada). A alternativa oficial (WhatsApp Cloud API da Meta) cobra por
+  mensagem.
+- **Refazer, não religar:** voltar exige de novo as colunas de configuração
+  por loja (removidas em `20260601000001_remove_whatsapp_infrastructure.sql`),
+  o gatilho de pedido novo e a revisão da própria função (ela lê pedido com
+  service role a partir do corpo da requisição).
+
+Enquanto isso o app avisa o cliente por e-mail e push, e o contato por
+WhatsApp é por link (`wa.me`), grátis e sem risco de bloqueio. A cópia no ar
+da Almeida deve ser removida pelo painel do Supabase.
+
+## Fechada por dentro (04/10/2026)
+
+Mesmo arquivada, a pasta continua no repositório e um deploy em massa a publica
+(foi o que a pôs na Almeida em 28/09). Como o `verify_jwt` padrão deixa passar a
+chave pública (anon) e o JWT de qualquer comprador, e o handler antigo confiava
+no `record` do corpo para decidir o destinatário e a mensagem, ela foi fechada
+no código, sem religar a integração:
+
+- **Quem chama:** só o chamador de servidor — a chave de serviço no
+  `Authorization: Bearer` (a mesma que o gatilho antigo mandava; nenhum segredo
+  novo). Anon, comprador e terceiro recebem 401 antes de qualquer consulta ou
+  chamada à Evolution; sem chave de serviço no ambiente, ninguém passa.
+- **O que vale do corpo:** só `order_id` (UUID). Telefone, nome, total e forma de
+  pagamento são lidos do banco pelo id; pedido inexistente devolve 404.
+- **Log:** só o número do pedido. Nenhum telefone, nome ou retorno da Evolution.
+- **Configuração da Evolution:** nenhuma tabela do schema atual a guarda (as
+  colunas `store_config.whatsapp_api_*` foram removidas em 01/06/2026). A edge
+  não consulta mais colunas que não existem: responde 503 `success: false`
+  ("WhatsApp não configurado nesta loja") sem tentar enviar. Prova no banco real:
+  `tests/banco/whatsapp-edge-consultas-viva.cjs`.
+- **Falha do gateway:** HTTP 4xx/5xx da Evolution devolve 502 `success: false`,
+  com texto fixo — a resposta dela, o telefone e a chave não são devolvidos nem
+  registrados.
+- **Forma de pagamento:** pelo rótulo comum `rotuloDoPagamento` (`_shared/pedido.ts`),
+  que lê `payment_method` e `metodo_online`; forma desconhecida sai "Não informado".
+
+**Em uma frase: WhatsApp do painel = link ativo (wa.me); a edge automática
+legada está desativada, sem configuração.** O retorno `null` de
+`lerConfigDaEvolution` é a PROTEÇÃO de uma edge sem chamador, não um envio
+automático funcionando. Os testes (`index_test.ts`) com a configuração injetada
+provam o CONTRATO (autorização, pedido canônico, log sem telefone, 4xx/5xx =
+falha) com dublês da Evolution e do banco; não provam integração real, e o
+caminho padrão de produção — sem configuração — é o 503 "não configurado", que
+também tem teste.
+
+**Limitação, sem rodeio:** no schema atual `store_config.whatsapp_api_*` está
+AUSENTE (medido num Postgres novo com as 130 migrations aplicadas), e nenhuma
+outra tabela guarda a configuração da Evolution. Portanto o ENVIO REAL NÃO é
+válido com este schema: o comportamento é "não configurado" — 503 e 0 chamadas
+à Evolution — que é o lado seguro. Nenhuma configuração foi inventada. Religar
+exige refazer a configuração por loja e decidir de onde `lerConfigDaEvolution`
+a lê; até lá, só o contrato está provado (com configuração injetada nos testes).

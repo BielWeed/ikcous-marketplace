@@ -1,3 +1,8 @@
+import {
+  COLUNA_FIXA_NO_COMPUTADOR,
+  CONTAINER_DO_COMPUTADOR,
+  ROTULO_NO_COMPUTADOR,
+} from "@/components/desktop/medidas";
 import { MarkdownRenderer } from "@/components/ui/custom/MarkdownRenderer";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
@@ -14,8 +19,22 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
-import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
+import {
+  CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
+  CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+  CLASSE_SELO_DESCONTO,
+} from "@/lib/cor-do-preco-promocional";
+import {
+  fraseDoSeloDeFreteGratis,
+  promessasDeFrete,
+} from "@/lib/estrategias-de-frete";
+import {
+  conjuntoDeImagens,
+  imagemRedimensionada,
+  usarImagemOriginal,
+} from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -34,7 +53,13 @@ import {
   Star,
   Truck,
 } from "lucide-react";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -224,6 +249,7 @@ export const ProductView = React.memo(function ProductView({
   onQuickBuy,
   onNavigate,
 }: ProductViewProps) {
+  const computador = useTelaDeComputador();
   const isReady = useDeferredRender(220);
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -552,11 +578,22 @@ export const ProductView = React.memo(function ProductView({
       )
     : 0;
 
-  // O selo/aviso de frete grátis desta tela só pode afirmar o que é
-  // verdade PARA ESTE produto: `config.freeShippingMin` é a regra por
-  // valor de compra da loja inteira (carrinho + login), não uma garantia
-  // deste produto isolado -- ver o mesmo raciocínio em ProductCard.tsx.
-  const isEligibleForFreeShipping = product.freeShipping;
+  // ProductCard-520 + T3 (23/09): `product.freeShipping` só é verdade
+  // DENTRO do preset "por_produto" (local OU nacional) ou em "sempre" de
+  // qualquer um dos dois canais -- mesmo raciocínio de ProductCard.tsx.
+  // Fora disso a marcação pode ser resíduo de campanha antiga que a loja já
+  // desligou; sem esta guarda a folha do produto anunciava grátis que o
+  // carrinho (que já obedece a regra por modalidade) ia cobrar.
+  const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
+  // IMPORTANTE (revisão Opus, pós-T3): o selo mostrava "Grátis" sem
+  // qualificar onde vale — mesmo defeito que os outros 6 pontos de selo já
+  // tinham corrigido com `fraseDoSeloDeFreteGratis` (esta folha era o único
+  // que ainda faltava). `null` = nenhum canal promete para ESTE produto —
+  // mesmo critério que `produtoTemFreteGratisPrometido` usava.
+  const fraseDoSelo = fraseDoSeloDeFreteGratis(
+    promessasDaLoja,
+    product.freeShipping,
+  );
 
   const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (cartStatus !== "idle") return;
@@ -754,680 +791,989 @@ export const ProductView = React.memo(function ProductView({
   });
 
   return (
-    <div className="pb-customer relative min-h-full bg-white">
-      {/* Image Gallery */}
-      <div className="group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3] lg:aspect-square">
-        <div className="relative flex size-full items-center justify-center overflow-hidden lg:h-[70vh]">
-          <AnimatePresence mode="popLayout" initial={false}>
-            <motion.img
-              key={currentImageIndex}
-              src={imagemRedimensionada(
-                variantImage || product.images?.[currentImageIndex] || "",
-                { width: 960, quality: 80 },
-              )}
-              srcSet={
-                conjuntoDeImagens(
-                  variantImage || product.images?.[currentImageIndex] || "",
-                  [480, 640, 960, 1280],
-                  80,
-                ) || undefined
-              }
-              // Ocupa a largura toda no celular; a partir do desktop fica limitada pela altura.
-              sizes="(min-width: 1024px) 70vh, 100vw"
-              alt={product.name}
-              className="main-product-image h-full w-auto max-w-full object-contain"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              loading="eager"
-              fetchPriority="high"
-              decoding="async"
-              style={
-                (isViewTransitionSupported &&
-                currentImageIndex === 0 &&
-                !variantImage
-                  ? { viewTransitionName: "product-image" }
-                  : undefined) as React.CSSProperties
-              }
-            />
-          </AnimatePresence>
-        </div>
-
-        {/* Navigation Arrows */}
-        {(product.images?.length || 0) > 1 && !variantImage && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-4 opacity-100 transition-opacity duration-300 hover-hover:opacity-0 hover-hover:group-hover:opacity-100">
-            <button
-              onClick={prevImage}
-              // Laudo de acessibilidade 03/09, achado 2: botões de ícone sem
-              // nome nenhum para o leitor de tela.
-              aria-label="Foto anterior"
-              // Laudo 05/09, M4: `after:-inset-1.5` amplia o alvo de toque
-              // de 32px para 44px (recomendado mobile) sem mudar o visual.
-              className="pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              onClick={nextImage}
-              aria-label="Próxima foto"
-              className="pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
+    <div
+      className={cn(
+        "pb-customer relative min-h-full bg-white",
+        // lg:pb-0 (revisão F3, 28/09): no desktop o rodapé da loja fecha a
+        // página -- o respiro do pb-customer vira vão morto em cima dele.
+        // lg:shrink-0 (F3, 29/09): o wrapper da cliente (App.tsx, size-full +
+        // min-h-full em flex-col) espreme a raiz da view até o piso de
+        // min-h-full (1 viewport) com flex-shrink, enquanto o conteúdo
+        // transborda por baixo. Com o rodapé da loja (F1) montado como irmão
+        // DEPOIS da view, dentro do mesmo container de rolagem, ele caía no
+        // MEIO da página -- a descrição rolava por baixo do bloco preto.
+        // Recusando o encolhimento no desktop, a raiz volta a medir o
+        // conteúdo inteiro e o rodapé desenha depois de tudo.
+        "lg:shrink-0 lg:pb-0",
+      )}
+    >
+      <div
+        className={cn(
+          CONTAINER_DO_COMPUTADOR,
+          "lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-x-12 lg:gap-y-8 lg:pt-8 xl:grid-cols-[minmax(0,1fr)_440px]",
         )}
-
-        {/* Image Indicators - Glass Pill */}
-        {(product.images?.length || 0) > 1 && !variantImage && (
-          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 shadow-2xl backdrop-blur-xl">
-            {product.images?.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => setCurrentImageIndex(index)}
-                // Laudo de acessibilidade 03/09, achado 2: as bolinhas eram
-                // "botão, botão, botão" — agora dizem qual foto abrem e qual
-                // é a atual (`aria-current`).
-                aria-label={`Foto ${index + 1} de ${product.images?.length ?? 0}`}
-                aria-current={index === currentImageIndex ? "true" : undefined}
-                // Laudo 05/09, M4: bolinha de 4px (h-1) era alvo de toque
-                // abaixo do mínimo WCAG de 24px — pseudo-elemento invisível
-                // amplia a área SEM mudar o visual. Laudo Opus 07/09 (C1):
-                // o inset é 10px só na VERTICAL (4+20 = 24px); na horizontal
-                // fica em 3px porque as bolinhas ficam a 6px uma da outra
-                // (gap-1.5) — o inset quadrado de 10px fazia a área da
-                // bolinha seguinte cobrir a anterior e ROUBAR o toque
-                // (regressão medida no preview do PR #437). Alvo de 24px de
-                // LARGURA exige aumentar o gap — decisão visual do dono.
-                className={`relative h-1 rounded-full transition-all duration-500 after:absolute after:-inset-y-2.5 after:inset-x-[-3px] after:content-[''] ${
-                  index === currentImageIndex
-                    ? "w-6 bg-white"
-                    : "w-1.5 bg-white/30 hover:bg-white/50"
-                }`}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="absolute right-4 top-4 z-10 flex gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFavorite();
-            }}
-            // Laudo de acessibilidade 03/09, achado 2: sem nome, favoritar
-            // era impossível por leitor de tela (o "Compartilhar" ao lado já
-            // tinha `aria-label` — este é o padrão da casa).
-            aria-label={
-              isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"
-            }
-            className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
+      >
+        {/* Image Gallery */}
+        <div className="lg:col-start-1 lg:row-start-1 lg:min-w-0">
+          <div
+            className={cn(
+              "group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3]",
+              "lg:aspect-square lg:max-h-[calc(100dvh-var(--header-height)-220px)] lg:rounded-3xl",
+              // Ring sutil de definição: a caixa #F8F9FA sobre página branca
+              // "sumia" no desktop (achado da prévia de 29/09) -- o traço
+              // quase invisível separa a galeria do fundo sem virar cartão.
+              "lg:ring-1 lg:ring-zinc-950/5",
+            )}
           >
-            <Heart
-              className={cn(
-                "size-4.5 transition-colors",
-                isFavorite
-                  ? "fill-red-500 text-red-500 animate-heart-pop"
-                  : "text-zinc-600",
-              )}
-            />
-          </button>
-          <button
-            onClick={handleShare}
-            aria-label="Compartilhar"
-            className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
-          >
-            <Share2 className="size-4.5 text-zinc-600" />
-          </button>
-        </div>
-      </div>
+            <div className="relative flex size-full items-center justify-center overflow-hidden">
+              <AnimatePresence mode="popLayout" initial={false}>
+                <motion.img
+                  key={currentImageIndex}
+                  src={imagemRedimensionada(
+                    variantImage || product.images?.[currentImageIndex] || "",
+                    { width: 960, quality: 80 },
+                  )}
+                  srcSet={
+                    conjuntoDeImagens(
+                      variantImage || product.images?.[currentImageIndex] || "",
+                      [480, 640, 960, 1280],
+                      80,
+                    ) || undefined
+                  }
+                  // Ocupa a largura toda no celular; a partir do desktop fica limitada pela altura.
+                  sizes="(min-width: 1024px) 720px, 100vw"
+                  alt={product.name}
+                  onError={(event) =>
+                    usarImagemOriginal(
+                      event.currentTarget,
+                      variantImage || product.images?.at(currentImageIndex),
+                    )
+                  }
+                  className="main-product-image h-full w-auto max-w-full object-contain"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  style={
+                    (isViewTransitionSupported &&
+                    currentImageIndex === 0 &&
+                    !variantImage
+                      ? { viewTransitionName: "product-image" }
+                      : undefined) as React.CSSProperties
+                  }
+                />
+              </AnimatePresence>
+            </div>
 
-      {/* Product Info */}
-      <div className="px-5 py-4">
-        {/* Breadcrumbs */}
-        <nav className="scrollbar-hide mb-3 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap text-[9px] font-bold uppercase tracking-widest text-zinc-400">
-          <button
-            onClick={onBack}
-            className="transition-colors hover:text-zinc-900"
-          >
-            Início
-          </button>
-          <ChevronRight className="size-2.5" />
-          <button className="transition-colors hover:text-zinc-900">
-            {product.category}
-          </button>
-          <ChevronRight className="size-2.5" />
-          <span className="max-w-[150px] truncate text-zinc-900">
-            {product.name}
-          </span>
-        </nav>
-
-        {/* Name, Rating & Stock Row */}
-        <div className="mb-3 flex flex-col gap-1">
-          <h1 className="text-xl font-black leading-tight tracking-tight text-zinc-900">
-            {product.name}
-          </h1>
-          <div className="flex flex-wrap items-center gap-3">
-            {config.enableReviews && reviewCount > 0 && (
-              <div className="flex items-center gap-1">
-                <StarRating rating={averageRating} size={12} />
-                <span className="text-[11px] font-medium text-zinc-500">
-                  {averageRating.toFixed(1)} ({reviewCount})
-                </span>
+            {/* Navigation Arrows */}
+            {(product.images?.length || 0) > 1 && !variantImage && (
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-0 flex items-center justify-between px-4 opacity-100 transition-opacity duration-300 hover-hover:opacity-0 hover-hover:group-hover:opacity-100",
+                  "lg:!opacity-100",
+                )}
+              >
+                <button
+                  onClick={prevImage}
+                  // Laudo de acessibilidade 03/09, achado 2: botões de ícone sem
+                  // nome nenhum para o leitor de tela.
+                  aria-label="Foto anterior"
+                  // Laudo 05/09, M4: `after:-inset-1.5` amplia o alvo de toque
+                  // de 32px para 44px (recomendado mobile) sem mudar o visual.
+                  className={cn(
+                    "pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95",
+                    // Setas maiores no desktop: no leitor de 27" o alvo de
+                    // 32px flutuava pequeno demais dentro da foto quadrada.
+                    "lg:size-10",
+                  )}
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <button
+                  onClick={nextImage}
+                  aria-label="Próxima foto"
+                  className={cn(
+                    "pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95",
+                    // Setas maiores no desktop: no leitor de 27" o alvo de
+                    // 32px flutuava pequeno demais dentro da foto quadrada.
+                    "lg:size-10",
+                  )}
+                >
+                  <ChevronRight className="size-4" />
+                </button>
               </div>
             )}
 
-            {/* Inline Stock Alert with blinking led */}
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+            {/* Image Indicators - Glass Pill */}
+            {(product.images?.length || 0) > 1 && !variantImage && (
+              <div
+                className={cn(
+                  "absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 shadow-2xl backdrop-blur-xl",
+                  "lg:hidden",
+                )}
+              >
+                {product.images?.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentImageIndex(index)}
+                    // Laudo de acessibilidade 03/09, achado 2: as bolinhas eram
+                    // "botão, botão, botão" — agora dizem qual foto abrem e qual
+                    // é a atual (`aria-current`).
+                    aria-label={`Foto ${index + 1} de ${product.images?.length ?? 0}`}
+                    aria-current={
+                      index === currentImageIndex ? "true" : undefined
+                    }
+                    // Laudo 05/09, M4: bolinha de 4px (h-1) era alvo de toque
+                    // abaixo do mínimo WCAG de 24px — pseudo-elemento invisível
+                    // amplia a área SEM mudar o visual. Laudo Opus 07/09 (C1):
+                    // o inset é 10px só na VERTICAL (4+20 = 24px); na horizontal
+                    // fica em 3px porque as bolinhas ficam a 6px uma da outra
+                    // (gap-1.5) — o inset quadrado de 10px fazia a área da
+                    // bolinha seguinte cobrir a anterior e ROUBAR o toque
+                    // (regressão medida no preview do PR #437). Alvo de 24px de
+                    // LARGURA exige aumentar o gap — decisão visual do dono.
+                    className={`relative h-1 rounded-full transition-all duration-500 after:absolute after:-inset-y-2.5 after:inset-x-[-3px] after:content-[''] ${
+                      index === currentImageIndex
+                        ? "w-6 bg-white"
+                        : "w-1.5 bg-white/30 hover:bg-white/50"
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="absolute right-4 top-4 z-10 flex gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFavorite();
+                }}
+                // Laudo de acessibilidade 03/09, achado 2: sem nome, favoritar
+                // era impossível por leitor de tela (o "Compartilhar" ao lado já
+                // tinha `aria-label` — este é o padrão da casa).
+                aria-label={
+                  isFavorite
+                    ? "Remover dos favoritos"
+                    : "Adicionar aos favoritos"
+                }
+                className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
+              >
+                <Heart
+                  className={cn(
+                    "size-4.5 transition-colors",
+                    isFavorite
+                      ? "fill-red-500 text-red-500 animate-heart-pop"
+                      : "text-zinc-600",
+                  )}
+                />
+              </button>
+              <button
+                onClick={handleShare}
+                aria-label="Compartilhar"
+                className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
+              >
+                <Share2 className="size-4.5 text-zinc-600" />
+              </button>
+            </div>
+          </div>
+
+          {computador && (product.images?.length || 0) > 1 && !variantImage && (
+            <div
+              className="lg:mt-4 lg:flex lg:flex-wrap lg:gap-3"
+              role="group"
+              aria-label="Fotos do produto"
+            >
+              {product.images.map((foto, index) => (
+                <button
+                  key={`${foto}-${index}`}
+                  type="button"
+                  aria-label={`Ver foto ${index + 1} de ${product.images.length}`}
+                  aria-current={
+                    index === currentImageIndex ? "true" : undefined
+                  }
+                  onClick={() => setCurrentImageIndex(index)}
+                  className={cn(
+                    "lg:size-[72px] lg:overflow-hidden lg:rounded-xl lg:border-2 lg:bg-zinc-50 lg:p-1 lg:transition-colors lg:focus-visible:outline-none lg:focus-visible:ring-2 lg:focus-visible:ring-primary lg:focus-visible:ring-offset-2 lg:shadow-sm",
+                    index === currentImageIndex
+                      ? "lg:border-primary"
+                      : "lg:border-zinc-200 lg:hover:border-zinc-400",
+                  )}
+                >
+                  <img
+                    src={imagemRedimensionada(foto, {
+                      width: 200,
+                      quality: 80,
+                    })}
+                    alt=""
+                    onError={(event) =>
+                      usarImagemOriginal(event.currentTarget, foto)
+                    }
+                    loading="lazy"
+                    decoding="async"
+                    className="lg:size-full lg:object-contain"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {/* Product Info */}
+        <div className={cn("px-5 py-4", "lg:contents")}>
+          <div
+            className={cn(
+              COLUNA_FIXA_NO_COMPUTADOR,
+              "lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:min-w-0 lg:rounded-3xl lg:border lg:border-zinc-200 lg:bg-white lg:p-8",
+              // Elevação discreta no desktop: o cartão de compra é o ponto
+              // de ação da página -- a sombra o destaca do fundo sem peso
+              // (spec §3.1: cartões arredondados, sem blocos pesados).
+              "lg:shadow-[0_1px_2px_rgba(0,0,0,0.03),0_16px_40px_-12px_rgba(0,0,0,0.08)]",
+            )}
+          >
+            {/* Breadcrumbs */}
+            <nav
+              className={cn(
+                "scrollbar-hide mb-3 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap text-[9px] font-bold uppercase tracking-widest text-zinc-400",
+                "lg:mb-4 lg:gap-2 lg:text-[11px] lg:text-zinc-500",
+              )}
+            >
+              <button
+                onClick={onBack}
+                className="transition-colors hover:text-zinc-900"
+              >
+                Início
+              </button>
+              <ChevronRight className="size-2.5" />
+              <button
+                className={cn(
+                  "transition-colors hover:text-zinc-900",
+                  // A categoria vem do banco com caixa variada ("brinquedo",
+                  // "TÊNIS FEMININO") -- o capitalize uniformiza o rastro no
+                  // desktop sem tocar no dado (achado da prévia de 29/09).
+                  "lg:capitalize",
+                )}
+              >
+                {product.category}
+              </button>
+              <ChevronRight className="size-2.5" />
               <span
                 className={cn(
-                  "w-1.5 h-1.5 rounded-full animate-pulse",
-                  isOutOfStock
-                    ? "bg-zinc-400"
-                    : isLowStock
-                      ? "bg-rose-500 animate-bounce"
-                      : "bg-emerald-500",
+                  "max-w-[150px] truncate text-zinc-900",
+                  "lg:max-w-[260px]",
                 )}
-              />
-              <span
-                className={
-                  isOutOfStock
-                    ? "text-zinc-500"
-                    : isLowStock
-                      ? "text-rose-600"
-                      : "text-emerald-700"
-                }
               >
-                {isOutOfStock
-                  ? "Esgotado"
-                  : isLowStock
-                    ? `Apenas ${currentStock} restam!`
-                    : `Em estoque: ${currentStock}`}
+                {product.name}
               </span>
-            </div>
-          </div>
-        </div>
+            </nav>
 
-        {/* Price & Promo Badges Row */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-          {product.originalPrice && product.originalPrice > currentPrice ? (
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black tracking-tight text-rose-600">
-                R$ {currentPrice.toFixed(2).replace(".", ",")}
-              </span>
-              <span className="text-xs font-bold text-zinc-400 line-through">
-                De: R$ {product.originalPrice.toFixed(2).replace(".", ",")}
-              </span>
-            </div>
-          ) : (
-            <span className="text-2xl font-black tracking-tight text-zinc-900">
-              R$ {currentPrice.toFixed(2).replace(".", ",")}
-            </span>
-          )}
-
-          <div className="flex items-center gap-1.5">
-            {discount > 0 && (
-              <span className="rounded-md border border-rose-100 bg-rose-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-rose-600">
-                {discount}% OFF
-              </span>
-            )}
-            {product.isBestseller && (
-              <span className="flex items-center gap-1 rounded-md border border-amber-100 bg-amber-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-amber-700">
-                <Flame className="size-3 fill-orange-500/20 text-orange-500" />
-                EM ALTA
-              </span>
-            )}
-            {isEligibleForFreeShipping && (
-              <span className="flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-emerald-700">
-                <Truck className="animate-bounce-subtle size-3 text-emerald-600" />
-                Grátis
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Variant Selectors - Jewelry Style */}
-        {Object.entries(variantGroups).length > 0 && (
-          <div className="mb-5 space-y-4">
-            {Object.entries(variantGroups).map(([name, values], index, arr) => {
-              const isLastGroup = index === arr.length - 1;
-              return (
-                <div key={name}>
-                  <span className="mb-2 ml-1 block text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                    Selecione {name}
-                  </span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {values?.map((v) => {
-                      const isSelected = selectedVariants[name] === v.value;
-
-                      // Calculate stock for variant v
-                      const tentativeSelected = Object.entries(selectedVariants)
-                        .map(([gName, val]) => {
-                          if (gName === name) return v;
-                          return product.variants?.find(
-                            (varObj) =>
-                              varObj.name === gName && varObj.value === val,
-                          );
-                        })
-                        .filter(Boolean) as ProductVariant[];
-
-                      if (!selectedVariants[name]) {
-                        tentativeSelected.push(v);
-                      }
-
-                      const variantStock = Math.min(
-                        ...tentativeSelected.map(
-                          (varObj) => varObj.stockIncrement || 0,
-                        ),
-                      );
-
-                      return (
-                        <button
-                          key={v.id}
-                          type="button"
-                          // Laudo de acessibilidade 03/09, achado 3: a
-                          // variante escolhida só se distinguia pela cor da
-                          // borda — `aria-pressed` anuncia o estado (padrão do
-                          // CategoryFilter).
-                          aria-pressed={isSelected}
-                          onClick={() =>
-                            setSelectedVariants((prev) => ({
-                              ...prev,
-                              [name]: v.value,
-                            }))
-                          }
-                          className={cn(
-                            "px-3 py-1.5 text-xs font-bold rounded-xl border transition-all duration-300 active:scale-95 flex items-center gap-1.5 select-none",
-                            isSelected
-                              ? "border-primary bg-primary text-white shadow-md shadow-black/10"
-                              : "border-zinc-200 bg-zinc-50/50 text-zinc-500 hover:border-zinc-300 hover:text-primary hover:bg-zinc-50",
-                          )}
-                        >
-                          {v.imageUrl && (
-                            <img
-                              // Miniatura de 20px: baixar o original aqui era o
-                              // desperdício mais extremo da tela.
-                              src={imagemRedimensionada(v.imageUrl, {
-                                width: 80,
-                                quality: 70,
-                              })}
-                              alt=""
-                              loading="lazy"
-                              decoding="async"
-                              className="size-5 rounded-md bg-white object-cover shadow-sm"
-                            />
-                          )}
-                          <span>{v.value}</span>
-                          <span
-                            className={cn(
-                              "text-[9px] font-medium ml-1.5 transition-colors",
-                              isSelected ? "text-zinc-300" : "text-zinc-400",
-                            )}
-                          >
-                            (
-                            {variantStock > 0
-                              ? `${variantStock} un.`
-                              : "Esgotado"}
-                            )
-                          </span>
-                        </button>
-                      );
-                    })}
-                    {isLastGroup && !isOutOfStock && (
-                      <div className="ml-auto flex-shrink-0">
-                        <QuantitySelector
-                          quantity={quantity}
-                          maxQuantity={currentStock}
-                          onChange={setQuantity}
-                          size="md"
-                        />
-                      </div>
-                    )}
+            {/* Name, Rating & Stock Row */}
+            <div className="mb-3 flex flex-col gap-1">
+              <h1
+                className={cn(
+                  "text-xl font-black leading-tight tracking-tight text-zinc-900",
+                  "lg:text-3xl lg:tracking-tighter",
+                )}
+              >
+                {product.name}
+              </h1>
+              <div className="flex flex-wrap items-center gap-3">
+                {config.enableReviews && reviewCount > 0 && (
+                  <div className="flex items-center gap-1">
+                    <StarRating rating={averageRating} size={12} />
+                    <span className="text-[11px] font-medium text-zinc-500">
+                      {averageRating.toFixed(1)} ({reviewCount})
+                    </span>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                )}
 
-        {/* Purchase Console (All in a single row) */}
-        <div className="mb-5 flex items-center gap-2">
-          {!isOutOfStock && Object.entries(variantGroups).length === 0 && (
-            <div className="flex-shrink-0">
-              <QuantitySelector
-                quantity={quantity}
-                maxQuantity={currentStock}
-                onChange={setQuantity}
-                size="md"
-              />
-            </div>
-          )}
-
-          {/* O botão de WhatsApp só existe com número configurado pela loja —
-              sem cadastro ele SOME, nunca aponta para número inventado
-              (laudo caça-bugs 30/08 + decisão do Gabriel no mesmo dia). */}
-          {lojaTemWhatsapp(config.whatsappNumber) && (
-            <button
-              onClick={handleWhatsApp}
-              title="Dúvidas no WhatsApp"
-              className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95"
-            >
-              <MessageCircle className="size-5" />
-            </button>
-          )}
-
-          <button
-            onClick={handleAddToCart}
-            disabled={isOutOfStock || cartStatus !== "idle"}
-            className={cn(
-              "flex-1 h-11 text-white text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
-              cartStatus === "idle"
-                ? "bg-primary hover:bg-primary/90 shadow-lg shadow-black/10 active:scale-[0.98]"
-                : "bg-primary/80 shadow-none",
-              cartStatus === "success" && "bg-emerald-600 shadow-emerald-200",
-              isOutOfStock &&
-                "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
-            )}
-          >
-            {isOutOfStock ? (
-              "Esgotado"
-            ) : cartStatus === "loading" ? (
-              <span className="size-4 flex-shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-            ) : cartStatus === "success" ? (
-              <Check className="size-4 flex-shrink-0 duration-300 animate-in zoom-in" />
-            ) : (
-              <>
-                <ShoppingCart className="size-4 flex-shrink-0 xs:size-4.5" />
-                <span className="hidden whitespace-nowrap min-[380px]:inline">
-                  Adicionar ao Carrinho
-                </span>
-                <span className="inline whitespace-nowrap min-[380px]:hidden">
-                  Adicionar
-                </span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Sentinel for tab bar stickiness */}
-        <div
-          ref={stickySentinelRef}
-          className="pointer-events-none h-0 w-full opacity-0"
-        />
-
-        {/* Luxury Segmented Tabs - iOS Style & STICKY */}
-        <div
-          className={cn(
-            "sticky top-0 z-40 transition-all duration-300 -mx-6 px-6 py-1 flex flex-col border-b mb-4",
-            scrolled
-              ? "bg-white/80 backdrop-blur-md border-zinc-200/60 shadow-sm"
-              : "bg-transparent border-transparent",
-          )}
-        >
-          <nav
-            aria-label="Seções do produto"
-            className="mx-auto flex w-full max-w-[290px] items-center gap-0.5 rounded-full border border-zinc-200/40 bg-zinc-100/60 p-0.5"
-          >
-            {[
-              { id: "description", label: "Detalhes" },
-              // ADMIN-090 (#101): com o interruptor desligado, a aba
-              // "Avaliações" some da vitrine — não só o pill do admin.
-              ...(config.enableReviews
-                ? [{ id: "reviews", label: `Avaliações (${reviewCount})` }]
-                : []),
-              { id: "questions", label: "Perguntas" },
-            ].map((tab) => {
-              const isActive = activeTab === tab.id;
-              const tabId = tab.id as "description" | "reviews" | "questions";
-              return (
-                <button
-                  key={tab.id}
-                  aria-current={isActive ? "true" : undefined}
-                  aria-controls={painelDaAba(tabId)}
-                  onClick={() => handleTabClick(tab.id as any)}
-                  // Laudo 05/09, M3: `outline-none` apagava o anel de foco
-                  // sem repor — padrão do BottomNav (onda 1 do laudo 03/09).
-                  className="relative flex-1 rounded-full p-1 text-[9px] font-bold uppercase tracking-wider outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-zinc-900/50"
-                >
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeDetailTabPill"
-                      className="absolute inset-0 z-0 rounded-full border border-zinc-200/50 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
-                      transition={{
-                        type: "spring",
-                        stiffness: 380,
-                        damping: 30,
-                      }}
-                    />
-                  )}
+                {/* Inline Stock Alert with blinking led */}
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold">
                   <span
                     className={cn(
-                      "relative z-10 transition-colors duration-300",
-                      isActive
-                        ? "text-zinc-950 font-extrabold"
-                        : "text-zinc-500 hover:text-zinc-800",
+                      "w-1.5 h-1.5 rounded-full animate-pulse",
+                      isOutOfStock
+                        ? "bg-zinc-400"
+                        : isLowStock
+                          ? "bg-rose-500 animate-bounce"
+                          : "bg-emerald-500",
+                    )}
+                  />
+                  <span
+                    className={
+                      isOutOfStock
+                        ? "text-zinc-500"
+                        : isLowStock
+                          ? "text-rose-600"
+                          : "text-emerald-700"
+                    }
+                  >
+                    {isOutOfStock
+                      ? "Esgotado"
+                      : isLowStock
+                        ? `Apenas ${currentStock} restam!`
+                        : `Em estoque: ${currentStock}`}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Price & Promo Badges Row */}
+            <div
+              className={cn(
+                "mb-4 flex flex-wrap items-center justify-between gap-4",
+                // Desktop (prévia 29/09): preço e selos dividiam a MESMA
+                // linha com justify-between -- em promoção o riscado encavalava
+                // na baseline do preço grande e os selos apertavam à direita.
+                // No desktop o bloco empilha: preço (com riscado na mesma
+                // baseline) e, abaixo, a fileira de selos.
+                "lg:mb-6 lg:flex-col lg:items-start lg:gap-3",
+              )}
+            >
+              {product.originalPrice && product.originalPrice > currentPrice ? (
+                <div
+                  className={cn(
+                    "flex items-baseline gap-2",
+                    "lg:gap-3 lg:flex-wrap",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "text-2xl font-black tracking-tight",
+                      CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
+                      "lg:text-4xl",
                     )}
                   >
-                    {tab.label}
+                    R$ {currentPrice.toFixed(2).replace(".", ",")}
                   </span>
+                  <span
+                    className={cn(
+                      "text-xs font-bold text-zinc-400 line-through",
+                      "lg:text-sm",
+                    )}
+                  >
+                    De: R$ {product.originalPrice.toFixed(2).replace(".", ",")}
+                  </span>
+                </div>
+              ) : (
+                <span
+                  className={cn(
+                    "text-2xl font-black tracking-tight text-zinc-900",
+                    "lg:text-4xl",
+                  )}
+                >
+                  R$ {currentPrice.toFixed(2).replace(".", ",")}
+                </span>
+              )}
+
+              <div className={cn("flex items-center gap-1.5", "lg:gap-2")}>
+                {discount > 0 && (
+                  <span
+                    className={cn(
+                      "rounded-md border px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider",
+                      CLASSE_SELO_DESCONTO,
+                    )}
+                  >
+                    {discount}% OFF
+                  </span>
+                )}
+                {product.isBestseller && (
+                  <span className="flex items-center gap-1 rounded-md border border-amber-100 bg-amber-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-amber-700">
+                    <Flame className="size-3 fill-orange-500/20 text-orange-500" />
+                    EM ALTA
+                  </span>
+                )}
+                {fraseDoSelo && (
+                  <span className="flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-emerald-700">
+                    <Truck className="animate-bounce-subtle size-3 text-emerald-600" />
+                    {fraseDoSelo}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Variant Selectors - Jewelry Style */}
+            {Object.entries(variantGroups).length > 0 && (
+              <div className="mb-5 space-y-4">
+                {Object.entries(variantGroups).map(
+                  ([name, values], index, arr) => {
+                    const isLastGroup = index === arr.length - 1;
+                    return (
+                      <div key={name}>
+                        <span
+                          className={cn(
+                            "mb-2 ml-1 block text-[10px] font-bold uppercase tracking-widest text-zinc-400",
+                            "lg:text-[11px] lg:text-zinc-500",
+                          )}
+                        >
+                          Selecione {name}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {values?.map((v) => {
+                            const isSelected =
+                              selectedVariants[name] === v.value;
+
+                            // Calculate stock for variant v
+                            const tentativeSelected = Object.entries(
+                              selectedVariants,
+                            )
+                              .map(([gName, val]) => {
+                                if (gName === name) return v;
+                                return product.variants?.find(
+                                  (varObj) =>
+                                    varObj.name === gName &&
+                                    varObj.value === val,
+                                );
+                              })
+                              .filter(Boolean) as ProductVariant[];
+
+                            if (!selectedVariants[name]) {
+                              tentativeSelected.push(v);
+                            }
+
+                            const variantStock = Math.min(
+                              ...tentativeSelected.map(
+                                (varObj) => varObj.stockIncrement || 0,
+                              ),
+                            );
+
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                // Laudo de acessibilidade 03/09, achado 3: a
+                                // variante escolhida só se distinguia pela cor da
+                                // borda — `aria-pressed` anuncia o estado (padrão do
+                                // CategoryFilter).
+                                aria-pressed={isSelected}
+                                onClick={() =>
+                                  setSelectedVariants((prev) => ({
+                                    ...prev,
+                                    [name]: v.value,
+                                  }))
+                                }
+                                className={cn(
+                                  "px-3 py-1.5 text-xs font-bold rounded-xl border transition-all duration-300 active:scale-95 flex items-center gap-1.5 select-none",
+                                  isSelected
+                                    ? "border-primary bg-primary text-white shadow-md shadow-black/10"
+                                    : "border-zinc-200 bg-zinc-50/50 text-zinc-500 hover:border-zinc-300 hover:text-primary hover:bg-zinc-50",
+                                )}
+                              >
+                                {v.imageUrl && (
+                                  <img
+                                    // Miniatura de 20px: baixar o original aqui era o
+                                    // desperdício mais extremo da tela.
+                                    src={imagemRedimensionada(v.imageUrl, {
+                                      width: 80,
+                                      quality: 70,
+                                    })}
+                                    alt=""
+                                    onError={(event) =>
+                                      usarImagemOriginal(
+                                        event.currentTarget,
+                                        v.imageUrl,
+                                      )
+                                    }
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="size-5 rounded-md bg-white object-cover shadow-sm"
+                                  />
+                                )}
+                                <span>{v.value}</span>
+                                <span
+                                  className={cn(
+                                    "text-[9px] font-medium ml-1.5 transition-colors",
+                                    isSelected
+                                      ? "text-zinc-300"
+                                      : "text-zinc-400",
+                                  )}
+                                >
+                                  (
+                                  {variantStock > 0
+                                    ? `${variantStock} un.`
+                                    : "Esgotado"}
+                                  )
+                                </span>
+                              </button>
+                            );
+                          })}
+                          {isLastGroup && !isOutOfStock && (
+                            <div className="ml-auto flex-shrink-0">
+                              <QuantitySelector
+                                quantity={quantity}
+                                maxQuantity={currentStock}
+                                onChange={setQuantity}
+                                size="md"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
+              </div>
+            )}
+
+            {/* Purchase Console (All in a single row) */}
+            <div
+              className={cn(
+                "mb-5 flex items-center gap-2",
+                // Desktop (prévia 29/09): quantidade + WhatsApp + CTA numa
+                // ÚNICA linha de 356px úteis fazia o rótulo "ADICIONAR AO
+                // CARRINHO" (whitespace-nowrap) transbordar e ser CORTADO
+                // pela borda do cartão. No desktop a linha quebra: quantidade
+                // e WhatsApp ficam juntos; o CTA ocupa a linha inteira abaixo.
+                "lg:mb-6 lg:flex-wrap lg:gap-3",
+              )}
+            >
+              {!isOutOfStock && Object.entries(variantGroups).length === 0 && (
+                <div className="flex-shrink-0">
+                  <QuantitySelector
+                    quantity={quantity}
+                    maxQuantity={currentStock}
+                    onChange={setQuantity}
+                    size="md"
+                  />
+                </div>
+              )}
+
+              {/* O botão de WhatsApp só existe com número configurado pela loja —
+              sem cadastro ele SOME, nunca aponta para número inventado
+              (laudo caça-bugs 30/08 + decisão do Gabriel no mesmo dia). */}
+              {lojaTemWhatsapp(config.whatsappNumber) && (
+                <button
+                  onClick={handleWhatsApp}
+                  title="Dúvidas no WhatsApp"
+                  className={cn(
+                    "flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95",
+                    // Altura do CTA no desktop: os dois botões da linha de
+                    // cima ficam alinhados (48px) em vez de 44 vs 48.
+                    "lg:size-12",
+                  )}
+                >
+                  <MessageCircle className="size-5" />
                 </button>
-              );
-            })}
-          </nav>
-        </div>
+              )}
 
-        {/* Sequential Sections */}
-        <div
-          id="details-section"
-          ref={detailsSectionRef}
-          className="mb-12 scroll-mt-[64px]"
-        >
-          <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-            <MarkdownRenderer content={product.description || ""} />
+              <button
+                onClick={handleAddToCart}
+                disabled={isOutOfStock || cartStatus !== "idle"}
+                className={cn(
+                  "flex-1 h-11 text-white text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
+                  // lg:basis-full: no desktop o CTA não divide a linha com
+                  // nada -- largura inteira do cartão, rótulo nunca cortado
+                  // (a jornada C12 a 1280 exige "Adicionar ao Carrinho" visível).
+                  "lg:h-12 lg:basis-full lg:text-xs lg:tracking-wider",
+                  cartStatus === "idle"
+                    ? "bg-primary hover:bg-primary/90 shadow-lg shadow-black/10 active:scale-[0.98]"
+                    : "bg-primary/80 shadow-none",
+                  cartStatus === "success" &&
+                    "bg-emerald-600 shadow-emerald-200",
+                  isOutOfStock &&
+                    "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
+                )}
+              >
+                {isOutOfStock ? (
+                  "Esgotado"
+                ) : cartStatus === "loading" ? (
+                  <span className="size-4 flex-shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : cartStatus === "success" ? (
+                  <Check className="size-4 flex-shrink-0 duration-300 animate-in zoom-in" />
+                ) : (
+                  <>
+                    <ShoppingCart className="size-4 flex-shrink-0 xs:size-4.5" />
+                    <span className="hidden whitespace-nowrap min-[380px]:inline">
+                      Adicionar ao Carrinho
+                    </span>
+                    <span className="inline whitespace-nowrap min-[380px]:hidden">
+                      Adicionar
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+          <div
+            className={cn(
+              "lg:col-start-1 lg:row-start-2 lg:min-w-0",
+              // Respiro de fim de página no desktop: quando o rodapé da loja
+              // (F1) está integrado, ele desenha depois desta coluna -- o
+              // pb-24 garante que a última fileira de relacionados não cole
+              // no bloco preto.
+              "lg:pb-24",
+            )}
+          >
+            {/* Sentinel for tab bar stickiness */}
+            <div
+              ref={stickySentinelRef}
+              className="pointer-events-none h-0 w-full opacity-0"
+            />
 
-            {/* Benefits */}
-            {/* "Troca garantida em até 24h após entrega" foi removida daqui:
+            {/* Luxury Segmented Tabs - iOS Style & STICKY */}
+            <div
+              className={cn(
+                "sticky top-0 z-40 transition-all duration-300 -mx-6 px-6 py-1 flex flex-col border-b mb-4",
+                scrolled
+                  ? "bg-white/80 backdrop-blur-md border-zinc-200/60 shadow-sm"
+                  : "bg-transparent border-transparent",
+                // Desktop: as margens negativas do celular sangravam a barra
+                // sticky para fora da coluna de conteúdo. O border-t abre a
+                // seção de leitura (abas + descrição) com um traço próprio,
+                // separada da galeria e da compra (diagnóstico Codex 29/09:
+                // "abas e conteúdo soltos, sem separação visual").
+                "lg:mx-0 lg:px-0 lg:mb-6 lg:border-t lg:border-zinc-100 lg:pt-3",
+              )}
+            >
+              <nav
+                aria-label="Seções do produto"
+                className={cn(
+                  "mx-auto flex w-full max-w-[290px] items-center gap-0.5 rounded-full border border-zinc-200/40 bg-zinc-100/60 p-0.5",
+                  // Desktop (prévia 29/09): a pílula flutuante de 360px
+                  // parecia um controle perdido dentro da coluna de 732px.
+                  // Abas de site: linha inteira, separador embaixo e a seção
+                  // ativa marcada por traço preto (o pill vira o traço abaixo).
+                  "lg:mx-0 lg:max-w-none lg:gap-8 lg:rounded-none lg:border-x-0 lg:border-t-0 lg:bg-transparent lg:p-0",
+                )}
+              >
+                {[
+                  { id: "description", label: "Detalhes" },
+                  // ADMIN-090 (#101): com o interruptor desligado, a aba
+                  // "Avaliações" some da vitrine — não só o pill do admin.
+                  ...(config.enableReviews
+                    ? [{ id: "reviews", label: `Avaliações (${reviewCount})` }]
+                    : []),
+                  { id: "questions", label: "Perguntas" },
+                ].map((tab) => {
+                  const isActive = activeTab === tab.id;
+                  const tabId = tab.id as
+                    | "description"
+                    | "reviews"
+                    | "questions";
+                  return (
+                    <button
+                      key={tab.id}
+                      aria-current={isActive ? "true" : undefined}
+                      aria-controls={painelDaAba(tabId)}
+                      onClick={() => handleTabClick(tab.id as any)}
+                      // Laudo 05/09, M3: `outline-none` apagava o anel de foco
+                      // sem repor — padrão do BottomNav (onda 1 do laudo 03/09).
+                      className={cn(
+                        "relative flex-1 rounded-full p-1 text-[9px] font-bold uppercase tracking-wider outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-zinc-900/50",
+                        // Respiro vertical maior no desktop: o rótulo não gruda
+                        // no traço de underline que o pill desenha embaixo.
+                        "lg:px-2 lg:pb-3 lg:pt-2 lg:text-[11px]",
+                      )}
+                    >
+                      {isActive && (
+                        <motion.div
+                          layoutId="activeDetailTabPill"
+                          className={cn(
+                            "absolute inset-0 z-0 rounded-full border border-zinc-200/50 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)]",
+                            // Desktop: o pill branco vira um TRAÇO preto
+                            // rente ao separador -- indicador clássico de aba
+                            // de site, na largura do rótulo ativo.
+                            "lg:inset-x-0 lg:top-auto lg:bottom-[-1px] lg:h-[2.5px] lg:rounded-none lg:border-0 lg:bg-zinc-950 lg:shadow-none",
+                          )}
+                          transition={{
+                            type: "spring",
+                            stiffness: 380,
+                            damping: 30,
+                          }}
+                        />
+                      )}
+                      <span
+                        className={cn(
+                          "relative z-10 transition-colors duration-300",
+                          isActive
+                            ? "text-zinc-950 font-extrabold"
+                            : "text-zinc-500 hover:text-zinc-800",
+                        )}
+                      >
+                        {tab.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* Sequential Sections */}
+            <div
+              id="details-section"
+              ref={detailsSectionRef}
+              className="mb-12 scroll-mt-[64px]"
+            >
+              <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
+                <MarkdownRenderer
+                  content={product.description || ""}
+                  className="lg:max-w-prose lg:text-base"
+                />
+
+                {/* Benefits */}
+                {/* "Troca garantida em até 24h após entrega" foi removida daqui:
                 não existe fluxo de troca/devolução neste app (issues #46 e
                 #108 seguem abertas), então a promessa era falsa. */}
-            <div className="mt-6 space-y-3">
-              {/* Sem cidade configurada, ou com cobertura NACIONAL — em que
+                <div className="mt-6 space-y-3">
+                  {/* Sem cidade configurada, ou com cobertura NACIONAL — em que
                   "Entrega em <cidade>" leria como exclusividade e seria falso
                   (#571, mesmo gate do #525) — o bloco inteiro (ícone e texto)
                   não é renderizado. Fail-closed: só cobertura "local" mostra. */}
-              {config.storeCity && config.shippingCoverage === "local" && (
-                <div className="flex items-center gap-3 text-sm text-gray-700">
-                  <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
-                    <Truck className="size-4" />
-                  </div>
-                  <span>
-                    Entrega em {config.storeCity}
-                    {config.storeState ? `, ${config.storeState}` : ""}
-                  </span>
+                  {config.storeCity && config.shippingCoverage === "local" && (
+                    <div className="flex items-center gap-3 text-sm text-gray-700">
+                      <div
+                        className={cn(
+                          "flex size-8 items-center justify-center rounded-full bg-gray-100",
+                          "lg:size-9 lg:bg-zinc-100",
+                        )}
+                      >
+                        <Truck className="size-4" />
+                      </div>
+                      <span>
+                        Entrega em {config.storeCity}
+                        {config.storeState ? `, ${config.storeState}` : ""}
+                      </span>
+                    </div>
+                  )}
+                  {/* "Envio rapido" saiu daqui: nao existe envio rapido/expresso
+                  neste app, a mesma promessa ja removida de CartView.tsx e
+                  HomeView.tsx. E o selo so aparece com `!isOutOfStock` -- sem
+                  essa guarda, a mesma tela dizia "Esgotado" no topo (linhas
+                  922-947, `isOutOfStock`) e "em estoque" aqui embaixo, para o
+                  mesmo produto (achado ProductView-1253). */}
+                  {!isOutOfStock && (
+                    <div className="flex items-center gap-3 text-sm text-gray-700">
+                      <div
+                        className={cn(
+                          "flex size-8 items-center justify-center rounded-full bg-gray-100",
+                          "lg:size-9 lg:bg-zinc-100",
+                        )}
+                      >
+                        <ShoppingCart className="size-4" />
+                      </div>
+                      <span>Produto em estoque</span>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="flex items-center gap-3 text-sm text-gray-700">
-                <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
-                  <ShoppingCart className="size-4" />
-                </div>
-                <span>Produto em estoque - Envio rápido</span>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* ADMIN-090 (#101): com o interruptor desligado, a seção inteira
+            {/* ADMIN-090 (#101): com o interruptor desligado, a seção inteira
             some da vitrine — nota, distribuição e lista de comentários. */}
-        {config.enableReviews && (
-          <div
-            id="reviews-section"
-            ref={reviewsSectionRef}
-            className="mb-12 scroll-mt-[64px] border-t border-zinc-100 pt-8"
-          >
-            <div className="space-y-4 duration-300 animate-in fade-in slide-in-from-bottom-2">
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-extrabold tracking-tight text-zinc-900">
-                    Avaliações
-                  </h3>
-                  <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-                    {reviewCount > 0
-                      ? `${reviewCount} opiniões dos consumidores`
-                      : "Sem avaliações ainda"}
-                  </p>
-                </div>
-              </div>
-
-              {loadingReviews ? (
-                <div className="flex flex-col items-center py-12 text-center">
-                  <div className="border-3 mb-3 size-8 animate-spin rounded-full border-zinc-100 border-t-zinc-950" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                    Carregando Avaliações...
-                  </span>
-                </div>
-              ) : reviews.length === 0 ? (
-                <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
-                  {/* Breathing Concentric Circle Stars */}
-                  <div className="relative mb-4 flex size-16 items-center justify-center">
-                    <div className="absolute inset-0 animate-ping rounded-full bg-amber-500/5 opacity-75 duration-1000" />
-                    <div className="flex size-12 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10">
-                      <Star className="size-6 fill-amber-500/20 text-amber-500" />
+            {config.enableReviews && (
+              <div
+                id="reviews-section"
+                ref={reviewsSectionRef}
+                className="mb-12 scroll-mt-[64px] border-t border-zinc-100 pt-8"
+              >
+                <div className="space-y-4 duration-300 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="mb-6 flex items-center justify-between">
+                    <div>
+                      <h3
+                        className={cn(
+                          "text-lg font-extrabold tracking-tight text-zinc-900",
+                          "lg:text-3xl",
+                        )}
+                      >
+                        Avaliações
+                      </h3>
+                      <p
+                        className={cn(
+                          "mt-0.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400",
+                          ROTULO_NO_COMPUTADOR,
+                        )}
+                      >
+                        {reviewCount > 0
+                          ? `${reviewCount} opiniões dos consumidores`
+                          : "Sem avaliações ainda"}
+                      </p>
                     </div>
                   </div>
 
-                  <p className="text-sm font-bold tracking-tight text-zinc-900">
-                    Este produto ainda não foi avaliado
-                  </p>
-                  <p className="mt-1.5 max-w-[280px] text-xs leading-relaxed text-zinc-500">
-                    As avaliações podem ser enviadas por compradores confirmados
-                    a partir da tela de detalhes do pedido após a entrega.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {/* Rating Distribution Chart */}
-                  <div className="group relative mb-6 overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 text-white shadow-xl">
-                    {/* Subtle blur highlights */}
-                    <div className="absolute right-0 top-0 size-48 -translate-y-1/2 translate-x-1/2 rounded-full bg-amber-500/10 blur-[60px]" />
-
-                    <div className="relative z-10 flex flex-col items-center justify-between gap-6 md:flex-row md:gap-8">
-                      {/* Left Panel */}
-                      <div className="flex flex-col items-center text-center md:items-start md:text-left">
-                        <div className="flex items-baseline justify-center gap-1.5 md:justify-start">
-                          <span className="bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-5xl font-extrabold tracking-tighter text-transparent">
-                            {averageRating.toFixed(1)}
-                          </span>
-                          <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                            / 5
-                          </span>
+                  {loadingReviews ? (
+                    <div className="flex flex-col items-center py-12 text-center">
+                      <div className="border-3 mb-3 size-8 animate-spin rounded-full border-zinc-100 border-t-zinc-950" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        Carregando Avaliações...
+                      </span>
+                    </div>
+                  ) : reviews.length === 0 ? (
+                    <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
+                      {/* Breathing Concentric Circle Stars */}
+                      <div className="relative mb-4 flex size-16 items-center justify-center">
+                        <div className="absolute inset-0 animate-ping rounded-full bg-amber-500/5 opacity-75 duration-1000" />
+                        <div className="flex size-12 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10">
+                          <Star className="size-6 fill-amber-500/20 text-amber-500" />
                         </div>
-                        <div className="mt-1.5">
-                          <StarRating
-                            rating={averageRating}
-                            size={14}
-                            readonly
-                          />
-                        </div>
-                        <span className="mt-4 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                          Baseado em {reviewCount}{" "}
-                          {reviewCount === 1 ? "experiência" : "experiências"}
-                        </span>
                       </div>
 
-                      {/* Right Panel: Bars */}
-                      <div className="w-full flex-1 space-y-2 md:border-l md:border-zinc-800 md:pl-6">
-                        {[5, 4, 3, 2, 1].map((star) => {
-                          const count = reviews.filter(
-                            (r) => r.rating === star,
-                          ).length;
-                          const percentage =
-                            reviewCount > 0 ? (count / reviewCount) * 100 : 0;
-                          return (
-                            <div
-                              key={star}
-                              className="group/row flex items-center gap-3.5"
-                            >
-                              <span className="w-3 text-[10px] font-bold text-zinc-500 transition-colors group-hover/row:text-white">
-                                {star}
+                      <p className="text-sm font-bold tracking-tight text-zinc-900">
+                        Este produto ainda não foi avaliado
+                      </p>
+                      <p
+                        className={cn(
+                          "mt-1.5 max-w-[280px] text-xs leading-relaxed text-zinc-500",
+                          "lg:max-w-md lg:text-sm",
+                        )}
+                      >
+                        As avaliações podem ser enviadas por compradores
+                        confirmados a partir da tela de detalhes do pedido após
+                        a entrega.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Rating Distribution Chart */}
+                      <div className="group relative mb-6 overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 text-white shadow-xl">
+                        {/* Subtle blur highlights */}
+                        <div className="absolute right-0 top-0 size-48 -translate-y-1/2 translate-x-1/2 rounded-full bg-amber-500/10 blur-[60px]" />
+
+                        <div className="relative z-10 flex flex-col items-center justify-between gap-6 md:flex-row md:gap-8">
+                          {/* Left Panel */}
+                          <div className="flex flex-col items-center text-center md:items-start md:text-left">
+                            <div className="flex items-baseline justify-center gap-1.5 md:justify-start">
+                              <span className="bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-5xl font-extrabold tracking-tighter text-transparent">
+                                {averageRating.toFixed(1)}
                               </span>
-                              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60 p-px">
-                                <div
-                                  className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)] transition-all duration-700 ease-out"
-                                  style={{ width: `${percentage}%` }}
-                                />
-                              </div>
-                              <span className="w-8 text-right text-[10px] font-bold text-zinc-600 transition-colors group-hover/row:text-zinc-300">
-                                {count}
+                              <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                                / 5
                               </span>
                             </div>
-                          );
-                        })}
+                            <div className="mt-1.5">
+                              <StarRating
+                                rating={averageRating}
+                                size={14}
+                                readonly
+                              />
+                            </div>
+                            <span className="mt-4 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                              Baseado em {reviewCount}{" "}
+                              {reviewCount === 1
+                                ? "experiência"
+                                : "experiências"}
+                            </span>
+                          </div>
+
+                          {/* Right Panel: Bars */}
+                          <div className="w-full flex-1 space-y-2 md:border-l md:border-zinc-800 md:pl-6">
+                            {[5, 4, 3, 2, 1].map((star) => {
+                              const count = reviews.filter(
+                                (r) => r.rating === star,
+                              ).length;
+                              const percentage =
+                                reviewCount > 0
+                                  ? (count / reviewCount) * 100
+                                  : 0;
+                              return (
+                                <div
+                                  key={star}
+                                  className="group/row flex items-center gap-3.5"
+                                >
+                                  <span className="w-3 text-[10px] font-bold text-zinc-500 transition-colors group-hover/row:text-white">
+                                    {star}
+                                  </span>
+                                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60 p-px">
+                                    <div
+                                      className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)] transition-all duration-700 ease-out"
+                                      style={{ width: `${percentage}%` }}
+                                    />
+                                  </div>
+                                  <span className="w-8 text-right text-[10px] font-bold text-zinc-600 transition-colors group-hover/row:text-zinc-300">
+                                    {count}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    {reviews.map((review) => (
-                      <ReviewCard
-                        key={review.id}
-                        review={review}
-                        onHelpful={markHelpful}
-                        onNavigate={onNavigate}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
+                      <div className="space-y-4">
+                        {reviews.map((review) => (
+                          <ReviewCard
+                            key={review.id}
+                            review={review}
+                            onHelpful={markHelpful}
+                            onNavigate={onNavigate}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div
+              id="chat-section"
+              ref={chatSectionRef}
+              className="mb-6 scroll-mt-[64px] border-t border-zinc-100 pt-8"
+            >
+              <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
+                <ProductQA productId={product.id} onNavigate={onNavigate} />
+              </div>
             </div>
-          </div>
-        )}
 
-        <div
-          id="chat-section"
-          ref={chatSectionRef}
-          className="mb-6 scroll-mt-[64px] border-t border-zinc-100 pt-8"
-        >
-          <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-            <ProductQA productId={product.id} onNavigate={onNavigate} />
-          </div>
-        </div>
-
-        {/* Recommendations - Magazine Style. Defeito da prova de rua (01/09):
+            {/* Recommendations - Magazine Style. Defeito da prova de rua (01/09):
             busca concluída e vazia esconde a seção INTEIRA — título com
             grid vazio convidava a nada. */}
-        {(!recsConsultado || recommendations.length > 0) && (
-          <div ref={recsRef} className="mt-20 border-t border-zinc-100 pt-10">
-            <div className="mb-10 flex flex-col items-center text-center">
-              <h3 className="text-3xl font-black leading-none tracking-tighter text-zinc-900">
-                Você também pode gostar
-              </h3>
-            </div>
-            <div className="-mx-4 grid grid-cols-2 gap-2 px-2 lg:grid-cols-4">
-              {!isReady || loadingRecs
-                ? Array(4)
-                    .fill(0)
-                    .map((_, i) => <ProductCardSkeleton key={i} />)
-                : recommendations.map((p) => (
-                    <ProductCard
-                      key={p.id}
-                      product={p}
-                      isFavorite={checkFavorite(p.id)}
-                      onToggleFavorite={handleToggleFavorite}
-                      onAddToCart={handleAddToCartFromCard}
-                      onAddToCartWithVariants={
-                        handleAddToCartWithVariantsFromCard
-                      }
-                      onQuickBuy={handleQuickBuyFromCard}
-                      onClick={handleProductClick}
-                      showRating={config.enableReviews}
-                    />
-                  ))}
-            </div>
-          </div>
-        )}
+            {(!recsConsultado || recommendations.length > 0) && (
+              <div
+                ref={recsRef}
+                className="mt-20 border-t border-zinc-100 pt-10"
+              >
+                <div
+                  className={cn(
+                    "mb-10 flex flex-col items-center text-center",
+                    // Desktop: título de seção alinhado à esquerda, na
+                    // régua da coluna de conteúdo (prévia 29/09: centrado
+                    // numa coluna estreita, parecia deslocado).
+                    "lg:mb-8 lg:items-start lg:text-left",
+                  )}
+                >
+                  <h3 className="text-3xl font-black leading-none tracking-tighter text-zinc-900">
+                    Você também pode gostar
+                  </h3>
+                </div>
+                <div
+                  className={cn(
+                    "-mx-4 grid grid-cols-2 gap-2 px-2",
+                    "lg:mx-0 lg:grid-cols-3 lg:gap-5 lg:px-0",
+                  )}
+                >
+                  {!isReady || loadingRecs
+                    ? Array(4)
+                        .fill(0)
+                        .map((_, i) => <ProductCardSkeleton key={i} />)
+                    : recommendations.map((p) => (
+                        <ProductCard
+                          key={p.id}
+                          product={p}
+                          isFavorite={checkFavorite(p.id)}
+                          onToggleFavorite={handleToggleFavorite}
+                          onAddToCart={handleAddToCartFromCard}
+                          onAddToCartWithVariants={
+                            handleAddToCartWithVariantsFromCard
+                          }
+                          onQuickBuy={handleQuickBuyFromCard}
+                          onClick={handleProductClick}
+                          showRating={config.enableReviews}
+                          promessasDeFrete={promessasDaLoja}
+                        />
+                      ))}
+                </div>
+              </div>
+            )}
 
-        {/* Reserva o fim da página para as barras fixas (compra dockada +
+            {/* Reserva o fim da página para as barras fixas (compra dockada +
             navegação inferior) não cobrirem a última fileira de cards. */}
-        <div aria-hidden="true" className="h-44 md:h-36" />
+            <div
+              aria-hidden="true"
+              className={cn("h-44 md:h-36", "lg:hidden")}
+            />
+          </div>
+        </div>
       </div>
 
       {typeof window !== "undefined" &&
@@ -1439,7 +1785,10 @@ export const ProductView = React.memo(function ProductView({
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
-                className="bottom-docked-navigation fixed inset-x-0 z-50 flex items-center justify-between gap-3 border-t border-zinc-200/60 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-xl md:bottom-[88px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-2xl md:border-x md:border-zinc-200/60"
+                className={cn(
+                  "bottom-docked-navigation fixed inset-x-0 z-50 flex items-center justify-between gap-3 border-t border-zinc-200/60 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-xl md:bottom-[88px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-2xl md:border-x md:border-zinc-200/60",
+                  "lg:hidden",
+                )}
               >
                 {/* Product Image and Details */}
                 <div className="flex min-w-0 items-center gap-2.5">
@@ -1477,7 +1826,26 @@ export const ProductView = React.memo(function ProductView({
                     <p className="max-w-[80px] truncate text-[11px] font-bold leading-tight text-zinc-900 sm:max-w-[110px]">
                       {product.name}
                     </p>
-                    <p className="mt-0.5 text-[11px] font-black leading-tight text-rose-600">
+                    <p
+                      className={cn(
+                        "mt-0.5 text-[11px] font-black leading-tight",
+                        // Mesma regra do bloco de preço principal ("Price &
+                        // Promo Badges Row" logo acima): a barra dockada
+                        // usava text-rose-600 SEMPRE, com ou sem promoção.
+                        // Cor de promoção só faz sentido quando há desconto
+                        // de verdade (`originalPrice > currentPrice`) -- sem
+                        // isso, o neutro é o mesmo tom do preço sem desconto
+                        // ali em cima (text-zinc-900). A cor de promoção em
+                        // si é verde (CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
+                        // `src/lib/cor-do-preco-promocional.ts`), não mais
+                        // vermelho -- decisão do dono (27/09/2026): vermelho
+                        // é a mesma cor de "negativo" do resto da loja.
+                        product.originalPrice &&
+                          product.originalPrice > currentPrice
+                          ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
+                          : "text-zinc-900",
+                      )}
+                    >
                       R$ {currentPrice.toFixed(2).replace(".", ",")}
                     </p>
                   </div>

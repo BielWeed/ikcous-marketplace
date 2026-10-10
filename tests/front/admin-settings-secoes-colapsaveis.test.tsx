@@ -2,43 +2,28 @@
 //
 // Pedido do Gabriel (02/09, segunda foto dos Ajustes): a tela precisa estar
 // SEPARADA por partes e as seções técnicas nascerem OCULTAS — "Minha loja
-// está no ar?" (termômetro do PIX + diagnóstico de conexão), "Nome, logo e
-// cores" e as demais só exibem o conteúdo quando o lojista clica no
+// está no ar?" (diagnóstico de conexão), "Mercado Pago" e as demais só
+// exibem o conteúdo quando o lojista clica no
 // cabeçalho da seção. Títulos no vocabulário do desenho SALÃO+PORÃO
-// (13/09/2026).
+// (13/09/2026). O acordeão "Nome, logo e cores" morou aqui e SAIU em
+// 22/09/2026 (duplicado de AdminAboutStoreView).
 //
 // O CONTRATO:
 //   1. A tela abre com as seções FECHADAS: os campos da loja e o termômetro
 //      do PIX NÃO estão no DOM (nada de informação técnica empurrando o que
 //      o lojista edita).
 //   2. Um clique no cabeçalho expande o conteúdo; clicar de novo recolhe.
-//   3. Os atalhos de vitrine (grupo "Sua loja") continuam SEMPRE visíveis —
+//   3. Os atalhos de vitrine (grupo "Aparência do app") continuam SEMPRE visíveis —
 //      são a porta de trabalho.
+//
+// Painel simples (H5, 09/10/2026): a seção de Transportadoras e as Consultas
+// de frete saíram desta tela e moram na tela de Frete (provas em
+// frete-um-lugar-so.test.tsx). Os testes de pendência/onSetDirty abaixo
+// miram a seção do Mercado Pago, a seção de formulário que ficou aqui.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/components/admin/settings/IdentitySettingsSection", async () => {
-  const { useState, useEffect } = await import("react");
-  return {
-    IdentitySettingsSection: ({
-      onDirtyChange,
-    }: { onDirtyChange: (value: boolean) => void }) => {
-      const [value, setValue] = useState("Loja Teste");
-      useEffect(
-        () => onDirtyChange(value !== "Loja Teste"),
-        [value, onDirtyChange],
-      );
-      return (
-        <input
-          id="store-name"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-        />
-      );
-    },
-  };
-});
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "admin-a" },
@@ -52,15 +37,41 @@ vi.mock("@/lib/env-valores", () => ({
 }));
 const updateConfig = vi.fn();
 
-const { mockConfig } = vi.hoisted(() => ({
+const { mockConfig, estadoDoBanco, invoke } = vi.hoisted(() => ({
   mockConfig: {
     storeName: "Loja Teste",
     storeCity: "Uberlândia",
     storeState: "MG",
-    shippingProvider: "flat_fee" as "flat_fee" | "melhor_envio" | "frenet",
-    enabledShippingMethods: ["sedex", "pac"] as string[],
   },
+  // Estado que a edge `ler_configuracao_frete` devolveria — a fonte única
+  // que a seção de Transportadoras e o subtítulo "Ativo: ..." consultam.
+  estadoDoBanco: {
+    ligados: ["melhor_envio"] as string[],
+    provedores: {
+      melhor_envio: { tem_chave: true, sandbox: false },
+    } as Record<string, { tem_chave: boolean; sandbox?: boolean }>,
+  },
+  invoke: vi.fn(),
 }));
+
+function respostaConfig() {
+  return {
+    success: true,
+    modo: estadoDoBanco.ligados.length > 0 ? "multi" : "legado",
+    ligados: estadoDoBanco.ligados,
+    provedores: {
+      melhor_envio: { tem_chave: false, sandbox: false, servicos: null },
+      superfrete: { tem_chave: false, sandbox: false, servicos: null },
+      frenet: { tem_chave: false, sandbox: false, servicos: null },
+      ...Object.fromEntries(
+        Object.entries(estadoDoBanco.provedores).map(([p, v]) => [
+          p,
+          { servicos: null, ...v },
+        ]),
+      ),
+    },
+  };
+}
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -72,27 +83,17 @@ vi.mock("@/contexts/StoreContext", () => ({
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
+vi.mock("@/lib/revisao-do-frete", () => ({
+  descartarCacheDeFreteDoNavegador: vi.fn(),
+}));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: (tabela: string) => {
-      if (tabela === "store_shipping_credentials") {
-        return {
-          select: () =>
-            Promise.resolve({
-              data: [
-                {
-                  provider: "melhor_envio",
-                  credentials: { token: "tok-da-loja", sandbox: false },
-                },
-              ],
-              error: null,
-            }),
-          upsert: () => Promise.resolve({ error: null }),
-        };
-      }
-      return {
-        select: () => Promise.resolve({ data: [], error: null }),
-      };
+    from: () => ({
+      select: () => Promise.resolve({ data: [], error: null }),
+    }),
+    functions: {
+      invoke: (...args: unknown[]) => invoke(...(args as [any, any])),
     },
   },
 }));
@@ -103,6 +104,10 @@ vi.mock("sonner", () => ({
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+function esperarMicrotarefas(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 class ObservadorFalso {
   observe() {}
@@ -115,6 +120,38 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    estadoDoBanco.ligados = ["melhor_envio"];
+    estadoDoBanco.provedores = { melhor_envio: { tem_chave: true } };
+    invoke.mockImplementation((nome: string, opcoes: any) => {
+      const action = opcoes?.body?.action;
+      if (nome === "credenciais-mercado-pago") {
+        // Chaves já salvas (chave FALSA): salvar só a pública é permitido.
+        return Promise.resolve({
+          data: {
+            configurado: true,
+            public_key: "APP_USR-publica-falsa-de-teste",
+            mascara_token: "••••9999",
+            mascara_webhook: "••••7777",
+            ultimo_teste: null,
+            atualizado_em: null,
+            pix_ligado: false,
+            public_key_na_loja: true,
+            faltando: [],
+            pausado: false,
+          },
+          error: null,
+        });
+      }
+      if (action === "ler_configuracao_frete") {
+        return Promise.resolve({ data: respostaConfig(), error: null });
+      }
+      if (action === "save_credentials") {
+        return Promise.resolve({ data: { success: true }, error: null });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
+    updateConfig.mockResolvedValue(true);
     vi.stubGlobal(
       "BroadcastChannel",
       class {
@@ -169,28 +206,82 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     });
   }
 
+  // Painel simples (H5, 09/10/2026): as Transportadoras saíram de Ajustes
+  // (moram na tela de Frete — provas em frete-um-lugar-so.test.tsx). A trava
+  // "Salve antes de fechar" e a guarda onSetDirty continuam valendo para as
+  // seções de formulário que ficaram; estes testes passaram a mirar a do
+  // Mercado Pago. Abre a seção (lazy: espera o import assentar), a camada
+  // "Suas chaves" e devolve o cabeçalho da seção.
+  async function abrirChavesDoMercadoPago() {
+    const cabecalho = cabecalhoDaSecao("Mercado Pago")!;
+    await act(async () => {
+      cabecalho.click();
+    });
+    const camadaDasChaves = () =>
+      [...hospedeiro.querySelectorAll("button[aria-expanded]")].find((b) =>
+        b.textContent?.includes("Suas chaves"),
+      ) as HTMLButtonElement | undefined;
+    // A primeira importação do módulo lazy pode levar mais que um tick.
+    for (let i = 0; i < 50 && !camadaDasChaves(); i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    }
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    // Abrir, não alternar: com pendência a camada já abre sozinha (H6).
+    if (camadaDasChaves()!.getAttribute("aria-expanded") !== "true") {
+      await act(async () => {
+        camadaDasChaves()!.click();
+      });
+    }
+    return cabecalho;
+  }
+
+  async function digitarChavePublica(valor: string) {
+    const campo = hospedeiro.querySelector(
+      "#mp-public-key",
+    ) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campo, valor);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
+
   it("a tela abre com as seções técnicas FECHADAS e os atalhos de vitrine visíveis", async () => {
     await renderizar();
 
     // A porta de estética continua à vista.
-    expect(hospedeiro.textContent).toContain("Banners Promocionais");
-    expect(hospedeiro.textContent).toContain("Vitrines (Carrosséis)");
+    expect(hospedeiro.textContent).toContain("Banners");
+    expect(hospedeiro.textContent).not.toContain("Banners Promocionais");
+    expect(hospedeiro.textContent).toContain("Vitrines");
+    expect(hospedeiro.textContent).not.toContain("Vitrines (Carrosséis)");
 
     // Conteúdo das seções técnicas NÃO está no DOM (recolhidas).
-    expect(hospedeiro.querySelector("#store-name")).toBeNull();
+    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
     expect(hospedeiro.textContent).not.toContain("VITE_MP_PUBLIC_KEY");
     expect(hospedeiro.textContent).not.toContain("Latência média");
 
     // Os cabeçalhos existem e estão marcados como recolhidos.
     const status = cabecalhoDaSecao("Minha loja está no ar?")!;
-    const loja = cabecalhoDaSecao("Nome, logo e cores")!;
+    const mercadoPago = cabecalhoDaSecao("Mercado Pago")!;
     expect(status).toBeTruthy();
-    expect(loja).toBeTruthy();
+    expect(mercadoPago).toBeTruthy();
     expect(status.getAttribute("aria-expanded")).toBe("false");
-    expect(loja.getAttribute("aria-expanded")).toBe("false");
+    expect(mercadoPago.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("clicar no cabeçalho de Status expande o termômetro do PIX e o diagnóstico; segundo clique recolhe", async () => {
+  it("clicar no cabeçalho de Status expande o diagnóstico de conexão; segundo clique recolhe", async () => {
+    // H6 (painel simples): o termômetro do PIX saiu daqui para o topo de
+    // Pagamentos (um status do PIX só) — a seção mostra a conexão.
     await renderizar();
 
     const status = cabecalhoDaSecao("Minha loja está no ar?")!;
@@ -198,8 +289,8 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
       status.click();
     });
 
-    // Expandida: termômetro do PIX visível (com o estado) e diagnóstico.
-    expect(hospedeiro.textContent).toContain("Pagamento online (PIX)");
+    // Expandida: diagnóstico de conexão visível.
+    expect(hospedeiro.textContent).toContain("Diagnóstico de Conexão");
     expect(status.getAttribute("aria-expanded")).toBe("true");
 
     await act(async () => {
@@ -210,114 +301,85 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));
     });
-    expect(hospedeiro.textContent).not.toContain("Pagamento online (PIX)");
+    expect(hospedeiro.textContent).not.toContain("Diagnóstico de Conexão");
   });
 
-  it("clicar no cabeçalho de Identidade expande os campos da loja", async () => {
-    await renderizar();
+  // "clicar no cabeçalho de Identidade expande os campos da loja" morava
+  // aqui e SAIU em 22/09/2026 junto com o acordeão "Nome, logo e cores"
+  // (duplicado de AdminAboutStoreView, removido de AdminSettingsView). O
+  // mecanismo genérico de abrir/expandir continua provado acima (Status) e
+  // abaixo (independência entre seções).
 
-    expect(hospedeiro.querySelector("#store-name")).toBeNull();
-
-    const loja = cabecalhoDaSecao("Nome, logo e cores")!;
-    await act(async () => {
-      loja.click();
-    });
-
-    const campoNome = hospedeiro.querySelector<HTMLInputElement>("#store-name");
-    expect(campoNome).not.toBeNull();
-    expect(campoNome!.value).toBe("Loja Teste");
-  });
-
-  it("as seções são independentes: abrir Status não abre a Identidade", async () => {
+  it("as seções são independentes: abrir Status não abre o Mercado Pago", async () => {
     await renderizar();
 
     await act(async () => {
       cabecalhoDaSecao("Minha loja está no ar?")!.click();
     });
 
-    expect(hospedeiro.textContent).toContain("Pagamento online (PIX)");
-    expect(hospedeiro.querySelector("#store-name")).toBeNull();
+    expect(hospedeiro.textContent).toContain("Diagnóstico de Conexão");
+    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
+    expect(
+      cabecalhoDaSecao("Mercado Pago")!.getAttribute("aria-expanded"),
+    ).toBe("false");
   });
 
-  // ── Seções novas da frente glm-visual-admin-0209 (transportadoras e
-  // histórico mudaram da tela de Frete para cá) ──────────────────────────
-  it("as seções de Entrega e frete e Consultas de frete também nascem FECHADAS", async () => {
+  // ── Transportadoras e Consultas de frete moraram aqui de 02/09 a
+  // 09/10/2026 (frente glm-visual-admin-0209 → painel simples, H5): voltaram
+  // para a tela de Frete. Ajustes não monta nenhuma das duas. ─────────────
+  it("Transportadoras e Consultas de frete não moram mais em Ajustes", async () => {
     await renderizar();
 
-    const transportadoras = cabecalhoDaSecao("Entrega e frete")!;
-    const historico = cabecalhoDaSecao("Consultas de frete")!;
-    expect(transportadoras).toBeTruthy();
-    expect(historico).toBeTruthy();
-    expect(transportadoras.getAttribute("aria-expanded")).toBe("false");
-    expect(historico.getAttribute("aria-expanded")).toBe("false");
-
-    // Fechadas = nada de campo de token nem consulta ao histórico no DOM.
+    expect(cabecalhoDaSecao("Transportadoras")).toBeUndefined();
+    expect(cabecalhoDaSecao("Consultas de frete")).toBeUndefined();
     expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
     expect(hospedeiro.querySelector("table")).toBeNull();
   });
 
-  it("a seção de Transportadoras NÃO fecha com alteração não salva — e fecha depois de salvar", async () => {
-    // Achado A1 da revisão adversária: fechar a seção desmonta o card e
-    // jogaria fora o token digitado, sem aviso nenhum. Com pendência, o
+  it("uma seção com formulário NÃO fecha com alteração não salva — e fecha depois de salvar", async () => {
+    // Achado A1 da revisão adversária: fechar a seção desmonta o conteúdo e
+    // jogaria fora o que foi digitado, sem aviso nenhum. Com pendência, o
     // clique no cabeçalho é recusado (com aviso); depois de salvar, fecha.
-    updateConfig.mockResolvedValue(true);
-    mockConfig.shippingProvider = "melhor_envio";
-    mockConfig.enabledShippingMethods = ["sedex", "pac"];
-
     await renderizar();
+    const cabecalho = await abrirChavesDoMercadoPago();
 
-    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
-    await act(async () => {
-      cabecalho.click();
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
-
-    const campoToken = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    expect(campoToken).not.toBeNull();
-    expect(campoToken.value).toBe("tok-da-loja");
-
-    // Mexe no token: pendência criada.
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campoToken, "tok-novo");
-      campoToken.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    // Mexe na chave pública: pendência criada.
+    await digitarChavePublica("APP_USR-outra-publica-falsa");
 
     // O aviso de pendência aparece no cabeçalho…
     expect(hospedeiro.textContent).toMatch(/salve antes de fechar/i);
 
-    // …e o clique de fechar é RECUSADO: o token continua na tela.
+    // …e o clique de fechar é RECUSADO: o campo continua na tela.
     await act(async () => {
       cabecalho.click();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(hospedeiro.querySelector('input[type="password"]')).not.toBeNull();
+    expect(hospedeiro.querySelector("#mp-public-key")).not.toBeNull();
     expect(cabecalho.getAttribute("aria-expanded")).toBe("true");
 
-    // Salva dentro da própria seção…
+    // Salva as chaves…
     const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
+      b.textContent?.includes("Salvar chaves"),
     ) as HTMLButtonElement;
-    expect(botaoSalvar.disabled).toBe(false);
+    expect(botaoSalvar).toBeDefined();
     await act(async () => {
       botaoSalvar.click();
       await new Promise((r) => setTimeout(r, 0));
     });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    expect(
+      invoke.mock.calls.some(
+        (c) =>
+          c[0] === "credenciais-mercado-pago" && c[1]?.body?.acao === "salvar",
+      ),
+    ).toBe(true);
 
     // …a pendência acaba, o aviso some, e fechar volta a funcionar.
     expect(hospedeiro.textContent).not.toMatch(/salve antes de fechar/i);
@@ -327,64 +389,48 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));
     });
-    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
+    expect(hospedeiro.querySelector("#mp-public-key")).toBeNull();
     expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("a pendência do token é reportada ao App: onSetDirty true ao mexer, false ao salvar", async () => {
-    // Achado 1 da revisão do #414: a tela de Frete antiga ligava as guardas
-    // do App (beforeunload, diálogo de navegação, popstate) via onSetDirty;
-    // com a mudança de casa para o Ajustes, a pendência do token precisa ser
-    // espelhada nele também — recarregar/sair do painel não pode descartar
-    // o token digitado em silêncio.
+  it("a pendência é reportada ao App: onSetDirty true ao mexer, false ao salvar", async () => {
+    // Achado 1 da revisão do #414: as guardas do App (beforeunload, diálogo
+    // de navegação, popstate) ligam via onSetDirty — recarregar/sair do
+    // painel não pode descartar em silêncio o que foi digitado. (A pendência
+    // do token das transportadoras é somada pela tela de Frete desde H5:
+    // frete-um-lugar-so.test.tsx, F4.)
     const onSetDirty = vi.fn();
-    updateConfig.mockResolvedValue(true);
-    mockConfig.shippingProvider = "melhor_envio";
-    mockConfig.enabledShippingMethods = ["sedex", "pac"];
-
     await renderizar(onSetDirty);
 
     // Montagem limpa: nenhuma pendência reportada.
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
 
-    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
-    await act(async () => {
-      cabecalho.click();
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    await abrirChavesDoMercadoPago();
 
-    const campoToken = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    expect(campoToken).not.toBeNull();
-
-    // Mexe no token: a guarda liga.
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campoToken, "tok-novo");
-      campoToken.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    // Mexe na chave pública: a guarda liga.
+    await digitarChavePublica("APP_USR-outra-publica-falsa");
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
 
     // Salva: a guarda desliga.
     const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
+      b.textContent?.includes("Salvar chaves"),
     ) as HTMLButtonElement;
     await act(async () => {
       botaoSalvar.click();
       await new Promise((r) => setTimeout(r, 0));
     });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
   });
+
+  // "salvar os provedores ligados dentro da seção atualiza 'Ativo: X'"
+  // (achado 5 da revisão Opus) morava aqui: com as Transportadoras na tela
+  // de Frete, a prova de que salvar quem está ligado atualiza o estado ao
+  // lado sem recarregar é a F5 de frete-um-lugar-so.test.tsx; a releitura do
+  // subtítulo de Ajustes ao voltar para a aba é a J2 do mesmo arquivo.
 });

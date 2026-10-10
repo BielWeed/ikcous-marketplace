@@ -1,0 +1,62 @@
+import { describe, expect, it } from "vitest";
+// @ts-expect-error Módulo JS nativo sem declaração; mesmo padrão de hospedagem-headers.test.ts.
+import * as hospedagem from "../../scripts/hospedagem.mjs";
+
+const vercel = hospedagem.lerVercel();
+
+// O mapa da "Sobre a Loja" (página pública e prévia do painel) embute o
+// embed clássico do Google: o src em maps.google.com REDIRECIONA (301) para
+// https://www.google.com/maps/embed?origin=mfe&pb=... — e a checagem de
+// frame-src vale para CADA salto do redirect da navegação. Sem o destino
+// aqui, o iframe morre com ERR_BLOCKED_BY_RESPONSE (quadro cinza no celular,
+// 20/09/2026). A lista é FECHADA e comparada token a token: ampliar origem
+// aqui deve ser decisão explícita, não efeito colateral de edição da CSP.
+// Cartão pelo app (26/09/2026): os três últimos são o desafio 3-D Secure (a
+// URL do banco vem num domínio do Mercado Pago/Mercado Livre do país) —
+// ver vercel-headers-cartao-online.test.ts.
+const FRAME_SRC_APROVADO = [
+  "https://maps.google.com",
+  "https://www.google.com/maps/embed",
+  "https://*.mercadopago.com",
+  "https://*.mercadolibre.com",
+  "https://*.mercadopago.com.br",
+  "https://*.mercadolivre.com",
+  "https://*.mercadolivre.com.br",
+];
+
+function frameSrcDaCsp(csp: string): string[] {
+  const diretiva = csp
+    .split(";")
+    .map((parte) => parte.trim())
+    .find((parte) => parte.startsWith("frame-src "));
+  if (!diretiva) return [];
+  return diretiva.split(/\s+/).slice(1);
+}
+
+describe("frame-src permite o destino real do embed do mapa, e só ele", () => {
+  it("a CSP do bloco global tem EXATAMENTE a lista aprovada de frames", () => {
+    const csp: string =
+      hospedagem.cabecalhosDeFuncao(vercel)["Content-Security-Policy"];
+    expect(frameSrcDaCsp(csp)).toEqual(FRAME_SRC_APROVADO);
+  });
+
+  it("a tradução para o _headers do Cloudflare Pages repete a mesma lista", () => {
+    const texto: string = hospedagem.headers(vercel);
+    const linha = texto
+      .split("\n")
+      .find((l) => l.startsWith("  Content-Security-Policy:"));
+    expect(linha).toBeTruthy();
+    expect(frameSrcDaCsp(linha!)).toEqual(FRAME_SRC_APROVADO);
+  });
+
+  // Guarda: COEP removido em 26/09/2026 (decisão do dono) por travar o Card
+  // Payment Brick sem prova de que o Mercado Pago serve os iframes de Secure
+  // Fields com COEP + Cross-Origin-Resource-Policy: cross-origin. O atributo
+  // credentialless nos iframes do mapa continua (é inofensivo sem o COEP do
+  // app, só muda o iframe para um contexto sem cookies) — ver
+  // sobre-a-loja-iframe-credentialless.test.tsx.
+  it("COEP não volta sem decisão documentada do dono", () => {
+    const cabecalhos = hospedagem.cabecalhosDeFuncao(vercel);
+    expect(cabecalhos["Cross-Origin-Embedder-Policy"]).toBeUndefined();
+  });
+});

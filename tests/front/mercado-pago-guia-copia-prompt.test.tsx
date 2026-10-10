@@ -16,10 +16,13 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const writeText = vi.fn(async () => undefined);
+const { leitura } = vi.hoisted(() => ({ leitura: { valor: null as unknown } }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    functions: { invoke: vi.fn(async () => ({ data: null, error: null })) },
+    functions: {
+      invoke: vi.fn(async () => ({ data: leitura.valor, error: null })),
+    },
   },
 }));
 
@@ -39,7 +42,16 @@ import { MercadoPagoSection } from "@/components/admin/settings/MercadoPagoSecti
 import {
   PASSOS_DO_GUIA,
   PROMPT_PARA_AGENTE_MP,
+  montarPromptParaAgenteMp,
+  urlDeNotificacoesDoWebhook,
 } from "@/components/admin/settings/mercado-pago-conteudo";
+import { lerSupabaseUrl } from "@/lib/env-valores";
+
+// Peça 28: a tela monta o prompt com o endereço de notificações desta loja
+// (o mesmo caminho que ela usa) — o teste compara com a MESMA montagem.
+const PROMPT_NA_TELA = montarPromptParaAgenteMp({
+  urlDeNotificacoes: urlDeNotificacoesDoWebhook(lerSupabaseUrl()),
+});
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -74,12 +86,44 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    leitura.valor = null;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
       configurable: true,
     });
+  });
+
+  it("G5b — pagamento ligado sem assinatura exibe ao lojista que sem ela o app não libera", async () => {
+    leitura.valor = {
+      configurado: true,
+      public_key: "APP_USR-publica-falsa-de-teste",
+      mascara_token: "••••9999",
+      mascara_webhook: null,
+      ultimo_teste: { conectado: true, quando: new Date().toISOString() },
+      pix_ligado: true,
+      public_key_na_loja: true,
+    };
+    raiz = createRoot(hospedeiro);
+    await act(async () => {
+      raiz.render(<MercadoPagoSection />);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    const chaves = botaoPorTexto("Suas chaves");
+    await act(async () => {
+      chaves.click();
+    });
+    // H6: a dica usa o nome da loja para a chave ("Senha dos avisos"), o
+    // mesmo do rótulo do campo — não "assinatura".
+    expect(document.body.textContent).toContain(
+      "Sem a senha dos avisos da sua loja, o pagamento pelo app não é liberado",
+    );
+    expect(document.body.textContent).toContain(
+      "a chave global do app não substitui a sua",
+    );
   });
 
   afterEach(async () => {
@@ -103,13 +147,12 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     const itens = document.body.querySelectorAll("ol li");
     expect(itens.length).toBe(PASSOS_DO_GUIA.length);
     expect(itens.length).toBe(5);
-    // o primeiro passo é abrir o app do MP; o último é voltar, colar, salvar e testar
+    // o primeiro passo é abrir o app do MP; o último é voltar, colar e salvar
+    // (o teste e a liberação são automáticos — 30/09/2026)
     expect(document.body.textContent).toContain("Abra o app do Mercado Pago");
-    expect(document.body.textContent).toContain("salve e teste");
+    expect(document.body.textContent).toContain("cole as três chaves e salve");
     // o prompt pronto é visível para quem vai copiar
-    expect(document.body.textContent).toContain(
-      PROMPT_PARA_AGENTE_MP.slice(0, 40),
-    );
+    expect(document.body.textContent).toContain(PROMPT_NA_TELA.slice(0, 40));
   });
 
   it("G3 — copiar manda o texto exato da constante e mostra 'Copiado!'", async () => {
@@ -131,24 +174,22 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     });
 
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText).toHaveBeenCalledWith(PROMPT_PARA_AGENTE_MP);
+    expect(writeText).toHaveBeenCalledWith(PROMPT_NA_TELA);
     expect(botaoPorTexto("Copiado!")).toBeTruthy();
   });
 
-  // Peça 27 (15/09): o campo "Chave de notificações (opcional)" da tela não
-  // era ensinado em lugar nenhum. O prompt agora pede ao agente o passo a
-  // passo leigo de onde copiar essa chave, e o guia diz que ela é OPCIONAL —
-  // o Pix funciona sem ela (o teste real do dono foi feito sem ela).
-  it("G4 e G5 — chave de notificações opcional: o prompt ensina onde copiar e o guia diz que pode ficar para depois", async () => {
-    // G4 — o PROMPT copiável menciona a chave de notificações como opcional
-    // e pede ao agente o caminho exato (área de Webhooks) para copiá-la.
+  // A política atual do Pix exige a assinatura da própria loja. O guia
+  // precisa dizer isso antes de sugerir que o interruptor abra pagamentos.
+  it("G4 e G5 — chave própria obrigatória para Pix no prompt, guia e formulário", async () => {
     const promptMinusculo = PROMPT_PARA_AGENTE_MP.toLowerCase();
     expect(promptMinusculo).toContain("chave de notificações");
-    expect(promptMinusculo).toContain("opcional");
+    expect(promptMinusculo).toContain("obrigatória para receber pelo app");
+    expect(promptMinusculo).not.toContain("obrigatória para o pix");
+    expect(promptMinusculo).not.toContain("o pix está pronto");
     expect(promptMinusculo).toContain("webhook");
-    expect(promptMinusculo).toContain("pix já funciona sem ela");
+    expect(promptMinusculo).toContain("testar conexão não valida a assinatura");
+    expect(promptMinusculo).not.toContain("pix já funciona sem ela");
 
-    // G5 — o guia NA TELA diz o mesmo: pode deixar vazio e colar depois.
     raiz = createRoot(hospedeiro);
     await act(async () => {
       raiz.render(<MercadoPagoSection />);
@@ -157,9 +198,92 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
       await new Promise((r) => setTimeout(r, 10));
     });
     await abrirGuia();
-    const tela = document.body.textContent ?? "";
-    expect(tela).toContain("Chave de notificações (opcional)");
-    expect(tela).toContain("pode deixar vazio e colar depois");
-    expect(tela).toContain("já funciona sem ela");
+    expect(document.body.textContent).toContain("Assinatura secreta");
+    const chaves = botaoPorTexto("Suas chaves");
+    // Abrir, não alternar: com pendência a camada já abre sozinha (H6).
+    if (chaves.getAttribute("aria-expanded") !== "true") {
+      await act(async () => {
+        chaves.click();
+      });
+    }
+    expect(document.body.textContent).toContain(
+      "Senha dos avisos (Chave de notificações) — obrigatória para receber pelo app",
+    );
+    expect(document.body.textContent).toContain(
+      "Sem a senha dos avisos da sua loja, o pagamento pelo app não é liberado",
+    );
+  });
+
+  // Peça 28 (17/09): o dono pediu um prompt que diga ao agente do MP com
+  // QUEM ele fala (lojista leigo), o que precisa sair da conversa, como
+  // guiar e tirar dúvidas, e que ensine a assinatura no final das chaves,
+  // antes de ligar o Pix — com o endereço REAL de notificações desta loja.
+  it("G6 — o prompt guia as três chaves e não declara o Pix pronto sem assinatura", () => {
+    const url = "https://exemplo.supabase.co/functions/v1/webhook-mercadopago";
+    const comUrl = montarPromptParaAgenteMp({ urlDeNotificacoes: url });
+    const semUrl = montarPromptParaAgenteMp({ urlDeNotificacoes: null });
+    for (const prompt of [comUrl, semUrl]) {
+      const p = prompt.toLowerCase();
+      // quem fala e o que o app usa
+      expect(p).toContain("não sou programador");
+      expect(p).toContain("checkout api");
+      // o que precisa sair: as duas credenciais e a assinatura da loja
+      expect(p).toContain("public key de produção");
+      expect(p).toContain("access token de produção");
+      expect(p).toContain("credenciais de teste não me servem agora");
+      expect(p).toContain("ativar credenciais de produção");
+      expect(p).toContain("assinatura secreta");
+      // como guiar: um passo por vez, linguagem simples, dúvidas no meio
+      expect(p).toContain("um passo por vez");
+      expect(p).toContain("palavra técnica");
+      expect(p).toContain("pergunta no meio");
+      // a assinatura vem após o Access Token, mas antes de ligar o Pix
+      const iChaves = p.indexOf("access token de produção");
+      const iNoFinal = p.indexOf("no final: configure a chave de notificações");
+      expect(iNoFinal).toBeGreaterThan(iChaves);
+      expect(p).toContain(
+        "sem a assinatura da minha loja, o pix não pode ser cobrado",
+      );
+      expect(p).not.toContain("pix já funciona sem ela");
+      // segurança
+      expect(p).toContain("secretas");
+      expect(p).toContain("nem colar aqui nesta conversa");
+      // nunca vaza um valor indefinido para o texto
+      expect(prompt).not.toMatch(/undefined|null|\{\{/);
+    }
+    // com endereço conhecido, o prompt manda colar EXATAMENTE ele
+    expect(comUrl).toContain(
+      `colar exatamente este endereço no campo da URL de produção: ${url}`,
+    );
+    // sem endereço, pede ao lojista em vez de inventar
+    expect(semUrl).toContain("eu te passo quando você pedir");
+    expect(semUrl).not.toContain("https://");
+    // a referência estática é a versão sem endereço
+    expect(PROMPT_PARA_AGENTE_MP).toBe(semUrl);
+  });
+
+  it("G7 — o endereço de notificações nasce da URL do Supabase, e só dela", () => {
+    expect(
+      urlDeNotificacoesDoWebhook("https://cafkrminfnokvgjqtkle.supabase.co"),
+    ).toBe(
+      "https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago",
+    );
+    expect(urlDeNotificacoesDoWebhook("https://x.supabase.co/")).toBe(
+      "https://x.supabase.co/functions/v1/webhook-mercadopago",
+    );
+    expect(urlDeNotificacoesDoWebhook("http://127.0.0.1:54321")).toBe(
+      "http://127.0.0.1:54321/functions/v1/webhook-mercadopago",
+    );
+    for (const ruim of [
+      "",
+      "   ",
+      null,
+      undefined,
+      "supabase.co",
+      "https://",
+      "https://x.supabase.co/rest/v1",
+    ]) {
+      expect(urlDeNotificacoesDoWebhook(ruim)).toBeNull();
+    }
   });
 });

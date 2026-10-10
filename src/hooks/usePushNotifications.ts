@@ -1,5 +1,6 @@
 import { chavePublicaVapid } from "@/config/configuracaoDaLoja";
 import { useAuth } from "@/hooks/useAuth";
+import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -19,12 +20,66 @@ import { toast } from "sonner";
 // fechado sem escolha nenhuma (permissão ainda PENDENTE) — mandar essa
 // pessoa para configurações mostra "Perguntar", nada aparentemente errado,
 // e ela nunca descobre que basta tocar de novo.
+//
+// Uma TERCEIRA causa de permissão só aparece DEPOIS de `requestPermission()`
+// responder "granted": o SITE tem permissão, mas o APARELHO não deixa
+// (`permissao_do_aparelho`). Achado de 28/09/2026 no Android: o site já
+// tinha permissão no Chrome, então `requestPermission()` respondeu "granted"
+// sem perguntar nada; o app instalado pela tela de início (uma WebAPK, que o
+// Android trata como um app separado) estava com Notificações "Sem
+// permissão" nas configurações do celular, e `subscribe()` lançou
+// `AbortError: Registration failed - permission denied`. Página web nenhuma
+// consegue ligar essa chave — o que se pode fazer é dizer onde ela está.
 type PushSubscribeErrorOrigin =
   | "permissao_negada"
   | "permissao_pendente"
+  | "permissao_do_aparelho"
   | "navegador"
   | "banco"
   | "sem_conta";
+
+// Instalado = roda sozinho, sem a barra do navegador. É o mesmo par de sinais
+// que `App.tsx` e `AdminLayout.tsx` já usam (`display-mode: standalone`, e
+// `navigator.standalone` do iOS), SEM o `?standalone` da URL que os dois
+// aceitam: ele força o layout standalone e não prova instalação nenhuma (vale
+// em qualquer aba), e aqui a resposta escolhe entre "deste app" e "do
+// navegador" — numa aba com `?standalone` dizer "deste app" mandaria a pessoa
+// procurar um app que ela não abriu.
+// Sem `matchMedia` (ambiente que não implementa, como o jsdom) não há
+// prova de instalação: vale "aba", e o tratamento do erro não quebra.
+function estaComoAppInstalado(): boolean {
+  if (
+    typeof globalThis.matchMedia === "function" &&
+    globalThis.matchMedia("(display-mode: standalone)").matches
+  ) {
+    return true;
+  }
+  return (
+    typeof navigator !== "undefined" &&
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+// `NotAllowedError`, ou `AbortError` cujo texto diz "permission denied" — o
+// segundo é o que um Chrome real lançou no caso medido (o nome é genérico e
+// a causa só aparece na mensagem); em outros casos o nome vem como o
+// primeiro. Sem diferenciar maiúsculas: o texto é da engine e não é
+// contrato. Só conta como bloqueio do APARELHO com a permissão do SITE já
+// "granted" (lida agora, não a de antes): com o site sem permissão a causa é
+// outra e "o aparelho está bloqueando" seria palpite — cai em "navegador",
+// como qualquer outro erro de `subscribe()`.
+// Duck typing em vez de `instanceof`: só `name` e `message` importam.
+function falhouPorPermissaoDoAparelho(erro: unknown): boolean {
+  if (Notification.permission !== "granted") return false;
+  if (typeof erro !== "object" || erro === null) return false;
+  const { name, message } = erro as { name?: unknown; message?: unknown };
+  if (name === "NotAllowedError") return true;
+  return (
+    name === "AbortError" &&
+    typeof message === "string" &&
+    message.toLowerCase().includes("permission denied")
+  );
+}
 
 // A frase de "banco" honra o que o `postgrest-js` realmente garante: ele
 // devolve `{ error }` em vez de lançar (`shouldThrowOnError: false`), então
@@ -61,6 +116,30 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       // deles deixaria a frase falsa na outra tela — "de novo" já aponta
       // para o botão que a pessoa acabou de tocar.
       return "Toque de novo e escolha Permitir quando o navegador perguntar.";
+    case "permissao_do_aparelho":
+      // Duas frases porque o caminho é outro: o app instalado tem entrada
+      // PRÓPRIA na lista de Apps do aparelho; na aba, quem tem a chave é o
+      // navegador. "Aparelho" e não "celular": um tablet com o app instalado
+      // cai neste mesmo ramo, e é a palavra que a frase de `permissao_negada`
+      // já usa. Nenhuma cita Android ou iOS pelo nome, e a mesma regra do
+      // caso acima vale: sem nome de botão (esta frase sai no banner e no
+      // painel, com controles de nomes diferentes — "toque de novo" já aponta
+      // para o que a pessoa acabou de tocar).
+      //
+      // O nome do app é o do MANIFESTO (`branding.appName` — a mesma fotografia
+      // que preparou o HTML e o manifesto): é com ele que o app aparece na
+      // lista de Apps do aparelho, e é lá que a pessoa vai procurá-lo. Não se
+      // adivinha o nome do navegador (o user agent de um Chromium qualquer
+      // diz "Chrome"): "o seu navegador" é verdade em qualquer um.
+      //
+      // Medido no Android (Chrome e WebAPK). No iOS NÃO foi medido: lá a
+      // permissão é do próprio web app instalado, e o Safari fora do modo
+      // instalado nem expõe `PushManager` — que este ramo não chegue ao iOS é
+      // inferência. Se chegar, a entrada "Apps" das Configurações só existe do
+      // iOS 18 em diante.
+      return estaComoAppInstalado()
+        ? `O aparelho está bloqueando as notificações deste app. Abra as configurações do aparelho → Apps → ${nomeDaLoja()} → Notificações, ative e toque de novo.`
+        : "O aparelho está bloqueando as notificações do navegador. Abra as configurações do aparelho → Apps → o seu navegador → Notificações, ative e toque de novo.";
     case "navegador":
       return "Não foi possível ativar as notificações neste navegador. Tente novamente ou use um navegador atualizado.";
     case "banco":
@@ -101,6 +180,45 @@ function mensagemPorOrigem(error: unknown): string {
   return "Não foi possível se inscrever para notificações. Tente novamente.";
 }
 
+// As duas origens de PERMISSÃO cuja frase é uma INSTRUÇÃO de vários passos
+// ("abra as configurações → Apps → … → Notificações, ative e toque de novo").
+// O `<Toaster>` do app fecha todo aviso em 2500 ms
+// (`src/components/ui/sonner.tsx`), e a pessoa não chega ao fim da frase
+// antes de ela sumir. `permissao_pendente` é uma linha só ("Toque de novo…")
+// e segue no padrão, como as demais origens.
+function ehInstrucaoDePermissao(error: unknown): boolean {
+  return (
+    error instanceof PushSubscribeError &&
+    (error.origin === "permissao_negada" ||
+      error.origin === "permissao_do_aparelho")
+  );
+}
+
+// `duration` passado no PRÓPRIO `toast.error` vence o do `<Toaster>` (sonner:
+// `toast.duration || duration do Toaster`), então o resto do app não muda.
+const DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS = 8000;
+
+// O guard de suporte precisa olhar as TRÊS peças que este hook toca — o
+// container (`navigator.serviceWorker.ready`), `Notification` (permissão) e
+// `PushManager` (inscrição). O teste ANTERIOR era `"serviceWorker" in
+// navigator && "PushManager" in globalThis`, e o operador `in` só prova que
+// a PROPRIEDADE existe, não que ela vale algo: `src/main.tsx` define
+// `navigator.serviceWorker = undefined` como proteção de sandbox em
+// headless/playwright/`disable_sw` (a propriedade continua existindo), o
+// hook acreditava no suporte e o `await navigator.serviceWorker.ready`
+// explodia como rejeição não tratada (pageerror no Chromium headless).
+// Existir = ser `undefined`/`null` NÃO conta como existir.
+function suporteRealDePush(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const container: ServiceWorkerContainer | undefined = navigator.serviceWorker;
+  return (
+    container !== undefined &&
+    container !== null &&
+    typeof Notification !== "undefined" &&
+    typeof globalThis.PushManager !== "undefined"
+  );
+}
+
 export function usePushNotifications() {
   const { user } = useAuth();
   const [subscription, setSubscription] = useState<PushSubscription | null>(
@@ -111,26 +229,76 @@ export function usePushNotifications() {
     useState<NotificationPermission>("default");
 
   useEffect(() => {
+    // Desmontou no meio da sonda (StrictMode remonta, rota troca): as
+    // promessas de `ready`/`getSubscription` continuam vivas e os
+    // `setState` delas cairiam num componente que já não existe.
+    let desmontado = false;
+
     const checkSupport = async () => {
-      const supported =
-        "serviceWorker" in navigator && "PushManager" in globalThis;
+      const supported = suporteRealDePush();
       setIsSupported(supported);
 
-      if (supported) {
-        setPermission(Notification.permission);
-        const registration = await navigator.serviceWorker.ready;
+      if (!supported) return;
+
+      setPermission(Notification.permission);
+
+      let registration: ServiceWorkerRegistration;
+      try {
+        registration = await navigator.serviceWorker.ready;
+      } catch {
+        // `ready` rejeita quando o contexto não consegue entregar um
+        // registro de Service Worker (headless com SW bloqueado, política
+        // do navegador). Sem inscrição alcançável, push NÃO funciona aqui:
+        // manter `isSupported === true` seria falso positivo — o banner
+        // ofereceria um botão que só saberia falhar. Desmarcar o suporte é
+        // o estado honesto, e a próxima montagem sonda de novo.
+        if (!desmontado) {
+          setIsSupported(false);
+          setSubscription(null);
+        }
+        return;
+      }
+
+      try {
         const sub = await registration.pushManager.getSubscription();
-        setSubscription(sub);
+        if (!desmontado) setSubscription(sub);
+      } catch {
+        // A SONDA falhou; o estado da inscrição é DESCONHECIDO, e
+        // desconhecido não é prova de falta de suporte — `subscribe()`
+        // re-sonda com a própria tolerância a falha antes de decidir
+        // qualquer coisa. Sem inscrição conhecida = `null`, sem rejeição
+        // não tratada.
+        if (!desmontado) setSubscription(null);
       }
     };
 
     checkSupport();
+    return () => {
+      desmontado = true;
+    };
   }, []);
 
   const subscribe = useCallback(async () => {
     if (!isSupported) return;
 
     try {
+      // `isSupported` é fotografia do INSTANTE da montagem; o toque pode
+      // chegar muito depois (banner à espera de permissão, aba aberta há
+      // dias) e o mundo muda: `src/main.tsx` desliga o serviceWorker em
+      // contexto headless, navegadores/extensões desativam SW em runtime.
+      // Sem esta revalidação, o `await navigator.serviceWorker.ready`
+      // mais abaixo lançaria TypeError cru — e o pedido de PERMISSÃO já
+      // teria sido consumido antes de descobrir que não há push nenhum.
+      // Mesma família "navegador": não é decisão da pessoa, nem do banco.
+      if (!suporteRealDePush()) {
+        throw new PushSubscribeError(
+          "navegador",
+          new Error(
+            "Suporte a Service Worker/Push ausente no ato da inscrição",
+          ),
+        );
+      }
+
       // Escala etapa 3 (11/09/2026): a chave VAPID deixou de ser assada no
       // build e passa a vir da ficha da loja (banco de cada loja).
       const vapidPublicKey = chavePublicaVapid();
@@ -232,8 +400,17 @@ export function usePushNotifications() {
         // Causa heterogênea (MDN: NotAllowedError, AbortError,
         // NotSupportedError… cada engine com o seu texto) — família
         // "navegador", frase genérica e honesta, não uma prescrição que só
-        // serve para um subtipo.
-        throw new PushSubscribeError("navegador", subscribeError);
+        // serve para um subtipo. A EXCEÇÃO é a única que se reconhece com
+        // certeza: o site tem permissão e o aparelho a nega (ver
+        // `falhouPorPermissaoDoAparelho`). Nada é gravado nem desfeito aqui —
+        // o erro acontece antes do `upsert` e a permissão do site fica como
+        // está.
+        throw new PushSubscribeError(
+          falhouPorPermissaoDoAparelho(subscribeError)
+            ? "permissao_do_aparelho"
+            : "navegador",
+          subscribeError,
+        );
       }
 
       // `user` já foi garantido acima, antes de pedir a permissão —
@@ -303,7 +480,14 @@ export function usePushNotifications() {
       return newSubscription;
     } catch (error: any) {
       console.error("Error subscribing to push:", error);
-      toast.error(mensagemPorOrigem(error));
+      const mensagem = mensagemPorOrigem(error);
+      if (ehInstrucaoDePermissao(error)) {
+        toast.error(mensagem, {
+          duration: DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS,
+        });
+      } else {
+        toast.error(mensagem);
+      }
       throw error;
     }
   }, [isSupported, user]);

@@ -11,8 +11,24 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+/**
+ * T3-2 (23/09/2026): o estado visual da barra — decidido pela função pura
+ * `estadoDaBarraDeFrete` (CartView.tsx), nunca por `shipping === 0` aqui
+ * dentro. "liberado" (grátis de verdade), "meta" (falta valor, mostra
+ * "Faltam" e o catálogo "Atinja a Meta"), "gratis_so_na_mais_barata" (meta
+ * batida mas a opção escolhida não é a mais barata — alcance nacional
+ * "mais_barata") e "meta_atingida_sem_gratis" (meta batida, opção escolhida
+ * cobra, e o alcance não é "mais_barata" — cotação nacional desatualizada,
+ * caso raro).
+ */
+export type EstadoDaBarraDeFrete =
+  | "liberado"
+  | "meta"
+  | "gratis_so_na_mais_barata"
+  | "meta_atingida_sem_gratis";
+
 interface ShippingProgressProps {
-  shipping: number;
+  estado: EstadoDaBarraDeFrete;
   savings: number;
   progressPercent: number;
   amountToFree: number;
@@ -24,7 +40,7 @@ interface ShippingProgressProps {
 }
 
 export function ShippingProgress({
-  shipping,
+  estado,
   savings,
   progressPercent,
   amountToFree,
@@ -45,17 +61,68 @@ export function ShippingProgress({
     }));
   };
 
+  // Rede de segurança (achado CartView-328): quem monta este componente
+  // (CartView) já filtra pela regra de frete via `deveExibirMetaDeFreteGratis`,
+  // mas o componente não pode DEPENDER de o chamador lembrar disso. Uma meta
+  // de valor genuinamente ativa nunca chega com os dois zerados ao mesmo
+  // tempo: 0% só acontece enquanto falta valor (`amountToFree` > 0), e faltar
+  // R$ 0,00 só acontece com a meta batida (progresso 100%, e mesmo assim o
+  // grátis já garantido entra aqui com progressPercent=100 — CartView.tsx).
+  // 0%/R$ 0,00 juntos só significa "não existe meta nenhuma configurada".
+  if (progressPercent === 0 && amountToFree === 0) {
+    return null;
+  }
+
+  // T3-2 (23/09/2026, plano estrategias-de-frete-local-e-nacional): o texto
+  // e a cor deixam de ler `shipping === 0` — dois defeitos vinham dele: (1)
+  // retirada na loja sempre chega com preço 0 mesmo sem a meta batida
+  // (comemorava "Liberado" cedo demais); (2) meta batida com alcance
+  // "mais_barata" e a opção escolhida NÃO sendo a mais barata (freteGratis
+  // falso, mas `amountToFree` zerado) dizia "Faltam R$ 0,00" para um frete
+  // que a cliente vai pagar. `estado` é a fonte única, decidida pela função
+  // pura `estadoDaBarraDeFrete` (CartView.tsx) — este componente só
+  // renderiza o que ela mandou, sem reconstruir a decisão a partir do preço.
+  const liberado = estado === "liberado";
+  const mostraMeta = estado === "meta";
+
+  // REVISÃO Opus (BLOQUEIA 1, 23/09/2026): "Frete grátis na opção mais
+  // barata" mede ~270px em Inter e a coluna do título no celular de 375px
+  // tem ~221px — cortava para "FRETE GRÁTIS NA OPÇÃO MAI…" (`truncate`
+  // abaixo), sumindo exatamente a restrição e sugerindo que a opção
+  // ESCOLHIDA é grátis, o que o dono proibiu (contrato §3, CartView.tsx).
+  // Os títulos não-"liberado" agora entram pela restrição e cabem em
+  // ~200px (piso operável em teste, já que jsdom não mede layout: ~24
+  // caracteres — ver o teste de comprimento em
+  // carrinho-barra-de-frete-fala-da-opcao-escolhida.test.tsx).
+  const titulo =
+    estado === "liberado"
+      ? "Frete Grátis Liberado"
+      : estado === "gratis_so_na_mais_barata"
+        ? "Grátis só na mais barata"
+        : estado === "meta_atingida_sem_gratis"
+          ? "Meta atingida"
+          : "Meta Frete Grátis";
+
+  const subtitulo =
+    estado === "liberado"
+      ? "Seu carrinho já ganhou entrega grátis!"
+      : estado === "gratis_so_na_mais_barata"
+        ? "A opção escolhida não entra no grátis"
+        : estado === "meta_atingida_sem_gratis"
+          ? "Recalcule o frete para aplicar o grátis"
+          : "Benefício exclusivo";
+
   return (
     <div
       className={cn(
         "mx-4 sm:mx-6 mt-4 mb-2 p-4 sm:p-5 rounded-[2rem] relative overflow-hidden transition-all duration-700 border",
-        shipping === 0
+        liberado
           ? "bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 border-emerald-100 shadow-[0_8px_30px_-10px_rgba(16,185,129,0.15)]"
           : "bg-white border-zinc-200/60 shadow-[0_8px_30px_-10px_rgba(0,0,0,0.06)]",
       )}
     >
       {/* Animated Orbs for Premium Vibe */}
-      {shipping === 0 && (
+      {liberado && (
         <div className="pointer-events-none absolute right-0 top-0 size-48 -translate-y-1/2 translate-x-1/2 rounded-full bg-emerald-400/10 blur-3xl" />
       )}
 
@@ -67,12 +134,12 @@ export function ShippingProgress({
           transition={{ duration: 0.25, ease: "easeOut" }}
           className={cn(
             "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm transition-colors duration-500",
-            shipping === 0
+            liberado
               ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-emerald-500/30"
               : "bg-zinc-100 text-zinc-900 border border-zinc-200",
           )}
         >
-          {shipping === 0 ? (
+          {liberado ? (
             <SparklesIcon className="size-5 drop-shadow-md" />
           ) : (
             <Truck className="size-5" />
@@ -83,20 +150,27 @@ export function ShippingProgress({
           <h3
             className={cn(
               "text-sm font-black uppercase tracking-tight truncate transition-colors",
-              shipping === 0 ? "text-emerald-700" : "text-zinc-900",
+              liberado ? "text-emerald-700" : "text-zinc-900",
             )}
           >
-            {shipping === 0 ? "Frete Grátis Liberado" : "Meta Frete Grátis"}
+            {titulo}
           </h3>
+          {/* REVISÃO Opus (BLOQUEIA 2, 23/09/2026): `text-zinc-400` sobre
+              branco mede 2,56:1 (mesmo valor REPROVADO em
+              order-list-contraste-do-card.test.tsx:9) — abaixo do mínimo AA
+              (4,5:1). Os estados "gratis_so_na_mais_barata" e
+              "meta_atingida_sem_gratis" carregam informação de dinheiro (a
+              opção escolhida cobra) que precisa ser lida; `zinc-600` (mesmo
+              tom aplicado a todo estado não-liberado, por simplicidade —
+              inclusive o "Benefício exclusivo" decorativo do estado
+              "meta") resolve para os três. */}
           <p
             className={cn(
               "text-[10px] font-bold uppercase tracking-widest mt-0.5",
-              shipping === 0 ? "text-emerald-700" : "text-zinc-400",
+              liberado ? "text-emerald-700" : "text-zinc-600",
             )}
           >
-            {shipping === 0
-              ? "Seu carrinho já ganhou entrega grátis!"
-              : "Benefício exclusivo"}
+            {subtitulo}
           </p>
         </div>
 
@@ -118,12 +192,12 @@ export function ShippingProgress({
           <span
             className={cn(
               "text-sm font-black tracking-tighter transition-colors",
-              shipping === 0 ? "text-emerald-700" : "text-zinc-900",
+              liberado ? "text-emerald-700" : "text-zinc-900",
             )}
           >
             {Math.floor(progressPercent)}%
           </span>
-          {shipping > 0 && (
+          {mostraMeta && (
             <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
               Faltam{" "}
               <strong className="font-black tracking-tight text-zinc-900">
@@ -136,7 +210,7 @@ export function ShippingProgress({
         <div
           className={cn(
             "h-2.5 w-full rounded-full overflow-hidden p-[2px]",
-            shipping === 0 ? "bg-emerald-100" : "bg-zinc-100",
+            liberado ? "bg-emerald-100" : "bg-zinc-100",
           )}
         >
           <motion.div
@@ -146,7 +220,7 @@ export function ShippingProgress({
             style={{ originX: 0 }}
             className={cn(
               "h-full w-full rounded-full relative transition-colors duration-1000",
-              shipping === 0
+              liberado
                 ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
                 : isNearlyThere
                   ? "bg-amber-400"
@@ -157,7 +231,7 @@ export function ShippingProgress({
       </div>
 
       {/* Free Shipping Catalog Section (Compact) */}
-      {shipping > 0 && freeShippingProducts.length > 0 && !deferred && (
+      {mostraMeta && freeShippingProducts.length > 0 && !deferred && (
         <div className="relative z-10 mt-5 border-t border-dashed border-zinc-100 pt-4 duration-1000 animate-in fade-in slide-in-from-bottom-4">
           <div className="mb-3 flex items-center justify-between px-1">
             <h4 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-zinc-500">

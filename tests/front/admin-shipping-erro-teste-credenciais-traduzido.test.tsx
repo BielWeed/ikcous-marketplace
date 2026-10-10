@@ -13,35 +13,46 @@
 // (`TransportadorasSection`). A tradução do erro vem junto, e ESTE arquivo
 // continua sendo a prova — agora contra o componente novo.
 //
+// RELEASE 1.5.7 v2: a leitura inicial passou a ser `ler_configuracao_frete`
+// pela edge — o mock abaixo responde essa ação para a seção carregar
+// normalmente; o alvo do arquivo (tradução do erro NOMEADO do SDK
+// `@supabase/functions-js`, distinto da tradução por MOTIVO de
+// transportadoras-teste-de-credenciais.test.tsx, que cobre R1-8) continua o
+// mesmo.
+//
 // Modelo estrutural copiado de admin-shipping-tela-nao-promete-cobranca.test.tsx.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockConfig, invoke } = vi.hoisted(() => ({
-  mockConfig: {
-    shippingProvider: "melhor_envio" as "flat_fee" | "melhor_envio" | "frenet",
-    enabledShippingMethods: ["sedex", "pac"] as string[],
-  },
+const { invoke } = vi.hoisted(() => ({
   invoke: vi.fn(),
 }));
 
-vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: mockConfig,
-    isLoaded: true,
-    updateConfig: vi.fn(),
-  }),
-}));
-
-vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+const RESPOSTA_ME_LIGADO = {
+  success: true,
+  modo: "legado",
+  ligados: ["melhor_envio"],
+  provedores: {
+    melhor_envio: { tem_chave: false, sandbox: false, servicos: null },
+    superfrete: { tem_chave: false, sandbox: false, servicos: null },
+    frenet: { tem_chave: false, sandbox: false, servicos: null },
+  },
+};
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => Promise.resolve({ data: [], error: null }),
     }),
-    functions: { invoke: (...args: unknown[]) => invoke(...args) },
+    functions: {
+      invoke: (nome: string, opcoes: any) => {
+        if (opcoes?.body?.action === "ler_configuracao_frete") {
+          return Promise.resolve({ data: RESPOSTA_ME_LIGADO, error: null });
+        }
+        return invoke(nome, opcoes);
+      },
+    },
   },
 }));
 
@@ -74,6 +85,10 @@ describe("TransportadorasSection — erro ao testar credenciais de frete sai tra
     vi.restoreAllMocks();
   });
 
+  // Mira o cartão da FRENET (terceiro, sem sandbox nem e-mail obrigatório —
+  // Melhor Envio e SuperFrete ganharam e-mail de contato exigido em cada
+  // consulta na R3-7, o que tornaria este teste genérico de tradução de
+  // erro refém de mais um campo que não é o foco aqui).
   async function abrirSecaoEDigitarToken() {
     const { TransportadorasSection } = await import(
       "@/components/admin/settings/TransportadorasCard"
@@ -85,9 +100,9 @@ describe("TransportadorasSection — erro ao testar credenciais de frete sai tra
       await esperarMicrotarefas();
     });
 
-    const campoToken = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
+    const campoToken = [
+      ...hospedeiro.querySelectorAll('input[type="password"]'),
+    ][2] as HTMLInputElement;
     expect(campoToken).toBeTruthy();
     const setter = Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
@@ -100,9 +115,9 @@ describe("TransportadorasSection — erro ao testar credenciais de frete sai tra
   }
 
   function clicarTestar() {
-    const botaoTestar = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.textContent?.trim() === "Testar",
-    ) as HTMLButtonElement;
+    const botaoTestar = Array.from(
+      hospedeiro.querySelectorAll("button"),
+    ).filter((b) => b.textContent?.trim() === "Testar")[2] as HTMLButtonElement;
     expect(botaoTestar).toBeTruthy();
     return act(async () => {
       botaoTestar.click();

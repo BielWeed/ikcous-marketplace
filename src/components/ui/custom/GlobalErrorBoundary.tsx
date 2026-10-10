@@ -21,7 +21,7 @@ interface State {
    * não versão nova. Mostra tela honesta de offline em vez de recarregar em
    * loop sob a mentira "Instalando uma nova versão". */
   chunkSemInternet: boolean;
-  /** Prazo da tela "Atualizando o Aplicativo" vencido: revela a saída manual
+  /** Prazo da tela "Recuperando o aplicativo" vencido: revela a saída manual
    * (botão) para quem a recarga automática não salvou. */
   saidaChunkLiberada: boolean;
 }
@@ -205,12 +205,16 @@ export class GlobalErrorBoundary extends Component<Props, State> {
         return (
           <div className="flex size-full flex-col items-center justify-center bg-[#09090b] p-6 text-center antialiased">
             <div className="size-10 animate-spin rounded-full border-3 border-white/10 border-t-admin-gold" />
+            {/* Peça 22/09: erro de módulo não PROVA versão nova — na maior
+                parte das vezes é rede/reload de aba velha pós-deploy. A tela
+                fala em RECUPERAÇÃO (o que a escada faz de fato: ciclo do SW,
+                purge seletivo), não em "instalando uma nova versão". */}
             <h1 className="mt-6 text-sm font-black uppercase tracking-[0.2em] text-white">
-              Atualizando o Aplicativo
+              Recuperando o aplicativo
             </h1>
             <p className="mt-2 max-w-xs text-xs leading-relaxed text-zinc-400">
-              Instalando uma nova versão do marketplace. Isso levará apenas um
-              instante...
+              Uma parte da loja não carregou. Estamos recuperando o aplicativo —
+              isso levará apenas um instante...
             </p>
             {/* Região viva sempre montada: o leitor de tela precisa dela no ar
                 ANTES de o conteúdo aparecer para conseguir anunciá-lo. */}
@@ -221,7 +225,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
               {this.state.saidaChunkLiberada && (
                 <>
                   <p className="mt-6 max-w-xs text-xs leading-relaxed text-zinc-400">
-                    A atualização está demorando mais do que o normal. Você pode
+                    A recuperação está demorando mais do que o normal. Você pode
                     recarregar a página — seu carrinho e seu login continuam
                     salvos.
                   </p>
