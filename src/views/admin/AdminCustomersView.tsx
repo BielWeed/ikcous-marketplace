@@ -25,6 +25,7 @@ import { useAnalytics } from "@/hooks/useAnalytics";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { formatarInteiro } from "@/lib/crm";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -262,14 +263,14 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         // PAINEL-14: `?? null` + "—" — `|| 0` diz "zero clientes" quando a
         // RPC falhou; o travessão não afirma nada. Os cartões vizinhos
         // ("Ticket Médio") já usam este padrão.
-        value: globalStats?.total_customers ?? "—",
+        value: formatarInteiro(globalStats?.total_customers),
         icon: Users,
         accent: "text-admin-gold",
         subValue: "Base de Clientes",
       },
       {
-        label: "Novos (30d)",
-        value: globalStats?.new_customers_30d ?? "—",
+        label: "Novos (30 dias)",
+        value: formatarInteiro(globalStats?.new_customers_30d),
         icon: TrendingUp,
         accent: "text-emerald-500",
         subValue: "Crescimento",
@@ -361,7 +362,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         // afirmaria que a loja nunca vendeu. A cadeia termina no traço, e não
         // em `0`, para cobrir também o resumo restaurado do cache em disco sem
         // o bloco `executive` — que existe, mas não traz contagem nenhuma.
-        value: analyticsStats?.executive?.totalOrders ?? "—",
+        value: formatarInteiro(analyticsStats?.executive?.totalOrders),
         icon: ShoppingBag,
         accent: "text-amber-500",
         subValue: "Pedidos",
@@ -812,7 +813,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <TrendingUp className="size-4 text-purple-500" />
-                  Novos Clientes (30d)
+                  Novos Clientes (30 dias)
                 </div>
                 <p className="text-xs text-zinc-400">
                   {/* Laudo 0109 (A11): o número é perfis CRIADOS nos
@@ -949,7 +950,7 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
           </span>
           <div className="flex size-10 shrink-0 items-center justify-center rounded-[0.8rem] border border-zinc-800/80 bg-gradient-to-b from-zinc-900 to-zinc-950 shadow-inner transition-colors group-hover:border-admin-gold/50 group-hover:bg-black group-hover:text-admin-gold sm:size-11">
             <span className="text-xs font-black text-white sm:text-sm">
-              {customer.orders_count || 0}
+              {formatarInteiro(customer.orders_count || 0)}
             </span>
           </div>
         </div>
@@ -1152,7 +1153,7 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
             Pedidos
           </span>
           <span className="mt-0.5 text-xs font-black text-admin-gold">
-            {customer.orders_count || 0}
+            {formatarInteiro(customer.orders_count || 0)}
           </span>
         </div>
       </div>

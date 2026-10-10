@@ -64,6 +64,18 @@ import {
 import { memo, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
+// J2-D: com `display: block` (o bloco do celular) o navegador apaga o papel de
+// tabela do leitor de tela, então os papéis voltam por atributo explícito. O
+// espalhamento (`{...papel("row")}`) é de propósito: escrito como `role="row"`
+// no JSX, as regras de a11y do eslint e do biome chamam de "redundante" o que
+// aqui é a única forma de manter a semântica. (Mesmo helper do histórico de
+// consultas de frete, J5.)
+const papel = (
+  role: "table" | "rowgroup" | "row" | "columnheader" | "cell",
+) => ({
+  role,
+});
+
 interface Profile {
   id: string;
   full_name: string | null;
@@ -861,16 +873,19 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </div>
               </div>
 
-              {/* Cart Standby Widget */}
+              {/* Resumo do carrinho: conta PRODUTOS diferentes (as linhas do
+                  carrinho), a mesma conta do selo e da aba — três números
+                  diferentes para a mesma coisa (4 itens / 3 produtos / 4)
+                  faziam a lojista desconfiar de todos. */}
               <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-green-500/50">
                 <div className="flex min-w-0 flex-col">
                   <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
-                    Carrinho (Standby)
+                    Carrinho do cliente
                   </span>
                   <span className="text-xl font-black tracking-tight text-green-400 sm:text-2xl">
-                    {cartItems.reduce((s, i) => s + i.quantity, 0)}{" "}
+                    {cartItems.length}{" "}
                     <span className="ml-0.5 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
-                      itens
+                      {cartItems.length === 1 ? "produto" : "produtos"}
                     </span>
                   </span>
                 </div>
@@ -903,8 +918,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <span className="hidden sm:inline">Carrinho</span>
                     <span className="sm:hidden">Carr.</span>
                     <span className="ml-1 text-[11px] opacity-70">
-                      ({cartItems.reduce((acc, item) => acc + item.quantity, 0)}
-                      )
+                      ({cartItems.length})
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
@@ -1073,33 +1087,70 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                             <ShoppingCart className="size-6 text-zinc-700" />
                           </div>
                           <p className="text-sm font-bold text-zinc-500">
-                            Funil Vazio
+                            Carrinho vazio
                           </p>
                           <p className="mt-1 text-xs text-zinc-600">
-                            Este cliente não retém ativos pre-checkout.
+                            Este cliente não tem nada no carrinho agora.
                           </p>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto">
-                          <Table>
-                            <TableHeader className="border-b border-zinc-800/80 bg-zinc-950/60 hover:bg-zinc-950/60">
-                              <TableRow className="border-none hover:bg-transparent">
-                                <TableHead className="px-6 py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                                  Identificador do Ativo
-                                </TableHead>
-                                <TableHead className="py-4 text-center text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                                  Densidade
-                                </TableHead>
-                                <TableHead className="py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                                  Precificação Base
-                                </TableHead>
-                                <TableHead className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                                  Estimativa (BRL)
-                                </TableHead>
-                                <TableHead className="px-6 py-4" />
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody className="divide-y divide-zinc-800/30">
+                        <div className="sm:overflow-x-auto">
+                          {/* J2-D (celular): abaixo de `sm:` cada item do
+                              carrinho é um BLOCO (produto e lixeira em cima;
+                              quantidade e preço embaixo, com o total à
+                              direita) e a tabela não rola na lateral; de
+                              `sm:` para cima volta a ser tabela. Mesmo molde
+                              do histórico de consultas de frete (J5):
+                              `display: block` tira a semântica de tabela do
+                              leitor de tela, por isso os papéis ARIA estão
+                              escritos, e os títulos das colunas ficam só para
+                              leitor de tela (`sr-only`) no celular, onde cada
+                              valor traz o próprio rótulo. */}
+                          <table
+                            {...papel("table")}
+                            className="block w-full text-left text-sm sm:table"
+                          >
+                            <thead
+                              {...papel("rowgroup")}
+                              className="sr-only border-b border-zinc-800/80 bg-zinc-950/60 sm:not-sr-only sm:table-header-group"
+                            >
+                              <tr {...papel("row")} className="sm:table-row">
+                                <th
+                                  {...papel("columnheader")}
+                                  className="px-6 py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                                >
+                                  Produto
+                                </th>
+                                <th
+                                  {...papel("columnheader")}
+                                  className="py-4 text-center text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                                >
+                                  Quantidade
+                                </th>
+                                <th
+                                  {...papel("columnheader")}
+                                  className="py-4 text-left text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                                >
+                                  Preço
+                                </th>
+                                <th
+                                  {...papel("columnheader")}
+                                  className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                                >
+                                  Total
+                                </th>
+                                <th
+                                  {...papel("columnheader")}
+                                  className="px-6 py-4"
+                                >
+                                  <span className="sr-only">Remover</span>
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody
+                              {...papel("rowgroup")}
+                              className="block sm:table-row-group sm:divide-y sm:divide-zinc-800/30"
+                            >
                               {cartItems.map((item, idx) => {
                                 const hasVariantId = !!item.variantId;
                                 const variant = hasVariantId
@@ -1118,13 +1169,17 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                 );
 
                                 return (
-                                  <TableRow
+                                  <tr
                                     key={idx}
-                                    className="border-none border-zinc-800 transition-colors hover:bg-zinc-800/40"
+                                    {...papel("row")}
+                                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-t border-zinc-800/30 px-4 py-3 transition-colors first:border-t-0 hover:bg-zinc-800/40 sm:table-row sm:border-t-0 sm:p-0"
                                   >
-                                    <TableCell className="px-6 py-3">
-                                      <div className="flex items-center gap-3">
-                                        <Avatar className="size-10 rounded-lg border border-zinc-800 shadow-xl">
+                                    <td
+                                      {...papel("cell")}
+                                      className="col-start-1 row-start-1 block min-w-0 sm:table-cell sm:px-6 sm:py-3"
+                                    >
+                                      <div className="flex min-w-0 items-center gap-3">
+                                        <Avatar className="size-10 shrink-0 rounded-lg border border-zinc-800 shadow-xl">
                                           <AvatarImage
                                             src={item.product.images[0]}
                                             className="object-cover"
@@ -1133,8 +1188,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                             ?
                                           </AvatarFallback>
                                         </Avatar>
-                                        <div className="flex min-w-0 flex-col">
-                                          <span className="w-[130px] truncate text-xs font-bold leading-tight text-white sm:w-[220px]">
+                                        <div className="flex min-w-0 flex-1 flex-col sm:flex-none">
+                                          <span className="truncate text-xs font-bold leading-tight text-white sm:w-[220px]">
                                             {item.product.name}
                                           </span>
                                           {variant && (
@@ -1150,21 +1205,42 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                           )}
                                         </div>
                                       </div>
-                                    </TableCell>
-                                    <TableCell className="py-3 text-center">
-                                      <div className="inline-flex size-7 items-center justify-center rounded border border-zinc-800 bg-zinc-950 text-xs font-black text-zinc-300">
+                                    </td>
+                                    <td
+                                      {...papel("cell")}
+                                      className="col-start-1 row-start-2 block text-xs text-zinc-400 sm:table-cell sm:py-3 sm:text-center"
+                                    >
+                                      <span className="sm:hidden">
+                                        Quantidade:{" "}
+                                      </span>
+                                      <span className="font-black text-zinc-300 sm:inline-flex sm:size-7 sm:items-center sm:justify-center sm:rounded sm:border sm:border-zinc-800 sm:bg-zinc-950">
                                         {item.quantity}
-                                      </div>
-                                    </TableCell>
-                                    <TableCell className="py-3 text-xs font-bold text-zinc-400">
+                                      </span>
+                                    </td>
+                                    <td
+                                      {...papel("cell")}
+                                      className="col-start-1 row-start-3 block text-xs font-bold text-zinc-400 sm:table-cell sm:py-3"
+                                    >
+                                      <span className="font-normal sm:hidden">
+                                        Preço:{" "}
+                                      </span>
                                       {formatCurrency(unitPrice)}
-                                    </TableCell>
-                                    <TableCell className="px-6 py-3 text-right text-xs font-black tracking-tight text-green-500">
+                                    </td>
+                                    <td
+                                      {...papel("cell")}
+                                      className="col-start-2 row-span-2 row-start-2 block self-center text-right text-xs font-black tracking-tight text-green-500 sm:table-cell sm:px-6 sm:py-3"
+                                    >
+                                      <span className="block text-[11px] font-bold uppercase tracking-wide text-zinc-400 sm:hidden">
+                                        Total
+                                      </span>
                                       {formatCurrency(
                                         unitPrice * item.quantity,
                                       )}
-                                    </TableCell>
-                                    <TableCell className="px-6 py-3 text-right">
+                                    </td>
+                                    <td
+                                      {...papel("cell")}
+                                      className="col-start-2 row-start-1 block text-right sm:table-cell sm:px-6 sm:py-3"
+                                    >
                                       <Button
                                         variant="ghost"
                                         size="icon"
@@ -1175,23 +1251,30 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                           )
                                         }
                                         disabled={isOffline}
-                                        className="size-8 rounded-lg text-zinc-500 hover:bg-red-500/10 hover:text-red-500 disabled:pointer-events-none disabled:opacity-40"
+                                        className="size-11 rounded-lg text-zinc-500 hover:bg-red-500/10 hover:text-red-500 disabled:pointer-events-none disabled:opacity-40"
                                         title="Remover do Carrinho"
                                       >
                                         <Trash2 className="size-4" />
                                       </Button>
-                                    </TableCell>
-                                  </TableRow>
+                                    </td>
+                                  </tr>
                                 );
                               })}
-                              <TableRow className="border-t border-green-500/20 bg-gradient-to-r from-transparent via-green-500/5 to-green-500/10 hover:bg-transparent">
-                                <TableCell
+                              <tr
+                                {...papel("row")}
+                                className="flex items-center justify-between gap-3 border-t border-green-500/20 bg-gradient-to-r from-transparent via-green-500/5 to-green-500/10 p-4 sm:table-row sm:p-0"
+                              >
+                                <td
+                                  {...papel("cell")}
                                   colSpan={4}
-                                  className="py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                                  className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400 sm:table-cell sm:py-4 sm:text-right"
                                 >
-                                  Total Previsível do Retido
-                                </TableCell>
-                                <TableCell className="bg-gradient-to-r from-green-400 to-green-600 bg-clip-text px-6 py-4 text-right text-lg font-black tracking-tighter text-transparent">
+                                  Total estimado
+                                </td>
+                                <td
+                                  {...papel("cell")}
+                                  className="block bg-gradient-to-r from-green-400 to-green-600 bg-clip-text text-right text-lg font-black tracking-tighter text-transparent sm:table-cell sm:px-6 sm:py-4"
+                                >
                                   {formatCurrency(
                                     cartItems.reduce((acc, item) => {
                                       const variant = item.variantId
@@ -1206,10 +1289,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       );
                                     }, 0),
                                   )}
-                                </TableCell>
-                              </TableRow>
-                            </TableBody>
-                          </Table>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
