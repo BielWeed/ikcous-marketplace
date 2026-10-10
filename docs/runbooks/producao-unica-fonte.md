@@ -599,7 +599,13 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `rollback-manual-20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql` e
         `rollback-manual-20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql`), cada um
         pelo `aplicar-migrations.yml` (secao Rollback > Banco: apaga a linha da versao do ledger na
-        mesma transacao). Sao independentes entre si (qualquer ordem), devolvem cada corpo ao de antes
+        mesma transacao), NUNCA por `psql` direto (o cabecalho do rollback-manual diz `psql -1 -f`;
+        nao siga): o ledger ficaria com a versao e o portao pula o lote sem pedir a `17a`. Com o
+        ledger completo e o lote ja no SHA que a loja serve, o portao nem chega a decidir o lote
+        (`publicar-release.mjs`: `!faltam.length && !exigeProva`, sem consulta nenhuma): o front novo
+        e promovido sobre o banco velho, `AdminProductsView` diz "So com custo" enquanto o banco volta
+        a somar o valor de venda de produto sem custo (o lucro do estoque sai inflado) e nenhum alarme
+        dispara. Os tres sao independentes entre si (qualquer ordem), devolvem cada corpo ao de antes
         byte a byte e nao tocam dado. TODOS vem ANTES do rollback da `20261199000000` (que recusa
         enquanto houver redefinicao posterior no ar). Depois deles a `17b` volta a ser POSITIVA e a
         `17a` NEGATIVA (provado em `tests/banco/estoque-do-painel-portao-viva.cjs`).
