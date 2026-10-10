@@ -114,3 +114,60 @@ describe("cupons — o que não muda", () => {
     }
   });
 });
+
+// Redesenho de 10/10/2026 — as mini-caixas do bilhete na LISTA seguem o desenho
+// do cartão de métrica (KpiCard): casca com brilho no topo, rótulo em frase
+// normal 12px cinza 300 (não mais "uppercase miúdo cinza 500") e valor branco
+// tabular. Só visual: os textos "Desconto", "Mínimo Compra", "Aproveitamento"
+// e "Expira em:" continuam os mesmos.
+describe("cupons — mini-caixas do bilhete no desenho novo do cartão de métrica", () => {
+  const fonte = semComentarios(ler(LISTA));
+
+  for (const rotulo of ["Desconto", "Mínimo Compra", "Aproveitamento"]) {
+    it(`o rótulo "${rotulo}" é 12px semibold cinza 300, sem uppercase`, () => {
+      const m = new RegExp(
+        `<(?:p|span) className="([^"]*)">\\s*${rotulo}\\s*</(?:p|span)>`,
+      ).exec(fonte);
+      expect(m, `rótulo ${rotulo}`).not.toBeNull();
+      const classes = m?.[1] ?? "";
+      expect(classes).toMatch(/\btext-xs\b/);
+      expect(classes).toMatch(/\bfont-semibold\b/);
+      expect(classes).toMatch(/\btext-zinc-300\b/);
+      expect(classes).not.toMatch(/\buppercase\b/);
+    });
+  }
+
+  it("as caixas Desconto e Mínimo Compra têm a casca do KpiCard", () => {
+    const caixas = linhasCom(
+      ler(LISTA),
+      "rounded-2xl border border-white/10 bg-zinc-900/70",
+    );
+    expect(caixas).toHaveLength(2);
+    for (const linha of caixas) {
+      expect(linha).toMatch(/\bbg-gradient-to-b\b/);
+      expect(linha).toMatch(/\bfrom-white\/\[0\.06\]/);
+    }
+  });
+
+  it("o valor do mínimo é branco e tabular (era cinza 400)", () => {
+    // O <p> que abre logo antes de `formatCurrency(coupon.minPurchase`.
+    const antes = fonte.slice(
+      0,
+      fonte.indexOf("formatCurrency(coupon.minPurchase"),
+    );
+    const abertura = antes.slice(antes.lastIndexOf('<p className="'));
+    const classes = /^<p className="([^"]*)"/.exec(abertura)?.[1] ?? "";
+    expect(classes).toMatch(/\btext-white\b/);
+    expect(classes).toMatch(/\btabular-nums\b/);
+    expect(classes).not.toMatch(/\btext-zinc-400\b/);
+  });
+
+  it('"Expira em:" e o contador de usos não usam cinza 500/600', () => {
+    const bloco = fonte.slice(
+      fonte.indexOf("Expira em"),
+      fonte.indexOf("usos"),
+    );
+    expect(bloco.length).toBeGreaterThan(0);
+    expect(bloco).not.toMatch(/\btext-zinc-[567]00\b/);
+  });
+});

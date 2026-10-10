@@ -438,7 +438,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         {Array.from({ length: 10 }).map((_, i) => (
           <div
             key={i}
-            className="group relative flex min-h-[170px] animate-pulse flex-col justify-between rounded-3xl border border-white/5 bg-zinc-950/40 p-3.5 backdrop-blur-md sm:p-5"
+            className="group relative flex min-h-[170px] animate-pulse flex-col justify-between rounded-2xl border border-white/10 bg-zinc-900/70 p-3.5 backdrop-blur-md sm:p-5"
           >
             <div className="flex size-full flex-col">
               <div className="relative flex w-full items-start justify-between">
@@ -886,7 +886,7 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
               className={`rounded-md border px-2 py-0.5 text-[11px] font-black uppercase tracking-widest sm:text-[11px] ${
                 customer.role === "admin"
                   ? "border-admin-gold/50 bg-admin-gold text-black"
-                  : "border-zinc-800/80 bg-zinc-950 text-zinc-500 shadow-inner"
+                  : "border-zinc-800/80 bg-zinc-950 text-zinc-400 shadow-inner"
               }`}
             >
               {customer.role === "admin" && (
@@ -896,10 +896,10 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
             </Badge>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <span className="rounded border border-white/5 bg-black/20 px-1.5 py-0.5 font-mono text-[11px] font-bold tracking-widest text-zinc-600">
+            <span className="rounded border border-white/5 bg-black/20 px-1.5 py-0.5 font-mono text-[11px] font-bold tracking-widest text-zinc-400">
               #{customer.id.slice(0, 8).toUpperCase()}
             </span>
-            <span className="truncate text-[11px] font-bold uppercase tracking-widest text-zinc-600 md:hidden">
+            <span className="truncate text-[11px] font-bold uppercase tracking-widest text-zinc-400 md:hidden">
               Desde {new Date(customer.created_at).toLocaleDateString("pt-BR")}
             </span>
           </div>
@@ -935,11 +935,13 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
       <div className="grid grid-cols-2 justify-between gap-4 md:col-span-3 md:flex md:items-center md:justify-end">
         {/* Desktop: LTV | Mobile: Col 1 */}
         <div className="flex flex-col items-start gap-1.5 md:w-full md:items-end">
-          <span className="text-[11px] font-black uppercase tracking-wide text-zinc-600 md:hidden">
+          <span className="text-xs font-semibold tracking-wide text-zinc-300 md:hidden">
             Total já comprado
           </span>
-          <div className="flex min-w-[100px] items-center gap-1.5 rounded-xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 px-3 py-2 text-sm font-black text-white shadow-inner transition-colors group-hover:border-admin-gold/30 md:min-w-0 xl:text-base">
-            <span className="text-[11px] leading-none text-zinc-500">R$</span>
+          <div className="flex min-w-[100px] items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent px-3 py-2 text-sm font-black tabular-nums text-white transition-colors group-hover:border-admin-gold/30 md:min-w-0 xl:text-base">
+            <span className="text-[11px] font-semibold leading-none text-zinc-400">
+              R$
+            </span>
             <span className="leading-none">
               {Number(customer.total_spent || 0).toLocaleString("pt-BR", {
                 minimumFractionDigits: 2,
@@ -950,10 +952,10 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
 
         {/* Desktop: Orders | Mobile: Col 2 */}
         <div className="flex flex-col items-end gap-1.5 md:items-center">
-          <span className="text-right text-[11px] font-black uppercase tracking-wide text-zinc-600 md:hidden">
+          <span className="text-right text-xs font-semibold tracking-wide text-zinc-300 md:hidden">
             Pedidos
           </span>
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-[0.8rem] border border-zinc-800/80 bg-gradient-to-b from-zinc-900 to-zinc-950 shadow-inner transition-colors group-hover:border-admin-gold/50 group-hover:bg-black group-hover:text-admin-gold sm:size-11">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent transition-colors group-hover:border-admin-gold/50 group-hover:bg-black group-hover:text-admin-gold sm:size-11">
             <span className="text-xs font-black text-white sm:text-sm">
               {formatarInteiro(customer.orders_count || 0)}
             </span>
@@ -1039,10 +1041,10 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
       }}
       onMouseEnter={onPrefetch}
       onTouchStart={onPrefetch}
-      className="content-visibility-auto group relative flex min-h-[170px] cursor-pointer flex-col justify-between rounded-3xl border border-white/5 bg-zinc-950/40 p-3.5 backdrop-blur-md transition-all duration-500 hover:scale-[1.01] hover:border-admin-gold/30 hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] active:scale-[0.98] sm:p-5"
+      className="content-visibility-auto group relative flex min-h-[170px] cursor-pointer flex-col justify-between rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5 backdrop-blur-md transition-all duration-500 hover:scale-[1.01] hover:border-admin-gold/30 hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] active:scale-[0.98] sm:p-5"
     >
       {/* Glow Background */}
-      <div className="pointer-events-none absolute inset-0 z-0 rounded-3xl bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 transition-all duration-700 group-hover:from-admin-gold/5 group-hover:to-transparent" />
+      <div className="pointer-events-none absolute inset-0 z-0 rounded-2xl bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 transition-all duration-700 group-hover:from-admin-gold/5 group-hover:to-transparent" />
 
       <div className="relative z-10 flex size-full flex-col">
         {/* Header Row: Avatar and Action Dropdown */}
@@ -1114,12 +1116,12 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
                 "px-1.5 py-0.5 rounded-md text-[11px] font-black tracking-widest uppercase border",
                 customer.role === "admin"
                   ? "bg-admin-gold text-black border-admin-gold/50"
-                  : "bg-zinc-950 text-zinc-500 border-zinc-800/80 shadow-inner",
+                  : "bg-zinc-950 text-zinc-400 border-zinc-800/80 shadow-inner",
               )}
             >
               {rotuloDoPapel(customer.role)}
             </Badge>
-            <span className="rounded border border-white/5 bg-black/20 px-1 py-0.5 font-mono text-[11px] font-bold text-zinc-600">
+            <span className="rounded border border-white/5 bg-black/20 px-1 py-0.5 font-mono text-[11px] font-bold text-zinc-400">
               #{customer.id.slice(0, 8).toUpperCase()}
             </span>
           </div>
@@ -1128,12 +1130,12 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
         {/* Email & Phone */}
         <div className="mt-3 space-y-1 text-[11px] text-zinc-400">
           <div className="flex items-center gap-1.5 truncate">
-            <Mail className="size-3 shrink-0 text-zinc-600" />
+            <Mail className="size-3 shrink-0 text-zinc-400" />
             <span className="truncate">{customer.email || "N/A"}</span>
           </div>
           {customer.phone && (
             <div className="flex items-center gap-1.5 truncate">
-              <Phone className="size-3 shrink-0 text-zinc-600" />
+              <Phone className="size-3 shrink-0 text-zinc-400" />
               <span className="truncate">{customer.phone}</span>
             </div>
           )}
@@ -1141,23 +1143,29 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
       </div>
 
       {/* Bottom KPIs: LTV & Pedidos */}
-      <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 border-t border-white/5 pt-3 xs:grid-cols-[minmax(0,1fr)_auto] xs:items-end">
+      {/* Rodapé no desenho do cartão de métrica (10/10/2026): cartãozinho com
+          brilho no topo, rótulo em frase normal 12px cinza 300, números
+          brancos e tabulares. O rótulo cede (`min-w-0 break-words`) e a
+          grade empilha abaixo de 480px, para o valor nunca sair do cartão. */}
+      <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-white/[0.04] bg-gradient-to-b from-white/[0.06] to-transparent p-3 xs:grid-cols-[minmax(0,1fr)_auto] xs:items-end">
         <div className="flex min-w-0 flex-col">
-          <span className="min-w-0 break-words text-[11px] font-black uppercase tracking-wide text-zinc-600">
+          <span className="min-w-0 break-words text-xs font-semibold tracking-wide text-zinc-300">
             Total já comprado
           </span>
-          <span className="mt-0.5 text-xs font-black text-white">
-            <span className="mr-0.5 text-[11px] text-zinc-500">R$</span>
+          <span className="mt-0.5 break-words text-base font-black tabular-nums text-white">
+            <span className="mr-0.5 text-xs font-semibold text-zinc-400">
+              R$
+            </span>
             {Number(customer.total_spent || 0).toLocaleString("pt-BR", {
               minimumFractionDigits: 2,
             })}
           </span>
         </div>
         <div className="flex flex-col items-end">
-          <span className="text-[11px] font-black uppercase tracking-wide text-zinc-600">
+          <span className="text-xs font-semibold tracking-wide text-zinc-300">
             Pedidos
           </span>
-          <span className="mt-0.5 text-xs font-black text-admin-gold">
+          <span className="mt-0.5 text-base font-black tabular-nums text-admin-gold">
             {formatarInteiro(customer.orders_count || 0)}
           </span>
         </div>

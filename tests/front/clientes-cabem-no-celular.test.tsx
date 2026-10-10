@@ -324,6 +324,33 @@ describe("Clientes no celular (J4)", () => {
     expect(cartao!.contains(rotuloPedidos!.nextElementSibling)).toBe(true);
   });
 
+  it("(b2) o rodapé de KPIs do cartão compacto usa o desenho novo do cartão de métrica", async () => {
+    h.modo = "compact";
+    await abrirLista();
+
+    const rotuloTotal = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Total já comprado",
+    );
+    expect(rotuloTotal).toBeDefined();
+    const linha = rotuloTotal!.parentElement?.parentElement;
+    // O rodapé virou um cartãozinho (casca com borda de 10%), não só uma
+    // linha com filete em cima.
+    expect(linha?.className).toContain("rounded-xl");
+    expect(linha?.className).toContain("border-white/10");
+
+    const rotuloPedidos = [...linha!.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Pedidos",
+    );
+    expect(rotuloPedidos).toBeDefined();
+    for (const rotulo of [rotuloTotal!, rotuloPedidos!]) {
+      // Rótulo em frase normal, 12px, cinza 300 — não uppercase miúdo cinza 600.
+      expect(rotulo.className).toContain("text-xs");
+      expect(rotulo.className).toContain("text-zinc-300");
+      expect(rotulo.className).not.toContain("uppercase");
+      expect(rotulo.className).not.toContain("text-zinc-600");
+    }
+  });
+
   it("o menu diz 'Ver ficha do cliente' e não mais 'Ver Perfil Elite'", async () => {
     h.modo = "compact";
     await abrirLista();

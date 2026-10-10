@@ -295,14 +295,14 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                   >
                     <span
                       aria-hidden="true"
-                      className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                      className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-zinc-400 transition-all duration-300 group-hover:border-white/20 group-hover:text-white"
                     >
                       <HelpCircle className="size-4.5" />
                     </span>
                   </button>
                 </AdminPageHeader>
               </div>
-              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                 Campanhas
                 <span className="size-1 animate-pulse rounded-full bg-emerald-500/50" />
                 <span className="text-emerald-400">Otimizar Conversões</span>
@@ -367,7 +367,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                       <span
                         className={`inline-block size-1.5 rounded-full ${config.enableCoupons ? "animate-pulse bg-emerald-500" : "bg-zinc-600"}`}
                       />
-                      <span className="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+                      <span className="text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
                         {config.enableCoupons ? "Ativo" : "Inativo"}
                       </span>
                     </div>
@@ -415,7 +415,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-3 pt-3 border-t border-white/5 text-[11px] leading-relaxed text-zinc-500 text-left space-y-1.5">
+                    <div className="mt-3 pt-3 border-t border-white/5 text-[11px] leading-relaxed text-zinc-400 text-left space-y-1.5">
                       <p>
                         Ativando esta opção, seus clientes poderão digitar
                         códigos de cupom (ex: GANHE10) no checkout para receber
@@ -521,7 +521,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
               <h3 className="text-xl font-black uppercase tracking-tight text-white">
                 Nenhum cupom ativo
               </h3>
-              <p className="mt-2 max-w-sm text-center text-xs font-semibold leading-relaxed text-zinc-500">
+              <p className="mt-2 max-w-sm text-center text-xs font-semibold leading-relaxed text-zinc-400">
                 Crie cupons promocionais para incentivar as vendas no seu
                 catálogo e aumentar suas conversões.
               </p>
@@ -590,7 +590,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                             {copiedCode === coupon.code ? (
                               <Check className="size-3.5 shrink-0 text-emerald-400" />
                             ) : (
-                              <Copy className="size-3.5 shrink-0 text-zinc-500 transition-colors group-hover/code:text-white" />
+                              <Copy className="size-3.5 shrink-0 text-zinc-400 transition-colors group-hover/code:text-white" />
                             )}
                           </button>
 
@@ -620,7 +620,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                           </div>
                         </div>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-zinc-500">
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-zinc-400">
                           <Sparkles className="size-3 text-amber-500" />
                           {coupon.type === "percentage"
                             ? "Desconto Percentual"
@@ -643,21 +643,24 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                       <div className="mt-4 flex flex-1 flex-col justify-between pt-6">
                         <div>
                           <div className="mb-4 grid grid-cols-2 gap-4">
-                            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-3.5">
-                              <p className="mb-1 text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                            {/* Mini-caixas no desenho do KpiCard (10/10/2026):
+                                casca com brilho no topo, rótulo em frase
+                                normal 12px cinza 300, valor branco tabular. */}
+                            <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5">
+                              <p className="mb-1 text-xs font-semibold text-zinc-300">
                                 Desconto
                               </p>
-                              <p className="text-xl font-black italic text-white">
+                              <p className="break-words text-xl font-black italic tabular-nums text-white">
                                 {coupon.type === "percentage"
                                   ? `${coupon.value ?? 0}% OFF`
                                   : `R$ ${Number(coupon.value ?? 0).toFixed(2)}`}
                               </p>
                             </div>
-                            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-3.5 text-right">
-                              <p className="mb-1 text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                            <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5 text-right">
+                              <p className="mb-1 text-xs font-semibold text-zinc-300">
                                 Mínimo Compra
                               </p>
-                              <p className="text-xl font-black text-zinc-400">
+                              <p className="break-words text-xl font-black tabular-nums text-white">
                                 {/* Achado 15 da auditoria de 20/08/2026:
                                     `.toFixed(0)` arredondava R$ 49,90 para
                                     "R$ 50" — valor que não existe, e que
@@ -672,10 +675,10 @@ export const AdminCouponsView = memo(function AdminCouponsView({
 
                           {coupon.validUntil && (
                             <div className="mb-4 flex items-center gap-2 px-1">
-                              <Calendar className="size-3.5 text-zinc-500" />
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                              <Calendar className="size-3.5 text-zinc-400" />
+                              <span className="text-xs font-semibold text-zinc-400">
                                 Expira em:{" "}
-                                <span className="font-extrabold text-zinc-300">
+                                <span className="font-bold tabular-nums text-white">
                                   {new Date(
                                     coupon.validUntil,
                                   ).toLocaleDateString("pt-BR")}
@@ -689,14 +692,14 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         <div className="mb-6 space-y-2">
                           <div className="flex items-center justify-between px-1">
                             <div className="flex items-center gap-1.5">
-                              <Users className="size-3.5 text-zinc-500" />
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                              <Users className="size-3.5 text-zinc-400" />
+                              <span className="text-xs font-semibold text-zinc-300">
                                 Aproveitamento
                               </span>
                             </div>
-                            <span className="text-[11px] font-black text-white">
+                            <span className="text-xs font-black tabular-nums text-white">
                               {coupon.usageCount}{" "}
-                              <span className="text-zinc-600">
+                              <span className="font-semibold text-zinc-400">
                                 / {coupon.usageLimit || "∞"} usos
                               </span>
                             </span>
