@@ -230,7 +230,7 @@ export const HistoricoCotacoesSection = memo(
             >
               <thead
                 {...papel("rowgroup")}
-                className="sr-only sm:table-header-group"
+                className="sr-only sm:not-sr-only sm:table-header-group"
               >
                 <tr
                   {...papel("row")}
@@ -265,7 +265,7 @@ export const HistoricoCotacoesSection = memo(
                     >
                       <td
                         {...papel("cell")}
-                        className="col-start-1 row-start-1 block font-mono text-[11px] text-zinc-400 sm:table-cell sm:p-2.5"
+                        className="col-start-1 row-start-1 block whitespace-nowrap font-mono text-[11px] text-zinc-400 sm:table-cell sm:p-2.5"
                       >
                         {new Date(log.created_at).toLocaleString("pt-BR", {
                           day: "2-digit",

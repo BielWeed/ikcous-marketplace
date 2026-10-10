@@ -114,6 +114,11 @@ describe("HistoricoCotacoesSection — cabe no celular", () => {
     const cabecalho = hospedeiro.querySelector("thead");
     expect(cabecalho?.getAttribute("role")).toBe("rowgroup");
     expect(cabecalho?.classList.contains("sr-only")).toBe(true);
+    // `sm:table-header-group` só troca o display: o position:absolute/1px/clip
+    // do `sr-only` continuariam valendo no computador e esconderiam os títulos.
+    // `sm:not-sr-only` desfaz o esconderijo a partir de `sm:`.
+    expect(cabecalho?.classList.contains("sm:not-sr-only")).toBe(true);
+    expect(cabecalho?.classList.contains("sm:table-header-group")).toBe(true);
     expect(hospedeiro.querySelector("tbody")?.getAttribute("role")).toBe(
       "rowgroup",
     );
