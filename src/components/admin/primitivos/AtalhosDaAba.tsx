@@ -6,7 +6,35 @@ import {
   PORTAS_DO_PAINEL,
   type TelaDoPainel,
 } from "@/config/nomes-do-painel";
-import { ChevronRight } from "lucide-react";
+import {
+  BarChart3,
+  ChevronRight,
+  GalleryHorizontal,
+  ImageIcon,
+  Landmark,
+  type LucideIcon,
+  Megaphone,
+  MessageCircleQuestion,
+  Store,
+  Ticket,
+  Truck,
+  Undo2,
+} from "lucide-react";
+
+// Um ícone por porta: o selo dá forma ao botão e deixa a lista reconhecível
+// de relance. Porta sem ícone declarado aqui desenha só o texto (nunca quebra).
+const ICONES_DAS_PORTAS: Partial<Record<TelaDoPainel, LucideIcon>> = {
+  "admin-crm": BarChart3,
+  "admin-financeiro": Landmark,
+  "admin-devolucoes": Undo2,
+  "admin-coupons": Ticket,
+  "admin-qa": MessageCircleQuestion,
+  "admin-push": Megaphone,
+  "admin-about-store": Store,
+  "admin-banners": ImageIcon,
+  "admin-carousels": GalleryHorizontal,
+  "admin-shipping": Truck,
+};
 
 /** Contador de um atalho: entra no nome acessível ("Avisar clientes, 3 novos"). */
 export interface ContadorDoAtalho {
@@ -62,7 +90,7 @@ export function AtalhosDaAba({
   const visiveis = portas.filter((p) => !(funde && p === segundaDoPar));
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
       {visiveis.map((tela) => {
         const nome =
           funde && tela === primeiraDoPar
@@ -74,6 +102,8 @@ export function AtalhosDaAba({
           tela,
           funde && tela === primeiraDoPar ? [segundaDoPar] : [],
         );
+        // eslint-disable-next-line security/detect-object-injection -- chave tipada, não entrada do usuário
+        const Icone = ICONES_DAS_PORTAS[tela];
         const mostraContador = contador.valor > 0;
         const nomeAcessivel = mostraContador
           ? `${nome}, ${contador.valor}${contador.legenda ? ` ${contador.legenda}` : ""}`
@@ -84,9 +114,19 @@ export function AtalhosDaAba({
             type="button"
             aria-label={nomeAcessivel}
             onClick={() => onNavigate(tela)}
-            className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-left text-sm font-bold text-zinc-100 transition-colors hover:border-admin-gold/40 hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold"
+            className="group flex min-h-11 w-full items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
           >
-            <span className="min-w-0 truncate">{nome}</span>
+            {Icone && (
+              <span
+                aria-hidden="true"
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-gold/25 bg-admin-gold/10"
+              >
+                <Icone className="size-5 text-admin-gold" />
+              </span>
+            )}
+            <span className="min-w-0 flex-1 truncate text-[15px] font-bold leading-tight text-white">
+              {nome}
+            </span>
             <span className="flex shrink-0 items-center gap-2">
               {mostraContador && (
                 <span
@@ -98,7 +138,7 @@ export function AtalhosDaAba({
               )}
               <ChevronRight
                 aria-hidden="true"
-                className="size-4 text-zinc-400"
+                className="size-5 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold"
               />
             </span>
           </button>

@@ -52,20 +52,22 @@ const SETA_REVELADA =
   "sm:group-hover/carousel:opacity-100 sm:group-hover/carousel:pointer-events-auto sm:group-focus-within/carousel:opacity-100 sm:group-focus-within/carousel:pointer-events-auto";
 
 /**
- * Card COMPACTO (pedido do Gabriel de 02/09 à tarde: a faixa de métricas
- * ocupava um espaço enorme — card vertical de 128px de altura mínima para
- * mostrar UM número, com o carrossel mostrando só 4 por vez no desktop).
- * O dono virou a versão em grade e decidiu: carrossel fica, card encolhe.
- * Layout horizontal (ícone + rótulo em cima, valor grande na linha de
- * baixo) e slides mais densos — mais métricas visíveis na mesma largura.
+ * Cartão de métrica (redesenho de 10/10/2026: "cards horríveis de design").
+ * O desenho anterior escondia o ícone abaixo de 480px, tinha borda quase
+ * invisível (4%), rótulo em cinza 500 de 11px e valor de 15px — no celular
+ * virava texto solto sem hierarquia. Agora, em TODA largura:
+ *   - o ícone fica num selo no canto superior direito (nunca some; o rótulo
+ *     reserva a faixa dele com `pr-9`, então o valor usa a largura inteira);
+ *   - rótulo em frase normal, 12px semibold, cinza 300 (contraste AA);
+ *   - valor grande (22px no celular, 24px de 640px em diante), branco;
+ *   - subtítulo/rodapé 12px cinza 400, em linhas próprias;
+ *   - borda de 10% e leve brilho no topo, para o cartão ter forma no fundo preto.
  *
- * Altura: NATURAL, com piso igual ao do esqueleto (`ALTURA_MINIMA_DO_CARTAO`:
- * 100px no celular, 96px no computador). Rótulo, valor e subtítulo a 11px+
- * quebram em até 2 linhas (o rótulo, até 3 de 640px em diante, J2-B:
- * "DINHEIRO PARADO EM…" era cortado a 1280px) e por isso um cartão pode
- * passar do piso (medido: até ~107px no pior caso). Todos os cartões de uma
- * mesma faixa têm a MESMA altura (o slide estica, `h-full`); o texto nunca é
- * cortado nem desce de 11px.
+ * Altura: NATURAL, com piso igual ao do esqueleto (`ALTURA_MINIMA_DO_CARTAO`).
+ * Todos os cartões de uma mesma faixa têm a MESMA altura (o slide estica,
+ * `h-full`); o texto nunca é cortado nem desce de 11px. Cartão com conteúdo
+ * extra (barra de progresso das Perguntas, rodapé dos Cupons) cresce o
+ * necessário, com overflow escondido para nunca romper o desenho.
  */
 const KpiCard = memo(function KpiCard({
   stat,
@@ -77,56 +79,39 @@ const KpiCard = memo(function KpiCard({
   return (
     <div
       className={cn(
-        // Mesma altura na faixa inteira (o dono pediu "padronizada, uma não
-        // maior que a outra"), mas SEM travar a altura: o slide estica no
-        // flex do Embla (`h-full`), com o mesmo piso do esqueleto
-        // (`ALTURA_MINIMA_DO_CARTAO`). A altura é a natural do texto: rótulo
-        // (até 3 linhas de `sm:` em diante) e subtítulo (2) quebram, e travar
-        // a altura cortava o texto (decisão P-J4 reescrita, onda J). No computador o
-        // padding vertical é menor (`sm:py-2`) para devolver espaço ao
-        // texto. Card com conteúdo extra (barra de progresso das Perguntas,
-        // rodapé dos Cupons) cresce o necessário, com overflow escondido
-        // para nunca romper o desenho.
-        "group relative flex select-none items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg transition-colors duration-300 sm:gap-3 sm:py-2",
+        "group relative flex select-none flex-col justify-center overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5 shadow-lg transition-colors duration-300 sm:py-3",
         "h-full",
         ALTURA_MINIMA_DO_CARTAO,
-        stat.hoverBorder ||
-          "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.06)]",
+        stat.hoverBorder || "hover:border-admin-gold/30",
       )}
     >
       <div
         className={cn(
-          // Abaixo de 480px o ícone some: o texto ganha ~46px (de ~87 para ~135px).
-          "hidden size-9 shrink-0 items-center xs:flex justify-center rounded-xl border border-white/5 bg-zinc-950 shadow-inner transition-colors duration-300 group-hover:border-admin-gold/20",
+          "absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] transition-colors duration-300",
+          stat.iconBg,
           stat.accent,
         )}
       >
         <Icon
-          className={cn(
-            "size-4 shrink-0 transition-transform duration-500 group-hover:scale-110",
-            stat.iconClass,
-          )}
+          aria-hidden="true"
+          className={cn("size-4 shrink-0", stat.iconClass)}
         />
       </div>
 
-      <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 break-words text-[11px] font-black uppercase leading-tight tracking-[0.06em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400 sm:line-clamp-3 sm:tracking-[0.04em]">
+      <div className="min-w-0">
+        <p className="line-clamp-2 break-words pr-9 text-xs font-semibold leading-tight text-zinc-300">
           {stat.label}
         </p>
-        {/* Valor na linha INTEIRA (pedido do Gabriel, 02/09: o dado completo
-            não cabia — "R$ 1.31... / CAPITAL LIQ..." era valor e subtítulo
-            brigando pela mesma linha). Empilhado em 3 linhas dentro da
-            mesma altura: rótulo / valor / subtítulo. */}
-        <h3 className="truncate text-[15px] font-black tabular-nums leading-tight tracking-tighter text-white transition-colors duration-300 group-hover:text-admin-gold xs:text-base xs:leading-tight sm:text-lg sm:leading-tight">
+        <h3 className="mt-1.5 truncate text-[22px] font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
           {stat.value}
         </h3>
         {stat.subValue && (
-          <p className="line-clamp-2 break-words text-[11px] font-bold leading-tight text-zinc-600 opacity-80 transition-colors duration-300 group-hover:text-zinc-500">
+          <p className="mt-1.5 line-clamp-2 break-words text-xs font-medium leading-tight text-zinc-400">
             {stat.subValue}
           </p>
         )}
         {stat.footer && (
-          <p className="line-clamp-2 break-words text-[11px] font-bold leading-tight text-zinc-600 transition-colors duration-300 group-hover:text-zinc-500">
+          <p className="mt-1 line-clamp-2 break-words text-xs font-medium leading-tight text-zinc-400">
             {stat.footer}
           </p>
         )}
@@ -138,21 +123,17 @@ const KpiCard = memo(function KpiCard({
 
 const KpiSkeleton = memo(function KpiSkeleton() {
   return (
-    // MESMO piso do cartão real (`ALTURA_MINIMA_DO_CARTAO`; J2-B: eram 96px
-    // no celular e 68px de 640px em diante, e o conteúdo abaixo pulava
-    // 11–28px quando os números chegavam). O cartão real nunca é menor que
-    // este esqueleto; os menores (Clientes) ganham ~14–18px de folga.
+    // MESMO piso do cartão real (`ALTURA_MINIMA_DO_CARTAO`): o conteúdo
+    // abaixo da faixa não pula quando os números chegam.
     <div
       className={cn(
-        "flex select-none items-center gap-3 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg sm:py-2",
+        "relative flex select-none flex-col justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/70 p-3.5 shadow-lg sm:py-3",
         ALTURA_MINIMA_DO_CARTAO,
       )}
     >
-      <div className="size-9 animate-pulse rounded-xl bg-white/5" />
-      <div className="min-w-0 flex-1 space-y-1.5">
-        <div className="h-2.5 w-20 animate-pulse rounded bg-white/5" />
-        <div className="h-4 w-14 animate-pulse rounded bg-white/5" />
-      </div>
+      <div className="absolute right-3 top-3 size-8 animate-pulse rounded-xl bg-white/5" />
+      <div className="h-3 w-20 animate-pulse rounded bg-white/5" />
+      <div className="h-6 w-24 animate-pulse rounded bg-white/5" />
     </div>
   );
 });

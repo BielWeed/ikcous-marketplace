@@ -10,7 +10,8 @@ import { BarChart3, Package, Wallet } from "lucide-react";
 // O que este teste prova (decisões P-J1 e P-J4 do plano):
 //   a. rótulo/subtítulo/rodapé quebram em até 2 linhas (`line-clamp-2`), sem
 //      `truncate` nem `leading-none`;
-//   b. o ícone some abaixo de 480px (`hidden xs:flex`) para o texto caber;
+//   b. o ícone aparece em TODA largura (selo no canto; o rótulo reserva a faixa
+//      dele com `pr-9`) — redesenho de 10/10/2026;
 //   c. cada ponto é um <button> com nome ("Mostrar o grupo 1 de 3") e
 //      `aria-current` no ativo, com alvo de toque de 44px;
 //   d. "Expandir" tem alvo de toque de 44px (`min-h-11`);
@@ -121,21 +122,27 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
     expect(rotulo?.textContent).toBe("Aguardando pagamento");
     expect(subtitulo?.textContent).toBe("Capital líquido");
     expect(rodape?.textContent).toBe("Atualizado agora");
-    // Subtítulo e rodapé em frase normal (o acento das maiúsculas já era o
-    // problema) — o rótulo continua em maiúsculas.
-    expect(subtitulo!.className).not.toContain("uppercase");
-    expect(rodape!.className).not.toContain("uppercase");
-    expect(rotulo!.className).toContain("uppercase");
+    // Redesenho de 10/10/2026: rótulo, subtítulo e rodapé em frase normal
+    // (maiúsculas miúdas em cinza escuro eram ilegíveis no celular).
+    for (const texto of [rotulo, subtitulo, rodape]) {
+      expect(texto!.className).not.toContain("uppercase");
+    }
   });
 
-  it("o ícone some abaixo de 480px para o texto ganhar largura", async () => {
+  it("o ícone aparece em toda largura, em selo no canto, sem tomar a largura do valor", async () => {
     const AdminKpiCarousel = await carregarCarrossel();
     await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
 
     const cartao = hospedeiro.querySelector("h3")!.closest(".group");
     const caixaDoIcone = cartao!.firstElementChild;
-    expect(caixaDoIcone!.className).toContain("hidden");
-    expect(caixaDoIcone!.className).toContain("xs:flex");
+    const classes = caixaDoIcone!.className.split(/\s+/);
+    expect(classes).not.toContain("hidden");
+    expect(classes).not.toContain("xs:flex");
+    expect(classes).toContain("absolute");
+    // O rótulo reserva a faixa do selo; o valor fica com a largura inteira.
+    const valor = hospedeiro.querySelector("h3")!;
+    expect(valor.previousElementSibling!.className).toContain("pr-9");
+    expect(valor.className).not.toContain("pr-9");
   });
 
   it("os pontos são botões com nome em português, alvo de 44px e marca do ativo", async () => {
@@ -182,14 +189,12 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
 
     const classes = hospedeiro.querySelector("h3")!.className;
     for (const classe of [
-      "text-[15px]",
-      "xs:text-base",
-      "sm:text-lg",
+      "text-[22px]",
+      "sm:text-2xl",
       "tabular-nums",
       "leading-tight",
-      // text-base/text-lg trazem line-height próprio (24/28px) que anularia o
-      // leading-tight: a entrelinha tem que ser refeita em cada tamanho.
-      "xs:leading-tight",
+      // text-2xl traz line-height próprio (32px) que anularia o leading-tight:
+      // a entrelinha tem que ser refeita no tamanho de 640px em diante.
       "sm:leading-tight",
     ]) {
       expect(classes.split(/\s+/)).toContain(classe);
@@ -202,7 +207,7 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
 
     const cartao = hospedeiro.querySelector("h3")!.closest(".group")!;
     const classes = cartao.className.split(/\s+/);
-    expect(classes).toContain("sm:py-2");
+    expect(classes).toContain("sm:py-3");
     // J2-B rodada 1: o piso do cartão real é o MESMO do esqueleto (100px no
     // celular, 96px de 640px em diante) — o cartão nunca é menor que o
     // esqueleto e o conteúdo abaixo não sobe quando os números chegam.
@@ -305,22 +310,19 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
     expect(classesProximo).not.toContain("group-hover/carousel:opacity-100");
   });
 
-  it("o rótulo aceita 3 linhas de 640px em diante (sem cortar 'DINHEIRO PARADO EM…') e aperta o espaçamento entre letras", async () => {
+  it("o rótulo quebra em até 2 linhas, em frase normal, nunca abaixo de 11px", async () => {
     const AdminKpiCarousel = await carregarCarrossel();
     await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
 
     const rotulo = hospedeiro.querySelector("h3")!.previousElementSibling!;
     const classes = rotulo.className.split(/\s+/);
-    // No celular continuam 2 linhas (o cartão não cresce além do medido).
     expect(classes).toContain("line-clamp-2");
-    expect(classes).toContain("sm:line-clamp-3");
-    expect(classes).toContain("sm:tracking-[0.04em]");
-    // Nunca abaixo de 11px.
-    expect(classes).toContain("text-[11px]");
+    expect(classes).toContain("text-xs");
+    expect(classes).toContain("font-semibold");
+    // Se um tamanho em px entrar aqui, nunca fica abaixo de 11px.
     const tamanhos = classes
       .filter((c) => c.includes("text-["))
       .map((c) => Number.parseFloat(c.slice(c.indexOf("text-[") + 6)));
-    expect(tamanhos.length).toBeGreaterThan(0);
     for (const tamanho of tamanhos) expect(tamanho).toBeGreaterThanOrEqual(11);
   });
 
