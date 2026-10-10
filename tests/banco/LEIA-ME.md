@@ -261,12 +261,18 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   árvore inteira. Os 6 estados mistos reprovam só o corpo das que faltam (17a) e das que entraram (17b), e a
   8e segue positiva em todos os estados. Um defeito por vez reprovando a SUA linha (corpo com 1 byte ou 1
   caractere, função ausente, sobrecarga, forma, EXECUTE a anon/PUBLIC ou sem authenticated, coluna
-  renomeada); mutantes do texto das consultas (cada linha, o CRLF, o hash do outro lado, o filtro do schema,
-  a cláusula de cada papel) deixam a prova vermelha; rol fechado e SQL truncado nunca viram positivo; o
-  `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR / NADA / PARAR. **Limites declarados:** a
-  linha de controle não tem negativo local; a cláusula de PUBLIC desligada e o `NOT a.attisdropped` são
-  mutantes EQUIVALENTES (medidos como tais); `service_role` e o dono não são medidos; o
-  `supabase_read_only_user` real não foi medido. **Não prova** a IKCOUS nem a Savy.
+  renomeada), mais os de várias linhas: `anon` ou `authenticated` inexistentes (renomeados numa transação
+  desfeita: as 3 linhas de EXECUTE com `papel ausente`) e o schema `public` renomeado (todas as linhas, o
+  controle com `0`); mutantes do texto das consultas (cada linha, inclusive o controle, o CRLF, o hash do
+  outro lado, o filtro do schema, a cláusula de cada papel, o `papel ausente` no formato da 16a, o
+  `to_regrole` trocado) deixam a prova vermelha; rol fechado e SQL truncado nunca viram positivo; o
+  `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR / NADA / PARAR. **Limites declarados:** o
+  negativo do controle é o schema `public` renomeado (um papel cego ao `pg_proc` por permissão não é
+  montável neste Postgres); a cláusula de PUBLIC desligada e o `NOT a.attisdropped` são mutantes
+  EQUIVALENTES (medidos como tais); com o ledger completo e o lote já no SHA servido o portão decide NADA
+  sem pedir a 17a (o ponto cego que o runbook fecha mandando desfazer só pelo `aplicar-migrations.yml`);
+  `service_role` e o dono não são medidos; o `supabase_read_only_user` real não foi medido. **Não prova** a
+  IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

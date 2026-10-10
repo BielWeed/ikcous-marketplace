@@ -45,11 +45,17 @@
  *              (so 17a) SECURITY INVOKER, RESET search_path, search_path = public, pg_temp,
  *              painel_inicio VOLATILE e get_admin_analytics_v2 STABLE -> forma; GRANT EXECUTE a anon,
  *              a PUBLIC e REVOKE de authenticated -> o EXECUTE da funcao; RENAME COLUMN de
- *              produtos.estoque_minimo e de product_variants.stock_increment -> colunas.
- *  MUTANTES    cada linha (menos a de controle) virando constante; o CRLF de cada corpo fora dos
- *              aceitos; o hash do ANTES nos aceitos da 17a (e o do DEPOIS nos da 17b); o filtro
- *              `n.nspname = 'public'` das sobrecargas fora; a clausula de anon e de authenticated de
- *              cada linha de EXECUTE desligada, a de PUBLIC invertida, e os papeis trocados no CTE `fn`
+ *              produtos.estoque_minimo e de product_variants.stock_increment -> colunas. E os que
+ *              reprovam VARIAS linhas, de proposito: o papel `anon` (ou `authenticated`) inexistente
+ *              (renomeado numa transacao desfeita) -> as 3 linhas de EXECUTE, com `papel ausente` no
+ *              vivo; o schema `public` renomeado (transacao desfeita) -> TODAS as linhas, o controle
+ *              com '0'.
+ *  MUTANTES    cada linha virando constante (a de controle tambem, e o controle sempre '>0'); o CRLF
+ *              de cada corpo fora dos aceitos; o hash do ANTES nos aceitos da 17a (e o do DEPOIS nos da
+ *              17b); o filtro `n.nspname = 'public'` das sobrecargas fora; a clausula de anon e de
+ *              authenticated de cada linha de EXECUTE desligada, a de PUBLIC invertida, os papeis
+ *              trocados no CTE `fn`, o `papel ausente` engolido pelo formato da 16a
+ *              (`COALESCE(CASE WHEN f.exec_anon ...)`) e o `to_regrole` de um papel no lugar do outro
  *              -- cada um deixa um caso PASSAR e esta prova ficaria VERMELHA (a saida vermelha de cada
  *              um e' impressa). Dois mutantes sao EQUIVALENTES e a prova os MEDE como tais (ver LIMITES).
  *  FECHADO     resposta PARCIAL, linha duplicada, linha a mais e o rol de uma consulta julgando a
@@ -58,10 +64,12 @@
  *              fica SEM_EVIDENCIA.
  *  PONTA A PONTA  conferir-banco.cjs de verdade e o LOTE do canais-de-backend.json REAL (`lerCanais()`)
  *              no `decidirLote`: antes + ledger vazio (17a negativa, 17b positiva) -> APLICAR
- *              [20261212000000, 20261213000000, 20261214000000] nessa ordem; depois + ledger completo
+ *              [20261212000000, 20261213000000, 20261214000000] (o `decidirLote` devolve o `faltam`
+ *              que recebe; a ordem do lote vem de `migrationsDaRelease`, que ordena); depois + ledger completo
  *              (17a positiva) -> NADA; depois + ledger vazio -> PARAR (sem backfillLedger); so a 12 +
  *              ledger [12] (as duas negativas) -> PARAR; antes + ledger [12, 13] (17b positiva) ->
- *              PARAR (contradicao); antes + ledger completo (17a negativa) -> PARAR; antes com GRANT a
+ *              PARAR (contradicao); antes + ledger completo (17a negativa) -> PARAR SO com a prova
+ *              exigida (com `exigeProva: false` e' NADA: ver LIMITES); antes com GRANT a
  *              anon + ledger vazio (17b negativa) -> PARAR. A 8e pelo processo de verdade segue
  *              POSITIVA no antes e no depois.
  *
@@ -71,8 +79,10 @@
  *
  * LIMITES DECLARADOS: (1) o Postgres e' o 17 LOCAL; o papel de leitura real da loja
  * (supabase_read_only_user), o Postgres 15/17 da Supabase e a ACL real das lojas NAO foram medidos
- * aqui. (2) A linha "controle: funcoes de public visiveis" nao tem negativo local (o catalogo pg_proc
- * e' legivel por todo papel): fica sem mutante. (3) As consultas nao medem service_role nem o DONO
+ * aqui. (2) A linha "controle: funcoes de public visiveis" conta as funcoes do schema `public`: o
+ * negativo local e' o schema renomeado numa transacao desfeita (o controle mostra '0' e o mutante
+ * "controle sempre '>0'" e' pego). O caso "catalogo vazio por PERMISSAO" (um papel que nao enxerga
+ * pg_proc) nao e' montavel aqui: pg_proc e' legivel por todo papel neste Postgres. (3) As consultas nao medem service_role nem o DONO
  * das funcoes (o lote nao muda nenhum dos dois); a 17b nao mede a forma (o CREATE OR REPLACE do lote
  * a reescreve igual; a 17a a mede depois). (4) Mutantes EQUIVALENTES, medidos aqui como tais (sem
  * caso que os distinga, por construcao do Postgres): a clausula de PUBLIC no EXECUTE desligada (o
@@ -82,6 +92,10 @@
  * `get_admin_products_paged` (`search_path=public, extensions`) e' o que ESTE Postgres imprime. (6)
  * Estas consultas provam OBJETOS; o COMPORTAMENTO (a regra do estoque baixo, o lucro so com custo) e'
  * de tests/banco/estoque-baixo-uma-regra-viva.cjs e tests/banco/inventario-so-com-custo-viva.cjs.
+ * (7) PONTO CEGO DO PORTAO (medido no L6b): com o ledger COMPLETO e o lote ja no SHA que a loja
+ * serve (`exigeProva: false`), o portao nao pede a 17a e decide NADA mesmo com o banco no ANTES -- e'
+ * o estado de um rollback-manual feito por `psql` direto (o ledger fica com as versoes). Por isso o
+ * runbook (item 15) manda desfazer SO pelo aplicar-migrations.yml, que apaga a versao do ledger.
  *
  * USO: CI_BANCO_EFEMERO=1 DATABASE_URL=postgres://postgres@127.0.0.1:<porta>/postgres \
  *        node tests/banco/rodar-isolado.cjs tests/banco/estoque-do-painel-portao-viva.cjs
@@ -525,6 +539,34 @@ const ACLS = (f) => [
     "PUBLIC=nao anon=nao authenticated=nao",
   ],
 ];
+/** O papel `papel` deixa de existir pelo NOME (renomeado; o ROLLBACK do estado o devolve). */
+const semPapel = (papel) => (c) =>
+  mutar(
+    c,
+    `${papel} renomeado`,
+    `ALTER ROLE ${papel} RENAME TO pe_${papel}_${SUF}`,
+    `to_regrole('${papel}') IS NULL AND to_regrole('pe_${papel}_${SUF}') IS NOT NULL`,
+  );
+/** O schema `public` deixa de existir pelo NOME (renomeado; o ROLLBACK do estado o devolve). */
+const semSchemaPublic = (c) =>
+  mutar(
+    c,
+    "schema public renomeado",
+    `ALTER SCHEMA public RENAME TO pe_public_${SUF}`,
+    `to_regnamespace('public') IS NULL AND to_regnamespace('pe_public_${SUF}') IS NOT NULL`,
+  );
+const COLUNAS_LIDAS = [
+  "product_variants.active",
+  "product_variants.product_id",
+  "product_variants.stock_increment",
+  "produtos.ativo",
+  "produtos.custo",
+  "produtos.deleted_at",
+  "produtos.estoque",
+  "produtos.estoque_minimo",
+  "produtos.id",
+  "produtos.preco_venda",
+];
 const COLUNAS_RENOMEADAS = [
   ["produtos", "estoque_minimo"],
   ["product_variants", "stock_increment"],
@@ -829,6 +871,44 @@ async function mutanteEquivalente(rotulo, consulta, trocas, caso) {
     `     mutante "${rotulo}" -> EQUIVALENTE (medido: reprova as mesmas ${caso.esperadas.length} linha(s))`,
   );
   return { real, mutante, montado };
+}
+/**
+ * Mutante pego pelo QUE a linha diz (o `checar` do caso) ou por ERRAR onde a consulta real responde:
+ * a consulta real reprova `esperadas` e passa no `checar`; a mutada tem de falhar em algum dos dois
+ * (ou dar erro do banco, que o portao trataria como SEM_EVIDENCIA, e esta prova como VERMELHA).
+ */
+async function mutanteComChecagem(rotulo, consulta, trocas, caso) {
+  const sql = aplicarTrocas(rotulo, consulta, trocas);
+  const [real] = (await noEstado(caso.montar, [consulta], caso.opcoes)).saidas;
+  await exigirReprovadas(
+    consulta,
+    `${rotulo} (consulta real)`,
+    real,
+    caso.esperadas,
+  );
+  caso.checar(real);
+  let pego = false;
+  try {
+    const [mutante] = (await noEstado(caso.montar, [{ sql }], caso.opcoes))
+      .saidas;
+    await exigirReprovadas(
+      consulta,
+      `mutante ${rotulo}`,
+      mutante,
+      caso.esperadas,
+    );
+    caso.checar(mutante);
+  } catch (e) {
+    pego = true;
+    if (e instanceof assert.AssertionError) imprimeVermelho(rotulo, e);
+    else {
+      assert.ok(e.code, `${rotulo}: erro inesperado ${String(e)}`);
+      console.log(
+        `     mutante "${rotulo}" -> VERMELHO: a consulta mutada ERRA (${e.code}: ${String(e.message).slice(0, 120)}) onde a real responde`,
+      );
+    }
+  }
+  assert.ok(pego, `${rotulo}: o MUTANTE passou despercebido`);
 }
 function textoDaLinha(consulta, item) {
   const sql = SQL[consulta];
@@ -1288,6 +1368,45 @@ async function provar(cloneDepois, cloneAntes) {
           (rows) => assert.equal(linha(rows, L.exec).vivo, vivo),
         );
     }
+    // o papel inexistente pelo nome: as 3 linhas de EXECUTE, com `papel ausente` (as consultas
+    // guardam has_function_privilege com to_regrole: nunca o erro 42704)
+    for (const [papel, vivo] of [
+      ["anon", "PUBLIC=nao anon=papel ausente authenticated=sim"],
+      ["authenticated", "PUBLIC=nao anon=nao authenticated=papel ausente"],
+    ])
+      caso(
+        consulta,
+        `${pre}-sem-${papel}`,
+        semPapel(papel),
+        FUNCOES.map((f) => f.linha.exec),
+        (rows) => {
+          for (const f of FUNCOES)
+            assert.equal(linha(rows, f.linha.exec).vivo, vivo, f.nome);
+        },
+      );
+    // o schema public inexistente pelo nome: TODAS as linhas, o controle com '0'
+    caso(
+      consulta,
+      `${pre}-sem-schema-public`,
+      semSchemaPublic,
+      ROL[consulta],
+      (rows) => {
+        assert.equal(linha(rows, CONTROLE).vivo, "0");
+        const vivoColunas = linha(rows, COLUNAS).vivo;
+        assert.ok(vivoColunas.startsWith("AUSENTES: "), vivoColunas);
+        assert.deepEqual(
+          ordena(vivoColunas.slice("AUSENTES: ".length).split(", ")),
+          ordena(COLUNAS_LIDAS),
+        );
+        for (const f of FUNCOES) {
+          assert.equal(linha(rows, f.linha.sobre).vivo, "0");
+          assert.equal(linha(rows, f.linha[corpo]).vivo, "AUSENTE");
+          assert.equal(linha(rows, f.linha.exec).vivo, "AUSENTE");
+          if (consulta === A)
+            assert.equal(linha(rows, f.linha.forma).vivo, "AUSENTE");
+        }
+      },
+    );
     for (const [tabela, coluna] of COLUNAS_RENOMEADAS)
       caso(
         consulta,
@@ -1314,7 +1433,7 @@ async function provar(cloneDepois, cloneAntes) {
     }
   }
   ok(
-    `NEGATIVOS, cada defeito reprovando SO a sua linha (${CASOS[A].length} na 17a sobre o depois, ${CASOS[B].length} na 17b sobre o antes): corpo com 1 byte a mais e com 1 caractere trocado; funcao ausente (sobrecargas 0 e corpo, EXECUTE e forma AUSENTE); sobrecarga extra com o mesmo corpo; SECURITY INVOKER, sem search_path, search_path com pg_temp, painel_inicio VOLATILE e analytics STABLE (forma, so 17a); EXECUTE a anon, a PUBLIC e sem authenticated; produtos.estoque_minimo e product_variants.stock_increment renomeadas (colunas)`,
+    `NEGATIVOS, cada defeito reprovando SO a sua linha (${CASOS[A].length} na 17a sobre o depois, ${CASOS[B].length} na 17b sobre o antes): corpo com 1 byte a mais e com 1 caractere trocado; funcao ausente (sobrecargas 0 e corpo, EXECUTE e forma AUSENTE); sobrecarga extra com o mesmo corpo; SECURITY INVOKER, sem search_path, search_path com pg_temp, painel_inicio VOLATILE e analytics STABLE (forma, so 17a); EXECUTE a anon, a PUBLIC e sem authenticated; produtos.estoque_minimo e product_variants.stock_increment renomeadas (colunas); e os de varias linhas: anon ou authenticated inexistentes (as 3 linhas de EXECUTE com papel ausente) e o schema public renomeado (todas as linhas, o controle com 0)`,
   );
 
   // ----------------------------------------------------------- MUTANTES
@@ -1327,13 +1446,16 @@ async function provar(cloneDepois, cloneAntes) {
     return k;
   };
   let nMutantes = 0;
-  // cada linha (menos a de controle) vira constante: o primeiro negativo que reprova SO ela passa
+  // cada linha vira constante: o primeiro negativo que reprova SO ela passa (o controle: o schema
+  // public renomeado, que reprova todas)
   for (const consulta of [A, B])
     for (const item of ROL[consulta]) {
-      if (item === CONTROLE) continue;
-      const k = CASOS[consulta].find(
-        (x) => x.esperadas.length === 1 && x.esperadas[0] === item,
-      );
+      const k =
+        item === CONTROLE
+          ? casoDe(consulta, `${consulta === A ? "a" : "b"}-sem-schema-public`)
+          : CASOS[consulta].find(
+              (x) => x.esperadas.length === 1 && x.esperadas[0] === item,
+            );
       assert.ok(k, `nao ha negativo SO para a linha "${item}" (${consulta})`);
       await mutanteNegativo(
         `${consulta.slice(0, 3)} sem a linha '${item}'`,
@@ -1467,6 +1589,79 @@ async function provar(cloneDepois, cloneAntes) {
     );
     nMutantes += 2;
   }
+  // o papel AUSENTE e o controle: o que so um estado de varias linhas distingue
+  const FORMATO_16A_ANON =
+    "COALESCE(CASE WHEN f.exec_anon THEN 'sim' ELSE 'nao' END, 'papel ausente')";
+  const FORMATO_16A_AUTH =
+    "COALESCE(CASE WHEN f.exec_auth THEN 'sim' ELSE 'nao' END, 'papel ausente')";
+  const RE_CONTROLE =
+    /CASE WHEN \(SELECT count\(\*\) FROM pg_proc p JOIN pg_namespace n ON n\.oid = p\.pronamespace\s+WHERE n\.nspname = 'public'\) > 0 THEN '>0' ELSE '0' END/;
+  for (const [consulta, pre] of [
+    [A, "a"],
+    [B, "b"],
+  ]) {
+    const r = consulta.slice(0, 3);
+    for (const f of FUNCOES) {
+      // anon inexistente vira 'nao' (o NULL cai no ELSE): a linha deixa de reprovar
+      await mutanteNegativo(
+        `${r} ${f.nome}: anon inexistente engolido (formato da 16a)`,
+        consulta,
+        trocasNaLinha(
+          "anon",
+          consulta,
+          f.linha.exec,
+          RE_ANON,
+          FORMATO_16A_ANON,
+        ),
+        casoDe(consulta, `${pre}-sem-anon`),
+      );
+      // authenticated inexistente vira 'nao': ainda reprova, mas o vivo deixa de dizer `papel ausente`
+      await mutanteComChecagem(
+        `${r} ${f.nome}: authenticated inexistente dito 'nao' (formato da 16a)`,
+        consulta,
+        trocasNaLinha(
+          "authenticated",
+          consulta,
+          f.linha.exec,
+          RE_AUTH,
+          FORMATO_16A_AUTH,
+        ),
+        casoDe(consulta, `${pre}-sem-authenticated`),
+      );
+      nMutantes += 2;
+    }
+    // o to_regrole de um papel no lugar do outro: has_function_privilege com o papel inexistente
+    await mutanteComChecagem(
+      `${r} CTE fn: to_regrole('anon') guardando authenticated`,
+      consulta,
+      [
+        [
+          "CASE WHEN to_regrole('authenticated') IS NULL THEN NULL",
+          "CASE WHEN to_regrole('anon') IS NULL THEN NULL",
+        ],
+      ],
+      casoDe(consulta, `${pre}-sem-authenticated`),
+    );
+    await mutanteComChecagem(
+      `${r} CTE fn: to_regrole('authenticated') guardando anon`,
+      consulta,
+      [
+        [
+          "CASE WHEN to_regrole('anon') IS NULL THEN NULL",
+          "CASE WHEN to_regrole('authenticated') IS NULL THEN NULL",
+        ],
+      ],
+      casoDe(consulta, `${pre}-sem-anon`),
+    );
+    // o controle sempre '>0': com o schema public renomeado a linha deixa de reprovar
+    await mutanteNegativo(
+      `${r} controle sempre '>0'`,
+      consulta,
+      trocasNaLinha("controle", consulta, CONTROLE, RE_CONTROLE, "'>0'"),
+      casoDe(consulta, `${pre}-sem-schema-public`),
+    );
+    nMutantes += 3;
+  }
   // os EQUIVALENTES (LIMITES): medidos no caso que mais os favoreceria
   let nEquivalentes = 0;
   for (const [consulta, base, pre] of [
@@ -1535,7 +1730,7 @@ async function provar(cloneDepois, cloneAntes) {
     nEquivalentes += 2;
   }
   ok(
-    `MUTANTES do texto das consultas: ${nMutantes} pegos (cada linha virando constante, menos a de controle; o CRLF de cada corpo fora dos aceitos; o hash do ANTES nos aceitos da 17a e o do DEPOIS nos da 17b; o filtro do schema nas sobrecargas; a clausula de anon e de authenticated de cada EXECUTE, a de PUBLIC invertida e os papeis trocados no CTE fn) -- a prova ficaria VERMELHA; ${nEquivalentes} EQUIVALENTES medidos como tais (PUBLIC desligado no EXECUTE e o NOT a.attisdropped de faltam), declarados nos LIMITES`,
+    `MUTANTES do texto das consultas: ${nMutantes} pegos (cada linha virando constante, menos a de controle; o CRLF de cada corpo fora dos aceitos; o hash do ANTES nos aceitos da 17a e o do DEPOIS nos da 17b; o filtro do schema nas sobrecargas; a clausula de anon e de authenticated de cada EXECUTE, a de PUBLIC invertida, os papeis trocados no CTE fn, o papel ausente no formato da 16a, o to_regrole de um papel no lugar do outro e o controle sempre '>0') -- a prova ficaria VERMELHA; ${nEquivalentes} EQUIVALENTES medidos como tais (PUBLIC desligado no EXECUTE e o NOT a.attisdropped de faltam), declarados nos LIMITES`,
   );
 
   // ----------------------------------------------------------- ROL FECHADO
@@ -1667,7 +1862,7 @@ async function pontaAPonta(api, cloneDepois, cloneAntes) {
   ])
     assert.equal(lote[campo], undefined, `o lote nao devia declarar ${campo}`);
   /** Le as duas consultas pelo processo de verdade e decide o lote REAL. `faltam` = as versoes fora do ledger. */
-  const decidir = async (db, faltam, montar = []) => {
+  const decidir = async (db, faltam, montar = [], exigeProva = true) => {
     const sa = await executar(db, A, montar);
     assert.equal(sa.codigo, 0, sa.saida);
     const sb = await executar(db, B, montar);
@@ -1681,7 +1876,7 @@ async function pontaAPonta(api, cloneDepois, cloneAntes) {
       decisao: PORTAO.decidirLote({
         lote,
         faltam,
-        exigeProva: true,
+        exigeProva,
         prova,
         diagnostico: diag,
       }),
@@ -1719,12 +1914,26 @@ async function pontaAPonta(api, cloneDepois, cloneAntes) {
     assert.ok(!e2.saida.includes("VEREDITO-CONSULTA"), e2.saida);
     assert.equal((await evidencia(consulta, e2.saida)).estado, "SEM_EVIDENCIA");
   }
-  // L1: antes + ledger sem as tres: 17a NEGATIVA + 17b POSITIVA -> APLICAR as tres, na ordem 12, 13, 14
+  // L1: antes + ledger sem as tres: 17a NEGATIVA + 17b POSITIVA -> APLICAR as tres
   const l1 = await decidir(cloneAntes, [V12, V13, V14]);
   assert.equal(l1.prova.estado, "NEGATIVA");
   assert.equal(l1.diag.estado, "POSITIVA");
   assert.equal(l1.decisao.acao, "APLICAR", JSON.stringify(l1.decisao));
   assert.deepEqual(l1.decisao.versoes, [V12, V13, V14]);
+  // L1b: a ordem NAO e' do decidirLote (ele devolve o `faltam` que recebe); e' do
+  // migrationsDaRelease, que ordena as versoes dos arquivos (12, 13, 14) antes de tudo
+  const l1b = await decidir(cloneAntes, [V14, V12, V13]);
+  assert.equal(l1b.decisao.acao, "APLICAR", JSON.stringify(l1b.decisao));
+  assert.deepEqual(l1b.decisao.versoes, [V14, V12, V13]);
+  assert.deepEqual(
+    PORTAO.migrationsDaRelease(
+      [F.analytics.arq, F.painel.arq, F.produtos.arq],
+      {
+        migrationsForaDaRelease: [],
+      },
+    ),
+    [V12, V13, V14],
+  );
   // L2: depois + ledger completo: 17a POSITIVA -> NADA
   const l2 = await decidir(cloneDepois, []);
   assert.equal(l2.prova.estado, "POSITIVA");
@@ -1753,10 +1962,16 @@ async function pontaAPonta(api, cloneDepois, cloneAntes) {
   assert.equal(l5.diag.estado, "POSITIVA");
   assert.equal(l5.decisao.acao, "PARAR", JSON.stringify(l5.decisao));
   assert.match(l5.decisao.motivo, /contradição/);
-  // L6: antes + ledger completo (rollback feito sem apagar o ledger): 17a NEGATIVA -> PARAR
+  // L6: antes + ledger completo (rollback feito sem apagar o ledger) com a prova EXIGIDA (o lote e'
+  // novo para o SHA que a loja serve): 17a NEGATIVA -> PARAR
   const l6 = await decidir(cloneAntes, []);
   assert.equal(l6.prova.estado, "NEGATIVA");
   assert.equal(l6.decisao.acao, "PARAR", JSON.stringify(l6.decisao));
+  // L6b (LIMITE 7, o ponto cego): o mesmo banco com o lote ja no SHA servido (`exigeProva: false`):
+  // NADA, sem olhar a 17a negativa -- por isso o rollback nunca por psql direto (runbook, item 15)
+  const l6b = await decidir(cloneAntes, [], [], false);
+  assert.equal(l6b.prova.estado, "NEGATIVA");
+  assert.equal(l6b.decisao.acao, "NADA", JSON.stringify(l6b.decisao));
   // L7: antes com EXECUTE a anon + ledger vazio: 17b NEGATIVA -> PARAR (antes de escrever)
   const ANON = [
     `GRANT EXECUTE ON FUNCTION ${F.painel.sig} TO anon`,
@@ -1770,7 +1985,7 @@ async function pontaAPonta(api, cloneDepois, cloneAntes) {
   assert.equal(l7.diag.estado, "NEGATIVA");
   assert.equal(l7.decisao.acao, "PARAR", JSON.stringify(l7.decisao));
   ok(
-    "ponta a ponta (conferir-banco.cjs de verdade, HTTP local, papel de leitura, canais-de-backend.json REAL): os vereditos do processo filho (17a 14 linhas, 17b 11, rol=ok; a 8e POSITIVA no antes e no depois); antes + ledger vazio -> APLICAR [20261212000000, 20261213000000, 20261214000000] na ordem; depois + ledger completo -> NADA; depois + ledger vazio -> PARAR (sem backfillLedger); so a 12 + ledger [12] -> PARAR; antes + ledger [12, 13] -> PARAR (contradicao); antes + ledger completo -> PARAR; antes com EXECUTE a anon -> PARAR; banco inexistente -> saida 1, sem veredito, SEM_EVIDENCIA",
+    "ponta a ponta (conferir-banco.cjs de verdade, HTTP local, papel de leitura, canais-de-backend.json REAL): os vereditos do processo filho (17a 14 linhas, 17b 11, rol=ok; a 8e POSITIVA no antes e no depois); antes + ledger vazio -> APLICAR [20261212000000, 20261213000000, 20261214000000] (o decidirLote devolve o faltam que recebe; a ordem e' a do migrationsDaRelease); depois + ledger completo -> NADA; depois + ledger vazio -> PARAR (sem backfillLedger); so a 12 + ledger [12] -> PARAR; antes + ledger [12, 13] -> PARAR (contradicao); antes + ledger completo -> PARAR com a prova exigida e NADA sem ela (o ponto cego do LIMITE 7); antes com EXECUTE a anon -> PARAR; banco inexistente -> saida 1, sem veredito, SEM_EVIDENCIA",
   );
 }
 
