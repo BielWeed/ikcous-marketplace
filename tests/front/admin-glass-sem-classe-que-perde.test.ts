@@ -36,6 +36,9 @@ const REDUNDANTES = new Set([
 /** `border-solid` etc. são estilo/modo da borda, não cor nem lado: não são apagadas. */
 const BORDA_QUE_NAO_E_COR =
   /^border-(solid|dashed|dotted|double|none|hidden|collapse|separate|spacing)/;
+/** `bg-*` que NÃO mexe em background-color (imagem, posição, repetição…): sobrevive. */
+const FUNDO_QUE_NAO_E_COR =
+  /^bg-(gradient|cover|contain|auto|center|top|bottom|left|right|no-repeat|repeat|clip|fixed|local|scroll|origin|blend|none)(-|$)|^bg-\[(url\(|image:|length:|position:)/;
 const CLASSE_QUE_PERDE = /^(bg-|border(-|$)|shadow(-|$)|backdrop-blur(-|$))/;
 
 /** As classes de UM literal que `admin-glass` apaga (vazio se o literal não o usa). */
@@ -47,6 +50,7 @@ function classesQuePerdem(literal: string): string[] {
       !classe.includes(":") &&
       CLASSE_QUE_PERDE.test(classe) &&
       !BORDA_QUE_NAO_E_COR.test(classe) &&
+      !FUNDO_QUE_NAO_E_COR.test(classe) &&
       !REDUNDANTES.has(classe),
   );
 }
@@ -188,6 +192,28 @@ describe("classesQuePerdem (o critério da guarda)", () => {
     expect(
       classesQuePerdem("admin-glass bg-amber-500/5 shadow-lg backdrop-blur-sm"),
     ).toEqual(["bg-amber-500/5", "shadow-lg", "backdrop-blur-sm"]);
+  });
+
+  it("fundo que não é cor (gradiente, imagem, posição, repetição…) sobrevive ao admin-glass", () => {
+    expect(
+      classesQuePerdem(
+        "admin-glass bg-gradient-to-br bg-cover bg-center bg-no-repeat bg-clip-padding bg-fixed bg-origin-border bg-blend-multiply bg-[url(/x.png)]",
+      ),
+    ).toEqual([]);
+  });
+
+  it("fundo de COR perde, em qualquer forma", () => {
+    expect(
+      classesQuePerdem(
+        "admin-glass bg-amber-500/5 bg-[#111] bg-[rgb(1,2,3)] bg-[hsl(10,10%,10%)] bg-black",
+      ),
+    ).toEqual([
+      "bg-amber-500/5",
+      "bg-[#111]",
+      "bg-[rgb(1,2,3)]",
+      "bg-[hsl(10,10%,10%)]",
+      "bg-black",
+    ]);
   });
 
   it("literal sem admin-glass não é da conta desta guarda", () => {
