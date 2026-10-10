@@ -103,7 +103,7 @@ export function PerfilDaLoja({
         type="button"
         onClick={() => void compartilharLoja()}
         aria-label="Compartilhar o link da loja"
-        className="relative flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:border-admin-gold/30 hover:text-white"
+        className="relative flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:border-admin-gold/30 hover:text-white"
       >
         <Share2 className="size-4" aria-hidden="true" />
         <span className="sr-only xs:not-sr-only" aria-hidden="true">

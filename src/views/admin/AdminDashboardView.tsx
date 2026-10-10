@@ -174,7 +174,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 )}
                 aria-hidden="true"
               />
-              <span className="hidden text-[10px] font-black uppercase tracking-widest text-zinc-400 sm:inline">
+              <span className="hidden text-[11px] font-black uppercase tracking-widest text-zinc-400 sm:inline">
                 Sincronizar
               </span>
             </button>
@@ -183,11 +183,16 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           <button
             type="button"
             onClick={() => setMostrarAjuda(true)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
             title="Como ler o Início"
             aria-label="Como ler o Início"
           >
-            <HelpCircle className="size-4.5" aria-hidden="true" />
+            <span
+              aria-hidden="true"
+              className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+            >
+              <HelpCircle className="size-4.5" aria-hidden="true" />
+            </span>
           </button>
           <PontoDeOperacao sincronizando={carregando} />
         </AdminPageHeader>
@@ -218,7 +223,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
             <button
               type="button"
               onClick={() => void atualizar()}
-              className="flex min-h-11 shrink-0 items-center rounded-xl border border-red-500/20 px-3 text-[10px] font-black uppercase tracking-wider text-red-300 transition-colors hover:bg-red-500/10"
+              className="flex min-h-11 shrink-0 items-center rounded-xl border border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider text-red-300 transition-colors hover:bg-red-500/10"
             >
               Tentar de novo
             </button>

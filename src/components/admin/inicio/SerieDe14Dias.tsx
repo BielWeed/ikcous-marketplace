@@ -177,7 +177,7 @@ export function SerieDe14Dias({
                       <span
                         data-testid="serie-14d-pico"
                         className={cn(
-                          "pointer-events-none absolute -top-4 whitespace-nowrap text-[9px] font-bold tabular-nums text-zinc-400",
+                          "pointer-events-none absolute -top-4 whitespace-nowrap text-[11px] font-bold tabular-nums text-zinc-400",
                           // O rótulo é bem mais largo que uma coluna
                           // (~24px): centralizado, ele estoura a borda do
                           // cartão quando o pico é uma das últimas colunas
@@ -249,7 +249,7 @@ export function SerieDe14Dias({
                       data-testid="serie-14d-rotulo-mes"
                       aria-hidden="true"
                       className={cn(
-                        "text-[9px] uppercase leading-none text-zinc-400",
+                        "text-[11px] uppercase leading-none text-zinc-400",
                         !mostrarMes && "invisible",
                       )}
                     >
@@ -258,7 +258,7 @@ export function SerieDe14Dias({
                     <span
                       data-testid="serie-14d-rotulo-dia"
                       className={cn(
-                        "text-[10px] leading-none tabular-nums",
+                        "text-[11px] leading-none tabular-nums",
                         hoje ? "font-bold text-admin-gold" : "text-zinc-400",
                       )}
                     >
