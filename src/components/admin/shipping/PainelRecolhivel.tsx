@@ -57,7 +57,7 @@ export function PainelRecolhivel({
           }
           onToggle();
         }}
-        className="group flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-white/10 pb-3.5 text-left"
+        className="group flex min-h-11 w-full flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-white/10 pb-3.5 text-left"
       >
         <span className="min-w-0 flex-1 basis-40">
           <span className="block text-xs font-extrabold uppercase tracking-[0.22em] text-zinc-300">

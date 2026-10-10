@@ -143,7 +143,7 @@ export function Chave({
       aria-label={rotulo}
       onClick={onToggle}
       disabled={desabilitado}
-      className="inline-flex cursor-pointer items-center disabled:pointer-events-none disabled:opacity-50"
+      className="inline-flex min-h-11 cursor-pointer items-center disabled:pointer-events-none disabled:opacity-50"
     >
       {pino}
     </button>

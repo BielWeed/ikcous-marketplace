@@ -1233,7 +1233,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
               (modo === "multi" || ligadosEscolhidos.size === 0))
           }
           onClick={salvarLigados}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
         >
           {salvandoLigados ? (
             <RefreshCw className="size-3 animate-spin" />

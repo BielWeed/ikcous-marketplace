@@ -799,7 +799,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                       <button
                         type="button"
                         onClick={abrirTransportadoras}
-                        className="shrink-0 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
+                        className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
                       >
                         Conectar transportadora
                       </button>
