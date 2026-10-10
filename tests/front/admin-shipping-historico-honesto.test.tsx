@@ -249,12 +249,12 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
 
     // Cabeçalho das colunas no padrão de rótulo do salão: text-[11px]
     // (régua do painel simples: nada abaixo de 11px) font-black uppercase
-    // tracking-[0.2em].
+    // tracking-wide (J5: o espaçamento largo estourava a coluna estreita).
     const cabecalho = secao?.querySelector("thead tr");
     expect(cabecalho).toBeTruthy();
     expect(cabecalho?.classList.contains("text-[11px]")).toBe(true);
     expect(cabecalho?.classList.contains("font-black")).toBe(true);
     expect(cabecalho?.classList.contains("uppercase")).toBe(true);
-    expect(cabecalho?.classList.contains("tracking-[0.2em]")).toBe(true);
+    expect(cabecalho?.classList.contains("tracking-wide")).toBe(true);
   });
 });

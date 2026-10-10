@@ -38,6 +38,18 @@ const FRASE_CHAVE_RECUSADA =
   "A transportadora recusou a chave de acesso. Confira a chave em Transportadoras e toque em Testar.";
 const FRASE_CEP_RECUSADO = "A transportadora não aceitou o CEP do cliente.";
 
+// Falhas de rede da edge (`chamarComTempo` e `lerJson`, provedores.ts): o texto
+// depois do "tempo esgotado: " / "falha de rede: " é a mensagem do runtime em
+// inglês ("The signal has been aborted"), que a lojista não lê. O texto inteiro
+// continua no `title` da tela.
+const TEMPO_ESGOTADO = /^tempo esgotado:/i;
+const FALHA_DE_REDE = /^falha de rede:/i;
+const NAO_EH_JSON = /resposta não é JSON válido/i;
+const FRASE_DEMOROU =
+  "A transportadora demorou demais para responder. Tente de novo mais tarde.";
+const FRASE_SEM_CONEXAO =
+  "Não deu para falar com a transportadora (sem conexão). Tente de novo mais tarde.";
+
 function frase(status: string | null): string {
   return status === null
     ? `${NAO_RESPONDEU_DIREITO}. ${TENTE_DE_NOVO}`
@@ -54,6 +66,9 @@ function traduzirCorpo(texto: string): string {
     }
     return frase(status);
   }
+  if (TEMPO_ESGOTADO.test(texto)) return FRASE_DEMOROU;
+  if (FALHA_DE_REDE.test(texto)) return FRASE_SEM_CONEXAO;
+  if (NAO_EH_JSON.test(texto)) return frase(null);
   if (CORPO_CRU.test(texto)) return frase(null);
   return texto;
 }
