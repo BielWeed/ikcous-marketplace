@@ -5,11 +5,13 @@
 // `text-[6px]` … `text-[10.5px]`), com UMA exceção deliberada: são desenhos de
 // outra tela, em escala reduzida, e subir a letra distorce a proporção:
 //   (1) a pré-visualização ao vivo do banner (entre o comentário "CARD SUPERIOR…"
-//       e o "Draft Recovery Alert");
+//       e o "Draft Recovery Alert"), MENOS o título "Pré-Visualização ao Vivo",
+//       que é moldura do painel e fica em 11px;
 //   (2) as miniaturas de celular do seletor de posição (do título "Posição de
 //       Exibição" até o comentário "Navigation mock"), uma no modo simples e
-//       outra no Passo 1.
-// Elas continuam contadas pela régua: 16 ocorrências no total.
+//       outra no Passo 1, MENOS a instrução "Selecione a Posição na Home do
+//       PWA…" (moldura do painel, 11px).
+// Elas continuam contadas pela régua: 13 ocorrências no total.
 /* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection, security/detect-unsafe-regex --
    lê o fonte do próprio repositório (caminho constante deste teste, não entrada de usuário); regex constantes, sem backtracking sobre entrada externa; os índices são de arrays locais do próprio teste */
 import { readFileSync } from "node:fs";
@@ -64,6 +66,18 @@ function ocorrencias(): { linha: number; trecho: string }[] {
   return achadas;
 }
 
+/** Linhas (até `alcance` acima) que antecedem cada ocorrência do trecho, para ler a tag que o abre. */
+function linhaDaTagAntesDe(trecho: string, alcance = 1): string[] {
+  const achadas: string[] = [];
+  linhas.forEach((texto, indice) => {
+    if (!texto.includes(trecho)) return;
+    achadas.push(
+      linhas.slice(Math.max(0, indice - alcance), indice).join("\n"),
+    );
+  });
+  return achadas;
+}
+
 describe("Banners · letra mínima de 11px (onda L)", () => {
   it("acha a pré-visualização e as duas miniaturas (os marcadores existem)", () => {
     expect(PREVIA).toHaveLength(1);
@@ -75,9 +89,45 @@ describe("Banners · letra mínima de 11px (onda L)", () => {
     expect(sobras.map((o) => `${o.linha}: ${o.trecho}`)).toEqual([]);
   });
 
-  it("a pré-visualização e as miniaturas seguem como estavam (16 ocorrências, o que a régua ainda conta)", () => {
+  it("a pré-visualização e as miniaturas seguem como estavam (13 ocorrências, o que a régua ainda conta)", () => {
     const dentro = ocorrencias().filter((o) => dentroDeIsenta(o.linha - 1));
-    expect(dentro).toHaveLength(16);
-    expect(ocorrencias()).toHaveLength(16);
+    expect(dentro).toHaveLength(13);
+    expect(ocorrencias()).toHaveLength(13);
+  });
+
+  it("a moldura do painel dentro das faixas isentas está em 11px: título da pré-visualização e instruções da posição", () => {
+    const tituloDaPrevia = linhaDaTagAntesDe(
+      "<span>Pré-Visualização ao Vivo</span>",
+    );
+    expect(tituloDaPrevia).toHaveLength(1);
+    expect(tituloDaPrevia[0]).toContain("text-[11px]");
+    expect(tituloDaPrevia[0]).not.toMatch(LETRA_MIUDA);
+
+    const instrucoes = linhaDaTagAntesDe("Selecione a Posição na Home do PWA");
+    expect(instrucoes).toHaveLength(2);
+    for (const tag of instrucoes) {
+      expect(tag).toContain("text-[11px]");
+      expect(tag).not.toMatch(LETRA_MIUDA);
+    }
+  });
+
+  it("cartões de layout: o selo desce em vez de partir a palavra do rótulo (flex-wrap)", () => {
+    const linhasDoCartao = linhas.filter((l) =>
+      /flex w-full (?:flex-wrap )?items-center justify-between gap-1"/.test(l),
+    );
+    expect(linhasDoCartao).toHaveLength(1);
+    expect(linhasDoCartao[0]).toContain("flex-wrap");
+  });
+
+  it("vínculo de produto: 'Vinculado'/'Desvincular' descem em vez de cortar o ID e o nome (flex-wrap)", () => {
+    const cartao = linhas.filter((l) => l.includes("bg-emerald-550/5"));
+    expect(cartao).toHaveLength(1);
+    expect(cartao[0]).toContain("flex-wrap");
+
+    const linhaDoId = linhaDaTagAntesDe("Vinculado", 2).filter((l) =>
+      l.includes("items-center gap-x-1.5"),
+    );
+    expect(linhaDoId).toHaveLength(1);
+    expect(linhaDoId[0]).toContain("flex-wrap");
   });
 });

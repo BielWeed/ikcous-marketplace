@@ -2432,7 +2432,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                 <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5 sm:pb-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Eye className="size-3.5 shrink-0 text-[#FFBF00] animate-pulse" />
-                    <h3 className="text-[10px] sm:text-[11px] font-black uppercase italic tracking-wider text-white truncate">
+                    <h3 className="text-[11px] font-black uppercase italic tracking-wider text-white truncate">
                       <span>Pré-Visualização ao Vivo</span>
                       <span className="hidden md:inline text-zinc-400 font-semibold normal-case not-italic ml-1">
                         (Como o cliente verá)
@@ -2769,7 +2769,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       </div>
 
                       <div className="space-y-3">
-                        <span className="ml-1 block text-[9px] font-black uppercase italic tracking-widest text-zinc-500">
+                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-500">
                           Selecione a Posição na Home do PWA (Clique para
                           Ativar)
                         </span>
@@ -3446,7 +3446,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     : "border-white/5 bg-zinc-900/30 hover:border-white/10 hover:bg-zinc-900",
                                 )}
                               >
-                                <div className="flex w-full items-center justify-between gap-1">
+                                <div className="flex w-full flex-wrap items-center justify-between gap-1">
                                   <span
                                     className={cn(
                                       "text-[11px] font-black uppercase tracking-wider break-words min-w-0",
@@ -3990,7 +3990,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       </div>
 
                       <div className="space-y-3">
-                        <span className="ml-1 block text-[9px] font-black uppercase italic tracking-widest text-zinc-500">
+                        <span className="ml-1 block text-[11px] font-black uppercase italic tracking-widest text-zinc-500">
                           Selecione a Posição na Home do PWA (Clique para
                           Ativar)
                         </span>
@@ -4425,7 +4425,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           </div>
 
                           {formData.productId && selectedProduct ? (
-                            <div className="bg-emerald-550/5 flex select-none items-center justify-between rounded-xl border border-emerald-500/20 p-2.5 duration-200 animate-in fade-in zoom-in-95">
+                            <div className="bg-emerald-550/5 flex select-none flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/20 p-2.5 duration-200 animate-in fade-in zoom-in-95">
                               <div className="flex min-w-0 items-center gap-2.5">
                                 <div className="size-10 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
                                   {selectedProduct.images?.[0] ? (
@@ -4441,7 +4441,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex flex-wrap items-center gap-x-1.5">
                                     <span className="rounded bg-emerald-500 px-1.5 py-0.2 text-[11px] font-black uppercase text-black">
                                       Vinculado
                                     </span>
