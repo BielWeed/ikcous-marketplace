@@ -8366,3 +8366,225 @@ Deno.test("as tres medicoes de portas: so rodam no efemero, saem 0, tem autotest
     "o motor so sai pela trava de banco (falhar), nunca por process.exit proprio",
   );
 });
+
+// 19a/19b (11/10/2026) — a PROVA DE OBJETOS do lote da migration 20261215000000 (a política de
+// devolução não mostra quem a editou, achado L: `anon` e `authenticated` perdem o SELECT da tabela
+// `politica_devolucao` inteira e ganham SELECT em 15 das 16 colunas, sem `updated_by`). A 19a é a
+// consulta do lote (DEPOIS do apply); a 19b é a de ausência (ANTES). As duas são de ROL FECHADO (9
+// linhas cada) e só leem o catálogo: a linha da tabela nunca é lida. Estes testes medem o texto dos
+// .sql contra a migration DESTA árvore; a decisão de cada consulta num Postgres real fica com
+// tests/banco/politica-devolucao-portao-viva.cjs (rodado no rpc-ci.yml).
+const NOME_19A = "19a-conferir-politica-devolucao-aplicado";
+const NOME_19B = "19b-antes-politica-devolucao-grant-de-tabela";
+const MIGRACAO_215 = `${MIGRATIONS_DIR}/20261215000000_a_politica_de_devolucao_nao_mostra_quem_a_editou.sql`;
+const MIGRACAO_75 = `${MIGRATIONS_DIR}/20261175000000_a_devolucao_nasce_no_pedido.sql`;
+
+/** Texto do SQL sem comentário e sem o conteúdo dos literais (sobra só a estrutura). */
+const semLiterais = (sql: string) =>
+  sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+
+for (const [nome, depois] of [
+  [NOME_19A, true],
+  [NOME_19B, false],
+] as Array<[string, boolean]>) {
+  Deno.test(`${nome} — no menu, UM statement só leitura (WITH), rol fechado de 9 itens, só catálogo e a linha da tabela nunca é lida`, async () => {
+    const { contarStatements } = require(SCRIPT);
+    const { ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const estrutura = semLiterais(sql);
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    assertStringIncludes(yaml, `- ${nome}\n`);
+    assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+    assert(/^\s*WITH\b/i.test(limpo), "começa por WITH");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+        estrutura,
+      ),
+      "palavra de escrita fora de comentário/literal",
+    );
+    assert(
+      !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+        estrutura,
+      ),
+      "SQL dinâmico (ou leitura de arquivo)",
+    );
+    assert(
+      /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+        limpo,
+      ),
+      "saída item/esperado/vivo/ok com as reprovadas primeiro",
+    );
+    // SÓ catálogo e CTEs: nenhum FROM/JOIN na tabela de dados (a linha, com updated_by, não é lida)
+    const alvos = [
+      ...estrutura.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+    ].map((m) => m[1].toLowerCase());
+    assert(alvos.length > 0);
+    const permitidos = new Set([
+      "pg_class",
+      "pg_attribute",
+      "pg_policies",
+      "tab",
+      "cols",
+      "itens",
+      "c",
+      "p",
+      "a",
+    ]);
+    for (const alvo of alvos)
+      assert(
+        permitidos.has(alvo),
+        `lê de "${alvo}", que não é catálogo nem CTE`,
+      );
+    assert(
+      !/\b(?:FROM|JOIN)\s+(?:public\.)?politica_devolucao\b/i.test(estrutura),
+      "a consulta leu a tabela politica_devolucao",
+    );
+    // o rol: 9 itens, sem repetição, e CADA item aparece como literal no .sql
+    // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    assertEquals(rol.length, 9);
+    assertEquals(new Set(rol).size, rol.length);
+    for (const item of rol)
+      assertStringIncludes(limpo, `'${item}'`, `item "${item}" fora do .sql`);
+    assertEquals(
+      [...limpo.matchAll(/SELECT '([^']+)',/g)].length,
+      rol.length,
+      "o .sql tem mais (ou menos) linhas que o rol",
+    );
+    assert(depois === (nome === NOME_19A));
+  });
+}
+
+Deno.test("19a/19b — o que as consultas ESPERAM nasce da migration: 15 colunas concedidas de 16, sem updated_by; a política pública de SELECT tem o nome da 20261175", async () => {
+  const mig = await Deno.readTextFile(MIGRACAO_215);
+  const m75 = await Deno.readTextFile(MIGRACAO_75);
+  const a = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_19A}.sql`),
+  );
+  const b = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_19B}.sql`),
+  );
+  // as colunas da tabela, do CREATE TABLE da 20261175
+  const ini = m75.indexOf(
+    "CREATE TABLE IF NOT EXISTS public.politica_devolucao",
+  );
+  const corpo = m75.slice(ini, m75.indexOf("\n);", ini));
+  const colunas = corpo
+    .split("\n")
+    .slice(1)
+    .map((l) => l.match(/^ {2}([a-z_]+) /)?.[1])
+    .filter((x): x is string => !!x);
+  assertEquals(colunas.length, 16, "a tabela tem 16 colunas");
+  assert(colunas.includes("updated_by"));
+  // as concedidas, do GRANT da migration (sem comentários)
+  const g = sqlSemComentarios(mig).match(
+    /GRANT SELECT \(([^)]*)\) ON public\.politica_devolucao TO anon, authenticated;/,
+  );
+  assert(g, "falta o GRANT por coluna na migration");
+  const concedidas = g[1].split(",").map((c) => c.trim());
+  assertEquals(concedidas.length, 15);
+  assertEquals(
+    colunas.filter((c) => !concedidas.includes(c)),
+    ["updated_by"],
+    "a única coluna não concedida é updated_by",
+  );
+  // os números que as consultas esperam são esses
+  assertStringIncludes(a, "'15 de 16'");
+  assertStringIncludes(b, "'16 de 16'");
+  assertStringIncludes(
+    a,
+    "SELECT 'controle: colunas de politica_devolucao visiveis a este papel', '16'",
+  );
+  assertStringIncludes(
+    b,
+    "SELECT 'controle: colunas de politica_devolucao visiveis a este papel', '16'",
+  );
+  // o esperado de cada linha de grant: 'nao' no depois, 'sim' no antes
+  for (const papel of ["anon", "authenticated"])
+    for (const item of ["SELECT da tabela inteira", "SELECT em updated_by"]) {
+      assertStringIncludes(a, `SELECT '${papel}: ${item}', 'nao'`);
+      assertStringIncludes(b, `SELECT '${papel}: ${item}', 'sim'`);
+    }
+  for (const sql of [a, b]) {
+    assertStringIncludes(
+      sql,
+      "SELECT 'service_role: SELECT da tabela inteira', 'sim'",
+    );
+    // a política pública da 20261175 (mesmo nome, USING (true)) é a que a consulta procura
+    assertStringIncludes(m75, "politica_devolucao_publica_select_policy");
+    assertStringIncludes(
+      sql,
+      "p.policyname = 'politica_devolucao_publica_select_policy'",
+    );
+    assertStringIncludes(sql, "p.cmd = 'SELECT' AND p.qual = 'true'");
+    // privilégios medidos por função do catálogo, com o papel inexistente reportado, nunca escondido
+    assertStringIncludes(sql, "has_table_privilege(");
+    assertStringIncludes(sql, "has_column_privilege(");
+    assertStringIncludes(
+      sql,
+      "to_regrole('anon') IS NULL THEN 'papel ausente'",
+    );
+    assertStringIncludes(
+      sql,
+      "to_regrole('authenticated') IS NULL THEN 'papel ausente'",
+    );
+    assertStringIncludes(sql, "THEN 'AUSENTE'");
+  }
+});
+
+Deno.test("19a/19b — o rpc-ci.yml roda a prova viva do portão da política de devolução no job bloqueante (sem continue-on-error, depois de aplica) e é disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const prova = "politica-devolucao-portao-viva";
+  const linhas = bloqueante.split("\n");
+  const k = linhas.indexOf(
+    `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+  );
+  assert(k >= 2, `o passo de ${prova} não está no job bloqueante`);
+  assertEquals(
+    linhas[k - 1],
+    "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+  );
+  assertEquals(
+    linhas[k - 2],
+    "      - name: Prova viva do portao da politica de devolucao (consultas 19a e 19b)",
+  );
+  assert(
+    bloqueante.indexOf(`tests/banco/${prova}.cjs`) >
+      bloqueante.indexOf("id: aplica"),
+  );
+  assert(!yaml.slice(inicioInformacional).includes(prova));
+  assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+  assert(
+    (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+    `tests/banco/${prova}.cjs não existe`,
+  );
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `não achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      "scripts/publicacao/conferir-banco.cjs",
+      `scripts/publicacao/consultas/${NOME_19A}.sql`,
+      `scripts/publicacao/consultas/${NOME_19B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "scripts/frota/publicar-release.mjs",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});

@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1353,6 +1353,45 @@ const ROL_DA_17B = [
   "painel_inicio: sobrecargas",
   "produtos e product_variants: colunas que os corpos novos leem",
 ];
+/** O rol da 19a (a prova de objetos do lote da migration 20261215000000, a politica de devolucao nao
+ * mostra quem a editou — achado L): as 9 linhas que
+ * scripts/publicacao/consultas/19a-conferir-politica-devolucao-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (tabela ausente vira `AUSENTE` na propria linha, papel inexistente vira
+ * `papel ausente`, nunca some uma linha): o controle (16 colunas), a RLS com a politica publica de SELECT,
+ * `service_role` com SELECT da tabela inteira e, para `anon` e `authenticated`, SEM SELECT da tabela
+ * inteira, SEM SELECT em `updated_by` e 15 de 16 colunas legiveis. Como a 10a/11a/12a/14a/15a/16a/17a, NAO
+ * serve de pre-checagem de ledger (o lote nao tem backfill): o portao a le como `consulta` do lote e so a
+ * aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/politica-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_19A = [
+  "anon: SELECT da tabela inteira",
+  "anon: SELECT em updated_by",
+  "anon: colunas legiveis",
+  "authenticated: SELECT da tabela inteira",
+  "authenticated: SELECT em updated_by",
+  "authenticated: colunas legiveis",
+  "controle: colunas de politica_devolucao visiveis a este papel",
+  "politica_devolucao: RLS ligada com a politica publica de SELECT",
+  "service_role: SELECT da tabela inteira",
+];
+/** O rol da 19b (a consulta de AUSENCIA do lote da migration 20261215000000; `ausenciaConfirmadaPor`): as 9
+ * linhas que scripts/publicacao/consultas/19b-antes-politica-devolucao-grant-de-tabela.sql devolve, os MESMOS
+ * itens da 19a com o esperado de ANTES — `anon` e `authenticated` com SELECT da tabela inteira, com SELECT em
+ * `updated_by` e 16 de 16 colunas legiveis. Uma loja que ja tem a migration reprova aqui de proposito.
+ * tests/banco/politica-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_19B = [
+  "anon: SELECT da tabela inteira",
+  "anon: SELECT em updated_by",
+  "anon: colunas legiveis",
+  "authenticated: SELECT da tabela inteira",
+  "authenticated: SELECT em updated_by",
+  "authenticated: colunas legiveis",
+  "controle: colunas de politica_devolucao visiveis a este papel",
+  "politica_devolucao: RLS ligada com a politica publica de SELECT",
+  "service_role: SELECT da tabela inteira",
+];
 
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
@@ -1376,6 +1415,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "16b-antes-pix-anulado-foto-ausente": ROL_DA_16B,
   "17a-conferir-estoque-do-painel-aplicado": ROL_DA_17A,
   "17b-antes-estoque-do-painel-corpos-vigentes": ROL_DA_17B,
+  "19a-conferir-politica-devolucao-aplicado": ROL_DA_19A,
+  "19b-antes-politica-devolucao-grant-de-tabela": ROL_DA_19B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -1936,6 +1977,8 @@ module.exports = {
   ROL_DA_16B,
   ROL_DA_17A,
   ROL_DA_17B,
+  ROL_DA_19A,
+  ROL_DA_19B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

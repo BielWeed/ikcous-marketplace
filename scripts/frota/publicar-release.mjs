@@ -412,6 +412,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "16b-antes-pix-anulado-foto-ausente",
   "17a-conferir-estoque-do-painel-aplicado",
   "17b-antes-estoque-do-painel-corpos-vigentes",
+  "19a-conferir-politica-devolucao-aplicado",
+  "19b-antes-politica-devolucao-grant-de-tabela",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

@@ -622,6 +622,49 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         o EXECUTE de `service_role` (nenhuma migration do lote os muda), e nao leem dado: nao dizem
         quantos produtos estao com estoque baixo.
 
+  16. **Lote de UMA migration, de apply normal: `20261215000000` (a politica de devolucao nao mostra
+      quem a editou, achado L).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy). So muda PRIVILEGIO de coluna em `public.politica_devolucao`: `anon` e
+      `authenticated` perdem o SELECT da tabela inteira e passam a ler 15 das 16 colunas, sem
+      `updated_by` (o uuid do admin que salvou por ultimo, antes legivel sem login). Nenhuma linha de
+      dado e lida ou reescrita; nenhuma funcao, politica RLS, gatilho ou coluna muda; `service_role` e as
+      funcoes `SECURITY DEFINER` seguem lendo a linha inteira. Um bloco `DO` no fim da propria migration
+      aborta o apply se `anon` ou `authenticated` ainda lerem `updated_by` ou a tabela inteira. Duas
+      consultas, so leitura, so catalogo e de ROL FECHADO de 9 linhas (so valem com `rol=ok`):
+      - **`19a-conferir-politica-devolucao-aplicado`** (a consulta do lote) prova DEPOIS do apply: sem
+        SELECT da tabela inteira e sem SELECT em `updated_by` para `anon` e `authenticated`, 15 de 16
+        colunas legiveis, a RLS ligada com a politica publica de SELECT e `service_role` com SELECT.
+      - **`19b-antes-politica-devolucao-grant-de-tabela`** (`ausenciaConfirmadaPor`) prova o ANTES: os
+        mesmos itens com SELECT da tabela inteira e 16 de 16 colunas. Uma loja onde a tabela nao existe
+        (a `20261175000000` nao foi aplicada) reprova em `AUSENTE`.
+      - **Caminho, uma loja por vez:** ledger sem a versao e sem evidencia → `19a` (sai NEGATIVA) → `19b`
+        MAIS NOVA que a `19a` e POSITIVA → UM comando `aplicar-migrations.yml` com
+        `20261215000000_a_politica_de_devolucao_nao_mostra_quem_a_editou.sql` → o ensaio pede a `19a` DE
+        NOVO, que tem de sair POSITIVA. `19a` POSITIVA com a versao fora do ledger: PARAR (sem backfill;
+        registrar a versao a mao e decisao do dono).
+      - **Ordem:** o banco de CADA loja primeiro (IKCOUS, depois Savy, fora do horario de pico) e o front
+        logo depois. **Banco novo com front velho:** o front antigo le a tabela com `select("*")`, que o
+        banco passa a negar; a tela Ajustes > Pos-venda > Trocas e devolucoes cai no estado de erro de
+        leitura ate o admin aceitar a atualizacao do app (PWA com `registerType: "prompt"`; vale tambem
+        para um rollback de deploy para uma versao anterior). Nenhum dado se perde e o cliente final nao
+        e afetado, porque recebe a politica pelas RPCs. **Front novo com banco velho:** funciona (colunas
+        explicitas). Para evitar a janela, publique o front numa release sozinha antes da migration.
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261215000000_a_politica_de_devolucao_nao_mostra_quem_a_editou.sql` pelo
+        `aplicar-migrations.yml` (apaga a linha da versao do ledger na mesma transacao), NUNCA por `psql`
+        direto (o ledger ficaria com a versao e o portao pularia o lote sem pedir a `19a`). Devolve o
+        SELECT da tabela inteira e reabre o achado L. Depois dele a `19b` volta a ser POSITIVA e a `19a`
+        NEGATIVA (provado em `tests/banco/politica-devolucao-portao-viva.cjs`).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar
+        a `19a` e a `19b` DE NOVO, DEPOIS da ultima mudanca nesses arquivos.
+      - **Limites:** `tests/banco/politica-devolucao-portao-viva.cjs` (Postgres 17 efemero, no
+        `rpc-ci.yml`) prova que as consultas DECIDEM certo (cada defeito reprova SO as suas linhas; ida e
+        volta pelo rollback); `tests/banco/devolucoes-viva.cjs`, prova "(achado L)", prova o
+        comportamento (`SELECT *` e `updated_by` negados a `anon` e `authenticated`). Nao provam que a
+        IKCOUS ou a Savy estao no estado de antes ou de depois (so o run da consulta contra o ref de cada
+        loja diz). O `supabase_read_only_user` real e a ACL real das lojas nao foram medidos ali, e nao
+        ha mutantes do texto dos `.sql`. As consultas nao leem dado: nao dizem quem editou a politica.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
