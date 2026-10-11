@@ -8254,3 +8254,114 @@ Deno.test(`${NOME_18A} — no menu, UM SELECT so leitura, saida tipo/objeto/deta
     },
   );
 });
+
+// A5a-A5d (10/10/2026) — a MEDICAO "o que um estranho faz com as portas abertas": tres scripts em
+// tests/banco/ que o rpc-ci roda, cada um num CLONE do banco migrado (rodar-isolado.cjs), e deixam no
+// log uma linha `PORTA <recurso> -> escreveu|vazou|recusou|...` por caso. Sao medicao, nao portao:
+// saem sempre 0. Este teste prende o que faz a tabela aparecer no log do run: os tres passos existem,
+// UMA vez, no job bloqueante, depois de `aplica` e antes da prova que escreve no banco base, e os
+// arquivos existem. Sem o passo, o check some em silencio (check ausente tem a cara de check verde).
+Deno.test("rpc-ci.yml roda as tres medicoes de portas do anonimo no job bloqueante, cada uma num clone, e os scripts existem", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const linhas = bloqueante.split("\n");
+  const iInvariantes = linhas.indexOf(
+    "      - name: Prova os invariantes de dinheiro",
+  );
+  assert(iInvariantes > 0, "nao achei o passo dos invariantes de dinheiro");
+  const iAplica = bloqueante.indexOf("id: aplica");
+  assert(iAplica > 0);
+  for (const [prova, nome] of [
+    [
+      "portas-anon-exploracao-dinheiro",
+      "Medicao das portas do anonimo - dinheiro (A5a, nao e portao)",
+    ],
+    [
+      "portas-anon-exploracao-dados",
+      "Medicao das portas do anonimo - dados pessoais (A5b, nao e portao)",
+    ],
+    [
+      "portas-anon-exploracao-estoque-otp",
+      "Medicao das portas do anonimo - estoque, OTP e servico (A5c, nao e portao)",
+    ],
+  ]) {
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} nao esta no job bloqueante`);
+    assertEquals(linhas[k - 2], `      - name: ${nome}`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assert(
+      k < iInvariantes,
+      `${prova} tem de rodar antes da prova que escreve no banco base`,
+    );
+    assert(
+      bloqueante.indexOf(linhas[k]) > iAplica,
+      `${prova} antes do passo aplica`,
+    );
+    assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+    assert(!yaml.slice(inicioInformacional).includes(prova));
+    assert(
+      (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+      `tests/banco/${prova}.cjs nao existe`,
+    );
+  }
+  assert(
+    (await Deno.stat(`${RAIZ}/tests/banco/portas-anon-exploracao-comum.cjs`))
+      .isFile,
+    "falta o motor compartilhado das tres medicoes",
+  );
+});
+
+Deno.test("as tres medicoes de portas: so rodam no efemero, saem 0, tem autoteste e nunca escrevem fora de uma transacao desfeita", async () => {
+  const comum = await Deno.readTextFile(
+    `${RAIZ}/tests/banco/portas-anon-exploracao-comum.cjs`,
+  );
+  // Trava de banco: a unica conexao passa por lerDatabaseUrlEfemera (recusa banco que nao seja o do job).
+  assertStringIncludes(comum, "lerDatabaseUrlEfemera()");
+  // Cada caso e BEGIN ... ROLLBACK, e o ROLLBACK esta num `finally` (vale ate quando a medicao quebra).
+  assert(/await c\.query\("BEGIN"\);/.test(comum));
+  assert(
+    /finally \{\s*await c\.query\("ROLLBACK"\)/.test(comum),
+    "o ROLLBACK do caso tem de estar num finally",
+  );
+  assert(!/\bCOMMIT\b/.test(comum), "a medicao nunca da COMMIT");
+  // O classificador se prova antes dos casos reais.
+  assertStringIncludes(comum, "CASOS_AUTOTESTE");
+  assertStringIncludes(comum, "MEDIÇÃO INVÁLIDA");
+  for (const veredito of [
+    "escreveu",
+    "vazou",
+    "recusou",
+    "executou",
+    "inconclusivo",
+    "AUSENTE",
+  ])
+    assertStringIncludes(comum, `"${veredito}"`);
+  for (const nome of ["dinheiro", "dados", "estoque-otp"]) {
+    const fonte = await Deno.readTextFile(
+      `${RAIZ}/tests/banco/portas-anon-exploracao-${nome}.cjs`,
+    );
+    assertStringIncludes(
+      fonte,
+      'require("./portas-anon-exploracao-comum.cjs")',
+    );
+    assert(/\brodar\(/.test(fonte), `${nome}: nao chama o motor`);
+    assert(
+      !/process\.exit\(/.test(fonte),
+      `${nome}: medicao nao pode sair com codigo diferente de 0 por conta propria`,
+    );
+    assert(!/\bCOMMIT\b/.test(fonte), `${nome}: nunca da COMMIT`);
+  }
+  assert(
+    !/process\.exit\(/.test(comum),
+    "o motor so sai pela trava de banco (falhar), nunca por process.exit proprio",
+  );
+});

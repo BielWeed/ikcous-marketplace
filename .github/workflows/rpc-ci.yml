@@ -466,6 +466,25 @@ jobs:
       - name: Prova viva do estoque minimo editavel so pelo admin (sem migration, transacao desfeita)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-minimo-editavel-viva.cjs
+      # AUDITORIA DE PAGAMENTO E SEGURANCA, fase A (10/10/2026): MEDICAO de "o que um estranho faz com as
+      # portas abertas". Cada script reabre, de proposito, o EXECUTE do visitante sem login (GRANT ... TO
+      # anon) para cada funcao da lista, chama como anon com dados SINTETICOS criados na propria
+      # transacao (controle legitimo antes, para provar a fixture) e registra a linha
+      # `PORTA <recurso> -> escreveu|vazou|recusou|executou|inconclusivo|AUSENTE <detalhe>`; tudo termina
+      # em ROLLBACK. NAO sao portao: saem sempre 0 (o resultado e a tabela no log e no resumo do job);
+      # um AUTOTESTE no inicio prova que o classificador enxerga escrita, vazamento e recusa, e sem ele a
+      # tabela vem marcada "MEDICAO INVALIDA". Para ler: `gh run view <id> --log` e procurar `PORTA`. Na
+      # fase B (correcao) viram teste de regressao: o esperado muda de "escreveu/vazou" para "recusou".
+      # CLONE proprio (rodar-isolado.cjs), antes da prova que escreve no banco base.
+      - name: Medicao das portas do anonimo - dinheiro (A5a, nao e portao)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-anon-exploracao-dinheiro.cjs
+      - name: Medicao das portas do anonimo - dados pessoais (A5b, nao e portao)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-anon-exploracao-dados.cjs
+      - name: Medicao das portas do anonimo - estoque, OTP e servico (A5c, nao e portao)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-anon-exploracao-estoque-otp.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
