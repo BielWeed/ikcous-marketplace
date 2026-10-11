@@ -817,6 +817,16 @@ const campo = (o: Objeto, chave: string): unknown =>
     ? Object.getOwnPropertyDescriptor(o, chave)?.value
     : undefined;
 
+/**
+ * Colunas de `politica_devolucao` que `anon` e `authenticated` podem ler.
+ * Tudo menos `updated_by` (o uuid do admin que salvou por último): a migration
+ * 20261215 tirou o SELECT da tabela inteira, então `select("*")` falha. Os
+ * tipos gerados (database.types.ts) ignoram privilégio de coluna e ainda
+ * mostram `updated_by`: um `select("updated_by")` compila e quebra em runtime.
+ */
+export const COLUNAS_DA_POLITICA =
+  "prazo_arrependimento_dias,prazo_troca_dias,prazo_vicio_dias,aceita_troca,aceita_vale,exige_fotos_vicio,metodos_locais,metodos_nacionais,reembolso_momento,frete_troca_pago_por,categorias_sem_troca,texto_politica,endereco_devolucao,updated_at";
+
 export function lerPolitica(v: unknown): PoliticaDevolucao | null {
   if (!ehObjeto(v)) return null;
   const arrep = numero(campo(v, "prazo_arrependimento_dias"));

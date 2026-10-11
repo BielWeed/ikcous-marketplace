@@ -9,8 +9,9 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rpc, maybeSingle, toast } = vi.hoisted(() => ({
+const { rpc, maybeSingle, selecionar, toast } = vi.hoisted(() => ({
   rpc: vi.fn(),
+  selecionar: vi.fn(),
   maybeSingle: vi.fn(),
   toast: Object.assign(vi.fn(), {
     success: vi.fn(),
@@ -22,7 +23,12 @@ const { rpc, maybeSingle, toast } = vi.hoisted(() => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc,
-    from: () => ({ select: () => ({ eq: () => ({ maybeSingle }) }) }),
+    from: () => ({
+      select: (colunas: string) => {
+        selecionar(colunas);
+        return { eq: () => ({ maybeSingle }) };
+      },
+    }),
   },
 }));
 vi.mock("@/hooks/useCategories", () => ({
@@ -117,6 +123,21 @@ function botao(texto: string) {
     (b) => b.textContent?.trim() === texto,
   );
 }
+
+describe("leitura da política (achado L)", () => {
+  it("pede colunas explícitas, nunca * nem updated_by", async () => {
+    await montar();
+    expect(selecionar).toHaveBeenCalledTimes(1);
+    const colunas = String(selecionar.mock.calls[0][0]);
+    expect(colunas).not.toContain("*");
+    expect(colunas.split(",")).not.toContain("updated_by");
+    // Todas as colunas que lerPolitica usa continuam sendo pedidas.
+    for (const c of Object.keys(LINHA)) {
+      if (c === "id" || c === "updated_by") continue;
+      expect(colunas.split(",")).toContain(c);
+    }
+  });
+});
 
 describe("mínimos legais da política (funções puras)", () => {
   it("arrependimento ≥ 7, vício ≥ 30, troca 0..365 — com explicação", async () => {
