@@ -282,6 +282,16 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   aplicado 2x e depois de ida e volta) e 19b positiva depois do rollback, cada uma reprovando só as 6 linhas
   de grant da outra; GRANT da tabela, GRANT de `updated_by`, `service_role` sem SELECT, RLS desligada,
   política apagada e tabela ausente reprovam só as suas linhas; o papel mínimo dá o mesmo resultado do dono.
+- **portão das fotos da devolução (`fotos-da-devolucao-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `20a-conferir-fotos-da-devolucao-aplicado` (DEPOIS do apply, 6 linhas) e
+  `20b-antes-fotos-da-devolucao-sem-delete` (ANTES, 6 linhas), a "prova de objetos" do lote `20261216000000`
+  (política de `DELETE` do cliente em `storage.objects`). Cada estado numa transação desfeita, as consultas
+  como papel de leitura. As linhas de cada consulta são exatamente o rol de `conferir-banco.cjs`; 20a
+  positiva depois do apply (também 2x e depois de ida e volta) e 20b positiva depois do rollback, cada uma
+  reprovando só as 3 linhas da política de `DELETE` da outra; uma política de `DELETE` a mais (para `anon`, ou larga demais para `authenticated`),
+  a condição sem a pasta e a foto em uso e a falta da política de `INSERT` reprovam só as suas linhas; o
+  papel mínimo dá o mesmo resultado do dono. E o comportamento: o cliente apaga a própria foto livre e não a
+  em uso por uma devolução, a de outro cliente nem a de outro bucket.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

@@ -665,6 +665,48 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         loja diz). O `supabase_read_only_user` real e a ACL real das lojas nao foram medidos ali, e nao
         ha mutantes do texto dos `.sql`. As consultas nao leem dado: nao dizem quem editou a politica.
 
+  17. **Lote de UMA migration, de apply normal: `20261216000000` (o cliente apaga a foto de devolucao
+      que nao usou).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e
+      Savy). So cria a politica de RLS `devolucoes_cliente_delete_policy` em `storage.objects`: `DELETE`
+      so para `authenticated`, no bucket `devolucoes`, na pasta do proprio cliente e so do objeto que
+      nenhuma devolucao referencia. Nenhuma linha de dado e lida ou reescrita, nenhum objeto e apagado ao
+      aplicar, e a foto de uma devolucao (em andamento, concluida ou recusada) nunca pode ser apagada pelo
+      cliente. As fotos orfas que JA existem continuam la: varre-las no servidor e passo a parte. Duas
+      consultas, so leitura, so catalogo (`pg_policies`) e de ROL FECHADO de 6 linhas (so valem com
+      `rol=ok`):
+      - **`20a-conferir-fotos-da-devolucao-aplicado`** (a consulta do lote) prova DEPOIS do apply que a
+        politica existe, e so para `authenticated`, com as pecas que a fazem segura (bucket, pasta do
+        cliente, foto fora de uso), que **nenhuma outra politica de `DELETE`/`ALL`** em `storage.objects` alcanca o
+        bucket (as permissivas se somam por OR: uma mais larga anularia a condicao da nossa) e que as politicas
+        de `INSERT` e `SELECT` do cliente seguem no lugar. A lista de buckets aceitos nas outras politicas e' fechada
+        (banners, products, produtos, branding): uma politica de `DELETE` nova para outro bucket reprova a linha de
+        proposito, e quem a criou atualiza a consulta.
+      - **`20b-antes-fotos-da-devolucao-sem-delete`** (`ausenciaConfirmadaPor`) prova o ANTES: nenhuma
+        politica nossa de `DELETE`, nenhuma outra alcancando o bucket e as de `INSERT`/`SELECT` presentes (a `20261175000000` esta
+        aplicada).
+      - **Caminho, uma loja por vez:** ledger sem a versao e sem evidencia → `20a` (sai NEGATIVA) → `20b`
+        MAIS NOVA que a `20a` e POSITIVA → UM comando `aplicar-migrations.yml` com
+        `20261216000000_o_cliente_apaga_a_foto_de_devolucao_que_nao_usou.sql` → o ensaio pede a `20a` DE
+        NOVO, que tem de sair POSITIVA. `20a` POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Ordem:** o banco de CADA loja primeiro (IKCOUS, depois Savy, fora do horario de pico) e o front
+        logo depois. Front novo com banco velho: o app tenta apagar a foto nao usada, a politica nega e o app
+        ignora (a limpeza e o melhor possivel); as fotos ficam como estavam. Banco novo com front velho:
+        nada muda.
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261216000000_o_cliente_apaga_a_foto_de_devolucao_que_nao_usou.sql` pelo
+        `aplicar-migrations.yml` (apaga a linha da versao do ledger na mesma transacao), NUNCA por `psql`
+        direto (o ledger ficaria com a versao e o portao pularia o lote sem pedir a `20a`). Apaga so a
+        politica. Depois dele a `20b` volta a ser POSITIVA e a `20a` NEGATIVA (provado em
+        `tests/banco/fotos-da-devolucao-portao-viva.cjs`).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a
+        `20a` e a `20b` DE NOVO, DEPOIS da ultima mudanca nesses arquivos.
+      - **Limites:** `tests/banco/fotos-da-devolucao-portao-viva.cjs` (Postgres 17 efemero, no `rpc-ci.yml`)
+        prova que as consultas DECIDEM certo e o comportamento da politica (o cliente apaga a propria foto
+        livre e nao a em uso, a alheia nem a de outro bucket). Nao prova que a IKCOUS ou a Savy estao no
+        estado de antes ou de depois, nem a passagem pelo servico de Storage da Supabase (o `remove` pela
+        API cai na mesma RLS, mas essa passagem nao e medida). As consultas medem o TEXTO da condicao da
+        politica, nao o comportamento, e nao leem objeto algum.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

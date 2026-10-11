@@ -1400,6 +1400,7 @@ export function OrderDetailsView({
           horarioDaLoja={config.businessHours ?? null}
           solicitar={devolucaoDoProduto.solicitar}
           enviarFoto={devolucaoDoProduto.enviarFoto}
+          descartarFotos={devolucaoDoProduto.descartarFotos}
         />
       )}
 

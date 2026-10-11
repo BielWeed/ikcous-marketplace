@@ -8440,7 +8440,7 @@ for (const [nome, depois] of [
       !/\b(?:FROM|JOIN)\s+(?:public\.)?politica_devolucao\b/i.test(estrutura),
       "a consulta leu a tabela politica_devolucao",
     );
-    // o rol: 9 itens, sem repetição, e CADA item aparece como literal no .sql
+    // o rol: 6 itens, sem repetição, e CADA item aparece como literal no .sql
     // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
     const rol = ROL_FECHADO_POR_CONSULTA[nome];
     assertEquals(rol.length, 9);
@@ -8576,6 +8576,226 @@ Deno.test("19a/19b — o rpc-ci.yml roda a prova viva do portão da política de
       "scripts/publicacao/conferir-banco.cjs",
       `scripts/publicacao/consultas/${NOME_19A}.sql`,
       `scripts/publicacao/consultas/${NOME_19B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "scripts/frota/publicar-release.mjs",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});
+
+// 20a/20b (11/10/2026) — a PROVA DE OBJETOS do lote da migration 20261216000000 (o cliente apaga a
+// foto de devolução que não usou: uma política de DELETE em `storage.objects`, só `authenticated`,
+// só no bucket `devolucoes`, só na pasta do cliente e só se nenhuma devolução referencia o objeto).
+// A 20a é a consulta do lote (DEPOIS do apply); a 20b é a de ausência (ANTES). As duas são de ROL
+// FECHADO (6 linhas cada) e só leem o catálogo (pg_policies): nenhum objeto do bucket e nenhuma
+// linha de devolução é lido. Estes testes medem o texto dos .sql contra a migration DESTA árvore; a
+// decisão de cada consulta num Postgres real fica com tests/banco/fotos-da-devolucao-portao-viva.cjs
+// (rodado no rpc-ci.yml).
+const NOME_20A = "20a-conferir-fotos-da-devolucao-aplicado";
+const NOME_20B = "20b-antes-fotos-da-devolucao-sem-delete";
+const MIGRACAO_216 = `${MIGRATIONS_DIR}/20261216000000_o_cliente_apaga_a_foto_de_devolucao_que_nao_usou.sql`;
+
+for (const [nome, depois] of [
+  [NOME_20A, true],
+  [NOME_20B, false],
+] as Array<[string, boolean]>) {
+  Deno.test(`${nome} — no menu, UM statement só leitura (WITH), rol fechado de 6 itens, só catálogo e nenhuma linha de dado é lida`, async () => {
+    const { contarStatements } = require(SCRIPT);
+    const { ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const estrutura = semLiterais(sql);
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    assertStringIncludes(yaml, `- ${nome}\n`);
+    assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+    assert(/^\s*WITH\b/i.test(limpo), "começa por WITH");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+        estrutura,
+      ),
+      "palavra de escrita fora de comentário/literal",
+    );
+    assert(
+      !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+        estrutura,
+      ),
+      "SQL dinâmico (ou leitura de arquivo)",
+    );
+    assert(
+      /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+        limpo,
+      ),
+      "saída item/esperado/vivo/ok com as reprovadas primeiro",
+    );
+    // SÓ catálogo e CTEs: nenhum FROM/JOIN na tabela de dados (nem as fotos, nem as devoluções, são lidas)
+    const alvos = [
+      ...estrutura.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+    ].map((m) => m[1].toLowerCase());
+    assert(alvos.length > 0);
+    const permitidos = new Set(["pg_policies", "pol", "del", "itens"]);
+    for (const alvo of alvos)
+      assert(
+        permitidos.has(alvo),
+        `lê de "${alvo}", que não é catálogo nem CTE`,
+      );
+    assert(
+      !/\b(?:FROM|JOIN)\s+(?:public\.|storage\.)?(?:devolucoes|objects)\b/i.test(
+        estrutura,
+      ),
+      "a consulta leu uma tabela de dados (devolucoes ou storage.objects)",
+    );
+    // o rol: 6 itens, sem repetição, e CADA item aparece como literal no .sql
+    // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    assertEquals(rol.length, 6);
+    assertEquals(new Set(rol).size, rol.length);
+    for (const item of rol)
+      assertStringIncludes(limpo, `'${item}'`, `item "${item}" fora do .sql`);
+    assertEquals(
+      [...limpo.matchAll(/SELECT '([^']+)',/g)].length,
+      rol.length,
+      "o .sql tem mais (ou menos) linhas que o rol",
+    );
+    assert(depois === (nome === NOME_20A));
+  });
+}
+
+Deno.test("20a/20b — o que as consultas ESPERAM nasce da migration: DELETE só authenticated, no bucket, na pasta do cliente e fora da foto em uso; o nome da política é o da migration", async () => {
+  const mig = sqlSemComentarios(await Deno.readTextFile(MIGRACAO_216));
+  const m75 = await Deno.readTextFile(MIGRACAO_75);
+  const a = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_20A}.sql`),
+  );
+  const b = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_20B}.sql`),
+  );
+  // a política que a migration cria
+  const criada = mig.match(
+    /CREATE POLICY (\w+) ON storage\.objects\s+FOR DELETE TO (\w+)\s+USING \(([\s\S]*?)\);\s*$/,
+  );
+  assert(
+    criada,
+    "a migration não cria uma política de DELETE em storage.objects",
+  );
+  assertEquals(criada[1], "devolucoes_cliente_delete_policy");
+  assertEquals(criada[2], "authenticated");
+  const condicao = criada[3].replace(/\s+/g, " ");
+  for (const peca of [
+    "bucket_id = 'devolucoes'",
+    "split_part(name, '/', 1) = (SELECT auth.uid())::text",
+    "NOT EXISTS",
+    "= ANY (d.fotos)",
+  ])
+    assertStringIncludes(condicao, peca);
+  // as consultas procuram por esse nome e conferem as mesmas peças no texto da política
+  for (const sql of [a, b]) {
+    assertStringIncludes(sql, "'devolucoes_cliente_delete_policy'");
+    assertStringIncludes(sql, "papeis = '{authenticated}'");
+    for (const peca of [
+      "bucket_id = ''devolucoes''",
+      "split_part(name",
+      "auth.uid()",
+      "NOT (EXISTS",
+      "ANY (d.fotos)",
+    ])
+      assertStringIncludes(sql, peca);
+    // INSERT e SELECT do cliente: os nomes vêm da 20261175
+    for (const nome of [
+      "devolucoes_cliente_insert_policy",
+      "devolucoes_dono_ou_admin_select_policy",
+    ]) {
+      assertStringIncludes(m75, nome);
+      assertStringIncludes(sql, `'${nome}'`);
+    }
+  }
+  // 20a espera 1 política e 'sim'; 20b espera 0 e 'AUSENTE'
+  assertStringIncludes(a, "'devolucoes: politicas de DELETE do cliente', '1'");
+  assertStringIncludes(b, "'devolucoes: politicas de DELETE do cliente', '0'");
+  assertStringIncludes(a, "'devolucoes: DELETE so para authenticated', 'sim'");
+  assertStringIncludes(
+    b,
+    "'devolucoes: DELETE so para authenticated', 'AUSENTE'",
+  );
+});
+
+Deno.test("20a/20b — as políticas de DELETE/ALL já existentes nos snapshots de storage cabem na lista fechada de buckets da linha 'nenhuma outra política'", async () => {
+  const a = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_20A}.sql`),
+  );
+  // a lista fechada de buckets que a 20a aceita
+  const lista = a.match(/\^\[\(\]\+bucket_id = ''\(([\w|]+)\)''/);
+  assert(lista, "a 20a não traz a lista fechada de buckets");
+  // eslint-disable-next-line security/detect-non-literal-regexp -- padrão montado da lista fechada lida da própria 20a (arquivo do repo), nunca de entrada externa
+  const permitido = new RegExp(
+    `^[(]+bucket_id = '(${lista[1]})'::text[)] AND `,
+  );
+  let vistas = 0;
+  for (const arq of ["storage-principal.sql", "storage-savy.sql"]) {
+    const texto = await Deno.readTextFile(
+      `${RAIZ}/tests/identity-database/${arq}`,
+    );
+    for (const linha of texto.split("\n")) {
+      const m = linha.match(/ FOR (DELETE|ALL) TO [\w,]+ USING \((.*)\);?\s*$/);
+      if (!m) continue;
+      vistas++;
+      assert(
+        permitido.test(m[2]),
+        `${arq}: política de ${m[1]} alcança bucket fora da lista da 20a: ${linha}`,
+      );
+    }
+  }
+  assert(vistas > 0, "nenhuma política de DELETE encontrada nos snapshots");
+});
+
+Deno.test("20a/20b — o rpc-ci.yml roda a prova viva do portão das fotos da devolução no job bloqueante (sem continue-on-error, depois de aplica) e é disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const prova = "fotos-da-devolucao-portao-viva";
+  const linhas = bloqueante.split("\n");
+  const k = linhas.indexOf(
+    `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+  );
+  assert(k >= 2, `o passo de ${prova} não está no job bloqueante`);
+  assertEquals(
+    linhas[k - 1],
+    "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+  );
+  assertEquals(
+    linhas[k - 2],
+    "      - name: Prova viva do portao das fotos da devolucao (consultas 20a e 20b)",
+  );
+  assert(
+    bloqueante.indexOf(`tests/banco/${prova}.cjs`) >
+      bloqueante.indexOf("id: aplica"),
+  );
+  assert(!yaml.slice(inicioInformacional).includes(prova));
+  assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+  assert(
+    (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+    `tests/banco/${prova}.cjs não existe`,
+  );
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `não achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      "scripts/publicacao/conferir-banco.cjs",
+      `scripts/publicacao/consultas/${NOME_20A}.sql`,
+      `scripts/publicacao/consultas/${NOME_20B}.sql`,
       "scripts/frota/canais-de-backend.json",
       "scripts/frota/publicar-release.mjs",
       "supabase/migrations/**",

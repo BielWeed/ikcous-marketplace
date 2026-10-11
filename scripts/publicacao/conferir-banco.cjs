@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1393,6 +1393,37 @@ const ROL_DA_19B = [
   "service_role: SELECT da tabela inteira",
 ];
 
+/** O rol da 20a (a prova de objetos do lote da migration 20261216000000, o cliente apaga a foto de
+ * devolucao que nao usou): as 6 linhas que
+ * scripts/publicacao/consultas/20a-conferir-fotos-da-devolucao-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (politica ausente vira `AUSENTE` na propria linha, nunca some uma
+ * linha): o controle do catalogo, a politica de DELETE do cliente (uma), so para `authenticated`, com as
+ * pecas que a fazem segura (bucket, pasta do cliente, foto fora de uso), nenhuma outra politica de DELETE/ALL
+ * alcancando o bucket, e as politicas de INSERT e SELECT do cliente no lugar. Como a 10a/11a/12a/14a/15a/16a/17a/19a, NAO serve de pre-checagem de ledger (o lote
+ * nao tem backfill): o portao a le como `consulta` do lote e so a aceita como POSITIVA ou NEGATIVA com
+ * ` rol=ok`. tests/banco/fotos-da-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_20A = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "devolucoes: DELETE so no bucket, na pasta do cliente e fora da foto em uso",
+  "devolucoes: DELETE so para authenticated",
+  "devolucoes: INSERT e SELECT do cliente seguem no lugar",
+  "devolucoes: nenhuma outra politica DELETE/ALL alcanca o bucket",
+  "devolucoes: politicas de DELETE do cliente",
+];
+/** O rol da 20b (a consulta de AUSENCIA do lote da migration 20261216000000; `ausenciaConfirmadaPor`): as 6
+ * linhas que scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql devolve, os MESMOS
+ * itens da 20a com o esperado de ANTES (nenhuma politica de DELETE do cliente; INSERT e SELECT presentes).
+ * Uma loja que ja tem a politica reprova aqui de proposito. tests/banco/fotos-da-devolucao-portao-viva.cjs
+ * prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_20B = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "devolucoes: DELETE so no bucket, na pasta do cliente e fora da foto em uso",
+  "devolucoes: DELETE so para authenticated",
+  "devolucoes: INSERT e SELECT do cliente seguem no lugar",
+  "devolucoes: nenhuma outra politica DELETE/ALL alcanca o bucket",
+  "devolucoes: politicas de DELETE do cliente",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1417,6 +1448,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "17b-antes-estoque-do-painel-corpos-vigentes": ROL_DA_17B,
   "19a-conferir-politica-devolucao-aplicado": ROL_DA_19A,
   "19b-antes-politica-devolucao-grant-de-tabela": ROL_DA_19B,
+  "20a-conferir-fotos-da-devolucao-aplicado": ROL_DA_20A,
+  "20b-antes-fotos-da-devolucao-sem-delete": ROL_DA_20B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -1979,6 +2012,8 @@ module.exports = {
   ROL_DA_17B,
   ROL_DA_19A,
   ROL_DA_19B,
+  ROL_DA_20A,
+  ROL_DA_20B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
