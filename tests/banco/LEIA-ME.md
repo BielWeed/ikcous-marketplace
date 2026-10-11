@@ -273,6 +273,15 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   sem pedir a 17a (o ponto cego que o runbook fecha mandando desfazer só pelo `aplicar-migrations.yml`);
   `service_role` e o dono não são medidos; o `supabase_read_only_user` real não foi medido. **Não prova** a
   IKCOUS nem a Savy.
+- **portão da política de devolução (`politica-devolucao-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `19a-conferir-politica-devolucao-aplicado` (DEPOIS do apply, 9 linhas) e
+  `19b-antes-politica-devolucao-grant-de-tabela` (ANTES, 9 linhas), a "prova de objetos" do lote
+  `20261215000000` (achado L: `anon` e `authenticated` perdem o SELECT da tabela inteira e leem 15 das 16
+  colunas, sem `updated_by`). Cada estado numa transação desfeita, as consultas como papel de leitura. As
+  linhas de cada consulta são exatamente o rol de `conferir-banco.cjs`; 19a positiva depois do apply (também
+  aplicado 2x e depois de ida e volta) e 19b positiva depois do rollback, cada uma reprovando só as 6 linhas
+  de grant da outra; GRANT da tabela, GRANT de `updated_by`, `service_role` sem SELECT, RLS desligada,
+  política apagada e tabela ausente reprovam só as suas linhas; o papel mínimo dá o mesmo resultado do dono.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
