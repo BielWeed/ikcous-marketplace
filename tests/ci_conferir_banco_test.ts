@@ -8045,3 +8045,324 @@ Deno.test("17a/17b — o rpc-ci.yml roda a prova viva do portão do estoque do p
       );
   }
 });
+
+// 18a (10/10/2026) — INVENTARIO DE PORTAS (auditoria de pagamento e seguranca, tarefa A2). Consulta
+// de LEITURA, de rol ABERTO (nao e portao de release): lista, por tipo/objeto/detalhe, o que o visitante
+// sem login (anon) e o cliente logado (authenticated) alcancam no banco de cada loja — funcoes com
+// EXECUTE, views sem security_invoker, politicas de RLS para PUBLIC/anon, o registro de migrations
+// recente, o cartao (so as chaves), os buckets e as politicas de storage, o realtime e as permissoes
+// padrao de funcao. Nao entra em ROL_FECHADO_POR_CONSULTA de proposito (nao tem coluna `ok`: quem
+// decide e a pessoa que le a tabela, e o portao da release nunca a trata como prova).
+const NOME_18A = "18a-inventario-de-portas";
+Deno.test(`${NOME_18A} — no menu, UM SELECT so leitura, saida tipo/objeto/detalhe, os 8 blocos do plano, so catalogo (e as 3 leituras nomeadas) e nenhum dado pessoal`, async (t) => {
+  const { contarStatements, veredictoDaConsulta } = require(SCRIPT);
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_18A}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+  await t.step("esta no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "nao achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${NOME_18A}\n`, i) > i,
+      `falta a opcao ${NOME_18A} no workflow`,
+    );
+  });
+  await t.step(
+    "um statement, comeca por WITH, sem palavra de escrita, sem SQL dinamico alem da UMA leitura fixa do cartao",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*WITH\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+          semTexto,
+        ),
+        "palavra de escrita fora de comentario/string",
+      );
+      assert(
+        !/\b(EXECUTE|dblink\w*|format|pg_read_file|lo_import|pg_sleep)\b/i.test(
+          semTexto,
+        ),
+        "SQL dinamico, leitura de arquivo ou espera",
+      );
+      // O cartao e lido por query_to_xml (a tabela pode nao existir numa loja atrasada: a consulta
+      // tem de dizer AUSENTE em vez de quebrar inteira). A UNICA chamada tem o SELECT fixo como
+      // literal, so as tres colunas de configuracao, e so roda depois de to_regclass confirmar a tabela.
+      const dinamicos = [...limpo.matchAll(/query_to_xml\s*\(/gi)];
+      assertEquals(dinamicos.length, 1, "query_to_xml so uma vez");
+      assert(
+        /CASE WHEN to_regclass\('public\.config_pagamento_cartao'\) IS NOT NULL\s+THEN query_to_xml\(\s*'SELECT credito, debito, parcelas_max FROM public\.config_pagamento_cartao',\s*false, true, ''\s*\)/.test(
+          limpo,
+        ),
+        "a leitura do cartao tem de ser o literal fixo, atras do to_regclass",
+      );
+    },
+  );
+  await t.step("a saida final e tipo, objeto, detalhe, em ordem fixa", () => {
+    assert(
+      /SELECT tipo, objeto, detalhe\s+FROM r\s+ORDER BY ordem, objeto, detalhe;/.test(
+        limpo,
+      ),
+      "a saida final tem de ser tipo, objeto, detalhe, com ORDER BY ordem, objeto, detalhe",
+    );
+  });
+  await t.step(
+    "cobre os 8 blocos do plano (e os controles), cada um com o seu tipo",
+    () => {
+      for (const tipo of [
+        "controle",
+        "funcao",
+        "view",
+        "tabela",
+        "politica",
+        "migration",
+        "cartao",
+        "bucket",
+        "politica-storage",
+        "realtime",
+        "acl-padrao",
+      ])
+        assertStringIncludes(limpo, `'${tipo}'`, `falta o tipo ${tipo}`);
+    },
+  );
+  await t.step(
+    "bloco 1 (funcoes): EXECUTE de PUBLIC/anon/authenticated, prosecdef, provolatile, retorno, proconfig, md5 do corpo (sem CR) e as quatro citacoes",
+    () => {
+      for (const parte of [
+        "has_function_privilege",
+        "aclexplode",
+        "acldefault('f'",
+        "prosecdef",
+        "provolatile",
+        "prorettype",
+        "proconfig",
+        "md5(replace(f.prosrc, chr(13), ''))",
+        "is_admin_atual",
+        "is_admin",
+        "auth.uid",
+        "service_role",
+      ])
+        assertStringIncludes(limpo, parte, `falta ${parte}`);
+      // funcao de extensao e do sistema ficam de fora
+      assertStringIncludes(limpo, "deptype = 'e'");
+      assertStringIncludes(limpo, "'pg_catalog'::regnamespace");
+    },
+  );
+  await t.step(
+    "bloco 2 (views): so view/matview de public sem security_invoker e com SELECT para anon ou authenticated (inclusive por coluna)",
+    () => {
+      assertStringIncludes(limpo, "security_invoker");
+      assertStringIncludes(limpo, "relkind IN ('v', 'm')");
+      assertStringIncludes(limpo, "has_any_column_privilege");
+    },
+  );
+  await t.step(
+    "bloco 3 (tabelas): RLS ligada/forcada, privilegios e politicas com papel public/anon com md5 do qual",
+    () => {
+      for (const parte of [
+        "relrowsecurity",
+        "relforcerowsecurity",
+        "pg_policy",
+        "polroles",
+        "md5(pg_get_expr(pol.polqual, pol.polrelid))",
+      ])
+        assertStringIncludes(limpo, parte, `falta ${parte}`);
+    },
+  );
+  await t.step(
+    "bloco 4 (migrations): so versoes >= 20261180 e so a versao e o nome",
+    () => {
+      assert(
+        /FROM supabase_migrations\.schema_migrations m\s+WHERE m\.version >= '20261180'/.test(
+          limpo,
+        ),
+        "o registro tem de ser lido com version >= '20261180'",
+      );
+    },
+  );
+  await t.step(
+    "blocos 6, 7 e 8: buckets (publico, limite, mime), politicas de storage.objects, realtime com relreplident e pg_default_acl das funcoes",
+    () => {
+      for (const parte of [
+        "FROM storage.buckets",
+        "file_size_limit",
+        "allowed_mime_types",
+        "nspname = 'storage'",
+        "relname = 'objects'",
+        "pg_publication_tables",
+        "relreplident",
+        "pg_default_acl",
+        "defaclobjtype = 'f'",
+      ])
+        assertStringIncludes(limpo, parte, `falta ${parte}`);
+    },
+  );
+  await t.step(
+    "so catalogo + as tres leituras nomeadas: nenhuma tabela de dados do app, nenhuma coluna de pessoa ou de gateway",
+    () => {
+      const permitidos = new Set([
+        "pg_proc",
+        "pg_depend",
+        "pg_class",
+        "pg_namespace",
+        "pg_policy",
+        "pg_publication_tables",
+        "pg_default_acl",
+        "unnest",
+        "aclexplode",
+        "supabase_migrations.schema_migrations",
+        "storage.buckets",
+      ]);
+      const ctes = new Set(
+        [
+          ...semTexto.matchAll(
+            // eslint-disable-next-line security/detect-unsafe-regex -- o grupo opcional roda no máximo uma vez, `\w+` e `\(` não se sobrepõem, e a entrada é SQL do próprio repositório
+            /(?:\bWITH|,)\s+(\w+)\s*(?:\([^)]*\))?\s+AS\s*\(/gi,
+          ),
+        ].map((m) => m[1].toLowerCase()),
+      );
+      const alvos = [
+        ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+      ].map((m) => m[1].toLowerCase());
+      assert(alvos.length > 0);
+      for (const alvo of alvos)
+        assert(
+          permitidos.has(alvo) || ctes.has(alvo),
+          `lê de "${alvo}", que nao e catalogo, CTE nem uma das leituras nomeadas`,
+        );
+      assert(
+        !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name|gateway_payment_id|updated_by)\b/i.test(
+          semTexto,
+        ),
+        "a 18a leria dado pessoal ou de gateway",
+      );
+    },
+  );
+  await t.step(
+    "nao e consulta de rol fechado: o portao da release nunca a trata como prova (sem coluna ok, sem entrada em ROL_FECHADO_POR_CONSULTA)",
+    () => {
+      const { ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+      assert(!Object.hasOwn(ROL_FECHADO_POR_CONSULTA, NOME_18A));
+      assertEquals(
+        veredictoDaConsulta({
+          consulta: NOME_18A,
+          ref: "ref",
+          sha: "sha",
+          linhas: [{ tipo: "funcao", objeto: "public.x()", detalhe: "d" }],
+        }),
+        null,
+      );
+    },
+  );
+});
+
+// A5a-A5d (10/10/2026) — a MEDICAO "o que um estranho faz com as portas abertas": tres scripts em
+// tests/banco/ que o rpc-ci roda, cada um num CLONE do banco migrado (rodar-isolado.cjs), e deixam no
+// log uma linha `PORTA <recurso> -> escreveu|vazou|recusou|...` por caso. Sao medicao, nao portao:
+// saem sempre 0. Este teste prende o que faz a tabela aparecer no log do run: os tres passos existem,
+// UMA vez, no job bloqueante, depois de `aplica` e antes da prova que escreve no banco base, e os
+// arquivos existem. Sem o passo, o check some em silencio (check ausente tem a cara de check verde).
+Deno.test("rpc-ci.yml roda as tres medicoes de portas do anonimo no job bloqueante, cada uma num clone, e os scripts existem", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const linhas = bloqueante.split("\n");
+  const iInvariantes = linhas.indexOf(
+    "      - name: Prova os invariantes de dinheiro",
+  );
+  assert(iInvariantes > 0, "nao achei o passo dos invariantes de dinheiro");
+  const iAplica = bloqueante.indexOf("id: aplica");
+  assert(iAplica > 0);
+  for (const [prova, nome] of [
+    [
+      "portas-anon-exploracao-dinheiro",
+      "Medicao das portas do anonimo - dinheiro (A5a, nao e portao)",
+    ],
+    [
+      "portas-anon-exploracao-dados",
+      "Medicao das portas do anonimo - dados pessoais (A5b, nao e portao)",
+    ],
+    [
+      "portas-anon-exploracao-estoque-otp",
+      "Medicao das portas do anonimo - estoque, OTP e servico (A5c, nao e portao)",
+    ],
+  ]) {
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} nao esta no job bloqueante`);
+    assertEquals(linhas[k - 2], `      - name: ${nome}`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assert(
+      k < iInvariantes,
+      `${prova} tem de rodar antes da prova que escreve no banco base`,
+    );
+    assert(
+      bloqueante.indexOf(linhas.at(k) ?? "") > iAplica,
+      `${prova} antes do passo aplica`,
+    );
+    assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+    assert(!yaml.slice(inicioInformacional).includes(prova));
+    assert(
+      (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+      `tests/banco/${prova}.cjs nao existe`,
+    );
+  }
+  assert(
+    (await Deno.stat(`${RAIZ}/tests/banco/portas-anon-exploracao-comum.cjs`))
+      .isFile,
+    "falta o motor compartilhado das tres medicoes",
+  );
+});
+
+Deno.test("as tres medicoes de portas: so rodam no efemero, saem 0, tem autoteste e nunca escrevem fora de uma transacao desfeita", async () => {
+  const comum = await Deno.readTextFile(
+    `${RAIZ}/tests/banco/portas-anon-exploracao-comum.cjs`,
+  );
+  // Trava de banco: a unica conexao passa por lerDatabaseUrlEfemera (recusa banco que nao seja o do job).
+  assertStringIncludes(comum, "lerDatabaseUrlEfemera()");
+  // Cada caso e BEGIN ... ROLLBACK, e o ROLLBACK esta num `finally` (vale ate quando a medicao quebra).
+  assert(/await c\.query\("BEGIN"\);/.test(comum));
+  assert(
+    /finally \{\s*await c\.query\("ROLLBACK"\)/.test(comum),
+    "o ROLLBACK do caso tem de estar num finally",
+  );
+  assert(!/\bCOMMIT\b/.test(comum), "a medicao nunca da COMMIT");
+  // O classificador se prova antes dos casos reais.
+  assertStringIncludes(comum, "CASOS_AUTOTESTE");
+  assertStringIncludes(comum, "MEDIÇÃO INVÁLIDA");
+  for (const veredito of [
+    "escreveu",
+    "vazou",
+    "recusou",
+    "executou",
+    "inconclusivo",
+    "AUSENTE",
+  ])
+    assertStringIncludes(comum, `"${veredito}"`);
+  for (const nome of ["dinheiro", "dados", "estoque-otp"]) {
+    const fonte = await Deno.readTextFile(
+      `${RAIZ}/tests/banco/portas-anon-exploracao-${nome}.cjs`,
+    );
+    assertStringIncludes(
+      fonte,
+      'require("./portas-anon-exploracao-comum.cjs")',
+    );
+    assert(/\brodar\(/.test(fonte), `${nome}: nao chama o motor`);
+    assert(
+      !/process\.exit\(/.test(fonte),
+      `${nome}: medicao nao pode sair com codigo diferente de 0 por conta propria`,
+    );
+    assert(!/\bCOMMIT\b/.test(fonte), `${nome}: nunca da COMMIT`);
+  }
+  assert(
+    !/process\.exit\(/.test(comum),
+    "o motor so sai pela trava de banco (falhar), nunca por process.exit proprio",
+  );
+});
