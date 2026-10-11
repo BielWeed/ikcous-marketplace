@@ -49,7 +49,9 @@ WITH pol AS (
                 SELECT 1 FROM pol
                  WHERE cmd IN ('DELETE', 'ALL')
                    AND policyname <> 'devolucoes_cliente_delete_policy'
-                   AND NOT (COALESCE(qual, '') ~ '^[(]+bucket_id = ''(banners|products|produtos|branding)''::text[)] AND ')
+                   AND NOT (COALESCE(qual, '') ~ '^[(]+bucket_id = ''(banners|products|produtos|branding)''::text[)] AND '
+                            AND COALESCE(qual, '') !~ '[)] OR '
+                            AND position('devolucoes' IN COALESCE(qual, '')) = 0)
               ) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'devolucoes: INSERT e SELECT do cliente seguem no lugar', 'sim',

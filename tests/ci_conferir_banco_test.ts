@@ -8440,7 +8440,7 @@ for (const [nome, depois] of [
       !/\b(?:FROM|JOIN)\s+(?:public\.)?politica_devolucao\b/i.test(estrutura),
       "a consulta leu a tabela politica_devolucao",
     );
-    // o rol: 9 itens, sem repetição, e CADA item aparece como literal no .sql
+    // o rol: 6 itens, sem repetição, e CADA item aparece como literal no .sql
     // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
     const rol = ROL_FECHADO_POR_CONSULTA[nome];
     assertEquals(rol.length, 9);
@@ -8589,13 +8589,14 @@ Deno.test("19a/19b — o rpc-ci.yml roda a prova viva do portão da política de
   }
 });
 
-// 20a/20b (11/10/2026) — a PROVA DE OBJETOS do lote da migration 20261215000000 (a política de
-// devolução não mostra quem a editou, achado L: `anon` e `authenticated` perdem o SELECT da tabela
-// `politica_devolucao` inteira e ganham SELECT em 15 das 16 colunas, sem `updated_by`). A 19a é a
-// consulta do lote (DEPOIS do apply); a 19b é a de ausência (ANTES). As duas são de ROL FECHADO (9
-// linhas cada) e só leem o catálogo: a linha da tabela nunca é lida. Estes testes medem o texto dos
-// .sql contra a migration DESTA árvore; a decisão de cada consulta num Postgres real fica com
-// tests/banco/fotos-da-devolucao-portao-viva.cjs (rodado no rpc-ci.yml).
+// 20a/20b (11/10/2026) — a PROVA DE OBJETOS do lote da migration 20261216000000 (o cliente apaga a
+// foto de devolução que não usou: uma política de DELETE em `storage.objects`, só `authenticated`,
+// só no bucket `devolucoes`, só na pasta do cliente e só se nenhuma devolução referencia o objeto).
+// A 20a é a consulta do lote (DEPOIS do apply); a 20b é a de ausência (ANTES). As duas são de ROL
+// FECHADO (6 linhas cada) e só leem o catálogo (pg_policies): nenhum objeto do bucket e nenhuma
+// linha de devolução é lido. Estes testes medem o texto dos .sql contra a migration DESTA árvore; a
+// decisão de cada consulta num Postgres real fica com tests/banco/fotos-da-devolucao-portao-viva.cjs
+// (rodado no rpc-ci.yml).
 const NOME_20A = "20a-conferir-fotos-da-devolucao-aplicado";
 const NOME_20B = "20b-antes-fotos-da-devolucao-sem-delete";
 const MIGRACAO_216 = `${MIGRATIONS_DIR}/20261216000000_o_cliente_apaga_a_foto_de_devolucao_que_nao_usou.sql`;
@@ -8604,7 +8605,7 @@ for (const [nome, depois] of [
   [NOME_20A, true],
   [NOME_20B, false],
 ] as Array<[string, boolean]>) {
-  Deno.test(`${nome} — no menu, UM statement só leitura (WITH), rol fechado de 6 itens, só catálogo e a linha da tabela nunca é lida`, async () => {
+  Deno.test(`${nome} — no menu, UM statement só leitura (WITH), rol fechado de 6 itens, só catálogo e nenhuma linha de dado é lida`, async () => {
     const { contarStatements } = require(SCRIPT);
     const { ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
     const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
@@ -8632,7 +8633,7 @@ for (const [nome, depois] of [
       ),
       "saída item/esperado/vivo/ok com as reprovadas primeiro",
     );
-    // SÓ catálogo e CTEs: nenhum FROM/JOIN na tabela de dados (a linha, com updated_by, não é lida)
+    // SÓ catálogo e CTEs: nenhum FROM/JOIN na tabela de dados (nem as fotos, nem as devoluções, são lidas)
     const alvos = [
       ...estrutura.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
     ].map((m) => m[1].toLowerCase());
@@ -8649,7 +8650,7 @@ for (const [nome, depois] of [
       ),
       "a consulta leu uma tabela de dados (devolucoes ou storage.objects)",
     );
-    // o rol: 9 itens, sem repetição, e CADA item aparece como literal no .sql
+    // o rol: 6 itens, sem repetição, e CADA item aparece como literal no .sql
     // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
     const rol = ROL_FECHADO_POR_CONSULTA[nome];
     assertEquals(rol.length, 6);

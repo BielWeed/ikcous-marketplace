@@ -228,6 +228,12 @@ prova(
       ["anon", "bucket_id = 'devolucoes'"],
       ["authenticated", "split_part(name, '/', 1) = (SELECT auth.uid())::text"],
       ["authenticated", "bucket_id <> 'products'"],
+      // presa a um bucket conhecido NA APARENCIA, mas o OR de cima alcanca o bucket
+      [
+        "authenticated",
+        "(bucket_id = 'banners' AND true) OR bucket_id = 'devolucoes'",
+      ],
+      ["authenticated", "(bucket_id = 'banners' AND true) OR true"],
     ]) {
       const s = await noEstado(
         async (c) => {
