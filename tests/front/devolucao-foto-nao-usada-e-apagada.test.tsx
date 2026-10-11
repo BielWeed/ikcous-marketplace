@@ -209,7 +209,7 @@ describe("SolicitarDevolucaoSheet — foto enviada e não usada é apagada", () 
     expect(descartarFotos).not.toHaveBeenCalled();
   });
 
-  it("fechar com o envio EM ANDAMENTO não apaga nada: a RPC pode estar gravando esses caminhos", async () => {
+  it("fechar com o envio EM ANDAMENTO não apaga na hora: a RPC pode estar gravando esses caminhos", async () => {
     let concluir: (v: unknown) => void = () => {};
     solicitar.mockReturnValue(
       new Promise((resolve) => {
@@ -222,7 +222,45 @@ describe("SolicitarDevolucaoSheet — foto enviada e não usada é apagada", () 
 
     act(() => raiz.unmount());
     expect(descartarFotos).not.toHaveBeenCalled();
-    concluir({ ok: false, erro: "x" });
+    await act(async () => {
+      concluir({
+        ok: true,
+        valor: {
+          id: "d-1",
+          protocolo: "DV1",
+          tipo: "vicio",
+          status: "solicitada",
+        },
+      });
+    });
+    // Aceita depois de fechada: as fotos são da devolução.
+    expect(descartarFotos).not.toHaveBeenCalled();
+  });
+
+  it("fechou durante o envio e a RPC RECUSA depois: a foto que subiu é apagada ao fim do envio", async () => {
+    let concluir: (v: unknown) => void = () => {};
+    solicitar.mockReturnValue(
+      new Promise((resolve) => {
+        concluir = resolve;
+      }),
+    );
+    await ateARevisaoComFoto();
+    await clicar(botao("Confirmar devolução"));
+
+    act(() => raiz.unmount());
+    expect(descartarFotos).not.toHaveBeenCalled();
+    await act(async () => {
+      concluir({ ok: false, erro: "Já existe uma devolução em andamento." });
+    });
+    expect(descartarFotos).toHaveBeenCalledTimes(1);
+    expect(descartarFotos).toHaveBeenCalledWith(["u-1/o-1/abc.jpg"]);
+  });
+
+  it("recusa com a folha ainda ABERTA não apaga: o cliente pode tentar de novo com as mesmas fotos", async () => {
+    solicitar.mockResolvedValue({ ok: false, erro: "Tente de novo." });
+    await ateARevisaoComFoto();
+    await clicar(botao("Confirmar devolução"));
+    expect(descartarFotos).not.toHaveBeenCalled();
   });
 
   it("tirar da lista uma foto que JÁ subiu apaga só essa foto do bucket", async () => {
