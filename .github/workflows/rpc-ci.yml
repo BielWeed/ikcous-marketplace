@@ -62,6 +62,8 @@ on:
       - "scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/19a-conferir-politica-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/19b-antes-politica-devolucao-grant-de-tabela.sql"
+      - "scripts/publicacao/consultas/20a-conferir-fotos-da-devolucao-aplicado.sql"
+      - "scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -94,6 +96,8 @@ on:
       - "scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/19a-conferir-politica-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/19b-antes-politica-devolucao-grant-de-tabela.sql"
+      - "scripts/publicacao/consultas/20a-conferir-fotos-da-devolucao-aplicado.sql"
+      - "scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -462,6 +466,15 @@ jobs:
       - name: Prova viva do portao da politica de devolucao (consultas 19a e 19b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/politica-devolucao-portao-viva.cjs
+      # Fotos da devolucao (migration 20261216000000): as consultas 20a (DEPOIS) e 20b (ANTES) do portao da
+      # release, num Postgres efemero. Cada consulta devolve exatamente o rol de 5 linhas (conferir-banco.cjs)
+      # em qualquer estado; 20a positiva depois do apply (tambem 2x e depois de ida e volta) e 20b positiva
+      # depois do rollback; os defeitos (DELETE para anon, DELETE sem a pasta ou sem a foto em uso, sem a
+      # politica de INSERT) reprovam SO as suas linhas; o papel minimo de leitura da o mesmo resultado do dono.
+      # BLOQUEANTE: o portao de CADA loja depende dela. CLONE proprio.
+      - name: Prova viva do portao das fotos da devolucao (consultas 20a e 20b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/fotos-da-devolucao-portao-viva.cjs
       # Onda I do painel simples (20261212 a 20261214): o estoque baixo e uma regua so (Inicio, lista, analytics),
       # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (sem migration) e o estoque
       # minimo e editavel so pelo admin. Cada prova clona o banco.

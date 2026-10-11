@@ -11,12 +11,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DevolucaoDoCliente } from "@/hooks/useDevolucaoCliente";
 
-const { rpc, upload, from } = vi.hoisted(() => {
+const { rpc, upload, remove, from } = vi.hoisted(() => {
   const upload = vi.fn();
+  const remove = vi.fn();
   return {
     rpc: vi.fn(),
     upload,
-    from: vi.fn(() => ({ upload })),
+    remove,
+    from: vi.fn(() => ({ upload, remove })),
   };
 });
 
@@ -51,6 +53,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   rpc.mockResolvedValue({ data: null, error: null });
   upload.mockResolvedValue({ data: { path: "x" }, error: null });
+  remove.mockResolvedValue({ data: [], error: null });
   vi.stubGlobal("crypto", { randomUUID: () => "uuid-1" });
 });
 
@@ -81,6 +84,31 @@ describe("useDevolucaoCliente", () => {
       upsert: false,
     });
     expect(desfecho).toEqual({ ok: true, valor: "u-1/o-1/uuid-1.jpg" });
+  });
+
+  it("descartarFotos apaga do bucket privado só os caminhos pedidos", async () => {
+    const atual = await montarSonda(false);
+    await act(async () => {
+      await atual().descartarFotos(["u-1/o-1/a.jpg", "u-1/o-1/b.png"]);
+    });
+    expect(from).toHaveBeenCalledWith("devolucoes");
+    expect(remove).toHaveBeenCalledWith(["u-1/o-1/a.jpg", "u-1/o-1/b.png"]);
+  });
+
+  it("descartarFotos sem caminho não chama o Storage, e uma falha dele nunca estoura", async () => {
+    const atual = await montarSonda(false);
+    await act(async () => {
+      await atual().descartarFotos([]);
+    });
+    expect(remove).not.toHaveBeenCalled();
+
+    remove.mockRejectedValueOnce(new Error("rede"));
+    await act(async () => {
+      await expect(atual().descartarFotos(["u-1/o-1/a.jpg"])).resolves.toBe(
+        undefined,
+      );
+    });
+    expect(remove).toHaveBeenCalledTimes(1);
   });
 
   it("formato fora do bucket (ex.: HEIC) é recusado antes de subir", async () => {

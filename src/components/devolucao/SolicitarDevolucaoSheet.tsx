@@ -67,6 +67,8 @@ interface SolicitarDevolucaoSheetProps {
     arquivo: File,
     userId: string,
   ) => Promise<Desfecho<string>>;
+  /** Apaga fotos já enviadas que não vão ser usadas (melhor esforço). */
+  readonly descartarFotos?: (caminhos: readonly string[]) => Promise<void>;
 }
 
 type Passo = 1 | 2 | 3 | 4;
@@ -133,6 +135,7 @@ function FluxoDaDevolucao({
   horarioDaLoja,
   solicitar,
   enviarFoto,
+  descartarFotos,
 }: SolicitarDevolucaoSheetProps) {
   const { itens, janelas, politica, prazos, metodos } = elegibilidade;
   const itensDisponiveis = itens.filter((item) => item.disponivel > 0);
@@ -162,10 +165,25 @@ function FluxoDaDevolucao({
   useEffect(() => {
     fotosRef.current = fotos;
   }, [fotos]);
+  // Fotos que subiram e não foram usadas viram lixo no bucket. Duas guardas:
+  // (1) se a solicitação foi aceita, as fotos são da devolução e ficam;
+  // (2) se a tela fecha com o envio EM ANDAMENTO, não se apaga nada: a
+  // solicitação pode estar gravando justamente esses caminhos.
+  const concluidoRef = useRef(false);
+  const enviandoRef = useRef(false);
+  const descartarRef = useRef(descartarFotos);
+  useEffect(() => {
+    descartarRef.current = descartarFotos;
+  }, [descartarFotos]);
   // As prévias são URLs de objeto: soltam a memória quando a folha fecha.
   useEffect(
     () => () => {
       for (const foto of fotosRef.current) soltarPrevia(foto.previa);
+      if (concluidoRef.current || enviandoRef.current) return;
+      const enviadas = fotosRef.current.flatMap((f) =>
+        f.caminho ? [f.caminho] : [],
+      );
+      if (enviadas.length > 0) void descartarRef.current?.(enviadas);
     },
     [],
   );
@@ -250,6 +268,10 @@ function FluxoDaDevolucao({
   }
 
   function removerFoto(chave: string) {
+    // Foto que já subiu e o cliente tirou da lista: apaga do bucket. Fora do
+    // setState (o atualizador tem de ser puro; o React o roda duas vezes em dev).
+    const jaEnviada = fotos.find((f) => f.chave === chave)?.caminho;
+    if (jaEnviada) void descartarFotos?.([jaEnviada]);
     setFotos((antes) => {
       const alvo = antes.find((f) => f.chave === chave);
       if (alvo) soltarPrevia(alvo.previa);
@@ -260,6 +282,7 @@ function FluxoDaDevolucao({
   async function confirmar() {
     if (enviando || !motivo || !resolucaoValida || !metodo) return;
     setEnviando(true);
+    enviandoRef.current = true;
     setErro(null);
     try {
       const caminhos: string[] = [];
@@ -301,8 +324,10 @@ function FluxoDaDevolucao({
         return;
       }
       haptic.medium();
+      concluidoRef.current = true;
       setResultado(desfecho.valor);
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
       setProgresso("");
     }

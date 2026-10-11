@@ -436,6 +436,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/estoque-do-painel-portao-viva.cjs",
     // 20261215000000: o portao da release (consultas 19a e 19b do lote) decide certo.
     "tests/banco/politica-devolucao-portao-viva.cjs",
+    // 20261216000000: o portao da release (consultas 20a e 20b do lote) decide certo.
+    "tests/banco/fotos-da-devolucao-portao-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
     "tests/banco/receita-uma-regua-viva.cjs",
     "tests/banco/estoque-minimo-editavel-viva.cjs",
