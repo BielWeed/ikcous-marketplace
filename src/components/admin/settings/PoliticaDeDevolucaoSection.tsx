@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { useCategories } from "@/hooks/useCategories";
 import {
+  COLUNAS_DA_POLITICA,
   METODOS_LOCAIS,
   METODOS_NACIONAIS,
   MINIMO_ARREPENDIMENTO_DIAS,
@@ -156,7 +157,7 @@ export function PoliticaDeDevolucaoSection({
     try {
       const { data, error } = await supabase
         .from("politica_devolucao")
-        .select("*")
+        .select(COLUNAS_DA_POLITICA)
         .eq("id", 1)
         .maybeSingle();
       if (!ativoRef.current) return;
