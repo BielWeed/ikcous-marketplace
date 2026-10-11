@@ -8216,6 +8216,7 @@ Deno.test(`${NOME_18A} — no menu, UM SELECT so leitura, saida tipo/objeto/deta
       const ctes = new Set(
         [
           ...semTexto.matchAll(
+            // eslint-disable-next-line security/detect-unsafe-regex -- o grupo opcional roda no máximo uma vez, `\w+` e `\(` não se sobrepõem, e a entrada é SQL do próprio repositório
             /(?:\bWITH|,)\s+(\w+)\s*(?:\([^)]*\))?\s+AS\s*\(/gi,
           ),
         ].map((m) => m[1].toLowerCase()),
@@ -8303,7 +8304,7 @@ Deno.test("rpc-ci.yml roda as tres medicoes de portas do anonimo no job bloquean
       `${prova} tem de rodar antes da prova que escreve no banco base`,
     );
     assert(
-      bloqueante.indexOf(linhas[k]) > iAplica,
+      bloqueante.indexOf(linhas.at(k) ?? "") > iAplica,
       `${prova} antes do passo aplica`,
     );
     assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);

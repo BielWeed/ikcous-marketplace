@@ -15,7 +15,8 @@
  * liberar_cobranca_do_pedido, pagamentos_a_reconciliar ENCADEADO com a anterior,
  * solicitar_estorno, update_order_status_atomic, registrar_venda_presencial e uma
  * fin_* de escrita. Vira teste de regressão da B2 (a correção): lá o esperado
- * muda de "escreveu/vazou" para "recusou".
+ * muda de "escreveu/vazou" para "recusou" SÓ nas portas com aberta_no_repo=nao;
+ * as de convidado (create_marketplace_order v23/v24) continuam abertas por desenho.
  *
  * USO (no rpc-ci.yml, depois das migrations):
  *   node tests/banco/rodar-isolado.cjs tests/banco/portas-anon-exploracao-dinheiro.cjs

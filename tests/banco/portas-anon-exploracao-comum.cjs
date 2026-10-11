@@ -39,7 +39,7 @@
  *
  * É MEDIÇÃO, NÃO PORTÃO: o script sempre sai 0 (o resultado é a tabela no log e
  * no resumo do job). O que faz um resultado valer é o AUTOTESTE: antes dos casos
- * reais, três funções sintéticas provam que o classificador enxerga uma escrita,
+ * reais, cinco funções sintéticas provam que o classificador enxerga uma escrita,
  * um vazamento e uma recusa. Se o autoteste falhar, a tabela inteira vem marcada
  * "MEDIÇÃO INVÁLIDA". A única saída diferente de 0 é a trava de banco (efemero.cjs
  * recusa qualquer banco que não seja o efêmero do job).

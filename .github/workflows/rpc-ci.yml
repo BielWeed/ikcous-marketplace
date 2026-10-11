@@ -474,7 +474,8 @@ jobs:
       # em ROLLBACK. NAO sao portao: saem sempre 0 (o resultado e a tabela no log e no resumo do job);
       # um AUTOTESTE no inicio prova que o classificador enxerga escrita, vazamento e recusa, e sem ele a
       # tabela vem marcada "MEDICAO INVALIDA". Para ler: `gh run view <id> --log` e procurar `PORTA`. Na
-      # fase B (correcao) viram teste de regressao: o esperado muda de "escreveu/vazou" para "recusou".
+      # fase B (correcao) viram teste de regressao: o esperado muda de "escreveu/vazou" para "recusou"
+      # SO nas portas com aberta_no_repo=nao; as de convidado (v23/v24, OTP) continuam abertas por desenho.
       # CLONE proprio (rodar-isolado.cjs), antes da prova que escreve no banco base.
       - name: Medicao das portas do anonimo - dinheiro (A5a, nao e portao)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
