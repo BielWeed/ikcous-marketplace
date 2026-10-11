@@ -40,6 +40,7 @@ const {
 // Lista que o painel pede de `politica_devolucao`, extraída de src/lib/devolucao.ts:
 // se alguém pôr nela uma coluna sem grant, a prova do achado L reprova.
 const COLUNAS_DO_FRONT = (() => {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
   const fonte = require("node:fs").readFileSync(
     require("node:path").join(__dirname, "../../src/lib/devolucao.ts"),
     "utf8",
@@ -3716,17 +3717,16 @@ PROVAS.push({
         `${papel} não tem SELECT da tabela inteira`,
       );
     }
-    await cliente.query("BEGIN");
-    try {
-      await cliente.query("SET LOCAL ROLE service_role");
-      const sr = await cliente.query(
-        "SELECT * FROM public.politica_devolucao WHERE id = 1",
-      );
-      assert.equal(sr.rowCount, 1, "service_role lê a linha inteira");
-      assert.ok("updated_by" in sr.rows[0]);
-    } finally {
-      await cliente.query("ROLLBACK");
-    }
+    // service_role (edges) mantém o acesso à coluna. Checagem de catálogo: no
+    // efêmero o papel nasce sem BYPASSRLS, então uma leitura devolveria 0 linhas.
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT has_column_privilege('service_role', 'public.politica_devolucao', 'updated_by', 'SELECT')",
+      ),
+      true,
+      "service_role continua lendo updated_by",
+    );
     // A RPC do painel segue devolvendo a política (lê como dono da função).
     await logar(cliente, U_ADMIN);
     const salva = await rpc(
