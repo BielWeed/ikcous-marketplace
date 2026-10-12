@@ -36,7 +36,7 @@ import {
   usarImagemOriginal,
 } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
 import { AnimatePresence, motion } from "framer-motion";
@@ -62,6 +62,10 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+
+// Dinheiro com milhar e vírgula ("R$ 1.234,50"), com espaço comum no lugar do
+// inseparável do Intl: o texto também vai para o clipboard/WhatsApp.
+const reais = (valor: number) => formatCurrency(valor).replace(/\u00a0/g, " ");
 
 // Revisado na rodada 2 (Codex, 08/09, item 3): os botões Detalhes/
 // Avaliações/Perguntas não são abas de verdade — as três seções ficam
@@ -657,10 +661,10 @@ export const ProductView = React.memo(function ProductView({
           .replace(/\[nome\]/gi, product.name)
           .replace(
             /\[preco\]/gi,
-            `R$ ${product.price.toFixed(2).replace(".", ",")}`,
+            reais(product.price),
           )
           .replace(/\[link\]/gi, globalThis.location.href)
-      : `${config.shareText} ${product.name} por R$${product.price.toFixed(2)}`;
+      : `${config.shareText} ${product.name} por ${reais(product.price)}`;
     const shareData = {
       title: product.name,
       text: textoDoShare,
@@ -712,7 +716,7 @@ export const ProductView = React.memo(function ProductView({
     const variantInfo = Object.entries(selectedVariants)
       .map(([n, v]) => `${n}: ${v}`)
       .join(", ");
-    const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ""} - R$ ${currentPrice.toFixed(2).replace(".", ",")}`;
+    const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ""} - ${reais(currentPrice)}`;
     let phone = (config.whatsappNumber || "").replace(/\D/g, "");
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
@@ -1146,7 +1150,7 @@ export const ProductView = React.memo(function ProductView({
                       "lg:text-4xl",
                     )}
                   >
-                    R$ {currentPrice.toFixed(2).replace(".", ",")}
+                    {reais(currentPrice)}
                   </span>
                   <span
                     className={cn(
@@ -1154,7 +1158,7 @@ export const ProductView = React.memo(function ProductView({
                       "lg:text-sm",
                     )}
                   >
-                    De: R$ {product.originalPrice.toFixed(2).replace(".", ",")}
+                    De: {reais(product.originalPrice)}
                   </span>
                 </div>
               ) : (
@@ -1164,7 +1168,7 @@ export const ProductView = React.memo(function ProductView({
                     "lg:text-4xl",
                   )}
                 >
-                  R$ {currentPrice.toFixed(2).replace(".", ",")}
+                  {reais(currentPrice)}
                 </span>
               )}
 
@@ -1846,7 +1850,7 @@ export const ProductView = React.memo(function ProductView({
                           : "text-zinc-900",
                       )}
                     >
-                      R$ {currentPrice.toFixed(2).replace(".", ",")}
+                      {reais(currentPrice)}
                     </p>
                   </div>
                 </div>

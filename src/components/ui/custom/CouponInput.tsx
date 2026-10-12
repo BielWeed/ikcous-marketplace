@@ -1,3 +1,4 @@
+import { formatCurrency } from "@/lib/utils";
 import { Check, Tag, X } from "lucide-react";
 import { memo, useState } from "react";
 
@@ -9,10 +10,6 @@ interface CouponInputProps {
   /** Uma validação está em voo — o botão trava (toque duplo não valida duas vezes). */
   aplicando?: boolean;
 }
-
-// Espaço inseparável: "R$" nunca quebra longe do número.
-const formatarReais = (valor: number) =>
-  `R$\u00a0${valor.toFixed(2).replace(".", ",")}`;
 
 export const CouponInput = memo(function CouponInput({
   onApply,
@@ -51,7 +48,7 @@ export const CouponInput = memo(function CouponInput({
             </p>
             <p className="text-xs font-semibold text-emerald-800">
               {appliedCoupon.discount > 0
-                ? `Você economiza ${formatarReais(appliedCoupon.discount)}`
+                ? `Você economiza ${formatCurrency(appliedCoupon.discount)}`
                 : "Conferindo o desconto…"}
             </p>
           </div>

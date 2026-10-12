@@ -18,7 +18,7 @@ import {
   textoConfirmarCancelamento,
   textoDevolucao,
 } from "@/lib/texto-estorno-do-cliente";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type {
   Order,
   OrderItem,
@@ -1129,7 +1129,7 @@ export function OrderDetailsView({
                       : "text-zinc-900",
                   )}
                 >
-                  R$ {item.price.toFixed(2).replace(".", ",")}
+                  {formatCurrency(item.price)}
                 </span>
               </div>
             ))}
@@ -1151,7 +1151,7 @@ export function OrderDetailsView({
             <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
               <span>Produtos</span>
               <span className="font-bold text-zinc-900">
-                R$ {order.subtotal.toFixed(2).replace(".", ",")}
+                {formatCurrency(order.subtotal)}
               </span>
             </div>
             <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
@@ -1163,14 +1163,14 @@ export function OrderDetailsView({
                 )}
               >
                 {order.shipping > 0
-                  ? `R$ ${order.shipping.toFixed(2).replace(".", ",")}`
+                  ? formatCurrency(order.shipping)
                   : "Grátis"}
               </span>
             </div>
             {order.discount > 0 && (
               <div className="flex items-center justify-between text-[13px] font-bold text-emerald-700">
                 <span>Desconto</span>
-                <span>- R$ {order.discount.toFixed(2).replace(".", ",")}</span>
+                <span>- {formatCurrency(order.discount)}</span>
               </div>
             )}
             <div className="my-3 border-t border-dashed border-zinc-200" />
@@ -1186,7 +1186,7 @@ export function OrderDetailsView({
                     : "text-zinc-950",
                 )}
               >
-                R$ {order.total.toFixed(2).replace(".", ",")}
+                {formatCurrency(order.total)}
               </span>
             </div>
           </div>
