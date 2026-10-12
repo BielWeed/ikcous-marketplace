@@ -193,6 +193,9 @@ describe("AdminNotificationsView", () => {
 
     expect(todosOsAvisos()).toHaveLength(0);
     expect(raizDom.textContent).toContain("Tudo em dia");
+    // O sino acende por devolucao solicitada; a frase que afirma "nada esperando"
+    // tem de listar a devolucao junto com as outras fontes.
+    expect(raizDom.textContent).toContain("devolução");
   });
 
   it("o estoque fica no bloco De olho e os outros tres no Precisa de voce", async () => {

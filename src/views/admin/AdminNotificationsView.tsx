@@ -256,8 +256,8 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
               Tudo em dia
             </h2>
             <p className="max-w-xs text-xs leading-snug text-zinc-400">
-              Nenhum pedido, pergunta ou avaliação esperando por você, e nenhum
-              produto acabando.
+              Nenhum pedido, devolução, pergunta ou avaliação esperando por
+              você, e nenhum produto acabando.
             </p>
           </div>
         )}
