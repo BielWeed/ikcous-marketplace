@@ -1146,6 +1146,7 @@ export function AccountSettingsView() {
                                 onChange={handlePhotoUpload}
                                 disabled={isUpdatingAvatar}
                               />
+                              <span className="sr-only">Trocar foto de perfil</span>
                               <Camera className="size-4" />
                             </label>
                           </div>
