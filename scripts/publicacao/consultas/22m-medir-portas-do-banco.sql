@@ -21,7 +21,9 @@
 --   acl-funcao          cada entrada da ACL dessas funcoes, por papel e por quem concedeu.
 --   politicas           quantas politicas cada tabela tem (zero tambem aparece).
 --   politica            cada politica dessas tabelas: comando, permissiva, papeis, md5 e texto do
---                       USING e do WITH CHECK (o texto e o de pg_get_expr, espaco colapsado).
+--                       USING e do WITH CHECK. O md5 e do texto INTEIRO de pg_get_expr; o texto sai
+--                       SEM LITERAIS: todo trecho entre aspas simples vira '?' (uma politica editada
+--                       no painel pode carregar um e-mail ou outro valor), espaco colapsado.
 --   acl-tabela          cada entrada da ACL de tabela e view, por papel e por quem concedeu; `*` = com
 --                       direito de repassar.
 --   privilegio-efetivo  o que anon, authenticated e service_role conseguem DE FATO, por tabela
@@ -29,10 +31,15 @@
 --   acl-coluna          cada coluna com permissao propria (um REVOKE de tabela a apaga junto).
 --   papel               os papeis da plataforma: existe?, superusuario, BYPASSRLS, heranca, login e se
 --                       herdam pg_read_all_data / pg_write_all_data (rota que nao aparece na ACL).
---   gatilho             os gatilhos de profiles e public_profiles: ligado (O/D/R/A) e a definicao.
---   contagem            quantos perfis, quantos perfis publicos e quantos tem avaliacao publicada ou
---                       pergunta (so numeros).
---   indice              os dois indices de autor (avaliacao e pergunta): a definicao ou AUSENTE.
+--   gatilho             os gatilhos de profiles e public_profiles: ligado (O/D/R/A), md5 da definicao
+--                       inteira e a definicao SEM LITERAIS (mesma regra da politica).
+--   contagem            quantos perfis, quantos perfis publicos e quantos tem avaliacao (QUALQUER
+--                       status) ou pergunta (so numeros). Nao filtra por status de proposito:
+--                       reviews.status so nasce na 20261031000000, e citar a coluna derrubaria a
+--                       consulta inteira numa loja sem ela.
+--   coluna              se reviews.status existe (presente/AUSENTE), lido do catalogo.
+--   indice              os dois indices de autor (avaliacao e pergunta): md5 da definicao inteira e
+--                       a definicao SEM LITERAIS, ou AUSENTE.
 --   imagem-perfil       foto e capa, por tipo (nulo, jpeg, svg pre-definido, outro data: com o tipo
 --                       MIME de formato fechado, https, outro) e no total: quantidade, maior, p99 e
 --                       quantas passam de 128 KiB e de 512 KiB. So TAMANHO e PREFIXO: o valor nunca sai.
@@ -47,8 +54,10 @@
 -- to_regprocedure; nenhum cast que derrube a consulta numa loja atrasada).
 -- NENHUM DADO PESSOAL: de profiles so saem contagem, tamanho (octet_length) e o prefixo do valor
 -- comparado com literais fixos; de storage.objects so o tamanho e o tipo MIME de formato fechado,
--- agregados por bucket. O log do run e legivel por quem le o repositorio: o que sai daqui e so
--- catalogo e agregado. tests/ci_conferir_banco_test.ts prende essas regras no texto desta consulta.
+-- agregados por bucket; texto de politica, gatilho e indice sai sem os literais. O log do run e
+-- legivel por quem le o repositorio: o que sai daqui e so catalogo e agregado.
+-- tests/ci_conferir_banco_test.ts prende essas regras no texto desta consulta por LISTA DO PERMITIDO
+-- (todo identificador fora de string tem de estar na lista do teste).
 WITH
 papeis AS (
   SELECT to_regrole('anon') AS anon,
@@ -203,23 +212,23 @@ r(ordem, tipo, objeto, detalhe) AS (
                                           WHEN 'v' THEN 'view' WHEN 'm' THEN 'matview'
                                           ELSE x.relkind::text END,
                 'dono=' || pg_get_userbyid(x.relowner),
-                'dono_super=' || COALESCE(o.rolsuper::text, '?'),
-                'dono_bypassrls=' || COALESCE(o.rolbypassrls::text, '?'),
+                'dono_super=' || COALESCE(dn.rolsuper::text, '?'),
+                'dono_bypassrls=' || COALESCE(dn.rolbypassrls::text, '?'),
                 'mesmo_dono_de_public_profiles=' || COALESCE((x.relowner = (SELECT d.relowner FROM dono_pp d))::text, '?'),
                 'rls=' || x.relrowsecurity::text,
                 'forcada=' || x.relforcerowsecurity::text,
                 'opcoes=' || COALESCE(array_to_string(x.reloptions, ','), '-'))
          END
     FROM rc x
-    LEFT JOIN pg_roles o ON o.oid = x.relowner
+    LEFT JOIN pg_roles dn ON dn.oid = x.relowner
   -- funcoes
   UNION ALL
   SELECT 3, 'funcao', f.assinatura,
          CASE WHEN f.oid IS NULL THEN 'AUSENTE'
               ELSE concat_ws('|',
                 'dono=' || pg_get_userbyid(f.proowner),
-                'dono_super=' || COALESCE(o.rolsuper::text, '?'),
-                'dono_bypassrls=' || COALESCE(o.rolbypassrls::text, '?'),
+                'dono_super=' || COALESCE(dn.rolsuper::text, '?'),
+                'dono_bypassrls=' || COALESCE(dn.rolbypassrls::text, '?'),
                 'mesmo_dono_de_public_profiles=' || COALESCE((f.proowner = (SELECT d.relowner FROM dono_pp d))::text, '?'),
                 'secdef=' || f.prosecdef::text,
                 'md5=' || md5(replace(f.prosrc, chr(13), '')),
@@ -231,7 +240,7 @@ r(ordem, tipo, objeto, detalhe) AS (
                    CASE WHEN COALESCE(has_function_privilege(pa.servico, f.oid, 'EXECUTE'), false) THEN 'service_role' END), ''), '-'))
          END
     FROM fc f
-    LEFT JOIN pg_roles o ON o.oid = f.proowner
+    LEFT JOIN pg_roles dn ON dn.oid = f.proowner
    CROSS JOIN papeis pa
   UNION ALL
   SELECT 3, 'acl-funcao',
@@ -257,8 +266,8 @@ r(ordem, tipo, objeto, detalhe) AS (
                                     FROM unnest(pol.polroles) q), '-'),
            'qual_md5=' || COALESCE(md5(pg_get_expr(pol.polqual, pol.polrelid)), '-'),
            'check_md5=' || COALESCE(md5(pg_get_expr(pol.polwithcheck, pol.polrelid)), '-'),
-           'qual=' || COALESCE(regexp_replace(pg_get_expr(pol.polqual, pol.polrelid), '\s+', ' ', 'g'), '-'),
-           'check=' || COALESCE(regexp_replace(pg_get_expr(pol.polwithcheck, pol.polrelid), '\s+', ' ', 'g'), '-'))
+           'qual=' || COALESCE(regexp_replace(regexp_replace(pg_get_expr(pol.polqual, pol.polrelid), '''[^'']*''', '''?''', 'g'), '\s+', ' ', 'g'), '-'),
+           'check=' || COALESCE(regexp_replace(regexp_replace(pg_get_expr(pol.polwithcheck, pol.polrelid), '''[^'']*''', '''?''', 'g'), '\s+', ' ', 'g'), '-'))
     FROM tab_pol t
     JOIN pg_policy pol ON pol.polrelid = to_regclass(t.nome)
   -- ACL de tabela e view, privilegio efetivo e ACL de coluna
@@ -328,7 +337,9 @@ r(ordem, tipo, objeto, detalhe) AS (
   -- gatilhos de profiles e public_profiles
   UNION ALL
   SELECT 9, 'gatilho', t.nome || '.' || tg.tgname,
-         'ligado=' || tg.tgenabled::text || '|def=' || pg_get_triggerdef(tg.oid)
+         'ligado=' || tg.tgenabled::text
+           || '|def_md5=' || md5(pg_get_triggerdef(tg.oid))
+           || '|def=' || regexp_replace(pg_get_triggerdef(tg.oid), '''[^'']*''', '''?''', 'g')
     FROM tab_gat t
     JOIN pg_trigger tg ON tg.tgrelid = to_regclass(t.nome) AND NOT tg.tgisinternal
   -- contagens (so numeros) e indices
@@ -337,14 +348,21 @@ r(ordem, tipo, objeto, detalhe) AS (
   UNION ALL
   SELECT 10, 'contagem', 'perfis publicos', 'total=' || (SELECT count(*) FROM public.public_profiles)::text
   UNION ALL
-  SELECT 10, 'contagem', 'perfis com avaliacao publicada ou pergunta',
+  SELECT 10, 'contagem', 'perfis com avaliacao (qualquer status) ou pergunta',
          'total=' || (SELECT count(*) FROM public.profiles pf
-                       WHERE EXISTS (SELECT 1 FROM public.reviews rv
-                                      WHERE rv.user_id = pf.id AND rv.status = 'publicada')
+                       WHERE EXISTS (SELECT 1 FROM public.reviews rv WHERE rv.user_id = pf.id)
                           OR EXISTS (SELECT 1 FROM public.questions qs WHERE qs.user_id = pf.id))::text
   UNION ALL
+  SELECT 10, 'coluna', 'public.reviews.status',
+         CASE WHEN EXISTS (SELECT 1 FROM pg_attribute at
+                            WHERE at.attrelid = to_regclass('public.reviews') AND at.attname = 'status'
+                              AND at.attnum > 0 AND NOT at.attisdropped)
+              THEN 'presente' ELSE 'AUSENTE' END
+  UNION ALL
   SELECT 10, 'indice', i.nome,
-         COALESCE((SELECT x.indexdef FROM pg_indexes x WHERE x.schemaname = 'public' AND x.indexname = i.nome),
+         COALESCE((SELECT 'def_md5=' || md5(x.indexdef)
+                          || '|def=' || regexp_replace(x.indexdef, '''[^'']*''', '''?''', 'g')
+                     FROM pg_indexes x WHERE x.schemaname = 'public' AND x.indexname = i.nome),
                   'AUSENTE')
     FROM indices i
   -- imagens de perfil (so tamanho e tipo)

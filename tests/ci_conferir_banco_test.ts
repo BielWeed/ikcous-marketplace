@@ -8316,6 +8316,7 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
         "politica",
         "politicas",
         "contagem",
+        "coluna",
         "indice",
         "imagem-perfil",
         "funcao",
@@ -8420,16 +8421,126 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
     },
   );
   await t.step(
-    "nenhuma coluna de pessoa, de conteudo ou de nome de arquivo e citada",
+    "LISTA DO PERMITIDO: todo identificador fora de string/comentario esta na lista (coluna nova de tabela do app nao entra sem passar por aqui)",
     () => {
-      assert(
-        !/\b(full_name|email|telefone|phone|whatsapp|cpf|endereco|address|customer_\w+|comment|question|merchant_reply|updated_by|bucket_name|path_tokens|owner|owner_id|user_metadata)\b/i.test(
-          semTexto,
+      // Palavras SQL, funcoes, catalogo, CTEs e apelidos que a 22m usa. As UNICAS colunas de tabela do
+      // app sao: profiles.id (so na igualdade com o autor), avatar_url/cover_url (so por tamanho/prefixo,
+      // passo abaixo), reviews.user_id e questions.user_id (so na igualdade), storage.objects.bucket_id e
+      // metadata (so size/mimetype). Acrescentar qualquer outra coisa aqui e decisao de revisao.
+      const permitidos = new Set([
+        // SQL
+        "all", "and", "as", "by", "case", "cross", "distinct", "else", "end", "exists", "false",
+        "filter", "from", "group", "in", "is", "join", "left", "like", "not", "null", "on", "or",
+        "order", "select", "then", "union", "values", "when", "where", "with", "within",
+        "bigint", "text",
+        // funcoes
+        "acldefault", "aclexplode", "array_to_string", "chr", "coalesce", "concat_ws", "count",
+        "current_database", "current_setting", "current_user", "has_any_column_privilege",
+        "has_function_privilege", "has_table_privilege", "lower", "max", "md5", "nullif",
+        "octet_length", "percentile_disc", "pg_get_expr", "pg_get_triggerdef", "pg_get_userbyid",
+        "pg_has_role", "regexp_replace", "replace", "row_security_active", "string_agg", "substring",
+        "to_regclass", "to_regprocedure", "to_regrole", "unnest",
+        // catalogo, schemas e tabelas nomeadas (lidas so por agregado)
+        "pg_attribute", "pg_class", "pg_indexes", "pg_policy", "pg_proc", "pg_roles", "pg_trigger",
+        "public", "storage", "supabase_migrations", "schema_migrations", "buckets", "objects",
+        "profiles", "public_profiles", "reviews", "questions",
+        // colunas de catalogo
+        "allowed_mime_types", "attacl", "attisdropped", "attname", "attnum", "attrelid",
+        "file_size_limit", "grantee", "grantor", "indexdef", "indexname", "is_grantable", "oid",
+        "polcmd", "polname", "polpermissive", "polqual", "polrelid", "polroles", "polwithcheck",
+        "privilege_type", "proacl", "proowner", "prosecdef", "prosrc", "relacl",
+        "relforcerowsecurity", "relkind", "reloptions", "relowner", "relrowsecurity", "rolbypassrls",
+        "rolcanlogin", "rolinherit", "rolname", "rolsuper", "schemaname", "tgenabled",
+        "tgisinternal", "tgname", "tgrelid", "version",
+        // colunas de tabela do app (com as regras dos passos abaixo)
+        "id", "user_id", "avatar_url", "cover_url", "bucket_id", "metadata",
+        // CTEs, colunas de CTE e apelidos
+        "acl_alvo", "assinatura", "autenticado", "anon", "buckets_alvo", "bytes", "coluna",
+        "detalhe", "dono_pp", "fc", "fn", "img", "img_agg", "indices", "maior", "nome", "objeto",
+        "ordem", "p95", "p99", "papeis", "papeis_alvo", "papeis_api", "papel", "qtd", "rc", "rel",
+        "servico", "sto", "svg", "tab_gat", "tab_pol", "tipo", "tipos", "versao", "versoes",
+        "acima_128k", "acima_512k",
+        "a", "at", "b", "ba", "c", "d", "dn", "e", "eu", "f", "g", "i", "k", "m", "o", "p", "pa",
+        "pf", "pol", "pp", "q", "qs", "r", "ro", "rv", "s", "t", "tg", "v", "x",
+      ]);
+      const usados = new Set(
+        [...semTexto.matchAll(/\b[a-z_][a-z0-9_]*\b/gi)].map((m) =>
+          m[0].toLowerCase()
         ),
-        "a 22m citaria dado pessoal ou conteudo",
       );
-      // `name` de storage.objects e o nome do arquivo (pode ser o de quem subiu): nunca lido.
-      assert(!/\bo\.name\b|\bobjects\.name\b/i.test(semTexto));
+      const fora = [...usados].filter((u) => !permitidos.has(u)).sort();
+      assertEquals(fora, [], `identificadores fora da lista do permitido: ${fora.join(", ")}`);
+    },
+  );
+  await t.step(
+    "nenhuma linha inteira vira texto: sem to_json/to_jsonb/row_to_json, sem `apelido.*`, sem `apelido::` e tabela do app so como public./storage. no FROM",
+    () => {
+      assert(!/\b(to_json|to_jsonb|row_to_json|json_agg|jsonb_agg|hstore|row)\b/i.test(semTexto));
+      assert(!/\w\.\*/.test(semTexto), "`apelido.*` le a linha inteira");
+      // os apelidos das tabelas de dado so aparecem na declaracao ou seguidos de `.coluna`
+      const semDeclaracao = semTexto.replace(
+        /\b(FROM|JOIN)\s+(public|storage)\.(profiles|reviews|questions|objects)\s+(pf|rv|qs|o)\b/gi,
+        "",
+      );
+      assert(
+        !/\b(pf|rv|qs|o)\b(?!\.)/.test(semDeclaracao),
+        "apelido de tabela de dado usado como linha inteira (cast, funcao ou agregado)",
+      );
+      // o nome da tabela do app nunca aparece solto (linha inteira sem apelido)
+      const semQualificado = semTexto.replace(
+        /\b(FROM|JOIN)\s+(public\.(profiles|public_profiles|reviews|questions)|storage\.(objects|buckets))\b/gi,
+        "",
+      );
+      assert(
+        !/\b(profiles|public_profiles|reviews|questions|objects)\b/i.test(semQualificado),
+        "tabela do app citada fora do FROM/JOIN qualificado",
+      );
+    },
+  );
+  await t.step(
+    "colunas de pessoa so na igualdade do autor: pf/rv/qs so em `rv|qs.user_id = pf.id`; id e user_id nunca soltos",
+    () => {
+      const semIgualdade = semTexto.replace(/\b(rv|qs)\.user_id = pf\.id\b/g, "");
+      assert(
+        !/\b(pf|rv|qs)\./.test(semIgualdade),
+        "pf./rv./qs. fora de `user_id = pf.id`",
+      );
+      assertEquals(
+        [...semTexto.matchAll(/\b(rv|qs)\.user_id = pf\.id\b/g)].length,
+        2,
+        "as duas igualdades do autor (avaliacao e pergunta)",
+      );
+      // `id` so como pf.id (acima), b.id / ba.id (o id do bucket) ou a coluna da CTE buckets_alvo
+      const semIdPermitido = semIgualdade
+        .replace(/\b(b|ba)\.id\b/g, "")
+        .replace(/\bbuckets_alvo\(id\)/g, "");
+      assert(!/\bid\b/.test(semIdPermitido), "`id` solto: leria o id de uma tabela do app");
+      assert(!/\buser_id\b/.test(semIgualdade), "`user_id` solto");
+    },
+  );
+  await t.step(
+    "texto de politica, gatilho e indice sai SEM LITERAIS (aspas viram '?'); o texto inteiro so entra no md5",
+    () => {
+      const SEM_LITERAL = String.raw`, '''\[\^''\]\*''', '''\?''', 'g'\)`;
+      const ALVO = String.raw`(?:pg_get_expr\(pol\.(?:polqual|polwithcheck), pol\.polrelid\)|pg_get_triggerdef\(tg\.oid\)|x\.indexdef)`;
+      // eslint-disable-next-line security/detect-non-literal-regexp -- os dois pedacos sao constantes deste teste, nunca entrada externa
+      const sanitizado = new RegExp(String.raw`regexp_replace\(${ALVO}${SEM_LITERAL}`, "g");
+      // eslint-disable-next-line security/detect-non-literal-regexp -- idem
+      const emMd5 = new RegExp(String.raw`md5\(${ALVO}\)`, "g");
+      assertEquals([...limpo.matchAll(sanitizado)].length, 4, "qual, check, gatilho e indice sanitizados");
+      const resto = limpo
+        .replace(sanitizado, "")
+        .replace(emMd5, "")
+        .replace(/md5\(replace\(f\.prosrc, chr\(13\), ''\)\)/g, "")
+        // a CTE `fc` so repassa o corpo adiante; ele so sai pelo md5 acima
+        .replace(/\bp\.prosecdef, p\.prosrc, p\.proacl\b/, "");
+      assert(
+        !/\b(pg_get_expr|pg_get_triggerdef|indexdef|prosrc|pg_get_viewdef|pg_get_functiondef)\b/.test(resto),
+        "texto de politica/gatilho/indice/corpo sai cru (com literais) em algum lugar",
+      );
+      // e reviews.status nao e citada (a coluna nao existe em toda loja): so o catalogo diz se ela existe
+      assert(!/\bstatus\b/.test(semTexto), "citar reviews.status derruba a consulta numa loja sem a 20261031");
+      assertStringIncludes(limpo, "at.attname = 'status'");
     },
   );
   await t.step(
