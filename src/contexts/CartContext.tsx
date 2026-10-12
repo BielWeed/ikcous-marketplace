@@ -145,6 +145,33 @@ function saveTombstones(map: Map<string, CartTombstone>) {
   }
 }
 
+// localStorage pode lançar (modo privado, cota cheia, acesso bloqueado):
+// o carrinho segue em memória, sem persistir, em vez de derrubar o Provider.
+function lerSeguro(chave: string): string | null {
+  try {
+    return localStorage.getItem(chave);
+  } catch (e) {
+    console.error("[CartContext] Failed to read localStorage:", e);
+    return null;
+  }
+}
+
+function gravarSeguro(chave: string, valor: string): void {
+  try {
+    localStorage.setItem(chave, valor);
+  } catch (e) {
+    console.error("[CartContext] Failed to write localStorage:", e);
+  }
+}
+
+function removerSeguro(chave: string): void {
+  try {
+    localStorage.removeItem(chave);
+  } catch (e) {
+    console.error("[CartContext] Failed to remove from localStorage:", e);
+  }
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { config } = useStore();
   const { user, loading: authLoading } = useAuth();
@@ -156,7 +183,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [userId]);
 
   const [cart, setCart] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem(CART_STORAGE_KEY);
+    const saved = lerSeguro(CART_STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -240,7 +267,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Only save to localStorage if we are not in the middle of an initial load
     if (!syncLocked.current && !isInitialLoad.current) {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+      gravarSeguro(CART_STORAGE_KEY, JSON.stringify(cart));
     }
   }, [cart]);
 
@@ -432,8 +459,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           "[CartContext] ℹ️ Cleared old user items and tombstones from state and localStorage to prevent cross-account merge.",
         );
         setCart([]);
-        localStorage.removeItem(CART_STORAGE_KEY);
-        localStorage.removeItem(CART_TOMBSTONES_KEY);
+        removerSeguro(CART_STORAGE_KEY);
+        removerSeguro(CART_TOMBSTONES_KEY);
       }
       // Troca de conta/saída não herda nada da sessão anterior: itens,
       // tombstones, cotação de frete e endereço escolhido.
@@ -792,7 +819,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
     setSelectedShippingOption(null);
     setShippingCep(null);
-    localStorage.removeItem(CART_STORAGE_KEY);
+    removerSeguro(CART_STORAGE_KEY);
     toast.info("Carrinho limpo");
   }, [setSelectedShippingOption]);
 
