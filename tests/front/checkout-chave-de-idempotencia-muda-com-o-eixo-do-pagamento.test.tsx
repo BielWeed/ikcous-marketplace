@@ -316,6 +316,10 @@ describe("CheckoutView — a chave de idempotência acompanha o EIXO do meio de 
     await escolherMeioDePagamento("Dinheiro na Entrega");
     await clicarFinalizar();
     const chaveNaEntrega = chaveDaUltimaChamada();
+    // O 2º envio tem de ter ACONTECIDO: createOrder recusa com 23505 e, se o
+    // botão ficasse travado depois do 1º envio, `chaveDaUltimaChamada()`
+    // devolveria a chave do 1º e a comparação abaixo passaria sem provar nada.
+    expect(createOrder).toHaveBeenCalledTimes(2);
 
     // Sem a correção (impressaoDaCompra chamada sem paymentMethod no
     // CheckoutView), as duas chaves seriam IGUAIS — a RPC devolveria para
@@ -334,6 +338,10 @@ describe("CheckoutView — a chave de idempotência acompanha o EIXO do meio de 
     await escolherMeioDePagamento("Dinheiro na Entrega");
     await clicarFinalizar();
     const chaveDinheiro = chaveDaUltimaChamada();
+    // O 2º envio tem de ter ACONTECIDO: createOrder recusa com 23505 e, se o
+    // botão ficasse travado depois do 1º envio, `chaveDaUltimaChamada()`
+    // devolveria a chave do 1º e a comparação abaixo passaria sem provar nada.
+    expect(createOrder).toHaveBeenCalledTimes(2);
 
     // Os dois meios finos ("pix" e "cash" na entrega) gravam na MESMA RPC
     // (create_marketplace_order_v23) — só o eixo online/entrega decide qual
