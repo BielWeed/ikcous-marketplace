@@ -109,15 +109,50 @@ const TOKEN_FALSO_2 = "APP_USR-token-falso-de-teste-trocado-8888";
 const WEBHOOK_FALSO = "segredo-falso-de-webhook-7777";
 
 function respostaAdminFalsa(): Response {
+    // Admin de verdade: o papel ATUAL nas duas fontes (app_metadata aqui e
+    // profiles abaixo) — a porta exige as duas (`_shared/admin-atual.ts`).
     return new Response(
         JSON.stringify({
             id: ID_ADMIN,
             email: "admin@teste.local",
             aud: "authenticated",
             role: "authenticated",
+            app_metadata: { provider: "email", role: "admin" },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
     );
+}
+
+/**
+ * Papel ATUAL nas duas fontes (mesma regra de `public.is_admin_atual()`):
+ * `app_metadata.role` do usuário que o GET /user do Auth carrega do BANCO, e
+ * `profiles.role`. Mesmo molde do teste da estornar-pagamento.
+ */
+function fetchPapeisFalso(papelNoAuth: string, papelNoPerfil: string) {
+    return ((input: any) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.includes("/auth/v1/user")) {
+            return new Response(
+                JSON.stringify({
+                    id: ID_ADMIN,
+                    email: "admin@teste.local",
+                    aud: "authenticated",
+                    role: "authenticated",
+                    app_metadata: { provider: "email", role: papelNoAuth },
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+        }
+        if (url.includes("/rest/v1/profiles")) {
+            return new Response(
+                JSON.stringify({ id: ID_ADMIN, role: papelNoPerfil }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+        }
+        return new Response(JSON.stringify({ message: "fora do roteiro" }), {
+            status: 404,
+        });
+    }) as any;
 }
 
 const fetchAdminFalso = ((input: any) => {
@@ -2293,4 +2328,60 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             desfazerEnv();
         }
     });
+});
+
+// ── Admin de AGORA nas duas fontes (auditoria L3, 12/10/2026) ──────────────
+// A porta desta edge é a MESMA de `estornar-pagamento` e do `cancelar` da
+// `criar-pagamento` (`_shared/admin-atual.ts`): papel 'admin' em
+// `profiles.role` E em `app_metadata.role`. Papéis contraditórios (alguém
+// rebaixado em uma fonte só) não mexem nas chaves de pagamento — nas duas
+// direções: nada lido, nada gravado, nenhuma chamada ao MP. A resposta é a
+// MESMA de quem não é admin (401 com o recado de sempre).
+for (
+    const [rotulo, papelNoAuth, papelNoPerfil] of [
+        ["só o Auth rebaixado (profiles ainda admin)", "customer", "admin"],
+        ["só o profiles rebaixado (Auth ainda admin)", "admin", "customer"],
+    ] as const
+) {
+    Deno.test(`credenciais-mercado-pago — papéis contraditórios, ${rotulo}: 401 e nada lido nem gravado`, async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        const mp = buscarMpFalso(200, { id: 1, nickname: "Loja" });
+        try {
+            for (
+                const corpo of [
+                    { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO },
+                    { acao: "ligar_pix" },
+                    { acao: "ler" },
+                ]
+            ) {
+                const resposta = await comFetch(fetchPapeisFalso(papelNoAuth, papelNoPerfil), () =>
+                    handler(requisicao(corpo), { supabase: cliente, buscar: mp.buscar })
+                );
+                assertEquals(resposta.status, 401, `acao ${corpo.acao}`);
+                assertEquals(
+                    (await resposta.json()).erro,
+                    "Não autorizado: só o dono da loja mexe nas chaves de pagamento.",
+                );
+            }
+            assertEquals(estado.upserts.length, 0);
+            assertEquals(estado.updatesLoja.length, 0);
+            assertEquals(mp.anotacoes.length, 0);
+        } finally {
+            desfazerEnv();
+        }
+    });
+}
+
+Deno.test("credenciais-mercado-pago — CONTROLE: admin nas duas fontes passa a porta e lê", async () => {
+    const desfazerEnv = prepararEnv();
+    const { cliente } = supabaseFalso();
+    try {
+        const resposta = await comFetch(fetchPapeisFalso("admin", "admin"), () =>
+            handler(requisicao({ acao: "ler" }), { supabase: cliente })
+        );
+        assertEquals(resposta.status, 200);
+    } finally {
+        desfazerEnv();
+    }
 });

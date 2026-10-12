@@ -85,9 +85,9 @@
 //
 // DINHEIRO/CREDENCIAL — as proteções desta function:
 //   * Admin-only duas vezes: verify_jwt = true no portão (config.toml) E a
-//     porta interna aqui — JWT do lojista validado com anon key e papel
-//     subido por profiles com service role (MESMA cópia do verifyIsAdmin
-//     do estornar-pagamento/calculate-shipping).
+//     porta interna aqui — o admin de AGORA (`_shared/admin-atual.ts`, a
+//     mesma do estornar-pagamento): papel 'admin' em profiles E em
+//     app_metadata.
 //   * O SEGREDO NUNCA VOLTA para o navegador: desta function só sai
 //     MÁSCARA ("••••1234") e o resultado do teste. Na ida, entra cifrado.
 //   * CIFRAÇÃO NO SERVIDOR: AES-256-GCM (WebCrypto) com chave de 32 bytes
@@ -110,6 +110,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { adminAtualDaSessao } from "../_shared/admin-atual.ts";
 import { BASE_URL_PADRAO, fetchComTempo } from "../_shared/mercadopago.ts";
 import {
     chaveDeCifra,
@@ -238,43 +239,25 @@ function readKey(newVar: string, legacyVar: string): string {
 }
 
 /**
- * Verifica se quem chamou é admin e devolve o UID dele (null = não é
- * admin). MESMA cópia do padrão estornar-pagamento/melhor-envio-etiqueta —
- * valida o JWT com a anon key e sobe o papel de `profiles` com service role;
- * a única diferença é devolver o uid em vez de um booleano, porque ligar o
- * PIX é ato de dinheiro e fica carimbado com QUEM ligou (`pix_ligado_por`).
+ * Verifica se quem chamou é admin AGORA e devolve o UID dele (null = não é
+ * admin) — o uid fica carimbado em `pix_ligado_por`, porque ligar o PIX é ato
+ * de dinheiro. A regra mora em `_shared/admin-atual.ts` (auditoria L3,
+ * 12/10/2026), a MESMA de `estornar-pagamento` e do `cancelar` da
+ * `criar-pagamento`: sessão validada no Auth e papel 'admin' em
+ * `profiles.role` E em `app_metadata.role`. Papéis contraditórios (rebaixado
+ * em uma fonte só) não mexem nas chaves de pagamento.
  */
 async function uidDoAdmin(
     authHeader: string | null,
     supabaseUrl: string,
     serviceRoleKey: string,
 ): Promise<string | null> {
-    if (!authHeader) return null;
-    try {
-        const anonKey = readKey(
-            "SUPABASE_PUBLISHABLE_KEYS",
-            "SUPABASE_ANON_KEY",
-        );
-        const userClient = createClient(supabaseUrl, anonKey, {
-            global: { headers: { Authorization: authHeader } },
-        });
-        const {
-            data: { user },
-            error: userError,
-        } = await userClient.auth.getUser();
-        if (userError || !user) return null;
-        const systemClient = createClient(supabaseUrl, serviceRoleKey);
-        const { data: profile, error: profileError } = await systemClient
-            .from("profiles")
-            .select("role")
-            .eq("id", user.id)
-            .single();
-        if (profileError || !profile) return null;
-        return profile.role === "admin" ? user.id : null;
-    } catch (err) {
-        console.error("[credenciais-mp] Falha no check de admin:", err);
-        return null;
-    }
+    return await adminAtualDaSessao(authHeader, {
+        url: supabaseUrl,
+        chavePublica: readKey("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY"),
+        chaveDeServico: serviceRoleKey,
+        rotulo: "[credenciais-mp]",
+    });
 }
 
 // As primitivas de cifra (chaveDeCifra/cifrar/decifrar, AES-256-GCM do
