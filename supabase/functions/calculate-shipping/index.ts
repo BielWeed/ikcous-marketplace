@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { adminAtualDaSessao } from "../_shared/admin-atual.ts"
 import { ID_RETIRADA_NA_LOJA } from "../_shared/retirada-na-loja.ts"
 import { textoSemSegredo } from './regua.ts'
 import {
@@ -663,39 +664,22 @@ function readKey(newVar: string, legacyVar: string): string {
     return Deno.env.get(legacyVar) ?? ''
 }
 
-// Helper to verify if the caller has admin permissions
+/**
+ * Verifica se quem chamou é admin AGORA. A regra mora em
+ * `_shared/admin-atual.ts` (12/10/2026), a MESMA de `estornar-pagamento`, da
+ * `melhor-envio-etiqueta` e do `cancelar` da `criar-pagamento`: sessão
+ * validada no Auth e papel 'admin' em `profiles.role` E em
+ * `app_metadata.role`. Papéis contraditórios (rebaixado em uma fonte só) não
+ * salvam nem testam credencial de transportadora, nem leem a configuração.
+ */
 async function verifyIsAdmin(authHeader: string | null, supabaseUrl: string, serviceRoleKey: string): Promise<boolean> {
-    if (!authHeader) return false;
-
-    try {
-        const anonKey = readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
-        const userClient = createClient(supabaseUrl, anonKey, {
-            global: { headers: { Authorization: authHeader } }
-        });
-        
-        const { data: { user }, error: userError } = await userClient.auth.getUser();
-        if (userError || !user) {
-            console.error('[verifyIsAdmin] Auth getUser failed:', userError);
-            return false;
-        }
-        
-        const systemClient = createClient(supabaseUrl, serviceRoleKey);
-        const { data: profile, error: profileError } = await systemClient
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single();
-            
-        if (profileError || !profile) {
-            console.error('[verifyIsAdmin] Query profile role failed:', profileError);
-            return false;
-        }
-        
-        return profile.role === 'admin';
-    } catch (err) {
-        console.error('[verifyIsAdmin] Exception during admin check:', err);
-        return false;
-    }
+    const adminId = await adminAtualDaSessao(authHeader, {
+        url: supabaseUrl,
+        chavePublica: readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY'),
+        chaveDeServico: serviceRoleKey,
+        rotulo: '[calculate-shipping]',
+    })
+    return adminId !== null
 }
 
 const isTesting = Deno.mainModule.endsWith("_test.ts") || Deno.mainModule.endsWith("_test.js") || Deno.mainModule.includes("index_test");

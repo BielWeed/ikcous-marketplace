@@ -4093,6 +4093,110 @@ Deno.test("histórico: cache acertado também grava a projeção enxuta", async 
   assertEquals(linhaDoCache?.cart_items, [{ produto: "p1", variante: null, qtd: 1 }]);
 });
 
+// --- Ações de admin: o admin de AGORA nas duas fontes (12/10/2026) ----------
+//
+// A porta das ações de admin (`save_credentials`, `test_credentials`,
+// `save_active_providers`, `ler_configuracao_frete`, `list_services`) é a de
+// `_shared/admin-atual.ts`: papel 'admin' em `profiles.role` E em
+// `app_metadata.role` do usuário que o Auth carrega do banco. Aqui o handler
+// roda SEM a costura `verificarAdmin`, com o fetch roteado para um Auth e um
+// PostgREST falsos — é a checagem de produção que está sob teste.
+
+const URL_SUPA_DO_ADMIN = "https://supa-fake.local";
+
+async function acaoComPapeis(
+  papelNoAuth: string,
+  papelNoPerfil: string,
+  corpo: Record<string, unknown>,
+  authorization: string | null = "Bearer jwt-de-teste",
+) {
+  const anteriores = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_SECRET_KEYS"]
+    .map((chave) => [chave, Deno.env.get(chave)] as const);
+  Deno.env.set("SUPABASE_URL", URL_SUPA_DO_ADMIN);
+  Deno.env.set("SUPABASE_PUBLISHABLE_KEYS", JSON.stringify({ default: "anon-de-teste" }));
+  Deno.env.set("SUPABASE_SECRET_KEYS", JSON.stringify({ default: "service-role-de-teste" }));
+  const urls: string[] = [];
+  const fetchAnterior = globalThis.fetch;
+  globalThis.fetch = ((input: any) => {
+    const url = String(input instanceof Request ? input.url : input);
+    urls.push(url);
+    if (url.includes("/auth/v1/user")) {
+      return Promise.resolve(new Response(
+        JSON.stringify({
+          id: "admin-1111-2222",
+          aud: "authenticated",
+          role: "authenticated",
+          app_metadata: { provider: "email", role: papelNoAuth },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ));
+    }
+    if (url.includes("/rest/v1/profiles")) {
+      return Promise.resolve(new Response(
+        JSON.stringify({ id: "admin-1111-2222", role: papelNoPerfil }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ));
+    }
+    return Promise.resolve(new Response("fora do roteiro", { status: 599 }));
+  }) as any;
+  const banco = bancoDeApoio();
+  try {
+    const resposta = await handler(
+      new Request("http://localhost/calculate-shipping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(authorization ? { Authorization: authorization } : {}) },
+        body: JSON.stringify(corpo),
+      }),
+      { supabase: banco.cliente },
+    );
+    return { resposta, corpo: await resposta.json(), urls, registro: banco.registro };
+  } finally {
+    globalThis.fetch = fetchAnterior;
+    for (const [chave, valor] of anteriores) {
+      if (valor === undefined) Deno.env.delete(chave);
+      else Deno.env.set(chave, valor);
+    }
+  }
+}
+
+const SALVAR_CREDENCIAL = { action: "save_credentials", provider: "superfrete", credentials: { token: "tok-NOVO-FICTICIO" } };
+
+for (
+  const [rotulo, papelNoAuth, papelNoPerfil] of [
+    ["só o Auth rebaixado (profiles ainda admin)", "customer", "admin"],
+    ["só o profiles rebaixado (Auth ainda admin)", "admin", "customer"],
+  ] as const
+) {
+  Deno.test(`admin de agora: papéis contraditórios, ${rotulo} -> save_credentials recusado sem gravar nada`, async () => {
+    const r = await acaoComPapeis(papelNoAuth, papelNoPerfil, SALVAR_CREDENCIAL);
+    assertEquals(r.resposta.status, 403);
+    assertEquals(r.corpo, { success: false, error: "Não autorizado: Apenas administradores podem salvar credenciais." });
+    assertEquals(r.registro.upsertsCredencial.length, 0);
+    assertEquals(r.registro.eventos, []);
+    assertEquals(r.urls.some((u) => !u.startsWith(URL_SUPA_DO_ADMIN)), false);
+  });
+
+  Deno.test(`admin de agora: papéis contraditórios, ${rotulo} -> ler_configuracao_frete recusado`, async () => {
+    const r = await acaoComPapeis(papelNoAuth, papelNoPerfil, { action: "ler_configuracao_frete" });
+    assertEquals(r.resposta.status, 403);
+    assertEquals(r.registro.eventos, []);
+  });
+}
+
+Deno.test("admin de agora: sem sessão -> recusado sem ir ao Auth", async () => {
+  const r = await acaoComPapeis("admin", "admin", SALVAR_CREDENCIAL, null);
+  assertEquals(r.resposta.status, 403);
+  assertEquals(r.urls, []);
+  assertEquals(r.registro.upsertsCredencial.length, 0);
+});
+
+Deno.test("admin de agora: CONTROLE — admin nas duas fontes passa a porta", async () => {
+  const r = await acaoComPapeis("admin", "admin", { action: "ler_configuracao_frete" });
+  assertEquals(r.resposta.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.urls.some((u) => u.includes("/auth/v1/user")), true);
+  assertEquals(r.urls.some((u) => u.includes("/rest/v1/profiles")), true);
+});
+
 Deno.test("cart_hash gravado no cache continua montado com o carrinho CRU (a RPC do pedido compara contra ele)", async () => {
   const carrinho = [
     { product: { id: "p1", price: 1, description: "d".repeat(2_000) }, quantity: 2 },
