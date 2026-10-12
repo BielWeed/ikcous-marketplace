@@ -18,7 +18,7 @@ import {
   textoConfirmarCancelamento,
   textoDevolucao,
 } from "@/lib/texto-estorno-do-cliente";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type {
   Order,
   OrderItem,
@@ -443,8 +443,20 @@ export function OrderDetailsView({
     loadOrder();
   }, [loadOrder]);
 
+  // Outro pedido na tela = outras avaliações: o conjunto do anterior não pode
+  // aparecer como "Avaliado" no novo. Reseta pelo ID (e não pelo objeto), senão
+  // cada revalidação do mesmo pedido piscaria os botões "Avaliar".
+  const pedidoIdAtual = order?.id;
+  useEffect(() => {
+    setReviewedProductIds(new Set());
+  }, [pedidoIdAtual]);
+
   useEffect(() => {
     if (!user || !order || order.status !== "delivered") return;
+
+    // Resposta velha não sobrescreve a nova: se o pedido mudou (ou a tela
+    // saiu) antes da consulta voltar, o efeito já foi limpo e ignora o dado.
+    let cancelado = false;
 
     const checkIfReviewed = async () => {
       try {
@@ -455,6 +467,7 @@ export function OrderDetailsView({
           .eq("user_id", user.id)
           .in("product_id", productIds);
 
+        if (cancelado) return;
         if (!error && data) {
           const reviewedSet = new Set<string>(
             data.map((r: any) => r.product_id),
@@ -462,11 +475,15 @@ export function OrderDetailsView({
           setReviewedProductIds(reviewedSet);
         }
       } catch (e) {
-        console.error("Failed to check existing reviews:", e);
+        if (!cancelado) console.error("Failed to check existing reviews:", e);
       }
     };
 
     checkIfReviewed();
+
+    return () => {
+      cancelado = true;
+    };
   }, [user, order]);
 
   // Brief "o app não mente quando copia" (08/09/2026): copiava sem
@@ -1119,6 +1136,8 @@ export function OrderDetailsView({
                   </h5>
                   <p className="mt-0.5 text-xs font-medium text-zinc-500">
                     Qtd. {item.quantity}
+                    {item.quantity > 1 &&
+                      ` · ${formatCurrency(item.price)} un.`}
                   </p>
                 </div>
                 <span
@@ -1129,7 +1148,10 @@ export function OrderDetailsView({
                       : "text-zinc-900",
                   )}
                 >
-                  R$ {item.price.toFixed(2).replace(".", ",")}
+                  {/* `item.price` é o unitário (o painel mostra "qtd × preço" e
+                      soma a linha); a coluna mostra o total da linha, que é o
+                      que fecha com "Produtos" no resumo. */}
+                  {formatCurrency(item.price * item.quantity)}
                 </span>
               </div>
             ))}
@@ -1151,7 +1173,7 @@ export function OrderDetailsView({
             <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
               <span>Produtos</span>
               <span className="font-bold text-zinc-900">
-                R$ {order.subtotal.toFixed(2).replace(".", ",")}
+                {formatCurrency(order.subtotal)}
               </span>
             </div>
             <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
@@ -1162,15 +1184,13 @@ export function OrderDetailsView({
                   order.shipping === 0 ? "text-emerald-700" : "text-zinc-900",
                 )}
               >
-                {order.shipping > 0
-                  ? `R$ ${order.shipping.toFixed(2).replace(".", ",")}`
-                  : "Grátis"}
+                {order.shipping > 0 ? formatCurrency(order.shipping) : "Grátis"}
               </span>
             </div>
             {order.discount > 0 && (
               <div className="flex items-center justify-between text-[13px] font-bold text-emerald-700">
                 <span>Desconto</span>
-                <span>- R$ {order.discount.toFixed(2).replace(".", ",")}</span>
+                <span>- {formatCurrency(order.discount)}</span>
               </div>
             )}
             <div className="my-3 border-t border-dashed border-zinc-200" />
@@ -1186,7 +1206,7 @@ export function OrderDetailsView({
                     : "text-zinc-950",
                 )}
               >
-                R$ {order.total.toFixed(2).replace(".", ",")}
+                {formatCurrency(order.total)}
               </span>
             </div>
           </div>
