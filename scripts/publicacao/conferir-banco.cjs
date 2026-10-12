@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1465,6 +1465,53 @@ const ROL_DA_21B = [
   "reivindicar_email_de_confirmacao: EXECUTE",
   "reivindicar_email_de_confirmacao: corpo e o da 20260821000000 (sha256)",
 ];
+/** O rol da 22a (a prova de objetos do lote 20261218000000 + 20261218000100 + 20261219000000, as
+ * portas pequenas do banco): as 15 linhas que
+ * scripts/publicacao/consultas/22a-conferir-portas-do-banco-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): a politica de
+ * public_profiles so para authenticated com a condicao do lote, o gatilho do teto da imagem do perfil
+ * (definicao, corpo sha256 e EXECUTE fechado), o EXECUTE da contagem do push, a view do painel sem nada
+ * para PUBLIC/anon, configuracoes e codigos sem nada para PUBLIC/anon/authenticated com a service_role
+ * intacta, e anon/authenticated fora dos papeis predefinidos de leitura/escrita. Como a 21a, NAO serve
+ * de pre-checagem de ledger (o lote nao tem backfill). tests/banco/portas-do-banco-portao-viva.cjs prova,
+ * num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_22A = [
+  "anon e authenticated: fora de pg_read_all_data e pg_write_all_data",
+  "app_settings e otp_verifications: service_role le e grava",
+  "app_settings: RLS ligada e nada para PUBLIC/anon/authenticated",
+  "controle: funcoes de public visiveis a este papel",
+  "get_segmented_push_count: EXECUTE",
+  "get_segmented_push_count: corpo e o vigente (md5)",
+  "otp_verifications: RLS ligada e nada para PUBLIC/anon/authenticated",
+  "perfil_recusa_imagem_grande: EXECUTE fechado e sem SECURITY DEFINER",
+  "perfil_recusa_imagem_grande: corpo e o da 20261218000000 (sha256)",
+  "profiles: gatilho do teto da imagem ligado e com a definicao da 20261218000000",
+  "public_profiles: RLS ligada",
+  "public_profiles: condicao da politica e a da 20261219000000 (md5)",
+  "public_profiles: politicas",
+  "vw_produtos_admin: authenticated le e grava",
+  "vw_produtos_admin: nada para PUBLIC/anon",
+];
+/** O rol da 22b (a consulta de AUSENCIA do lote das portas pequenas do banco; `ausenciaConfirmadaPor`):
+ * as 11 linhas que scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql devolve — o
+ * estado VIGENTE medido nas duas lojas (a politica USING (true) para PUBLIC, sem o gatilho, a contagem do
+ * push aberta e a view lida pelo anon), a porta rls_admin_atual() e as colunas que o lote le. SEM linha
+ * de configuracoes e codigos: numa loja ja fechada o "antes" delas ja e o "depois". Uma loja que ja tem
+ * o lote reprova aqui de proposito. tests/banco/portas-do-banco-portao-viva.cjs prova, num Postgres
+ * real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_22B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_segmented_push_count: EXECUTE",
+  "get_segmented_push_count: corpo e o da 20261199000000 (md5)",
+  "perfil_recusa_imagem_grande: funcao",
+  "perfis, avaliacoes e perguntas: colunas que o lote le",
+  "profiles: gatilho do teto da imagem",
+  "public_profiles: RLS ligada",
+  "public_profiles: condicao da politica e a do baseline",
+  "public_profiles: politicas",
+  "rls_admin_atual: corpo da 20261197000000 (md5) e EXECUTE",
+  "vw_produtos_admin: anon le",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1493,6 +1540,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "20b-antes-fotos-da-devolucao-sem-delete": ROL_DA_20B,
   "21a-conferir-teto-de-email-aplicado": ROL_DA_21A,
   "21b-antes-teto-de-email-corpos-vigentes": ROL_DA_21B,
+  "22a-conferir-portas-do-banco-aplicado": ROL_DA_22A,
+  "22b-antes-portas-do-banco-estado-vigente": ROL_DA_22B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2059,6 +2108,8 @@ module.exports = {
   ROL_DA_20B,
   ROL_DA_21A,
   ROL_DA_21B,
+  ROL_DA_22A,
+  ROL_DA_22B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

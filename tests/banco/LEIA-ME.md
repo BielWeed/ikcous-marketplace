@@ -320,6 +320,14 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   service_role lê e grava, o código do convidado segue saindo e sendo conferido; no-op numa loja já
   fechada; grant de coluna some; grant de outro grantor faz a conferência recusar. Reaplicar, CRLF,
   rollback e pré-voo de cada uma.
+- **portão das portas pequenas do banco (`portas-do-banco-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `22a-conferir-portas-do-banco-aplicado` (DEPOIS, 15 linhas) e
+  `22b-antes-portas-do-banco-estado-vigente` (ANTES, 11 linhas), a "prova de objetos" do lote
+  `20261218000000` + `20261218000100` + `20261219000000`. Rol exato nos dois estados; 22a positiva depois do
+  apply e 22b positiva depois dos três rollbacks (também numa loja que já tinha as duas tabelas do servidor
+  fechadas); reaplicar, CRLF e `search_path` de quem lê não mudam o resultado; o papel mínimo dá o mesmo
+  resultado do dono; cada desvio (política, gatilho, EXECUTE, view, tabela, papel) reprova só a sua linha; o
+  veredito do `conferir-banco.cjs` sobre as linhas reais sai com `rol=ok`.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
