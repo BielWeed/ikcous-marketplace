@@ -25,6 +25,7 @@ import {
   endpointResumido,
   enviarComOrcamentoDeTempo,
   enviarParaInscritos,
+  handler,
   jwkDoParVapidCru,
   paginarTudo,
   resumir,
@@ -579,4 +580,125 @@ Deno.test("enviarComOrcamentoDeTempo com orçamento já estourado não tenta nen
 
   assertEquals(itens.length, 0);
   assertEquals(naoTentados, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Porta de admin: o admin de AGORA nas duas fontes (auditoria L3, 12/10/2026)
+//
+// A mesma regra de `estornar-pagamento` e do `cancelar` da `criar-pagamento`
+// (`_shared/admin-atual.ts`): papel 'admin' em `profiles.role` E em
+// `app_metadata.role` do usuário que o Auth carrega do banco. Papéis
+// contraditórios (rebaixado em uma fonte só) recebem a MESMA recusa de quem
+// não é admin — 400 `{ ok: false, error }`, o contrato que o painel já lê —
+// sem ler inscrição nenhuma e sem disparar push.
+// ---------------------------------------------------------------------------
+
+const URL_SUPA_TESTE = "https://supa-fake.local";
+const ID_USUARIO = "admin-1111-2222";
+
+function fetchDePapeis(papelNoAuth: string, papelNoPerfil: string) {
+  const urls: string[] = [];
+  const fn = (input: any) => {
+    const url = String(input instanceof Request ? input.url : input);
+    urls.push(url);
+    if (url.includes("/auth/v1/user")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: ID_USUARIO,
+            aud: "authenticated",
+            role: "authenticated",
+            app_metadata: { provider: "email", role: papelNoAuth },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+    if (url.includes("/rest/v1/profiles")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: ID_USUARIO, role: papelNoPerfil }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ message: "fora do roteiro" }), { status: 404 }),
+    );
+  };
+  return { fn, urls };
+}
+
+async function chamarComPapeis(
+  papelNoAuth: string,
+  papelNoPerfil: string,
+  corpo: Record<string, unknown>,
+  authorization: string | null = "Bearer jwt-de-teste",
+) {
+  const anteriores = ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_SECRET_KEYS"]
+    .map((chave) => [chave, Deno.env.get(chave)] as const);
+  Deno.env.set("SUPABASE_URL", URL_SUPA_TESTE);
+  Deno.env.set("SUPABASE_PUBLISHABLE_KEYS", JSON.stringify({ default: "anon-de-teste" }));
+  Deno.env.set("SUPABASE_SECRET_KEYS", JSON.stringify({ default: "service-role-de-teste" }));
+  const rede = fetchDePapeis(papelNoAuth, papelNoPerfil);
+  const fetchAnterior = globalThis.fetch;
+  globalThis.fetch = rede.fn as any;
+  try {
+    const resposta = await handler(
+      new Request("http://local/send-push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authorization ? { Authorization: authorization } : {}),
+        },
+        body: JSON.stringify(corpo),
+      }),
+    );
+    return { resposta, urls: rede.urls };
+  } finally {
+    globalThis.fetch = fetchAnterior;
+    for (const [chave, valor] of anteriores) {
+      if (valor === undefined) Deno.env.delete(chave);
+      else Deno.env.set(chave, valor);
+    }
+  }
+}
+
+for (
+  const [rotulo, papelNoAuth, papelNoPerfil] of [
+    ["só o Auth rebaixado (profiles ainda admin)", "customer", "admin"],
+    ["só o profiles rebaixado (Auth ainda admin)", "admin", "customer"],
+  ] as const
+) {
+  Deno.test(`porta de admin: papéis contraditórios, ${rotulo} -> recusa sem ler inscrição`, async () => {
+    const { resposta, urls } = await chamarComPapeis(papelNoAuth, papelNoPerfil, {
+      title: "Oi",
+      body: "texto",
+    });
+    assertEquals(resposta.status, 400);
+    assertEquals(await resposta.json(), {
+      ok: false,
+      error: "Unauthorized: Admin access required",
+    });
+    assertEquals(urls.some((u) => u.includes("push_subscriptions")), false);
+  });
+}
+
+Deno.test("porta de admin, CONTROLE: admin nas duas fontes passa (lista vazia de destinos responde ok com total 0)", async () => {
+  const { resposta } = await chamarComPapeis("admin", "admin", {
+    title: "Oi",
+    body: "texto",
+    tokens: [],
+  });
+  assertEquals(resposta.status, 200);
+  const corpo = await resposta.json();
+  assertEquals(corpo.ok, true);
+  assertEquals(corpo.total, 0);
+});
+
+Deno.test("porta de admin: sem Authorization -> a mesma recusa de sempre, sem chamada de rede", async () => {
+  const { resposta, urls } = await chamarComPapeis("admin", "admin", { title: "Oi" }, null);
+  assertEquals(resposta.status, 400);
+  assertEquals(await resposta.json(), { ok: false, error: "Missing Authorization header" });
+  assertEquals(urls.length, 0);
 });
