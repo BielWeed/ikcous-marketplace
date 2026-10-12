@@ -23,7 +23,16 @@
  *  digitado só vira número na hora de efetivar, não a cada tecla. */
 export const limparNumero = (val: string): string => {
   if (!val) return "";
-  let clean = val.replace(",", ".").replace(/[^\d.-]/g, "");
+  const semLixo = val.replace(/[^\d.,-]/g, "");
+  // Com vírgula, ela é o decimal e todo ponto é milhar ("1.234,56").
+  // Sem vírgula, ponto de milhar bem formado ("1.234", "1.234.567") também
+  // some; um ponto só com 1-2 casas ("89.90") segue sendo decimal.
+  const ehMilhar = /^-?\d{1,3}(\.\d{3})+$/.test(semLixo);
+  let clean = semLixo.includes(",")
+    ? semLixo.replace(/\./g, "").replace(",", ".")
+    : ehMilhar
+      ? semLixo.replace(/\./g, "")
+      : semLixo;
   const parts = clean.split(".");
   if (parts.length > 2) {
     clean = `${parts[0]}.${parts.slice(1).join("")}`;

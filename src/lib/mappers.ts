@@ -127,7 +127,12 @@ export function mapProductFromDB(
       createdAt,
       updatedAt,
       createdTime,
-      rating: row.rating ? Number(row.rating) : 5,
+      // Sem avaliação nenhuma o padrão é 5 estrelas; mas nota 0 de quem JÁ
+      // tem avaliações é nota real e não pode virar 5.
+      rating:
+        row.rating != null && (row.rating || Number(row.review_count) > 0)
+          ? Number(row.rating)
+          : 5,
       reviewCount: row.review_count ? Number(row.review_count) : 0,
       tags: Array.isArray(row.tags) ? row.tags : [],
       metaTitle: row.meta_title || undefined,

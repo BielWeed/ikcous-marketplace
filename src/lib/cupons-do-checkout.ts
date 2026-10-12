@@ -85,9 +85,12 @@ export function emReais(valor: number): string {
 
 /** "R$ 15" quando é inteiro, "R$ 15,90" quando não — para o selo grande. */
 function reaisCurtos(valor: number): string {
-  return Number.isInteger(valor)
-    ? `R$ ${valor}`
-    : `R$ ${valor.toFixed(2).replace(".", ",")}`;
+  // Arredonda a centavos antes de testar: 14.999 aparece como 15,00 e não
+  // pode ser tratado como não inteiro nem virar "R$ 14.999".
+  const arredondado = Math.round(valor * 100) / 100;
+  return Number.isInteger(arredondado)
+    ? `R$ ${arredondado}`
+    : `R$ ${arredondado.toFixed(2).replace(".", ",")}`;
 }
 
 /** "10%" / "12,5%". */

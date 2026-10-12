@@ -42,12 +42,16 @@ export function valorDevolverAgora(pedido: {
   const total = pedido.total || 0;
   const jaDevolvido = pedido.valorDevolvidoPorDevolucao || 0;
   const jaEstornado = pedido.valorEstornado || 0;
-  return Math.max(total - jaDevolvido - jaEstornado, 0);
+  return (
+    Math.max(centavos(total) - centavos(jaDevolvido) - centavos(jaEstornado), 0) /
+    100
+  );
 }
 
 // Dinheiro em CENTAVOS inteiros antes de somar/subtrair.
-const centavos = (valor: number | null | undefined) =>
-  Math.round((valor || 0) * 100);
+function centavos(valor: number | null | undefined): number {
+  return Math.round((valor || 0) * 100);
+}
 
 /**
  * L3e' rodada 2 (revisão financeira, 02/10/2026): devolução que o Mercado
