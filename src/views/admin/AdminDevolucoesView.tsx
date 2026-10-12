@@ -49,12 +49,17 @@ export function AdminDevolucoesView({
     selectedDevolucaoId ?? null,
   );
   const [sujo, setSujo] = useState(false);
-  // "Agora" congelado por montagem: prazo e idade não mudam de rótulo no
-  // meio da leitura, e o render continua puro.
-  const [agora] = useState(() => new Date());
+  // "Agora" congelado: prazo e idade não mudam de rótulo no meio da leitura,
+  // e o render continua puro. Renova quando a tela volta a ficar ativa (a
+  // view fica montada em segundo plano).
+  const [agora, setAgora] = useState(() => new Date());
   const sujoRef = useRef(false);
 
   const lista = useDevolucoesAdmin({ status, busca, ativo: active !== false });
+  const voltouAtiva = active !== false;
+  useEffect(() => {
+    if (voltouAtiva) setAgora(new Date());
+  }, [voltouAtiva]);
   const { recarregar } = lista;
 
   useEffect(() => {
