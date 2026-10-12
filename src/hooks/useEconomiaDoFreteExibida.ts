@@ -196,9 +196,15 @@ export function useEconomiaDoFreteExibida(params: {
   const reqRef = useRef(0);
 
   useEffect(() => {
+    // Qualquer re-execução (inclusive os retornos antecipados abaixo)
+    // encerra a rodada anterior: resposta em voo de carrinho/CEP que já não
+    // vale não pode gravar `economiaCotada` depois.
+    const invalidarRodada = () => {
+      reqRef.current++;
+    };
     if (modo.tipo !== "cotar" || isOffline || cart.length === 0) {
       setEconomiaCotada(0);
-      return;
+      return invalidarRodada;
     }
 
     // Carrinho ou CEP mudou desde a última cotação: o número antigo NÃO
@@ -211,7 +217,7 @@ export function useEconomiaDoFreteExibida(params: {
     const cacheado = lerCacheDeExibicao(chave, Date.now());
     if (cacheado !== undefined) {
       setEconomiaCotada(cacheado);
-      return;
+      return invalidarRodada;
     }
 
     const meuId = ++reqRef.current;
@@ -246,7 +252,10 @@ export function useEconomiaDoFreteExibida(params: {
       })();
     }, DEBOUNCE_MS);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      invalidarRodada();
+    };
     // `cart` entra só como corpo da requisição (fechamento) — quem decide
     // re-rodar é a assinatura estável (`cartSignature`), igual ao
     // ShippingCalculator.
