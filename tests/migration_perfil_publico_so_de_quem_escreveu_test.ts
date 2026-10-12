@@ -316,5 +316,33 @@ Deno.test("guarda de reabertura: o proprio lote nao reabre, e NENHUMA migration 
   );
   const posteriores = migracoes().filter((n) => n > NOME);
   for (const n of posteriores)
-    assert.deepEqual(reaberturas(ler(n)), [], `${n} reabre o que o lote L2 fechou`);
+    assert.deepEqual(reaberturas(ler(n)), [], `${n} reabre o que este lote fechou`);
+});
+
+Deno.test("composicao: a migration entra em POSTERIORES_A_97 (admin-atual-viva e pagamentos-rpc-viva), depois das entradas indexadas", () => {
+  // A politica nova usa rls_admin_atual(): o rollback da 20261197 recusa enquanto ela
+  // estiver no ar. As provas que desfazem a 97 precisam desfaze-la antes.
+  for (const arq of [
+    "tests/banco/admin-atual-viva.cjs",
+    "tests/banco/pagamentos-rpc-viva.cjs",
+  ]) {
+    const t = Deno.readTextFileSync(new URL(arq, DIR)).replace(/\r\n/g, "\n");
+    const ini = t.indexOf("const POSTERIORES_A_97 = [");
+    const fim = t.indexOf("\n];", ini);
+    assert.ok(ini > 0 && fim > ini, `${arq}: sem a lista`);
+    const lista = t.slice(ini, fim);
+    const nomes = [...lista.matchAll(/nome: "([^"]+)"/g)].map((x) => x[1]);
+    const pos = nomes.indexOf(NOME);
+    const pos98 = nomes.indexOf("20261198000000_cancelar_pedido_anula_a_cobranca.sql");
+    assert.ok(pos98 >= 0 && pos > pos98, `${arq}: a 20261219 fora do fim da lista`);
+    for (const depois of nomes.slice(pos + 1))
+      assert.ok(depois > NOME, `${arq}: ${depois} vem depois da 20261219 sem ser mais nova`);
+    const entrada = lista.slice(lista.indexOf(`nome: "${NOME}"`));
+    assert.ok(
+      /polname = 'public_profiles_select_policy'[\s\S]*rls_admin_atual/.test(
+        entrada.slice(0, entrada.indexOf("},")),
+      ),
+      `${arq}: o "no ar" da 20261219 nao olha a politica de public_profiles`,
+    );
+  }
 });
