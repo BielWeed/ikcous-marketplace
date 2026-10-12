@@ -707,6 +707,46 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         API cai na mesma RLS, mas essa passagem nao e medida). As consultas medem o TEXTO da condicao da
         politica, nao o comportamento, e nao leem objeto algum.
 
+  18. **Lote de UMA migration, de apply normal: `20261217000000` (o e-mail da loja tem teto e o codigo
+      do convidado nao se queima).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy). Cria a tabela `email_da_loja_contadores` (RLS ligada, nenhum privilegio
+      para `anon`/`authenticated`) e duas funcoes de apoio so do servidor (`reservar_vaga_de_email`,
+      `chave_do_destinatario`); troca o corpo de `generate_order_otp_v2` (tetos por pedido 5/24 h, por
+      destinatario 10/24 h somando codigo e comprovante, e da loja 40 codigos/24 h), de
+      `reivindicar_email_de_confirmacao` (mesma assinatura; teto da loja 40 comprovantes/24 h e o do
+      destinatario; pedido PAGO conta mas nunca e recusado; 40 + 40 = 80 fica abaixo de ~100/dia, a cota
+      provavel da conta de Gmail da loja, que e desconhecida; subir = migration nova) e de
+      `get_orders_by_otp_v1` (deixa de devolver
+      `restantes`); cria `get_orders_by_otp_v2` (o rastreio do convidado confere o codigo junto com o
+      trio e-mail + WhatsApp + inicio do pedido). Nenhuma linha de pedido, codigo ou cliente e lida ou
+      reescrita ao aplicar. Duas consultas, so leitura, so catalogo, de ROL FECHADO (14 e 8 linhas, so
+      valem com `rol=ok`):
+      - **`21a-conferir-teto-de-email-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo
+        (sha256, LF ou CRLF) e o `EXECUTE` das seis funcoes e a tabela de contadores fechada.
+      - **`21b-antes-teto-de-email-corpos-vigentes`** (`ausenciaConfirmadaPor`) prova o ANTES: os tres
+        corpos VIGENTES (20260820000000, 20260821000000, 20261181000000), o `EXECUTE` de sempre e as
+        colunas que os corpos novos leem.
+      - **Caminho, uma loja por vez:** `21a` (sai NEGATIVA) → `21b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com `20261217000000_o_email_da_loja_tem_teto_e_o_codigo_nao_se_queima.sql`
+        → o ensaio pede a `21a` DE NOVO, que tem de sair POSITIVA. `21a` POSITIVA com a versao fora do
+        ledger: PARAR (sem backfill).
+      - **Ordem:** o banco de CADA loja primeiro (IKCOUS, depois Savy) e o front desta release logo
+        depois. Banco novo com front velho: o rastreio do convidado segue pela v1 (so sem o "Restam N
+        tentativa(s)"). Front novo com banco velho: a verificacao do codigo falha (a v2 nao existe), por
+        isso o banco vem ANTES. Nenhuma edge function muda: com um teto atingido, `send-otp-email`
+        responde o erro generico de envio que ja existe.
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261217000000_o_email_da_loja_tem_teto_e_o_codigo_nao_se_queima.sql` pelo
+        `aplicar-migrations.yml`. Devolve os TRES corpos vivos de antes byte a byte; a tabela, as funcoes
+        de apoio e a `get_orders_by_otp_v2` FICAM (o front novo depende da v2 e o envelope recusa apagar
+        tabela). Depois dele a `21b` volta a ser POSITIVA e a `21a` NEGATIVA (provado em
+        `tests/banco/teto-de-email-portao-viva.cjs`).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a
+        `21a` e a `21b` DE NOVO.
+      - **Limites:** `tests/banco/teto-de-email-viva.cjs` prova o comportamento (tetos, corrida de duas
+        chamadas, pedido pago passa, v1/v2) num Postgres 17 efemero; nao prova a cota real do Gmail da
+        loja (os numeros sao conservadores e ficam em constantes no topo de cada funcao).
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

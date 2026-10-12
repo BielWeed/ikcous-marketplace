@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1424,6 +1424,47 @@ const ROL_DA_20B = [
   "devolucoes: nenhuma outra politica DELETE/ALL alcanca o bucket",
   "devolucoes: politicas de DELETE do cliente",
 ];
+/** O rol da 21a (a prova de objetos do lote da migration 20261217000000, o e-mail da loja tem teto e o
+ * codigo do convidado nao se queima): as 14 linhas que
+ * scripts/publicacao/consultas/21a-conferir-teto-de-email-aplicado.sql devolve, cada uma UMA vez, as mesmas
+ * em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha, nunca some uma linha): o
+ * controle do catalogo, corpo (sha256) e EXECUTE das seis funcoes do lote e a tabela de contadores com RLS e
+ * sem privilegio para anon/authenticated. Como a 17a/19a/20a, NAO serve de pre-checagem de ledger (o lote
+ * nao tem backfill): o portao a le como `consulta` do lote e so a aceita como POSITIVA ou NEGATIVA com
+ * ` rol=ok`. tests/banco/teto-de-email-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE
+ * o que a consulta devolve. */
+const ROL_DA_21A = [
+  "chave_do_destinatario: EXECUTE",
+  "chave_do_destinatario: corpo e o da 20261217000000 (sha256)",
+  "controle: funcoes de public visiveis a este papel",
+  "email_da_loja_contadores: RLS ligada e nada para anon/authenticated",
+  "generate_order_otp_v2: EXECUTE",
+  "generate_order_otp_v2: corpo e o da 20261217000000 (sha256)",
+  "get_orders_by_otp_v1: EXECUTE",
+  "get_orders_by_otp_v1: corpo e o da 20261217000000 (sha256)",
+  "get_orders_by_otp_v2: EXECUTE",
+  "get_orders_by_otp_v2: corpo e o da 20261217000000 (sha256)",
+  "reivindicar_email_de_confirmacao: EXECUTE",
+  "reivindicar_email_de_confirmacao: corpo e o da 20261217000000 (sha256)",
+  "reservar_vaga_de_email: EXECUTE",
+  "reservar_vaga_de_email: corpo e o da 20261217000000 (sha256)",
+];
+/** O rol da 21b (a consulta de AUSENCIA do lote da migration 20261217000000; `ausenciaConfirmadaPor`): as 8
+ * linhas que scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql devolve — como na 17b,
+ * o "antes" e o corpo VIGENTE das tres funcoes que o lote troca (com o EXECUTE de sempre) e as colunas que
+ * os corpos novos leem. Uma loja que ja tem a migration reprova aqui de proposito.
+ * tests/banco/teto-de-email-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_21B = [
+  "controle: funcoes de public visiveis a este papel",
+  "generate_order_otp_v2: EXECUTE",
+  "generate_order_otp_v2: corpo e o da 20260820000000 (sha256)",
+  "get_orders_by_otp_v1: EXECUTE",
+  "get_orders_by_otp_v1: corpo e o da 20261181000000 (sha256)",
+  "pedidos, codigos e contas: colunas que os corpos novos leem",
+  "reivindicar_email_de_confirmacao: EXECUTE",
+  "reivindicar_email_de_confirmacao: corpo e o da 20260821000000 (sha256)",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1450,6 +1491,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "19b-antes-politica-devolucao-grant-de-tabela": ROL_DA_19B,
   "20a-conferir-fotos-da-devolucao-aplicado": ROL_DA_20A,
   "20b-antes-fotos-da-devolucao-sem-delete": ROL_DA_20B,
+  "21a-conferir-teto-de-email-aplicado": ROL_DA_21A,
+  "21b-antes-teto-de-email-corpos-vigentes": ROL_DA_21B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2014,6 +2057,8 @@ module.exports = {
   ROL_DA_19B,
   ROL_DA_20A,
   ROL_DA_20B,
+  ROL_DA_21A,
+  ROL_DA_21B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

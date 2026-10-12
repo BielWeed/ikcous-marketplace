@@ -8808,3 +8808,395 @@ Deno.test("20a/20b — o rpc-ci.yml roda a prova viva do portão das fotos da de
       );
   }
 });
+
+// 21a/21b (12/10/2026) — a PROVA DE OBJETOS do lote da migration 20261217000000 (o e-mail da loja
+// tem teto e o código do convidado não se queima). A 21a é a consulta do lote (DEPOIS: corpo e
+// EXECUTE das seis funções e a tabela de contadores fechada); a 21b é a de ausência (ANTES: os três
+// corpos vigentes, o EXECUTE de sempre e as colunas que os corpos novos leem). As duas são de ROL
+// FECHADO (14 e 8 linhas) e só leem o catálogo. Estes testes medem o texto dos .sql contra os
+// ARQUIVOS desta árvore; a decisão de cada consulta num Postgres real fica com
+// tests/banco/teto-de-email-portao-viva.cjs (rodado no rpc-ci.yml).
+const NOME_21A = "21a-conferir-teto-de-email-aplicado";
+const NOME_21B = "21b-antes-teto-de-email-corpos-vigentes";
+const MIGRACAO_217 = `${MIGRATIONS_DIR}/20261217000000_o_email_da_loja_tem_teto_e_o_codigo_nao_se_queima.sql`;
+
+/** As funções do lote 21: de onde vem o corpo de ANTES (null = nova) e a assinatura do pré-voo. */
+const FUNCOES_21 = [
+  {
+    nome: "generate_order_otp_v2",
+    assinatura: "public.generate_order_otp_v2(text,text,text)",
+    antes: `${MIGRATIONS_DIR}/20260820000000_otp_v2_devolve_o_codigo.sql`,
+    versaoAntes: "20260820000000",
+    acl: "PUBLIC=nao anon=nao authenticated=nao service_role=sim",
+  },
+  {
+    nome: "reivindicar_email_de_confirmacao",
+    assinatura: "public.reivindicar_email_de_confirmacao(uuid)",
+    antes: `${MIGRATIONS_DIR}/20260821000000_confirmacao_de_pedido_uma_vez.sql`,
+    versaoAntes: "20260821000000",
+    acl: "PUBLIC=nao anon=nao authenticated=nao service_role=sim",
+  },
+  {
+    nome: "get_orders_by_otp_v1",
+    assinatura: "public.get_orders_by_otp_v1(text,text)",
+    antes: `${MIGRATIONS_DIR}/20261181000000_pedido_por_whatsapp_fecha_para_anon.sql`,
+    versaoAntes: "20261181000000",
+    acl: "PUBLIC=nao anon=sim authenticated=sim",
+  },
+  {
+    nome: "get_orders_by_otp_v2",
+    assinatura: "public.get_orders_by_otp_v2(text,text,text,text)",
+    antes: null,
+    versaoAntes: null,
+    acl: "PUBLIC=nao anon=sim authenticated=sim",
+  },
+  {
+    nome: "reservar_vaga_de_email",
+    assinatura: "public.reservar_vaga_de_email(text,integer)",
+    antes: null,
+    versaoAntes: null,
+    acl: "PUBLIC=nao anon=nao authenticated=nao service_role=sim",
+  },
+  {
+    nome: "chave_do_destinatario",
+    assinatura: "public.chave_do_destinatario(text)",
+    antes: null,
+    versaoAntes: null,
+    acl: "PUBLIC=nao anon=nao authenticated=nao service_role=sim",
+  },
+];
+
+/** Os corpos do lote 21 recalculados dos ARQUIVOS (ANTES, DEPOIS e o que o rollback devolve). */
+async function hashesDoLote21() {
+  const { createHash } = require("node:crypto");
+  const sha = (s: string) =>
+    createHash("sha256").update(s, "utf8").digest("hex");
+  const md5 = (s: string) =>
+    createHash("md5").update(s.replace(/\r/g, "")).digest("hex");
+  const ler = async (a: string) =>
+    (await Deno.readTextFile(a)).replace(/\r\n/g, "\n");
+  const corpoDe = (texto: string, nome: string) => {
+    const cab = `CREATE OR REPLACE FUNCTION public.${nome}(`;
+    const ini = texto.indexOf(cab);
+    assert(ini >= 0, `não achei ${cab}`);
+    assertEquals(texto.indexOf(cab, ini + 1), -1, `${nome} definida 2x`);
+    const abre = texto.indexOf("AS $$", ini) + "AS $$".length;
+    const fim = texto.indexOf("$$;", abre);
+    assert(fim > abre, `não achei o fim do corpo de ${nome}`);
+    return texto.slice(abre, fim);
+  };
+  const tres = (c: string) => ({
+    lf: sha(c),
+    crlf: sha(c.replace(/\n/g, "\r\n")),
+    md5: md5(c),
+    corpo: c,
+  });
+  const mig = await ler(MIGRACAO_217);
+  const rb = await ler(rollbackDe(MIGRACAO_217));
+  const porFuncao = new Map();
+  for (const f of FUNCOES_21)
+    porFuncao.set(f.nome, {
+      depois: tres(corpoDe(mig, f.nome)),
+      antes: f.antes ? tres(corpoDe(await ler(f.antes), f.nome)) : null,
+      rollback: f.antes ? tres(corpoDe(rb, f.nome)) : null,
+    });
+  return { porFuncao, mig, rb };
+}
+
+for (const [nome, nItens] of [
+  [NOME_21A, 14],
+  [NOME_21B, 8],
+] as Array<[string, number]>) {
+  Deno.test(`${nome} — no menu, UM statement só leitura (WITH), rol fechado de ${nItens} itens, só catálogo e nenhuma linha de dado é lida`, async () => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const estrutura = semLiterais(sql);
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    assertStringIncludes(yaml, `- ${nome}\n`);
+    assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+    assert(/^\s*WITH\b/i.test(limpo), "começa por WITH");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+        estrutura,
+      ),
+      "palavra de escrita fora de comentário/literal",
+    );
+    assert(
+      !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+        estrutura,
+      ),
+      "SQL dinâmico (ou leitura de arquivo)",
+    );
+    assert(
+      /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+        limpo,
+      ),
+      "saída item/esperado/vivo/ok com as reprovadas primeiro",
+    );
+    const alvos = [
+      ...estrutura.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+    ].map((m) => m[1].toLowerCase());
+    assert(alvos.length > 0);
+    const permitidos = new Set([
+      "pg_proc",
+      "pg_namespace",
+      "pg_class",
+      "pg_attribute",
+      "aclexplode",
+      "unnest",
+      "alvo",
+      "fn",
+      "tab",
+      "faltam",
+      "itens",
+    ]);
+    for (const alvo of alvos)
+      assert(
+        permitidos.has(alvo),
+        `lê de "${alvo}", que não é catálogo nem CTE`,
+      );
+    assert(
+      !/\b(?:FROM|JOIN)\s+(?:public\.|auth\.)?(?:marketplace_orders|otp_verifications|email_da_loja_contadores|users)\b/i.test(
+        estrutura,
+      ),
+      "a consulta leu uma tabela de dados",
+    );
+    // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    assertEquals(rol.length, nItens);
+    assertEquals(new Set(rol).size, rol.length);
+    for (const item of rol)
+      assertStringIncludes(limpo, `'${item}'`, `item "${item}" fora do .sql`);
+    assertEquals(
+      [...limpo.matchAll(/SELECT '([^']+)',/g)].length,
+      rol.length,
+      "o .sql tem mais (ou menos) linhas que o rol",
+    );
+  });
+}
+
+Deno.test("21a/21b — os hashes são EXATAMENTE os dos corpos que os arquivos definem; o pré-voo cita (vigente, desta); o rollback devolve o corpo de ANTES byte a byte", async (t) => {
+  const { porFuncao, mig, rb } = await hashesDoLote21();
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_21A}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_21B}.sql`),
+  );
+  const hex64 = (sql: string) => [
+    ...new Set([...sql.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1])),
+  ];
+  await t.step(
+    "21a: só os 12 sha256 do DEPOIS (LF e CRLF), cada linha [LF, LF, CRLF, LF]",
+    () => {
+      const todos = FUNCOES_21.flatMap((f) => {
+        const x = porFuncao.get(f.nome).depois;
+        return [x.lf, x.crlf];
+      });
+      assertEquals(new Set(todos).size, 12);
+      assertEquals(hex64(sqlA).sort(), [...todos].sort());
+      for (const f of FUNCOES_21) {
+        const x = porFuncao.get(f.nome).depois;
+        const linha = linhaDoItem(
+          sqlA,
+          `${f.nome}: corpo e o da 20261217000000 (sha256)`,
+        );
+        assertEquals(
+          [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
+          [x.lf, x.lf, x.crlf, x.lf],
+        );
+        assertStringIncludes(
+          linha,
+          `FROM fn f WHERE f.nome = '${f.nome}'), 'AUSENTE')`,
+        );
+        assertStringIncludes(
+          linhaDoItem(sqlA, `${f.nome}: EXECUTE`),
+          `'${f.acl}'`,
+        );
+      }
+    },
+  );
+  await t.step(
+    "21b: só os 6 sha256 do ANTES das três trocadas, nenhum do DEPOIS",
+    () => {
+      const trocadas = FUNCOES_21.filter((f) => f.antes);
+      assertEquals(trocadas.length, 3);
+      const todos = trocadas.flatMap((f) => {
+        const x = porFuncao.get(f.nome).antes;
+        return [x.lf, x.crlf];
+      });
+      assertEquals(hex64(sqlB).sort(), [...todos].sort());
+      for (const f of trocadas) {
+        const x = porFuncao.get(f.nome).antes;
+        assertEquals(
+          [
+            ...linhaDoItem(
+              sqlB,
+              `${f.nome}: corpo e o da ${f.versaoAntes} (sha256)`,
+            ).matchAll(/'([0-9a-f]{64})'/g),
+          ].map((m) => m[1]),
+          [x.lf, x.lf, x.crlf, x.lf],
+        );
+        assertStringIncludes(
+          linhaDoItem(sqlB, `${f.nome}: EXECUTE`),
+          `'${f.acl}'`,
+        );
+        const y = porFuncao.get(f.nome).depois;
+        for (const proibido of [y.lf, y.crlf])
+          assert(!sqlB.includes(proibido), `21b aceitaria ${proibido}`);
+      }
+    },
+  );
+  await t.step(
+    "pré-voo da migration e do rollback; o rollback devolve o corpo de ANTES",
+    () => {
+      assertStringIncludes(
+        mig,
+        "AS esperado(assinatura, hash_vigente, hash_desta)",
+      );
+      assertStringIncludes(rb, "AS esperado(assinatura, hash_desta)");
+      for (const f of FUNCOES_21) {
+        const x = porFuncao.get(f.nome);
+        assertStringIncludes(
+          mig,
+          `('${f.assinatura}', ${x.antes ? `'${x.antes.md5}'` : "NULL"}, '${x.depois.md5}')`,
+          `${f.nome}: o pré-voo não cita (vigente, desta)`,
+        );
+        if (!x.antes) continue;
+        assertStringIncludes(
+          rb,
+          `('${f.assinatura}', '${x.depois.md5}')`,
+          `${f.nome}: o pré-voo do rollback não exige o corpo desta`,
+        );
+        assertEquals(x.rollback.corpo, x.antes.corpo, `${f.nome}: rollback`);
+        assert(x.antes.md5 !== x.depois.md5, `${f.nome}: o corpo não muda`);
+      }
+    },
+  );
+});
+
+Deno.test("21a/21b — o EXECUTE que as consultas esperam é o que a migration deixa: as de servidor só service_role, as duas portas do rastreio para anon e authenticated, e as trocadas sem GRANT/REVOKE (CREATE OR REPLACE preserva a ACL)", async () => {
+  const mig = sqlSemComentarios(await Deno.readTextFile(MIGRACAO_217));
+  for (const f of [
+    "chave_do_destinatario(text)",
+    "reservar_vaga_de_email(text, integer)",
+  ]) {
+    for (const papel of ["PUBLIC", "anon", "authenticated"])
+      assertStringIncludes(
+        mig,
+        `REVOKE EXECUTE ON FUNCTION public.${f} FROM ${papel};`,
+      );
+    assertStringIncludes(
+      mig,
+      `GRANT EXECUTE ON FUNCTION public.${f} TO service_role;`,
+    );
+  }
+  const v2 = "get_orders_by_otp_v2(text, text, text, text)";
+  assertStringIncludes(
+    mig,
+    `REVOKE EXECUTE ON FUNCTION public.${v2} FROM PUBLIC;`,
+  );
+  for (const papel of ["anon", "authenticated", "service_role"])
+    assertStringIncludes(
+      mig,
+      `GRANT EXECUTE ON FUNCTION public.${v2} TO ${papel};`,
+    );
+  for (const trocada of [
+    "generate_order_otp_v2",
+    "reivindicar_email_de_confirmacao",
+    "get_orders_by_otp_v1",
+  ])
+    assert(
+      // eslint-disable-next-line security/detect-non-literal-regexp -- nome fixo do array literal acima
+      !new RegExp(`\\b(?:GRANT|REVOKE)\\b[^;]*\\bpublic\\.${trocada}\\b`).test(
+        mig,
+      ),
+      `a migration mexe na ACL de ${trocada}`,
+    );
+  // a tabela de contadores: RLS ligada e REVOKE de tudo para PUBLIC, anon e authenticated
+  assertStringIncludes(
+    mig,
+    "ALTER TABLE public.email_da_loja_contadores ENABLE ROW LEVEL SECURITY;",
+  );
+  for (const papel of ["PUBLIC", "anon", "authenticated"])
+    assertStringIncludes(
+      mig,
+      `REVOKE ALL ON TABLE public.email_da_loja_contadores FROM ${papel};`,
+    );
+  // as colunas que a 21b exige aparecem nos corpos novos
+  const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_21B}.sql`);
+  const lista = b.match(/unnest\(ARRAY\[([\s\S]*?)\]\)/);
+  assert(lista, "a 21b não traz a lista de colunas");
+  const colunas = [...lista[1].matchAll(/'([a-z_.]+)'/g)].map((m) => m[1]);
+  assertEquals(colunas.length, 14);
+  for (const c of colunas)
+    assertStringIncludes(
+      mig,
+      c.split(".")[2],
+      `a coluna ${c} não aparece na migration`,
+    );
+});
+
+Deno.test("21a/21b — o rpc-ci.yml roda as duas provas vivas do lote (comportamento e portão) no job bloqueante, depois de aplica, e é disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const linhas = bloqueante.split("\n");
+  for (const [prova, titulo] of [
+    [
+      "teto-de-email-viva",
+      "      - name: Prova viva do teto de e-mail e do codigo do convidado (migration 20261217)",
+    ],
+    [
+      "teto-de-email-portao-viva",
+      "      - name: Prova viva do portao do teto de e-mail (consultas 21a e 21b)",
+    ],
+  ]) {
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} não está no job bloqueante`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assertEquals(linhas[k - 2], titulo);
+    assert(
+      bloqueante.indexOf(`tests/banco/${prova}.cjs`) >
+        bloqueante.indexOf("id: aplica"),
+    );
+    assert(!yaml.slice(inicioInformacional).includes(`${prova}.cjs`));
+    assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+    assert(
+      (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+      `tests/banco/${prova}.cjs não existe`,
+    );
+  }
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `não achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      "scripts/publicacao/conferir-banco.cjs",
+      `scripts/publicacao/consultas/${NOME_21A}.sql`,
+      `scripts/publicacao/consultas/${NOME_21B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "scripts/frota/publicar-release.mjs",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});

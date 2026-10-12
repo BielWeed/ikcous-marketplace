@@ -113,9 +113,15 @@ export function OrderSearch({
 
     setIsLoading(true);
     try {
+      // O mesmo trio que pediu o código: a verificação só alcança o código
+      // do pedido que confere com ele (get_orders_by_otp_v2).
       const foundOrders = await fetchOrdersByOtp(
         email.trim().toLowerCase(),
         otp.trim(),
+        {
+          whatsapp: whatsapp.replaceAll(/\D/g, ""),
+          fragmento: orderFragment.trim(),
+        },
       );
       if (foundOrders && foundOrders.length > 0) {
         toast.success(`${foundOrders.length} pedido(s) encontrado(s)!`);

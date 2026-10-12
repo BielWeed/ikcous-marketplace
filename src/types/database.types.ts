@@ -3401,6 +3401,15 @@ export type Database = {
         Args: { p_email: string; p_otp: string };
         Returns: Json;
       };
+      get_orders_by_otp_v2: {
+        Args: {
+          p_email: string;
+          p_fragmento: string;
+          p_otp: string;
+          p_whatsapp: string;
+        };
+        Returns: Json;
+      };
       get_orders_by_whatsapp_v3: {
         Args: {
           p_customer_email: string;
