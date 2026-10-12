@@ -72,8 +72,10 @@ describe("item 1: useEconomiaDoFreteExibida descarta resposta de rodada encerrad
   });
 
   it("carrinho esvaziado com a cotação em voo: a resposta velha não pinta economia", async () => {
-    const { useEconomiaDoFreteExibida, _limparCacheDeEconomiaDoFreteParaTeste } =
-      await import("@/hooks/useEconomiaDoFreteExibida");
+    const {
+      useEconomiaDoFreteExibida,
+      _limparCacheDeEconomiaDoFreteParaTeste,
+    } = await import("@/hooks/useEconomiaDoFreteExibida");
     _limparCacheDeEconomiaDoFreteParaTeste();
     function Sonda(props: Parameters<typeof useEconomiaDoFreteExibida>[0]) {
       const valor = useEconomiaDoFreteExibida(props);
@@ -131,9 +133,7 @@ describe("itens 2 e 3: useEstornosDoPedido", () => {
   });
 
   async function sonda() {
-    const { useEstornosDoPedido } = await import(
-      "@/hooks/useEstornosDoPedido"
-    );
+    const { useEstornosDoPedido } = await import("@/hooks/useEstornosDoPedido");
     return function Sonda({ orderId }: { orderId: string }) {
       const e = useEstornosDoPedido(orderId);
       return createElement(
