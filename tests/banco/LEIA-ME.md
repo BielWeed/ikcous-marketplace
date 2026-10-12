@@ -292,6 +292,22 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   a condição sem a pasta e a foto em uso e a falta da política de `INSERT` reprovam só as suas linhas; o
   papel mínimo dá o mesmo resultado do dono. E o comportamento: o cliente apaga a própria foto livre e não a
   em uso por uma devolução, a de outro cliente nem a de outro bucket.
+- **teto de e-mail e código do convidado (`teto-de-email-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261217000000`. Cada caso numa transação desfeita (a corrida usa conexões reais e limpa o que gravou).
+  O fluxo legítimo (código, verificação pela v2 e pela v1, comprovante uma vez) passa; o teto por pedido
+  (5), por destinatário (10, com o e-mail normalizado) e da loja (60 códigos / 120 comprovantes, contadores
+  separados) em 24 h que andam; estourou = erro genérico sem dado do cliente e nada gravado; a janela de
+  60 s continua; pedido que não confere não gasta vaga; falha do contador fecha no código e abre no
+  comprovante; pedido pago nunca é recusado; duas reservas simultâneas na última vaga: a segunda espera a
+  trava e é recusada. A v2 só conta tentativa quando o trio confere; a v1 não devolve mais `restantes`.
+  Reaplicar, pré-voo, rollback (os três corpos de antes por md5, com CONTROLE) e privilégios.
+- **portão do teto de e-mail (`teto-de-email-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `21a-conferir-teto-de-email-aplicado` (DEPOIS, 14 linhas) e `21b-antes-teto-de-email-corpos-vigentes`
+  (ANTES, 8 linhas), a "prova de objetos" do lote `20261217000000`. Rol exato nos dois estados; 21a positiva
+  depois do apply (2x, ida e volta, CRLF) e 21b positiva depois do rollback, cada uma reprovando só os 3
+  corpos trocados da outra; EXECUTE aberto ou fechado por papel, RLS desligada, privilégio de tabela, corpo
+  diferente, função ausente e coluna renomeada reprovam só as suas linhas; o papel mínimo dá o mesmo
+  resultado do dono; o veredito do `conferir-banco.cjs` sobre as linhas reais sai com `rol=ok`.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
