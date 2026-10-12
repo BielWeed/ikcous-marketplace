@@ -50,14 +50,8 @@ describe("varredura libs-puras", () => {
         valorDevolverAgora({ total: 0.3, valorDevolvidoPorDevolucao: 0.1 }),
       ).toBe(0.2);
     });
-    it("soma dos descontos sem ruido de float", () => {
-      expect(
-        valorDevolverAgora({
-          total: 100.3,
-          valorDevolvidoPorDevolucao: 0.1,
-          valorEstornado: 0.2,
-        }),
-      ).toBe(100);
+    it("0.3 - 0.2 devolve exatamente 0.1 (float dava 0.09999999999999998)", () => {
+      expect(valorDevolverAgora({ total: 0.3, valorEstornado: 0.2 })).toBe(0.1);
     });
   });
 

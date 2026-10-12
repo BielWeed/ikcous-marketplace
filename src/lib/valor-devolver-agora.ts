@@ -43,8 +43,10 @@ export function valorDevolverAgora(pedido: {
   const jaDevolvido = pedido.valorDevolvidoPorDevolucao || 0;
   const jaEstornado = pedido.valorEstornado || 0;
   return (
-    Math.max(centavos(total) - centavos(jaDevolvido) - centavos(jaEstornado), 0) /
-    100
+    Math.max(
+      centavos(total) - centavos(jaDevolvido) - centavos(jaEstornado),
+      0,
+    ) / 100
   );
 }
 

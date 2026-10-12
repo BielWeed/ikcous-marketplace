@@ -27,7 +27,11 @@ export const limparNumero = (val: string): string => {
   // Com vírgula, ela é o decimal e todo ponto é milhar ("1.234,56").
   // Sem vírgula, ponto de milhar bem formado ("1.234", "1.234.567") também
   // some; um ponto só com 1-2 casas ("89.90") segue sendo decimal.
-  const ehMilhar = /^-?\d{1,3}(\.\d{3})+$/.test(semLixo);
+  const [primeiro = "", ...grupos] = semLixo.replace(/^-/, "").split(".");
+  const ehMilhar =
+    grupos.length > 0 &&
+    /^\d{1,3}$/.test(primeiro) &&
+    grupos.every((grupo) => /^\d{3}$/.test(grupo));
   let clean = semLixo.includes(",")
     ? semLixo.replace(/\./g, "").replace(",", ".")
     : ehMilhar
