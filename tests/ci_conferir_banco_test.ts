@@ -8477,6 +8477,33 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
     () => {
       assert(!/\b(to_json|to_jsonb|row_to_json|json_agg|jsonb_agg|hstore|row)\b/i.test(semTexto));
       assert(!/\w\.\*/.test(semTexto), "`apelido.*` le a linha inteira");
+      // toda leitura de tabela de dado tem NENHUM apelido ou EXATAMENTE pf (profiles), rv (reviews),
+      // qs (questions), o (storage.objects); public_profiles sem apelido. Outro apelido escaparia das
+      // regras abaixo (ex.: `string_agg(x::text, ',') FROM public.profiles x`).
+      const APELIDO_DA_TABELA = {
+        "public.profiles": "pf",
+        "public.reviews": "rv",
+        "public.questions": "qs",
+        "public.public_profiles": null,
+        "storage.objects": "o",
+      };
+      const SEGUEM_SEM_APELIDO = new Set([
+        "where", "group", "order", "union", "left", "join", "cross", "inner", "on", "limit", "",
+      ]);
+      const leituras = [
+        ...semTexto.matchAll(
+          /\b(?:FROM|JOIN)\s+(public\.(?:profiles|reviews|questions|public_profiles)|storage\.objects)\b\s*(?:AS\s+)?([a-z_]\w*)?/gi,
+        ),
+      ];
+      assert(leituras.length >= 6, "as leituras das tabelas de dado");
+      for (const [trecho, tabela, seguinte = ""] of leituras) {
+        const apelido = seguinte.toLowerCase();
+        assert(
+          SEGUEM_SEM_APELIDO.has(apelido) ||
+            apelido === APELIDO_DA_TABELA[tabela.toLowerCase()],
+          `${trecho}: apelido fora do permitido (so ${APELIDO_DA_TABELA[tabela.toLowerCase()] ?? "nenhum"})`,
+        );
+      }
       // os apelidos das tabelas de dado so aparecem na declaracao ou seguidos de `.coluna`
       const semDeclaracao = semTexto.replace(
         /\b(FROM|JOIN)\s+(public|storage)\.(profiles|reviews|questions|objects)\s+(pf|rv|qs|o)\b/gi,
