@@ -308,6 +308,18 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   corpos trocados da outra; EXECUTE aberto ou fechado por papel, RLS desligada, privilégio de tabela, corpo
   diferente, função ausente e coluna renomeada reprovam só as suas linhas; o papel mínimo dá o mesmo
   resultado do dono; o veredito do `conferir-banco.cjs` sobre as linhas reais sai com `rol=ok`.
+- **portas pequenas do banco (`portas-do-banco-viva.cjs`, via `rodar-isolado.cjs`)**: as migrations
+  `20261218000000`, `20261218000100` e `20261219000000`, com os papéis reais (anon, authenticated,
+  service_role). Cada caso numa transação desfeita; o ANTES é o banco com os três rollback-manual aplicados
+  (CONTROLE de cada recusa). Perfis públicos: o visitante recebe zero linhas sem erro; o logado vê a si, o
+  autor de avaliação publicada e o de pergunta, não vê quem nunca escreveu; o admin atual vê todos, o
+  rebaixado não; a vitrine do visitante continua com nome e foto do autor. Foto e capa do perfil: teto de
+  128 KiB e 512 KiB no UPDATE direto, na RPC e no INSERT; quem já tinha imagem grande segue salvando nome,
+  WhatsApp e CPF, e a sincronização acontece. Contagem do push e view do painel: 42501 para o visitante,
+  o admin conta, lê e cadastra produto. Configurações e códigos: 42501 para anon e authenticated, a
+  service_role lê e grava, o código do convidado segue saindo e sendo conferido; no-op numa loja já
+  fechada; grant de coluna some; grant de outro grantor faz a conferência recusar. Reaplicar, CRLF,
+  rollback e pré-voo de cada uma.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
