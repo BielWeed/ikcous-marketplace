@@ -46,13 +46,16 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
     });
   };
 
+  // Nome só com espaços não tem inicial (cai no "U"), e `Array.from` pega o
+  // caractere inteiro — `charAt` partia emoji/símbolo astral ao meio.
   const getInitials = (name: string) => {
-    if (!name) return "U";
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-    return (
-      parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
-    ).toUpperCase();
+    const trimmed = name?.trim();
+    if (!trimmed) return "U";
+    const parts = trimmed.split(/\s+/);
+    const primeira = Array.from(parts[0])[0];
+    if (parts.length === 1) return primeira.toUpperCase();
+    const ultima = Array.from(parts[parts.length - 1])[0];
+    return (primeira + ultima).toUpperCase();
   };
 
   return (
