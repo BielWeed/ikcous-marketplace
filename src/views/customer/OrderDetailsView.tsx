@@ -1184,9 +1184,7 @@ export function OrderDetailsView({
                   order.shipping === 0 ? "text-emerald-700" : "text-zinc-900",
                 )}
               >
-                {order.shipping > 0
-                  ? formatCurrency(order.shipping)
-                  : "Grátis"}
+                {order.shipping > 0 ? formatCurrency(order.shipping) : "Grátis"}
               </span>
             </div>
             {order.discount > 0 && (

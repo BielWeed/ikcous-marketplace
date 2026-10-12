@@ -659,10 +659,7 @@ export const ProductView = React.memo(function ProductView({
     const textoDoShare = temMarcador
       ? config.shareText
           .replace(/\[nome\]/gi, product.name)
-          .replace(
-            /\[preco\]/gi,
-            reais(product.price),
-          )
+          .replace(/\[preco\]/gi, reais(product.price))
           .replace(/\[link\]/gi, globalThis.location.href)
       : `${config.shareText} ${product.name} por ${reais(product.price)}`;
     const shareData = {

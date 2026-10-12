@@ -150,8 +150,7 @@ class IntersectionObserverStub {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 /** Normaliza espaço inseparável e espaços duplos do Intl. */
-const txt = (s: string | null | undefined) =>
-  (s ?? "").replace(/\s+/g, " ");
+const txt = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ");
 
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
@@ -414,18 +413,25 @@ describe("2. botão de trocar foto tem nome acessível", () => {
   // perfil/endereço/mapa — mesma decisão de acess-onda1-contrato.test.tsx.
   it.each([
     ["/src/views/customer/ProfileView.tsx", "profile-avatar-upload-icon"],
-    ["/src/views/customer/AccountSettingsView.tsx", "account-avatar-upload-icon"],
-  ])("%s: o label do ícone Camera traz texto para leitor de tela", (arq, id) => {
-    const src = fontes[arq] as string;
-    const ini = src.indexOf(`htmlFor="${id}"`);
-    expect(ini).toBeGreaterThan(-1);
-    const fim = src.indexOf("</label>", ini);
-    const label = src.slice(ini, fim);
-    expect(label).toContain("<Camera");
-    expect(label).toContain(
-      '<span className="sr-only">Trocar foto de perfil</span>',
-    );
-  });
+    [
+      "/src/views/customer/AccountSettingsView.tsx",
+      "account-avatar-upload-icon",
+    ],
+  ])(
+    "%s: o label do ícone Camera traz texto para leitor de tela",
+    (arq, id) => {
+      const src = Object.entries(fontes).find(([k]) => k === arq)?.[1] ?? "";
+      expect(src).not.toBe("");
+      const ini = src.indexOf(`htmlFor="${id}"`);
+      expect(ini).toBeGreaterThan(-1);
+      const fim = src.indexOf("</label>", ini);
+      const label = src.slice(ini, fim);
+      expect(label).toContain("<Camera");
+      expect(label).toMatch(
+        /<span\s+className="sr-only"\s*>\s*Trocar foto de perfil\s*<\/span>/,
+      );
+    },
+  );
 });
 
 // ---------- 3. iniciais --------------------------------------------------
