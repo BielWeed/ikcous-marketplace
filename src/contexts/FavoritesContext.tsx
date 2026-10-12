@@ -225,7 +225,8 @@ export function FavoritesProvider({
     const rodada = ++rodadaRef.current;
     const donoDaRodada = user.id;
     const ehVelha = () =>
-      rodada !== rodadaRef.current || usuarioAtualIdRef.current !== donoDaRodada;
+      rodada !== rodadaRef.current ||
+      usuarioAtualIdRef.current !== donoDaRodada;
     try {
       const { data, error } = await supabase
         .from("favorites")
