@@ -123,7 +123,14 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
   // segunda chamada já encontra `true` antes de disparar a RPC.
   const enviandoRef = useRef(false);
 
+  // Rodada da leitura: o efeito reativa `ativoRef` ao trocar de pedido, então
+  // só ele não basta — a resposta do orderId antigo que chega depois da nova
+  // não pinta a tela (mesmo padrão de useDevolucaoCliente).
+  const rodadaRef = useRef(0);
+
   const carregar = useCallback(async () => {
+    const rodada = ++rodadaRef.current;
+    const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     setCarregando(true);
     try {
       const [respostaLinhas, respostaPedido, respostaDevolucoesManuais] =
@@ -148,9 +155,16 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
             .eq("reembolso_manual", true),
         ]);
 
-      if (!ativoRef.current) return;
+      if (!valeAinda()) return;
 
-      if (respostaLinhas.error || respostaPedido.error) {
+      // Sem a lista de devoluções manuais o desconto some e `disponivel`
+      // fica SUPERESTIMADO — então o erro dela é erro de leitura também
+      // (varredura 12/10/2026), como os outros dois.
+      if (
+        respostaLinhas.error ||
+        respostaPedido.error ||
+        respostaDevolucoesManuais.error
+      ) {
         setErro(true);
         return;
       }
@@ -159,18 +173,15 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
         (respostaLinhas.data ?? []) as unknown as LinhaEstornoDoPedido[],
       );
       setPedido(respostaPedido.data as unknown as SaldoDoPedido);
-      // Erro aqui não derruba a tela (a mesma degradação graciosa que o
-      // resto do hook já assume): sem a lista, o desconto só fica 0 — o
-      // servidor continua sendo quem recusa de verdade.
       setDevolucoesManuais(
         (respostaDevolucoesManuais.data ??
           []) as unknown as DevolucaoManualDoPedido[],
       );
       setErro(false);
     } catch {
-      if (ativoRef.current) setErro(true);
+      if (valeAinda()) setErro(true);
     } finally {
-      if (ativoRef.current) setCarregando(false);
+      if (valeAinda()) setCarregando(false);
     }
   }, [orderId]);
 
