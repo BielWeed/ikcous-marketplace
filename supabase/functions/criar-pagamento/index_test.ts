@@ -8,7 +8,7 @@
  *
  * A chamada ao MP em si já é coberta pelos testes de _shared/mercadopago.ts.
  */
-import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   chaveDeIdempotencia,
   descricaoDoPedido,
@@ -7494,6 +7494,106 @@ Deno.test("PIX 409 idempotency — order recuperada SEM QR legível (busca com d
   // A busca ACHOU a order (1º GET) e a reconsulta por id entregou o QR (2º GET).
   assertEquals(gets.length, 2);
   assertEquals(registro.valoresUpdate?.gateway_payment_id, "ORD777");
+});
+
+// Auditoria L3 (12/10/2026): nenhum log desta function carrega o pagador
+// (e-mail, documento) — nem a reconsulta da recuperação do PIX, nem a order
+// sem id utilizável. O que sobra no log: status, códigos e ids.
+const EMAIL_DO_PAGADOR = "pagador.logado@exemplo.com";
+const PAGADOR_NA_ORDER = { email: EMAIL_DO_PAGADOR, identification: { type: "CPF", number: CPF_TITULAR } };
+
+async function logsDurante(executar: () => Promise<unknown>): Promise<string> {
+  const linhas: unknown[][] = [];
+  const reais = { error: console.error, warn: console.warn, log: console.log };
+  console.error = (...args: unknown[]) => void linhas.push(args);
+  console.warn = (...args: unknown[]) => void linhas.push(args);
+  console.log = (...args: unknown[]) => void linhas.push(args);
+  try {
+    await executar();
+  } finally {
+    console.error = reais.error;
+    console.warn = reais.warn;
+    console.log = reais.log;
+  }
+  return JSON.stringify(linhas);
+}
+
+function semDadoDoPagador(texto: string) {
+  assertEquals(texto.includes(EMAIL_DO_PAGADOR), false, "e-mail do pagador no log");
+  assertEquals(texto.includes(CPF_TITULAR), false, "documento do pagador no log");
+  assertEquals(texto.includes("identification"), false, "objeto do documento no log");
+}
+
+Deno.test("log sem dado pessoal: a reconsulta por id da recuperação do PIX recusada (4xx com o pagador no corpo) loga só o resumo", async () => {
+  const { supabase } = cenarioCartao();
+  const orderSemQr = {
+    id: "ORD777",
+    status: "action_required",
+    status_detail: "waiting_transfer",
+    external_reference: UUID,
+    transactions: { payments: [{ id: "PAY777", payment_method: { type: "bank_transfer" } }] },
+  };
+  const fn = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      return new Response(JSON.stringify({ errors: [{ code: "idempotency_key_already_used" }] }), { status: 409 });
+    }
+    if (url.includes("?")) return new Response(JSON.stringify({ data: [orderSemQr] }), { status: 200 });
+    // A reconsulta POR ID recusa e devolve a order com o pagador.
+    return new Response(
+      JSON.stringify({ errors: [{ code: "bad_request" }], data: { id: "ORD777", status: "action_required", payer: PAGADOR_NA_ORDER } }),
+      { status: 400 },
+    );
+  };
+
+  let status = 0;
+  const texto = await logsDurante(async () => {
+    const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: fn,
+    });
+    status = resposta.status;
+    await resposta.json();
+  });
+
+  assertEquals(status, 502);
+  semDadoDoPagador(texto);
+  // O diagnóstico continua: a linha da recusa da consulta, com status e código.
+  assertStringIncludes(texto, "mercadopago: orders (consulta) recusou");
+  assertStringIncludes(texto, "bad_request");
+});
+
+Deno.test("log sem dado pessoal: order recuperada SEM id utilizável -> 502 e o log leva só o resumo (status), nunca a order inteira", async () => {
+  const { supabase } = cenarioCartao();
+  // Recuperada pela busca, com QR legível mas sem `id`: é o caminho que
+  // chega à guarda "order sem id utilizável".
+  const orderSemId = {
+    status: "action_required",
+    status_detail: "waiting_transfer",
+    external_reference: UUID,
+    payer: PAGADOR_NA_ORDER,
+    transactions: {
+      payments: [{ id: "PAY778", payment_method: { type: "bank_transfer", qr_code: "QR-778", qr_code_base64: "QRB-778" } }],
+    },
+  };
+  const mp = fetchMP({
+    criar: { status: 409, corpo: { errors: [{ code: "idempotency_key_already_used" }] } },
+    consultar: { status: 200, corpo: { data: [orderSemId] } },
+  });
+
+  let status = 0;
+  const texto = await logsDurante(async () => {
+    const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    status = resposta.status;
+    await resposta.json();
+  });
+
+  assertEquals(status, 502);
+  semDadoDoPagador(texto);
+  assertStringIncludes(texto, "criar-pagamento: order sem id utilizável");
+  assertStringIncludes(texto, "action_required");
 });
 
 Deno.test("PIX 409 idempotency — busca devolve order de CARTÃO viva (3DS em action_required): NÃO recupera, 502 (nunca adota cobrança de outro meio)", async () => {

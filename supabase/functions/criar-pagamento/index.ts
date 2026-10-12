@@ -558,6 +558,9 @@ async function recuperarOrderPixDoIdempotencia(args: {
       token: args.token,
       orderId: String((viva as Record<string, unknown>).id ?? ""),
       fetchImpl: args.fetchImpl,
+      // Auditoria L3 (12/10/2026): a recusa da consulta traz a order com o
+      // pagador (e-mail, documento) — no log, só o resumo sem dado pessoal.
+      corpoNoLog: false,
     });
     if (consulta.ok) {
       order = comQr(consulta.order);
@@ -2918,7 +2921,15 @@ async function handler(
       // isto só dispararia se a ORDER em si viesse ilegível — praticamente
       // inalcançável, mas sem esta guarda um formato inesperado gravaria
       // gateway_payment_id = "null" (String(null)) em vez de recusar.
-      console.error("criar-pagamento: order sem id utilizável", JSON.stringify(r.order));
+      // Auditoria L3 (12/10/2026): a order inteira traz o pagador (e-mail,
+      // documento) — no log, só os status (texto curto) que diagnosticam.
+      const ordemIlegivel = r.order as Record<string, unknown> | null | undefined;
+      const statusSeguro = (v: unknown) => (typeof v === "string" ? v.slice(0, 64) : undefined);
+      console.error("criar-pagamento: order sem id utilizável", {
+        pedidoId: String(pedido.id),
+        status: statusSeguro(ordemIlegivel?.status),
+        status_detail: statusSeguro(ordemIlegivel?.status_detail),
+      });
       return json({ error: "Resposta inválida do gateway." }, 502);
     }
 
