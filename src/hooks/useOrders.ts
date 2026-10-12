@@ -3849,16 +3849,29 @@ export function useOrders(
   );
 
   const fetchOrdersByOtp = useCallback(
-    async (email: string, otp: string): Promise<Order[]> => {
+    async (
+      email: string,
+      otp: string,
+      trio?: { whatsapp: string; fragmento: string },
+    ): Promise<Order[]> => {
       try {
         setLoading(true);
-        const { data, error } = await (supabase.rpc as any)(
-          "get_orders_by_otp_v1",
-          {
-            p_email: email,
-            p_otp: otp,
-          },
-        );
+        // Com o trio (e-mail + WhatsApp + pedaço do pedido, os mesmos que
+        // pediram o código), a verificação vai para a v2: ela só olha o código
+        // do pedido que confere com o trio, então quem sabe só o e-mail não
+        // consegue gastar as tentativas do código de outra pessoa (migration
+        // 20261217000000). Sem o trio, a v1 de sempre.
+        const { data, error } = trio
+          ? await (supabase.rpc as any)("get_orders_by_otp_v2", {
+              p_email: email,
+              p_whatsapp: trio.whatsapp,
+              p_fragmento: trio.fragmento,
+              p_otp: otp,
+            })
+          : await (supabase.rpc as any)("get_orders_by_otp_v1", {
+              p_email: email,
+              p_otp: otp,
+            });
 
         if (error) throw error;
 
