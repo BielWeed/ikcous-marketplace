@@ -39,8 +39,14 @@ export function useDevolucaoDoPedidoCliente(
   const [erro, setErro] = useState(false);
   const ativoRef = useRef(true);
 
+  // Rodada da leitura: a resposta do orderId antigo que chega depois da nova
+  // não pinta a tela (mesmo padrão de useDevolucaoCliente).
+  const rodadaRef = useRef(0);
+
   const carregar = useCallback(async () => {
     if (!habilitado) return;
+    const rodada = ++rodadaRef.current;
+    const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     setCarregando(true);
     try {
       const { data, error } = await supabase
@@ -49,7 +55,7 @@ export function useDevolucaoDoPedidoCliente(
         .eq("order_id", orderId)
         .order("created_at", { ascending: true });
 
-      if (!ativoRef.current) return;
+      if (!valeAinda()) return;
 
       if (error) {
         setErro(true);
@@ -58,9 +64,9 @@ export function useDevolucaoDoPedidoCliente(
       setLinhas((data ?? []) as unknown as LinhaDevolucaoDoCliente[]);
       setErro(false);
     } catch {
-      if (ativoRef.current) setErro(true);
+      if (valeAinda()) setErro(true);
     } finally {
-      if (ativoRef.current) setCarregando(false);
+      if (valeAinda()) setCarregando(false);
     }
   }, [orderId, habilitado]);
 
