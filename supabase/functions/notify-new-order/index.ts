@@ -31,10 +31,12 @@
  *
  * 1. O corpo só aceita `orderId`. Nome, valor e número do pedido são lidos do
  *    banco — ninguém injeta texto na notificação do lojista.
- * 2. O pedido precisa ser RECENTE (JANELA_MINUTOS). Sem isso, alguém de posse
- *    de um id antigo poderia repetir o aviso à vontade. Com isso, o pior caso é
- *    duplicar o aviso de um pedido que de fato acabou de entrar.
+ * 2. O pedido precisa ser RECENTE (JANELA_MINUTOS): id antigo não avisa nada.
  * 3. O id precisa ter forma de UUID. Corta varredura antes de tocar o banco.
+ * 4. O aviso sai UMA vez por pedido (12/10/2026): a reserva `pedido_novo:<id>`
+ *    em `avisos_ao_lojista`, a mesma do webhook (`avisarAdminUmaVez`). Chamar
+ *    de novo dentro da janela não repete o push — inclusive a nova tentativa
+ *    do checkout que devolve o mesmo pedido.
  *
  * O QUE ELA NÃO FAZ
  *
@@ -43,14 +45,8 @@
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import * as webpush from "jsr:@negrel/webpush@0.3.0";
-import {
-  carregarChavesVapid,
-  corsHeaders,
-  enviarParaInscritos,
-  readKey,
-  resumir,
-} from "../_shared/webpush.ts";
+import { avisarAdminUmaVez, dispararPushContadoReal } from "../_shared/aviso-ao-lojista.ts";
+import { corsHeaders, readKey } from "../_shared/webpush.ts";
 
 /**
  * Quanto tempo depois de criado um pedido ainda vale avisar.
@@ -140,110 +136,83 @@ const emTeste =
   Deno.mainModule.endsWith("_test.js") ||
   Deno.mainModule.includes("index_test");
 
-if (!emTeste) {
-  serve(async (req: Request) => {
-    if (req.method === "OPTIONS") {
-      return new Response("ok", { headers: corsHeaders });
+/**
+ * Costuras de teste, no molde da `send-push`: em produção `deps` chega vazio
+ * e tudo é o de sempre (cliente com a chave de serviço, o push real, o
+ * relógio da máquina).
+ */
+export type NotifyNewOrderDeps = {
+  supabase?: any;
+  enviarPushContado?: (a: { supabase: any; aviso: any }) => Promise<number>;
+  agora?: () => number;
+};
+
+/**
+ * O handler, exportado (12/10/2026) para o teste exercitar a resposta de ponta
+ * a ponta. A ordem é a de sempre: UUID → leitura do pedido → janela → aviso.
+ */
+export async function handler(req: Request, deps: NotifyNewOrderDeps = {}): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    const { orderId } = await req.json().catch(() => ({}));
+
+    if (!pareceUuid(orderId)) {
+      return json({ ok: false, erro: "orderId ausente ou fora do formato UUID" }, 400);
     }
 
-    try {
-      const { orderId } = await req.json().catch(() => ({}));
+    const supabase = deps.supabase ?? createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+    );
 
-      if (!pareceUuid(orderId)) {
-        return json({ ok: false, erro: "orderId ausente ou fora do formato UUID" }, 400);
-      }
+    const { data: pedido, error: erroPedido } = await supabase
+      .from("marketplace_orders")
+      .select("id, customer_name, total, total_amount, created_at")
+      .eq("id", orderId)
+      .maybeSingle();
 
-      const supabase = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
-      );
-
-      const { data: pedido, error: erroPedido } = await supabase
-        .from("marketplace_orders")
-        .select("id, customer_name, total, total_amount, created_at")
-        .eq("id", orderId)
-        .maybeSingle();
-
-      if (erroPedido) throw erroPedido;
-      if (!pedido) {
-        // 200 e não 404: para o front isto é "não há o que avisar", não um erro
-        // que mereça retentativa.
-        return json({ ok: false, ignorado: "pedido não encontrado" });
-      }
-
-      if (!dentroDaJanela(pedido.created_at)) {
-        console.warn(
-          `notify-new-order: ${numeroDoPedido(pedido.id)} fora da janela de ${JANELA_MINUTOS} min (criado em ${pedido.created_at})`,
-        );
-        return json({ ok: false, ignorado: "pedido fora da janela" });
-      }
-
-      // Só quem é admin recebe. `role` mora em profiles; medido em 05/08/2026:
-      // 3 admins, e as 3 inscrições com user_id preenchido são todas deles.
-      const { data: admins, error: erroAdmins } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("role", "admin");
-      if (erroAdmins) throw erroAdmins;
-
-      const ids = (admins ?? []).map((a: any) => a.id);
-      if (ids.length === 0) {
-        return json({ ok: false, ignorado: "nenhum admin cadastrado" });
-      }
-
-      const { data: inscricoes, error: erroInscricoes } = await supabase
-        .from("push_subscriptions")
-        .select("endpoint, p256dh, auth")
-        .in("user_id", ids);
-      if (erroInscricoes) throw erroInscricoes;
-
-      if (!inscricoes || inscricoes.length === 0) {
-        // Caso real e silencioso: o canal funciona e ninguém é avisado porque o
-        // lojista nunca aceitou a permissão de notificação no aparelho dele.
-        // Dizer isso em voz alta, em vez de responder sucesso com total 0.
-        console.warn(
-          "notify-new-order: nenhum admin tem inscrição de push. O aviso não tem para onde ir.",
-        );
-        return json({
-          ok: false,
-          ignorado: "nenhum admin inscrito para push",
-          total: 0,
-          enviados: 0,
-        });
-      }
-
-      const vapidKeys = await carregarChavesVapid(
-        Deno.env.get("VAPID_PUBLIC_KEY"),
-        Deno.env.get("VAPID_PRIVATE_KEY"),
-      );
-
-      const servidor = await webpush.ApplicationServer.new({
-        contactInformation:
-          Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.org",
-        vapidKeys,
-      });
-
-      const itens = await enviarParaInscritos({
-        servidor,
-        inscricoes,
-        mensagem: JSON.stringify(montarAviso(pedido)),
-        rotulo: "notify-new-order",
-        aoDetectarMorta: (endpoint: string) =>
-          supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),
-      });
-
-      const resumo = resumir(itens);
-      console.log(
-        `notify-new-order: ${numeroDoPedido(pedido.id)} → ${resumo.enviados} entregues, ${resumo.falharam} falharam`,
-      );
-
-      // Contagem verdadeira, pela mesma razão da PUSH-010 (#80): responder
-      // sucesso sem entrega é como o projeto passou meses achando que o push
-      // funcionava.
-      return json({ ok: resumo.enviados > 0, ...resumo });
-    } catch (error: any) {
-      console.error("notify-new-order: erro na requisição", error);
-      return json({ ok: false, erro: error.message }, 400);
+    if (erroPedido) throw erroPedido;
+    if (!pedido) {
+      // 200 e não 404: para o front isto é "não há o que avisar", não um erro
+      // que mereça retentativa.
+      return json({ ok: false, ignorado: "pedido não encontrado" });
     }
-  });
+
+    if (!dentroDaJanela(pedido.created_at, deps.agora ? deps.agora() : Date.now())) {
+      console.warn(
+        `notify-new-order: ${numeroDoPedido(pedido.id)} fora da janela de ${JANELA_MINUTOS} min (criado em ${pedido.created_at})`,
+      );
+      return json({ ok: false, ignorado: "pedido fora da janela" });
+    }
+
+    // UMA vez por pedido, com a mesma reserva do webhook e da reconciliação
+    // (`avisos_ao_lojista`, migration 20261191000000). Quem encontra o aviso
+    // 'enviado' ou 'em_envio' não manda de novo. Push que não chegou a
+    // ninguém (nenhum admin inscrito, entrega falhou) libera a reserva, e a
+    // próxima chamada tenta de novo. Reserva fora do ar: o push sai mesmo
+    // assim — a falha aberta de antes da reserva existir.
+    //
+    // A resposta não leva mais a contagem de inscrições: o front só registra
+    // o erro, e a contagem fica no log da função.
+    await avisarAdminUmaVez({
+      supabase,
+      enviarPushContado: deps.enviarPushContado ??
+        ((a) => dispararPushContadoReal({ ...a, rotulo: "notify-new-order" })),
+      chave: `pedido_novo:${pedido.id}`,
+      aviso: montarAviso(pedido),
+      rotulo: "notify-new-order",
+    });
+
+    return json({ ok: true });
+  } catch (error: any) {
+    console.error("notify-new-order: erro na requisição", error);
+    return json({ ok: false, erro: error.message }, 400);
+  }
 }
+
+// `(req) => handler(req)`, e não `serve(handler)` direto: o `serve` do std
+// passa um segundo argumento (ConnInfo) que cairia em `deps`.
+if (!emTeste) serve((req: Request) => handler(req));
