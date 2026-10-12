@@ -29,6 +29,8 @@ import type {
 } from "@/types/devolucao";
 
 const PAGINA = 50;
+/** Teto de `p_limite` na RPC (LEAST(..., 200)). */
+const LIMITE_MAXIMO = 200;
 const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
 
 /** Mesmo texto do estorno do pedido (useEstornosDoPedido): a linha já existe
@@ -65,13 +67,16 @@ export function useDevolucoesAdmin(args: {
   const [itens, setItens] = useState<LinhaDevolucaoAdmin[]>([]);
   const [total, setTotal] = useState(0);
   const [contagem, setContagem] = useState<ContagemPorStatus | null>(null);
-  const [carregando, setCarregando] = useState(false);
+  // Começa carregando quando ativo: o primeiro render não pode afirmar
+  // "Nenhuma devolução ainda" antes de o efeito disparar a busca.
+  const [carregando, setCarregando] = useState(ativo);
   const [erro, setErro] = useState(false);
   const ativoRef = useRef(true);
   const rodadaRef = useRef(0);
+  const chaveRef = useRef(`${status ?? ""}|${busca}`);
 
   const buscar = useCallback(
-    async (offset: number) => {
+    async (offset: number, limite = PAGINA) => {
       const rodada = ++rodadaRef.current;
       const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
       setCarregando(true);
@@ -79,7 +84,7 @@ export function useDevolucoesAdmin(args: {
         const { data, error } = await supabase.rpc("admin_devolucoes_listar", {
           p_status: status,
           p_busca: busca.trim() || null,
-          p_limite: PAGINA,
+          p_limite: limite,
           p_offset: offset,
         });
         if (!valeAinda()) return;
@@ -88,9 +93,12 @@ export function useDevolucoesAdmin(args: {
           setErro(true);
           return;
         }
-        setItens((antes) =>
-          offset === 0 ? lista.itens : [...antes, ...lista.itens],
-        );
+        setItens((antes) => {
+          if (offset === 0) return lista.itens;
+          // Item novo no servidor desloca a paginação: não repete id.
+          const vistos = new Set(antes.map((i) => i.id));
+          return [...antes, ...lista.itens.filter((i) => !vistos.has(i.id))];
+        });
         setTotal(lista.total);
         setContagem(lista.contagem);
         setErro(false);
@@ -105,11 +113,21 @@ export function useDevolucoesAdmin(args: {
 
   useEffect(() => {
     ativoRef.current = true;
-    if (ativo) void buscar(0);
+    if (ativo) {
+      // Filtro novo: as linhas do filtro anterior não ficam à mostra (nem
+      // clicáveis) e o "Mostrar mais" dele não anexaria página errada.
+      const chave = `${status ?? ""}|${busca}`;
+      if (chave !== chaveRef.current) {
+        chaveRef.current = chave;
+        setItens([]);
+        setTotal(0);
+      }
+      void buscar(0);
+    }
     return () => {
       ativoRef.current = false;
     };
-  }, [ativo, buscar]);
+  }, [ativo, buscar, status, busca]);
 
   return {
     itens,
@@ -119,7 +137,9 @@ export function useDevolucoesAdmin(args: {
     erro,
     temMais: itens.length < total,
     carregarMais: () => void buscar(itens.length),
-    recarregar: () => void buscar(0),
+    // Releitura no lugar: mantém o que já foi paginado (até o teto da RPC).
+    recarregar: () =>
+      void buscar(0, Math.min(LIMITE_MAXIMO, Math.max(PAGINA, itens.length))),
   };
 }
 
@@ -366,7 +386,10 @@ export function useDevolucaoAdmin(
     async ({
       mensagem,
       coletaEm,
-    }: { mensagem: string; coletaEm: string | null }) => {
+    }: {
+      mensagem: string;
+      coletaEm: string | null;
+    }) => {
       if (!id) return false;
       const r = await executar(
         "decidir",
