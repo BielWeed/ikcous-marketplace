@@ -74,9 +74,20 @@ export function NotificationProvider({
   // linha que o UPDATE/DELETE do banco alcança de uma que a policy ignora.
   const campanhaIdsRef = useRef<Set<string>>(new Set());
 
+  // Varredura 12/10/2026 — resposta de A que chega depois da troca para B não
+  // pode gravar a lista de A nem encerrar o `loading` da rodada de B. Cada
+  // busca pega um número de rodada; só a mais recente, do usuário atual,
+  // escreve estado.
+  const rodadaRef = useRef(0);
+  const usuarioAtualIdRef = useRef<string | null>(user?.id ?? null);
+  useEffect(() => {
+    usuarioAtualIdRef.current = user?.id ?? null;
+  }, [user]);
+
   const fetchNotifications = useCallback(
     async (force = false) => {
       if (!user) {
+        rodadaRef.current++;
         setNotifications([]);
         campanhaIdsRef.current = new Set();
         setLoading(false);
@@ -93,6 +104,11 @@ export function NotificationProvider({
       const now = Date.now();
       if (!force && now - lastFetchRef.current < 10000) return; // cache 10s
       lastFetchRef.current = now;
+      const rodada = ++rodadaRef.current;
+      const donoDaRodada = user.id;
+      const ehVelha = () =>
+        rodada !== rodadaRef.current ||
+        usuarioAtualIdRef.current !== donoDaRodada;
 
       try {
         setLoading(true);
@@ -117,6 +133,7 @@ export function NotificationProvider({
             .limit(20),
         ]);
 
+        if (ehVelha()) return;
         if (dosProprios.error) throw dosProprios.error;
         if (deCampanha.error) throw deCampanha.error;
 
@@ -154,10 +171,11 @@ export function NotificationProvider({
         setNotifications(mappedData);
         setErro(null);
       } catch (err) {
+        if (ehVelha()) return;
         console.error("[Notifications] Fetch error:", err);
         setErro("Não conseguimos carregar suas notificações.");
       } finally {
-        setLoading(false);
+        if (!ehVelha()) setLoading(false);
       }
     },
     [user],
