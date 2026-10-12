@@ -787,6 +787,98 @@ Deno.test("assinatura inválida -> 401, e confirmar_pagamento NÃO é chamada", 
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
+// Auditoria L3 (12/10/2026): os logs que rodam ANTES da assinatura valer (a
+// entrada e a falha) levam `ts`, `x-request-id` e `v1` truncados em 64
+// caracteres, como já levavam o `data.id` — quem descobre a URL não escreve
+// conteúdo próprio sem limite no log. A decisão (401) não muda.
+Deno.test("log da entrada e da assinatura inválida: ts, x-request-id e v1 truncados em 64 caracteres; a resposta continua 401", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response("{}", { status: 200 });
+  };
+  const tsLongo = "1".repeat(300);
+  const v1Longo = "ab".repeat(150);
+  const requestIdLongo = "r".repeat(300);
+  const req = requisicao(
+    { data: { id: "999" } },
+    { "x-signature": `ts=${tsLongo},v1=${v1Longo}`, "x-request-id": requestIdLongo },
+  );
+
+  const linhas: unknown[][] = [];
+  const reais = { log: console.log, warn: console.warn, error: console.error };
+  console.log = (...args: unknown[]) => void linhas.push(args);
+  console.warn = (...args: unknown[]) => void linhas.push(args);
+  console.error = (...args: unknown[]) => void linhas.push(args);
+  let resposta: Response;
+  try {
+    resposta = await handler(req, { supabase, fetchImpl });
+  } finally {
+    console.log = reais.log;
+    console.warn = reais.warn;
+    console.error = reais.error;
+  }
+
+  assertEquals(resposta.status, 401);
+  assertEquals(await resposta.json(), { error: "Assinatura inválida." });
+  assertEquals(chamouFetch, false);
+  assertEquals(registro.chamadasRpc.length, 0);
+
+  const entrada = linhas.find((l) => l[0] === "webhook-mercadopago: notificação recebida")?.[1] as
+    | Record<string, unknown>
+    | undefined;
+  assertEquals(entrada?.ts, tsLongo.slice(0, 64));
+  const falha = linhas.find((l) => l[0] === "webhook-mercadopago: assinatura inválida")?.[1] as
+    | Record<string, unknown>
+    | undefined;
+  assertEquals(falha?.ts, tsLongo.slice(0, 64));
+  assertEquals(falha?.v1Recebido, v1Longo.slice(0, 64));
+  assertEquals(falha?.xRequestId, requestIdLongo.slice(0, 64));
+  // Nenhuma linha de log carrega os valores inteiros.
+  const texto = JSON.stringify(linhas);
+  assertEquals(texto.includes(tsLongo.slice(0, 65)), false);
+  assertEquals(texto.includes(v1Longo.slice(0, 65)), false);
+  assertEquals(texto.includes(requestIdLongo.slice(0, 65)), false);
+});
+
+Deno.test("log truncado, CONTROLE: valores curtos de verdade entram inteiros e a assinatura válida continua passando", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const ts = Math.floor(Date.now() / 1000);
+  const req = await requisicaoAssinada("999", { ts });
+  // O MP fora do ar depois da assinatura: o que se prova aqui é só que a
+  // assinatura VÁLIDA passou (a consulta foi tentada) — o resto do caminho
+  // tem os testes dele.
+  const fetchImpl = fetchConsulta(500, { message: "erro interno" });
+
+  const linhas: unknown[][] = [];
+  const reais = { log: console.log, warn: console.warn, error: console.error };
+  console.log = (...args: unknown[]) => void linhas.push(args);
+  console.warn = (...args: unknown[]) => void linhas.push(args);
+  console.error = (...args: unknown[]) => void linhas.push(args);
+  let resposta: Response;
+  try {
+    resposta = await handler(req, { supabase, fetchImpl });
+  } finally {
+    console.log = reais.log;
+    console.warn = reais.warn;
+    console.error = reais.error;
+  }
+
+  assertEquals(resposta.status, 500, "passou da assinatura e chegou à consulta do MP");
+  assertEquals(
+    linhas.some((l) => String(l[0]).startsWith("webhook-mercadopago: assinatura válida")),
+    true,
+  );
+  assertEquals(linhas.some((l) => l[0] === "webhook-mercadopago: assinatura inválida"), false);
+  const entrada = linhas.find((l) => l[0] === "webhook-mercadopago: notificação recebida")?.[1] as
+    | Record<string, unknown>
+    | undefined;
+  assertEquals(entrada?.ts, String(ts));
+});
+
 // --- 2. MP responde 500 -----------------------------------------------------
 
 Deno.test("MP responde 500 ao consultar o pagamento -> a função responde 500", async () => {

@@ -8,7 +8,7 @@
  *
  * A chamada ao MP em si já é coberta pelos testes de _shared/mercadopago.ts.
  */
-import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   chaveDeIdempotencia,
   descricaoDoPedido,
@@ -17,6 +17,8 @@ import {
   expiracaoParaDesafio3ds,
   expiracaoRealinhavel,
   handler,
+  LIMITE_DE_TENTATIVAS_DE_CARTAO_POR_CLIENTE_24H,
+  LIMITE_DE_TENTATIVAS_DE_CARTAO_POR_PEDIDO,
   MENSAGEM_CREDENCIAL_RECUSADA,
   MENSAGEM_PIX_CONTINUA_VALENDO,
   MINUTOS_DESAFIO_3DS,
@@ -180,6 +182,12 @@ function clienteFalso(opts: {
   nomeDaLoja?: unknown;
   falhaNaLeituraDoNome?: "erro" | "lanca";
   leiturasDoNome?: Array<{ tabela: string; colunas: string }>;
+  // Teto do cartão POR CLIENTE (auditoria L3, 12/10/2026): as tentativas dos
+  // pedidos do cliente nas últimas 24 h. Ramo PRÓPRIO do dublê (nunca conta
+  // na `chamadasSelect` do pedido). Default: só o próprio pedido (com as
+  // escritas desta chamada). "erro" simula falha da leitura.
+  tentativasDoCliente?: number[] | "erro";
+  consultasDoCliente?: Array<Array<[string, unknown]>>;
 }) {
   let chamadasSelect = 0;
   const leituraDoAntifraude = (tabela: string, colunas: string, resposta: unknown) => {
@@ -347,6 +355,41 @@ function clienteFalso(opts: {
         select(_cols: string) {
           if (_cols === COLUNAS_DO_PEDIDO_PARA_O_ANTIFRAUDE) {
             return leituraDoAntifraude(tabela, _cols, opts.colunasExtrasDoPedido ?? {});
+          }
+          if (_cols === "tentativas_de_pagamento") {
+            const filtros: Array<[string, unknown]> = [];
+            opts.consultasDoCliente?.push(filtros);
+            const entregar = () => {
+              if (opts.tentativasDoCliente === "erro") {
+                return Promise.resolve({ data: null, error: { message: "statement timeout" } });
+              }
+              const atual = opts.pedido === null ? 0 : Number({ ...opts.pedido, ...estadoGravado }.tentativas_de_pagamento ?? 0);
+              const lista = opts.tentativasDoCliente ?? [atual];
+              return Promise.resolve({
+                data: lista.filter((n) => n > 0).map((n) => ({ tentativas_de_pagamento: n })),
+                error: null,
+              });
+            };
+            const cadeia = {
+              eq(c: string, v: unknown) {
+                filtros.push([c, v]);
+                return cadeia;
+              },
+              gte(c: string, v: unknown) {
+                filtros.push([`${c}>=`, v]);
+                return cadeia;
+              },
+              gt(c: string, v: unknown) {
+                filtros.push([`${c}>`, v]);
+                return cadeia;
+              },
+              limit(n: number) {
+                filtros.push(["limit", n]);
+                return cadeia;
+              },
+              then: (ok: (v: unknown) => unknown, nok?: (e: unknown) => unknown) => entregar().then(ok, nok),
+            };
+            return cadeia;
           }
           chamadasSelect++;
           const primeiraLeitura = chamadasSelect === 1;
@@ -2553,6 +2596,14 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "cliente paga com PIX, que continua disponível; nada foi tocado",
     ],
     [
+      // Auditoria L3 (12/10/2026): o teto de tentativas de cartão (pedido ou
+      // cliente em 24 h), só na criação do cartão.
+      "Muitas tentativas com cartão. Para concluir, pague com PIX.",
+      "o cartão saiu DESTE pedido, o PIX continua disponível (mesmo contrato " +
+        "`codigo` da forma desligada: a tela oferece PIX); nenhuma criação " +
+        "no MP e nenhum PIX vivo cancelado",
+    ],
+    [
       "Esse parcelamento não está disponível nesta loja.",
       "parcelas acima do teto da loja: o cliente escolhe menos parcelas; " +
         "nada foi tocado",
@@ -2954,7 +3005,12 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // PIX→cartão numa loja sem a chave de assinatura, com o PIX da vaga AINDA
   // VIVO, responde o 409 NÃO terminal `MENSAGEM_PIX_CONTINUA_VALENDO` (na
   // lista de recuperáveis, acima) antes do terminal de sempre. 63 + 1 = 64.
-  assertEquals(achados, 64);
+  //
+  // 65, não mais 64: auditoria L3 (12/10/2026) — o teto de tentativas de
+  // cartão responde o 409 NÃO terminal "Muitas tentativas com cartão…" (na
+  // lista de recuperáveis, acima), de UM ponto só (`respostaTetoDoCartao`),
+  // chamado antes de cancelar um PIX vivo e na criação. 64 + 1 = 65.
+  assertEquals(achados, 65);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -3871,6 +3927,8 @@ function cenarioCartao(opts: {
   // Nome na fatura (03/10/2026) — ver `clienteFalso`.
   nomeDaLoja?: unknown;
   falhaNaLeituraDoNome?: "erro" | "lanca";
+  // Teto do cartão por cliente (auditoria L3) — ver `clienteFalso`.
+  tentativasDoCliente?: number[] | "erro";
 } = {}) {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   // Baseline do cofre para o registro default/repassado desta política —
@@ -3887,7 +3945,10 @@ function cenarioCartao(opts: {
   const leiturasConfigCartao: Array<{ colunas: string; filtro: [string, unknown] }> = [];
   const leiturasDoAntifraude: Array<{ tabela: string; colunas: string; filtros: Array<[string, unknown]> }> = [];
   const leiturasDoNome: Array<{ tabela: string; colunas: string }> = [];
+  const consultasDoCliente: Array<Array<[string, unknown]>> = [];
   const supabase = clienteFalso({
+    tentativasDoCliente: opts.tentativasDoCliente,
+    consultasDoCliente,
     nomeDaLoja: opts.nomeDaLoja,
     falhaNaLeituraDoNome: opts.falhaNaLeituraDoNome,
     leiturasDoNome,
@@ -3919,7 +3980,15 @@ function cenarioCartao(opts: {
     resultadoLiberar: opts.resultadoLiberar,
     erroLiberar: opts.erroLiberar,
   });
-  return { supabase, registro, chamadasRpc, leiturasConfigCartao, leiturasDoAntifraude, leiturasDoNome };
+  return {
+    supabase,
+    registro,
+    chamadasRpc,
+    leiturasConfigCartao,
+    leiturasDoAntifraude,
+    leiturasDoNome,
+    consultasDoCliente,
+  };
 }
 
 const liberacoes = (chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }>) =>
@@ -4248,6 +4317,283 @@ Deno.test("contrato forma desligada, CONTROLE: o 400 de parcelamento acima do te
   assertEquals(mp.chamadas.length, 0);
   assertEquals(registro.chamadasUpdate, 0);
 });
+
+// --- teto de tentativas de cartão (auditoria L3, 12/10/2026) ----------------
+//
+// Dois tetos sobre a CRIAÇÃO de cobrança de cartão: 5 cobranças mortas no
+// pedido (`tentativas_de_pagamento`) e 15 somadas nos pedidos do cliente nas
+// últimas 24 h. Atingido, o cartão recebe o 409 recuperável com o código da
+// forma desligada (a tela tira o cartão deste pedido e oferece PIX) e o
+// Mercado Pago NÃO recebe criação nenhuma. O PIX nunca é contado nem barrado;
+// cartão em análise/desafio/dúvida na vaga vence o teto.
+
+const CORPO_DO_TETO = {
+  error: "Muitas tentativas com cartão. Para concluir, pague com PIX.",
+  codigo: "CARTAO_FORMA_DESLIGADA",
+  limiteDeTentativas: true,
+};
+
+function exigirCorpoDoTeto(corpo: Record<string, unknown>) {
+  assertEquals(corpo, CORPO_DO_TETO);
+  assertEquals("terminal" in corpo, false, "nunca terminal: o pedido ainda espera o PIX");
+  assertEquals("semCobranca" in corpo, false);
+  assertEquals("cartaoEmAnalise" in corpo, false);
+}
+
+Deno.test("teto do cartão: 5 por pedido e 15 por cliente em 24 h", () => {
+  assertEquals(LIMITE_DE_TENTATIVAS_DE_CARTAO_POR_PEDIDO, 5);
+  assertEquals(LIMITE_DE_TENTATIVAS_DE_CARTAO_POR_CLIENTE_24H, 15);
+});
+
+for (const tentativas of [5, 6, 40]) {
+  Deno.test(`teto do cartão: pedido com ${tentativas} cobranças mortas e vaga livre -> 409 'pague com PIX', ZERO criação no MP, vaga e RPC intactas`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: tentativas }),
+    });
+    const mp = fetchMP({});
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+
+    assertEquals(resposta.status, 409);
+    exigirCorpoDoTeto(await resposta.json());
+    assertEquals(mp.chamadas.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+    assertEquals(chamadasRpc.length, 0);
+  });
+}
+
+Deno.test("teto do cartão: débito também é cartão — o mesmo 409 com 5 cobranças mortas", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 5 }),
+  });
+  const mp = fetchMP({});
+  const resposta = await handler(
+    requisicao(
+      corpoCartao({ paymentTypeId: "debit_card", paymentMethodId: "debelo", parcelas: 1 }),
+      montarToken(DONO_LOGADO),
+    ),
+    { supabase, fetchImpl: mp.fn },
+  );
+  assertEquals(resposta.status, 409);
+  exigirCorpoDoTeto(await resposta.json());
+  assertEquals(mp.chamadas.length, 0);
+});
+
+for (const tentativas of [0, 4, null, -1, "lixo"]) {
+  Deno.test(`teto do cartão, CONTROLE: ${JSON.stringify(tentativas)} cobranças mortas (abaixo do teto, ou ilegível = 0) -> o cartão é cobrado como sempre`, async () => {
+    const { supabase } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: tentativas }),
+    });
+    const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+
+    assertEquals(resposta.status, 200);
+    assertEquals(mp.criacoes().length, 1);
+  });
+}
+
+Deno.test("teto do cartão POR CLIENTE: pedido novo zerado, mas 15 cobranças mortas nos pedidos dele em 24 h -> 409, ZERO criação; a leitura filtra pelo dono e pela janela", async () => {
+  const antes = Date.now();
+  const { supabase, consultasDoCliente } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }),
+    tentativasDoCliente: [5, 5, 4, 1],
+  });
+  const mp = fetchMP({});
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 409);
+  exigirCorpoDoTeto(await resposta.json());
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(consultasDoCliente.length, 1);
+  const filtros = new Map(consultasDoCliente[0]);
+  assertEquals(filtros.get("user_id"), DONO_LOGADO);
+  assertEquals(filtros.get("tentativas_de_pagamento>"), 0);
+  const desde = Date.parse(String(filtros.get("created_at>=")));
+  const vinteQuatroHoras = 24 * 60 * 60 * 1000;
+  assertEquals(desde >= antes - vinteQuatroHoras - 1000 && desde <= Date.now() - vinteQuatroHoras + 1000, true);
+});
+
+Deno.test("teto do cartão POR CLIENTE, CONTROLE: 14 em 24 h -> o cartão é cobrado", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }),
+    tentativasDoCliente: [4, 4, 4, 2],
+  });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.criacoes().length, 1);
+});
+
+Deno.test("teto do cartão POR CLIENTE: falha ao somar não nega o cartão (o teto do pedido segue valendo)", async () => {
+  const abaixo = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 1 }),
+    tentativasDoCliente: "erro",
+  });
+  const mpAbaixo = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process") } });
+  const console_error = console.error;
+  console.error = () => {};
+  try {
+    const r1 = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: abaixo.supabase,
+      fetchImpl: mpAbaixo.fn,
+    });
+    assertEquals(r1.status, 200);
+    assertEquals(mpAbaixo.criacoes().length, 1);
+
+    const noTeto = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 5 }),
+      tentativasDoCliente: "erro",
+    });
+    const mpNoTeto = fetchMP({});
+    const r2 = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: noTeto.supabase,
+      fetchImpl: mpNoTeto.fn,
+    });
+    assertEquals(r2.status, 409);
+    assertEquals(mpNoTeto.chamadas.length, 0);
+  } finally {
+    console.error = console_error;
+  }
+});
+
+Deno.test("teto do cartão: cartão RECUSADO na vaga leva o pedido a 5 -> libera a vaga (a morta conta) e NÃO cria o 6º cartão", async () => {
+  const { supabase, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, tentativas_de_pagamento: 4 }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 5 }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 409);
+  exigirCorpoDoTeto(await resposta.json());
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: ORDER_CARTAO_NA_VAGA }]);
+  assertEquals(mp.criacoes().length, 0);
+});
+
+for (const tentativas of [4, 5]) {
+  Deno.test(`teto do cartão: PIX ABERTO na vaga com ${tentativas} cobranças mortas (a troca mataria o PIX: ${tentativas + 1}) -> 409 ANTES de cancelar; o PIX segue vivo`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({
+        user_id: DONO_LOGADO,
+        gateway_payment_id: ORDER_PIX_NA_VAGA,
+        tentativas_de_pagamento: tentativas,
+      }),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") },
+      cancelar: { status: 200, corpo: orderDePix("canceled", "canceled") },
+      criar: { status: 201, corpo: orderDeCartao("processing", "in_process") },
+    });
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+
+    assertEquals(resposta.status, 409);
+    exigirCorpoDoTeto(await resposta.json());
+    assertEquals(mp.cancelamentos().length, 0, "o PIX não é cancelado");
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+    assertEquals(chamadasRpc.length, 0);
+  });
+}
+
+Deno.test("teto do cartão, CONTROLE: PIX ABERTO na vaga com 3 cobranças mortas -> a troca segue (cancela o PIX e cobra o cartão)", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA, tentativas_de_pagamento: 3 }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 4 }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") },
+    cancelar: { status: 200, corpo: orderDePix("canceled", "canceled") },
+    criar: { status: 201, corpo: orderDeCartao("processing", "in_process") },
+  });
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.cancelamentos().length, 1);
+  assertEquals(mp.criacoes().length, 1);
+});
+
+for (
+  const caso of [
+    { nome: "em análise (processing)", order: () => orderDeCartao("processing", "in_process", { id: ORDER_CARTAO_NA_VAGA }) },
+    {
+      nome: "no desafio 3DS",
+      order: () => orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA, url3ds: URL_DESAFIO }),
+    },
+  ]
+) {
+  Deno.test(`teto do cartão: cartão ${caso.nome} na vaga VENCE o teto — devolve o estado da cobrança, nunca 'pague com PIX'`, async () => {
+    const { supabase } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, tentativas_de_pagamento: 9 }),
+      tentativasDoCliente: [9, 30],
+    });
+    const mp = fetchMP({ consultar: { status: 200, corpo: caso.order() } });
+
+    const resposta = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.statusPagamento, "aguardando");
+    assertEquals("limiteDeTentativas" in corpo, false);
+    assertEquals(mp.criacoes().length, 0);
+  });
+}
+
+for (const tentativas of [5, 40]) {
+  Deno.test(`teto do cartão: o PIX NUNCA é barrado — pedido com ${tentativas} cobranças mortas e cliente com 100 em 24 h gera o PIX normalmente`, async () => {
+    const { supabase, registro, consultasDoCliente } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: tentativas }),
+      tentativasDoCliente: [tentativas, 60],
+    });
+    let chave: string | undefined;
+    const base = fetchFalsoMP({});
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      chave = (init?.headers as Record<string, string>)["X-Idempotency-Key"];
+      return base(url, init);
+    };
+
+    const resposta = await handler(
+      requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+      { supabase, fetchImpl },
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(typeof corpo.qrCode, "string");
+    assertEquals(chave, `${UUID}:${tentativas}`);
+    assertEquals(registro.valoresUpdate?.metodo_online, "pix");
+    assertEquals("limiteDeTentativas" in corpo, false);
+    assertEquals(consultasDoCliente.length, 0, "o PIX nem soma as tentativas do cliente");
+  });
+}
 
 Deno.test("handler cartão: débito com loja de teto 1 e 6 parcelas pedidas passa (débito não parcela) e vai com installments 1", async () => {
   const { supabase, registro } = cenarioCartao({ configCartao: { credito: false, debito: true, parcelas_max: 1 } });
@@ -5522,11 +5868,29 @@ function bancoComEstado(
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: configCartao, error: null }) }) }) };
       }
       return {
-        select: (_cols: string) => ({
-          eq: (_c: string, _v: unknown) => ({
-            maybeSingle: async () => ({ data: { ...linha }, error: null }),
-          }),
-        }),
+        select: (_cols: string) => {
+          // Teto do cartão por cliente (auditoria L3): a soma das tentativas
+          // do cliente nas últimas 24 h — aqui, só esta linha.
+          if (_cols === "tentativas_de_pagamento") {
+            const cadeia = {
+              eq: () => cadeia,
+              gte: () => cadeia,
+              gt: () => cadeia,
+              limit: () => cadeia,
+              then: (ok: (v: unknown) => unknown) =>
+                Promise.resolve({
+                  data: [{ tentativas_de_pagamento: linha.tentativas_de_pagamento ?? 0 }],
+                  error: null,
+                }).then(ok),
+            };
+            return cadeia;
+          }
+          return {
+            eq: (_c: string, _v: unknown) => ({
+              maybeSingle: async () => ({ data: { ...linha }, error: null }),
+            }),
+          };
+        },
         update(valores: Record<string, unknown>) {
           // `bateFiltro` compara por NOME FIXO, nunca `linha[coluna]` — o
           // dublê só conhece três colunas no WHERE de verdade, e indexar um
@@ -7130,6 +7494,106 @@ Deno.test("PIX 409 idempotency — order recuperada SEM QR legível (busca com d
   // A busca ACHOU a order (1º GET) e a reconsulta por id entregou o QR (2º GET).
   assertEquals(gets.length, 2);
   assertEquals(registro.valoresUpdate?.gateway_payment_id, "ORD777");
+});
+
+// Auditoria L3 (12/10/2026): nenhum log desta function carrega o pagador
+// (e-mail, documento) — nem a reconsulta da recuperação do PIX, nem a order
+// sem id utilizável. O que sobra no log: status, códigos e ids.
+const EMAIL_DO_PAGADOR = "pagador.logado@exemplo.com";
+const PAGADOR_NA_ORDER = { email: EMAIL_DO_PAGADOR, identification: { type: "CPF", number: CPF_TITULAR } };
+
+async function logsDurante(executar: () => Promise<unknown>): Promise<string> {
+  const linhas: unknown[][] = [];
+  const reais = { error: console.error, warn: console.warn, log: console.log };
+  console.error = (...args: unknown[]) => void linhas.push(args);
+  console.warn = (...args: unknown[]) => void linhas.push(args);
+  console.log = (...args: unknown[]) => void linhas.push(args);
+  try {
+    await executar();
+  } finally {
+    console.error = reais.error;
+    console.warn = reais.warn;
+    console.log = reais.log;
+  }
+  return JSON.stringify(linhas);
+}
+
+function semDadoDoPagador(texto: string) {
+  assertEquals(texto.includes(EMAIL_DO_PAGADOR), false, "e-mail do pagador no log");
+  assertEquals(texto.includes(CPF_TITULAR), false, "documento do pagador no log");
+  assertEquals(texto.includes("identification"), false, "objeto do documento no log");
+}
+
+Deno.test("log sem dado pessoal: a reconsulta por id da recuperação do PIX recusada (4xx com o pagador no corpo) loga só o resumo", async () => {
+  const { supabase } = cenarioCartao();
+  const orderSemQr = {
+    id: "ORD777",
+    status: "action_required",
+    status_detail: "waiting_transfer",
+    external_reference: UUID,
+    transactions: { payments: [{ id: "PAY777", payment_method: { type: "bank_transfer" } }] },
+  };
+  const fn = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      return new Response(JSON.stringify({ errors: [{ code: "idempotency_key_already_used" }] }), { status: 409 });
+    }
+    if (url.includes("?")) return new Response(JSON.stringify({ data: [orderSemQr] }), { status: 200 });
+    // A reconsulta POR ID recusa e devolve a order com o pagador.
+    return new Response(
+      JSON.stringify({ errors: [{ code: "bad_request" }], data: { id: "ORD777", status: "action_required", payer: PAGADOR_NA_ORDER } }),
+      { status: 400 },
+    );
+  };
+
+  let status = 0;
+  const texto = await logsDurante(async () => {
+    const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: fn,
+    });
+    status = resposta.status;
+    await resposta.json();
+  });
+
+  assertEquals(status, 502);
+  semDadoDoPagador(texto);
+  // O diagnóstico continua: a linha da recusa da consulta, com status e código.
+  assertStringIncludes(texto, "mercadopago: orders (consulta) recusou");
+  assertStringIncludes(texto, "bad_request");
+});
+
+Deno.test("log sem dado pessoal: order recuperada SEM id utilizável -> 502 e o log leva só o resumo (status), nunca a order inteira", async () => {
+  const { supabase } = cenarioCartao();
+  // Recuperada pela busca, com QR legível mas sem `id`: é o caminho que
+  // chega à guarda "order sem id utilizável".
+  const orderSemId = {
+    status: "action_required",
+    status_detail: "waiting_transfer",
+    external_reference: UUID,
+    payer: PAGADOR_NA_ORDER,
+    transactions: {
+      payments: [{ id: "PAY778", payment_method: { type: "bank_transfer", qr_code: "QR-778", qr_code_base64: "QRB-778" } }],
+    },
+  };
+  const mp = fetchMP({
+    criar: { status: 409, corpo: { errors: [{ code: "idempotency_key_already_used" }] } },
+    consultar: { status: 200, corpo: { data: [orderSemId] } },
+  });
+
+  let status = 0;
+  const texto = await logsDurante(async () => {
+    const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    status = resposta.status;
+    await resposta.json();
+  });
+
+  assertEquals(status, 502);
+  semDadoDoPagador(texto);
+  assertStringIncludes(texto, "criar-pagamento: order sem id utilizável");
+  assertStringIncludes(texto, "action_required");
 });
 
 Deno.test("PIX 409 idempotency — busca devolve order de CARTÃO viva (3DS em action_required): NÃO recupera, 502 (nunca adota cobrança de outro meio)", async () => {

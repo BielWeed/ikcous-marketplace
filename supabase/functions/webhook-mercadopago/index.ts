@@ -847,10 +847,15 @@ async function handler(
   // de Order, 29 caracteres; id de payment clássico é numérico, menor ainda).
   const LIMITE_LOG_DATA_ID = 64;
   const { ts: tsDoHeader, v1: v1Recebido } = camposDaAssinatura(req.headers.get("x-signature"));
+  // Auditoria L3 (12/10/2026): `ts`, `x-request-id` e `v1` vão para o log com
+  // o MESMO corte do `data.id` — são cabeçalhos que qualquer um escreve, e
+  // estes logs rodam antes de a assinatura valer. Só o LOG é cortado: a
+  // porta barata e o HMAC, abaixo, usam os valores inteiros, como sempre.
+  const cortarParaLog = (valor: string | null) => (valor === null ? null : valor.slice(0, LIMITE_LOG_DATA_ID));
   console.log("webhook-mercadopago: notificação recebida", {
     dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
     temXRequestId: req.headers.get("x-request-id") !== null,
-    ts: tsDoHeader,
+    ts: cortarParaLog(tsDoHeader),
   });
 
   // PORTA BARATA (tarefa mp-7, 16/09/2026): requisição que não tem NEM A
@@ -995,9 +1000,9 @@ async function handler(
     // `MP_WEBHOOK_SECRET` da plataforma.
     console.warn("webhook-mercadopago: assinatura inválida", {
       dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
-      xRequestId: req.headers.get("x-request-id"),
-      ts: tsDoHeader,
-      v1Recebido,
+      xRequestId: cortarParaLog(req.headers.get("x-request-id")),
+      ts: cortarParaLog(tsDoHeader),
+      v1Recebido: cortarParaLog(v1Recebido),
       candidatos: avaliacao.candidatos,
     });
     return json({ error: "Assinatura inválida." }, 401);
