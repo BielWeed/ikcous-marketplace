@@ -81,7 +81,7 @@ const REDIRECIONA = "ickous-marketplace-gabriels-projects-5a19f6ee.vercel.app";
 // ------------------------------------------------------------------ o "ar" simulado
 
 /** Uma descrição por endereço; `responder` devolve o que o porteiro serviria. */
-function mundoBase() {
+function mundoBase({ comManutencao = false } = {}) {
   const m = {};
   const versao = {
     sha: SHA,
@@ -93,7 +93,11 @@ function mundoBase() {
   for (const [d, l] of Object.entries(LOJAS)) {
     m[d] = { tipo: "loja", ...l, caderneta: "hit", status: 200, ...versao };
   }
-  for (const d of MANUTENCAO) m[d] = { tipo: "manutencao", ...versao };
+  // Os enderecos de manutencao foram descontinuados e saíram do Vercel: o
+  // mundo real não os tem. So entram quando o teste pede (canônico em manutenção).
+  if (comManutencao) {
+    for (const d of MANUTENCAO) m[d] = { tipo: "manutencao", ...versao };
+  }
   m[REDIRECIONA] = { tipo: "redirecionamento", ...versao };
   return m;
 }
@@ -826,7 +830,7 @@ Deno.test("inventariar --vercel: endereço novo na Vercel entra sozinho; preview
     "alias de preview não é loja",
   );
   assert(
-    inv.dominios.includes("savy-collection.vercel.app"),
+    inv.dominios.includes(REDIRECIONA),
     "os esperados pela política continuam",
   );
   assert(
@@ -1206,7 +1210,7 @@ Deno.test("B) conferirFrota: publicUrl de uma loja apontando para host fora do i
 });
 
 Deno.test("B) conferirFrota: o canônico existe mas está em manutenção (não responde 200 hit) = CANONICO_INVALIDO", async () => {
-  const mundo = mundoBase();
+  const mundo = mundoBase({ comManutencao: true });
   mundo["savycollection.vercel.app"].publicUrl =
     "https://savy-collection.vercel.app";
   const r = await conferirFrota(POLITICA, {
@@ -1518,7 +1522,7 @@ Deno.test({
     const r = await rodar(["--sha", SHA], mundoBase());
     assertEquals(r.codigo, 0, r.saida + r.erro);
     assertStringIncludes(r.saida, "inventário: PARCIAL (sem --vercel)");
-    assertStringIncludes(r.saida, "10 de 10 endereços OK");
+    assertStringIncludes(r.saida, "6 de 6 endereços OK");
     assertStringIncludes(
       r.saida,
       "endereço→deployment: NÃO CONFERIDO (sem --vercel)",
@@ -1673,12 +1677,12 @@ Deno.test("política: só política (sem lista de clientes por release) e com o 
     POLITICA.lojasSemBackendGerenciado.map((l) => l.ref).sort(),
     [REF.almeida, REF.brandmeliz, REF.space].sort(),
   );
+  // Os 4 enderecos de manutencao foram descontinuados (dono, 12/10/2026) e
+  // saíram do projeto Vercel: a política não os declara mais, senão a
+  // conferência os sondaria, leria 404 e bloquearia a release.
   assertEquals(
-    POLITICA.enderecosEsperados
-      .filter((e) => e.estado === "manutencao")
-      .map((e) => e.dominio)
-      .sort(),
-    [...MANUTENCAO].sort(),
+    POLITICA.enderecosEsperados.filter((e) => e.estado === "manutencao"),
+    [],
   );
   assertEquals(
     POLITICA.enderecosEsperados.find((e) => e.estado === "redirecionamento")
