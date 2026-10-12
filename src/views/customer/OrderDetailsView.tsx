@@ -443,8 +443,20 @@ export function OrderDetailsView({
     loadOrder();
   }, [loadOrder]);
 
+  // Outro pedido na tela = outras avaliações: o conjunto do anterior não pode
+  // aparecer como "Avaliado" no novo. Reseta pelo ID (e não pelo objeto), senão
+  // cada revalidação do mesmo pedido piscaria os botões "Avaliar".
+  const pedidoIdAtual = order?.id;
+  useEffect(() => {
+    setReviewedProductIds(new Set());
+  }, [pedidoIdAtual]);
+
   useEffect(() => {
     if (!user || !order || order.status !== "delivered") return;
+
+    // Resposta velha não sobrescreve a nova: se o pedido mudou (ou a tela
+    // saiu) antes da consulta voltar, o efeito já foi limpo e ignora o dado.
+    let cancelado = false;
 
     const checkIfReviewed = async () => {
       try {
@@ -455,6 +467,7 @@ export function OrderDetailsView({
           .eq("user_id", user.id)
           .in("product_id", productIds);
 
+        if (cancelado) return;
         if (!error && data) {
           const reviewedSet = new Set<string>(
             data.map((r: any) => r.product_id),
@@ -462,11 +475,15 @@ export function OrderDetailsView({
           setReviewedProductIds(reviewedSet);
         }
       } catch (e) {
-        console.error("Failed to check existing reviews:", e);
+        if (!cancelado) console.error("Failed to check existing reviews:", e);
       }
     };
 
     checkIfReviewed();
+
+    return () => {
+      cancelado = true;
+    };
   }, [user, order]);
 
   // Brief "o app não mente quando copia" (08/09/2026): copiava sem
@@ -1119,6 +1136,8 @@ export function OrderDetailsView({
                   </h5>
                   <p className="mt-0.5 text-xs font-medium text-zinc-500">
                     Qtd. {item.quantity}
+                    {item.quantity > 1 &&
+                      ` · ${formatCurrency(item.price)} un.`}
                   </p>
                 </div>
                 <span
@@ -1129,7 +1148,10 @@ export function OrderDetailsView({
                       : "text-zinc-900",
                   )}
                 >
-                  {formatCurrency(item.price)}
+                  {/* `item.price` é o unitário (o painel mostra "qtd × preço" e
+                      soma a linha); a coluna mostra o total da linha, que é o
+                      que fecha com "Produtos" no resumo. */}
+                  {formatCurrency(item.price * item.quantity)}
                 </span>
               </div>
             ))}
