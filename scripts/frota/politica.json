@@ -11,10 +11,6 @@
   ],
   "motivoLojasSemBackendGerenciado": "lojas de teste: banco e functions não se mexem (decisão do dono, 03/10/2026)",
   "enderecosEsperados": [
-    { "dominio": "savy-collection.vercel.app", "estado": "manutencao" },
-    { "dominio": "loja-savy-collection.vercel.app", "estado": "manutencao" },
-    { "dominio": "teste-frota-a-0911.vercel.app", "estado": "manutencao" },
-    { "dominio": "teste-frota-ikcous-0911.vercel.app", "estado": "manutencao" },
     {
       "dominio": "ickous-marketplace-gabriels-projects-5a19f6ee.vercel.app",
       "estado": "redirecionamento",
