@@ -8256,6 +8256,235 @@ Deno.test(`${NOME_18A} — no menu, UM SELECT so leitura, saida tipo/objeto/deta
   );
 });
 
+// 22m (12/10/2026) — MEDICAO das portas pequenas do banco, antes de escrever as migrations do lote.
+// Consulta de LEITURA, de rol ABERTO (molde da 18a: tipo/objeto/detalhe, sem coluna `ok`, nunca prova
+// do portao): donos e RLS das tabelas/views/funcoes da vitrine de perfis, politicas vivas, ACL de
+// tabela, coluna e funcao com o grantor, papeis e o que o service_role alcanca, contagens agregadas,
+// tamanho das imagens de perfil SO por agregado (nunca o valor) e a configuracao dos buckets. O que
+// este teste prende: ela le so catalogo e as leituras nomeadas, e as colunas de imagem/arquivo so
+// entram por TAMANHO ou PREFIXO — nenhum dado de pessoa sai no log do run.
+const NOME_22M = "22m-medir-portas-do-banco";
+Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catalogo e leituras nomeadas, imagem e arquivo so por tamanho, nenhum dado pessoal`, async (t) => {
+  const { contarStatements, veredictoDaConsulta, ROL_FECHADO_POR_CONSULTA } =
+    require(SCRIPT);
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_22M}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+  await t.step("esta no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "nao achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${NOME_22M}\n`, i) > i,
+      `falta a opcao ${NOME_22M} no workflow`,
+    );
+  });
+  await t.step(
+    "um statement, comeca por WITH, sem palavra de escrita e sem SQL dinamico",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*WITH\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+          semTexto,
+        ),
+        "palavra de escrita fora de comentario/string",
+      );
+      assert(
+        !/\b(EXECUTE|query_to_xml|dblink\w*|format|pg_read_file|lo_import|pg_sleep)\b/i.test(
+          semTexto,
+        ),
+        "SQL dinamico, leitura de arquivo ou espera",
+      );
+    },
+  );
+  await t.step("a saida final e tipo, objeto, detalhe, em ordem fixa", () => {
+    assert(
+      /SELECT tipo, objeto, detalhe\s+FROM r\s+ORDER BY ordem, objeto, detalhe;/.test(
+        limpo,
+      ),
+      "a saida final tem de ser tipo, objeto, detalhe, com ORDER BY ordem, objeto, detalhe",
+    );
+  });
+  await t.step(
+    "cobre cada medicao do plano, cada uma com o seu tipo",
+    () => {
+      for (const tipo of [
+        "controle",
+        "migration",
+        "dono",
+        "politica",
+        "politicas",
+        "contagem",
+        "indice",
+        "imagem-perfil",
+        "funcao",
+        "acl-funcao",
+        "acl-tabela",
+        "privilegio-efetivo",
+        "acl-coluna",
+        "papel",
+        "gatilho",
+        "bucket",
+        "storage-objetos",
+      ])
+        assertStringIncludes(limpo, `'${tipo}'`, `falta o tipo ${tipo}`);
+      // a linha de controle diz quem leu e se a RLS vale para ele (contagem 0 com RLS valendo nao e "0")
+      for (const parte of [
+        "rolbypassrls",
+        "row_security_active",
+        "pg_read_all_data",
+        "pg_write_all_data",
+        "server_version_num",
+      ])
+        assertStringIncludes(limpo, parte, `falta ${parte}`);
+      // ACL de funcao e tabela com PUBLIC medido pela entrada sem dono e o grantor de cada entrada
+      for (const parte of [
+        "acldefault('f'",
+        "acldefault('r'",
+        "a.grantor",
+        "attacl",
+        "has_table_privilege",
+        "has_any_column_privilege",
+        "has_function_privilege",
+      ])
+        assertStringIncludes(limpo, parte, `falta ${parte}`);
+      // os objetos que o lote vai tocar estao todos medidos
+      for (const objeto of [
+        "public.public_profiles",
+        "public.profiles",
+        "public.vw_reviews_public",
+        "public.vw_questions_public",
+        "public.vw_produtos_admin",
+        "public.app_settings",
+        "public.otp_verifications",
+        "public.get_segmented_push_count(text,numeric,integer)",
+        "public.handle_public_profile_sync()",
+        "public.get_reviews_metrics(text,integer)",
+        "public.rls_admin_atual()",
+        "idx_reviews_user_id",
+        "idx_questions_user_id",
+      ])
+        assertStringIncludes(limpo, `'${objeto}'`, `falta ${objeto}`);
+    },
+  );
+  await t.step(
+    "objeto ausente nao derruba a consulta: tabela, view e funcao sao resolvidas por to_regclass/to_regprocedure, nunca por cast",
+    () => {
+      assert(
+        !/::\s*(regclass|regprocedure)\b/i.test(semTexto),
+        "cast ::regclass/::regprocedure quebra a consulta inteira numa loja sem o objeto",
+      );
+      assertStringIncludes(limpo, "to_regclass(");
+      assertStringIncludes(limpo, "to_regprocedure(");
+    },
+  );
+  await t.step(
+    "le so catalogo e as leituras nomeadas (agregadas): nenhuma outra tabela do app",
+    () => {
+      const permitidos = new Set([
+        "pg_roles",
+        "pg_class",
+        "pg_proc",
+        "pg_policy",
+        "pg_attribute",
+        "pg_indexes",
+        "pg_trigger",
+        "aclexplode",
+        "unnest",
+        "supabase_migrations.schema_migrations",
+        "storage.buckets",
+        "storage.objects",
+        "public.profiles",
+        "public.public_profiles",
+        "public.reviews",
+        "public.questions",
+      ]);
+      const ctes = new Set(
+        [
+          ...semTexto.matchAll(
+            // eslint-disable-next-line security/detect-unsafe-regex -- o grupo opcional roda no máximo uma vez, `\w+` e `\(` não se sobrepõem, e a entrada é SQL do próprio repositório
+            /(?:\bWITH|,)\s+(\w+)\s*(?:\([^)]*\))?\s+AS\s*\(/gi,
+          ),
+        ].map((m) => m[1].toLowerCase()),
+      );
+      const alvos = [
+        ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+      ].map((m) => m[1].toLowerCase());
+      assert(alvos.length > 0);
+      for (const alvo of alvos)
+        assert(
+          permitidos.has(alvo) || ctes.has(alvo),
+          `le de "${alvo}", que nao e catalogo, CTE nem uma das leituras nomeadas`,
+        );
+    },
+  );
+  await t.step(
+    "nenhuma coluna de pessoa, de conteudo ou de nome de arquivo e citada",
+    () => {
+      assert(
+        !/\b(full_name|email|telefone|phone|whatsapp|cpf|endereco|address|customer_\w+|comment|question|merchant_reply|updated_by|bucket_name|path_tokens|owner|owner_id|user_metadata)\b/i.test(
+          semTexto,
+        ),
+        "a 22m citaria dado pessoal ou conteudo",
+      );
+      // `name` de storage.objects e o nome do arquivo (pode ser o de quem subiu): nunca lido.
+      assert(!/\bo\.name\b|\bobjects\.name\b/i.test(semTexto));
+    },
+  );
+  await t.step(
+    "avatar_url/cover_url so entram por tamanho, nulidade, prefixo fixo ou o tipo MIME de formato fechado",
+    () => {
+      const restante = limpo
+        .replace(/octet_length\((avatar_url|cover_url)\)/g, "")
+        .replace(/\b(avatar_url|cover_url) IS NULL\b/g, "")
+        .replace(/\b(avatar_url|cover_url) LIKE '[^']*'/g, "")
+        .replace(
+          /substring\(lower\(left\((avatar_url|cover_url), 120\)\), '\^data:\(\(image\|application\|text\|video\|audio\)\/\[a-z0-9\.\+-\]\{1,40\}\)\[;,\]'\)/g,
+          "",
+        );
+      assert(
+        !/\b(avatar_url|cover_url)\b/.test(restante),
+        "avatar_url/cover_url aparecem fora de octet_length / IS NULL / LIKE / tipo MIME fechado: o valor poderia sair no log",
+      );
+      // e a coluna e citada de fato (senao o teste acima e vacuo)
+      assert(/octet_length\(avatar_url\)/.test(limpo));
+      assert(/octet_length\(cover_url\)/.test(limpo));
+    },
+  );
+  await t.step(
+    "de storage.objects so saem o tamanho e o tipo MIME de formato fechado, agregados por bucket",
+    () => {
+      const usos = [...limpo.matchAll(/\bmetadata\b[^\n]{0,20}/g)].map((m) =>
+        m[0]
+      );
+      assert(usos.length > 0, "a 22m nao mede o storage");
+      for (const uso of usos)
+        assert(
+          /^metadata->>'(size|mimetype)'/.test(uso),
+          `uso de metadata fora de size/mimetype: ${uso}`,
+        );
+      assertStringIncludes(limpo, "GROUP BY o.bucket_id");
+    },
+  );
+  await t.step(
+    "nao e consulta de rol fechado: o portao da release nunca a trata como prova (sem coluna ok, sem entrada em ROL_FECHADO_POR_CONSULTA)",
+    () => {
+      assert(!Object.hasOwn(ROL_FECHADO_POR_CONSULTA, NOME_22M));
+      assert(!/\bAS ok\b/i.test(semTexto), "a 22m nao tem coluna ok");
+      assertEquals(
+        veredictoDaConsulta({
+          consulta: NOME_22M,
+          ref: "ref",
+          sha: "sha",
+          linhas: [{ tipo: "controle", objeto: "papel que leu", detalhe: "d" }],
+        }),
+        null,
+      );
+    },
+  );
+});
+
 // A5a-A5d (10/10/2026) — a MEDICAO "o que um estranho faz com as portas abertas": tres scripts em
 // tests/banco/ que o rpc-ci roda, cada um num CLONE do banco migrado (rodar-isolado.cjs), e deixam no
 // log uma linha `PORTA <recurso> -> escreveu|vazou|recusou|...` por caso. Sao medicao, nao portao:
