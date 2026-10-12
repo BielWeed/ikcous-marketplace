@@ -64,6 +64,8 @@ on:
       - "scripts/publicacao/consultas/19b-antes-politica-devolucao-grant-de-tabela.sql"
       - "scripts/publicacao/consultas/20a-conferir-fotos-da-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql"
+      - "scripts/publicacao/consultas/21a-conferir-teto-de-email-aplicado.sql"
+      - "scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -98,6 +100,8 @@ on:
       - "scripts/publicacao/consultas/19b-antes-politica-devolucao-grant-de-tabela.sql"
       - "scripts/publicacao/consultas/20a-conferir-fotos-da-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql"
+      - "scripts/publicacao/consultas/21a-conferir-teto-de-email-aplicado.sql"
+      - "scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -475,6 +479,19 @@ jobs:
       - name: Prova viva do portao das fotos da devolucao (consultas 20a e 20b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/fotos-da-devolucao-portao-viva.cjs
+      # Teto de e-mail e codigo do convidado (migration 20261217000000). A primeira prova e o
+      # COMPORTAMENTO: o fluxo legitimo (codigo, verificacao, comprovante) passa; os tetos por pedido,
+      # por destinatario (com a chave normalizada) e da loja recusam sem gravar codigo; duas chamadas
+      # simultaneas nao passam do teto; pedido pago nunca e recusado; a v2 so conta tentativa quando o
+      # trio confere; a v1 segue sem `restantes`; reaplicar e o rollback (corpos de antes byte a byte).
+      # A segunda e o PORTAO: as consultas 21a (DEPOIS, 14 linhas) e 21b (ANTES, 8 linhas) devolvem o
+      # rol exato em qualquer estado e cada defeito reprova SO a sua linha. BLOQUEANTES. CLONE proprio.
+      - name: Prova viva do teto de e-mail e do codigo do convidado (migration 20261217)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/teto-de-email-viva.cjs
+      - name: Prova viva do portao do teto de e-mail (consultas 21a e 21b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/teto-de-email-portao-viva.cjs
       # Onda I do painel simples (20261212 a 20261214): o estoque baixo e uma regua so (Inicio, lista, analytics),
       # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (sem migration) e o estoque
       # minimo e editavel so pelo admin. Cada prova clona o banco.
