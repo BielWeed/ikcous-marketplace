@@ -85,6 +85,99 @@ function frozen(value: unknown): void {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("rascunho de identidade separado da fotografia", () => {
+  const appIcons = (name: string) => ({
+    kind: "app-icons" as const,
+    uploaded: {
+      icon_512: uploaded(file(`${name}-512.png`, 512, 512)),
+      maskable_512: uploaded(file(`${name}-512.png`, 512, 512)),
+      icon_192: uploaded(file(`${name}-192.png`, 192, 192)),
+      apple_touch: uploaded(file(`${name}-180.png`, 180, 180)),
+    },
+  });
+
+  it("troca todos os ícones quadrados pelo controle principal, inclusive em uploads repetidos", () => {
+    const original = draft();
+    const first = changeIdentityEditorDraft(
+      original,
+      appIcons("novo") as never,
+      origin,
+    );
+    const next = changeIdentityEditorDraft(
+      first,
+      appIcons("outro") as never,
+      origin,
+    );
+    for (const [role, value] of Object.entries(appIcons("outro").uploaded)) {
+      expect(Reflect.get(next.assets, role)).toEqual(value.asset);
+    }
+    expect(next.assets.header).toEqual(original.assets.header);
+    expect(next.assets.favicon).toEqual(original.assets.favicon);
+    expect(next.assets.og).toEqual(original.assets.og);
+    expect(next.expected).toEqual(original.expected);
+    expect(
+      buildIdentityEditorIntent(next, origin).desired.branding_assets,
+    ).toEqual(next.assets);
+  });
+
+  it("preserva escolhas avançadas antes e depois do upload principal e ao reconciliar", () => {
+    const custom = uploaded(file("custom.png", 192, 192));
+    const individual = changeIdentityEditorDraft(
+      draft(),
+      { kind: "asset", roles: ["icon_192"], uploaded: custom },
+      origin,
+    );
+    const first = changeIdentityEditorDraft(
+      individual,
+      appIcons("novo") as never,
+      origin,
+    );
+    expect(first.assets.icon_192).toEqual(custom.asset);
+    const maskable = uploaded(file("custom-maskable.png", 512, 512));
+    const withMaskable = changeIdentityEditorDraft(
+      first,
+      { kind: "asset", roles: ["maskable_512"], uploaded: maskable },
+      origin,
+    );
+    const apple = uploaded(file("custom-apple.png", 180, 180));
+    const advanced = changeIdentityEditorDraft(
+      withMaskable,
+      { kind: "asset", roles: ["apple_touch"], uploaded: apple },
+      origin,
+    );
+    expect(advanced.assets.maskable_512).toEqual(maskable.asset);
+    const afterPrincipal = changeIdentityEditorDraft(
+      advanced,
+      appIcons("principal") as never,
+      origin,
+    );
+    expect(afterPrincipal.assets.maskable_512).toEqual(maskable.asset);
+    const reconciled = reconcileIdentityEditorDraft(
+      afterPrincipal,
+      snapshot(),
+      origin,
+    );
+    const next = changeIdentityEditorDraft(
+      reconciled,
+      appIcons("outro") as never,
+      origin,
+    );
+    expect(next.assets.icon_192).toEqual(custom.asset);
+    expect(next.assets.apple_touch).toEqual(apple.asset);
+    expect(next.assets.maskable_512).toEqual(maskable.asset);
+  });
+
+  it("recusa o conjunto inteiro se um tamanho ou uma origem estiver errado", () => {
+    const bad = appIcons("novo");
+    bad.uploaded.apple_touch = uploaded(file("wrong.png", 512, 512));
+    error(() => changeIdentityEditorDraft(draft(), bad as never, origin));
+    const foreign = appIcons("novo");
+    foreign.uploaded.icon_192.url = foreign.uploaded.icon_192.url.replace(
+      origin,
+      otherOrigin,
+    );
+    error(() => changeIdentityEditorDraft(draft(), foreign as never, origin));
+  });
+
   it("captura raw8 e revisao maior que 2^53 sem normalizar expected", () => {
     const input = snapshot();
     const result = createIdentityEditorDraft(input, origin);

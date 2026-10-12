@@ -190,7 +190,8 @@ describe("telas do pedido — retirada na loja", () => {
     expect(
       hospedeiro.querySelector('[aria-label="Retirada na loja"]'),
     ).toBeNull();
-    expect(hospedeiro.textContent).toContain("Endereço de Entrega");
+    // Redesenho da ficha (08/10/2026): rótulo em frase normal, sem Title Case.
+    expect(hospedeiro.textContent).toContain("Endereço de entrega");
   });
 
   it("recibo impresso: 'RETIRADA NA LOJA:' com o endereço", async () => {

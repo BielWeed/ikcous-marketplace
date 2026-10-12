@@ -1,0 +1,158 @@
+{
+  "plano": "painel-simples-onda-l",
+  "frentes": [
+    {
+      "nome": "ajustes-e-pagamentos",
+      "descricao": "L1: cabecalhos dos grupos de Ajustes e o termometro do PIX com 44px; interruptores das formas de pagamento dentro de label de 44px; botoes e campos da secao do Mercado Pago com 44px",
+      "posse": [
+        "src/views/admin/AdminSettingsView.tsx",
+        "src/views/admin/StatusPagamentoPix.tsx",
+        "src/components/admin/settings/FormasDePagamentoCard.tsx",
+        "src/components/admin/settings/MercadoPagoSection.tsx",
+        "tests/front/ajustes-alvos-de-toque-l.test.tsx",
+        "tests/front/pagamentos-status-uma-vez.test.tsx",
+        "tests/front/formas-de-pagamento-cartao-pelo-app.test.tsx",
+        "tests/front/formas-de-pagamento-secao-admin.test.tsx",
+        "tests/front/status-pagamento-pix-termometro.test.tsx",
+        "tests/front/admin-settings-secoes-colapsaveis.test.tsx",
+        "tests/front/ajustes-grupos-e-portas.test.tsx",
+        "tests/front/admin-ajustes-salao-e-porao.test.tsx",
+        "tests/front/mercado-pago-erro-honesto.test.tsx",
+        "tests/front/mercado-pago-camadas.test.tsx",
+        "tests/front/mercado-pago-secao-salva-e-testa.test.tsx",
+        "tests/front/admin-mercado-pago-liberacao-automatica.test.tsx",
+        "tests/front/mercado-pago-fala-a-lingua-da-loja.test.tsx",
+        "tests/front/mercado-pago-guia-copia-prompt.test.tsx",
+        "tests/front/admin-settings-pix-acompanha-o-interruptor.test.tsx"
+      ]
+    },
+    {
+      "nome": "frete-e-identidade",
+      "descricao": "L2: paineis recolhiveis do Frete e botoes dos blocos com 44px, interruptores e caixas de selecao dentro de label de 44px, campo de CEP h-11, circulos de check em 11px; botoes da Identidade da loja com min-h-11",
+      "posse": [
+        "src/components/admin/shipping/PainelRecolhivel.tsx",
+        "src/components/admin/shipping/primitivas-direcao-d.tsx",
+        "src/components/admin/shipping/FreteLocalBloco.tsx",
+        "src/components/admin/shipping/FreteNacionalBloco.tsx",
+        "src/components/admin/shipping/FreteGratisBloco.tsx",
+        "src/components/admin/shipping/EstrategiaNacionalBloco.tsx",
+        "src/components/admin/settings/TransportadorasCard.tsx",
+        "src/views/admin/AdminShippingView.tsx",
+        "src/components/admin/settings/IdentitySettingsSection.tsx",
+        "tests/front/paineis-e-blocos-alvos-de-toque-l.test.tsx",
+        "tests/front/transportadoras-e-minha-loja-alvos-44.test.tsx",
+        "tests/front/identity-settings-section.test.tsx",
+        "tests/front/transportadoras-expansivel.test.tsx",
+        "tests/front/admin-frete-v2-contrato.test.tsx",
+        "tests/front/admin-shipping-frete-unificado.test.tsx",
+        "tests/front/admin-frete-retirada-na-loja.test.tsx",
+        "tests/front/admin-shipping-view-estrategia-nacional-na-faixa.test.tsx",
+        "tests/front/admin-visual-frete.test.tsx",
+        "tests/front/frete-um-lugar-so.test.tsx"
+      ]
+    },
+    {
+      "nome": "ficha-do-cliente",
+      "descricao": "L3: abas da ficha, botoes de copiar e codigo do cliente com 44px; Voz do cliente sem texto abaixo de 11px",
+      "posse": [
+        "src/views/admin/AdminUserDetailView.tsx",
+        "src/components/admin/users/VozClienteTab.tsx",
+        "tests/front/ficha-alvos-e-letra-l.test.tsx",
+        "tests/front/admin-ficha-cliente-abas.test.tsx",
+        "tests/front/ficha-e-consultas-acabamento.test.tsx",
+        "tests/front/ficha-do-cliente-carrinho-no-celular.test.tsx"
+      ]
+    },
+    {
+      "nome": "produtos-guia",
+      "descricao": "L4: abas Dicionario/Simulador do guia de Produtos com 44px e a aba Conceitos sem texto abaixo de 11px",
+      "posse": [
+        "src/views/admin/AdminProductsView.tsx",
+        "tests/front/produtos-guia-letra-e-toque-l.test.tsx",
+        "tests/front/produtos-letra-e-toque.test.tsx",
+        "tests/front/produtos-cabem-no-celular.test.tsx"
+      ]
+    },
+    {
+      "nome": "formulario-de-produto",
+      "descricao": "L5: formulario de produto - seletor de setor, Tirar Foto, botoes das fotos e da lista de variacoes com 44px; os 39 textos abaixo de 11px que restam",
+      "posse": [
+        "src/views/admin/AdminProductFormView.tsx",
+        "tests/front/formulario-produto-letra-e-toque-l.test.tsx",
+        "tests/front/produto-formulario-letra-e-toque.test.tsx",
+        "tests/front/produto-formulario-no-celular.test.tsx"
+      ]
+    },
+    {
+      "nome": "grade-do-produto",
+      "descricao": "L5b: modal de variacao e linhas da grade sem texto abaixo de 11px e chips/botoes com 44px",
+      "posse": [
+        "src/components/admin/products/ModalVarianteGrade.tsx",
+        "src/components/admin/products/LinhasDaGrade.tsx",
+        "tests/front/grade-do-produto-letra-e-toque-l.test.tsx"
+      ]
+    },
+    {
+      "nome": "inicio-e-pecas-comuns",
+      "descricao": "L6: Compartilhar do Inicio com min-w-11, cor literal do Inicio trocada pelo token, mensagem de erro do campo comum e botao do estado de erro em 11px",
+      "posse": [
+        "src/components/admin/inicio/PerfilDaLoja.tsx",
+        "src/views/admin/AdminDashboardView.tsx",
+        "src/components/admin/LocalBufferedInput.tsx",
+        "src/components/admin/AdminErrorState.tsx",
+        "tests/front/inicio-e-pecas-letra-e-toque-l.test.tsx",
+        "tests/front/ajuda-e-inicio-letra-e-toque.test.ts",
+        "tests/front/perfil-da-loja-compartilhar.test.tsx"
+      ]
+    },
+    {
+      "nome": "banners",
+      "descricao": "L7: tela de Banners - os 166 textos abaixo de 11px (menos as miniaturas e a pre-visualizacao do banner) em 11px sem estourar caixas",
+      "posse": [
+        "src/views/admin/AdminBannersView.tsx",
+        "tests/front/banners-letra-l.test.tsx"
+      ]
+    },
+    {
+      "nome": "avisar-clientes",
+      "descricao": "L8: tela Avisar clientes (Push) sem texto abaixo de 11px",
+      "posse": [
+        "src/views/admin/AdminPushView.tsx",
+        "tests/front/avisar-clientes-letra-l.test.tsx"
+      ]
+    },
+    {
+      "nome": "avaliacoes-e-notificacoes",
+      "descricao": "L9: Avaliacoes e Notificacoes sem texto abaixo de 11px",
+      "posse": [
+        "src/views/admin/AdminReviewsView.tsx",
+        "src/views/admin/AdminNotificationsView.tsx",
+        "tests/front/avaliacoes-e-avisos-letra-l.test.tsx"
+      ]
+    },
+    {
+      "nome": "cupons",
+      "descricao": "L10: lista e formulario de cupons sem texto abaixo de 11px (a pilula de 6px e o bilhete com cuidado)",
+      "posse": [
+        "src/views/admin/AdminCouponFormView.tsx",
+        "src/views/admin/AdminCouponsView.tsx",
+        "tests/front/cupons-letra-l.test.tsx"
+      ]
+    },
+    {
+      "nome": "telas-sensiveis",
+      "descricao": "L11: telas de caminho sensivel (login, devolucoes, recibo, quem pode usar o cupom) so com texto de 10px para 11px; o revisor-risco confere que nada alem de classe mudou",
+      "posse": [
+        "src/views/admin/AdminLoginView.tsx",
+        "src/views/admin/AdminDevolucoesView.tsx",
+        "src/components/admin/devolucoes/AcoesDaDevolucao.tsx",
+        "src/components/admin/devolucoes/DetalheDaDevolucao.tsx",
+        "src/components/admin/devolucoes/SelosDaDevolucao.tsx",
+        "src/components/admin/devolucoes/CartaoDaDevolucao.tsx",
+        "src/components/admin/orders/OrderReceipt.tsx",
+        "src/components/admin/coupons/QuemPodeUsarOCupom.tsx",
+        "tests/front/telas-sensiveis-letra-l.test.tsx"
+      ]
+    }
+  ]
+}

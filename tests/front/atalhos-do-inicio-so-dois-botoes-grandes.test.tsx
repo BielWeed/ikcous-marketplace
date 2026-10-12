@@ -3,8 +3,8 @@
 // Pedido do Gabriel (Início, 27/09/2026): a fileira de ações rápidas
 // (Vender, Pedidos, Devoluções) saiu do Início — "Vender e Pedidos já estão
 // na barra de baixo; Devoluções tem que estar na tela de Pedidos, não ali"
-// (porta em AdminOrdersView.tsx via `BotaoDevolucoes`). Sobram só os dois
-// botões grandes (Dashboard CRM e Financeiro). Mesmo casco de
+// (porta em AdminOrdersView.tsx via `AtalhosDaAba`). Sobram só os dois
+// botões grandes (Relatórios e Financeiro). Mesmo casco de
 // admin-page-header.test.tsx: createRoot + act, sem mocks (componente puro).
 import { AtalhosDoInicio } from "@/components/admin/inicio/AtalhosDoInicio";
 import { type ReactNode, act } from "react";
@@ -34,14 +34,14 @@ afterEach(() => {
 });
 
 describe("AtalhosDoInicio — só os dois botões grandes", () => {
-  it("mostra Dashboard CRM e Financeiro, sem Vender/Pedidos/Devoluções", () => {
+  it("mostra Relatórios e Financeiro, sem Vender/Pedidos/Devoluções", () => {
     const onNavigate = vi.fn();
     const tela = montar(<AtalhosDoInicio onNavigate={onNavigate} />);
 
     const rotulos = Array.from(tela.querySelectorAll("button")).map(
       (b) => b.textContent,
     );
-    expect(rotulos.some((r) => r?.includes("Dashboard CRM"))).toBe(true);
+    expect(rotulos.some((r) => r?.includes("Relatórios"))).toBe(true);
     expect(rotulos.some((r) => r?.includes("Financeiro"))).toBe(true);
     expect(rotulos).toHaveLength(2);
 
@@ -50,13 +50,13 @@ describe("AtalhosDoInicio — só os dois botões grandes", () => {
     expect(tela.textContent).not.toContain("Devoluções");
   });
 
-  it("clicar em Dashboard CRM e Financeiro navega para os destinos certos", async () => {
+  it("clicar em Relatórios e Financeiro navega para os destinos certos", async () => {
     const onNavigate = vi.fn();
     const tela = montar(<AtalhosDoInicio onNavigate={onNavigate} />);
     const botoes = Array.from(tela.querySelectorAll("button"));
 
     await act(async () => {
-      botoes.find((b) => b.textContent?.includes("Dashboard CRM"))!.click();
+      botoes.find((b) => b.textContent?.includes("Relatórios"))!.click();
     });
     expect(onNavigate).toHaveBeenLastCalledWith("admin-crm");
 
@@ -64,5 +64,19 @@ describe("AtalhosDoInicio — só os dois botões grandes", () => {
       botoes.find((b) => b.textContent?.includes("Financeiro"))!.click();
     });
     expect(onNavigate).toHaveBeenLastCalledWith("admin-financeiro");
+  });
+});
+
+describe("AtalhosDoInicio — desenho novo (10/10/2026)", () => {
+  it("a descrição de cada botão tem 12px (`text-xs`), nunca 11px, e o botão mantém o alvo grande", () => {
+    const tela = montar(<AtalhosDoInicio onNavigate={vi.fn()} />);
+    for (const botao of Array.from(tela.querySelectorAll("button"))) {
+      const descricao = botao.querySelector("span.mt-0\\.5");
+      expect(descricao).not.toBeNull();
+      expect(descricao?.classList.contains("text-xs")).toBe(true);
+      expect(descricao?.className).not.toContain("text-[11px]");
+      expect(descricao?.className).toContain("text-zinc-400");
+      expect(botao.className).toContain("min-h-[88px]");
+    }
   });
 });

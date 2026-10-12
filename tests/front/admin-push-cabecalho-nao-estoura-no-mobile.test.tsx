@@ -140,7 +140,7 @@ describe("AdminPushView — cabeçalho e prévia não travam largura fixa no mob
 
     const h1 = hospedeiro.querySelector("h1");
     expect(h1).toBeTruthy();
-    expect(h1!.textContent).toContain("Enviar Notificações");
+    expect(h1!.textContent).toContain("Avisar clientes");
 
     // A linha que abraça o h1 (título, shrink-0) e o wrapper de `acoes`
     // (selo de status, também shrink-0, vindo do próprio AdminPageHeader)

@@ -381,9 +381,16 @@ describe("AdminOrdersView — selo 'Balcão' no card (C4.4)", () => {
 
     const selo = seloCanalDoCard();
     expect(selo).toBeTruthy();
-    const coluna = selo?.closest(".flex.flex-col.items-end");
-    expect(coluna).toBeTruthy();
-    expect(coluna?.children.length).toBe(2);
+    // Redesenho do card (07/10/2026): o selo de status e o de canal formam UMA
+    // fileira (status primeiro, canal depois) no topo do card, em vez da
+    // coluna `flex-col items-end` de antes. A decisão que importa continua a
+    // mesma: o selo de balcão não ganha linha própria — mora ao lado do
+    // status, com exatamente 2 peças, com ou sem venda de balcão.
+    const fileira = selo?.parentElement;
+    expect(fileira).toBeTruthy();
+    expect(fileira?.children.length).toBe(2);
+    expect(fileira?.children[1]).toBe(selo);
+    expect(fileira?.children[0]?.textContent?.trim().length).toBeGreaterThan(0);
   });
 });
 

@@ -1,0 +1,59 @@
+{
+  "plano": "painel-simples-onda-j2",
+  "frentes": [
+    {
+      "nome": "produtos-detalhado-sem-corte",
+      "descricao": "J2-A (ROTINA): o cartao do modo detalhado de Produtos nao esconde mais o preco nem o Potencial (altura fixa h-[440px] cortava 45-114px no celular e ate 280px a 1280px); nome em ate 2 linhas sem aumentar o corte",
+      "posse": [
+        "src/views/admin/AdminProductsView.tsx",
+        "tests/front/produtos-detalhado-nao-esconde-o-preco.test.tsx",
+        "tests/front/produtos-cabem-no-celular.test.tsx",
+        "tests/front/admin-products-esgotado.test.tsx",
+        "tests/front/admin-products-kpi-apos-mexer-no-catalogo.test.tsx",
+        "tests/front/admin-products-lucro-so-com-custo.test.tsx",
+        "tests/front/admin-products-margem-sem-custo.test.tsx",
+        "tests/front/admin-products-potencial-duas-casas-decimais.test.tsx",
+        "tests/front/estoque-baixo-um-limiar.test.ts"
+      ]
+    },
+    {
+      "nome": "metricas-sem-pulo",
+      "descricao": "J2-B (ROTINA): cartoes de metrica sem corte do rotulo a 1280px (Produtos), esqueleto com a altura do cartao real e barra de cima com altura reservada (sem o pulo de 11-28px), seta invisivel nao captura toque",
+      "posse": [
+        "src/components/admin/AdminKpiCarousel.tsx",
+        "tests/front/metricas-cabem-no-celular.test.tsx",
+        "tests/front/admin-kpi-carousel-compacto.test.tsx"
+      ]
+    },
+    {
+      "nome": "barra-solida",
+      "descricao": "J2-C (ROTINA): a barra inferior do celular fica realmente solida - o fundo a 95% com blur ainda deixa ler texto por baixo",
+      "posse": [
+        "src/components/layouts/AdminLayout.tsx",
+        "tests/front/barra-inferior-cobre-o-conteudo.test.tsx",
+        "tests/front/admin-barra-nao-mente-a-aba-do-pdv.test.tsx",
+        "tests/front/admin-barra-tem-nome-acessivel.test.tsx",
+        "tests/front/admin-layout-cracha-pedidos-pendentes.test.tsx"
+      ]
+    },
+    {
+      "nome": "clientes-e-ficha",
+      "descricao": "J2-D (ROTINA): Clientes com milhar pt-BR em 'Pedidos totais' e '30 dias' por extenso; ficha do cliente, aba Carrinho, sem rolagem lateral (blocos no celular), sem jargao ('Carrinho (Standby)', 'Identificador do Ativo', 'Densidade', 'Precificacao Base', 'Estimativa (BRL)', 'pre-checkout') e contagem coerente (produtos) entre a aba e o selo",
+      "posse": [
+        "src/views/admin/AdminCustomersView.tsx",
+        "src/views/admin/AdminUserDetailView.tsx",
+        "tests/front/clientes-cabem-no-celular.test.tsx",
+        "tests/front/ficha-do-cliente-carrinho-no-celular.test.tsx",
+        "tests/front/admin-customers-ordenacao-ltv-e-ajuda-honesta.test.tsx",
+        "tests/front/admin-customers-ticket-medio.test.tsx",
+        "tests/front/admin-customers-view-congelar-acesso-removido.test.tsx",
+        "tests/front/admin-ficha-cliente-abas.test.tsx",
+        "tests/front/admin-ficha-cliente-resumo.test.tsx",
+        "tests/front/admin-user-detail-pedidos-que-contam.test.tsx",
+        "tests/front/admin-user-detail-status-pending-traduzido.test.tsx",
+        "tests/front/painel-nao-mente-sobre-o-carrinho-da-cliente.test.tsx",
+        "tests/front/listas-falam-a-lingua-da-loja.test.tsx"
+      ]
+    }
+  ]
+}

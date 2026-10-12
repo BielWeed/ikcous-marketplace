@@ -49,6 +49,7 @@ import type {
 } from "@/components/admin/financeiro/navegacao";
 import { ContextoValoresOcultos } from "@/components/admin/financeiro/partes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import {
   ContextoDoCacheFinanceiro,
   useCategoriasFinanceiras,
@@ -70,13 +71,20 @@ interface AdminFinanceiroViewProps {
   onSetBackOverride?: (fn: (() => void) | null) => void;
 }
 
-const ABAS: readonly { valor: AbaDoFinanceiro; rotulo: string }[] = [
+// O `valor` é a chave da aba (o "dre" busca `fin_dre`); o `rotulo` é o que a
+// lojista lê. "Contas e categorias" é configuração: fica no fim, com o selo
+// "Avançado" (spec "Painel simples", §10).
+const ABAS: readonly {
+  valor: AbaDoFinanceiro;
+  rotulo: string;
+  avancado?: boolean;
+}[] = [
   { valor: "visao", rotulo: "Visão" },
   { valor: "extrato", rotulo: "Extrato" },
   { valor: "previstos", rotulo: "A pagar e receber" },
   { valor: "caixa", rotulo: "Caixa" },
-  { valor: "dre", rotulo: "DRE" },
-  { valor: "contas", rotulo: "Contas e categorias" },
+  { valor: "dre", rotulo: "Resultado" },
+  { valor: "contas", rotulo: "Contas e categorias", avancado: true },
 ];
 
 function ehAba(valor: string): valor is AbaDoFinanceiro {
@@ -294,10 +302,10 @@ export function AdminFinanceiroView({
   return (
     <ContextoDoCacheFinanceiro.Provider value={cache}>
       <ContextoValoresOcultos.Provider value={ocultos}>
-        <div className="pb-admin h-auto bg-[#09090b] text-white lg:pb-12">
+        <div className="pb-admin h-auto bg-admin-bg text-white lg:pb-12">
           <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
             <AdminPageHeader
-              titulo="Financeiro"
+              titulo={NOMES_DO_PAINEL["admin-financeiro"]}
               acoes={
                 <>
                   <button
@@ -348,6 +356,17 @@ export function AdminFinanceiroView({
                     className={CLASSE_ABA}
                   >
                     {item.rotulo}
+                    {item.avancado ? (
+                      <>
+                        {" "}
+                        <span
+                          data-selo-avancado=""
+                          className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold normal-case tracking-normal text-zinc-400"
+                        >
+                          Avançado
+                        </span>
+                      </>
+                    ) : null}
                   </TabsTrigger>
                 ))}
               </TabsList>

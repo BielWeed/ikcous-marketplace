@@ -7,9 +7,10 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useDevolucaoCliente } from "@/hooks/useDevolucaoCliente";
 import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
-import { useOrders } from "@/hooks/useOrders";
+import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
 import {
   type LinhaDevolucaoDoCliente,
@@ -53,6 +54,11 @@ interface OrderDetailsViewProps {
   orderId: string;
   onBack: () => void;
   onNavigate: (view: View) => void;
+  // Frente 10 (missão de pagamentos, 29/09/2026): retomada do pagamento a
+  // partir do card do pedido pendente. O checkout perde o `orderId` ao
+  // desmontar (useState) — sem esta porta, o cliente que sai antes de pagar
+  // não tem NENHUM caminho de volta à tela de pagamento.
+  onRetomarPagamento?: (orderId: string) => void;
 }
 
 const statusConfig: Record<
@@ -272,6 +278,7 @@ export function OrderDetailsView({
   orderId,
   onBack,
   onNavigate: _onNavigate,
+  onRetomarPagamento,
 }: OrderDetailsViewProps) {
   const { orders, fetchUserOrders, updateOrderStatus, reenviarComprovante } =
     useOrders(true, false);
@@ -358,6 +365,17 @@ export function OrderDetailsView({
       setOrder((prev) => (prev ? { ...prev, status: "cancelled" } : null));
     } catch (error) {
       console.error("Failed to cancel order:", error);
+      // S1 (04/10/2026): o pedido NÃO foi cancelado e o aviso já saiu (o
+      // hook mostrou o desfecho da edge). Pago no meio ou mudou: relê do
+      // servidor para a tela mostrar o estado de verdade (o pago aparece
+      // quando a confirmação do Mercado Pago chegar). Em análise e "tente de
+      // novo" não mudam nada na tela.
+      if (
+        error instanceof ErroCancelamentoNaoConcluido &&
+        (error.desfecho === "ja_pago" || error.desfecho === "mudou")
+      ) {
+        void loadOrder();
+      }
     } finally {
       setIsCancelling(false);
     }
@@ -493,7 +511,7 @@ export function OrderDetailsView({
   };
 
   const handleWhatsAppSupport = () => {
-    const message = `Olá! Tenho uma dúvida sobre meu pedido #${orderId.slice(0, 8)}.`;
+    const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
     let phone = (config.whatsappNumber || "").replace(/\D/g, "");
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
@@ -693,6 +711,30 @@ export function OrderDetailsView({
           )}
         </div>
 
+        {/* Frente 10 (29/09/2026): a porta de volta ao pagamento. Somente
+            pedido `pending` com pagamento `aguardando` (ou `recusado` —
+            cobrança morta: a edge cria outra com segurança quando a vaga
+            está livre; revisão da frente 10) e usuário logado (P6:
+            convidado não paga online) — pago/expirado/cancelado não têm o
+            que retomar (o texto do status já orienta o cliente nesses
+            casos). O servidor é quem decide o que é seguro: reconsulta e
+            devolve o MESMO QR se a cobrança vive, cria outra com chave nova
+            se a anterior morreu, e 409 terminal se o pedido não é mais
+            cobrável — nunca cobrança duplicada. */}
+        {order.status === "pending" &&
+          (paymentStatusKey(order.paymentStatus) === "aguardando" ||
+            paymentStatusKey(order.paymentStatus) === "recusado") &&
+          user &&
+          onRetomarPagamento && (
+            <button
+              onClick={() => onRetomarPagamento(order.id)}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-all active:scale-95"
+            >
+              <CreditCard className="size-4" aria-hidden="true" />
+              Retomar pagamento
+            </button>
+          )}
+
         {/* Chips: ID do pedido (copiável) e data */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <div
@@ -707,7 +749,7 @@ export function OrderDetailsView({
               }
             }}
           >
-            <span className="font-mono">#{order.id.slice(0, 8)}</span>
+            <span className="font-mono">#{numeroDoPedido(order.id)}</span>
             {/* Laudo Opus 07/09 (C2): `zinc-550` é token VIVO — o
                 tailwind.config.js define os tons intermediários
                 550/650/750/850 de propósito. */}
@@ -1358,6 +1400,7 @@ export function OrderDetailsView({
           horarioDaLoja={config.businessHours ?? null}
           solicitar={devolucaoDoProduto.solicitar}
           enviarFoto={devolucaoDoProduto.enviarFoto}
+          descartarFotos={devolucaoDoProduto.descartarFotos}
         />
       )}
 

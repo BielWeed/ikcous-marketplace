@@ -50,6 +50,8 @@ export interface DevolucaoDoCliente {
     dados: DadosDaSolicitacao,
   ) => Promise<Desfecho<ResultadoSolicitacao>>;
   enviarFoto: (arquivo: File, userId: string) => Promise<Desfecho<string>>;
+  /** Apaga fotos enviadas e não usadas (melhor esforço; nunca lança). */
+  descartarFotos: (caminhos: readonly string[]) => Promise<void>;
   cancelar: (id: string) => Promise<Desfecho>;
   informarEnvio: (id: string, codigo: string) => Promise<Desfecho>;
 }
@@ -214,6 +216,25 @@ export function useDevolucaoCliente(
     [orderId],
   );
 
+  /**
+   * Apaga do bucket as fotos que o cliente enviou e NÃO usou (tirou da lista,
+   * ou fechou a tela sem concluir). "O melhor possível": a política de DELETE
+   * do bucket (20261216) só deixa apagar foto da própria pasta que nenhuma
+   * devolução referencia, e qualquer falha aqui é ignorada — a limpeza nunca
+   * atrapalha o cliente.
+   */
+  const descartarFotos = useCallback(
+    async (caminhos: readonly string[]): Promise<void> => {
+      if (caminhos.length === 0) return;
+      try {
+        await supabase.storage.from("devolucoes").remove([...caminhos]);
+      } catch {
+        // melhor esforço
+      }
+    },
+    [],
+  );
+
   const cancelar = useCallback(
     async (id: string): Promise<Desfecho> => {
       try {
@@ -262,6 +283,7 @@ export function useDevolucaoCliente(
     recarregar: carregar,
     solicitar,
     enviarFoto,
+    descartarFotos,
     cancelar,
     informarEnvio,
   };

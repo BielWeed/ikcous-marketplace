@@ -247,6 +247,24 @@ export type Database = {
         };
         Relationships: [];
       };
+      avisos_ao_lojista: {
+        Row: {
+          chave: string;
+          enviado: boolean;
+          reservado_em: string;
+        };
+        Insert: {
+          chave: string;
+          enviado?: boolean;
+          reservado_em?: string;
+        };
+        Update: {
+          chave?: string;
+          enviado?: boolean;
+          reservado_em?: string;
+        };
+        Relationships: [];
+      };
       banners: {
         Row: {
           active: boolean | null;
@@ -412,9 +430,48 @@ export type Database = {
         };
         Relationships: [];
       };
+      contestacoes_decisao_final: {
+        Row: {
+          decidido_em: string;
+          decisao: string;
+          mp_chargeback_case_id: string;
+          mp_chargeback_id: string;
+          order_id: string;
+          origem: string;
+          valor_do_caso: number | null;
+        };
+        Insert: {
+          decidido_em?: string;
+          decisao: string;
+          mp_chargeback_case_id: string;
+          mp_chargeback_id: string;
+          order_id: string;
+          origem: string;
+          valor_do_caso?: number | null;
+        };
+        Update: {
+          decidido_em?: string;
+          decisao?: string;
+          mp_chargeback_case_id?: string;
+          mp_chargeback_id?: string;
+          order_id?: string;
+          origem?: string;
+          valor_do_caso?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "contestacoes_decisao_final_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       coupons: {
         Row: {
           active: boolean | null;
+          alcance: string;
           code: string;
           created_at: string;
           id: string;
@@ -422,12 +479,12 @@ export type Database = {
           type: string;
           usage_count: number | null;
           usage_limit: number | null;
-          used_count: number | null;
           valid_until: string | null;
           value: number;
         };
         Insert: {
           active?: boolean | null;
+          alcance?: string;
           code: string;
           created_at?: string;
           id?: string;
@@ -435,12 +492,12 @@ export type Database = {
           type: string;
           usage_count?: number | null;
           usage_limit?: number | null;
-          used_count?: number | null;
           valid_until?: string | null;
           value: number;
         };
         Update: {
           active?: boolean | null;
+          alcance?: string;
           code?: string;
           created_at?: string;
           id?: string;
@@ -448,11 +505,43 @@ export type Database = {
           type?: string;
           usage_count?: number | null;
           usage_limit?: number | null;
-          used_count?: number | null;
           valid_until?: string | null;
           value?: number;
         };
         Relationships: [];
+      };
+      cupom_clientes: {
+        Row: {
+          coupon_id: string;
+          criado_em: string;
+          user_id: string;
+        };
+        Insert: {
+          coupon_id: string;
+          criado_em?: string;
+          user_id: string;
+        };
+        Update: {
+          coupon_id?: string;
+          criado_em?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cupom_clientes_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cupom_clientes_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       devolucao_eventos: {
         Row: {
@@ -1297,12 +1386,17 @@ export type Database = {
           amount: number;
           concluido_em: string | null;
           created_at: string;
+          criada_sob_autorizacao: boolean | null;
           id: string;
           motivo: string | null;
+          mp_chargeback_case_id: string | null;
+          mp_chargeback_id: string | null;
+          mp_chargeback_valor_do_caso: number | null;
           mp_refund_id: string | null;
           mp_status: string | null;
           mp_status_detail: string | null;
           order_id: string;
+          post_autorizado_em: string | null;
           solicitado_por: string;
           status: string;
           tentativas: number;
@@ -1313,12 +1407,17 @@ export type Database = {
           amount: number;
           concluido_em?: string | null;
           created_at?: string;
+          criada_sob_autorizacao?: boolean | null;
           id?: string;
           motivo?: string | null;
+          mp_chargeback_case_id?: string | null;
+          mp_chargeback_id?: string | null;
+          mp_chargeback_valor_do_caso?: number | null;
           mp_refund_id?: string | null;
           mp_status?: string | null;
           mp_status_detail?: string | null;
           order_id: string;
+          post_autorizado_em?: string | null;
           solicitado_por: string;
           status?: string;
           tentativas?: number;
@@ -1329,12 +1428,17 @@ export type Database = {
           amount?: number;
           concluido_em?: string | null;
           created_at?: string;
+          criada_sob_autorizacao?: boolean | null;
           id?: string;
           motivo?: string | null;
+          mp_chargeback_case_id?: string | null;
+          mp_chargeback_id?: string | null;
+          mp_chargeback_valor_do_caso?: number | null;
           mp_refund_id?: string | null;
           mp_status?: string | null;
           mp_status_detail?: string | null;
           order_id?: string;
+          post_autorizado_em?: string | null;
           solicitado_por?: string;
           status?: string;
           tentativas?: number;
@@ -1437,6 +1541,41 @@ export type Database = {
             foreignKeyName: "otp_verifications_order_id_fkey";
             columns: ["order_id"];
             isOneToOne: false;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      pedido_cobranca_ao_cancelar: {
+        Row: {
+          cancelado_em: string;
+          gateway_payment_id: string | null;
+          metodo_online: string | null;
+          order_id: string;
+          payment_status: string | null;
+          tentativas: number;
+        };
+        Insert: {
+          cancelado_em?: string;
+          gateway_payment_id?: string | null;
+          metodo_online?: string | null;
+          order_id: string;
+          payment_status?: string | null;
+          tentativas: number;
+        };
+        Update: {
+          cancelado_em?: string;
+          gateway_payment_id?: string | null;
+          metodo_online?: string | null;
+          order_id?: string;
+          payment_status?: string | null;
+          tentativas?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pedido_cobranca_ao_cancelar_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: true;
             referencedRelation: "marketplace_orders";
             referencedColumns: ["id"];
           },
@@ -1852,6 +1991,32 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      reconciliacao_visitas: {
+        Row: {
+          cobranca_terminal: string | null;
+          order_id: string;
+          visitado_em: string;
+        };
+        Insert: {
+          cobranca_terminal?: string | null;
+          order_id: string;
+          visitado_em: string;
+        };
+        Update: {
+          cobranca_terminal?: string | null;
+          order_id?: string;
+          visitado_em?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reconciliacao_visitas_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: true;
+            referencedRelation: "marketplace_orders";
             referencedColumns: ["id"];
           },
         ];
@@ -2792,12 +2957,56 @@ export type Database = {
         };
         Returns: Json;
       };
+      admin_cupom_clientes: {
+        Args: { p_coupon_id: string };
+        Returns: {
+          email: string | null;
+          nome: string | null;
+          user_id: string;
+        }[];
+      };
+      admin_cupom_definir_clientes: {
+        Args: { p_clientes: string[]; p_coupon_id: string };
+        Returns: number;
+      };
+      cupons_do_checkout: {
+        Args: { p_subtotal: number };
+        Returns: {
+          aplica: boolean;
+          codigo: string;
+          desconto: number;
+          exclusivo: boolean;
+          falta: number;
+          minimo: number;
+          tipo: string;
+          valido_ate: string | null;
+          valor: number;
+        }[];
+      };
+      anular_venda_presencial: {
+        Args: { p_motivo: string; p_order_id: string };
+        Returns: Json;
+      };
       assinatura_da_loja_ler: {
         Args: never;
         Returns: Json;
       };
+      autorizar_post_do_estorno: {
+        Args: { p_refund_id: string; p_valor: number };
+        Returns: Json;
+      };
       cancelar_devolucao: {
         Args: { p_id: string };
+        Returns: Json;
+      };
+      cancelar_pedido_com_cobranca: {
+        Args: {
+          p_ator: string;
+          p_notes?: string;
+          p_order_id: string;
+          p_pagamento_esperado: string;
+          p_vaga_esperada: string;
+        };
         Returns: Json;
       };
       check_user_confirmation_status: {
@@ -2812,6 +3021,10 @@ export type Database = {
           p_refund_id: string;
         };
         Returns: Json;
+      };
+      confirmar_aviso_ao_lojista: {
+        Args: { p_chave: string };
+        Returns: boolean;
       };
       confirmar_pagamento: {
         Args: { p_order_id: string; p_payment_id: string; p_status: string };
@@ -3188,6 +3401,15 @@ export type Database = {
         Args: { p_email: string; p_otp: string };
         Returns: Json;
       };
+      get_orders_by_otp_v2: {
+        Args: {
+          p_email: string;
+          p_fragmento: string;
+          p_otp: string;
+          p_whatsapp: string;
+        };
+        Returns: Json;
+      };
       get_orders_by_whatsapp_v3: {
         Args: {
           p_customer_email: string;
@@ -3299,6 +3521,7 @@ export type Database = {
       };
       increment_helpful: { Args: { review_id: string }; Returns: undefined };
       is_admin: { Args: never; Returns: boolean };
+      is_admin_atual: { Args: never; Returns: boolean };
       informar_envio_devolucao: {
         Args: { p_codigo_rastreio: string; p_id: string };
         Returns: Json;
@@ -3311,6 +3534,7 @@ export type Database = {
         };
         Returns: boolean;
       };
+      liberar_aviso_ao_lojista: { Args: { p_chave: string }; Returns: boolean };
       liberar_cobranca_do_pedido: {
         Args: { p_gateway_payment_id?: string | null; p_order_id: string };
         Returns: boolean;
@@ -3318,6 +3542,14 @@ export type Database = {
       liberar_email_de_confirmacao: {
         Args: { p_order_id: string };
         Returns: undefined;
+      };
+      marcar_visitas_da_reconciliacao: {
+        Args: {
+          p_cobrancas_terminais?: string[];
+          p_terminais?: string[];
+          p_visitados: string[];
+        };
+        Returns: number;
       };
       pagamentos_a_reconciliar: {
         Args: never;
@@ -3329,6 +3561,21 @@ export type Database = {
       painel_inicio: {
         Args: never;
         Returns: Json;
+      };
+      pedido__mudar_status: {
+        Args: {
+          p_ator: string;
+          p_ator_admin: boolean;
+          p_new_status: string;
+          p_notes: string;
+          p_order_id: string;
+          p_pela_edge: boolean;
+        };
+        Returns: Json;
+      };
+      pedido__saldo_a_estornar: {
+        Args: { p_order_id: string };
+        Returns: number;
       };
       perfil_publico_avaliacoes: {
         Args: { p_autor: string };
@@ -3366,6 +3613,28 @@ export type Database = {
           p_proof_hash: string;
         };
         Returns: undefined;
+      };
+      registrar_contestacao_no_ledger: {
+        Args: {
+          p_case_id: string;
+          p_casos_na_order: number;
+          p_decisao: string;
+          p_mp_chargeback_id: string;
+          p_order_id: string;
+          p_valor_caso: number;
+          p_valor_estimado: number;
+        };
+        Returns: Json;
+      };
+      registrar_estorno_externo_do_mp: {
+        Args: {
+          p_mp_refund_id: string;
+          p_mp_status: string;
+          p_mp_status_detail: string;
+          p_order_id: string;
+          p_valor: number;
+        };
+        Returns: Json;
       };
       registrar_estorno_manual: { Args: { p_order_id: string }; Returns: Json };
       registrar_pagamento_recebido: {
@@ -3407,6 +3676,8 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: Json;
       };
+      reservar_aviso_ao_lojista: { Args: { p_chave: string }; Returns: string };
+      rls_admin_atual: { Args: never; Returns: boolean };
       salvar_config_pagamento_cartao: {
         Args: { p_credito: boolean; p_debito: boolean; p_parcelas_max: number };
         Returns: Json;
@@ -3467,6 +3738,7 @@ export type Database = {
         Returns: Json;
       };
       upsert_store_config: { Args: { config_json: Json }; Returns: Json };
+      vaga_do_cupom_presa: { Args: { p_code: string }; Returns: Json };
       validate_coupon_secure: {
         Args: { p_code: string; p_subtotal: number };
         Returns: {

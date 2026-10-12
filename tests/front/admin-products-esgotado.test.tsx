@@ -274,8 +274,9 @@ describe.each(["compact", "detailed"] as const)(
 
     /** A etiqueta de status é o único `Badge` (`[data-slot="badge"]`) cujo
      * texto é exatamente um dos três rótulos de status — distingue da
-     * etiqueta "Crítico" (estoque baixo) e "Sem Custo Cadastrado"/"Custo
-     * Suspeito", que só existem no cartão detalhado. */
+     * etiqueta "Crítico" (estoque baixo, nos dois modos desde a onda J) e de
+     * "Sem Custo Cadastrado"/"Custo Suspeito", que só existem no cartão
+     * detalhado. */
     function lerEtiquetaDeStatus(): string | null {
       const badges = [
         ...cartaoDoProduto().querySelectorAll('[data-slot="badge"]'),

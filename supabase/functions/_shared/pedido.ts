@@ -106,8 +106,33 @@ const ROTULO_DO_ONLINE = new Map<string, string>([
   ["debito", "Cartao de debito pelo site"],
 ]);
 
-export function rotuloDoPagamento(metodo: unknown, metodoOnline?: unknown): string {
+/**
+ * Venda de BALCAO (`canal` = "presencial"): o cliente pagou ali, na hora, e
+ * nada vai ser entregue — "Dinheiro na entrega" num e-mail de compra na loja
+ * era o defeito D3 (spec do balcao, 28/09/2026). Cada forma diz o que de fato
+ * aconteceu no caixa. Mesmo `Map` pelo mesmo motivo do `ROTULO_PAGAMENTO`.
+ */
+const ROTULO_PAGAMENTO_NO_BALCAO = new Map<string, string>([
+  ["cash", "Dinheiro"],
+  ["pix", "PIX"],
+  ["card", "Cartao na maquininha"],
+]);
+
+/**
+ * `canal` e' opcional de proposito: os chamadores que nao o passam
+ * (`send-order-whatsapp`, hoje) continuam com o texto de sempre. So' o valor
+ * exato "presencial" muda o texto — mesmo contrato do `htmlDoPedido`.
+ */
+export function rotuloDoPagamento(
+  metodo: unknown,
+  metodoOnline?: unknown,
+  canal?: unknown,
+): string {
   const chave = String(metodo ?? "").toLowerCase();
+  if (canal === "presencial") {
+    const noBalcao = ROTULO_PAGAMENTO_NO_BALCAO.get(chave);
+    if (noBalcao !== undefined) return noBalcao;
+  }
   if (chave === "online" && metodoOnline !== undefined && metodoOnline !== null && metodoOnline !== "") {
     return ROTULO_DO_ONLINE.get(String(metodoOnline).toLowerCase()) ?? "Pagamento pelo site";
   }

@@ -3,11 +3,17 @@
 // Tarefa mp-9 (16/09/2026) — a MESMA tela de Ajustes mostrava DOIS estados
 // do PIX depois de mexer no interruptor "Receber PIX no app".
 //
+// 30/09/2026 (liberação automática): o interruptor deixou de existir. O que
+// muda o estado do PIX agora é SALVAR/TESTAR (o servidor liga sozinho quando
+// as três chaves e o teste passam), PAUSAR e RETOMAR — os três ecoam para o
+// painel pelo mesmo `onPixAlternado`, e é isso que os P1/P2/P4 provam.
+//
 // O que acontecia: `pagamentoOnlineLigado()` é o retrato SÍNCRONO da ficha
 // injetada no BOOT da página; o interruptor da seção Mercado Pago escreve
 // `store_config.pagamento_online` pela edge. Sem eco entre os dois, o tile
 // "Pagamento" do painel "Como está sua loja", o subtítulo "PIX: …" e o
-// termômetro de "Minha loja está no ar?" continuavam com o valor ANTIGO até
+// termômetro (hoje no topo de Pagamentos, o único status do PIX desde H6)
+// continuavam com o valor ANTIGO até
 // um recarregamento completo — enquanto a própria seção já dizia ao lojista
 // "Pronto. A vitrine passa a refletir em até 1 minuto".
 //
@@ -16,8 +22,10 @@
 //       para o painel — sem clicar em nada. Sem isso, um boot desatualizado
 //       (a ficha mudou por fora entre o boot da página e abrir esta seção)
 //       deixava o painel MENTINDO até o lojista mexer no interruptor.
-//   P1  ligar o interruptor acende o painel inteiro na mesma sessão;
-//   P2  desligar apaga o painel inteiro na mesma sessão;
+//   P1  salvar as chaves (o servidor liga sozinho) acende o painel inteiro
+//       na mesma sessão;
+//   P2  Pausar apaga o painel inteiro na mesma sessão;
+//   P4  Retomar acende o painel inteiro de novo;
 //   P3  salvar uma credencial NOVA (a edge devolve `pix_desligado`) também
 //       apaga o painel — o servidor desligou o PIX, a tela não pode seguir
 //       dizendo "Funcionando".
@@ -130,6 +138,8 @@ const CONFIGURADO = {
   atualizado_em: new Date().toISOString(),
   pix_ligado: false,
   public_key_na_loja: true,
+  faltando: [] as string[],
+  pausado: false,
 };
 
 describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", () => {
@@ -159,8 +169,18 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     }));
     chamadas.length = 0;
     cenario.salvo = { ...CONFIGURADO };
-    cenario.respostaLigar = { pix_ligado: true };
-    cenario.respostaDesligar = { pix_ligado: false };
+    cenario.respostaLigar = {
+      pix_ligado: true,
+      pausado: false,
+      faltando: [],
+      public_key_na_loja: true,
+    };
+    cenario.respostaDesligar = {
+      pix_ligado: false,
+      pausado: true,
+      faltando: [],
+      public_key_na_loja: true,
+    };
     cenario.respostaSalvar = { ...CONFIGURADO };
     mockFlags.pagamentoOnlineLigado.mockReturnValue(false);
     mockChave.chavePublicaMercadoPago.mockReturnValue(PUBLICA_FALSA);
@@ -198,17 +218,8 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     await assentar();
   }
 
-  function interruptorDoPix(): HTMLButtonElement {
-    const alvo = hospedeiro.querySelector(
-      '[role="switch"][aria-label="Receber PIX no app"]',
-    );
-    if (!alvo)
-      throw new Error('O interruptor "Receber PIX no app" não está na tela.');
-    return alvo as HTMLButtonElement;
-  }
-
-  /** Abre Pagamentos > Mercado Pago > Suas chaves, onde mora o interruptor. */
-  async function abrirOInterruptor() {
+  /** Abre Pagamentos > Mercado Pago > Suas chaves, onde mora o estado do recebimento pelo app. */
+  async function abrirOEstadoDoPix() {
     const { AdminSettingsView } = await import(
       "@/views/admin/AdminSettingsView"
     );
@@ -220,13 +231,21 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     // A seção é lazy: espera o import dinâmico assentar antes de procurar
     // o expansor interno.
     await assentar();
-    await clicar(botaoPorTexto("Suas chaves"));
+    // Abrir, não alternar: com pendência a camada já abre sozinha (H6).
+    const chaves = botaoPorTexto("Suas chaves");
+    if (chaves.getAttribute("aria-expanded") !== "true") await clicar(chaves);
   }
 
-  /** O termômetro mora dentro do porão "Minha loja está no ar?", que nasce
-   * fechado (decisão do dono, 02/09) e só monta ao abrir. */
-  async function abrirOTermometro() {
-    await clicar(botaoPorTexto("Minha loja está no ar?"));
+  /** O termômetro mora no TOPO do grupo Pagamentos desde H6 (painel simples:
+   * o único status do PIX da tela) — antes ficava no porão "Minha loja está
+   * no ar?" e se repetia no subtítulo "PIX: …" dele. Devolve o texto da
+   * linha do termômetro (rótulo do nível incluso). */
+  function termometro(): string {
+    const linha = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Pagamento online (PIX)"),
+    );
+    if (!linha) throw new Error("O termômetro do PIX não está na tela.");
+    return linha.textContent ?? "";
   }
 
   it("P0 — abrir a seção com o boot desatualizado corrige o painel pelo que o `ler` devolveu, sem clicar em nada", async () => {
@@ -238,10 +257,10 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     // problema que este arquivo inteiro existe para fechar.
     mockFlags.pagamentoOnlineLigado.mockReturnValue(true);
     cenario.salvo = { ...CONFIGURADO, pix_ligado: false };
-    await abrirOInterruptor();
+    await abrirOEstadoDoPix();
 
-    expect(hospedeiro.textContent).toContain("PIX: Desligado");
-    expect(hospedeiro.textContent).not.toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Desligado");
+    expect(termometro()).not.toContain("Funcionando");
   });
 
   it("P0b — abrir a seção com o PIX ligado mas a Public Key ausente da ficha NÃO acende o painel (achado BLOQUEIA da revisão)", async () => {
@@ -260,49 +279,59 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
       pix_ligado: true,
       public_key_na_loja: false,
     };
-    await abrirOInterruptor();
+    await abrirOEstadoDoPix();
 
-    expect(hospedeiro.textContent).toContain("PIX: Chave ausente");
-    expect(hospedeiro.textContent).not.toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Chave ausente");
+    expect(termometro()).not.toContain("Funcionando");
   });
 
-  it("P1 — ligar o interruptor acende o painel inteiro na mesma sessão", async () => {
-    await abrirOInterruptor();
+  it("P1 — salvar as chaves (o servidor liga sozinho) acende o painel inteiro na mesma sessão", async () => {
+    cenario.respostaSalvar = {
+      ...CONFIGURADO,
+      pix_ligado: true,
+      ultimo_teste: CONECTADO,
+    };
+    await abrirOEstadoDoPix();
 
     // Retrato do boot: a ficha injetada diz desligado.
-    expect(hospedeiro.textContent).toContain("PIX: Desligado");
+    expect(termometro()).toContain("Desligado");
 
-    await clicar(interruptorDoPix());
+    await clicar(botaoPorTexto("Salvar chaves"));
 
-    expect(chamadas.some((c) => c.corpo.acao === "ligar_pix")).toBe(true);
-    expect(hospedeiro.textContent).toContain("PIX: Funcionando");
-    expect(hospedeiro.textContent).not.toContain("PIX: Desligado");
+    expect(chamadas.some((c) => c.corpo.acao === "salvar")).toBe(true);
+    expect(termometro()).toContain("Funcionando");
+    expect(termometro()).not.toContain("Desligado");
 
-    await abrirOTermometro();
-    const termometro = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Pagamento online (PIX)"),
-    );
-    expect(termometro?.textContent).toContain("Funcionando");
+    // Um status do PIX só (H6): nenhum outro lugar da tela repete o rótulo.
+    expect(hospedeiro.textContent?.match(/Funcionando/g)).toHaveLength(1);
   });
 
-  it("P2 — desligar o interruptor apaga o painel inteiro na mesma sessão", async () => {
+  it("P2 — Pausar apaga o painel inteiro na mesma sessão", async () => {
     mockFlags.pagamentoOnlineLigado.mockReturnValue(true);
     cenario.salvo = { ...CONFIGURADO, pix_ligado: true };
-    await abrirOInterruptor();
+    await abrirOEstadoDoPix();
 
-    expect(hospedeiro.textContent).toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Funcionando");
 
-    await clicar(interruptorDoPix());
+    await clicar(botaoPorTexto("Pausar"));
 
     expect(chamadas.some((c) => c.corpo.acao === "desligar_pix")).toBe(true);
-    expect(hospedeiro.textContent).toContain("PIX: Desligado");
-    expect(hospedeiro.textContent).not.toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Desligado");
+    expect(termometro()).not.toContain("Funcionando");
 
-    await abrirOTermometro();
-    const termometro = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Pagamento online (PIX)"),
-    );
-    expect(termometro?.textContent).toContain("Desligado");
+    expect(hospedeiro.textContent?.match(/Desligado/g)).toHaveLength(1);
+  });
+
+  it("P4 — Retomar acende o painel inteiro de novo", async () => {
+    cenario.salvo = { ...CONFIGURADO, pausado: true };
+    await abrirOEstadoDoPix();
+
+    expect(termometro()).toContain("Desligado");
+
+    await clicar(botaoPorTexto("Retomar"));
+
+    expect(chamadas.some((c) => c.corpo.acao === "ligar_pix")).toBe(true);
+    expect(termometro()).toContain("Funcionando");
   });
 
   it("P3 — salvar credencial nova (pix_desligado da edge) também apaga o painel", async () => {
@@ -313,17 +342,18 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
       pix_ligado: false,
       ultimo_teste: null,
       pix_desligado: true,
+      faltando: ["teste"],
       aviso:
-        "Desliguei o PIX no app: teste a conexão com a credencial nova e ligue de novo.",
+        "Desliguei o pagamento pelo app: o teste de conexão com as chaves novas não passou. Confira o Access Token e salve de novo.",
     };
-    await abrirOInterruptor();
+    await abrirOEstadoDoPix();
 
-    expect(hospedeiro.textContent).toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Funcionando");
 
     await clicar(botaoPorTexto("Salvar chaves"));
 
     expect(chamadas.some((c) => c.corpo.acao === "salvar")).toBe(true);
-    expect(hospedeiro.textContent).toContain("PIX: Desligado");
-    expect(hospedeiro.textContent).toContain("Desliguei o PIX no app");
+    expect(termometro()).toContain("Desligado");
+    expect(hospedeiro.textContent).toContain("Desliguei o pagamento pelo app");
   });
 });

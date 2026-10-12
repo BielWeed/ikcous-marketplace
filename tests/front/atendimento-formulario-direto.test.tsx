@@ -11,8 +11,17 @@
 //   • campo vazio continua salvando NULL (o botão de WhatsApp some da loja);
 //   • os 30 modelos prontos continuam preenchendo o editor com as tags
 //     🏷️/💰/🔗;
+//   • (A1, 09/10) o bloco "Horário de atendimento" virou leitura: sem campo e
+//     sem `businessHours` no payload de salvar;
 //   • o campo de telefone vira type="tel" com rótulo clicável, como manda a
 //     qualidade de interface da direção B.
+//
+// ATUALIZAÇÃO do painel simples (D9/D11, 09/10/2026): a tela "Atendimento" foi
+// apagada; o WhatsApp e a mensagem viraram o bloco Contato de Minha loja
+// (`ContatoDaLoja`). O horário saiu daqui por inteiro (o editor único é o
+// BusinessHoursSection, em Minha loja), então o bloco "Horário de atendimento"
+// de leitura não existe mais; o resto do contrato segue de pé. O Salvar é
+// próprio do bloco ("Salvar contato") e só liga com alteração.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +29,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const updateConfig = vi.fn(async () => true);
 const { mockConfig } = vi.hoisted(() => ({
   mockConfig: {
-    whatsappNumber: "",
+    whatsappNumber: "5534999998888",
     businessHours: "",
     shareText: "Confira [nome] por [preco]: [link]",
   },
@@ -47,7 +56,7 @@ function esperar(ms = 0): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-describe("Atendimento — formulário direto (direção B)", () => {
+describe("Minha loja › Contato — formulário direto (direção B)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -67,41 +76,34 @@ describe("Atendimento — formulário direto (direção B)", () => {
   });
 
   async function abrirTela() {
-    const { AdminWhatsAppConfigView } = await import(
-      "@/views/admin/AdminWhatsAppConfigView"
+    const { ContatoDaLoja } = await import(
+      "@/components/admin/minha-loja/ContatoDaLoja"
     );
     await act(async () => {
-      raiz.render(<AdminWhatsAppConfigView active />);
+      raiz.render(<ContatoDaLoja />);
     });
     await act(async () => {
       await esperar(50);
     });
   }
 
-  it("os três blocos numerados nascem à vista, sem controle de colapso", async () => {
+  it("os dois blocos nascem à vista, sem controle de colapso", async () => {
     await abrirTela();
 
-    // Três blocos, nesta ordem, com a medalha do número de cada um.
-    const blocos = [
-      ...hospedeiro.querySelectorAll<HTMLElement>("section[aria-labelledby]"),
-    ];
-    expect(blocos.map((b) => b.querySelector("h2")?.textContent)).toEqual([
-      "WhatsApp da loja",
-      "Horário de atendimento",
-      "Mensagem de compartilhamento",
-    ]);
+    // Dois blocos, nesta ordem (o horário saiu: é de BusinessHoursSection).
     expect(
-      blocos.map((b) => b.querySelector("[data-numero]")?.textContent),
-    ).toEqual(["1", "2", "3"]);
+      [...hospedeiro.querySelectorAll("h3")].map((h) => h.textContent),
+    ).toEqual(["WhatsApp da loja", "Mensagem de compartilhamento"]);
 
-    // Zero controle de colapso: nenhum botão de seção nesta tela.
+    // Zero controle de colapso: nenhum botão de seção aqui.
     expect(hospedeiro.querySelectorAll("button[aria-expanded]")).toHaveLength(
       0,
     );
 
     // Tudo à vista de uma vez — nada escondido atrás de clique.
     expect(hospedeiro.querySelector("#settings-whatsapp")).not.toBeNull();
-    expect(hospedeiro.querySelector("#settings-business-hours")).not.toBeNull();
+    // O horário não é editado aqui (A1): sem campo.
+    expect(hospedeiro.querySelector("#settings-business-hours")).toBeNull();
     expect(
       hospedeiro.querySelector("#settings-share-message-editor"),
     ).not.toBeNull();
@@ -111,12 +113,12 @@ describe("Atendimento — formulário direto (direção B)", () => {
     expect(texto).not.toContain("Formato e Protocolo");
     expect(texto).toContain("botão de WhatsApp some da loja");
 
-    // O botão Salvar continua na linha do título.
-    expect(
-      [...hospedeiro.querySelectorAll("button")].find((b) =>
-        (b.textContent ?? "").includes("Salvar"),
-      ),
-    ).toBeTruthy();
+    // O botão Salvar do bloco existe (desligado enquanto nada mudou).
+    const salvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes("Salvar"),
+    ) as HTMLButtonElement;
+    expect(salvar).toBeTruthy();
+    expect(salvar.disabled).toBe(true);
   });
 
   it("campo de telefone é tel com autocomplete e rótulo clicável", async () => {
@@ -179,6 +181,22 @@ describe("Atendimento — formulário direto (direção B)", () => {
   it("campo vazio continua salvando NULL (o botão de WhatsApp some da loja)", async () => {
     await abrirTela();
 
+    const campo = hospedeiro.querySelector(
+      "#settings-whatsapp",
+    ) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    await act(async () => {
+      campo.focus();
+      setter.call(campo, "");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await esperar(500); // flush do LocalBufferedInput (350 ms)
+    });
+
     const salvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
       (b.textContent ?? "").includes("Salvar"),
     ) as HTMLButtonElement;
@@ -189,10 +207,13 @@ describe("Atendimento — formulário direto (direção B)", () => {
       await esperar(50);
     });
 
-    expect(updateConfig).toHaveBeenCalledWith({
-      whatsappNumber: null,
-      businessHours: null,
-      shareText: "Confira [nome] por [preco]: [link]",
-    });
+    // Sem `businessHours` no payload (A1): salvar aqui nunca toca o horário.
+    expect(updateConfig).toHaveBeenCalledWith(
+      {
+        whatsappNumber: null,
+        shareText: "Confira [nome] por [preco]: [link]",
+      },
+      { silentSuccess: true },
+    );
   });
 });

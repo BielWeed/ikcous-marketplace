@@ -10,6 +10,12 @@
 // `vendaPodeSerRegistrada`/`subtotalDaVenda`/`totalDaVenda` vêm de
 // `useVendaPresencial` (C3.1) — a MESMA conta que o hook usa, para não haver
 // duas contas divergentes (regra da própria tarefa C3.1).
+//
+// PASSO "Conferi o pagamento no app do banco" (decisão do dono, 08/10/2026,
+// defeito D1 da investigação do balcão): PIX combinado e cartão na maquininha
+// gravavam a venda como PAGA no clique, sem ninguém olhar se o dinheiro tinha
+// entrado. Agora o botão só habilita depois da caixinha. É trava de TELA, não
+// fato da venda: mora em estado local, não vai ao rascunho nem ao servidor.
 
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Button } from "@/components/ui/button";
@@ -65,6 +71,15 @@ const FORMAS_DE_PAGAMENTO: readonly {
   { valor: "card", rotulo: "Cartão na maquininha", Icone: CreditCard },
 ];
 
+// Só as formas em que o dinheiro NÃO passa pela mão da loja precisam da
+// conferência: o dinheiro vivo se confere ao contar a nota.
+const FORMAS_QUE_PEDEM_CONFERENCIA: readonly FormaDePagamentoDoBalcao[] = [
+  "pix",
+  "card",
+];
+
+const ROTULO_DA_CONFERENCIA = "Conferi o pagamento no app do banco";
+
 export function FechamentoDaVenda({
   estado,
   despachar,
@@ -101,13 +116,39 @@ export function FechamentoDaVenda({
   const subtotal = subtotalDaVenda(estado.itens);
   const total = totalDaVenda(estado);
   const validacao = vendaPodeSerRegistrada(estado);
+
+  // A conferência vale para UMA forma e UM total (o que foi conferido no app
+  // foi aquele valor, por aquela forma). Guarda o par, e só conta como
+  // marcada enquanto os dois ainda forem os da hora da marcação — assim
+  // nunca existe um render em que a marca velha destrava o botão. O efeito
+  // abaixo apaga o par ao mudar, para que VOLTAR à forma (ou ao total)
+  // anterior não ressuscite a marca.
+  const [conferido, setConferido] = useState<{
+    readonly pagamento: FormaDePagamentoDoBalcao;
+    readonly total: number;
+  } | null>(null);
+  useEffect(() => {
+    setConferido(null);
+  }, [estado.pagamento, total]);
+  const pedeConferencia =
+    estado.pagamento !== null &&
+    FORMAS_QUE_PEDEM_CONFERENCIA.includes(estado.pagamento);
+  const conferiu =
+    conferido !== null &&
+    conferido.pagamento === estado.pagamento &&
+    conferido.total === total;
   // Com uma falha que NÃO convida a tentar de novo (23505: chave já
   // queimada; 42501: sem permissão), reenviar o MESMO clique só repete a
   // mesma recusa — o botão fica desabilitado e a saída passa a ser
   // "Começar uma venda nova" (chave nova) ou entrar de novo na conta.
   const podeTentarDeNovo = ultimaFalha?.podeTentarDeNovo ?? true;
+  const faltaConferir = pedeConferencia && !conferiu;
   const desabilitado =
-    !validacao.ok || estado.enviando || isOffline || !podeTentarDeNovo;
+    !validacao.ok ||
+    estado.enviando ||
+    isOffline ||
+    !podeTentarDeNovo ||
+    faltaConferir;
 
   function atualizarDesconto(descontoTexto: string, motivo: string): void {
     const valor = descontoTexto.trim() === "" ? 0 : Number(descontoTexto);
@@ -168,6 +209,39 @@ export function FechamentoDaVenda({
           </button>
         ))}
       </div>
+
+      {pedeConferencia && estado.pagamento !== null && (
+        <div className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+          <input
+            id="conferi-o-pagamento"
+            type="checkbox"
+            checked={conferiu}
+            aria-describedby="conferi-o-pagamento-ajuda"
+            onChange={(e) =>
+              setConferido(
+                e.target.checked && estado.pagamento !== null
+                  ? { pagamento: estado.pagamento, total }
+                  : null,
+              )
+            }
+            className="mt-0.5 size-5 shrink-0 accent-admin-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-admin-gold"
+          />
+          <div className="flex flex-col gap-0.5">
+            <label
+              htmlFor="conferi-o-pagamento"
+              className="text-sm font-semibold text-white"
+            >
+              {ROTULO_DA_CONFERENCIA}
+            </label>
+            <p id="conferi-o-pagamento-ajuda" className="text-xs text-zinc-400">
+              {estado.pagamento === "pix"
+                ? "Abra o app do banco e veja o PIX de R$ "
+                : "Abra o app do banco ou da maquininha e veja o pagamento de R$ "}
+              {reais(total)} entrar antes de registrar.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <label
@@ -240,6 +314,13 @@ export function FechamentoDaVenda({
         <p className="flex items-center gap-2 text-xs text-amber-400">
           <AlertTriangle className="size-3.5 shrink-0" />
           {validacao.motivo}
+        </p>
+      )}
+
+      {!isOffline && validacao.ok && faltaConferir && (
+        <p className="flex items-center gap-2 text-xs text-amber-400">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          Marque &quot;{ROTULO_DA_CONFERENCIA}&quot; para registrar.
         </p>
       )}
 

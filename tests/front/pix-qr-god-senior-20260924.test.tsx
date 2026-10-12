@@ -19,6 +19,7 @@ import {
   type CategoriaErroPagamento,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { formatCurrency } from "@/lib/utils";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -209,7 +210,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain(formatCurrency(129.9));
-    expect(texto).toContain(`Pedido #${ORDER_ID.slice(0, 8)}`);
+    expect(texto).toContain(`Pedido #${numeroDoPedido(ORDER_ID)}`);
     expect(texto).toContain("Código copia e cola");
     expect(texto).toContain("Abra o app do seu banco");
     expect(texto).toContain("Prazo informado: até");

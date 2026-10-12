@@ -485,7 +485,7 @@ export function CupomDaVenda({
           className="flex items-center gap-2 text-xs font-semibold text-zinc-400"
         >
           <Search className="size-3.5" />
-          Buscar produto por nome ou SKU (sem código de barras)
+          Buscar produto por nome ou código interno (sem código de barras)
         </label>
         <LocalBufferedInput
           id="busca-manual-de-produto"

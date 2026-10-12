@@ -15,6 +15,13 @@ import {
   descreveMotivoDeRecarga,
   limpaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
+import {
+  PRAZO_DA_SESSAO_NA_RECARGA_MS,
+  esquecerPedidoPendenteDoCheckout,
+  esquecerTodosOsPedidosPendentesDoCheckout,
+  existeAlgumPedidoPendenteDoCheckout,
+  lerPedidoPendenteDoCheckout,
+} from "@/lib/pedido-pendente-do-checkout";
 
 // Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
 // fora dele (runner de teste), o app segue de pé.
@@ -183,6 +190,7 @@ import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import { useCartActions, useCartState } from "@/hooks/useCart";
 import type { Product, SortOption, View } from "@/types";
 import { haptic } from "@/utils/haptic";
+import { destinoDoPopstate } from "@/utils/volta-do-navegador-no-painel";
 
 // F1 "loja abre mais rápido" (frente glm-perf-1paint-0309, 04/09/2026):
 // Header, BottomNav e CartReminder usam framer-motion e eram importados
@@ -414,25 +422,25 @@ const getNavigationDirection = (
   const adminViewIndices: Record<string, number> = {
     admin: 0,
     "admin-dashboard": 0,
-    "admin-push": 0.5,
+    "admin-push": 3.3,
     "admin-notifications": 0.3,
     "admin-orders": 1,
     "admin-pdv": 1.2,
     "admin-crm": 0.1,
     "admin-financeiro": 0.2,
     "admin-devolucoes": 1.1,
-    "admin-reviews": 1.4,
-    "admin-qa": 1.6,
+    "admin-reviews": 3.1,
+    "admin-qa": 3.2,
     "admin-products": 2,
     "admin-product-form": 2.4,
     "admin-coupons": 2.5,
     "admin-coupon-form": 2.52,
     "admin-banners": 2.6,
     "admin-carousels": 2.62,
-    "admin-shipping": 2.7,
-    "admin-shipping-national": 2.72,
+    "admin-shipping": 4.3,
+    "admin-shipping-national": 4.32,
     "admin-customers": 3,
-    "admin-whatsapp-config": 3.4,
+    "admin-whatsapp-config": 4.25,
     "admin-about-store": 4.2,
     "admin-user-detail": 3.5,
     "admin-settings": 4,
@@ -533,6 +541,95 @@ const AppContent = () => {
     newScroll: 0,
   });
   const [transitionSpacerHeight, setTransitionSpacerHeight] = useState(0);
+  // Frente 10 (missão de pagamentos, 29/09/2026): id do pedido cujo pagamento
+  // está sendo RETOMADO a partir do card do pedido (OrderDetailsView). Sem
+  // isto, o `orderId` do checkout morria com o `useState` da view desmontada
+  // e o cliente que saiu antes de pagar não tinha volta. Limpo em TODA
+  // navegação (handleNavigate, 4º param) exceto quando a própria retomada
+  // o define — carrinho→checkout nunca herda uma retomada velha.
+  const [checkoutRetomadaId, setCheckoutRetomadaId] = useState<string | null>(
+    null,
+  );
+  // Recarga (04/10/2026): o PIX pendente sobrevive ao F5. O CheckoutView
+  // guarda SÓ o id do pedido em pagamento no `sessionStorage`, por usuário
+  // (src/lib/pedido-pendente-do-checkout.ts); a página CARREGADA já em
+  // /checkout devolve esse id como retomada — o MESMO caminho do "Retomar
+  // pagamento" do card, com `retomadaDaRecarga` para o CheckoutView
+  // descartar calado o que não for pedido online pendente deste cliente.
+  const [retomadaDaRecarga, setRetomadaDaRecarga] = useState(false);
+  // Lido uma vez, na montagem: é a URL da CARGA da página, não a de agora.
+  const [cargaNoCheckout] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      globalThis.location.pathname.replace(/\/$/, "") === "/checkout",
+  );
+  // Até o App decidir (sessão conhecida), o checkout da carga não monta —
+  // senão um checkout de carrinho vazio montaria antes da retomada.
+  const [recargaDoCheckoutDecidida, setRecargaDoCheckoutDecidida] =
+    useState(false);
+  // O cliente navegou antes da decisão: a carga deixou de ser "o F5 no
+  // checkout", e nada é restaurado por cima da navegação dele.
+  const navegouAntesDaRecargaRef = useRef(false);
+  const idDoUsuarioDaRecarga = user?.id;
+  // Sessão ATRASADA (rede lenta: o `getSession` perde a corrida de 3 s do
+  // AuthContext e a sessão chega depois): carga em /checkout COM registro na
+  // aba e SEM usuário ainda não é "não há pedido" — é "não sei de quem é o
+  // registro". O App espera a sessão (o estado do AuthContext, sem sondagem)
+  // por no máximo PRAZO_DA_SESSAO_NA_RECARGA_MS; vencido, o checkout abre
+  // como hoje, sem retomada e SEM apagar o registro. Sem registro na carga,
+  // nada espera: o caminho normal não ganha nenhum quadro em branco a mais.
+  const [haRegistroNaCarga] = useState(
+    () => cargaNoCheckout && existeAlgumPedidoPendenteDoCheckout(),
+  );
+  const [prazoDaSessaoVencido, setPrazoDaSessaoVencido] = useState(false);
+  const aguardaASessaoDaRecarga =
+    haRegistroNaCarga && !idDoUsuarioDaRecarga && !prazoDaSessaoVencido;
+  useEffect(() => {
+    if (!aguardaASessaoDaRecarga || recargaDoCheckoutDecidida) return;
+    const relogio = setTimeout(
+      () => setPrazoDaSessaoVencido(true),
+      PRAZO_DA_SESSAO_NA_RECARGA_MS,
+    );
+    return () => clearTimeout(relogio);
+  }, [aguardaASessaoDaRecarga, recargaDoCheckoutDecidida]);
+  useEffect(() => {
+    if (recargaDoCheckoutDecidida || authLoading) return;
+    if (aguardaASessaoDaRecarga) return;
+    // Só o dono do registro o lê (a chave tem o id dele); visitante não tem
+    // pedido online. Nada aqui decide se o pedido ainda é cobrável: isso é
+    // a leitura do pedido no CheckoutView, sob RLS, antes de montar nada.
+    const pedido =
+      cargaNoCheckout &&
+      idDoUsuarioDaRecarga &&
+      !navegouAntesDaRecargaRef.current
+        ? lerPedidoPendenteDoCheckout(idDoUsuarioDaRecarga)
+        : null;
+    if (pedido) {
+      setCheckoutRetomadaId(pedido);
+      setRetomadaDaRecarga(true);
+    } else if (!cargaNoCheckout) {
+      // A página carregou FORA do checkout: um registro que sobrou na aba
+      // não tem mais tela para voltar.
+      esquecerTodosOsPedidosPendentesDoCheckout();
+    }
+    setRecargaDoCheckoutDecidida(true);
+  }, [
+    recargaDoCheckoutDecidida,
+    authLoading,
+    aguardaASessaoDaRecarga,
+    cargaNoCheckout,
+    idDoUsuarioDaRecarga,
+  ]);
+  // Troca DIRETA de conta na mesma aba (A → B sem SIGNED_OUT no meio — o
+  // logout já limpa pelo AuthContext): o registro de A sai junto com A.
+  const usuarioAnteriorDaRecargaRef = useRef(idDoUsuarioDaRecarga);
+  useEffect(() => {
+    const anterior = usuarioAnteriorDaRecargaRef.current;
+    usuarioAnteriorDaRecargaRef.current = idDoUsuarioDaRecarga;
+    if (anterior && anterior !== idDoUsuarioDaRecarga) {
+      esquecerPedidoPendenteDoCheckout(anterior);
+    }
+  }, [idDoUsuarioDaRecarga]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null,
   );
@@ -751,7 +848,23 @@ const AppContent = () => {
   }, []);
 
   const handleNavigate = useCallback(
-    async (view: View, id?: string, bypassDirtyCheck = false) => {
+    async (
+      view: View,
+      id?: string,
+      bypassDirtyCheck = false,
+      // Frente 10 (29/09/2026): retomada de pagamento — o 4º param define
+      // (ou limpa) o pedido retomado; qualquer navegação SEM ele limpa, então
+      // carrinho→checkout nunca herda a retomada anterior.
+      opts?: { retomarPedidoId?: string },
+    ) => {
+      setCheckoutRetomadaId(opts?.retomarPedidoId ?? null);
+      setRetomadaDaRecarga(false);
+      navegouAntesDaRecargaRef.current = true;
+      // O cliente navegou: a carga deixou de ser "o F5 no checkout" e não há
+      // mais decisão a esperar — nem a sessão atrasada pode segurar o
+      // checkout novo que ele acabou de abrir. (Carga fora do checkout não
+      // passa por aqui de propósito: ali a decisão apaga o registro velho.)
+      if (cargaNoCheckout) setRecargaDoCheckoutDecidida(true);
       // App-743: tocar a própria aba/view JÁ ativa é sempre só scroll-to-top
       // (ramo espelhado abaixo, em 834-842) — não há "para onde ir", então
       // isso precisa vencer o gate de formulário sujo, nunca abrir o
@@ -776,6 +889,18 @@ const AppContent = () => {
       if (isAdminDirtyRef.current && !bypassDirtyCheck) {
         setPendingNavigation({ view, id });
         return;
+      }
+
+      // Recarga: sair do checkout (toque do cliente — "Ver meus pedidos",
+      // "Voltar", a aba) larga o pedido em pagamento, e entrar num checkout
+      // NOVO (sem retomada) não pode herdar um registro que sobrou — senão o
+      // F5 do checkout novo cairia no pedido velho.
+      if (
+        view === "checkout"
+          ? !opts?.retomarPedidoId
+          : currentViewRef.current === "checkout"
+      ) {
+        esquecerTodosOsPedidosPendentesDoCheckout();
       }
 
       // Cancel pending timers from any previous transition
@@ -870,6 +995,29 @@ const AppContent = () => {
           : mainRef.current;
         if (scrollContainer) {
           scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        return;
+      }
+
+      // Devoluções é lista + ficha na MESMA tela: trocar só a ficha (`?id=`)
+      // não é navegação de página. Sem View Transition — o callback dela roda
+      // depois de a tela já ter registrado o Voltar da ficha nova e o
+      // `setBackOverride(null)` do caminho abaixo o apagaria — e sem zerar o
+      // override. Só esta tela: nas demais que trocam apenas o id (produto →
+      // produto, com a foto do card indo para a foto principal) o caminho
+      // abaixo continua valendo.
+      if (!isDifferentView && targetView === "admin-devolucoes") {
+        latestTargetViewRef.current = { view: targetView, id };
+        setSelectedProductId(id || null);
+        const path = id ? `/${targetView}?id=${id}` : `/${targetView}`;
+        const currentPathAndSearch =
+          globalThis.location.pathname + globalThis.location.search;
+        if (currentPathAndSearch !== path) {
+          globalThis.history.pushState(
+            { view: targetView, id, from: currView },
+            "",
+            path,
+          );
         }
         return;
       }
@@ -989,6 +1137,7 @@ const AppContent = () => {
             "admin-coupon-form",
             "admin-user-detail",
             "admin-orders",
+            "admin-devolucoes",
             "admin-push",
           ].includes(targetView) &&
           id
@@ -1101,6 +1250,7 @@ const AppContent = () => {
       isTransitionSupported,
       prefetchViewPromise,
       saveCurrentScroll,
+      cargaNoCheckout,
     ],
   );
 
@@ -1611,120 +1761,17 @@ const AppContent = () => {
       if (validViews.includes(path as View)) {
         let targetView = path as View;
 
-        // Intercept popstate exit from sub-admin views to non-admin views, routing them back to parent admin views instead
-        const currView = currentViewRef.current;
-        const subAdminViews = [
-          "admin-product-form",
-          "admin-user-detail",
-          "admin-push",
-          "admin-pdv",
-          "admin-crm",
-          "admin-financeiro",
-          "admin-devolucoes",
-          "admin-banners",
-          "admin-carousels",
-          "admin-coupons",
-          "admin-coupon-form",
-          "admin-shipping",
-          "admin-shipping-national",
-          "admin-reviews",
-          "admin-qa",
-          "admin-whatsapp-config",
-          "admin-about-store",
-        ];
-        if (
-          subAdminViews.includes(currView) &&
-          !targetView.startsWith("admin")
-        ) {
+        // Voltar do navegador saindo de uma sub-tela do painel para FORA dele:
+        // vai ao PAI da tela, a mesma regra do botão Voltar
+        // (`paiDaTelaDoAdmin`, sem origem). A regra mora em UM lugar:
+        // `destinoDoPopstate` (src/utils/volta-do-navegador-no-painel.ts).
+        const pai = destinoDoPopstate(currentViewRef.current);
+        if (pai !== null && !targetView.startsWith("admin")) {
           console.log(
-            `[App] Intercepted popstate exit from sub-admin: ${currView} to ${targetView}. Rerouting to parent admin view.`,
+            `[App] Intercepted popstate exit from sub-admin: ${currentViewRef.current} to ${targetView}. Rerouting to ${pai}.`,
           );
-          if (currView === "admin-coupon-form") {
-            targetView = "admin-coupons";
-            globalThis.history.replaceState(
-              { view: "admin-coupons" },
-              "",
-              "/admin-coupons",
-            );
-          } else if (
-            currView === "admin-product-form" ||
-            currView === "admin-coupons" ||
-            currView === "admin-shipping"
-          ) {
-            targetView = "admin-products";
-            globalThis.history.replaceState(
-              { view: "admin-products" },
-              "",
-              "/admin-products",
-            );
-          } else if (currView === "admin-shipping-national") {
-            // Mesmo pai de paiDaTelaDoAdmin("admin-shipping-national", ...):
-            // sub-view do botão "Estratégias do frete nacional →" dentro de
-            // admin-shipping — o Voltar do navegador volta para a tela de
-            // Frete, nunca para admin-products (nova-tela.md:39/45).
-            targetView = "admin-shipping";
-            globalThis.history.replaceState(
-              { view: "admin-shipping" },
-              "",
-              "/admin-shipping",
-            );
-          } else if (currView === "admin-about-store") {
-            // Porta única: a tela "Sobre a Loja" nasce do cartão nos Ajustes
-            // — o Voltar do navegador volta para lá, nunca para a vitrine.
-            targetView = "admin-settings";
-            globalThis.history.replaceState(
-              { view: "admin-settings" },
-              "",
-              "/admin-settings",
-            );
-          } else if (
-            currView === "admin-user-detail" ||
-            currView === "admin-whatsapp-config"
-          ) {
-            targetView = "admin-customers";
-            globalThis.history.replaceState(
-              { view: "admin-customers" },
-              "",
-              "/admin-customers",
-            );
-          } else if (
-            currView === "admin-push" ||
-            currView === "admin-banners" ||
-            currView === "admin-pdv" ||
-            currView === "admin-crm" ||
-            currView === "admin-financeiro"
-          ) {
-            // Mesmo pai de `paiDaTelaDoAdmin("admin-pdv", ...)` — o
-            // checklist (nova-tela.md:39) avisa que já existem casos onde o
-            // reroute do popstate diverge do pai declarado ali; aqui os dois
-            // concordam de propósito.
-            targetView = "admin-dashboard";
-            globalThis.history.replaceState(
-              { view: "admin-dashboard" },
-              "",
-              "/admin-dashboard",
-            );
-          } else if (currView === "admin-carousels") {
-            // Mesmo pai declarado por getParentView() no AdminLayout, para o
-            // Voltar do navegador e o botão Voltar irem ao mesmo lugar.
-            targetView = "admin-settings";
-            globalThis.history.replaceState(
-              { view: "admin-settings" },
-              "",
-              "/admin-settings",
-            );
-          } else if (
-            currView === "admin-reviews" ||
-            currView === "admin-qa" ||
-            currView === "admin-devolucoes"
-          ) {
-            targetView = "admin-orders";
-            globalThis.history.replaceState(
-              { view: "admin-orders" },
-              "",
-              "/admin-orders",
-            );
-          }
+          targetView = pai;
+          globalThis.history.replaceState({ view: pai }, "", `/${pai}`);
         }
 
         // Mesma lista redirecionável de `handleNavigate` (acima neste
@@ -1851,6 +1898,16 @@ const AppContent = () => {
         const finalSelectedProductId = isGoingBackToHomeFromProduct
           ? null
           : nextSelectedProductId;
+
+        // Recarga: o Voltar do navegador que sai do checkout larga o pedido
+        // em pagamento — a mesma limpeza da saída por `handleNavigate`.
+        if (
+          origem === "popstate" &&
+          currentViewRef.current === "checkout" &&
+          targetView !== "checkout"
+        ) {
+          esquecerTodosOsPedidosPendentesDoCheckout();
+        }
 
         if (
           currentViewRef.current === targetView &&
@@ -1996,6 +2053,7 @@ const AppContent = () => {
                     "admin-coupon-form",
                     "admin-user-detail",
                     "admin-orders",
+                    "admin-devolucoes",
                     "admin-push",
                   ].includes(currentViewRef.current) &&
                   selectedProductIdRef.current
@@ -2034,6 +2092,7 @@ const AppContent = () => {
                     "admin-coupon-form",
                     "admin-user-detail",
                     "admin-orders",
+                    "admin-devolucoes",
                     "admin-push",
                   ].includes(currentView) && selectedProductId
                 ? `/${currentView}?id=${selectedProductId}`
@@ -2279,6 +2338,9 @@ const AppContent = () => {
         );
       }
       case "checkout": {
+        // Recarga: o checkout da CARGA da página espera o App decidir se há
+        // pedido a retomar (um quadro, depois da sessão conhecida).
+        if (cargaNoCheckout && !recargaDoCheckoutDecidida) return null;
         return (
           <PreloadedOrLazy
             component={CheckoutView}
@@ -2286,6 +2348,11 @@ const AppContent = () => {
               key: user?.id ? `checkout-${user.id}` : "checkout-guest",
               onNavigate: handleNavigate,
               onSetBackOverride: setBackOverride,
+              // Frente 10: pedido retomado do card (OrderDetailsView) — o
+              // CheckoutView pula direto para a tela de pagamento dele.
+              retomarPedidoId: checkoutRetomadaId ?? undefined,
+              retomadaDaRecarga:
+                retomadaDaRecarga && checkoutRetomadaId !== null,
             }}
           />
         );
@@ -2365,6 +2432,11 @@ const AppContent = () => {
               orderId: selectedProductId || "",
               onBack: handleOrderDetailsBack,
               onNavigate: handleNavigate,
+              // Frente 10: a porta de volta ao pagamento do pedido pendente.
+              onRetomarPagamento: (pedidoId: string) =>
+                handleNavigate("checkout", undefined, false, {
+                  retomarPedidoId: pedidoId,
+                }),
             }}
           />
         );
@@ -2444,7 +2516,14 @@ const AppContent = () => {
 
     const isPrivateView = privateViews.includes(currentView);
 
-    if (authLoading && isPrivateView) {
+    // Recarga: o checkout da CARGA ainda espera o App decidir (sessão
+    // atrasada) — o MESMO carregamento do boot, nunca uma área vazia.
+    const esperandoARecargaDoCheckout =
+      currentView === "checkout" &&
+      cargaNoCheckout &&
+      !recargaDoCheckoutDecidida;
+
+    if ((authLoading && isPrivateView) || esperandoARecargaDoCheckout) {
       return (
         <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
           <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />

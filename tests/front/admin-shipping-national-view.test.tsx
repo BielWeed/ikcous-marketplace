@@ -518,7 +518,9 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     // regra que morreu foi "só os 5 nacionais", não a de campo alheio
     // (nada de Transportadoras, isso continua provado em
     // admin-frete-v2-contrato.test.tsx / admin-visual-frete.test.tsx).
-    expect(payload).toHaveProperty("originCep");
+    expect(payload).toHaveProperty("localDeliveryFee");
+    // O CEP da loja é de Minha loja (P2) — o Salvar do Frete não o envia.
+    expect(payload).not.toHaveProperty("originCep");
     expect(payload).not.toHaveProperty("shippingProvider");
   });
 

@@ -129,6 +129,6 @@ Deno.test("CheckoutView - o cupom revalida quando a conexao volta (ressalva 2 do
   );
   assertStringIncludes(
     norm(cv),
-    "[codigoDoCupom, subtotal, validateCoupon, isOffline]",
+    "[codigoDoCupom, subtotal, validateCoupon, isOffline, contaDoCheckout]",
   );
 });

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
 // Frente glm-visual-canais-avisar-0309 (ondas 2 e 3 do rebuild visual do
-// painel): as telas "Canais de Atendimento" (AdminWhatsAppConfigView) e
-// "Avisar clientes" (AdminPushView) entraram na MESMA CASCA premium do
+// painel): as telas "Canais de Atendimento" (hoje o bloco Contato de Minha
+// loja) e "Avisar clientes" (AdminPushView) entraram na MESMA CASCA premium do
 // rebuild do Frete (PR #414) — AdminPageHeader no topo, zero <h1> manual e
 // conteúdo em seções colapsáveis no padrão dos Ajustes. Depois, na frente
 // lote-b-telas-admin (12/09), o Atendimento SAIU do colapso: virou
@@ -22,6 +22,13 @@
 //      clientes é igual: a composição é cartão fixo, e o sinal de rascunho
 //      (onSetDirty) é guarda de navegação — nada na tela desmonta o
 //      formulário.
+//
+// ATUALIZAÇÃO do painel simples (D9/D11, 09/10/2026): a tela "Atendimento"
+// (AdminWhatsAppConfigView) foi apagada — o WhatsApp e a mensagem de
+// compartilhar são o bloco Contato de Minha loja (`ContatoDaLoja`). A Parte 1
+// (casca por fonte) fica só com o Avisar clientes: a casca/título de Minha loja
+// é provada nos testes de Minha loja. A Parte 2 segue provando o MORADOR do
+// formulário de contato (editor com o texto salvo, nada desmonta, dirty).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,10 +42,10 @@ const FONTES = import.meta.glob<string>("/src/views/admin/Admin*.tsx", {
   eager: true,
 });
 
-const TELAS = ["AdminWhatsAppConfigView.tsx", "AdminPushView.tsx"] as const;
+const TELAS = ["AdminPushView.tsx"] as const;
 
-describe("contrato de fonte das duas telas (Canais e Avisar clientes)", () => {
-  it("o glob casou as duas telas de verdade (nada de prova vazia)", () => {
+describe("contrato de fonte da tela Avisar clientes", () => {
+  it("o glob casou a tela de verdade (nada de prova vazia)", () => {
     for (const tela of TELAS) {
       expect(FONTES, `falta o fonte de ${tela}`).toHaveProperty(
         `/src/views/admin/${tela}`,
@@ -228,41 +235,37 @@ afterEach(() => {
 
 const textoDaTela = () => hospedeiro.textContent ?? "";
 
-// ── Parte 2: Canais de Atendimento (AdminWhatsAppConfigView) ──────────────
+// ── Parte 2: Contato de Minha loja (antes "Canais de Atendimento") ────────
 async function abrirCanais(aoSujar?: (dirty: boolean) => void) {
-  const { AdminWhatsAppConfigView } = await import(
-    "@/views/admin/AdminWhatsAppConfigView"
+  const { ContatoDaLoja } = await import(
+    "@/components/admin/minha-loja/ContatoDaLoja"
   );
   await act(async () => {
-    raiz.render(
-      <AdminWhatsAppConfigView active={true} onSetDirty={aoSujar ?? vi.fn()} />,
-    );
+    raiz.render(<ContatoDaLoja onDirtyChange={aoSujar ?? vi.fn()} />);
   });
   await act(async () => {
     await esperar(50);
   });
 }
 
-describe("Canais de Atendimento — o formulário direto guarda o morador", () => {
-  it("nasce no título padrão, com os três blocos abertos e todos os campos à vista", async () => {
+describe("Contato de Minha loja — o formulário direto guarda o morador", () => {
+  it("nasce com os dois blocos abertos e todos os campos à vista", async () => {
     await abrirCanais();
-
-    // Título padrão (AdminPageHeader), não um h1 avulso.
-    expect(hospedeiro.querySelector("h1")?.textContent).toBe("Atendimento");
 
     // Formulário direto: zero controle de colapso nesta tela.
     expect(hospedeiro.querySelectorAll("button[aria-expanded]")).toHaveLength(
       0,
     );
 
-    // Os três blocos à vista de uma vez — nada nasce escondido.
+    // Os dois blocos à vista de uma vez — nada nasce escondido. O horário
+    // não é editado aqui (A1, 09/10): sem campo.
     expect(hospedeiro.querySelector("#settings-whatsapp")).not.toBeNull();
-    expect(hospedeiro.querySelector("#settings-business-hours")).not.toBeNull();
+    expect(hospedeiro.querySelector("#settings-business-hours")).toBeNull();
     expect(
       hospedeiro.querySelector("#settings-share-message-editor"),
     ).not.toBeNull();
 
-    // O botão Salvar continua na linha do título.
+    // O botão Salvar do bloco existe.
     const salvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
       (b.textContent ?? "").includes("Salvar"),
     );
@@ -320,7 +323,7 @@ describe("Canais de Atendimento — o formulário direto guarda o morador", () =
     ).toBe("(11) 9876-5432");
   });
 
-  it("com alteração não salva, o sinal para o App (onSetDirty) segue de pé — e o aviso de fechar saiu com o colapso", async () => {
+  it("com alteração não salva, o sinal para o App (onDirtyChange → onSetDirty) segue de pé — e o aviso de fechar saiu com o colapso", async () => {
     const aoSujar = vi.fn();
     await abrirCanais(aoSujar);
 
@@ -366,9 +369,7 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
   it("nasce no título padrão, com composição e histórico visíveis na árvore", async () => {
     await abrirAvisar();
 
-    expect(hospedeiro.querySelector("h1")?.textContent).toBe(
-      "Enviar Notificações",
-    );
+    expect(hospedeiro.querySelector("h1")?.textContent).toBe("Avisar clientes");
 
     // A composição é cartão FIXO: zero controle de colapso para ela — o
     // conteúdo (os campos, logo abaixo) está na árvore sem interação

@@ -60,6 +60,15 @@ function digitar(id: string, valor: string) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+// Com o endereço achado, rua/bairro/cidade/UF aparecem no CARTÃO (texto), não
+// em campos: o que a corrida pode corromper é o texto do cartão.
+function cartao(): string {
+  return (
+    document.querySelector('[data-testid="cartao-do-endereco"]')?.textContent ??
+    ""
+  );
+}
+
 describe("AddressForm — corrida na busca de CEP", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -157,13 +166,12 @@ describe("AddressForm — corrida na busca de CEP", () => {
       await Promise.resolve();
     });
 
-    const street = document.getElementById("street") as HTMLInputElement;
-    const city = document.getElementById("city") as HTMLInputElement;
-
     // Correto: o endereço final é o da busca NOVA (38500-000), não o da
     // antiga que respondeu por último.
-    expect(street.value).toBe("Rua Nova");
-    expect(city.value).toBe("Monte Carmelo");
+    expect(cartao()).toContain("Rua Nova");
+    expect(cartao()).toContain("Monte Carmelo");
+    expect(cartao()).not.toContain("Avenida Paulista");
+    expect(cartao()).not.toContain("São Paulo");
   });
 
   it("nao reabilita o campo quando a resposta velha chega com a busca nova ainda em voo", async () => {
@@ -212,10 +220,10 @@ describe("AddressForm — corrida na busca de CEP", () => {
     expect((document.getElementById("cep") as HTMLInputElement).disabled).toBe(
       true,
     );
-    // E, pela guarda de sequência, ela também não escreveu no formulário.
-    expect(
-      (document.getElementById("street") as HTMLInputElement).value,
-    ).not.toBe("Avenida Paulista");
+    // E, pela guarda de sequência, ela também não escreveu no formulário: sem
+    // nada aplicado, nem cartão existe (a tela segue em "buscando").
+    expect(cartao()).toBe("");
+    expect(document.body.textContent).not.toContain("Avenida Paulista");
 
     // Só a resposta da busca corrente desliga o spinner.
     pendentes.get("38500000")!({
@@ -232,9 +240,7 @@ describe("AddressForm — corrida na busca de CEP", () => {
     expect((document.getElementById("cep") as HTMLInputElement).disabled).toBe(
       false,
     );
-    expect((document.getElementById("street") as HTMLInputElement).value).toBe(
-      "Rua Nova",
-    );
+    expect(cartao()).toContain("Rua Nova");
   });
 
   it("aborta a busca antiga de verdade quando a nova começa, sem logar erro", async () => {
@@ -293,10 +299,8 @@ describe("AddressForm — corrida na busca de CEP", () => {
       await Promise.resolve();
     });
 
-    const street = document.getElementById("street") as HTMLInputElement;
-    const city = document.getElementById("city") as HTMLInputElement;
-    expect(street.value).toBe("Rua Nova");
-    expect(city.value).toBe("Monte Carmelo");
+    expect(cartao()).toContain("Rua Nova");
+    expect(cartao()).toContain("Monte Carmelo");
 
     // O cancelamento é esperado, não um erro real — não pode passar pelo
     // `console.error("Error fetching CEP:", ...)` do catch.
@@ -326,13 +330,13 @@ describe("AddressForm — corrida na busca de CEP", () => {
       await Promise.resolve();
     });
 
-    const street = document.getElementById("street") as HTMLInputElement;
-    const city = document.getElementById("city") as HTMLInputElement;
-    expect(street.value).toBe("Avenida Paulista");
-    expect(city.value).toBe("São Paulo");
+    expect(cartao()).toContain("Avenida Paulista");
+    expect(cartao()).toContain("São Paulo");
   });
 
-  it("gate isNational: loja local não busca CEP mesmo com 8 dígitos", async () => {
+  it("loja de entrega LOCAL também busca o CEP (decisão do dono, 03/10/2026)", async () => {
+    // Antes só a loja de entrega nacional buscava; a busca/preenchimento agora
+    // vale em toda loja. A regra de frete/entrega NÃO mudou — ela não mora aqui.
     mockConfig.shippingCoverage = "local";
     const { AddressForm } = await import("@/components/ui/custom/AddressForm");
 
@@ -344,6 +348,17 @@ describe("AddressForm — corrida na busca de CEP", () => {
       digitar("cep", "01310100");
     });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    pendentes.get("01310100")!({
+      logradouro: "Avenida Paulista",
+      bairro: "Bela Vista",
+      localidade: "São Paulo",
+      uf: "SP",
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(cartao()).toContain("Avenida Paulista");
   });
 });

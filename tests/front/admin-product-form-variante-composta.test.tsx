@@ -214,7 +214,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await esperarFlushDosCampos();
 
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
 
     expect(toastError).not.toHaveBeenCalled();
@@ -234,7 +234,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     });
     await digitarPar(1, "Tamanho", "PP");
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
 
     await abrirModal();
@@ -246,7 +246,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await digitar("variant-stock", "10");
     await esperarFlushDosCampos();
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
 
     expect(toastError).not.toHaveBeenCalled();
@@ -262,7 +262,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await abrirModal();
     await digitarPar(0, "Cor", "Espacial Grey");
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
 
     expect(toastError).not.toHaveBeenCalled();
@@ -284,7 +284,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
       await new Promise((r) => setTimeout(r, 300));
     });
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
 
     expect(toastError).toHaveBeenCalledTimes(1);
@@ -313,7 +313,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     expect(document.getElementById("variant-name-1")).toBeNull();
 
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
 
     expect(toastError).not.toHaveBeenCalled();
@@ -330,7 +330,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     });
     await digitarPar(1, "Tamanho", "PP");
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
 
     // Reabre pela caneta da linha da variante composta.
@@ -352,9 +352,9 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     expect(valorDoCampo("variant-value-1")).toBe("PP");
 
     // Salvar sem mexer reproduz a mesma linha — nada se perde no round-trip.
-    // (No modo edição o rodapé muda o rótulo: "Salvar Protocolo".)
+    // (No modo edição o rodapé muda o rótulo: "Salvar".)
     await act(async () => {
-      clicarObrigatorio("Salvar Protocolo");
+      clicarObrigatorio("Salvar");
     });
     expect(toastError).not.toHaveBeenCalled();
     expect(variantesNaTela()).toEqual(["Cor / Tamanho: Branca / PP"]);

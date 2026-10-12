@@ -37,6 +37,19 @@ const {
   anexarAoSummary,
 } = require("./efemero.cjs");
 
+// Lista que o painel pede de `politica_devolucao`, extraída de src/lib/devolucao.ts:
+// se alguém pôr nela uma coluna sem grant, a prova do achado L reprova.
+const COLUNAS_DO_FRONT = (() => {
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
+  const fonte = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "../../src/lib/devolucao.ts"),
+    "utf8",
+  );
+  const m = fonte.match(/COLUNAS_DA_POLITICA =\s*"([^"]+)"/);
+  assert.ok(m, "COLUNAS_DA_POLITICA não encontrada em src/lib/devolucao.ts");
+  return m[1];
+})();
+
 const U_CLIENTE = "31111111-1111-1111-1111-111111111111";
 const U_OUTRO = "31111111-1111-1111-1111-111111111112";
 const U_ADMIN = "32222222-2222-2222-2222-222222222222";
@@ -84,6 +97,15 @@ async function semear(cliente) {
       [id, email, meta],
     );
   }
+  // Admin de verdade tem o papel nas DUAS fontes: desde a 20261197000000,
+  // as RPCs de devolução que movem dinheiro/estoque exigem profiles.role =
+  // 'admin' também — e desde a 20261198000000 update_order_status_atomic
+  // também (admin ATUAL: contradição nega).
+  await cliente.query(
+    `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin Devolução', 'admin')
+     ON CONFLICT (id) DO NOTHING`,
+    [U_ADMIN],
+  );
   await cliente.query(
     `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, categoria)
      VALUES ($1, 'Camisa de Prova', 40.00, 10, true, 'Camisas'),
@@ -2344,15 +2366,35 @@ PROVAS.push({
       "1 unidade reestocada pela devolução",
     );
 
-    // Agora o admin CANCELA o pedido 'delivered' — dispara devolver_estoque.
-    // Sem o desconto do achado C, creditaria as 2 unidades de novo (a
-    // unidade já devolvida vira fantasma: +3 no total, não +2).
+    // Agora o admin CANCELA o pedido 'delivered'. Desde a 20261198000000
+    // (plano S1, item 4) isto NÃO devolve estoque: a peça entregue não voltou
+    // por cancelar — estoque de mercadoria entregue só volta pelo fluxo de
+    // devolução. Antes, este cancelamento disparava devolver_estoque.
     await logar(cliente, U_ADMIN);
     await rpc(
       cliente,
       "SELECT public.update_order_status_atomic($1::uuid, 'cancelled', 'cliente devolveu o resto', false) AS r",
       [O_DEVOLVE_CANCELA],
     );
+    assert.equal(
+      Number(
+        await valorUnico(
+          cliente,
+          "SELECT estoque FROM public.produtos WHERE id = $1",
+          [P_CAMISA],
+        ),
+      ),
+      estoqueAntes + 1,
+      "20261198: entregue -> cancelado não credita nada (só a unidade da devolução voltou)",
+    );
+
+    // O achado C continua provado direto na função: quando devolver_estoque
+    // roda neste pedido (qualquer chamador), ela desconta a unidade que a
+    // devolução já repôs. Sem o desconto creditaria as 2 de novo (+3 no
+    // total, a unidade devolvida vira fantasma); com ele, só a que faltava.
+    await cliente.query("SELECT public.devolver_estoque($1::uuid)", [
+      O_DEVOLVE_CANCELA,
+    ]);
     assert.equal(
       Number(
         await valorUnico(
@@ -3618,6 +3660,81 @@ PROVAS.push({
       ME_REVERSO_INDETERMINADO,
       "mutante 1c_conferencia_ignorada: com p_conferi_no_melhor_envio = true, a RPC tem que liberar",
     );
+  },
+});
+
+// Achado L (26/09/2026): `updated_by` (uuid do admin) não é dado público.
+// Migration 20261215000000: grant por coluna em politica_devolucao.
+PROVAS.push({
+  nome: "(achado L) a política é pública, mas anon e authenticated não leem updated_by",
+  corpo: async (cliente) => {
+    for (const papel of ["anon", "authenticated"]) {
+      await cliente.query("BEGIN");
+      try {
+        await logar(cliente, U_CLIENTE);
+        await cliente.query(`SET LOCAL ROLE ${papel}`);
+        // As colunas que o painel pede (COLUNAS_DA_POLITICA, lida do código do
+        // front para a lista não ficar copiada) continuam legíveis.
+        const r = await cliente.query(
+          `SELECT ${COLUNAS_DO_FRONT} FROM public.politica_devolucao WHERE id = 1`,
+        );
+        assert.equal(r.rowCount, 1, `${papel} lê a política pública`);
+        // `*` e `updated_by` são recusados: era o vazamento.
+        for (const sql of [
+          "SELECT * FROM public.politica_devolucao",
+          "SELECT updated_by FROM public.politica_devolucao WHERE id = 1",
+        ]) {
+          await cliente.query("SAVEPOINT s1");
+          await assert.rejects(
+            () => cliente.query(sql),
+            /permission denied/,
+            `${papel}: ${sql}`,
+          );
+          await cliente.query("ROLLBACK TO SAVEPOINT s1");
+        }
+        // Escrever continua só pela RPC.
+        await assert.rejects(
+          () =>
+            cliente.query(
+              "UPDATE public.politica_devolucao SET aceita_vale = false",
+            ),
+          /permission denied/,
+        );
+      } finally {
+        await cliente.query("ROLLBACK");
+      }
+    }
+    // Catálogo: nenhum privilégio de tabela inteira para os papéis públicos, e
+    // o service_role (edges) continua lendo a linha inteira.
+    for (const papel of ["anon", "authenticated"]) {
+      assert.equal(
+        await valorUnico(
+          cliente,
+          "SELECT has_table_privilege($1, 'public.politica_devolucao', 'SELECT')",
+          [papel],
+        ),
+        false,
+        `${papel} não tem SELECT da tabela inteira`,
+      );
+    }
+    // service_role (edges) mantém o acesso à coluna. Checagem de catálogo: no
+    // efêmero o papel nasce sem BYPASSRLS, então uma leitura devolveria 0 linhas.
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT has_column_privilege('service_role', 'public.politica_devolucao', 'updated_by', 'SELECT')",
+      ),
+      true,
+      "service_role continua lendo updated_by",
+    );
+    // A RPC do painel segue devolvendo a política (lê como dono da função).
+    await logar(cliente, U_ADMIN);
+    const salva = await rpc(
+      cliente,
+      `SELECT public.salvar_politica_de_devolucao('{"aceita_vale":true}'::jsonb) AS r`,
+    );
+    assert.equal(salva.aceita_vale, true);
+    assert.ok(!("updated_by" in salva), "a RPC não devolve updated_by");
   },
 });
 

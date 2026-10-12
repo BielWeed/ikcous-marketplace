@@ -10,10 +10,13 @@
  * Mercado Pago que ainda não foram provados em produção — a lojista liga
  * depois de pagar um pedido de teste.
  *
- * Tudo aqui FALHA FECHADO: erro de rede, linha ausente ou campo com tipo
- * estranho viram "cartão desligado". Cartão escondido por engano custa uma
- * venda que ainda pode sair por PIX; cartão oferecido por engano manda o
- * cliente para um formulário que a loja não pediu.
+ * Tudo aqui FALHA FECHADO: linha ausente ou campo com tipo estranho viram
+ * "cartão desligado", e a leitura que FALHOU nunca vira cartão oferecido
+ * (`ok: false`). Quem consome não confunde as duas: falha não é "desligado" —
+ * o checkout avisa que não conseguiu conferir e deixa tentar de novo. Cartão
+ * escondido por engano custa uma venda que ainda pode sair por PIX; cartão
+ * oferecido por engano manda o cliente para um formulário que a loja não
+ * pediu.
  */
 import { supabase } from "@/lib/supabase";
 
@@ -126,25 +129,26 @@ export async function buscarConfigDoCartao(): Promise<LeituraDaConfigDoCartao> {
 const VALIDADE_DO_CACHE_MS = 60_000;
 
 let cache: {
-  readonly promessa: Promise<ConfigDoCartao>;
+  readonly promessa: Promise<LeituraDaConfigDoCartao>;
   readonly lidoEm: number;
 } | null = null;
 
 /**
  * A config para o CHECKOUT: com cache de módulo (a tela de pagamento remonta
- * sem pagar outra ida ao banco) e falha fechada — erro devolve
- * `CONFIG_DO_CARTAO_DESLIGADA` e NÃO fica em cache, para a próxima montagem
- * tentar de novo.
+ * sem pagar outra ida ao banco). Diz `ok: false` quando a leitura FALHOU —
+ * quem consome decide o que mostrar (o checkout mostra "não foi possível
+ * conferir", nunca "cartão desligado"); desligado de verdade (linha ausente,
+ * crédito e débito off) é `ok: true` com a config desligada. Só o SUCESSO fica
+ * em cache: a falha é descartada, para a próxima chamada tentar de novo.
  */
-export function lerConfigDoCartao(): Promise<ConfigDoCartao> {
+export function lerConfigDoCartao(): Promise<LeituraDaConfigDoCartao> {
   const agora = Date.now();
   if (cache && agora - cache.lidoEm < VALIDADE_DO_CACHE_MS) {
     return cache.promessa;
   }
   const promessa = buscarConfigDoCartao().then((leitura) => {
-    if (leitura.ok) return leitura.config;
-    if (cache?.promessa === promessa) cache = null;
-    return CONFIG_DO_CARTAO_DESLIGADA;
+    if (!leitura.ok && cache?.promessa === promessa) cache = null;
+    return leitura;
   });
   cache = { promessa, lidoEm: agora };
   return promessa;

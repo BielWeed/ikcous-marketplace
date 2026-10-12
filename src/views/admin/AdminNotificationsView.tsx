@@ -1,11 +1,12 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAvisosDoLojista } from "@/hooks/useAvisosDoLojista";
 import type { View } from "@/types";
 import type { Aviso, TipoDeAviso } from "@/utils/avisos-do-lojista";
 import {
-  ArrowUpRight,
   Bell,
   CheckCircle2,
+  ChevronRight,
   MessageSquare,
   Package,
   RefreshCw,
@@ -92,30 +93,31 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
       type="button"
       data-aviso={aviso.tipo}
       onClick={() => onNavigate(aviso.destino.view, aviso.destino.id)}
-      className="group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5 text-left shadow-lg transition-all duration-300 hover:border-admin-gold/30 hover:bg-zinc-900/30 active:scale-[0.98]"
+      className="group relative flex min-h-11 w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent p-3.5 text-left shadow-lg transition-all duration-300 hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
     >
       <div
-        className={`flex size-9 shrink-0 items-center justify-center rounded-xl border ${cor}`}
+        className={`flex size-10 shrink-0 items-center justify-center rounded-xl border ${cor}`}
       >
-        <Icone className="size-4" strokeWidth={2.5} />
+        <Icone className="size-5" strokeWidth={2.5} />
       </div>
 
       <div className="min-w-0 flex-1">
-        <span className="mb-0.5 block text-[9px] font-black uppercase leading-none tracking-widest text-zinc-500">
+        <span className="mb-1 block text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-300">
           {rotulo}
           {quando ? ` · ${quando}` : ""}
         </span>
-        <h3 className="truncate text-xs font-black leading-tight tracking-tight text-white">
+        <h3 className="truncate text-[15px] font-bold leading-tight text-white">
           {aviso.titulo}
         </h3>
-        <p className="mt-0.5 truncate text-[11px] leading-tight text-zinc-400">
+        <p className="mt-0.5 truncate text-xs font-medium leading-tight text-zinc-400">
           {aviso.detalhe}
         </p>
       </div>
 
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-white/5 bg-white/5 text-zinc-400 transition-all duration-300 group-hover:border-transparent group-hover:bg-admin-gold group-hover:text-black">
-        <ArrowUpRight className="size-3.5 stroke-[2.5]" />
-      </div>
+      <ChevronRight
+        aria-hidden="true"
+        className="size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold"
+      />
     </button>
   );
 });
@@ -140,10 +142,10 @@ function Bloco({
   return (
     <section data-bloco={nome} className="space-y-2">
       <div className="flex items-baseline justify-between gap-2 px-1">
-        <h2 className="text-[10px] font-black uppercase tracking-widest text-admin-gold/70">
+        <h2 className="text-[11px] font-black uppercase tracking-widest text-admin-gold/70">
           {titulo}
         </h2>
-        <span className="text-[10px] text-zinc-500">{legenda}</span>
+        <span className="text-xs text-zinc-400">{legenda}</span>
       </div>
       {avisos.map((aviso) => (
         <LinhaDeAviso key={aviso.id} aviso={aviso} onNavigate={onNavigate} />
@@ -181,8 +183,10 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
               {/* Onda 4 da reforma visual (03/09): o título tinha fórmula
                   própria (text-base) — agora nasce do AdminPageHeader, igual
                   ao resto do painel. */}
-              <AdminPageHeader titulo="Notificações" />
-              <p className="mt-1 text-[10px] leading-none text-zinc-500">
+              <AdminPageHeader
+                titulo={NOMES_DO_PAINEL["admin-notifications"]}
+              />
+              <p className="mt-1 text-[11px] leading-none text-zinc-400">
                 O que está esperando por você
               </p>
             </div>
@@ -251,9 +255,9 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
             <h2 className="text-sm font-black tracking-tight text-white">
               Tudo em dia
             </h2>
-            <p className="max-w-xs text-[11px] leading-snug text-zinc-500">
-              Nenhum pedido, pergunta ou avaliação esperando por você, e nenhum
-              produto acabando.
+            <p className="max-w-xs text-xs leading-snug text-zinc-400">
+              Nenhum pedido, devolução, pergunta ou avaliação esperando por
+              você, e nenhum produto acabando.
             </p>
           </div>
         )}

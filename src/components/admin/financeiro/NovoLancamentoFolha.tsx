@@ -257,7 +257,7 @@ export function NovoLancamentoFolha({
             id="fin-lanc-categoria"
             rotulo="Categoria"
             erro={erros.categoriaId}
-            ajuda="É a categoria que coloca o valor na linha certa da DRE."
+            ajuda="É a categoria que coloca o valor na linha certa do resultado."
           >
             <select
               id="fin-lanc-categoria"
@@ -374,7 +374,7 @@ export function NovoLancamentoFolha({
           )}
           <Campo
             id="fin-lanc-competencia"
-            rotulo="Competência"
+            rotulo="Mês de referência"
             erro={erros.dataCompetencia}
           >
             <input
@@ -387,8 +387,9 @@ export function NovoLancamentoFolha({
           </Campo>
         </div>
         <p className="-mt-2 text-[11px] text-zinc-500">
-          Competência é o mês a que o valor pertence (a DRE conta por ela); pode
-          ser diferente do dia em que o dinheiro se mexe.
+          Mês de referência é o mês a que o valor pertence (o resultado conta
+          por ele); pode ser diferente do dia em que o dinheiro se mexe.
+          Qualquer dia do mês serve; nos filtros por dia, vale a data escolhida.
         </p>
 
         {previsto ? (

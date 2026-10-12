@@ -12,6 +12,7 @@ import {
   textoDoVencimento,
   totaisDosPrevistos,
 } from "@/lib/financeiro";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn } from "@/lib/utils";
 import type { DataIso, LancamentoPrevisto } from "@/types/financeiro";
 import type { AbrirFolha, LadoDosPrevistos } from "./navegacao";
@@ -170,7 +171,7 @@ function CartaoDoPrevisto({
               className={`${CLASSE_BOTAO_SECUNDARIO} mt-3`}
             >
               <ExternalLink aria-hidden="true" className="size-4" />
-              Abrir pedido #{item.pedidoId.slice(-6)}
+              Abrir pedido #{numeroDoPedido(item.pedidoId)}
             </button>
           ) : null}
         </>

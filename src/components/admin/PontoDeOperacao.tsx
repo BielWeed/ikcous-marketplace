@@ -43,7 +43,7 @@ function PontoComEstado({
   sincronizando?: boolean;
   className?: string;
 }) {
-  const { isOffline, quality, latency, showSyncFlash } = estado;
+  const { isOffline, quality, showSyncFlash } = estado;
 
   // Ordem de precedência: offline ganha de tudo; flash de sync mostra o
   // "acabou de sincronizar"; depois a carga da tela; por fim a qualidade
@@ -70,18 +70,18 @@ function PontoComEstado({
           ? {
               cor: "bg-amber-500",
               ping: "bg-amber-400",
-              titulo: `Tempo real ativo — conexão lenta (${latency}ms)`,
+              titulo: "Tempo real ativo — conexão lenta",
             }
           : quality === "good"
             ? {
                 cor: "bg-sky-400",
                 ping: "bg-sky-300",
-                titulo: `Tempo real ativo — latência ${latency}ms`,
+                titulo: "Tempo real ativo — conexão boa",
               }
             : {
                 cor: "bg-emerald-500",
                 ping: "bg-emerald-400",
-                titulo: `Tempo real ativo — latência ${latency}ms`,
+                titulo: "Tempo real ativo — conexão boa",
               };
 
   return (

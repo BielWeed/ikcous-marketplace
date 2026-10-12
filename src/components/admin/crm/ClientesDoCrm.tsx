@@ -55,7 +55,7 @@ function CrachaDoSegmento({
 }: Readonly<{ segmento: SegmentoCrm | null }>) {
   if (!segmento) {
     return (
-      <span className="inline-flex items-center rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-400">
+      <span className="inline-flex items-center rounded-full border border-white/10 px-2 py-0.5 text-[11px] font-bold text-zinc-400">
         Sem segmento
       </span>
     );
@@ -65,7 +65,7 @@ function CrachaDoSegmento({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold",
+        "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold",
         classes.cracha,
       )}
     >
@@ -169,7 +169,7 @@ function BlocoDeSegmento({
               linha nenhuma (achado 6, revisão de risco: "R$ 0,00" sugeriria
               um valor medido que não existe). */}
           {valorDoBloco != null ? (
-            <span className="shrink-0 truncate text-[10px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
+            <span className="shrink-0 truncate text-[11px] tabular-nums text-zinc-400 sm:mt-0.5 sm:block">
               {valorDoBloco}
             </span>
           ) : null}
@@ -200,7 +200,7 @@ function GradeDeSegmentos({
   aoSelecionar: (segmento: SegmentoCrm | null) => void;
   /**
    * Total já filtrado pela busca (`lista.total`) — substitui o bruto do
-   * segmento quando há um termo digitado, senão "Mostrando: Em risco · 14"
+   * segmento quando há um termo digitado, senão "Mostrando: Podem não voltar · 14"
    * continuava mostrando o total do segmento inteiro mesmo com a lista
    * abaixo filtrada para 1 ou 2 nomes. `undefined` quando não há busca
    * ativa (usa o bruto do segmento, comportamento de sempre).
@@ -231,7 +231,7 @@ function GradeDeSegmentos({
       <div className="space-y-4">
         {faixasParaMostrar.map((faixa) => (
           <div key={faixa.titulo}>
-            <h3 className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">
+            <h3 className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-400">
               {faixa.titulo}
             </h3>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
@@ -262,7 +262,7 @@ function GradeDeSegmentos({
             type="button"
             onClick={() => aoSelecionar(null)}
             className={cn(
-              "flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2.5 text-[10px] font-black uppercase tracking-wider text-admin-gold transition-colors hover:bg-admin-gold/10",
+              "flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2.5 text-[11px] font-black uppercase tracking-wider text-admin-gold transition-colors hover:bg-admin-gold/10",
               FOCO_DO_CRM,
             )}
           >
@@ -303,7 +303,7 @@ function CamposDoPedidoEDaAtividade({
   return (
     <>
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
           Pedidos
         </p>
         <p className="font-bold tabular-nums text-white">
@@ -312,7 +312,7 @@ function CamposDoPedidoEDaAtividade({
       </div>
 
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
           {rotuloDaReceita(cliente.segmento)}
         </p>
         {/* Sem `truncate` (achado 2, revisão de risco): cortava "R$
@@ -349,7 +349,7 @@ function CamposDoPedidoEDaAtividade({
       </div>
 
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
           {rotuloDeUltimaAtividade(cliente.segmento)}
         </p>
         <p className="truncate tabular-nums text-zinc-300">
@@ -358,7 +358,7 @@ function CamposDoPedidoEDaAtividade({
       </div>
 
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-zinc-400 lg:sr-only">
+        <p className="text-[11px] uppercase tracking-wider text-zinc-400 lg:sr-only">
           Canal
         </p>
         <p className="truncate text-zinc-300">
@@ -471,7 +471,7 @@ function LinhaDoCliente({
             rel="noopener noreferrer"
             title={`WhatsApp — chamar ${nome}`}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-[10px] font-black uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-500/20 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
+              "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-[11px] font-black uppercase tracking-widest text-emerald-300 transition-colors hover:bg-emerald-500/20 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
               FOCO_DO_CRM,
             )}
           >
@@ -480,7 +480,7 @@ function LinhaDoCliente({
             <span className="sr-only"> — chamar {nome} (abre em nova aba)</span>
           </a>
         ) : (
-          <span className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-dashed border-white/10 px-3 text-[10px] font-bold text-zinc-500 lg:flex-none">
+          <span className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-dashed border-white/10 px-3 text-[11px] font-bold text-zinc-500 lg:flex-none">
             Sem WhatsApp
           </span>
         )}
@@ -492,7 +492,7 @@ function LinhaDoCliente({
             }
             title={`Ver cliente — ${nome}`}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-solid border-white/15 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
+              "flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-solid border-white/15 px-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5 lg:min-w-11 lg:flex-none lg:px-2.5 xl:px-3",
               FOCO_DO_CRM,
             )}
           >
@@ -576,7 +576,7 @@ export function ClientesDoCrm({
   const nomeDoSegmento = segmento ? infoDoSegmento(segmento).rotulo : null;
   // Com busca ativa e a lista já carregada, "Mostrando" usa o total JÁ
   // filtrado (busca + segmento) — o bruto do segmento (crm_visao) ignora a
-  // busca e mentia ("Mostrando: Em risco · 14" com a lista abaixo mostrando
+  // busca e mentia ("Mostrando: Podem não voltar · 14" com a lista abaixo mostrando
   // só 1 nome).
   const contagemFiltradaPelaBusca =
     busca.trim() !== "" && lista ? total : undefined;
@@ -606,7 +606,7 @@ export function ClientesDoCrm({
             ) : null}
           </span>
         }
-        descricao="Quem compra e quem ainda não comprou, com WhatsApp e ficha prontos para um toque."
+        descricao="Quem já comprou (app e balcão), quem pediu e não pagou e quem criou conta sem comprar — com WhatsApp e ficha a um toque."
       >
         <div className="space-y-3">
           {/* Linha própria (não vai no `acao` do cabeçalho): o cabeçalho do
@@ -653,7 +653,7 @@ export function ClientesDoCrm({
                     type="button"
                     onClick={atualizar}
                     className={cn(
-                      "flex min-h-11 items-center gap-1.5 rounded-xl border border-solid border-red-500/20 px-4 text-[10px] font-black uppercase tracking-wider text-red-200 transition-colors hover:bg-red-500/10",
+                      "flex min-h-11 items-center gap-1.5 rounded-xl border border-solid border-red-500/20 px-4 text-[11px] font-black uppercase tracking-wider text-red-200 transition-colors hover:bg-red-500/10",
                       FOCO_DO_CRM,
                     )}
                   >
@@ -679,7 +679,7 @@ export function ClientesDoCrm({
               <div
                 aria-hidden="true"
                 className={cn(
-                  "hidden gap-5 px-4 text-[10px] font-black uppercase tracking-wider text-zinc-400 lg:grid",
+                  "hidden gap-5 px-4 text-[11px] font-black uppercase tracking-wider text-zinc-400 lg:grid",
                   COLUNAS_DA_LISTA,
                 )}
               >
@@ -736,7 +736,7 @@ export function ClientesDoCrm({
                       aoMudarSegmento(null);
                     }}
                     className={cn(
-                      "min-h-11 rounded-xl border border-solid border-white/10 px-4 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5",
+                      "min-h-11 rounded-xl border border-solid border-white/10 px-4 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5",
                       FOCO_DO_CRM,
                     )}
                   >
@@ -747,7 +747,7 @@ export function ClientesDoCrm({
                     type="button"
                     onClick={() => onNavigate("admin-pdv")}
                     className={cn(
-                      "min-h-11 rounded-xl bg-admin-gold px-4 text-[10px] font-black uppercase tracking-widest text-black transition-colors hover:bg-admin-gold/90",
+                      "min-h-11 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-widest text-black transition-colors hover:bg-admin-gold/90",
                       FOCO_DO_CRM,
                     )}
                   >

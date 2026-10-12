@@ -10,16 +10,28 @@
  * USO (variáveis de ambiente, o mesmo estilo de aplicar-migrations.yml):
  *   SUPABASE_ACCESS_TOKEN  o segredo do repositório (o mesmo que publica
  *                          as functions e aplica migrations).
- *   PROJETO                "loja" (default) ou "sandbox" — NUNCA um ref cru.
- *                          Resolvido para o ref de 20 letras por
- *                          `resolverRef` (ver abaixo, achado da rodada 2).
+ *   PROJETO                "loja" (default), "sandbox", "ikcous-publicada" (a
+ *                          CAF explícita) ou "savy" (a loja cliente explícita)
+ *                          — NUNCA um ref cru. Resolvido para o ref de 20
+ *                          letras por `resolverRef` (ver abaixo, achado da
+ *                          rodada 2). A CAF usa SÓ SUPABASE_ACCESS_TOKEN_IKCOUS
+ *                          e a Savy SÓ SUPABASE_ACCESS_TOKEN_SAVY (sem
+ *                          fallback); nenhuma das duas roda o LEDGER, salvo a
+ *                          faixa 92-202 (pré-checagem 8e obrigatória) e, SÓ na
+ *                          CAF, a faixa 60-66 (pré-checagem 9a obrigatória).
  *   CONSULTA                nome (sem `.sql`) de um arquivo em
  *                          scripts/publicacao/consultas/, ou "backups".
- *   LEDGER                 "72-74", "75-78", "79-82" ou "83" — pré-confere o
- *                          schema, grava o ledger fixo daquela faixa e
- *                          confere 72-78 (ou 72-82/72-83, para as faixas
- *                          novas) depois. Mutuamente exclusivo com CONSULTA
- *                          (o workflow só passa um).
+ *   LEDGER                 "72-74", "75-78", "79-82", "83", "92-202" ou
+ *                          "60-66" — pré-confere o schema, grava o ledger fixo
+ *                          daquela faixa e confere 72-78 (ou 72-82/72-83/
+ *                          72-202, para as faixas novas) depois. Mutuamente
+ *                          exclusivo com CONSULTA (o workflow só passa um). Em
+ *                          `ikcous-publicada` e `savy` SÓ a faixa 92-202 (o
+ *                          backfill das migrations 92..202 sem a 201), com a
+ *                          pré-checagem da 8e obrigatória; a faixa 60-66 (o
+ *                          backfill do REGISTRO das 20261160..20261166, cujo
+ *                          efeito já está vivo na CAF) é SÓ de
+ *                          `ikcous-publicada`, com a 9a por ROL FECHADO.
  *
  *   node scripts/publicacao/conferir-banco.cjs
  *
@@ -189,7 +201,30 @@ const CONSULTAS_DIR = path.join(
 // real de produção é sempre o host oficial da Management API.
 const API_BASE =
   process.env.CONFERIR_BANCO_API_BASE || "https://api.supabase.com";
-const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83"];
+const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83", "92-202", "60-66"];
+/** A ÚNICA faixa do ledger permitida nas lojas explícitas (`ikcous-publicada` e
+ * `savy`) — 06/10/2026. A regra de antes ("a CAF não grava o ledger") continua
+ * valendo para as faixas 72..83; esta é o BACKFILL das 9 migrations
+ * 20261192..20261202 (sem a 201) que o apply central já deixa registradas daqui
+ * para a frente, mas que na CAF subiram antes disso. Só vale com a pré-checagem
+ * da 8e (todas as linhas ok=true, feita ANTES do INSERT em `rodarLedger`) e com
+ * o INSERT fixo e pinado por SHA-256. */
+const FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS = "92-202";
+/** A faixa 60-66 do ledger (06/10/2026): o backfill do REGISTRO das 7 migrations
+ * 20261160..20261166, cujo efeito já está VIVO na CAF (o ledger salta de
+ * 20261150 para 20261167). É SÓ de `ikcous-publicada`: nem `savy` (o ledger dela
+ * não tem esse buraco) nem `loja`/`sandbox`/lojas de teste. Nunca aplica nada —
+ * só grava as 7 linhas, depois da 9a toda ok=true, por ROL FECHADO. */
+const FAIXA_LEDGER_SO_DA_CAF = "60-66";
+/** O MAPA das faixas de ledger que cada loja explícita aceita (D4). Fora dele
+ * (`loja`, `sandbox`, lojas de teste e qualquer outro alvo) nenhuma das duas. */
+const FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA = {
+  "ikcous-publicada": [
+    FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS,
+    FAIXA_LEDGER_SO_DA_CAF,
+  ],
+  savy: [FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS],
+};
 
 /** Os únicos dois projetos que este token alcança (mesmos refs de
  * `publicar-functions.yml`). Nunca aceitar um terceiro valor aqui: é isso
@@ -197,7 +232,27 @@ const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83"];
 const REFS_POR_PROJETO = {
   loja: "cafkrminfnokvgjqtkle",
   sandbox: "lofznuxcvezrhxsgjqyg",
+  // O alvo CAF EXPLÍCITO (04/10/2026): o mesmo ref de `loja`, mas pelo segredo
+  // de NOME `SUPABASE_ACCESS_TOKEN_IKCOUS` (o que publicar-functions.yml já usa
+  // para a CAF) e só com `expected_sha` igual ao do run (conferido no workflow
+  // ANTES de qualquer requisição). `loja` e `sandbox` NÃO mudam de significado.
+  "ikcous-publicada": "cafkrminfnokvgjqtkle",
+  // O alvo SAVY EXPLÍCITO (06/10/2026): a loja cliente real, ref FIXO (nunca
+  // texto livre), pelo segredo de NOME `SUPABASE_ACCESS_TOKEN_SAVY` (o que
+  // publicar-functions.yml já usa para a Savy) e só com `expected_sha` igual ao
+  // do run (conferido no workflow ANTES de qualquer requisição). Mesmas travas
+  // da CAF explícita: só grava ledger na faixa 92-202 (com a 8e toda ok), 401/403 PARA.
+  savy: "gnjsrucsmjkajijrakzr",
 };
+
+/** O alvo que exige o segredo próprio da CAF (e nunca cai em outro). */
+const PROJETO_CAF = "ikcous-publicada";
+const SEM_ACESSO_CAF =
+  "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto";
+/** O alvo que exige o segredo próprio da Savy (e nunca cai em outro). */
+const PROJETO_SAVY = "savy";
+const SEM_ACESSO_SAVY =
+  "sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto";
 
 /**
  * Resolve "loja"/"sandbox" para o ref de 20 letras minúsculas — nunca
@@ -210,7 +265,9 @@ const REFS_POR_PROJETO = {
  */
 function resolverRef(projeto) {
   if (!Object.hasOwn(REFS_POR_PROJETO, projeto)) {
-    throw new Error(`projeto desconhecido: "${projeto}" (use loja ou sandbox)`);
+    throw new Error(
+      `projeto desconhecido: "${projeto}" (use loja, sandbox, ikcous-publicada ou savy)`,
+    );
   }
   const ref = REFS_POR_PROJETO[projeto];
   if (!/^[a-z]{20}$/.test(ref)) {
@@ -543,6 +600,17 @@ function escreverResumo(markdown) {
   if (destino) fs.appendFileSync(destino, `${markdown}\n`);
 }
 
+/** Teto de uma requisição à Management API (leitura ou escrita). */
+const TEMPO_LIMITE_DA_REQUISICAO_MS = 120_000;
+
+/** Erro de HTTP com o status à mão: o `main` precisa distinguir 401/403 (sem
+ * acesso à CAF = PARADA, nunca outro segredo) de qualquer outra falha. */
+function erroDeHttp(status, texto) {
+  const erro = new Error(`HTTP ${status}: ${texto.slice(0, 500)}`);
+  erro.status = status;
+  return erro;
+}
+
 /** POST genérico para a Management API. Falha (lança) em HTTP ≠ 2xx ou
  * erro no corpo — mesmo critério de `aplicar-migrations.yml`. Nunca loga
  * o token: ele só entra no header Authorization. */
@@ -554,9 +622,13 @@ async function chamarManagementApi(caminho, { token, corpo }) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(corpo),
+    // Sem isto uma resposta que nunca chega prendia o job até o timeout do
+    // workflow, sem mensagem. Na ESCRITA o estouro vira "ESTADO DESCONHECIDO"
+    // (`gravarUmaVez`): o servidor pode ter gravado mesmo assim.
+    signal: AbortSignal.timeout(TEMPO_LIMITE_DA_REQUISICAO_MS),
   });
   const texto = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status}: ${texto.slice(0, 500)}`);
+  if (!r.ok) throw erroDeHttp(r.status, texto);
   if (texto.includes('"error"') || texto.includes('"message":"')) {
     throw new Error(texto.slice(0, 500));
   }
@@ -600,7 +672,7 @@ async function buscarBackups({ ref, token }) {
     headers: { Authorization: `Bearer ${token}` },
   });
   const corpo = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status}: ${corpo.slice(0, 500)}`);
+  if (!r.ok) throw erroDeHttp(r.status, corpo);
   return JSON.parse(corpo);
 }
 
@@ -626,6 +698,42 @@ async function rodarConsulta({ ref, token, consulta }) {
   escreverResumo(
     `## Consulta \`${consulta}\` — projeto \`${ref}\`\n\n\`\`\`\n${tabela}\n\`\`\``,
   );
+  // Linha para MÁQUINA (scripts/frota/publicar-release.mjs lê do log do run):
+  // a evidência de prontidão de uma loja é "esta consulta, neste ref, neste
+  // commit, N linhas, nenhuma ok=false". Só para consultas com coluna `ok`.
+  const linhaVeredito = veredictoDaConsulta({
+    consulta,
+    ref,
+    sha: process.env.GITHUB_SHA,
+    linhas,
+  });
+  if (linhaVeredito) console.log(linhaVeredito);
+}
+
+/** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
+ * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
+ * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
+function veredictoDaConsulta({ consulta, ref, sha, linhas }) {
+  const prefixo = `VEREDITO-CONSULTA consulta=${consulta} ref=${ref} sha=${sha || "local"}`;
+  if (Object.hasOwn(ROL_FECHADO_POR_CONSULTA, consulta)) {
+    const lista = Array.isArray(linhas) ? linhas : [];
+    const estruturaOk =
+      estruturaDoRolFechado(lista, ROL_FECHADO_POR_CONSULTA[consulta]) ===
+        null && lista.every((l) => typeof l.ok === "boolean");
+    const okFalse = lista.filter((l) => l && l.ok === false).length;
+    const naoBooleano = lista.filter(
+      (l) => !l || typeof l.ok !== "boolean",
+    ).length;
+    return `${prefixo} linhas=${lista.length} ok_false=${okFalse} ok_nao_booleano=${naoBooleano} rol=${estruturaOk ? "ok" : "invalido"}`;
+  }
+  if (!Array.isArray(linhas) || linhas.length === 0)
+    return `${prefixo} linhas=0 ok_false=0 ok_nao_booleano=0`;
+  if (!linhas.every((l) => l && Object.hasOwn(l, "ok"))) return null;
+  const okFalse = linhas.filter((l) => l.ok === false).length;
+  const naoBooleano = linhas.filter((l) => typeof l.ok !== "boolean").length;
+  return `${prefixo} linhas=${linhas.length} ok_false=${okFalse} ok_nao_booleano=${naoBooleano}`;
 }
 
 async function rodarBackups({ ref, token }) {
@@ -653,6 +761,13 @@ const CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER = {
   "75-78": ["1a-conferir-o-que-nasceu", "1b-conferir-marcadores"],
   "79-82": ["6a-conferir-79-a-82"],
   83: ["7a-conferir-83"],
+  // O backfill 92-202 só grava se a 8e (o corpo vivo de cada função que 92..202
+  // definem + os objetos que criam) der ok=true em TODAS as linhas.
+  "92-202": ["8e-conferir-92-a-202-aplicado"],
+  // O backfill 60-66 só grava se a 9a devolver EXATAMENTE o rol fechado, todo
+  // ok=true (`conferirRolFechado`). A forma do ledger NÃO é da 9a: `rodarLedger`
+  // a lê e a confere à parte (`classificarLedgerDa60a66`).
+  "60-66": ["9a-conferir-60-a-66-aplicado"],
 };
 
 /** Linhas que são dado AO VIVO da loja — mudam legitimamente com o tempo ou
@@ -683,6 +798,17 @@ async function conferirAntesDeGravar({ ref, token, faixa }) {
     const selectUnico = fs.readFileSync(arquivo, "utf8");
     const corpo = await chamarLeitura({ ref, token, query: selectUnico });
     const linhas = extrairLinhas(corpo);
+    if (Object.hasOwn(ROL_FECHADO_POR_CONSULTA, nomeConsulta)) {
+      // ROL FECHADO (9a e 8e): ver `conferirRolFechado`. A MESMA tabela
+      // (`ROL_FECHADO_POR_CONSULTA`) que o veredito da consulta usa.
+      conferirRolFechado({
+        faixa,
+        nomeConsulta,
+        linhas,
+        rol: ROL_FECHADO_POR_CONSULTA[nomeConsulta],
+      });
+      continue;
+    }
     if (linhas.length === 0) {
       throw new Error(
         `pré-checagem do ledger ${faixa} falhou: ${nomeConsulta} devolveu 0 linhas`,
@@ -697,6 +823,945 @@ async function conferirAntesDeGravar({ ref, token, faixa }) {
         );
       }
     }
+  }
+}
+
+/**
+ * O ROL FECHADO das consultas de pré-checagem das faixas 60-66 (9a) e 92-202
+ * (8e): os itens que a consulta devolve, cada um UMA vez. A pré-checagem das
+ * faixas 72..83 só recusa "0 linhas" ou `ok !== true` — para elas isso já
+ * bastava e mudar o critério delas é fora de escopo. Para estas duas é FRACO:
+ * uma resposta PARCIAL (faltam itens, mas os presentes são ok=true), uma linha
+ * duplicada, um item desconhecido ou um `ok` que não é o booleano `true`
+ * autorizariam gravar o ledger de uma faixa cujo efeito não foi provado inteiro.
+ * Gravar registro de migration NÃO tem desfazer barato (o portão passa a
+ * acreditar que a faixa está lá), por isso o critério aqui é o de lista fechada
+ * — e a Savy vai usar a 92-202. Nenhum rótulo destes está em
+ * `IGNORAR_NA_PRE_CHECAGEM_DO_LEDGER` (as faixas de rol fechado nem consultam
+ * essa lista). tests/banco/lote-60-66-viva.cjs prova, num Postgres real, que
+ * cada rol é EXATAMENTE o que a consulta devolve; tests/ci_conferir_banco_test.ts
+ * prova que cada item de rol existe no .sql.
+ */
+const ROL_DA_9A = [
+  "acl buscar_por_codigo_barras",
+  "acl get_admin_orders_cancelados_recentes",
+  "acl get_admin_orders_paged",
+  "acl registrar_venda_presencial",
+  "assinatura get_admin_orders_paged",
+  "atributos buscar_por_codigo_barras",
+  "atributos get_admin_orders_cancelados_recentes",
+  "atributos get_admin_orders_paged",
+  "atributos get_product_recommendations",
+  "atributos limpar_cotacoes_fora_da_janela",
+  "atributos registrar_venda_presencial",
+  "atributos upsert_store_config",
+  "coluna marketplace_orders.canal",
+  "coluna marketplace_orders.vendedor_id",
+  "coluna product_variants.codigo_barras",
+  "coluna produtos.codigo_barras",
+  "controle: funcoes de public visiveis a este papel",
+  "corpo final buscar_por_codigo_barras",
+  "corpo final get_admin_orders_cancelados_recentes",
+  "corpo final get_admin_orders_paged",
+  "corpo final get_product_recommendations",
+  "corpo final limpar_cotacoes_fora_da_janela",
+  "corpo final registrar_venda_presencial",
+  "corpo final upsert_store_config",
+  "default de store_config.free_shipping_min",
+  "fk marketplace_orders.vendedor_id",
+  "gatilho shipping_quotes_cache_limpa_ao_gravar",
+  "indice idx_marketplace_orders_presencial",
+  "indice product_variants_codigo_barras_unico",
+  "indice produtos_codigo_barras_unico",
+  "indice shipping_quotes_cache_created_at_idx",
+  "privilegio authenticated le produtos.codigo_barras",
+  "restricao marketplace_orders_canal_check",
+  "restricao shipping_quotes_cache_chave_unica",
+  "sobrecargas buscar_por_codigo_barras",
+  "sobrecargas get_admin_orders_cancelados_recentes",
+  "sobrecargas get_admin_orders_paged",
+  "sobrecargas get_product_recommendations",
+  "sobrecargas limpar_cotacoes_fora_da_janela",
+  "sobrecargas registrar_venda_presencial",
+  "sobrecargas upsert_store_config",
+  "vista vw_produtos_admin colunas",
+  "vista vw_produtos_admin definicao",
+  "vista vw_produtos_admin opcoes",
+  "vista vw_produtos_public colunas",
+  "vista vw_produtos_public definicao",
+  "vista vw_produtos_public opcoes",
+];
+const ROL_DA_8E = [
+  "coluna order_refunds.criada_sob_autorizacao existe",
+  "coluna order_refunds.mp_chargeback_case_id existe",
+  "coluna order_refunds.mp_chargeback_id existe",
+  "coluna order_refunds.mp_chargeback_valor_do_caso existe",
+  "coluna order_refunds.post_autorizado_em existe",
+  "controle: funcoes de public visiveis a este papel",
+  "corpo final admin_devolucao_concluir",
+  "corpo final admin_devolucao_decidir",
+  "corpo final admin_devolucao_liberar_vinculo_reverso",
+  "corpo final admin_devolucao_reemitir_reembolso",
+  "corpo final admin_devolucao_registrar",
+  "corpo final admin_devolucao_reprovar",
+  "corpo final admin_devolucoes_listar",
+  "corpo final autorizar_post_do_estorno",
+  "corpo final cancelar_pedido_com_cobranca",
+  "corpo final confirmar_pagamento",
+  "corpo final confirmar_retorno_do_produto",
+  "corpo final crm_clientes",
+  "corpo final crm_visao",
+  "corpo final devolucao_detalhe",
+  "corpo final devolucao_elegibilidade",
+  "corpo final devolucoes_do_pedido",
+  "corpo final ensure_role_protection",
+  "corpo final fin_caixa_abrir",
+  "corpo final fin_caixa_atual",
+  "corpo final fin_caixa_fechar",
+  "corpo final fin_caixa_historico",
+  "corpo final fin_caixa_movimentar",
+  "corpo final fin_categoria_salvar",
+  "corpo final fin_categorias_listar",
+  "corpo final fin_conta_salvar",
+  "corpo final fin_contas_listar",
+  "corpo final fin_dre",
+  "corpo final fin_extrato",
+  "corpo final fin_lancamento_baixar",
+  "corpo final fin_lancamento_cancelar",
+  "corpo final fin_lancamento_salvar",
+  "corpo final fin_previstos",
+  "corpo final fin_resumo",
+  "corpo final get_admin_analytics_v2",
+  "corpo final get_admin_customers_paged",
+  "corpo final get_admin_orders_cancelados_recentes",
+  "corpo final get_admin_orders_paged",
+  "corpo final get_admin_user_detail",
+  "corpo final get_category_analytics",
+  "corpo final get_coupon_stats",
+  "corpo final get_retention_rate",
+  "corpo final get_segmented_push_count",
+  "corpo final get_segmented_push_targets",
+  "corpo final handle_profile_role_sync_to_auth",
+  "corpo final is_admin_atual",
+  "corpo final painel_inicio",
+  "corpo final pedido__mudar_status",
+  "corpo final pedido__saldo_a_estornar",
+  "corpo final prevent_role_change",
+  "corpo final registrar_contestacao_no_ledger",
+  "corpo final registrar_estorno_externo_do_mp",
+  "corpo final registrar_estorno_manual",
+  "corpo final registrar_pagamento_recebido",
+  "corpo final registrar_venda_presencial",
+  "corpo final rls_admin_atual",
+  "corpo final salvar_config_pagamento_cartao",
+  "corpo final salvar_politica_de_devolucao",
+  "corpo final save_store_identity",
+  "corpo final solicitar_estorno",
+  "corpo final update_order_status_atomic",
+  "corpo final upsert_store_config",
+  "indice uq_order_refunds_pedido_contestacao existe",
+  "indice uq_order_refunds_pedido_refund_mp existe",
+  "politica marketplace_order_history.order_history_select_policy existe",
+  "politica marketplace_order_items.order_items_select_policy existe",
+  "politicas de public que citam rls_admin_atual",
+  "tabela contestacoes_decisao_final existe",
+];
+/** O rol da 8k (subtotal divergente, ou as duas tabelas VAZIAS PROVADAS): as 20
+ * linhas que scripts/publicacao/consultas/8k-subtotal-divergente-ou-vazia-provada.sql
+ * devolve, cada uma UMA vez, sempre as mesmas (com dados, sem dados ou com papel
+ * cego). Diferente da 9a e da 8e ela NÃO serve de pré-checagem do ledger: é o
+ * diagnóstico exigido antes do apply do lote 92-202 (`conferenciasAntesDoApply`),
+ * e o portão só a aceita como POSITIVA com ` rol=ok` no veredito.
+ * tests/banco/subtotal-vazia-provada-viva.cjs prova, num Postgres real, que este
+ * rol é EXATAMENTE o que a consulta devolve. */
+const ROL_DA_8K = [
+  "  dos quais sem nenhum item",
+  "controle: itens de pedido visiveis",
+  "controle: pedidos visiveis",
+  "marketplace_order_items.id: tipo",
+  "marketplace_order_items.order_id: tipo",
+  "marketplace_order_items.price: tipo",
+  "marketplace_order_items.quantity: tipo",
+  "marketplace_order_items: metadados do papel efetivo",
+  "marketplace_order_items: relkind",
+  "marketplace_order_items: row_security_active",
+  "marketplace_order_items: select de tabela inteira",
+  "marketplace_orders.id: tipo",
+  "marketplace_orders.subtotal: tipo",
+  "marketplace_orders: metadados do papel efetivo",
+  "marketplace_orders: relkind",
+  "marketplace_orders: row_security_active",
+  "marketplace_orders: select de tabela inteira",
+  "papel efetivo",
+  "pedidos com soma dos itens diferente do subtotal",
+  "vazia provada",
+];
+/** O rol da 10a (a prova de objetos do lote da migration 20261203000000, cupons
+ * desligados não dão desconto — issue #645): as 21 linhas que
+ * scripts/publicacao/consultas/10a-conferir-cupons-desligados-aplicado.sql devolve,
+ * cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira
+ * `AUSENTE` na própria linha, nunca some uma linha). Como a 8k, NÃO serve de
+ * pré-checagem de ledger (o lote não tem backfill: é de apply normal): o portão a
+ * lê como `consulta` do lote e só a aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/cupons-desligados-portao-viva.cjs prova, num Postgres real, que este
+ * rol é EXATAMENTE o que a consulta devolve. */
+const ROL_DA_10A = [
+  "controle: funcoes de public visiveis a este papel",
+  "funcao do gatilho: EXECUTE para PUBLIC",
+  "funcao do gatilho: EXECUTE para anon",
+  "funcao do gatilho: EXECUTE para authenticated",
+  "funcao do gatilho: SECURITY DEFINER",
+  "funcao do gatilho: corpo (sha256)",
+  "funcao do gatilho: linguagem e retorno",
+  "funcao do gatilho: search_path",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: condicao WHEN",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: existe em marketplace_orders",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: funcao executada",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: habilitado",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: momento e evento",
+  "indice marketplace_orders_chave_da_compra_unica: definicao",
+  "indice marketplace_orders_chave_da_compra_unica: existe",
+  "validate_coupon_secure_v2: EXECUTE para PUBLIC",
+  "validate_coupon_secure_v2: EXECUTE para authenticated",
+  "validate_coupon_secure_v2: SECURITY DEFINER",
+  "validate_coupon_secure_v2: corpo (sha256)",
+  "validate_coupon_secure_v2: search_path",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+
+/** O rol da 10b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as
+ * 6 linhas que scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql
+ * devolve — o que o pré-voo da migration exige, lido ANTES de aplicar. */
+const ROL_DA_10B = [
+  "coluna marketplace_orders.coupon_id: existe",
+  "coluna store_config.enable_coupons: existe",
+  "controle: funcoes de public visiveis a este papel",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: ausente em marketplace_orders",
+  "validate_coupon_secure_v2: corpo e o baseline (sha256)",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+/** O rol da 11a (a prova de objetos do lote da migration 20261204000000, a venda do
+ * balcão se anula no mesmo dia): as 14 linhas que
+ * scripts/publicacao/consultas/11a-conferir-anular-venda-presencial-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente
+ * vira `AUSENTE` na própria linha). Como a 10a, NÃO serve de pré-checagem de ledger
+ * (o lote não tem backfill: é de apply normal). tests/banco/anular-venda-portao-viva.cjs
+ * prova, num Postgres real, que este rol é EXATAMENTE o que a consulta devolve. */
+const ROL_DA_11A = [
+  "anular_venda_presencial: EXECUTE para PUBLIC",
+  "anular_venda_presencial: EXECUTE para anon",
+  "anular_venda_presencial: EXECUTE para authenticated",
+  "anular_venda_presencial: EXECUTE para service_role",
+  "anular_venda_presencial: SECURITY DEFINER",
+  "anular_venda_presencial: corpo (sha256)",
+  "anular_venda_presencial: linguagem e retorno",
+  "anular_venda_presencial: search_path",
+  "anular_venda_presencial: sobrecargas",
+  "controle: funcoes de public visiveis a este papel",
+  "dependencia devolver_estoque(uuid): existe",
+  "dependencia fin__dia e fin__hoje: existem",
+  "dependencia is_admin_atual(): existe",
+  "dependencia pedido__mudar_status(...): existe",
+];
+/** O rol da 11b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as 8
+ * linhas que scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql
+ * devolve — o que o pré-voo da migration exige, lido ANTES de aplicar. */
+const ROL_DA_11B = [
+  "anular_venda_presencial: ausente",
+  "colunas usadas: existem",
+  "controle: funcoes de public visiveis a este papel",
+  "dependencia devolver_estoque(uuid): existe",
+  "dependencia fin__dia e fin__hoje: existem",
+  "dependencia is_admin(): existe",
+  "dependencia is_admin_atual(): corpo e o esperado (md5)",
+  "dependencia pedido__mudar_status(...): corpo e o esperado (md5)",
+  "tabelas usadas: existem",
+];
+/** O rol da 12a (a prova de objetos do lote das migrations 20261205000000 e
+ * 20261206000000, o cupom preso diz quando a vaga volta e a vaga do pedido nunca
+ * cobrado volta em 1 h): as 24 linhas que
+ * scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql devolve, cada uma
+ * UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
+ * própria linha). Como a 10a e a 11a, NÃO serve de pré-checagem de ledger (o lote não
+ * tem backfill: é de apply normal). A linha do job do cron diz `NAO VERIFICAVEL` (e
+ * fica ok) só quando a RLS do cron.job vale para o papel (row_security_active) e ele
+ * não vê job nenhum: ver o cabeçalho da consulta.
+ * tests/banco/cupom-preso-portao-viva.cjs prova, num Postgres real, que este rol é
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_12A = [
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: EXECUTE para PUBLIC, anon, authenticated e service_role",
+  "cupom__vaga_volta_em: corpo (sha256)",
+  "cupom__vaga_volta_em: sobrecargas",
+  "dependencia auth.uid(): existe",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE para PUBLIC",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE para anon",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE para authenticated",
+  "devolver_cupons_de_pedidos_mortos: SECURITY DEFINER",
+  "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
+  "devolver_cupons_de_pedidos_mortos: search_path",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "donos da varredura e da RPC: EXECUTE no auxiliar",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "vaga_do_cupom_presa: EXECUTE para PUBLIC",
+  "vaga_do_cupom_presa: EXECUTE para anon",
+  "vaga_do_cupom_presa: EXECUTE para authenticated",
+  "vaga_do_cupom_presa: EXECUTE para service_role",
+  "vaga_do_cupom_presa: SECURITY DEFINER",
+  "vaga_do_cupom_presa: corpo (sha256)",
+  "vaga_do_cupom_presa: linguagem e retorno",
+  "vaga_do_cupom_presa: search_path",
+  "vaga_do_cupom_presa: sobrecargas",
+];
+/** O rol da 12b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as 10
+ * linhas que scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql
+ * devolve — o que os pré-voos das duas migrations exigem, lido ANTES de aplicar. */
+const ROL_DA_12B = [
+  "colunas usadas: existem",
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: ausente",
+  "dependencia auth.uid(): existe",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: corpo e o da 20260970 (sha256)",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "tabelas usadas: existem",
+  "vaga_do_cupom_presa: ausente",
+];
+/** O rol da 14a (a prova de objetos do lote da migration 20261207000000, o contador
+ * duplicado do cupom morre — apaga `coupons.used_count`): as 4 linhas que
+ * scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql devolve, cada
+ * uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
+ * própria linha). Como a 10a, a 11a e a 12a, NÃO serve de pré-checagem de ledger (o lote
+ * não tem backfill: é de apply normal).
+ * tests/banco/contador-duplicado-portao-viva.cjs prova, num Postgres real, que este rol é
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_14A = [
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
+  "coupons.used_count: coluna",
+  "public.coupons: tabela",
+];
+/** O rol da 14b (a consulta do ANTES do mesmo lote, `ausenciaConfirmadaPor`): as 13
+ * linhas que scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql
+ * devolve — a condição em que o dono aprovou apagar (coluna PRESENTE e zerada, nada
+ * dependendo dela), lida ANTES de aplicar. Aqui o "antes" é o contrário da 10b/11b/12b:
+ * a coluna tem de EXISTIR. */
+const ROL_DA_14B = [
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
+  "coupons.used_count: coluna presente",
+  "coupons.used_count: comentario proprio",
+  "coupons.used_count: dependentes (fora o default da propria coluna)",
+  "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
+  "coupons.used_count: linhas com valor diferente de 0 (NULL conta)",
+  "coupons.used_count: permissao propria por coluna (attacl)",
+  "funcoes de qualquer schema que citam used_count",
+  "gatilhos que citam used_count",
+  "politicas de public que citam used_count",
+  "public.coupons: a seguranca por linha vale para este papel",
+  "visoes de public que citam used_count",
+];
+/** O rol da 15a (a prova de objetos do lote da migration 20261208000000, o checkout mostra os cupons
+ * da cliente): as 37 linhas que scripts/publicacao/consultas/15a-conferir-cupons-do-checkout-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
+ * própria linha, nunca some uma linha). Como a 10a, a 11a, a 12a e a 14a, NÃO serve de pré-checagem de
+ * ledger (o lote não tem backfill: é de apply normal): o portão a lê como `consulta` do lote e só a
+ * aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/cupons-do-checkout-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_15A = [
+  "admin_cupom_clientes: EXECUTE",
+  "admin_cupom_clientes: corpo (sha256)",
+  "admin_cupom_clientes: forma",
+  "admin_cupom_clientes: sobrecargas",
+  "admin_cupom_definir_clientes: EXECUTE",
+  "admin_cupom_definir_clientes: corpo (sha256)",
+  "admin_cupom_definir_clientes: forma",
+  "admin_cupom_definir_clientes: sobrecargas",
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.alcance: CHECK coupons_alcance_check",
+  "coupons.alcance: coluna (tipo, NOT NULL, default)",
+  "cupom_clientes: colunas",
+  "cupom_clientes: politicas (nome, comando, papeis)",
+  "cupom_clientes: privilegios de PUBLIC",
+  "cupom_clientes: privilegios de anon",
+  "cupom_clientes: privilegios de authenticated",
+  "cupom_clientes: regra da politica de leitura",
+  "cupom_clientes: seguranca por linha (RLS) ligada",
+  "cupons_do_checkout: EXECUTE",
+  "cupons_do_checkout: corpo (sha256)",
+  "cupons_do_checkout: forma",
+  "cupons_do_checkout: sobrecargas",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: condicao WHEN",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: existe em marketplace_orders",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: funcao executada",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: habilitado",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: momento e evento",
+  "gatilhos de cupom no pedido: ordem de disparo",
+  "indice marketplace_orders_chave_da_compra_unica: definicao",
+  "pedido_com_cupom_so_nasce_para_a_lista: EXECUTE",
+  "pedido_com_cupom_so_nasce_para_a_lista: corpo (sha256)",
+  "pedido_com_cupom_so_nasce_para_a_lista: forma",
+  "pedido_com_cupom_so_nasce_para_a_lista: sobrecargas",
+  "validate_coupon_secure_v2: EXECUTE",
+  "validate_coupon_secure_v2: corpo (sha256)",
+  "validate_coupon_secure_v2: forma",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+/** O rol da 15b (a consulta de AUSÊNCIA do lote da migration 20261208000000,
+ * `ausenciaConfirmadaPor`): as 15 linhas que
+ * scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql devolve — o que o
+ * pré-voo da migration exige (colunas, funções do admin atual, gatilho da 20261203000000 ativo,
+ * índice único da chave de compra, corpo da validação igual ao da 20261203000000) e a AUSÊNCIA de
+ * tudo que ela cria, lidos ANTES de aplicar. Como a 10b/11b/12b, e ao contrário da 14b, o "antes"
+ * aqui é a ausência dos objetos novos.
+ * tests/banco/cupons-do-checkout-portao-viva.cjs prova, num Postgres real, que este rol é
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_15B = [
+  "admin_cupom_clientes: funcao",
+  "admin_cupom_definir_clientes: funcao",
+  "colunas que as pecas da migration leem: existem",
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.alcance: coluna",
+  "coupons_alcance_check: constraint",
+  "cupom_clientes: tabela",
+  "cupons_do_checkout: funcao",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: ativo (BEFORE INSERT)",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: ausente em marketplace_orders",
+  "indice marketplace_orders_chave_da_compra_unica: definicao",
+  "is_admin, is_admin_atual e rls_admin_atual: existem",
+  "pedido_com_cupom_so_nasce_para_a_lista: funcao",
+  "validate_coupon_secure_v2: corpo e o da 20261203000000 (sha256)",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+/** O rol da 16a (a prova de objetos do lote das migrations 20261209000000 e 20261210000000, o cupom
+ * do PIX anulado volta em minutos): as 32 linhas que
+ * scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na própria linha, nunca some uma
+ * linha). Como a 10a, a 11a, a 12a, a 14a e a 15a, NÃO serve de pré-checagem de ledger (o lote não tem
+ * backfill: é de apply normal): o portão a lê como `consulta` do lote e só a aceita como POSITIVA ou
+ * NEGATIVA com ` rol=ok`.
+ * tests/banco/cupom-pix-anulado-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_16A = [
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: EXECUTE para PUBLIC, anon, authenticated e service_role",
+  "cupom__vaga_volta_em: assinatura",
+  "cupom__vaga_volta_em: corpo (sha256)",
+  "cupom__vaga_volta_em: forma",
+  "cupom__vaga_volta_em: sobrecargas",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE",
+  "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
+  "devolver_cupons_de_pedidos_mortos: forma",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "donos da varredura e da RPC: EXECUTE no auxiliar",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: condicao WHEN",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: existe em marketplace_orders",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: funcao executada",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: habilitado",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: momento e evento",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "pedido__foto_da_cobranca_ao_cancelar: EXECUTE para PUBLIC, anon, authenticated e service_role",
+  "pedido__foto_da_cobranca_ao_cancelar: corpo (sha256)",
+  "pedido__foto_da_cobranca_ao_cancelar: forma",
+  "pedido__foto_da_cobranca_ao_cancelar: sobrecargas",
+  "pedido_cobranca_ao_cancelar: chave estrangeira",
+  "pedido_cobranca_ao_cancelar: chave primaria",
+  "pedido_cobranca_ao_cancelar: colunas (nome, tipo, NOT NULL, default)",
+  "pedido_cobranca_ao_cancelar: politicas",
+  "pedido_cobranca_ao_cancelar: privilegios de PUBLIC, anon, authenticated e service_role",
+  "pedido_cobranca_ao_cancelar: seguranca por linha (RLS) ligada",
+  "vaga_do_cupom_presa: EXECUTE",
+  "vaga_do_cupom_presa: corpo (sha256)",
+  "vaga_do_cupom_presa: forma",
+  "vaga_do_cupom_presa: sobrecargas",
+];
+/** O rol da 16b (a consulta de AUSÊNCIA do lote das migrations 20261209000000 e 20261210000000,
+ * `ausenciaConfirmadaPor`): as 14 linhas que
+ * scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql devolve — o que os pré-voos das
+ * duas migrations exigem (colunas de marketplace_orders, o auxiliar de 9 parâmetros, a RPC e a varredura
+ * com os corpos das 20261205/20261206 e UMA sobrecarga cada, a função `devolver_uso_cupom`, o job de
+ * 15 em 15 minutos ativo) e a AUSÊNCIA de tudo que a 20261209000000 cria (tabela, função e gatilho da foto), lidos ANTES
+ * de aplicar. Como a 10b/11b/12b/15b, o "antes" aqui é a ausência dos objetos novos.
+ * tests/banco/cupom-pix-anulado-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_16B = [
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: assinatura",
+  "cupom__vaga_volta_em: corpo e o da 20261206000000 (sha256)",
+  "cupom__vaga_volta_em: sobrecargas",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: corpo e o da 20261206000000 (sha256)",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: ausente em marketplace_orders",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "marketplace_orders: colunas que o gatilho e as funcoes leem",
+  "pedido__foto_da_cobranca_ao_cancelar: funcao",
+  "pedido_cobranca_ao_cancelar: tabela",
+  "vaga_do_cupom_presa: corpo e o da 20261205000000 (sha256)",
+  "vaga_do_cupom_presa: sobrecargas",
+];
+/** O rol da 17a (a prova de objetos do lote das migrations 20261212000000, 20261213000000 e
+ * 20261214000000, o estoque do painel segue UMA regra: cada uma só troca o CORPO de UMA função): as 14
+ * linhas que scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql devolve, cada uma
+ * UMA vez, as mesmas em qualquer estado do banco (função ausente vira `AUSENTE` na própria linha, nunca
+ * some uma linha) — por função (`get_admin_analytics_v2`, `get_admin_products_paged`, `painel_inicio`)
+ * sobrecargas, forma, corpo e EXECUTE, mais o controle e as colunas. Como a 10a/11a/12a/14a/15a/16a, NÃO
+ * serve de pré-checagem de ledger (o lote não tem backfill: é de apply normal): o portão a lê como
+ * `consulta` do lote e só a aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/estoque-do-painel-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_17A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: EXECUTE",
+  "get_admin_analytics_v2: corpo e o da 20261214000000 (sha256)",
+  "get_admin_analytics_v2: forma",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_products_paged: EXECUTE",
+  "get_admin_products_paged: corpo e o da 20261213000000 (sha256)",
+  "get_admin_products_paged: forma",
+  "get_admin_products_paged: sobrecargas",
+  "painel_inicio: EXECUTE",
+  "painel_inicio: corpo e o da 20261212000000 (sha256)",
+  "painel_inicio: forma",
+  "painel_inicio: sobrecargas",
+  "produtos e product_variants: colunas que os corpos novos leem",
+];
+/** O rol da 17b (a consulta de AUSÊNCIA do lote das migrations 20261212000000, 20261213000000 e
+ * 20261214000000, o estoque do painel segue UMA regra; `ausenciaConfirmadaPor`): as 11 linhas que
+ * scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql devolve — o que os
+ * pré-voos das três migrations exigem (o corpo VIGENTE de antes de `get_admin_analytics_v2` e
+ * `painel_inicio`, o da 20261199000000, e de `get_admin_products_paged`, o da baseline; UMA sobrecarga
+ * cada), o EXECUTE que o CREATE OR REPLACE preserva (só authenticated) e as colunas de `produtos` e
+ * `product_variants` que os trechos novos leem, lidos ANTES de aplicar. Ao contrário da 10b/11b/12b/15b/16b,
+ * o "antes" aqui não é a ausência de objeto novo: é o corpo velho de cada função (o lote só troca corpos).
+ * tests/banco/estoque-do-painel-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_17B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: EXECUTE",
+  "get_admin_analytics_v2: corpo e o da 20261199000000 (sha256)",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_products_paged: EXECUTE",
+  "get_admin_products_paged: corpo e o da 20260806000000 (sha256)",
+  "get_admin_products_paged: sobrecargas",
+  "painel_inicio: EXECUTE",
+  "painel_inicio: corpo e o da 20261199000000 (sha256)",
+  "painel_inicio: sobrecargas",
+  "produtos e product_variants: colunas que os corpos novos leem",
+];
+/** O rol da 19a (a prova de objetos do lote da migration 20261215000000, a politica de devolucao nao
+ * mostra quem a editou — achado L): as 9 linhas que
+ * scripts/publicacao/consultas/19a-conferir-politica-devolucao-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (tabela ausente vira `AUSENTE` na propria linha, papel inexistente vira
+ * `papel ausente`, nunca some uma linha): o controle (16 colunas), a RLS com a politica publica de SELECT,
+ * `service_role` com SELECT da tabela inteira e, para `anon` e `authenticated`, SEM SELECT da tabela
+ * inteira, SEM SELECT em `updated_by` e 15 de 16 colunas legiveis. Como a 10a/11a/12a/14a/15a/16a/17a, NAO
+ * serve de pre-checagem de ledger (o lote nao tem backfill): o portao a le como `consulta` do lote e so a
+ * aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/politica-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_19A = [
+  "anon: SELECT da tabela inteira",
+  "anon: SELECT em updated_by",
+  "anon: colunas legiveis",
+  "authenticated: SELECT da tabela inteira",
+  "authenticated: SELECT em updated_by",
+  "authenticated: colunas legiveis",
+  "controle: colunas de politica_devolucao visiveis a este papel",
+  "politica_devolucao: RLS ligada com a politica publica de SELECT",
+  "service_role: SELECT da tabela inteira",
+];
+/** O rol da 19b (a consulta de AUSENCIA do lote da migration 20261215000000; `ausenciaConfirmadaPor`): as 9
+ * linhas que scripts/publicacao/consultas/19b-antes-politica-devolucao-grant-de-tabela.sql devolve, os MESMOS
+ * itens da 19a com o esperado de ANTES — `anon` e `authenticated` com SELECT da tabela inteira, com SELECT em
+ * `updated_by` e 16 de 16 colunas legiveis. Uma loja que ja tem a migration reprova aqui de proposito.
+ * tests/banco/politica-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_19B = [
+  "anon: SELECT da tabela inteira",
+  "anon: SELECT em updated_by",
+  "anon: colunas legiveis",
+  "authenticated: SELECT da tabela inteira",
+  "authenticated: SELECT em updated_by",
+  "authenticated: colunas legiveis",
+  "controle: colunas de politica_devolucao visiveis a este papel",
+  "politica_devolucao: RLS ligada com a politica publica de SELECT",
+  "service_role: SELECT da tabela inteira",
+];
+
+/** O rol da 20a (a prova de objetos do lote da migration 20261216000000, o cliente apaga a foto de
+ * devolucao que nao usou): as 6 linhas que
+ * scripts/publicacao/consultas/20a-conferir-fotos-da-devolucao-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (politica ausente vira `AUSENTE` na propria linha, nunca some uma
+ * linha): o controle do catalogo, a politica de DELETE do cliente (uma), so para `authenticated`, com as
+ * pecas que a fazem segura (bucket, pasta do cliente, foto fora de uso), nenhuma outra politica de DELETE/ALL
+ * alcancando o bucket, e as politicas de INSERT e SELECT do cliente no lugar. Como a 10a/11a/12a/14a/15a/16a/17a/19a, NAO serve de pre-checagem de ledger (o lote
+ * nao tem backfill): o portao a le como `consulta` do lote e so a aceita como POSITIVA ou NEGATIVA com
+ * ` rol=ok`. tests/banco/fotos-da-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_20A = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "devolucoes: DELETE so no bucket, na pasta do cliente e fora da foto em uso",
+  "devolucoes: DELETE so para authenticated",
+  "devolucoes: INSERT e SELECT do cliente seguem no lugar",
+  "devolucoes: nenhuma outra politica DELETE/ALL alcanca o bucket",
+  "devolucoes: politicas de DELETE do cliente",
+];
+/** O rol da 20b (a consulta de AUSENCIA do lote da migration 20261216000000; `ausenciaConfirmadaPor`): as 6
+ * linhas que scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql devolve, os MESMOS
+ * itens da 20a com o esperado de ANTES (nenhuma politica de DELETE do cliente; INSERT e SELECT presentes).
+ * Uma loja que ja tem a politica reprova aqui de proposito. tests/banco/fotos-da-devolucao-portao-viva.cjs
+ * prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_20B = [
+  "controle: politicas de storage.objects visiveis a este papel",
+  "devolucoes: DELETE so no bucket, na pasta do cliente e fora da foto em uso",
+  "devolucoes: DELETE so para authenticated",
+  "devolucoes: INSERT e SELECT do cliente seguem no lugar",
+  "devolucoes: nenhuma outra politica DELETE/ALL alcanca o bucket",
+  "devolucoes: politicas de DELETE do cliente",
+];
+/** O rol da 21a (a prova de objetos do lote da migration 20261217000000, o e-mail da loja tem teto e o
+ * codigo do convidado nao se queima): as 14 linhas que
+ * scripts/publicacao/consultas/21a-conferir-teto-de-email-aplicado.sql devolve, cada uma UMA vez, as mesmas
+ * em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha, nunca some uma linha): o
+ * controle do catalogo, corpo (sha256) e EXECUTE das seis funcoes do lote e a tabela de contadores com RLS e
+ * sem privilegio para anon/authenticated. Como a 17a/19a/20a, NAO serve de pre-checagem de ledger (o lote
+ * nao tem backfill): o portao a le como `consulta` do lote e so a aceita como POSITIVA ou NEGATIVA com
+ * ` rol=ok`. tests/banco/teto-de-email-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE
+ * o que a consulta devolve. */
+const ROL_DA_21A = [
+  "chave_do_destinatario: EXECUTE",
+  "chave_do_destinatario: corpo e o da 20261217000000 (sha256)",
+  "controle: funcoes de public visiveis a este papel",
+  "email_da_loja_contadores: RLS ligada e nada para anon/authenticated",
+  "generate_order_otp_v2: EXECUTE",
+  "generate_order_otp_v2: corpo e o da 20261217000000 (sha256)",
+  "get_orders_by_otp_v1: EXECUTE",
+  "get_orders_by_otp_v1: corpo e o da 20261217000000 (sha256)",
+  "get_orders_by_otp_v2: EXECUTE",
+  "get_orders_by_otp_v2: corpo e o da 20261217000000 (sha256)",
+  "reivindicar_email_de_confirmacao: EXECUTE",
+  "reivindicar_email_de_confirmacao: corpo e o da 20261217000000 (sha256)",
+  "reservar_vaga_de_email: EXECUTE",
+  "reservar_vaga_de_email: corpo e o da 20261217000000 (sha256)",
+];
+/** O rol da 21b (a consulta de AUSENCIA do lote da migration 20261217000000; `ausenciaConfirmadaPor`): as 8
+ * linhas que scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql devolve — como na 17b,
+ * o "antes" e o corpo VIGENTE das tres funcoes que o lote troca (com o EXECUTE de sempre) e as colunas que
+ * os corpos novos leem. Uma loja que ja tem a migration reprova aqui de proposito.
+ * tests/banco/teto-de-email-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_21B = [
+  "controle: funcoes de public visiveis a este papel",
+  "generate_order_otp_v2: EXECUTE",
+  "generate_order_otp_v2: corpo e o da 20260820000000 (sha256)",
+  "get_orders_by_otp_v1: EXECUTE",
+  "get_orders_by_otp_v1: corpo e o da 20261181000000 (sha256)",
+  "pedidos, codigos e contas: colunas que os corpos novos leem",
+  "reivindicar_email_de_confirmacao: EXECUTE",
+  "reivindicar_email_de_confirmacao: corpo e o da 20260821000000 (sha256)",
+];
+/** O rol da 22a (a prova de objetos do lote 20261218000000 + 20261218000100 + 20261219000000, as
+ * portas pequenas do banco): as 15 linhas que
+ * scripts/publicacao/consultas/22a-conferir-portas-do-banco-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): a politica de
+ * public_profiles so para authenticated com a condicao do lote, o gatilho do teto da imagem do perfil
+ * (definicao, corpo sha256 e EXECUTE fechado), o EXECUTE da contagem do push, a view do painel sem nada
+ * para PUBLIC/anon, configuracoes e codigos sem nada para PUBLIC/anon/authenticated com a service_role
+ * intacta, e anon/authenticated fora dos papeis predefinidos de leitura/escrita. Como a 21a, NAO serve
+ * de pre-checagem de ledger (o lote nao tem backfill). tests/banco/portas-do-banco-portao-viva.cjs prova,
+ * num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_22A = [
+  "anon e authenticated: fora de pg_read_all_data e pg_write_all_data",
+  "app_settings e otp_verifications: service_role le e grava",
+  "app_settings: RLS ligada e nada para PUBLIC/anon/authenticated",
+  "controle: funcoes de public visiveis a este papel",
+  "get_segmented_push_count: EXECUTE",
+  "get_segmented_push_count: corpo e o vigente (md5)",
+  "otp_verifications: RLS ligada e nada para PUBLIC/anon/authenticated",
+  "perfil_recusa_imagem_grande: EXECUTE fechado e sem SECURITY DEFINER",
+  "perfil_recusa_imagem_grande: corpo e o da 20261218000000 (sha256)",
+  "profiles: gatilho do teto da imagem ligado e com a definicao da 20261218000000",
+  "public_profiles: RLS ligada",
+  "public_profiles: condicao da politica e a da 20261219000000 (md5)",
+  "public_profiles: politicas",
+  "vw_produtos_admin: authenticated le e grava",
+  "vw_produtos_admin: nada para PUBLIC/anon",
+];
+/** O rol da 22b (a consulta de AUSENCIA do lote das portas pequenas do banco; `ausenciaConfirmadaPor`):
+ * as 11 linhas que scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql devolve — o
+ * estado VIGENTE medido nas duas lojas (a politica USING (true) para PUBLIC, sem o gatilho, a contagem do
+ * push aberta e a view lida pelo anon), a porta rls_admin_atual() e as colunas que o lote le. SEM linha
+ * de configuracoes e codigos: numa loja ja fechada o "antes" delas ja e o "depois". Uma loja que ja tem
+ * o lote reprova aqui de proposito. tests/banco/portas-do-banco-portao-viva.cjs prova, num Postgres
+ * real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_22B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_segmented_push_count: EXECUTE",
+  "get_segmented_push_count: corpo e o da 20261199000000 (md5)",
+  "perfil_recusa_imagem_grande: funcao",
+  "perfis, avaliacoes e perguntas: colunas que o lote le",
+  "profiles: gatilho do teto da imagem",
+  "public_profiles: RLS ligada",
+  "public_profiles: condicao da politica e a do baseline",
+  "public_profiles: politicas",
+  "rls_admin_atual: corpo da 20261197000000 (md5) e EXECUTE",
+  "vw_produtos_admin: anon le",
+];
+/** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
+ * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
+ * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
+ * 72..83 e as antigas (1a/2a/6a/7a…) ficam de fora de propósito. */
+const ROL_FECHADO_POR_CONSULTA = {
+  "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
+  "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
+  "8k-subtotal-divergente-ou-vazia-provada": ROL_DA_8K,
+  "10a-conferir-cupons-desligados-aplicado": ROL_DA_10A,
+  "10b-antes-cupons-desligados-gatilho-e-corpo": ROL_DA_10B,
+  "11a-conferir-anular-venda-presencial-aplicado": ROL_DA_11A,
+  "11b-antes-anular-venda-presencial-funcao-ausente": ROL_DA_11B,
+  "12a-conferir-cupom-preso-aplicado": ROL_DA_12A,
+  "12b-antes-cupom-preso-funcoes-ausentes": ROL_DA_12B,
+  "14a-conferir-contador-duplicado-apagado": ROL_DA_14A,
+  "14b-antes-contador-duplicado-coluna-presente-e-zerada": ROL_DA_14B,
+  "15a-conferir-cupons-do-checkout-aplicado": ROL_DA_15A,
+  "15b-antes-cupons-do-checkout-pecas-ausentes": ROL_DA_15B,
+  "16a-conferir-pix-anulado-aplicado": ROL_DA_16A,
+  "16b-antes-pix-anulado-foto-ausente": ROL_DA_16B,
+  "17a-conferir-estoque-do-painel-aplicado": ROL_DA_17A,
+  "17b-antes-estoque-do-painel-corpos-vigentes": ROL_DA_17B,
+  "19a-conferir-politica-devolucao-aplicado": ROL_DA_19A,
+  "19b-antes-politica-devolucao-grant-de-tabela": ROL_DA_19B,
+  "20a-conferir-fotos-da-devolucao-aplicado": ROL_DA_20A,
+  "20b-antes-fotos-da-devolucao-sem-delete": ROL_DA_20B,
+  "21a-conferir-teto-de-email-aplicado": ROL_DA_21A,
+  "21b-antes-teto-de-email-corpos-vigentes": ROL_DA_21B,
+  "22a-conferir-portas-do-banco-aplicado": ROL_DA_22A,
+  "22b-antes-portas-do-banco-estado-vigente": ROL_DA_22B,
+};
+const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
+
+/** A ESTRUTURA da resposta de uma consulta de rol fechado: devolve null quando é
+ * exatamente o rol (todas as linhas objetos com EXATAMENTE as colunas
+ * item/esperado/vivo/ok, cada item do rol uma vez, nenhum desconhecido), ou o
+ * texto do que está errado. NÃO olha o valor de `ok` (isso é o resultado). */
+function estruturaDoRolFechado(linhas, rol) {
+  if (!Array.isArray(linhas) || linhas.length === 0) return "devolveu 0 linhas";
+  for (const linha of linhas) {
+    const ehObjeto =
+      linha && typeof linha === "object" && !Array.isArray(linha);
+    if (
+      !ehObjeto ||
+      JSON.stringify(Object.keys(linha).sort()) !==
+        JSON.stringify(COLUNAS_DO_ROL)
+    ) {
+      return `devolveu uma linha sem exatamente as colunas item/esperado/vivo/ok: ${JSON.stringify(linha)?.slice(0, 200)}`;
+    }
+  }
+  const contagem = new Map();
+  for (const linha of linhas) {
+    contagem.set(linha.item, (contagem.get(linha.item) ?? 0) + 1);
+  }
+  const duplicados = [...contagem].filter(([, n]) => n > 1).map(([i]) => i);
+  const desconhecidos = [...contagem.keys()].filter((i) => !rol.includes(i));
+  const faltando = rol.filter((i) => !contagem.has(i));
+  if (duplicados.length || desconhecidos.length || faltando.length) {
+    const partes = [];
+    if (faltando.length)
+      partes.push(`faltam ${faltando.length}: ${faltando.join("; ")}`);
+    if (duplicados.length) partes.push(`repetidos: ${duplicados.join("; ")}`);
+    if (desconhecidos.length)
+      partes.push(`desconhecidos: ${desconhecidos.join("; ")}`);
+    return `não devolveu EXATAMENTE o rol de ${rol.length} itens (${partes.join(" | ")})`;
+  }
+  return null;
+}
+
+/** Confere as linhas de uma consulta de rol fechado. Lança se: alguma linha não é
+ * um objeto com EXATAMENTE as colunas item/esperado/vivo/ok; falta item, sobra item
+ * ou algum item aparece mais de uma vez; ou qualquer `ok` não é o booleano `true`. */
+function conferirRolFechado({ faixa, nomeConsulta, linhas, rol }) {
+  const prefixo = `pré-checagem do ledger ${faixa} falhou: ${nomeConsulta}`;
+  const estrutura = estruturaDoRolFechado(linhas, rol);
+  if (estrutura) throw new Error(`${prefixo} ${estrutura}`);
+  const reprovadas = linhas.filter((l) => l.ok !== true);
+  if (reprovadas.length === 0) return;
+  const l = reprovadas[0];
+  throw new Error(
+    `${prefixo} tem "${l.item}" com ok=${JSON.stringify(l.ok)} (esperado ${JSON.stringify(l.esperado)}, vivo ${JSON.stringify(l.vivo)})${reprovadas.length > 1 ? ` e mais ${reprovadas.length - 1} reprovada(s)` : ""}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// A forma do ledger da faixa 60-66 (D2): NÃO é da 9a (que só olha objetos e dá a
+// mesma resposta antes e depois do backfill) — é lida AQUI, antes de gravar e de
+// novo depois.
+// ---------------------------------------------------------------------------
+const LEDGER_60_66_PISO = "20261150000000";
+const LEDGER_60_66_TETO = "20261167000000";
+const LEDGER_60_66_PRIMEIRA = "20261160000000";
+const MENSAGEM_LEDGER_60_66_JA_REGISTRADO =
+  "ledger 60-66 já registrado: nada a gravar (as 7 versões 20261160..20261166 já estão no ledger com os nomes certos; NENHUMA escrita foi feita e nada foi reaplicado)";
+
+/** O ledger já tem as 7, com os nomes certos: estado EXPLÍCITO, não prova
+ * negativa. `main` o imprime e termina com saída 0, sem escrever. */
+class LedgerJaRegistrado extends Error {
+  constructor(faixa) {
+    super(MENSAGEM_LEDGER_60_66_JA_REGISTRADO);
+    this.name = "LedgerJaRegistrado";
+    this.faixa = faixa;
+  }
+}
+
+/** Lê do INSERT fixo (já conferido por hash) as linhas (version, name) que ele
+ * grava. */
+function versoesDoInsert(sql) {
+  return [...String(sql).matchAll(/\('(\d{14})', '([a-z0-9_]+)'\)/g)].map(
+    (m) => ({ version: m[1], name: m[2] }),
+  );
+}
+
+/**
+ * Classifica a leitura do ledger entre 20261150 e 20261167999999:
+ *   LACUNA          150 e 167 presentes e NENHUMA versão em 160..166 → pode gravar;
+ *   JA_REGISTRADO   as 7 com os nomes certos, nem uma a mais na faixa → nada a gravar;
+ *   PARCIAL         algumas das 7 (ou versão a mais/nome trocado) → PARAR;
+ *   FORMA_INESPERADA  zero da faixa mas 150 ou 167 ausentes → PARAR.
+ * `ladoDeFora` descreve o que ficou fora do esperado, para a mensagem.
+ */
+function classificarLedgerDa60a66(linhas, esperadas) {
+  if (!Array.isArray(linhas)) {
+    return {
+      estado: "FORMA_INESPERADA",
+      detalhe: "leitura do ledger em formato inesperado",
+    };
+  }
+  // FORMATO de TODAS as linhas, ANTES de classificar (desconhecido não é
+  // sucesso): uma linha fora do formato não pode ser filtrada em silêncio — as
+  // âncoras 150/167 mais uma linha inválida virariam LACUNA e autorizariam a
+  // escrita. Cada linha: objeto com EXATAMENTE as colunas version e name,
+  // version string de 14 dígitos, name string não vazia.
+  for (const [i, l] of linhas.entries()) {
+    const chaves =
+      l && typeof l === "object" && !Array.isArray(l)
+        ? Object.keys(l).sort()
+        : null;
+    const formaOk =
+      chaves !== null &&
+      chaves.length === 2 &&
+      chaves[0] === "name" &&
+      chaves[1] === "version" &&
+      typeof l.version === "string" &&
+      /^\d{14}$/.test(l.version) &&
+      typeof l.name === "string" &&
+      l.name.length > 0;
+    if (!formaOk) {
+      return {
+        estado: "FORMA_INESPERADA",
+        detalhe: `linha ${i + 1} da leitura do ledger fora do formato (esperava { version: 14 dígitos, name: texto não vazio }, leu ${JSON.stringify(l)})`,
+      };
+    }
+  }
+  const tem150 = linhas.some((l) => l && l.version === LEDGER_60_66_PISO);
+  const tem167 = linhas.some((l) => l && l.version === LEDGER_60_66_TETO);
+  const dentro = linhas.filter(
+    (l) =>
+      l &&
+      typeof l.version === "string" &&
+      l.version >= LEDGER_60_66_PRIMEIRA &&
+      l.version < LEDGER_60_66_TETO,
+  );
+  if (dentro.length === 0) {
+    if (tem150 && tem167)
+      return { estado: "LACUNA", detalhe: "registrado: 0 de 7" };
+    const ausentes = [];
+    if (!tem150) ausentes.push(LEDGER_60_66_PISO);
+    if (!tem167) ausentes.push(LEDGER_60_66_TETO);
+    return {
+      estado: "FORMA_INESPERADA",
+      detalhe: `nenhuma das 7 registrada, mas ${ausentes.join(" e ")} ausente(s) do ledger: não é a forma da CAF`,
+    };
+  }
+  const problemas = [];
+  const porVersao = new Map();
+  for (const l of dentro) {
+    porVersao.set(l.version, [...(porVersao.get(l.version) ?? []), l.name]);
+  }
+  for (const e of esperadas) {
+    const nomes = porVersao.get(e.version);
+    if (!nomes) problemas.push(`falta ${e.version}`);
+    else if (nomes.length !== 1 || nomes[0] !== e.name)
+      problemas.push(
+        `${e.version} com nome divergente (esperado "${e.name}", leu ${JSON.stringify(nomes)})`,
+      );
+  }
+  const conhecidas = new Set(esperadas.map((e) => e.version));
+  for (const v of porVersao.keys()) {
+    if (!conhecidas.has(v)) problemas.push(`versão a mais na faixa: ${v}`);
+  }
+  if (problemas.length === 0) {
+    return {
+      estado: "JA_REGISTRADO",
+      detalhe: "registrado: 7 de 7",
+      guardasPresentes: tem150 && tem167,
+    };
+  }
+  const registradas = esperadas.filter((e) => porVersao.has(e.version)).length;
+  return {
+    estado: "PARCIAL",
+    detalhe: `registrado: ${registradas} de ${esperadas.length} (${problemas.join("; ")})`,
+  };
+}
+
+/** Uma leitura do ledger entre 20261150 e 20261167999999 (só leitura). */
+async function lerLedgerDa60a66({ ref, token }) {
+  const query = `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '${LEDGER_60_66_PISO}' AND '20261167999999' ORDER BY version;`;
+  const corpo = await chamarLeitura({ ref, token, query });
+  return extrairLinhas(corpo);
+}
+
+/**
+ * A ÚNICA escrita deste script, UMA tentativa só (sem retry automático). Se ela
+ * falhar por timeout, rede, HTTP 5xx, 4xx diferente de 401/403 ou corpo
+ * inesperado, o INSERT PODE ter sido gravado — o resultado é DESCONHECIDO. Na
+ * faixa 60-66 roda UMA leitura de reconciliação (a mesma leitura prévia) e a
+ * mensagem diz REGISTRADO / NÃO REGISTRADO / PARCIAL; nas outras, manda
+ * reconciliar por leitura. Em qualquer caso lança com "ESTADO DESCONHECIDO" e o
+ * `main` sai 1. 401/403 não é desconhecido: o acesso foi recusado antes de
+ * qualquer escrita, e o `main` PARA com o bloqueio concreto.
+ */
+async function gravarUmaVez({ ref, token, faixa, query, esperadas }) {
+  try {
+    await chamarEscrita({ ref, token, query });
+  } catch (erro) {
+    if (erro && (erro.status === 401 || erro.status === 403)) throw erro;
+    let reconciliacao;
+    if (faixa === FAIXA_LEDGER_SO_DA_CAF) {
+      try {
+        const c = classificarLedgerDa60a66(
+          await lerLedgerDa60a66({ ref, token }),
+          esperadas,
+        );
+        reconciliacao =
+          {
+            LACUNA: "NÃO REGISTRADO (0 de 7)",
+            JA_REGISTRADO: "REGISTRADO (7 de 7)",
+          }[c.estado] ?? `PARCIAL / forma inesperada (${c.detalhe})`;
+      } catch (erroDeLeitura) {
+        reconciliacao = `a leitura de reconciliação TAMBÉM falhou (${erroDeLeitura?.message ?? erroDeLeitura}): estado do registro não determinado`;
+      }
+    }
+    const consultaDaFaixa = (CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER[faixa] ??
+      [])[0];
+    const novo = new Error(
+      `ESTADO DESCONHECIDO: a escrita do ledger ${faixa} falhou (${erro?.message ?? erro}) e NÃO foi repetida — o INSERT pode ter sido gravado ou não.${reconciliacao ? ` Leitura de reconciliação: ${reconciliacao}.` : ""} Antes de qualquer nova tentativa, reconcilie POR LEITURA (consulta ${consultaDaFaixa} e supabase_migrations.schema_migrations; workflow conferir-banco-da-loja com gravar_ledger = nao). Só tente gravar de novo se a leitura mostrar que o registro NÃO está lá.`,
+    );
+    novo.estadoDesconhecido = true;
+    throw novo;
   }
 }
 
@@ -725,6 +1790,8 @@ const SHA256_DO_LEDGER = {
   "75-78": "aa0d443015102f3fba7f326cbcd40f36f3cba9426800e3fb2787e6697062600f",
   "79-82": "505f62dd9be2da3e9af9607b700ee30c681ce5afe339fe61bcfe8b44db86a0bf",
   83: "e30d8ee7c2a1bb94ef90540e9341bd799c0d421585e4813f8fc88914934d79ae",
+  "92-202": "ad494d1358fd13ac49119f2fcfd9823b430ee79042810e67fa7a1f59b66a0ff0",
+  "60-66": "616290407aa9abcb8b0f300efcdddb2a5af2e7775bdcefa422232b7a35ed58aa",
 };
 
 function conferirHashDoLedger(faixa, conteudo) {
@@ -743,12 +1810,20 @@ function conferirHashDoLedger(faixa, conteudo) {
 
 /** A leitura pós-gravação (achado desta tarefa: a faixa nova amplia o que já
  * estava no ledger, então a leitura de conferência amplia junto — sempre
- * mostrando desde 72, nunca só a faixa recém-gravada isolada). */
+ * mostrando desde 72, nunca só a faixa recém-gravada isolada). A faixa 60-66 tem
+ * o PRÓPRIO intervalo (20261150..20261167999999): ler "desde 72" não serve a ela,
+ * e a leitura dela é CONFERIDA (`classificarLedgerDa60a66`), não só impressa. */
 const VERIFICACAO_POS_LEDGER = {
   "72-74": { rotulo: "72–78", limiteSuperior: "20261178999999" },
   "75-78": { rotulo: "72–78", limiteSuperior: "20261178999999" },
   "79-82": { rotulo: "72–82", limiteSuperior: "20261182999999" },
   83: { rotulo: "72–83", limiteSuperior: "20261183999999" },
+  "92-202": { rotulo: "72–202", limiteSuperior: "20261202999999" },
+  "60-66": {
+    rotulo: "50–67",
+    limiteInferior: LEDGER_60_66_PISO,
+    limiteSuperior: "20261167999999",
+  },
 };
 
 async function rodarLedger({ ref, token, faixa }) {
@@ -757,10 +1832,7 @@ async function rodarLedger({ ref, token, faixa }) {
       `LEDGER inválido: "${faixa}" (esperava uma de: ${FAIXAS_DE_LEDGER.join(", ")})`,
     );
   }
-
-  console.log(`=== PRÉ-CHECAGEM antes de gravar o ledger ${faixa} ===`);
-  await conferirAntesDeGravar({ ref, token, faixa });
-  console.log("Pré-checagem OK: todas as linhas relevantes vieram ok=true.");
+  const ehDa60a66 = faixa === FAIXA_LEDGER_SO_DA_CAF;
 
   const arquivo = path.join(CONSULTAS_DIR, `ledger-${faixa}.sql`);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- `faixa` já foi conferida contra FAIXAS_DE_LEDGER (lista fixa) acima.
@@ -772,35 +1844,159 @@ async function rodarLedger({ ref, token, faixa }) {
       `ledger-${faixa}.sql tem ${total} statements — precisa ser exatamente 1 INSERT`,
     );
   }
+  const esperadas = versoesDoInsert(insertUnico);
+
+  if (ehDa60a66) {
+    // LEITURA PRÉVIA (D2): a forma do ledger decide ANTES de qualquer outra
+    // coisa. Já registrado = estado explícito, saída 0, nenhuma escrita; qualquer
+    // outra forma que não seja a lacuna da CAF PARA (saída 1).
+    console.log(
+      `=== LEITURA PRÉVIA do ledger ${faixa} (${LEDGER_60_66_PISO}..20261167999999) ===`,
+    );
+    const previa = classificarLedgerDa60a66(
+      await lerLedgerDa60a66({ ref, token }),
+      esperadas,
+    );
+    // "Já registrado" só vale com as âncoras 20261150 e 20261167 TAMBÉM no ledger
+    // (a releitura pós-gravação exige o mesmo): 7 linhas sem elas é forma
+    // inesperada, não estado explícito.
+    if (previa.estado === "JA_REGISTRADO" && previa.guardasPresentes === true)
+      throw new LedgerJaRegistrado(faixa);
+    if (previa.estado !== "LACUNA") {
+      throw new Error(
+        `ledger ${faixa} em forma inesperada (${previa.estado}: ${previa.detalhe}${previa.estado === "JA_REGISTRADO" ? "; 20261150/20261167 ausentes" : ""}) — PARAR: nenhuma escrita; alguém mexeu no registro e o diagnóstico vem antes`,
+      );
+    }
+    console.log(
+      "Forma do ledger OK: 20261150 e 20261167 presentes, nenhuma das 7 registrada (a lacuna da CAF).",
+    );
+  }
+
+  console.log(`=== PRÉ-CHECAGEM antes de gravar o ledger ${faixa} ===`);
+  await conferirAntesDeGravar({ ref, token, faixa });
+  console.log("Pré-checagem OK: todas as linhas relevantes vieram ok=true.");
+
   console.log(`=== GRAVANDO ledger ${faixa} (endpoint de escrita) ===`);
   // A ÚNICA escrita deste script: o INSERT fixo do arquivo, idempotente
-  // por ON CONFLICT DO NOTHING.
-  await chamarEscrita({ ref, token, query: insertUnico });
+  // por ON CONFLICT DO NOTHING, UMA tentativa só (`gravarUmaVez`).
+  await gravarUmaVez({ ref, token, faixa, query: insertUnico, esperadas });
   console.log(
-    `Ledger ${faixa} gravado (ou já estava — ON CONFLICT DO NOTHING).`,
+    ehDa60a66
+      ? `INSERT do ledger ${faixa} enviado (a leitura a seguir CONFERE o resultado).`
+      : `Ledger ${faixa} gravado (ou já estava — ON CONFLICT DO NOTHING).`,
   );
 
-  const { rotulo, limiteSuperior } = VERIFICACAO_POS_LEDGER[faixa];
-  const verificacao = `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20261172000000' AND '${limiteSuperior}' ORDER BY version;`;
-  const corpo = await chamarLeitura({ ref, token, query: verificacao });
-  const linhas = extrairLinhas(corpo);
-  const tabela = formatarTabela(linhas);
+  const {
+    rotulo,
+    limiteInferior = "20261172000000",
+    limiteSuperior,
+  } = VERIFICACAO_POS_LEDGER[faixa];
+  const verificacao = `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '${limiteInferior}' AND '${limiteSuperior}' ORDER BY version;`;
+  let linhas;
+  try {
+    const corpo = await chamarLeitura({ ref, token, query: verificacao });
+    linhas = extrairLinhas(corpo);
+  } catch (erro) {
+    if (!ehDa60a66) throw erro;
+    if (erro && (erro.status === 401 || erro.status === 403)) throw erro;
+    throw new Error(
+      `o INSERT do ledger ${faixa} foi enviado, mas a leitura de conferência falhou (${erro?.message ?? erro}): reconcilie POR LEITURA (9a-conferir-60-a-66-aplicado e supabase_migrations.schema_migrations) antes de qualquer nova tentativa`,
+    );
+  }
+  let tabela;
+  try {
+    tabela = formatarTabela(linhas);
+  } catch {
+    // linha fora do formato (null, não objeto): a classificação abaixo PARA com a
+    // mensagem certa; aqui só se evita que a impressão da tabela a esconda.
+    tabela = JSON.stringify(linhas);
+  }
   escreverResumo(
     `## Ledger ${rotulo} depois da gravação de \`${faixa}\`\n\n\`\`\`\n${tabela}\n\`\`\``,
   );
+  if (ehDa60a66) {
+    // A leitura posterior CONFERE: exatamente as 7, com os nomes, e 150 e 167.
+    const depois = classificarLedgerDa60a66(linhas, esperadas);
+    if (depois.estado !== "JA_REGISTRADO" || !depois.guardasPresentes) {
+      throw new Error(
+        `leitura pós-gravação do ledger ${faixa} NÃO bate com as 7 linhas esperadas (${depois.estado}: ${depois.detalhe}${depois.estado === "JA_REGISTRADO" ? "; 20261150/20261167 ausentes" : ""}) — o INSERT foi enviado: reconcilie antes de qualquer nova tentativa`,
+      );
+    }
+    console.log(
+      "Leitura pós-gravação OK: as 7 versões 20261160..20261166 estão no ledger com os nomes do ledger-60-66.sql, e 20261150/20261167 continuam lá.",
+    );
+  }
 }
 
 async function main() {
-  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  const projeto = process.env.PROJETO || "loja";
+  const ehCaf = projeto === PROJETO_CAF;
+  const ehSavy = projeto === PROJETO_SAVY;
+  // CAF e Savy explícitas: SÓ o segredo próprio de cada uma. Sem ele, PARA —
+  // nunca tenta SUPABASE_ACCESS_TOKEN (o de `loja`/`sandbox`), o segredo da
+  // outra loja explícita nem outro alvo.
+  const token = ehCaf
+    ? process.env.SUPABASE_ACCESS_TOKEN_IKCOUS
+    : ehSavy
+      ? process.env.SUPABASE_ACCESS_TOKEN_SAVY
+      : process.env.SUPABASE_ACCESS_TOKEN;
   if (!token) {
-    console.error("SEM SUPABASE_ACCESS_TOKEN");
+    console.error(
+      ehCaf
+        ? SEM_ACESSO_CAF
+        : ehSavy
+          ? SEM_ACESSO_SAVY
+          : "SEM SUPABASE_ACCESS_TOKEN",
+    );
+    process.exit(1);
+    return;
+  }
+  const ledgerPedido = process.env.LEDGER;
+  // MAPA EXPLÍCITO (D4): quais faixas cada loja explícita aceita. Qualquer outro
+  // alvo (`loja`, `sandbox`, lojas de teste) recusa as duas, ANTES de qualquer
+  // requisição. O `if` do job `ledger` do workflow espelha este mapa.
+  const faixasDoAlvo = Object.hasOwn(
+    FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
+    projeto,
+  )
+    ? FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA[projeto]
+    : [];
+  const ledgerRecusadoNaLojaExplicita =
+    ledgerPedido && !faixasDoAlvo.includes(ledgerPedido);
+  if (ehCaf && ledgerRecusadoNaLojaExplicita) {
+    // O ledger GRAVA em supabase_migrations.schema_migrations e as faixas dele
+    // (72..83) não são deste lote: a CAF explícita só lê — EXCETO as faixas
+    // 92-202 e 60-66 (backfill), que só gravam depois da pré-checagem (8e / 9a).
+    console.error(
+      "FALHOU: o ledger não roda para ikcous-publicada (a CAF explícita é só leitura neste script, exceto as faixas 92-202 (pré-checagem da 8e) e 60-66 (pré-checagem da 9a), as duas por rol fechado)",
+    );
+    process.exit(1);
+    return;
+  }
+  if (ehSavy && ledgerRecusadoNaLojaExplicita) {
+    // Idem para a Savy explícita (que NÃO tem a faixa 60-66).
+    console.error(
+      "FALHOU: o ledger não roda para savy (a loja cliente explícita é só leitura neste script, exceto a faixa 92-202, com a pré-checagem da 8e obrigatória)",
+    );
+    process.exit(1);
+    return;
+  }
+  const lojasDaFaixa = Object.entries(FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA)
+    .filter(([, faixas]) => faixas.includes(ledgerPedido))
+    .map(([loja]) => loja);
+  if (ledgerPedido && lojasDaFaixa.length > 0 && !ehCaf && !ehSavy) {
+    // Os backfills 92-202 e 60-66 são das lojas explícitas (segredo próprio +
+    // expected_sha): `loja`/`sandbox` não os gravam, nem com a pré-checagem verde.
+    console.error(
+      `FALHOU: a faixa ${ledgerPedido} do ledger só roda para ${lojasDaFaixa.join(" ou ")}, não para ${projeto}`,
+    );
     process.exit(1);
     return;
   }
 
   let ref;
   try {
-    ref = resolverRef(process.env.PROJETO || "loja");
+    ref = resolverRef(projeto);
   } catch (erro) {
     console.error("FALHOU:", erro.message);
     process.exit(1);
@@ -824,7 +2020,18 @@ async function main() {
     }
     await rodarConsulta({ ref, token, consulta });
   } catch (erro) {
-    console.error("FALHOU:", erro.message);
+    if (erro instanceof LedgerJaRegistrado) {
+      // Estado explícito, não falha: nada a gravar, saída 0, sem escrita.
+      console.log(erro.message);
+      return;
+    }
+    if ((ehCaf || ehSavy) && (erro.status === 401 || erro.status === 403)) {
+      console.error(
+        `FALHOU: ${ehCaf ? SEM_ACESSO_CAF : SEM_ACESSO_SAVY} (HTTP ${erro.status})`,
+      );
+    } else {
+      console.error("FALHOU:", erro.message);
+    }
     process.exit(1);
   }
 }
@@ -858,6 +2065,7 @@ if (require.main === module) {
 module.exports = {
   REFS_POR_PROJETO,
   resolverRef,
+  veredictoDaConsulta,
   listarConsultas,
   ehCaractereDeIdentificador,
   dividirEmStatements,
@@ -871,6 +2079,43 @@ module.exports = {
   chamarEscrita,
   buscarBackups,
   conferirAntesDeGravar,
+  conferirRolFechado,
+  classificarLedgerDa60a66,
+  versoesDoInsert,
+  gravarUmaVez,
+  rodarLedger,
+  LedgerJaRegistrado,
+  ROL_DA_9A,
+  ROL_DA_8E,
+  ROL_DA_8K,
+  ROL_DA_10A,
+  ROL_DA_10B,
+  ROL_DA_11A,
+  ROL_DA_11B,
+  ROL_DA_12A,
+  ROL_DA_12B,
+  ROL_DA_14A,
+  ROL_DA_14B,
+  ROL_DA_15A,
+  ROL_DA_15B,
+  ROL_DA_16A,
+  ROL_DA_16B,
+  ROL_DA_17A,
+  ROL_DA_17B,
+  ROL_DA_19A,
+  ROL_DA_19B,
+  ROL_DA_20A,
+  ROL_DA_20B,
+  ROL_DA_21A,
+  ROL_DA_21B,
+  ROL_DA_22A,
+  ROL_DA_22B,
+  ROL_FECHADO_POR_CONSULTA,
+  estruturaDoRolFechado,
+  FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
+  IGNORAR_NA_PRE_CHECAGEM_DO_LEDGER,
+  CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER,
+  VERIFICACAO_POS_LEDGER,
   SHA256_DO_LEDGER,
   conferirHashDoLedger,
   main,

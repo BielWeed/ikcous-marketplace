@@ -259,9 +259,22 @@ describe("Financeiro — extrato e a pagar", () => {
     );
     expect(() => botaoEm(detalhe, "Cancelar lançamento")).toThrow();
 
-    await clicar(botaoEm(detalhe, "Abrir pedido #abc123"));
+    await clicar(botaoEm(detalhe, "Abrir pedido #ABC123"));
     expect(onNavigate).toHaveBeenCalledWith("admin-orders", PEDIDO);
     expect(folha()).toBeNull();
+  });
+
+  it("a pagar: o botão do estorno diz o número do pedido como o cliente vê (#999XYZ) e abre pelo id inteiro", async () => {
+    await irPara("A pagar e receber");
+
+    const botao = botaoEm(hospedeiro, /^Abrir pedido #/);
+    expect(normalizar(botao.textContent).trim()).toBe("Abrir pedido #999XYZ");
+
+    await clicar(botao);
+    expect(onNavigate).toHaveBeenCalledWith(
+      "admin-orders",
+      "99999999-0000-0000-0000-000000999xyz",
+    );
   });
 
   it("lançamento manual cancela com motivo", async () => {

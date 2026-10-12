@@ -29,6 +29,7 @@ import {
   CLASSE_BOTAO_PRIMARIO,
   CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
+  CLASSE_CASCA_DO_CARTAO,
   CLASSE_ROTULO,
   Campo,
   EstadoDeErro,
@@ -72,7 +73,9 @@ function Rodape({
 
 function AvisoDeSistema({ texto }: { readonly texto: string }) {
   return (
-    <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-xs text-zinc-400">
+    <p
+      className={`flex items-start gap-2 p-3 text-xs text-zinc-400 ${CLASSE_CASCA_DO_CARTAO}`}
+    >
       <Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
       {texto}
     </p>
@@ -95,12 +98,14 @@ function LinhaDoInterruptor({
   readonly aoMudar: (ligado: boolean) => void;
 }) {
   return (
-    <div className="flex min-h-11 items-center justify-between gap-4 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3">
+    <div
+      className={`flex min-h-11 items-center justify-between gap-4 px-4 py-3 ${CLASSE_CASCA_DO_CARTAO}`}
+    >
       <div className="min-w-0">
         <label htmlFor={id} className={CLASSE_ROTULO}>
           {rotulo}
         </label>
-        <p className="text-[11px] text-zinc-500">{detalhe}</p>
+        <p className="text-xs font-medium text-zinc-400">{detalhe}</p>
       </div>
       <Switch
         id={id}
@@ -335,7 +340,7 @@ export function CategoriaFolha({
   return (
     <FolhaFinanceira
       titulo={categoria ? "Editar categoria" : "Nova categoria"}
-      descricao="A categoria diz em que linha da DRE o valor aparece."
+      descricao="A categoria diz em que linha do resultado o valor aparece."
       aoFechar={aoFechar}
       rodape={
         <Rodape
@@ -373,17 +378,19 @@ export function CategoriaFolha({
           />
         </div>
         <fieldset className="flex flex-col gap-2">
-          <legend className={`${CLASSE_ROTULO} mb-1.5`}>Grupo da DRE</legend>
+          <legend className={`${CLASSE_ROTULO} mb-1.5`}>
+            Linha do resultado
+          </legend>
           {grupos.map((grupo) => {
             const escolhido = form.grupoDre === grupo;
             return (
               <label
                 key={grupo}
                 className={cn(
-                  "flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors",
+                  "flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl border p-3 transition-colors",
                   escolhido
                     ? "border-admin-gold/50 bg-admin-gold/10"
-                    : "border-white/5 bg-white/[0.02] hover:bg-white/5",
+                    : "border-white/10 bg-zinc-900/70 hover:border-admin-gold/30 hover:bg-white/5",
                 )}
               >
                 <input

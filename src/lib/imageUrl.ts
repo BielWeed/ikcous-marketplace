@@ -14,6 +14,9 @@
 
 const CAMINHO_ORIGINAL = "/storage/v1/object/public/";
 const CAMINHO_TRANSFORMADO = "/storage/v1/render/image/public/";
+// O arquivo original da IKCOUS respondeu 200, mas /render/image/public/
+// respondeu 403 FeatureNotEnabled no projeto restaurado (02/10/2026).
+const ORIGEM_SEM_TRANSFORMACAO = "https://cafkrminfnokvgjqtkle.supabase.co";
 
 /** Escada de larguras oferecida ao navegador quando `sizes` é informado. */
 const LARGURAS_DISPONIVEIS = [200, 320, 480, 640, 960, 1280] as const;
@@ -29,7 +32,25 @@ export interface OpcoesImagem {
 
 /** true para URLs de arquivo público do Supabase Storage, que é o que dá para transformar. */
 function ehImagemSupabase(url: string): boolean {
-  return typeof url === "string" && url.includes(CAMINHO_ORIGINAL);
+  return (
+    typeof url === "string" &&
+    url.includes(CAMINHO_ORIGINAL) &&
+    !url.startsWith(`${ORIGEM_SEM_TRANSFORMACAO}${CAMINHO_ORIGINAL}`)
+  );
+}
+
+/** Tenta o arquivo público original uma vez quando a transformação falha. */
+export function usarImagemOriginal(
+  imagem: HTMLImageElement,
+  original: string | undefined | null,
+): boolean {
+  if (!original || (imagem.src === original && !imagem.srcset)) return false;
+  if (imagem.dataset.imagemOriginalTentada === original) return false;
+  imagem.dataset.imagemOriginalTentada = original;
+  imagem.srcset = "";
+  imagem.removeAttribute("srcset");
+  imagem.src = original;
+  return true;
 }
 
 /**

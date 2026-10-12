@@ -1,4 +1,4 @@
-import { Pencil, Plus, Tags, Wallet } from "lucide-react";
+import { ChevronRight, Plus, Tags, Wallet } from "lucide-react";
 
 import type { ConsultaFinanceira } from "@/hooks/useFinanceiro";
 import {
@@ -16,6 +16,8 @@ import { IconeDoTipoDeConta } from "./icones";
 import type { AbrirFolha } from "./navegacao";
 import {
   CLASSE_BOTAO_SECUNDARIO,
+  CLASSE_CASCA_DA_LINHA_BOTAO,
+  CLASSE_SETA_DA_LINHA_BOTAO,
   CLASSE_TITULO_SECAO,
   CartaoSecao,
   Dinheiro,
@@ -59,17 +61,20 @@ function ListaDeContas({
             <button
               type="button"
               onClick={() => abrirFolha({ tipo: "conta", conta })}
-              className={cn(
-                "flex min-h-14 w-full items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-left transition-colors hover:bg-white/5",
-                !conta.ativa && "opacity-60",
-              )}
+              className={`${CLASSE_CASCA_DA_LINHA_BOTAO} flex min-h-14 w-full items-center gap-3 px-3.5 py-3${conta.ativa ? "" : " opacity-60"}`}
             >
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-300">
-                <IconeDoTipoDeConta tipo={conta.tipo} className="size-4" />
+              <span
+                aria-hidden="true"
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-gold/25 bg-admin-gold/10"
+              >
+                <IconeDoTipoDeConta
+                  tipo={conta.tipo}
+                  className="size-5 text-admin-gold"
+                />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
-                  <span className="truncate text-sm font-bold text-white">
+                  <span className="truncate text-[15px] font-bold leading-tight text-white">
                     {conta.nome}
                   </span>
                   {conta.sistema ? (
@@ -77,7 +82,7 @@ function ListaDeContas({
                   ) : null}
                   {conta.ativa ? null : <Etiqueta>Inativa</Etiqueta>}
                 </span>
-                <span className="block truncate text-[11px] text-zinc-500">
+                <span className="block truncate text-xs font-medium text-zinc-400">
                   {rotuloDoTipoDeConta(conta.tipo)} · saldo inicial{" "}
                   <Dinheiro valor={conta.saldoInicial} /> em{" "}
                   {formatarData(conta.saldoInicialEm)}
@@ -91,7 +96,10 @@ function ListaDeContas({
                     conta.saldo < 0 ? "text-red-300" : "text-white",
                   )}
                 />
-                <Pencil aria-hidden="true" className="size-4 text-zinc-600" />
+                <ChevronRight
+                  aria-hidden="true"
+                  className={CLASSE_SETA_DA_LINHA_BOTAO}
+                />
                 <span className="sr-only">Editar</span>
               </span>
             </button>
@@ -126,13 +134,10 @@ function ListaDeCategorias({
               <button
                 type="button"
                 onClick={() => abrirFolha({ tipo: "categoria", categoria })}
-                className={cn(
-                  "flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2 text-left transition-colors hover:bg-white/5",
-                  !categoria.ativa && "opacity-60",
-                )}
+                className={`${CLASSE_CASCA_DA_LINHA_BOTAO} flex min-h-11 w-full items-center justify-between gap-3 px-3.5 py-2.5${categoria.ativa ? "" : " opacity-60"}`}
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-sm font-bold text-white">
+                  <span className="truncate text-[15px] font-bold leading-tight text-white">
                     {categoria.nome}
                   </span>
                   {categoria.sistema ? (
@@ -142,7 +147,10 @@ function ListaDeCategorias({
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   <Etiqueta>{rotuloDoGrupoDre(categoria.grupoDre)}</Etiqueta>
-                  <Pencil aria-hidden="true" className="size-4 text-zinc-600" />
+                  <ChevronRight
+                    aria-hidden="true"
+                    className={CLASSE_SETA_DA_LINHA_BOTAO}
+                  />
                   <span className="sr-only">Editar</span>
                 </span>
               </button>
@@ -206,7 +214,7 @@ export function AbaContasECategorias({
 
       <CartaoSecao
         titulo="Categorias"
-        subtitulo="Cada categoria cai numa linha da DRE"
+        subtitulo="Cada categoria cai numa linha do resultado"
         acao={
           <BotaoNovo
             rotulo="Nova categoria"

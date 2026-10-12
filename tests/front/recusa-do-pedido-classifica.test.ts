@@ -84,6 +84,17 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.acao).toBe("remover_cupom");
   });
 
+  // Issue #645 (08/10/2026): a loja desligou a chave de cupons entre a tela e
+  // o clique. Frase SEM código de cupom; o pedido não nasceu — a saída é
+  // tirar o cupom aqui mesmo, nunca "Ver meus pedidos" (conferir_antes).
+  it("cupons desligados pela loja -> remover o cupom, preservando a frase do banco", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("Os cupons estão desativados nesta loja."),
+    );
+    expect(r.acao).toBe("remover_cupom");
+    expect(r.mensagem).toBe("Os cupons estão desativados nesta loja.");
+  });
+
   it("cupom expirado com data -> remover o cupom", () => {
     const r = classificarRecusaDoPedido(
       p0001("O cupom INVERNO expirou em 01/08/2026 23:59."),

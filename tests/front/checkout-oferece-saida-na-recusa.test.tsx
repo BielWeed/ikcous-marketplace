@@ -37,6 +37,10 @@ const RECUSAS_REAIS_DO_BANCO = [
   "Informe o CEP de entrega.",
   "Não foi possível criar o pedido. Atualize a página e tente de novo.",
   "O frete foi cotado para outro CEP. Volte ao carrinho, calcule o frete para o CEP de entrega e finalize de novo.",
+  // Issue #645 (08/10/2026, migration 20261203000000): a loja desligou os
+  // cupons entre a tela e o clique — o pedido NÃO nasceu, a saída é tirar o
+  // cupom (nunca "Ver meus pedidos", que trava o botão de finalizar).
+  "Os cupons estão desativados nesta loja.",
 ];
 
 describe("nenhuma recusa real do banco cai no caso genérico", () => {
@@ -46,6 +50,15 @@ describe("nenhuma recusa real do banco cai no caso genérico", () => {
       expect(r.acao).not.toBe("conferir_antes");
     });
   }
+
+  it("cupons desligados -> a ação é tirar o cupom, e a frase do banco é preservada", () => {
+    const r = decidirSaidaDoCheckout({
+      code: "P0001",
+      message: "Os cupons estão desativados nesta loja.",
+    });
+    expect(r.acao).toBe("remover_cupom");
+    expect(r.mensagem).toBe("Os cupons estão desativados nesta loja.");
+  });
 
   it("a frase do banco é preservada, não reescrita", () => {
     const mensagem = "Cupom X inválido ou expirado.";

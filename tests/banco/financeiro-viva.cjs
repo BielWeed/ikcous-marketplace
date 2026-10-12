@@ -99,6 +99,13 @@ PROVAS.push({
         [id, meta],
       );
     }
+    // Admin de verdade tem o papel nas DUAS fontes: desde a 20261197000000,
+    // registrar_estorno_manual exige profiles.role = 'admin' também.
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin Fin', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
     await cliente.query(
       `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo)
        VALUES ($1, 'Produto A', 50, 100, true, 20), ($2, 'Produto B', 30, 100, true, 10)`,
@@ -828,9 +835,21 @@ PROVAS.push({
       "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
       [O_N1B],
     );
-    await rpc(
-      cliente,
-      "SELECT public.registrar_estorno_manual($1::uuid) AS r",
+    // Desde a 20261194 o "Já devolvi" num pedido que nunca foi pago é
+    // RECUSADO pela própria RPC (22023)...
+    await assert.rejects(
+      () =>
+        rpc(cliente, "SELECT public.registrar_estorno_manual($1::uuid) AS r", [
+          O_N1B,
+        ]),
+      { code: "22023", message: /não tem pagamento confirmado/ },
+      "20261194: 'Já devolvi' em pedido aguardando é recusado",
+    );
+    // ...mas o pedido que JÁ foi marcado assim antes dela continua no banco.
+    // A guarda da gaveta segue valendo para ele: o estado que a RPC antiga
+    // deixava é plantado direto (dado de antes da migration).
+    await cliente.query(
+      "UPDATE public.marketplace_orders SET payment_status = 'estornado', estorno_manual_registrado_em = now() WHERE id = $1",
       [O_N1B],
     );
 
@@ -1260,6 +1279,109 @@ PROVAS.push({
       cliente,
       "SELECT public.fin_caixa_fechar($1, 'sem diferença') AS r",
       [30],
+    );
+  },
+});
+
+// 20261194 ("Já estornei" só em pedido pago): a RPC é a fronteira. Pedido
+// `aguardando` (PIX aberto) marcado estornado faria o pagamento que chega
+// depois cair em 'ignorado' no confirmar_pagamento e sumir sem alerta. Os
+// três status com dinheiro que ENTROU passam — `recebido_na_entrega` é a
+// devolução em espécie (balcão/entrega). Fica no FIM da lista: os pedidos
+// daqui não mexem nos totais de nenhuma prova anterior.
+PROVAS.push({
+  nome: "(S3 · 20261194) 'Já estornei' só em pedido pago: aguardando/expirado/NULL recusam 22023 sem gravar; pago, pago_apos_expirar e recebido_na_entrega passam; o clique repetido segue ok",
+  corpo: async (cliente) => {
+    await logar(cliente, U_ADMIN);
+    const estadoDo = async (id) =>
+      (
+        await cliente.query(
+          "SELECT payment_status, estorno_manual_registrado_em FROM public.marketplace_orders WHERE id = $1",
+          [id],
+        )
+      ).rows[0];
+
+    const recusados = [
+      ["5ddddddd-0000-0000-0000-000000000101", "aguardando", "pix"],
+      ["5ddddddd-0000-0000-0000-000000000102", "expirado", "pix"],
+      ["5ddddddd-0000-0000-0000-000000000103", null, "cash"],
+    ];
+    for (const [id, status, pagamento] of recusados) {
+      await pedido(cliente, id, {
+        total: 70,
+        pagamento,
+        paymentStatus: status,
+        status: "cancelled",
+      });
+      await assert.rejects(
+        () =>
+          rpc(
+            cliente,
+            "SELECT public.registrar_estorno_manual($1::uuid) AS r",
+            [id],
+          ),
+        { code: "22023", message: /não tem pagamento confirmado/ },
+        `mutante S3_sem_guarda: pedido ${status ?? "NULL"} não pode virar estornado`,
+      );
+      const depois = await estadoDo(id);
+      assert.equal(
+        depois.payment_status,
+        status,
+        `recusa não grava nada (${status ?? "NULL"})`,
+      );
+      assert.equal(depois.estorno_manual_registrado_em, null);
+    }
+
+    const aceitos = [
+      ["5ddddddd-0000-0000-0000-000000000111", "pago", "online", "paidAt"],
+      [
+        "5ddddddd-0000-0000-0000-000000000112",
+        "pago_apos_expirar",
+        "online",
+        "paidAt",
+      ],
+      [
+        "5ddddddd-0000-0000-0000-000000000113",
+        "recebido_na_entrega",
+        "cash",
+        "recebidoEm",
+      ],
+    ];
+    for (const [id, status, pagamento, data] of aceitos) {
+      await pedido(cliente, id, {
+        total: 70,
+        pagamento,
+        paymentStatus: status,
+        status: "cancelled",
+        [data]: new Date(),
+      });
+      const r = await rpc(
+        cliente,
+        "SELECT public.registrar_estorno_manual($1::uuid) AS r",
+        [id],
+      );
+      assert.deepEqual(
+        r,
+        { ok: true, payment_status: "estornado" },
+        `mutante S3_lista_curta: ${status} tem de passar`,
+      );
+      const depois = await estadoDo(id);
+      assert.equal(depois.payment_status, "estornado");
+      assert.notEqual(depois.estorno_manual_registrado_em, null);
+    }
+
+    // Clique repetido: o pedido agora é `estornado` (fora da lista dos três)
+    // e continua ok idempotente — a guarda mora dentro do "ainda não
+    // estornado".
+    const repetido = await rpc(
+      cliente,
+      "SELECT public.registrar_estorno_manual($1::uuid) AS r",
+      [aceitos[0][0]],
+    );
+    assert.deepEqual(
+      repetido,
+      { ok: true, payment_status: "estornado" },
+      "mutante S3_guarda_antes_do_ja_estornado: o segundo clique seria recusado",
     );
   },
 });

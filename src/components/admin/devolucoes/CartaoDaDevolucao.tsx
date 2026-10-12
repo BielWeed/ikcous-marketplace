@@ -61,7 +61,7 @@ export const CartaoDaDevolucao = memo(function CartaoDaDevolucao({
         <p className="truncate text-[11px] text-zinc-400">
           {rotuloMotivo(linha.motivo)}
         </p>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-zinc-500">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold text-zinc-500">
           <span className="tabular-nums text-zinc-300">
             {formatarReais(linha.valor_itens)}
           </span>

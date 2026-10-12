@@ -133,11 +133,11 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
       <div className="admin-glass flex items-center justify-between border-b border-white/5 px-6 py-4">
         <button
           onClick={() => onNavigate("home")}
-          className="text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-colors hover:text-white"
+          className="text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-colors hover:text-white"
         >
           Voltar à loja
         </button>
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">
+        <span className="text-[11px] font-black uppercase tracking-wider text-white">
           {branding.appName} Admin
         </span>
         <div className="w-20" />
@@ -156,7 +156,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             <h1 className="text-xl font-black uppercase tracking-tighter text-white">
               Painel Administrativo
             </h1>
-            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+            <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">
               Acesso exclusivo à gestão do lojista
             </p>
           </div>
@@ -166,7 +166,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             <div>
               <label
                 htmlFor="admin-email"
-                className="mb-2 ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                className="mb-2 ml-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
                 Email
               </label>
@@ -184,7 +184,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
               <label
                 htmlFor="admin-password"
                 title="Senha de Acesso"
-                className="mb-2 ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                className="mb-2 ml-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
                 Senha de Acesso
               </label>
@@ -224,7 +224,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             <button
               type="submit"
               disabled={!email || !password || isLoading}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-admin-gold py-5 text-[10px] font-black uppercase tracking-[0.3em] text-black shadow-[0_0_30px_rgba(212,175,55,0.2)] transition-all hover:bg-admin-gold/90 hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] active:scale-95 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-zinc-900 disabled:text-zinc-600"
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-admin-gold py-5 text-[11px] font-black uppercase tracking-[0.3em] text-black shadow-[0_0_30px_rgba(212,175,55,0.2)] transition-all hover:bg-admin-gold/90 hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] active:scale-95 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-zinc-900 disabled:text-zinc-600"
             >
               {isLoading ? (
                 <Loader2 className="size-5 animate-spin" />

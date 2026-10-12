@@ -7,9 +7,10 @@
 // apaga deixa de ser lido no dia em que significar alguma coisa.
 //
 // A correção: o subtítulo passa a descrever O QUE o número conta, e isso é
-// sempre verdade, então nunca muda com o valor de `stats.pending`. Este
-// teste prova as duas pontas: com `pending = 0` (não pode mais dizer
-// "Limpo") e com `pending > 0` (não pode mais dizer "Urgente").
+// sempre verdade, então nunca muda com o valor. Onda F (F3): o cartão virou
+// "Para preparar" (regra única, `useNumerosDosPedidos`); o contrato do
+// subtítulo continua e este teste prova as duas pontas: com o número em 0
+// (não pode dizer "Limpo") e acima de 0 (não pode dizer "Urgente").
 //
 // Segue o mesmo padrão de mock de
 // admin-orders-total-concluido-e-aviso-pago-cancelado.test.tsx.
@@ -18,10 +19,30 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// O número de "Para preparar" vem de uma contagem própria
+// (`useNumerosDosPedidos`, onda F) e não mais de `today.pending`: o dublê
+// devolve esta contagem para toda consulta de cabeçalho.
+let contagemDoTopo = 0;
+
+function criarContagemBuilder() {
+  const builder: Record<string, unknown> = {};
+  builder.select = vi.fn(() => builder);
+  builder.in = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
+  // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase.
+  builder.then = (resolve: unknown, reject?: unknown) =>
+    Promise.resolve({ count: contagemDoTopo, error: null }).then(
+      resolve as never,
+      reject as never,
+    );
+  return builder;
+}
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: vi.fn(),
-    from: vi.fn(),
+    from: vi.fn(() => criarContagemBuilder()),
     functions: { invoke: vi.fn() },
     channel: vi.fn(),
     removeChannel: vi.fn(),
@@ -79,6 +100,7 @@ class IntersectionObserverStub {
 }
 
 function statsFake(pending: number) {
+  contagemDoTopo = pending;
   return {
     today: {
       revenue: 0,
@@ -111,7 +133,7 @@ function statsFake(pending: number) {
   };
 }
 
-describe("AdminOrdersView — subtítulo de 'Ações Pendentes' não inventa 'Urgente'/'Limpo'", () => {
+describe("AdminOrdersView — subtítulo de 'Para preparar' não inventa 'Urgente'/'Limpo'", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -151,6 +173,7 @@ describe("AdminOrdersView — subtítulo de 'Ações Pendentes' não inventa 'Ur
     mockOrders = [];
     mockTotalOrders = 0;
     mockAnalyticsStats = null;
+    contagemDoTopo = 0;
   });
 
   it("com pending = 0, não escreve 'Limpo'", async () => {
@@ -163,7 +186,7 @@ describe("AdminOrdersView — subtítulo de 'Ações Pendentes' não inventa 'Ur
     });
 
     const rotulo = Array.from(hospedeiro.querySelectorAll("p")).find(
-      (p) => p.textContent === "Ações Pendentes",
+      (p) => p.textContent === "Para preparar",
     );
     expect(rotulo).toBeTruthy();
     const cartao = rotulo!.parentElement!.parentElement!;
@@ -180,7 +203,7 @@ describe("AdminOrdersView — subtítulo de 'Ações Pendentes' não inventa 'Ur
     });
 
     const rotulo = Array.from(hospedeiro.querySelectorAll("p")).find(
-      (p) => p.textContent === "Ações Pendentes",
+      (p) => p.textContent === "Para preparar",
     );
     expect(rotulo).toBeTruthy();
     const cartao = rotulo!.parentElement!.parentElement!;
@@ -197,7 +220,7 @@ describe("AdminOrdersView — subtítulo de 'Ações Pendentes' não inventa 'Ur
 
     const subValueDe = () => {
       const rotulo = Array.from(hospedeiro.querySelectorAll("p")).find(
-        (p) => p.textContent === "Ações Pendentes",
+        (p) => p.textContent === "Para preparar",
       );
       const cartao = rotulo!.parentElement!.parentElement!;
       // O subtítulo é o outro <p> do cartão, o que não é o rótulo nem o
@@ -205,7 +228,7 @@ describe("AdminOrdersView — subtítulo de 'Ações Pendentes' não inventa 'Ur
       const paragrafos = Array.from(cartao.querySelectorAll("p")).map(
         (p) => p.textContent,
       );
-      return paragrafos.find((texto) => texto !== "Ações Pendentes");
+      return paragrafos.find((texto) => texto !== "Para preparar");
     };
 
     const subtituloComZero = subValueDe();

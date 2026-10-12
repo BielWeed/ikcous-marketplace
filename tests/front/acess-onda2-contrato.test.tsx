@@ -86,7 +86,7 @@ describe("achado 9 — recusas anunciadas: cupom e frete pendente", () => {
       'className="flex-1 rounded-md bg-transparent text-sm outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50"',
     );
     expect(src).toContain(
-      'className="flex items-center gap-1 text-xs text-red-500"',
+      'className="flex items-center gap-1 text-xs text-red-700"',
     );
   });
 

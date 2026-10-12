@@ -19,11 +19,20 @@
 // verdade (`createOrder` é chamado). Montagem copiada de
 // checkout-nao-preenche-endereco-do-cliente.test.tsx e
 // checkout-view-flag-on.test.tsx.
+//
+// A BUSCA DE CEP É PARADA PELO TESTE (fetch dublê): desde o PR #761 ela roda em
+// loja local também, e este teste ia à rede de verdade — a resposta do ViaCEP
+// chegava DEPOIS de a cidade ser digitada e a apagava no CI do Linux
+// ("expected 'São Paulo' to be 'Cidade Teste'"). O dublê responde só quando o
+// teste manda, DEPOIS da digitação à mão, e assim a corrida é determinística:
+// a resposta atrasada não pode apagar o que o convidado digitou.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createOrder = vi.fn().mockResolvedValue({ id: "ped-local-1" });
+// CEP limpo -> como responder a busca desse CEP (preenchido pelo beforeEach).
+const buscasPendentes = new Map<string, (dados: unknown) => void>();
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 
@@ -154,6 +163,19 @@ describe("CheckoutView (convidado, cobertura LOCAL) — endereço editável", ()
   beforeEach(() => {
     createOrder.mockClear();
     onNavigate.mockClear();
+    buscasPendentes.clear();
+    // Mock SIMPLES (ignora o AbortSignal): só resolve quando o teste mandar.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        const cep = /viacep\.com\.br\/ws\/(\d+)\/json/.exec(url)?.[1] ?? "";
+        return new Promise((resolve) => {
+          buscasPendentes.set(cep, (dados: unknown) =>
+            resolve({ json: () => Promise.resolve(dados) } as Response),
+          );
+        });
+      }),
+    );
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -265,6 +287,20 @@ describe("CheckoutView (convidado, cobertura LOCAL) — endereço editável", ()
       await esperarMicrotarefas();
     });
 
+    // A busca do CEP, que saiu no começo, só responde AGORA — com cidade, UF,
+    // rua e bairro diferentes dos digitados. Nada do que o convidado digitou
+    // pode ser trocado por ela.
+    expect(buscasPendentes.has("01310100")).toBe(true);
+    await act(async () => {
+      buscasPendentes.get("01310100")!({
+        logradouro: "Avenida Paulista",
+        bairro: "Bela Vista",
+        localidade: "São Paulo",
+        uf: "SP",
+      });
+      await esperarMicrotarefas();
+    });
+
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 420));
     });
@@ -286,5 +322,7 @@ describe("CheckoutView (convidado, cobertura LOCAL) — endereço editável", ()
     const [pedidoEnviado] = createOrder.mock.calls[0];
     expect(pedidoEnviado.addressData.city).toBe("Cidade Teste");
     expect(pedidoEnviado.addressData.state).toBe("SP");
+    expect(pedidoEnviado.addressData.street).toBe("Rua Teste");
+    expect(pedidoEnviado.addressData.neighborhood).toBe("Centro");
   });
 });

@@ -4,12 +4,7 @@ import {
   Linha,
   PontoEstado,
 } from "@/components/admin/shipping/primitivas-direcao-d";
-import {
-  AlertCircle,
-  ChevronRight,
-  ExternalLink,
-  RefreshCw,
-} from "lucide-react";
+import { AlertCircle, ChevronRight, RefreshCw } from "lucide-react";
 import { memo } from "react";
 
 /**
@@ -20,9 +15,10 @@ import { memo } from "react";
  * Frenet ao mesmo tempo — o estado passa a ser POR PROVEDOR (F10, tarefa
  * P: "nunca 'conectado' só por ter chave").
  *
- * Esta tela continua só de LEITURA: quem grava chave, testa e liga/desliga
- * é a seção "Transportadoras" em Ajustes. Aqui o estado chega PRONTO da
- * view, lido pela MESMA edge (`ler_configuracao_frete`).
+ * Este bloco continua só de LEITURA: quem grava chave, testa e liga/desliga
+ * é a seção "Transportadoras" — desde o painel simples (H5) um painel da
+ * MESMA tela de Frete, logo abaixo. Aqui o estado chega PRONTO da view, lido
+ * pela MESMA edge (`ler_configuracao_frete`).
  */
 // "incompleta" (revisão Opus, achado 2 — regressão 1.5.5): tem chave, mas
 // falta o que a transportadora exige para cotar de verdade (hoje só a
@@ -49,26 +45,32 @@ const ROTULO_DO_ESTADO: Readonly<Record<EstadoConexaoProvedor, string>> = {
 };
 
 export const FreteNacionalBloco = memo(function FreteNacionalBloco({
-  originCep,
-  onOriginCep,
+  cepDaLoja,
+  onAbrirMinhaLoja,
   provedores,
   erroNaLeitura,
-  onAbrirAjustes,
+  onAbrirTransportadoras,
   onTentarDeNovo,
   desabilitado,
   resumoDaEstrategiaNacional,
   onAbrirEstrategiasNacionais,
   mostrarCabecalho = true,
 }: {
-  readonly originCep: string;
-  readonly onOriginCep: (cep: string) => void;
+  /** CEP de Minha loja — SÓ LEITURA. É de onde saem as entregas (P2: um CEP
+   * só); esta tela nunca o edita nem o grava. Ausente/vazio = a loja ainda
+   * não cadastrou. */
+  readonly cepDaLoja?: string | null;
+  /** Abre Minha loja (`admin-about-store`), onde o CEP se define. Ausente
+   * quando a view não recebeu `onNavigate` — sem botão morto. */
+  readonly onAbrirMinhaLoja?: () => void;
   /** Estado de CADA um dos três provedores — sempre os três, na ordem de
    * exibição (Melhor Envio, SuperFrete, Frenet). */
   readonly provedores: readonly ProvedorNacional[];
   /** A leitura da configuração de frete falhou — a tela não sabe e não
    * finge saber (estados honestos são a lei deste repo). */
   readonly erroNaLeitura?: boolean;
-  readonly onAbrirAjustes?: () => void;
+  /** Abre o painel "Transportadoras" da tela de Frete (e rola até ele). */
+  readonly onAbrirTransportadoras?: () => void;
   readonly onTentarDeNovo?: () => void;
   readonly desabilitado?: boolean;
   /** Texto curto do estado SALVO da estratégia nacional (T4, 23/09/2026) —
@@ -76,7 +78,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
    * lado do botão que abre a tela nova. */
   readonly resumoDaEstrategiaNacional?: string;
   /** Abre `admin-shipping-national` — ausente quando a view não recebeu
-   * `onNavigate` (mesmo padrão de `onAbrirAjustes`). */
+   * `onNavigate` (mesmo padrão de `onAbrirTransportadoras`). */
   readonly onAbrirEstrategiasNacionais?: () => void;
   /** `false` quando um `PainelRecolhivel` externo já mostra o título e o
    * estado (tela de Frete unificada, 23/09/2026) — evita cabeçalho em
@@ -89,6 +91,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
     return `${clean.slice(0, 5)}-${clean.slice(5, 8)}`;
   };
 
+  const temCep = (cepDaLoja ?? "").trim() !== "";
   const algumLigado = provedores.some((p) => p.estado === "ligado");
   const ligados = provedores.filter((p) => p.estado === "ligado");
 
@@ -153,11 +156,11 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           )
         }
       >
-        {!erroNaLeitura && !algumLigado && onAbrirAjustes && (
+        {!erroNaLeitura && !algumLigado && onAbrirTransportadoras && (
           <button
             type="button"
-            onClick={onAbrirAjustes}
-            className="flex shrink-0 items-center rounded-lg bg-admin-accent px-4 py-2 text-[12px] font-extrabold text-zinc-950 transition-all hover:opacity-90 active:scale-95"
+            onClick={onAbrirTransportadoras}
+            className="flex min-h-11 shrink-0 items-center rounded-lg bg-admin-accent px-4 py-2 text-[12px] font-extrabold text-zinc-950 transition-all hover:opacity-90 active:scale-95"
           >
             Conectar transportadora
           </button>
@@ -166,7 +169,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           <button
             type="button"
             onClick={onTentarDeNovo}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-4 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-4 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
           >
             <RefreshCw className="size-3.5" />
             Tentar de novo
@@ -210,15 +213,16 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
               >
                 <AlertCircle className="size-3.5 shrink-0" />
                 <span>
-                  {p.nome} incompleta — falta o e-mail de contato em Ajustes.
+                  {p.nome} incompleta — falta o e-mail de contato em
+                  Transportadoras.
                 </span>
-                {onAbrirAjustes && (
+                {onAbrirTransportadoras && (
                   <button
                     type="button"
-                    onClick={onAbrirAjustes}
-                    className="shrink-0 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
+                    onClick={onAbrirTransportadoras}
+                    className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
                   >
-                    Preencher em Ajustes
+                    Preencher em Transportadoras
                   </button>
                 )}
               </p>
@@ -229,48 +233,73 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
       {!algumLigado && !erroNaLeitura && (
         <p className="-mt-2 pb-4 text-[12.5px] leading-snug text-zinc-500">
           Para vender para todo o Brasil, conecte e ligue ao menos uma
-          transportadora em Ajustes. Quem compra de fora não consegue fechar o
-          pedido até lá.
+          transportadora no painel Transportadoras, logo abaixo. Quem compra de
+          fora não consegue fechar o pedido até lá.
         </p>
       )}
 
-      {/* CEP da loja — a única tela onde ele se define. Campo abre VAZIO
-          quando a loja não configurou (nada de CEP inventado parecendo
-          configuração pronta — trava herdada da auditoria 26/08). */}
-      <Linha nome="CEP de origem" dica="De onde as entregas saem">
-        <input
-          id="origin-cep"
-          type="text"
-          maxLength={9}
-          value={originCep}
-          onChange={(e) => onOriginCep(formatCEP(e.target.value))}
-          placeholder="00000-000"
-          disabled={desabilitado}
-          className="h-10 w-full rounded-xl border border-white/10 bg-zinc-900/60 px-3.5 text-center font-mono text-[13px] font-semibold text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-40"
-        />
+      {/* CEP da loja — LIDO de Minha loja, nunca editado aqui (P2: um CEP
+          só). Sem CEP, nada de CEP inventado parecendo configuração pronta
+          (trava herdada da auditoria 26/08): o aviso diz a consequência e o
+          botão leva a quem resolve. */}
+      <Linha
+        nome="CEP da loja"
+        dica={
+          temCep ? (
+            <>
+              Entregas saem de:{" "}
+              <b className="font-semibold text-zinc-300">
+                CEP {formatCEP(cepDaLoja ?? "")}
+              </b>
+            </>
+          ) : (
+            "A loja ainda não tem CEP cadastrado."
+          )
+        }
+      >
+        {temCep && onAbrirMinhaLoja && (
+          <button
+            type="button"
+            onClick={onAbrirMinhaLoja}
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+          >
+            Alterar em Minha loja
+          </button>
+        )}
       </Linha>
 
-      {!originCep && (
-        <p className="-mt-2 flex items-start gap-2 pb-4 text-[12px] font-bold leading-snug text-amber-300 duration-200 animate-in fade-in">
+      {!temCep && (
+        <p className="-mt-2 flex flex-wrap items-start gap-2 pb-4 text-[12px] font-bold leading-snug text-amber-300 duration-200 animate-in fade-in">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          SEM ISSO A LOJA NÃO VENDE: sem o CEP da loja nenhum frete é calculado
-          e o botão "Finalizar Pedido" fica bloqueado para todo cliente.
-          Preencha e salve para abrir as vendas.
+          <span>
+            SEM ISSO A LOJA NÃO VENDE: sem o CEP da loja nenhum frete é
+            calculado e o botão "Finalizar Pedido" fica bloqueado para todo
+            cliente. Cadastre o CEP em Minha loja para abrir as vendas.
+          </span>
+          {onAbrirMinhaLoja && (
+            <button
+              type="button"
+              onClick={onAbrirMinhaLoja}
+              className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-3 py-1 text-[12px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
+            >
+              Cadastrar CEP em Minha loja
+            </button>
+          )}
         </p>
       )}
 
       <Linha
         nome="Transportadoras e serviços"
-        dica="A chave de acesso, o teste de conexão, os serviços habilitados e quem está ligado ficam em Ajustes."
+        dica="A chave de acesso, o teste de conexão, os serviços habilitados e quem está ligado ficam no painel Transportadoras, nesta mesma tela."
       >
-        {onAbrirAjustes && (
+        {onAbrirTransportadoras && (
           <button
             type="button"
-            onClick={onAbrirAjustes}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+            onClick={onAbrirTransportadoras}
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
           >
-            <ExternalLink className="size-3.5 text-admin-accent" />
-            Abrir Ajustes
+            Abrir Transportadoras
+            <ChevronRight className="size-3.5 text-admin-accent" />
           </button>
         )}
       </Linha>
@@ -294,7 +323,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
             type="button"
             onClick={onAbrirEstrategiasNacionais}
             disabled={desabilitado}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
           >
             Estratégias do frete nacional
             <ChevronRight className="size-3.5 text-admin-accent" />

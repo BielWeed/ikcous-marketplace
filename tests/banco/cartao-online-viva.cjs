@@ -24,8 +24,12 @@
  *       update_order_status_atomic recusa o CLIENTE (nunca o admin) quando o
  *       pedido está 'aguardando' com uma cobrança de cartão em jogo (vaga
  *       gravada com metodo_online credito/debito, OU o sentinela
- *       `verificando:`); PIX 'aguardando' e admin continuam cancelando como
- *       antes; pedido já PAGO segue o ledger do estorno automático de sempre.
+ *       `verificando:`); pedido já PAGO segue o ledger do estorno automático
+ *       de sempre. ATUALIZADO pela 20261198000000 (S1): PIX 'aguardando' com
+ *       a cobrança na vaga e o ADMIN com cartão vivo também deixam de
+ *       cancelar pela porta do front (a recusa é a do bypass da 98, não a
+ *       desta guarda) — o cancelamento vai pela edge, que anula a cobrança
+ *       no MP antes (prova em tests/banco/cancelar-pedido-viva.cjs).
  *       Casos A/B/C/D/F/G do laudo de revisão (rodadas 2 e 3, `prova-
  *       rev80.cjs`), portados para a suíte viva do CI. O caso E (vaga E
  *       metodo_online NULL) é um GAP CONHECIDO, documentado no próprio
@@ -51,6 +55,14 @@
  *       da 75, nem o da própria 80) e espera a recusa
  *       `B1_BASELINE_DIVERGENT` — dentro de BEGIN/ROLLBACK, para não deixar
  *       o corpo divergente vazar para as provas seguintes deste arquivo.
+ *   (x) migration 20261186000000 (02/10/2026, dinheiro): a varredura
+ *       `expirar_pedidos_vencidos` não cancela pedido cujo cartão o banco
+ *       ainda pode aprovar (vaga de crédito/débito ou sentinela
+ *       `verificando:`) enquanto a janela de 24 h da reconciliação vale; PIX
+ *       e cartão acima do teto expiram e devolvem o estoque
+ *       (`devolver_estoque` REAL, produto de fixture). (x2) recusa libera a
+ *       vaga e a varredura expira; aprovação tardia vira 'pago'. (xp)
+ *       preflight B1_BASELINE_DIVERGENT da 86.
  *
  * USO: node tests/banco/cartao-online-viva.cjs (depois de provisionar.cjs e
  * aplicar-migrations.cjs, como no rpc-ci.yml)
@@ -169,6 +181,13 @@ PROVAS.push({
           "SELECT public.salvar_config_pagamento_cartao(true, true, 6)",
         ),
       /Acesso negado/,
+    );
+    // 20261199000000 (admin ATUAL): salvar a config do cartão exige o papel
+    // admin AGORA em auth.users E em profiles — o admin da prova tem os dois.
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin prova', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
     );
     await logar(cliente, U_ADMIN);
     await assert.rejects(
@@ -357,6 +376,9 @@ PROVAS.push({
 });
 
 const MENSAGEM_CARTAO_VIVO = /cobrança no cartão em confirmação com o banco/;
+// 20261198000000 (S1): a porta do front recusa cancelar com cobrança na vaga.
+const MENSAGEM_BYPASS_98 =
+  /cobrança aberta no Mercado Pago e não pode ser cancelado por aqui/;
 
 async function criarPedidoParaCancelamento(
   cliente,
@@ -399,7 +421,7 @@ async function assertRecusaCartaoVivo(promessa) {
 }
 
 PROVAS.push({
-  nome: "(e) update_order_status_atomic (20261180000000) recusa o cliente com cartão vivo; PIX e admin continuam",
+  nome: "(e) update_order_status_atomic (20261180000000) recusa o cliente com cartão vivo; desde a 20261198000000 PIX na vaga e admin também vão pela edge",
   corpo: async (cliente) => {
     for (const [id, email, meta] of [
       [U_CLIENTE, "cliente-cancela@cartao.teste", "{}"],
@@ -411,6 +433,14 @@ PROVAS.push({
         [id, email, meta],
       );
     }
+    // 20261198000000 (admin ATUAL): update_order_status_atomic exige o papel
+    // admin AGORA em auth.users E em profiles (contradição nega) — o admin
+    // de verdade tem os dois (o gatilho de profiles sincroniza o papel).
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin prova', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
 
     // A: crédito com id real na vaga — a cobrança pode ser aprovada a
     // qualquer momento (3DS/antifraude). O cliente NÃO cancela.
@@ -448,15 +478,27 @@ PROVAS.push({
     });
     await assertRecusaCartaoVivo(cancelarComo(cliente, U_CLIENTE, O_SENTINELA));
 
-    // D: PIX aguardando — nada muda, o cliente cancela como sempre.
+    // D: PIX aguardando COM a cobrança na vaga. Até a 20261198000000 o
+    // cliente cancelava aqui direto — e o PIX seguia pagável no MP (defeito
+    // S1). Desde a 98 a guarda da 80 continua sem olhar PIX (não é ela que
+    // recusa), mas a porta do front recusa pelo BYPASS: o cancelamento vai
+    // pela edge, que anula o PIX antes (tests/banco/cancelar-pedido-viva.cjs).
     await criarPedidoParaCancelamento(cliente, O_PIX_AGUARDANDO, {
       metodo: "pix",
       vaga: "ORD-CANCELA-PIX",
     });
-    await cancelarComo(cliente, U_CLIENTE, O_PIX_AGUARDANDO);
+    await assert.rejects(
+      cancelarComo(cliente, U_CLIENTE, O_PIX_AGUARDANDO),
+      (erro) => {
+        assert.equal(erro.code, "P0001");
+        assert.match(erro.message, MENSAGEM_BYPASS_98);
+        assert.doesNotMatch(erro.message, MENSAGEM_CARTAO_VIVO);
+        return true;
+      },
+    );
     assert.equal(
       (await estadoDoPedidoAposCancelar(cliente, O_PIX_AGUARDANDO)).status,
-      "cancelled",
+      "pending",
     );
 
     // E — GAP CONHECIDO (ver o cabeçalho deste arquivo e o cabeçalho da
@@ -508,16 +550,21 @@ PROVAS.push({
       "cartão já pago e cancelado antes do envio abre UMA linha no ledger do estorno, igual a qualquer outra forma de pagamento",
     );
 
-    // G: ADMIN cancela um pedido com cartão vivo — a guarda mora só no ramo
-    // do cliente; a reconciliação do painel depende disto continuar assim.
+    // G: ADMIN e cartão vivo. A guarda da 80 continua só no ramo do
+    // cliente — mas desde a 20261198000000 o admin também não cancela pela
+    // porta do front com a cobrança na vaga (bypass fechado; cartão em
+    // análise ninguém cancela, decisão do plano S1). O caminho é a edge.
     await criarPedidoParaCancelamento(cliente, O_ADMIN_CARTAO, {
       metodo: "credito",
       vaga: "ORD-CANCELA-ADMIN",
     });
-    await cancelarComo(cliente, U_ADMIN, O_ADMIN_CARTAO);
+    await assert.rejects(
+      cancelarComo(cliente, U_ADMIN, O_ADMIN_CARTAO),
+      MENSAGEM_BYPASS_98,
+    );
     assert.equal(
       (await estadoDoPedidoAposCancelar(cliente, O_ADMIN_CARTAO)).status,
-      "cancelled",
+      "pending",
     );
   },
 });
@@ -577,6 +624,267 @@ PROVAS.push({
     } finally {
       // Nunca deixa o corpo divergente vazar para as provas seguintes deste
       // arquivo (elas leem update_order_status_atomic de verdade).
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
+// (x) expirar_pedidos_vencidos / 20261186000000 — a varredura não cancela
+// pedido cujo cartão o banco ainda pode aprovar. Usa o `devolver_estoque`
+// REAL (estoque de produto de fixture) e a cadeia REAL de migrations.
+const CAMINHO_MIGRATION_86 = path.join(
+  __dirname,
+  "..",
+  "..",
+  "supabase",
+  "migrations",
+  "20261186000000_cartao_em_analise_segura_a_expiracao.sql",
+);
+
+const IDS_X = {
+  pix: [
+    "4ccccccc-0000-0000-0000-0000000000a1",
+    "4aaaaaaa-0000-0000-0000-0000000000a1",
+  ],
+  credito: [
+    "4ccccccc-0000-0000-0000-0000000000a2",
+    "4aaaaaaa-0000-0000-0000-0000000000a2",
+  ],
+  sentinela: [
+    "4ccccccc-0000-0000-0000-0000000000a3",
+    "4aaaaaaa-0000-0000-0000-0000000000a3",
+  ],
+  teto: [
+    "4ccccccc-0000-0000-0000-0000000000a4",
+    "4aaaaaaa-0000-0000-0000-0000000000a4",
+  ],
+  recusado: [
+    "4ccccccc-0000-0000-0000-0000000000a5",
+    "4aaaaaaa-0000-0000-0000-0000000000a5",
+  ],
+  aprovado: [
+    "4ccccccc-0000-0000-0000-0000000000a6",
+    "4aaaaaaa-0000-0000-0000-0000000000a6",
+  ],
+};
+const ESTOQUE_INICIAL_X = 10;
+const QTD_X = 3;
+
+async function criarPedidoComEstoque(
+  cliente,
+  [pedidoId, produtoId],
+  { metodo, vaga, vencidoHaMinutos },
+) {
+  await cliente.query(
+    `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
+     VALUES ($1, 'Produto Expiracao', 10.00, 25.00, $2, true, false)`,
+    [produtoId, ESTOQUE_INICIAL_X],
+  );
+  await cliente.query(
+    `INSERT INTO public.marketplace_orders
+       (id, user_id, customer_name, customer_data, total, subtotal, status, canal,
+        payment_method, payment_status, expires_at, metodo_online, gateway_payment_id)
+     VALUES ($1, $2, 'Cliente Expiracao', '{}'::jsonb, 75, 75, 'pending', 'online',
+             'online', 'aguardando', now() - make_interval(mins => $5::int), $3, $4)`,
+    [pedidoId, U_CLIENTE, metodo, vaga, vencidoHaMinutos],
+  );
+  await cliente.query(
+    `INSERT INTO public.marketplace_order_items (order_id, product_id, product_name, quantity, price)
+     VALUES ($1, $2, 'Produto Expiracao', $3, 25.00)`,
+    [pedidoId, produtoId, QTD_X],
+  );
+}
+
+async function estoqueDoProduto(cliente, produtoId) {
+  const r = await cliente.query(
+    "SELECT estoque FROM public.produtos WHERE id = $1",
+    [produtoId],
+  );
+  return Number(r.rows[0].estoque);
+}
+
+async function estadoDoPedido(cliente, id) {
+  const r = await cliente.query(
+    "SELECT status, payment_status FROM public.marketplace_orders WHERE id = $1",
+    [id],
+  );
+  return r.rows[0];
+}
+
+async function expirarPedidosVencidos(cliente) {
+  const r = await cliente.query(
+    "SELECT public.expirar_pedidos_vencidos() AS n",
+  );
+  return Number(r.rows[0].n);
+}
+
+PROVAS.push({
+  nome: "(x) a varredura (20261186000000) não cancela cartão vivo dentro de 24 h; PIX e o teto expiram como sempre",
+  corpo: async (cliente) => {
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1, $2, '{}'::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [U_CLIENTE, "cliente-expiracao@cartao.teste"],
+    );
+
+    // a: PIX vencido há 31 min — expira e devolve o estoque (comportamento de
+    // sempre; o PIX do balcão, 20261184000000, depende disto).
+    await criarPedidoComEstoque(cliente, IDS_X.pix, {
+      metodo: "pix",
+      vaga: "ORD-EXP-PIX",
+      vencidoHaMinutos: 31,
+    });
+    // c: crédito com vaga (cartão em análise), vencido há 31 min — NÃO expira.
+    await criarPedidoComEstoque(cliente, IDS_X.credito, {
+      metodo: "credito",
+      vaga: "ORD-EXP-CREDITO",
+      vencidoHaMinutos: 31,
+    });
+    // e: sentinela com metodo_online NULL, vencido há 31 min — NÃO expira.
+    await criarPedidoComEstoque(cliente, IDS_X.sentinela, {
+      metodo: null,
+      vaga: "verificando:exp-prova",
+      vencidoHaMinutos: 31,
+    });
+    // g: crédito com vaga vencido há 24 h + 1 min — passou do teto, expira.
+    await criarPedidoComEstoque(cliente, IDS_X.teto, {
+      metodo: "credito",
+      vaga: "ORD-EXP-TETO",
+      vencidoHaMinutos: 24 * 60 + 1,
+    });
+
+    const expirados = await expirarPedidosVencidos(cliente);
+    assert.equal(expirados, 2, "só o PIX e o cartão acima do teto expiram");
+
+    assert.deepEqual(await estadoDoPedido(cliente, IDS_X.pix[0]), {
+      status: "cancelled",
+      payment_status: "expirado",
+    });
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.pix[1]),
+      ESTOQUE_INICIAL_X + QTD_X,
+      "a: o estoque do PIX vencido voltou",
+    );
+
+    for (const alvo of [IDS_X.credito, IDS_X.sentinela]) {
+      assert.deepEqual(
+        await estadoDoPedido(cliente, alvo[0]),
+        { status: "pending", payment_status: "aguardando" },
+        "c/e: cartão possivelmente vivo segue pendente",
+      );
+      assert.equal(
+        await estoqueDoProduto(cliente, alvo[1]),
+        ESTOQUE_INICIAL_X,
+        "c/e: o estoque do cartão vivo NÃO voltou para a prateleira",
+      );
+    }
+
+    assert.deepEqual(await estadoDoPedido(cliente, IDS_X.teto[0]), {
+      status: "cancelled",
+      payment_status: "expirado",
+    });
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.teto[1]),
+      ESTOQUE_INICIAL_X + QTD_X,
+      "g: passou do teto de 24 h, o estoque voltou",
+    );
+
+    // Segunda varredura: nada novo (e nenhum estoque devolvido de novo).
+    assert.equal(await expirarPedidosVencidos(cliente), 0);
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.pix[1]),
+      ESTOQUE_INICIAL_X + QTD_X,
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(x2) cartão vivo vencido: recusa libera a vaga e a varredura expira; aprovação vira 'pago', não 'pago_apos_expirar'",
+  corpo: async (cliente) => {
+    // Recusado: o cartão estava vivo (a varredura o poupou), o banco recusou,
+    // `liberar_cobranca_do_pedido` zera a vaga -> na PRÓXIMA varredura o
+    // pedido expira e o estoque volta.
+    await criarPedidoComEstoque(cliente, IDS_X.recusado, {
+      metodo: "credito",
+      vaga: "ORD-EXP-RECUSADO",
+      vencidoHaMinutos: 31,
+    });
+    assert.equal(await expirarPedidosVencidos(cliente), 0);
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.recusado[1]),
+      ESTOQUE_INICIAL_X,
+    );
+    assert.equal(
+      await liberar(cliente, IDS_X.recusado[0], "ORD-EXP-RECUSADO"),
+      true,
+    );
+    assert.equal(await expirarPedidosVencidos(cliente), 1);
+    assert.deepEqual(await estadoDoPedido(cliente, IDS_X.recusado[0]), {
+      status: "cancelled",
+      payment_status: "expirado",
+    });
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.recusado[1]),
+      ESTOQUE_INICIAL_X + QTD_X,
+    );
+
+    // Aprovado: o banco aprovou DEPOIS dos 30 min. Como a varredura poupou o
+    // pedido, ele ainda é aguardando/pending e `confirmar_pagamento` grava
+    // 'pago' — o dinheiro entra com pedido, o estoque continua reservado.
+    await criarPedidoComEstoque(cliente, IDS_X.aprovado, {
+      metodo: "credito",
+      vaga: "ORD-EXP-APROVADO",
+      vencidoHaMinutos: 31,
+    });
+    assert.equal(await expirarPedidosVencidos(cliente), 0);
+    const r = await cliente.query(
+      "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
+      [IDS_X.aprovado[0], "ORD-EXP-APROVADO"],
+    );
+    assert.equal(r.rows[0].r, "pago");
+    assert.equal(
+      (await estadoDoPedido(cliente, IDS_X.aprovado[0])).payment_status,
+      "pago",
+    );
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.aprovado[1]),
+      ESTOQUE_INICIAL_X,
+      "pedido pago mantém a reserva",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(xp) preflight da 20261186000000: reaplicar sobre o corpo vivo passa; sobre corpo divergente recusa B1_BASELINE_DIVERGENT",
+  corpo: async (cliente) => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_MIGRATION_86 é constante do próprio teste (path.join de literais).
+    const sql86 = fs.readFileSync(CAMINHO_MIGRATION_86, "utf8");
+    const prosrc = async () =>
+      (
+        await cliente.query(
+          "SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure('public.expirar_pedidos_vencidos()')",
+        )
+      ).rows[0].prosrc;
+
+    await cliente.query("BEGIN");
+    try {
+      // 1. A cadeia do zero deixou o corpo desta migration: reaplicar o ARQUIVO
+      // inteiro passa pelo preflight (o hash embutido é o md5 real do prosrc).
+      const antes = await prosrc();
+      await cliente.query(sql86);
+      assert.equal(await prosrc(), antes, "reaplicar é idempotente");
+
+      // 2. Corpo divergente: recusa, e o corpo divergente continua vivo.
+      await cliente.query(`
+        CREATE OR REPLACE FUNCTION public.expirar_pedidos_vencidos()
+        RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+        AS $divergente$ BEGIN RETURN 0; END; $divergente$;
+      `);
+      await cliente.query("SAVEPOINT antes_da_86");
+      await assert.rejects(() => cliente.query(sql86), /B1_BASELINE_DIVERGENT/);
+      await cliente.query("ROLLBACK TO SAVEPOINT antes_da_86");
+      assert.match(await prosrc(), /RETURN 0;/);
+    } finally {
       await cliente.query("ROLLBACK");
     }
   },

@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import { mapOrderFromDB } from "@/lib/mappers";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -144,6 +145,162 @@ export class ErroCancelamentoOfflineRecusado extends Error {
 }
 
 /**
+ * S1 (dinheiro, 04/10/2026): cancelar pedido ONLINE passa pela edge
+ * `criar-pagamento` (ação `cancelar`), que ANULA a cobrança no Mercado Pago
+ * antes de cancelar no banco — `update_order_status_atomic` recusa cancelar
+ * pedido aguardando com cobrança na vaga (migration 20261198000000). Os
+ * desfechos são o contrato de `supabase/functions/criar-pagamento/
+ * cancelar-pedido.ts`.
+ */
+export type DesfechoDoCancelamento =
+  | "cancelado"
+  | "ja_pago"
+  | "em_analise"
+  | "mudou"
+  | "recuperavel"
+  | "recusado";
+
+export type RespostaDoCancelamento = {
+  desfecho: DesfechoDoCancelamento;
+  mensagem: string;
+  jaEstava?: boolean;
+  aviso?: string;
+  pedido?: { status?: string | null; paymentStatus?: string | null };
+};
+
+const DESFECHOS_DO_CANCELAMENTO: ReadonlySet<string> = new Set([
+  "cancelado",
+  "ja_pago",
+  "em_analise",
+  "mudou",
+  "recuperavel",
+  "recusado",
+]);
+
+export const MENSAGEM_CANCELAMENTO_RECUPERAVEL =
+  "Não foi possível cancelar agora. Tente de novo em instantes.";
+
+/**
+ * O cancelamento NÃO aconteceu — a edge respondeu (ou não respondeu) com
+ * outro desfecho. `desfecho` é o que a tela usa para decidir: `ja_pago`
+ * (o pedido foi pago: vai para a confirmação), `em_analise` (cartão em
+ * análise: não dá agora), `mudou`/`recuperavel` (tentar de novo),
+ * `recusado` (regra do pedido). Nenhuma mudança local foi pintada antes.
+ */
+export class ErroCancelamentoNaoConcluido extends Error {
+  readonly desfecho: Exclude<DesfechoDoCancelamento, "cancelado">;
+  readonly pedido?: RespostaDoCancelamento["pedido"];
+  constructor(resposta: RespostaDoCancelamento) {
+    super(resposta.mensagem);
+    this.name = "ErroCancelamentoNaoConcluido";
+    this.desfecho =
+      resposta.desfecho === "cancelado" ? "recuperavel" : resposta.desfecho;
+    this.pedido = resposta.pedido;
+  }
+}
+
+/**
+ * Quem cancela pela edge: pedido de pagamento ONLINE, pedido ainda
+ * `aguardando` (só a cobrança online gera esse estado) e pedido que a tela
+ * NÃO tem em memória (deep link, retomada do checkout) — "não sei" vai pelo
+ * caminho que anula a cobrança, nunca pelo que só mexe no banco. Pedido não
+ * online conhecido (dinheiro, PIX/cartão na entrega) continua na RPC de
+ * sempre, com a fila offline do painel.
+ */
+export function cancelamentoVaiPelaEdge(order: Order | undefined): boolean {
+  if (!order) return true;
+  return (
+    order.paymentMethod === "online" || order.paymentStatus === "aguardando"
+  );
+}
+
+/**
+ * Lê a resposta de `functions.invoke("criar-pagamento", {metodo: "cancelar"})`.
+ * O supabase-js v2 descarta o corpo de resposta não-2xx em `data` e o põe em
+ * `error.context` (um Response) — mesmo resgate de `criarPagamento`, abaixo.
+ * Tudo que não for um desfecho conhecido vira `recuperavel`: "não sei" nunca
+ * vira "cancelado".
+ */
+export async function lerRespostaDoCancelamento(
+  data: unknown,
+  error: unknown,
+): Promise<RespostaDoCancelamento> {
+  let corpo: Record<string, unknown> | null = null;
+  let httpStatus: number | undefined;
+  if (error) {
+    const contexto = (
+      error as {
+        context?: { json?: () => Promise<unknown>; status?: unknown };
+      } | null
+    )?.context;
+    if (typeof contexto?.status === "number") httpStatus = contexto.status;
+    if (typeof contexto?.json === "function") {
+      try {
+        const lido = await contexto.json();
+        if (lido && typeof lido === "object") {
+          corpo = lido as Record<string, unknown>;
+        }
+      } catch {
+        // corpo ilegível: fica o desfecho genérico
+      }
+    }
+  } else if (data && typeof data === "object") {
+    corpo = data as Record<string, unknown>;
+  }
+
+  const bruto = corpo?.cancelamento;
+  const textoDoServidor =
+    typeof corpo?.mensagem === "string" && corpo.mensagem
+      ? corpo.mensagem
+      : typeof corpo?.error === "string" && corpo.error
+        ? corpo.error
+        : null;
+  if (typeof bruto === "string" && DESFECHOS_DO_CANCELAMENTO.has(bruto)) {
+    const desfecho = bruto as DesfechoDoCancelamento;
+    // `cancelado` só vale numa resposta 2xx — nunca de um corpo de erro.
+    if (desfecho === "cancelado" && error) {
+      return {
+        desfecho: "recuperavel",
+        mensagem: MENSAGEM_CANCELAMENTO_RECUPERAVEL,
+      };
+    }
+    const pedidoBruto = corpo?.pedido as Record<string, unknown> | undefined;
+    return {
+      desfecho,
+      mensagem:
+        textoDoServidor ??
+        (desfecho === "cancelado"
+          ? "Pedido cancelado."
+          : MENSAGEM_CANCELAMENTO_RECUPERAVEL),
+      ...(corpo?.jaEstava === true ? { jaEstava: true } : {}),
+      ...(typeof corpo?.aviso === "string" ? { aviso: corpo.aviso } : {}),
+      ...(pedidoBruto && typeof pedidoBruto === "object"
+        ? {
+            pedido: {
+              status:
+                typeof pedidoBruto.status === "string"
+                  ? pedidoBruto.status
+                  : null,
+              paymentStatus:
+                typeof pedidoBruto.paymentStatus === "string"
+                  ? pedidoBruto.paymentStatus
+                  : null,
+            },
+          }
+        : {}),
+    };
+  }
+  // 404 da edge = "não é seu / não existe" (terminal); o resto é passageiro.
+  if (httpStatus === 404 && textoDoServidor) {
+    return { desfecho: "recusado", mensagem: textoDoServidor };
+  }
+  return {
+    desfecho: "recuperavel",
+    mensagem: MENSAGEM_CANCELAMENTO_RECUPERAVEL,
+  };
+}
+
+/**
  * `Map` sobre `statusConfig` (OrderStatusBadge.tsx) — mesma técnica de
  * `paymentStatusConfigByKey`, no mesmo arquivo: a chave vem de uma união
  * fechada (`OrderStatus`) e o `Record` de origem já é exaustivo por
@@ -218,10 +375,15 @@ async function processarFilaOfflineDePedidos(
   segundaPassada = false,
 ): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
-  const queueStr = localStorage.getItem("orders_offline_updates_queue");
-  if (!queueStr) return false;
+  // Declarado fora do try: se o storage falhar na ESCRITA, depois das RPCs, o
+  // catch precisa resolver ESTE toast em vez de deixá-lo "Sincronizando…".
+  let toastId: string | number | undefined;
 
   try {
+    // A leitura vive dentro do try: storage bloqueado (SecurityError) é
+    // "a sincronização não concluiu", nunca uma promessa rejeitada.
+    const queueStr = localStorage.getItem("orders_offline_updates_queue");
+    if (!queueStr) return false;
     const queue = JSON.parse(queueStr);
     if (!Array.isArray(queue) || queue.length === 0) return false;
 
@@ -231,7 +393,7 @@ async function processarFilaOfflineDePedidos(
     let syncedAny = false;
     let falhasTransitorias = 0;
     let descartesTerminais = 0;
-    const toastId = toast.loading(
+    toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
     );
 
@@ -390,6 +552,15 @@ async function processarFilaOfflineDePedidos(
     return filaAvancou;
   } catch (e) {
     console.error("[Offline Sync] Error parsing offline orders queue:", e);
+    // Falha depois do toast de carregamento (escrita da fila no storage):
+    // resolve-o com a falha. A fila antiga continua no storage e é refeita
+    // na próxima tentativa; nunca se declara "sincronizado" nem se recarrega.
+    if (toastId !== undefined) {
+      toast.error(
+        "Não foi possível salvar a fila de pedidos offline neste dispositivo. Tentando novamente mais tarde.",
+        { id: toastId },
+      );
+    }
     return false;
   }
 }
@@ -465,14 +636,79 @@ export type ArgsCriarPagamento =
       parcelas: number;
       documento: { type: "CPF" | "CNPJ"; number: string };
       email?: string;
+      // Device ID do comprador (03/10/2026, antifraude do Mercado Pago): o
+      // valor de `window.MP_DEVICE_SESSION_ID`, já validado no formato. A edge
+      // o manda como `X-meli-session-id` e IGNORA o que vier fora do formato.
+      // Omitido quando a coleta não terminou — nunca vazio.
+      device_id?: string;
+    }
+  // C4 (M1, 02/10/2026): a CONSULTA sem cobrança — a edge só lê o Mercado
+  // Pago (GET/busca) e só escreve por CAS ou pela RPC de liberação; nunca
+  // POST de cobrança, nunca cancelamento. Sem token, sem documento, sem
+  // corpo de cartão. A resposta 200 carrega `verificacao` (abaixo).
+  | {
+      orderId: string;
+      metodo: "verificar";
     };
+
+/**
+ * C4 (M1, 02/10/2026): o conjunto fechado do campo `verificacao` que a
+ * consulta `metodo: "verificar"` devolve num 200 (desenho A1 §4.2, corrigido
+ * pelo veredito A2). `indisponivel` NÃO está aqui: ele vem num 503, e chega
+ * à tela como erro não terminal.
+ */
+export type EstadoDaVerificacao =
+  | "livre"
+  | "recusado"
+  | "pix"
+  | "pago"
+  | "desafio3ds"
+  | "em_analise"
+  | "sem_registro";
+
+/**
+ * Contrato "forma de cartão desligada" (01/10/2026): o 409 do portão de
+ * `criar-pagamento` carrega `codigo: "CARTAO_FORMA_DESLIGADA"`. O código NÃO
+ * afirma ausência de cobrança (o portão roda antes do ramo "reconsultar" da
+ * edge) — serve só para a tela trocar a configuração e oferecer PIX pela
+ * guarda da vaga.
+ */
+export type CodigoDoErroDePagamento = "CARTAO_FORMA_DESLIGADA";
+
+/**
+ * Só o literal EXATO vira código; qualquer outra coisa (ausente, outro texto,
+ * caixa ou espaço diferentes, outro tipo) é `undefined` — falha fechada, a
+ * mesma régua estrita de `terminal`/`cartaoEmAnalise`.
+ */
+function codigoDoErroDePagamento(
+  valor: unknown,
+): CodigoDoErroDePagamento | undefined {
+  return valor === "CARTAO_FORMA_DESLIGADA" ? valor : undefined;
+}
+
+/**
+ * C5 (front B2, 02/10/2026): o 503 `{ error, verificacao: "indisponivel" }`
+ * da edge (cartão sobre sentinela com a busca do MP falhando, e a consulta
+ * `metodo: "verificar"` que não conseguiu ler) — a cobrança está em DÚVIDA,
+ * não "falhou": a tela não pode pedir o cartão de novo. Só o literal exato
+ * conta (mesma régua estrita de `terminal`/`cartaoEmAnalise`/`codigo`).
+ */
+export type VerificacaoDoErroDePagamento = "indisponivel";
+
+function verificacaoDoErroDePagamento(
+  valor: unknown,
+): VerificacaoDoErroDePagamento | undefined {
+  return valor === "indisponivel" ? valor : undefined;
+}
 
 /**
  * O que a edge devolve num 200/201 — PIX e cartão falam a mesma resposta; os
  * campos de cada meio são opcionais.
  */
 export type RespostaCriarPagamento = {
-  paymentId: string;
+  // `null` é real: a recusa do cartão, a consulta `verificar` e o
+  // `sem_registro` do C3 voltam sem order (C5: "em análise" só COM order).
+  paymentId: string | null;
   // CHECKOUT-080 (#213): renomeado de `status` — o campo agora fala o
   // vocabulário FECHADO do banco ('aguardando'/'pago'/'recusado'/
   // 'expirado'/'estornado'), não mais o vocabulário clássico do MP, e
@@ -498,6 +734,14 @@ export type RespostaCriarPagamento = {
   // (reserva vencida, limite de tentativas) — a tela não oferece outro
   // cartão nem PIX.
   podeTentarDeNovo?: boolean;
+  // C4 (M1): só na resposta da consulta `metodo: "verificar"`. ATENÇÃO: nela
+  // `paymentId` pode vir `null` (vaga vazia ou com sentinela) — quem lê esta
+  // resposta (`VerificacaoDoPagamento`) trata o corpo como desconhecido e
+  // valida campo a campo, nunca confia no tipo acima.
+  verificacao?: EstadoDaVerificacao;
+  // Só em `sem_registro`: a data real do cancelamento automático
+  // (`expires_at + 24 h`).
+  canceladoAutomaticamenteAte?: string;
 };
 
 /** Argumentos de uma chamada de `loadOrders`, guardados para poder repeti-la. */
@@ -760,6 +1004,9 @@ export const mensagemAmigavelErroOtp = (error: unknown): string => {
 export const mensagemAmigavelErroAtualizacaoStatus = (
   error: unknown,
 ): string => {
+  // S1 (04/10/2026): o desfecho da edge de cancelamento já chega com a frase
+  // escrita para quem lê (contrato de criar-pagamento/cancelar-pedido.ts).
+  if (error instanceof ErroCancelamentoNaoConcluido) return error.message;
   const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
   const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
   const textoOriginal =
@@ -2147,7 +2394,7 @@ export function useOrders(
           return [newOrder, ...prev];
         });
         if (!onRealtimeEventRef.current) {
-          toast.info(`Novo pedido recebido! #${newOrder.id.slice(0, 8)}`);
+          toast.info(`Novo pedido recebido! #${numeroDoPedido(newOrder.id)}`);
         }
       }
     },
@@ -2674,6 +2921,81 @@ export function useOrders(
           throw new ErroCancelamentoOfflineRecusado();
         }
 
+        // S1 (dinheiro, 04/10/2026): cancelar pedido online vai pela edge, que
+        // ANULA a cobrança no Mercado Pago antes de cancelar no banco. Nada de
+        // update otimista nem de fila offline aqui — nem para o admin: "o
+        // cancelamento financeiro foi confirmado" só existe com a resposta da
+        // edge. Sem rede, recusa com a MESMA frase do cliente offline.
+        if (status === "cancelled" && cancelamentoVaiPelaEdge(order)) {
+          if (typeof navigator !== "undefined" && !navigator.onLine) {
+            if (!silent) {
+              toast.warning(
+                "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
+              );
+            }
+            throw new ErroCancelamentoOfflineRecusado();
+          }
+
+          let resposta: RespostaDoCancelamento;
+          try {
+            const { data, error } = await (supabase as any).functions.invoke(
+              "criar-pagamento",
+              { body: { orderId, metodo: "cancelar" } },
+            );
+            resposta = await lerRespostaDoCancelamento(data, error);
+          } catch (erroDeRede) {
+            console.error("Erro ao pedir o cancelamento à edge:", erroDeRede);
+            resposta = {
+              desfecho: "recuperavel",
+              mensagem: MENSAGEM_CANCELAMENTO_RECUPERAVEL,
+            };
+          }
+
+          if (resposta.desfecho !== "cancelado") {
+            if (!silent) {
+              if (resposta.desfecho === "recuperavel") {
+                toast.error(resposta.mensagem);
+              } else {
+                toast.warning(resposta.mensagem);
+              }
+            }
+            throw new ErroCancelamentoNaoConcluido(resposta);
+          }
+
+          // Só agora, com o cancelamento PROVADO, a tela muda.
+          const aplicarCancelamento = (o: Order): Order =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  status: "cancelled",
+                  cancelledAfterShipping: derivarCancelledAfterShipping(
+                    o.status,
+                    "cancelled",
+                    o.cancelledAfterShipping,
+                  ),
+                }
+              : o;
+          cachedAdminOrders = cachedAdminOrders
+            ? cachedAdminOrders.map(aplicarCancelamento)
+            : cachedAdminOrders;
+          setOrders((prev) => prev.map(aplicarCancelamento));
+          clearAnalyticsCache();
+          if (!silent) {
+            toast.success(
+              resposta.jaEstava
+                ? "Este pedido já estava cancelado."
+                : "Pedido cancelado.",
+            );
+            if (resposta.aviso) toast.warning(resposta.aviso);
+          }
+          if (isAdmin) {
+            gatilhoCanceladosSeqRef.current += 1;
+            pedidosCanceladosLocalmenteRef.current.set(orderId, Date.now());
+            fetchPedidosCancelados().catch(() => {});
+          }
+          return;
+        }
+
         // L-9 front (08/09/2026): a lojista está com a ficha aberta
         // mostrando um status que o servidor já não tem mais — o cliente
         // cancelou entre a leitura que preencheu a tela e o clique em
@@ -2900,11 +3222,14 @@ export function useOrders(
         // mesmo grupo pelo MESMO motivo — lançado antes do update otimista,
         // `originalCache` ainda é `null` neste ponto, e já disparou seu
         // próprio `toast.warning` na hora de nascer (acima).
+        // S1 (04/10/2026): `ErroCancelamentoNaoConcluido` também — nasce
+        // ANTES de qualquer mudança local e já mostrou o próprio aviso.
         const erroJaTratado =
           err instanceof ErroPedidoMudou ||
           err instanceof ErroReleituraDeStatusFalhou ||
           err instanceof ErroStatusEsperadoDesconhecido ||
-          err instanceof ErroCancelamentoOfflineRecusado;
+          err instanceof ErroCancelamentoOfflineRecusado ||
+          err instanceof ErroCancelamentoNaoConcluido;
         if (!erroJaTratado) {
           cachedAdminOrders = originalCache;
           setOrders(originalOrders);
@@ -2928,8 +3253,10 @@ export function useOrders(
    * devolve o item ao estoque; sem ele, a mercadoria fica fora do catálogo
    * para sempre — a migration tirou o retorno automático que existia antes.
    *
-   * Não move dinheiro nenhum: o app não estorna sozinho. Isto só marca que a
-   * MERCADORIA voltou — quem governa o card de mercadoria é
+   * Não move dinheiro nenhum: isto só marca que a MERCADORIA voltou (a
+   * devolução do dinheiro, quando existe, anda por `order_refunds` — o
+   * cancelamento de pedido pago e não enviado a pede ao Mercado Pago
+   * sozinho desde 07/09/2026) — quem governa o card de mercadoria é
    * `precisaConfirmarRetornoDoProduto` (AdminOrdersView.tsx), não
    * `baldeDeEstorno` (achado da revisão de 26/08/2026, rodada 4: a versão
    * anterior deste comentário estava errada duas vezes — o card some por
@@ -3018,9 +3345,10 @@ export function useOrders(
    * ler `data?.payment_status`/`data?.pagamento_recebido_em` da resposta
    * cobre os dois casos com o mesmo código.
    *
-   * `clearAnalyticsCache()` no fim é o que faz o número de "Receita Hoje"
-   * mudar depois deste clique — sem ele, `useAnalytics` continuaria
-   * devolvendo o resultado guardado em cache de módulo.
+   * `clearAnalyticsCache()` no fim é o que faz os números de venda do
+   * painel (Clientes, Relatórios, o topo de Pedidos) mudarem depois deste
+   * clique — sem ele, `useAnalytics` continuaria devolvendo o resultado
+   * guardado em cache de módulo.
    */
   const registrarPagamentoRecebido = useCallback(
     async (orderId: string, recebido: boolean) => {
@@ -3396,6 +3724,8 @@ export function useOrders(
         // MESMA regra estrita do `terminal`: só `true` booleano conta, falha
         // fechada em qualquer outra coisa (campo ausente, string "true").
         let cartaoEmAnalise = false;
+        let codigo: CodigoDoErroDePagamento | undefined;
+        let verificacao: VerificacaoDoErroDePagamento | undefined;
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
@@ -3403,13 +3733,31 @@ export function useOrders(
           if (typeof corpo?.cartaoEmAnalise === "boolean") {
             cartaoEmAnalise = corpo.cartaoEmAnalise;
           }
+          codigo = codigoDoErroDePagamento(corpo?.codigo);
+          verificacao = verificacaoDoErroDePagamento(corpo?.verificacao);
         } catch {
           // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
           // o texto cru de um erro de infraestrutura para o cliente.
         }
-        throw Object.assign(new Error(mensagem), { terminal, cartaoEmAnalise });
+        // Confirmação do cartão sem fim (03/10/2026, achado M1 da revisão de
+        // risco): o status HTTP viaja junto — `terminal: true` sozinho não
+        // diz se é o PEDIDO que não espera mais pagamento (409/404) ou o
+        // SERVIDOR que não conseguiu agora (o 503 "Pagamento indisponível."
+        // também é terminal). Aditivo: quem não lê o campo segue igual.
+        const httpStatus = (error as any).context?.status;
+        throw Object.assign(new Error(mensagem), {
+          terminal,
+          cartaoEmAnalise,
+          ...(codigo ? { codigo } : {}),
+          ...(verificacao ? { verificacao } : {}),
+          ...(typeof httpStatus === "number" ? { httpStatus } : {}),
+        });
       }
       if (data?.error) {
+        const codigo = codigoDoErroDePagamento((data as any).codigo);
+        const verificacao = verificacaoDoErroDePagamento(
+          (data as any).verificacao,
+        );
         // Mesma regra estrita do ramo `error` acima: só `true` literal vira
         // terminal/cartaoEmAnalise. `Boolean(...)` aceitaria "false" (string),
         // 1, `{}` — este ramo é inalcançável hoje (o supabase-js v2 sempre
@@ -3422,6 +3770,8 @@ export function useOrders(
           cartaoEmAnalise:
             typeof (data as any).cartaoEmAnalise === "boolean" &&
             (data as any).cartaoEmAnalise,
+          ...(codigo ? { codigo } : {}),
+          ...(verificacao ? { verificacao } : {}),
         });
       }
       return data as RespostaCriarPagamento;
@@ -3499,16 +3849,29 @@ export function useOrders(
   );
 
   const fetchOrdersByOtp = useCallback(
-    async (email: string, otp: string): Promise<Order[]> => {
+    async (
+      email: string,
+      otp: string,
+      trio?: { whatsapp: string; fragmento: string },
+    ): Promise<Order[]> => {
       try {
         setLoading(true);
-        const { data, error } = await (supabase.rpc as any)(
-          "get_orders_by_otp_v1",
-          {
-            p_email: email,
-            p_otp: otp,
-          },
-        );
+        // Com o trio (e-mail + WhatsApp + pedaço do pedido, os mesmos que
+        // pediram o código), a verificação vai para a v2: ela só olha o código
+        // do pedido que confere com o trio, então quem sabe só o e-mail não
+        // consegue gastar as tentativas do código de outra pessoa (migration
+        // 20261217000000). Sem o trio, a v1 de sempre.
+        const { data, error } = trio
+          ? await (supabase.rpc as any)("get_orders_by_otp_v2", {
+              p_email: email,
+              p_whatsapp: trio.whatsapp,
+              p_fragmento: trio.fragmento,
+              p_otp: otp,
+            })
+          : await (supabase.rpc as any)("get_orders_by_otp_v1", {
+              p_email: email,
+              p_otp: otp,
+            });
 
         if (error) throw error;
 
@@ -3599,16 +3962,29 @@ export function useOrders(
   // pendente) — aqui a mudança de `user?.id` é o próprio gatilho que falta.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // O desmonte (e a re-execução por `user?.id`) cancela o que ainda estiver
+    // esperando o segundo de espera: sem isto a sincronização rodava DEPOIS do
+    // desmonte, contra um `localStorage` que já não é o da tela.
+    const timersPendentes = new Set<ReturnType<typeof setTimeout>>();
     const handleOnlineSync = () => {
-      setTimeout(() => {
-        syncOfflineOrderUpdates().then((filaAvancou) => {
-          if (filaAvancou) {
-            recarregarAposReconexaoRef
-              .current({ silencioso: true })
-              .catch(() => {});
-          }
-        });
+      const timer = setTimeout(() => {
+        timersPendentes.delete(timer);
+        syncOfflineOrderUpdates()
+          .then((filaAvancou) => {
+            if (filaAvancou) {
+              recarregarAposReconexaoRef
+                .current({ silencioso: true })
+                .catch(() => {});
+            }
+          })
+          .catch((err) => {
+            // Rede de segurança: `processarFilaOfflineDePedidos` já trata o
+            // storage, mas esta promessa nunca pode terminar sem dono — sem
+            // isto, qualquer rejeição vira "unhandled rejection".
+            console.error("[Offline Sync] Failed to sync offline orders:", err);
+          });
       }, 1000);
+      timersPendentes.add(timer);
     };
 
     window.addEventListener("online", handleOnlineSync);
@@ -3617,6 +3993,8 @@ export function useOrders(
     }
     return () => {
       window.removeEventListener("online", handleOnlineSync);
+      for (const timer of timersPendentes) clearTimeout(timer);
+      timersPendentes.clear();
     };
   }, [user?.id]);
 

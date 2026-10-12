@@ -17,6 +17,11 @@
 // disponíveis)" — não há mais seção para expandir antes de clicar. O
 // contrato provado é exatamente o mesmo: o clique abre o painel no portal,
 // com busca e lista de modelos.
+//
+// ATUALIZAÇÃO do painel simples (D9/D11, 09/10/2026): a tela "Atendimento"
+// foi apagada e o bloco virou o componente `ContatoDaLoja` de Minha loja
+// (WhatsAppDaLoja + MensagemDeCompartilhar). O contrato é o mesmo; só o
+// componente renderizado mudou.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,7 +52,7 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "u1" } }) }));
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("Atendimento — botão de modelos prontos abre o painel de modelos", () => {
+describe("Minha loja › Contato — botão de modelos prontos abre o painel de modelos", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -67,17 +72,17 @@ describe("Atendimento — botão de modelos prontos abre o painel de modelos", (
   });
 
   it("clicar em 'Modelos prontos' abre o painel com busca e modelos", async () => {
-    const { AdminWhatsAppConfigView } = await import(
-      "@/views/admin/AdminWhatsAppConfigView"
+    const { ContatoDaLoja } = await import(
+      "@/components/admin/minha-loja/ContatoDaLoja"
     );
     await act(async () => {
-      raiz.render(<AdminWhatsAppConfigView active />);
+      raiz.render(<ContatoDaLoja />);
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Formulário direto: o botão vive direto no bloco 3, sem expandir nada.
+    // Formulário direto: o botão vive direto no bloco, sem expandir nada.
     const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Modelos prontos"),
     ) as HTMLButtonElement;

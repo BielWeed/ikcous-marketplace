@@ -27,12 +27,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 let PEDIDOS_PENDENTES = 0;
 let PERGUNTAS_PENDENTES = 0;
 let AVALIACOES_SEM_RESPOSTA = 0;
+let DEVOLUCOES_SOLICITADAS = 0;
+let DEVOLUCOES_EM_OUTROS_ESTADOS = 0;
+let FALHA_DEVOLUCOES: "erro" | "resposta-invalida" | null = null;
 
 /** Duble do query builder de contagem do Supabase (`head: true`). */
 function criarContagemBuilder(contagem: number) {
   const builder: any = {};
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão de dashboard-escuta-a-tabela-certa e admin-layout-cracha-pedidos-pendentes.
   builder.then = (resolve: any, reject?: any) =>
@@ -53,11 +57,32 @@ vi.mock("@/lib/supabase", () => ({
         tabela === "reviews" ? AVALIACOES_SEM_RESPOSTA : PEDIDOS_PENDENTES,
       ),
     ),
-    rpc: vi.fn(() =>
-      Promise.resolve({
-        data: { total_count: PERGUNTAS_PENDENTES },
-        error: null,
-      }),
+    rpc: vi.fn((nome: string) =>
+      Promise.resolve(
+        nome === "admin_devolucoes_listar"
+          ? {
+              data: FALHA_DEVOLUCOES
+                ? null
+                : {
+                    total: DEVOLUCOES_SOLICITADAS,
+                    itens: [],
+                    contagem: {
+                      solicitada: DEVOLUCOES_SOLICITADAS,
+                      aprovada: DEVOLUCOES_EM_OUTROS_ESTADOS,
+                      em_transito: DEVOLUCOES_EM_OUTROS_ESTADOS,
+                      recebida: DEVOLUCOES_EM_OUTROS_ESTADOS,
+                    },
+                  },
+              error:
+                FALHA_DEVOLUCOES === "erro"
+                  ? new Error("falha simulada")
+                  : null,
+            }
+          : {
+              data: { total_count: PERGUNTAS_PENDENTES },
+              error: null,
+            },
+      ),
     ),
     channel: vi.fn(() => ({
       on: vi.fn().mockReturnThis(),
@@ -117,6 +142,10 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     PEDIDOS_PENDENTES = 0;
     PERGUNTAS_PENDENTES = 0;
     AVALIACOES_SEM_RESPOSTA = 0;
+    DEVOLUCOES_SOLICITADAS = 0;
+    DEVOLUCOES_EM_OUTROS_ESTADOS = 0;
+    FALHA_DEVOLUCOES = null;
+    vi.clearAllMocks();
     vi.stubGlobal(
       "BroadcastChannel",
       class {
@@ -161,7 +190,11 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
       );
     });
 
-    const sino = hospedeiro.querySelector("button.size-7");
+    // O botão do sino é o envoltório de 44px (A3); o `size-7` agora mora no
+    // círculo de dentro. O cabeçalho é o do celular — a lateral tem outra porta.
+    const sino = hospedeiro.querySelector(
+      'header button[aria-label="Notificações"]',
+    );
     expect(sino).toBeTruthy();
     return { onNavigate, sino: sino as HTMLButtonElement };
   }
@@ -296,6 +329,60 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
 
     // Controle negativo da bolinha: os outros casos so provam que ela ACENDE.
     // Uma bolinha acesa sem condicao nenhuma passaria em todos eles.
+    expect(sino.querySelector("span")).toBeNull();
+  });
+
+  it("só com devolução solicitada, acende o sino e o aviso da barra lateral", async () => {
+    DEVOLUCOES_SOLICITADAS = 2;
+    const { sino } = await montarPainel();
+    await esperarContagensChegarem();
+
+    expect(sino.querySelector("span")).not.toBeNull();
+    const porta = Array.from(hospedeiro.querySelectorAll("aside button")).find(
+      (b) => b.textContent?.includes("Notificações"),
+    );
+    expect(porta).toBeTruthy();
+    expect(porta?.querySelector(".bg-red-500")).toBeTruthy();
+    const { supabase } = await import("@/lib/supabase");
+    expect(supabase.rpc).toHaveBeenCalledWith("admin_devolucoes_listar", {
+      p_status: "solicitada",
+      p_limite: 1,
+    });
+  });
+
+  it("devoluções aprovadas, em trânsito ou recebidas não acendem o sino", async () => {
+    DEVOLUCOES_EM_OUTROS_ESTADOS = 3;
+    const { sino } = await montarPainel();
+    await esperarContagensChegarem();
+    expect(sino.querySelector("span")).toBeNull();
+  });
+
+  it.each(["erro", "resposta-invalida"] as const)(
+    "acende por dúvida quando a consulta de devoluções retorna %s e apaga ao recuperar",
+    async (falha) => {
+      FALHA_DEVOLUCOES = falha;
+      const { sino } = await montarPainel();
+      await esperarContagensChegarem();
+      expect(sino.querySelector("span")).not.toBeNull();
+
+      FALHA_DEVOLUCOES = null;
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect(sino.querySelector("span")).toBeNull();
+    },
+  );
+
+  it("apaga quando a última devolução solicitada sai da pendência ao voltar ao painel", async () => {
+    DEVOLUCOES_SOLICITADAS = 1;
+    const { sino } = await montarPainel();
+    await esperarContagensChegarem();
+    expect(sino.querySelector("span")).not.toBeNull();
+
+    DEVOLUCOES_SOLICITADAS = 0;
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
     expect(sino.querySelector("span")).toBeNull();
   });
 });

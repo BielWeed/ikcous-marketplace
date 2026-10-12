@@ -23,6 +23,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pararABuscaDeCep } from "./duble-busca-de-cep";
 
 const createOrder = vi.fn().mockResolvedValue({ id: "ped-123" });
 const clearCart = vi.fn();
@@ -193,6 +194,9 @@ describe("CheckoutView com pagamentoOnlineLigado() desligada", () => {
     // verdade (`getItem is not a function`) — o CheckoutView usa para
     // lembrar o último CEP digitado. Um dublê em memória é suficiente aqui.
     const armazem = new Map<string, string>();
+    // Desde o #761 o CEP de 8 dígitos dispara a busca em toda loja: sem dublê,
+    // o teste iria à rede de verdade (ver duble-busca-de-cep.ts).
+    pararABuscaDeCep();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {

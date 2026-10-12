@@ -1,0 +1,145 @@
+{
+  "plano": "painel-simples-onda-k",
+  "frentes": [
+    {
+      "nome": "casca-e-pecas-comuns",
+      "descricao": "K-A (ROTINA): topo do painel sem texto < 11px (Perfil/Voltar e os demais 9-10px do AdminLayout), cabecalho movel solido (bg-zinc-950, sem blur), pontos do carrossel com 44x44 de toque, PaginacaoAdmin com milhar pt-BR, 11px e botoes de 44px",
+      "posse": [
+        "src/components/layouts/AdminLayout.tsx",
+        "src/components/admin/AdminKpiCarousel.tsx",
+        "src/components/admin/PaginacaoAdmin.tsx",
+        "tests/front/casca-do-painel-letra-e-toque.test.tsx",
+        "tests/front/metricas-cabem-no-celular.test.tsx",
+        "tests/front/admin-kpi-carousel-compacto.test.tsx",
+        "tests/front/paginacao-admin.test.tsx",
+        "tests/front/barra-inferior-cobre-o-conteudo.test.tsx",
+        "tests/front/admin-cabecalho-alvos-44.test.tsx",
+        "tests/front/admin-barra-tem-nome-acessivel.test.tsx",
+        "tests/front/admin-barra-nao-mente-a-aba-do-pdv.test.tsx",
+        "tests/front/admin-layout-cracha-pedidos-pendentes.test.tsx"
+      ]
+    },
+    {
+      "nome": "produtos-acabamento",
+      "descricao": "K-B (ROTINA): Produtos e formulario de produto - botoes de ajuda com 44px, simulador com campos e Resetar de 44px e texto >= 11px, rotulos/dicas/erros dos campos em 11px, aria-invalid no estoque minimo, toasts '12 MB'/'30 MB', classes mortas ao lado de admin-glass removidas",
+      "posse": [
+        "src/views/admin/AdminProductsView.tsx",
+        "src/views/admin/AdminProductFormView.tsx",
+        "tests/front/produtos-letra-e-toque.test.tsx",
+        "tests/front/produto-formulario-letra-e-toque.test.tsx",
+        "tests/front/produtos-detalhado-nao-esconde-o-preco.test.tsx",
+        "tests/front/produtos-cabem-no-celular.test.tsx",
+        "tests/front/admin-products-esgotado.test.tsx",
+        "tests/front/admin-products-kpi-apos-mexer-no-catalogo.test.tsx",
+        "tests/front/admin-products-lucro-so-com-custo.test.tsx",
+        "tests/front/admin-products-margem-sem-custo.test.tsx",
+        "tests/front/admin-products-potencial-duas-casas-decimais.test.tsx",
+        "tests/front/estoque-baixo-um-limiar.test.ts",
+        "tests/front/produto-formulario-no-celular.test.tsx",
+        "tests/front/produto-estoque-minimo.test.tsx",
+        "tests/front/produto-fala-a-lingua-da-loja.test.tsx",
+        "tests/front/produto-basico-primeiro.test.tsx",
+        "tests/front/admin-product-form-codigo-de-barras.test.tsx",
+        "tests/front/admin-product-form-ler-com-a-camera.test.tsx",
+        "tests/front/admin-product-form-upload-usa-o-tipo-real-da-imagem.test.tsx",
+        "tests/front/admin-product-form-guia-diz-a-regra-real-do-estoque.test.tsx"
+      ]
+    },
+    {
+      "nome": "ficha-e-consultas",
+      "descricao": "K-C (ROTINA): helper papel (papeis ARIA da tabela) extraido para src/lib com teste; ficha do cliente sem 'Cesta / Pedidos', 'Fluxo Zerado' e 'Variante Indisponivel (ID...)', acoes com 44px; Clientes com ajuda de 44px; consultas de frete com tempo em segundos ('0,3 s')",
+      "posse": [
+        "src/lib/papeis-aria-da-tabela.ts",
+        "src/views/admin/AdminUserDetailView.tsx",
+        "src/views/admin/AdminCustomersView.tsx",
+        "src/components/admin/settings/HistoricoCotacoesCard.tsx",
+        "tests/front/papeis-aria-da-tabela.test.ts",
+        "tests/front/ficha-e-consultas-acabamento.test.tsx",
+        "tests/front/clientes-cabem-no-celular.test.tsx",
+        "tests/front/ficha-do-cliente-carrinho-no-celular.test.tsx",
+        "tests/front/admin-customers-ordenacao-ltv-e-ajuda-honesta.test.tsx",
+        "tests/front/admin-customers-ticket-medio.test.tsx",
+        "tests/front/admin-customers-view-congelar-acesso-removido.test.tsx",
+        "tests/front/admin-ficha-cliente-abas.test.tsx",
+        "tests/front/admin-ficha-cliente-resumo.test.tsx",
+        "tests/front/admin-user-detail-pedidos-que-contam.test.tsx",
+        "tests/front/admin-user-detail-status-pending-traduzido.test.tsx",
+        "tests/front/painel-nao-mente-sobre-o-carrinho-da-cliente.test.tsx",
+        "tests/front/listas-falam-a-lingua-da-loja.test.tsx",
+        "tests/front/historico-de-consultas-legivel.test.tsx",
+        "tests/front/historico-de-consultas-no-celular.test.tsx",
+        "tests/front/admin-shipping-historico-honesto.test.tsx",
+        "tests/front/admin-shipping-historico-mostra-o-motivo.test.tsx"
+      ]
+    },
+    {
+      "nome": "frete-e-minha-loja",
+      "descricao": "K-D (ROTINA): Frete e Minha loja com alvos de 44px (Ver servicos da conta, Modo de teste, caixas de selecao, campos h-9, Testar/Salvar/Tentar de novo, ajuda) e texto >= 11px (painel recolhivel, Salvar e Previa do que o cliente ve)",
+      "posse": [
+        "src/components/admin/settings/TransportadorasCard.tsx",
+        "src/views/admin/AdminShippingView.tsx",
+        "src/components/admin/shipping/PainelRecolhivel.tsx",
+        "src/views/admin/AdminAboutStoreView.tsx",
+        "src/components/admin/settings/IdentitySettingsSection.tsx",
+        "tests/front/transportadoras-e-minha-loja-alvos-44.test.tsx",
+        "tests/front/transportadoras-salvar-e-recarregar.test.tsx",
+        "tests/front/transportadoras-servicos-e-seguro.test.tsx",
+        "tests/front/transportadoras-por-provedor-e-ligados.test.tsx",
+        "tests/front/transportadoras-expansivel.test.tsx",
+        "tests/front/transportadoras-teste-de-credenciais.test.tsx",
+        "tests/front/transportadoras-melhor-envio-email-contato.test.tsx",
+        "tests/front/transportadoras-servico-pelo-nome.test.tsx",
+        "tests/front/identity-settings-section.test.tsx",
+        "tests/front/minha-loja-fala-a-lingua-da-loja.test.tsx",
+        "tests/front/admin-sobre-a-loja-salva-sem-apagar.test.tsx"
+      ]
+    },
+    {
+      "nome": "vidro-e-pedidos",
+      "descricao": "K-E (ROTINA no conteudo, so classe/texto; *order*, *devolu*, *cartao* e *frete* acendem o revisor-risco pelo caminho - os arquivos de risco da onda ficam todos aqui): guarda estatica nova admin-glass-sem-classe-que-perde; cascata do admin-glass corrigida em Alertas de cancelados, Devolucoes e Ajustes; Pedidos com selos em 11px e Marcar como recebido/Desfazer/ajuda com 44px; cartao da assinatura do Inicio e faixa de resumo do Frete sem texto < 11px",
+      "posse": [
+        "src/views/admin/AlertasCancelados.tsx",
+        "src/views/admin/AdminDevolucoesView.tsx",
+        "src/components/admin/devolucoes/AcoesDaDevolucao.tsx",
+        "src/views/admin/AdminSettingsView.tsx",
+        "src/views/admin/AdminOrdersView.tsx",
+        "src/components/admin/orders/AdminOrderCard.tsx",
+        "src/components/admin/orders/OrderStatusBadge.tsx",
+        "src/components/admin/orders/OrderDetail.tsx",
+        "src/components/admin/inicio/CartaoDaAssinatura.tsx",
+        "src/components/admin/shipping/FreteResumoFaixa.tsx",
+        "tests/front/admin-glass-sem-classe-que-perde.test.ts",
+        "tests/front/selos-alvos-e-faixas-sem-letra-miuda.test.tsx",
+        "tests/front/admin-order-card-redesenho.test.tsx",
+        "tests/front/admin-order-card-forma-de-pagamento.test.tsx",
+        "tests/front/painel-botao-registrar-pagamento-recebido.test.tsx",
+        "tests/front/ficha-do-pedido-redesenho.test.tsx",
+        "tests/front/payment-status-badge-compacto.test.tsx",
+        "tests/front/pedido-presencial-rotulos.test.tsx",
+        "tests/front/pedidos-cabem-no-celular.test.tsx",
+        "tests/front/devolucao-painel-etiqueta-reversa-avisos.test.tsx",
+        "tests/front/devolucao-painel-concluir-estorna.test.tsx",
+        "tests/front/admin-settings-secoes-colapsaveis.test.tsx"
+      ]
+    },
+    {
+      "nome": "ajuda-e-inicio",
+      "descricao": "K-F (ROTINA): botao de ajuda com 44px de toque (desenho de 28-36px por dentro) em Inicio, Perguntas, Avisar clientes, Banners, Cupons, Vitrines, Avaliacoes e CRM; Inicio sem texto < 11px (grafico de 14 dias, perfil da loja, cabecalho do Inicio)",
+      "posse": [
+        "src/views/admin/AdminDashboardView.tsx",
+        "src/views/admin/AdminQAView.tsx",
+        "src/views/admin/AdminPushView.tsx",
+        "src/views/admin/AdminBannersView.tsx",
+        "src/views/admin/AdminCouponsView.tsx",
+        "src/views/admin/AdminCarouselsView.tsx",
+        "src/views/admin/AdminReviewsView.tsx",
+        "src/views/admin/AdminCrmView.tsx",
+        "src/components/admin/inicio/SerieDe14Dias.tsx",
+        "src/components/admin/inicio/PerfilDaLoja.tsx",
+        "tests/front/ajuda-e-inicio-letra-e-toque.test.ts",
+        "tests/front/serie-de-14-dias.test.tsx",
+        "tests/front/perfil-da-loja-compartilhar.test.tsx"
+      ]
+    }
+  ]
+}

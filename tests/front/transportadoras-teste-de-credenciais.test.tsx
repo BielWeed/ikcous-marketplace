@@ -158,8 +158,10 @@ describe("TransportadorasSection — test_credentials honesto por serviço (R1-8
         },
       ],
     });
-    expect(hospedeiro.textContent).toContain("1: cotou certo");
-    expect(hospedeiro.textContent).toContain("2: não cotou (dimensões)");
+    expect(hospedeiro.textContent).toContain("Serviço 1: cotou certo");
+    expect(hospedeiro.textContent).toContain(
+      "Serviço 2: não cotou (dimensões)",
+    );
   });
 
   it("falha de rede na invocação (exceção) usa a mensagem amigável, não crua", async () => {

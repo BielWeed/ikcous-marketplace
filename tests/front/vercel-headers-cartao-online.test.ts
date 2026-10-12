@@ -32,6 +32,35 @@ describe("CSP libera o Card Payment Brick e o desafio 3-D Secure", () => {
     );
   });
 
+  // DEVICE ID (03/10/2026). O antifraude do Mercado Pago recusou um cartão real
+  // com `high_risk` porque não recebia o Device ID. O SDK v2 NÃO o cria sozinho
+  // aqui: o script de "device profiling" que ele injeta é INLINE e a CSP o
+  // barra (`script-src-elem inline`). Quem cria `window.MP_DEVICE_SESSION_ID` é
+  // o `security.js` do próprio Mercado Pago, servido de www.mercadopago.com — e
+  // `script-src` é a ÚNICA diretiva que ele precisa (medido em Chrome com a CSP
+  // desta loja: com o host só em script-src o valor nasce; sem ele, o script é
+  // bloqueado; nenhuma violação de connect-src/img-src/frame-src — o frame-src
+  // já cobre www por `*.mercadopago.com`, e o api.mercadopago.com que o script
+  // chama já está no connect-src). Revisão Opus do 02985934: liberar só o
+  // CAMINHO exato do arquivo, não a origem inteira — medido de novo com a CSP
+  // da loja e só este caminho em script-src: o ID nasce igual (231 chars).
+  it("script-src libera SÓ o arquivo security.js do Mercado Pago (Device ID), SEM 'unsafe-inline'", () => {
+    const scripts = diretiva(csp, "script-src");
+    expect(scripts).toContain("https://www.mercadopago.com/v2/security.js");
+    expect(scripts).not.toContain("https://www.mercadopago.com");
+    expect(scripts).not.toContain("'unsafe-inline'");
+  });
+
+  it("o host do security.js entra SÓ onde foi medido necessário (script-src); frame-src já o cobre pelo curinga", () => {
+    expect(diretiva(csp, "connect-src")).not.toContain(
+      "https://www.mercadopago.com",
+    );
+    expect(diretiva(csp, "img-src")).not.toContain(
+      "https://www.mercadopago.com",
+    );
+    expect(diretiva(csp, "frame-src")).toContain("https://*.mercadopago.com");
+  });
+
   it("connect-src tem as APIs do Brick e o destino das métricas do SDK", () => {
     expect(diretiva(csp, "connect-src")).toEqual(
       expect.arrayContaining([

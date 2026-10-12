@@ -1,8 +1,15 @@
+import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
+import type { CartaoEmCurso } from "@/components/checkout/PagamentoComCartao";
 import {
   type CategoriaErroPagamento,
   type MetodoOnline,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
+import {
+  type DesfechoQueLiberaARetomada,
+  type PontoDePartidaDaVerificacao,
+  VerificacaoDoPagamento,
+} from "@/components/checkout/VerificacaoDoPagamento";
 import {
   IconeCartao,
   IconeDinheiro,
@@ -11,7 +18,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
-import { CouponInput } from "@/components/ui/custom/CouponInput";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import {
@@ -26,10 +32,12 @@ import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useConfigDoCartao } from "@/hooks/useConfigDoCartao";
 import { useCoupons } from "@/hooks/useCoupons";
+import { useCuponsDoCheckout } from "@/hooks/useCuponsDoCheckout";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  ErroCancelamentoNaoConcluido,
   mensagemAmigavelErroAtualizacaoStatus,
   mensagemAmigavelErroPedido,
   useOrders,
@@ -63,6 +71,11 @@ import {
   primeiraFormaDePagamentoDisponivel,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import {
+  esquecerPedidoPendenteDoCheckout,
+  guardarPedidoPendenteDoCheckout,
+} from "@/lib/pedido-pendente-do-checkout";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -107,7 +120,6 @@ import {
   Phone,
   Plus,
   Sparkles,
-  Tag,
   User,
 } from "lucide-react";
 import {
@@ -122,6 +134,13 @@ import { createPortal, flushSync } from "react-dom";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
+
+// F4 (fase 3 dos pagamentos, 04/10/2026): quanto a retomada espera a leitura
+// do pedido antes de avisar que não deu. Local (e não `comTempoLimite` de
+// PagamentoOnline): a leitura é um query builder do supabase-js, não uma
+// Promise, e este arquivo não importa nada de PagamentoOnline além do
+// componente e dos tipos.
+const TEMPO_LIMITE_DA_LEITURA_DA_RETOMADA_MS = 15_000;
 
 // Intervalo da verificação periódica da tela do PIX (ver o useEffect de
 // polling, no corpo do componente) — extraído para constante porque o teto
@@ -182,6 +201,15 @@ const MENSAGEM_CARTAO_EM_ANALISE_409 =
 const MENSAGEM_CARTAO_TALVEZ_COBRADO_409 =
   "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.";
 
+// Lacuna L1 (02/10/2026): a tentativa de cartão morreu por prova (vaga solta
+// pela RPC) e o pedido fechou depois. "Não foi concluído", nunca "não foi
+// aprovado" (o 3DS só vencido também solta a vaga — veredito A2, item 4), e
+// nunca "nada foi cobrado".
+const MENSAGEM_CARTAO_NAO_CONCLUIDO_PRAZO_ACABOU =
+  "O pagamento com cartão não foi concluído, e o prazo para pagar este pedido acabou.";
+const MENSAGEM_CARTAO_NAO_CONCLUIDO_PEDIDO_CANCELADO =
+  "O pagamento com cartão não foi concluído, e este pedido foi cancelado.";
+
 interface CheckoutFormValues {
   name: string;
   whatsapp: string;
@@ -201,6 +229,15 @@ interface CheckoutFormValues {
    */
   cpf?: string;
 }
+
+/** Os campos de endereço que a busca de CEP preenche (e o cliente pode editar). */
+type CampoDoEnderecoDoCep = "street" | "neighborhood" | "city" | "state";
+const CAMPOS_DO_ENDERECO_DO_CEP: readonly CampoDoEnderecoDoCep[] = [
+  "street",
+  "neighborhood",
+  "city",
+  "state",
+];
 
 // Ordem de tabulação do formulário. Usada para levar o foco ao PRIMEIRO campo
 // com erro quando o pedido é recusado por preenchimento (laudo de
@@ -358,6 +395,22 @@ const ehErroDeFormaDePagamentoDesligada = (error: unknown): boolean => {
   const detalhes = (error ?? {}) as { message?: unknown };
   const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
   return mensagem.includes(MARCADOR_DE_FORMA_DE_PAGAMENTO_DESLIGADA);
+};
+
+/**
+ * CUPONS DESLIGADOS (issue #645, 08/10/2026, migration 20261203000000): a
+ * lojista desliga a chave `enable_coupons` com o cupom já aplicado numa aba
+ * aberta — a RPC recusa com esta frase (a regra irmã em `recusaDoPedido.ts`
+ * leva a "Tirar o cupom"). Por TEXTO e `includes`, mesma razão dos marcadores
+ * acima. Aqui serve só para pedir a config NOVA, para a tela parar de
+ * oferecer o campo de cupom.
+ */
+const MARCADOR_DE_CUPONS_DESLIGADOS = "Os cupons estão desativados nesta loja";
+
+const ehErroDeCuponsDesligados = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { message?: unknown };
+  const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
+  return mensagem.includes(MARCADOR_DE_CUPONS_DESLIGADOS);
 };
 
 /**
@@ -552,6 +605,21 @@ function GatilhoDoResumoDoPedido({
   );
 }
 
+/**
+ * Tira o cupom (e o dono dele) do rascunho da sessão. Chamado quando o cupom
+ * guardado ali é de uma conta que não está mais na tela: o código de um
+ * exclusivo não fica esperando no armazenamento da aba (frente B).
+ */
+function esquecerCupomDoRascunho(): void {
+  const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+  if (!rascunho?.cupom) return;
+  salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+    ...rascunho,
+    cupom: null,
+    contaDoCupom: null,
+  });
+}
+
 interface CheckoutViewProps {
   readonly cart?: CartItem[];
   readonly subtotal?: number;
@@ -560,6 +628,15 @@ interface CheckoutViewProps {
   readonly onClearCart?: () => void;
   readonly onNavigate: (view: View, productId?: string) => void;
   readonly onSetBackOverride: (override: (() => void) | null) => void;
+  // Frente 10 (29/09/2026): id do pedido cujo pagamento está sendo retomado
+  // do card do pedido — liga a tela de pagamento DIRETO, sem carrinho.
+  readonly retomarPedidoId?: string;
+  // Recarga (04/10/2026): o `retomarPedidoId` veio do registro da aba
+  // (pedido-pendente-do-checkout.ts), não de um toque do cliente — o pedido
+  // que a leitura prova não ser dele, não existir ou não ser de pagamento
+  // online sai de cena calado, e o pago entre a saída e a volta mostra a
+  // confirmação.
+  readonly retomadaDaRecarga?: boolean;
 }
 
 export function CheckoutView({
@@ -570,6 +647,8 @@ export function CheckoutView({
   onClearCart: propOnClearCart,
   onNavigate,
   onSetBackOverride,
+  retomarPedidoId: retomarPedidoIdRecebido,
+  retomadaDaRecarga = false,
 }: CheckoutViewProps) {
   const {
     config,
@@ -666,6 +745,17 @@ export function CheckoutView({
         setStatusPagamentoPix("confirmado");
       } else if (pedidoAtualizado.payment_status === "pago_apos_expirar") {
         setStatusPagamentoPix("fora-do-prazo");
+      } else if (
+        pedidoAtualizado.gateway_payment_id === null &&
+        (cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id ||
+          cartaoEncerradoRef.current?.orderId === pedidoAtualizado.id)
+      ) {
+        // C6 (P1): a vaga vazia no realtime é só uma DICA — o evento pode
+        // ser a soltura de uma tentativa ANTERIOR chegando atrasada. Quem
+        // decide é uma leitura NOVA da vaga (`verificarPagamento`).
+        // Lacuna L1b: a tentativa que o C6 já encerrou também pede a leitura
+        // — é ela que descobre o pedido fechado depois da recusa.
+        lerAVagaAgoraRef.current?.();
       }
     },
   });
@@ -873,6 +963,14 @@ export function CheckoutView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // CUPOM DO RASCUNHO À ESPERA DA CONTA (frente B): o rascunho devolve só o
+  // código e o DONO dele. Quem decide se o cupom volta é o efeito "cupom
+  // pendente do rascunho", mais abaixo — a conta só é conhecida quando a
+  // autenticação termina, que pode ser DEPOIS da config da loja.
+  const cupomPendenteDoRascunhoRef = useRef<{
+    codigo: string;
+    conta: string | null;
+  } | null>(null);
   const hasInitializedRef = useRef(false);
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
@@ -944,15 +1042,66 @@ export function CheckoutView({
             cepAssociadoRef.current = formatarCep(rascunho.cep).limpo;
           }
           // O cupom volta SÓ o código: o efeito de revalidação do E1
-          // (logo acima, [codigoDoCupom, subtotal]) decide em seguida —
+          // (logo abaixo, [codigoDoCupom, subtotal]) decide em seguida —
           // válido atualiza o desconto; inválido sai com o motivo na tela.
+          // Frente B (28/09/2026): o cupom só volta para a MESMA conta que o
+          // aplicou — o código de um cupom exclusivo nunca aparece na tela
+          // de outra conta que abra o checkout nesta aba. Fica pendente até
+          // o efeito "cupom pendente do rascunho" decidir.
           if (rascunho.cupom) {
-            setAppliedCoupon({ code: rascunho.cupom, discount: 0 });
+            cupomPendenteDoRascunhoRef.current = {
+              codigo: rascunho.cupom,
+              conta: rascunho.contaDoCupom ?? null,
+            };
           }
         }
       }
     }
   }, [storeConfigLoaded, profile, user]);
+
+  // Troca de conta com o checkout aberto (frente B): o cupom aplicado por
+  // uma CONTA sai quando outra entra (ou quando ela sai) — exclusivo não passa
+  // de mão em mão. Convidado → conta NÃO é troca: cupom de convidado nunca é
+  // exclusivo (o servidor recusa exclusivo para anon), e o funil manda o
+  // convidado entrar na conta no meio do checkout — o cupom dele fica e é
+  // revalidado para a conta nova. A primeira resolução da autenticação
+  // também não conta.
+  const contaAnteriorRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (authLoading) return;
+    const agora = user?.id ?? null;
+    const antes = contaAnteriorRef.current;
+    contaAnteriorRef.current = agora;
+    if (antes === undefined || antes === null || antes === agora) return;
+    cupomPendenteDoRascunhoRef.current = null;
+    cupomConferidoRef.current = null;
+    setAppliedCoupon(null);
+    setCouponError("");
+    // O código da conta que saiu não fica esperando no armazenamento da aba.
+    esquecerCupomDoRascunho();
+  }, [authLoading, user]);
+
+  // Cupom pendente do rascunho: devolvido só quando a conta é conhecida E é a
+  // mesma que o aplicou. Declarado DEPOIS do efeito de init — no mesmo commit
+  // em que a config chega, roda logo depois dele.
+  // - cupom de convidado (conta null) volta para qualquer um — não é
+  //   exclusivo, e a revalidação confere o valor para a conta de agora;
+  // - cupom de uma conta com a autenticação ainda SEM usuário (sessão que
+  //   chega tarde, ou sessão perdida) fica pendente, escondido;
+  // - cupom de outra conta é descartado, inclusive do rascunho.
+  useEffect(() => {
+    if (!storeConfigLoaded || authLoading) return;
+    const pendente = cupomPendenteDoRascunhoRef.current;
+    if (!pendente) return;
+    const agora = user?.id ?? null;
+    if (pendente.conta !== null && agora === null) return;
+    cupomPendenteDoRascunhoRef.current = null;
+    if (pendente.conta === null || pendente.conta === agora) {
+      setAppliedCoupon({ code: pendente.codigo, discount: 0, conta: agora });
+    } else {
+      esquecerCupomDoRascunho();
+    }
+  }, [storeConfigLoaded, authLoading, user]);
 
   // A quem os campos de endereço ATUALMENTE pertencem: o último CEP cuja
   // busca foi aplicada. `null` só quando o campo nasce vazio — aí não existe
@@ -979,42 +1128,99 @@ export function CheckoutView({
   // `buscarCep` — ver o comentário equivalente em AddressForm.tsx.
   const cepEmBuscaRef = useRef<string>("");
 
+  // Campos de endereço que o cliente digitou À MÃO desde que completou o CEP
+  // atual (zera quando ele completa outro CEP — ver o `onChange` do campo).
+  // A busca pode levar até ~8 s (3 provedores, num 3G) e, nesse tempo, o
+  // formulário continua aberto: rua, bairro, cidade e UF seguem editáveis
+  // (só o CEP trava). Sem esta marca, a resposta atrasada apagava o que o
+  // cliente acabou de digitar — o CI pegou isto depois que o #761 abriu a
+  // busca para toda loja ("expected 'São Paulo' to be 'Cidade Teste'").
+  // Só o `onChange` do usuário marca (via `register`); `setValue` da própria
+  // busca não passa por lá, então um campo PREENCHIDO pela busca anterior não
+  // conta como editado e a busca nova pode trocá-lo.
+  //
+  // O AddressForm (cadastro de conta) não precisa desta marca: enquanto a
+  // busca roda ele esconde os campos (`mostrarCampos` exige `!buscandoCep`),
+  // então não há digitação possível no meio da espera. Aqui o formulário fica
+  // aberto, e é a marca que faz o papel desse esconde.
+  const camposEditadosAMaoRef = useRef<Set<CampoDoEnderecoDoCep>>(new Set());
+
+  // `register` do campo de endereço, com a marca de "editado à mão".
+  const registrarCampoDoEndereco = (campo: CampoDoEnderecoDoCep) =>
+    form.register(campo, {
+      onChange: () => {
+        camposEditadosAMaoRef.current.add(campo);
+      },
+    });
+
   // Busca de CEP do checkout de convidado — mesma implementação do
   // AddressForm, atrás de useBuscaCep (#184 corrida, #185 timeout, #186
   // abort no desmonte). Campo que o ViaCEP não devolveu (CEP de localidade
   // única) só é limpo se pertencia a um CEP DIFERENTE do que acabou de
   // responder — ver AddressForm.tsx para o mecanismo completo.
-  const { buscando: isSearchingCep, buscar: buscarCep } = useBuscaCep(
-    (endereco) => {
-      const cepDaResposta = cepEmBuscaRef.current;
-      const eraDeOutroCep =
-        cepAssociadoRef.current !== null &&
-        cepAssociadoRef.current !== cepDaResposta;
+  //
+  // A resposta só ESCREVE (preenche ou limpa) um campo que o cliente não
+  // editou à mão desde o CEP atual. Campo editado e depois esvaziado não tem
+  // valor do cliente a proteger: a busca o preenche.
+  const escreverCampoDoCep = (campo: CampoDoEnderecoDoCep, valor: string) => {
+    const digitadoPeloCliente =
+      camposEditadosAMaoRef.current.has(campo) &&
+      (form.getValues(campo) ?? "").trim() !== "";
+    if (digitadoPeloCliente) return;
+    form.setValue(campo, valor, { shouldValidate: true });
+  };
 
-      if (endereco.logradouro) {
-        form.setValue("street", endereco.logradouro, {
-          shouldValidate: true,
-        });
-      } else if (eraDeOutroCep) {
-        form.setValue("street", "", { shouldValidate: true });
-      }
-      if (endereco.bairro) {
-        form.setValue("neighborhood", endereco.bairro, {
-          shouldValidate: true,
-        });
-      } else if (eraDeOutroCep) {
-        form.setValue("neighborhood", "", { shouldValidate: true });
-      }
-      if (endereco.localidade)
-        form.setValue("city", endereco.localidade, {
-          shouldValidate: true,
-        });
-      if (endereco.uf)
-        form.setValue("state", endereco.uf, { shouldValidate: true });
+  const {
+    buscando: isSearchingCep,
+    buscar: buscarCep,
+    resultado: resultadoCep,
+  } = useBuscaCep((endereco) => {
+    const cepDaResposta = cepEmBuscaRef.current;
+    const eraDeOutroCep =
+      cepAssociadoRef.current !== null &&
+      cepAssociadoRef.current !== cepDaResposta;
 
-      cepAssociadoRef.current = cepDaResposta;
-    },
-  );
+    const escrever = escreverCampoDoCep;
+
+    if (endereco.logradouro) {
+      escrever("street", endereco.logradouro);
+    } else if (eraDeOutroCep) {
+      escrever("street", "");
+    }
+    if (endereco.bairro) {
+      escrever("neighborhood", endereco.bairro);
+    } else if (eraDeOutroCep) {
+      escrever("neighborhood", "");
+    }
+    if (endereco.localidade) escrever("city", endereco.localidade);
+    if (endereco.uf) escrever("state", endereco.uf);
+
+    cepAssociadoRef.current = cepDaResposta;
+  });
+
+  // A busca do CEP NOVO falhou (não achou, demorou ou está fora do ar): o que
+  // estava em rua/bairro/cidade/UF veio da busca do CEP ANTERIOR (ou de um
+  // rascunho dele) e não pode seguir misturado com o CEP novo — o pedido
+  // sairia com o CEP B e a cidade A. Mesma limpeza do AddressForm (efeito de
+  // `resultadoCep`), por cima da regra de `escreverCampoDoCep`: o que o
+  // cliente digitou à mão neste CEP fica. Sem busca anterior aplicada
+  // (`null`) o que está na tela é só dele e nada se limpa. Depois de limpar o
+  // dono vira `null`, para a segunda falha do mesmo CEP não limpar de novo.
+  useEffect(() => {
+    if (!resultadoCep || resultadoCep.tipo === "achou") return;
+    if (
+      cepAssociadoRef.current !== null &&
+      cepAssociadoRef.current !== cepEmBuscaRef.current
+    ) {
+      for (const campo of CAMPOS_DO_ENDERECO_DO_CEP) {
+        escreverCampoDoCep(campo, "");
+      }
+      cepAssociadoRef.current = null;
+    }
+    // `escreverCampoDoCep` só lê refs e `form`, que é estável: o efeito
+    // depende apenas do desfecho da busca.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultadoCep]);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   // CARTÃO PELO APP (Fase 3.5, 26/09/2026): PIX e cartão pelo app são o
@@ -1025,9 +1231,16 @@ export function CheckoutView({
   // Toda seleção AUTOMÁTICA de "online" (transportadora, fallback da loja)
   // volta para PIX — cartão só por escolha explícita do cliente.
   const [metodoOnline, setMetodoOnline] = useState<MetodoOnline>("pix");
-  // `null` = cartão NÃO oferecido (carregando, desligado, leitura falhou ou
-  // loja sem Public Key) — falha fechada, ver useConfigDoCartao.
-  const configDoCartao = useConfigDoCartao(pagamentoOnlineLigado());
+  // A config do cartão tem ESTADO (carregando | erro | pronto) — ver
+  // useConfigDoCartao. `configDoCartao` só existe em "pronto": `null` aqui
+  // significa "sem cartão para oferecer AGORA" e continua sendo o que o
+  // PagamentoOnline recebe enquanto a config não está pronta (carregando ou
+  // erro), como sempre recebeu. Quem decide o que MOSTRAR enquanto não está
+  // pronto é `estadoDoCartao`: lista parcial nunca se apresenta como final, e
+  // erro de leitura nunca se apresenta como "cartão desligado".
+  const estadoDoCartao = useConfigDoCartao(pagamentoOnlineLigado());
+  const configDoCartao =
+    estadoDoCartao.estado === "pronto" ? estadoDoCartao.config : null;
   const cartaoDisponivel = pagamentoOnlineLigado() && configDoCartao !== null;
   const metodoOnlineEfetivo: MetodoOnline =
     paymentMethod === "online" && metodoOnline === "cartao" && cartaoDisponivel
@@ -1090,6 +1303,16 @@ export function CheckoutView({
   const [statusPagamentoPix, setStatusPagamentoPix] = useState<
     "confirmado" | "fora-do-prazo" | null
   >(null);
+  // F1 (04/10/2026): o SERVIDOR já gravou este pedido como morto
+  // (`expirado`, ou `aguardando` + `cancelled`) — a tela do PIX deixa de
+  // mostrar QR e "Copiar código" como válidos (o banco recusaria o código).
+  // Guarda o PEDIDO a que pertence (mesmo desenho de
+  // `pedidoComCobrancaIncerta`). Só o servidor decide, nunca o relógio do
+  // aparelho; e a verificação periódica NÃO para por causa disto: o pagamento
+  // que chega depois ainda vira "pago fora do prazo".
+  const [pedidoMortoNoServidorId, setPedidoMortoNoServidorId] = useState<
+    string | null
+  >(null);
   // CHECKOUT-050: falha da criação da cobrança precisa ficar NA TELA — um
   // toast (2500ms, sonner.tsx) some antes do cliente sair de olhar o botão
   // "Pagar", no rodapé, para o topo. `categoria` decide se existe "Tentar de
@@ -1115,6 +1338,11 @@ export function CheckoutView({
     categoria: CategoriaErroPagamento;
     cartaoEmAnalise: boolean;
     semCobranca: boolean;
+    // Lacuna L1 (02/10/2026): o erro que NASCE de uma leitura do banco (sem
+    // toque nenhum do cliente) troca a tela sozinho — ele vai num
+    // `role="alert"` para o leitor de tela anunciar a troca. Os outros erros
+    // seguem como sempre foram.
+    anunciar?: boolean;
   } | null>(null);
   // Achado 1 (BLOQUEANTE, rodada 3 da revisão de risco pré-publicação,
   // 26/09/2026): `cartaoEmAnalise` acima é julgado POR ERRO — a sequência que
@@ -1142,11 +1370,112 @@ export function CheckoutView({
   // analise.test.tsx`, teste "(d)", que prova ISOLAMENTO ENTRE SESSÕES de
   // checkout (dois `<CheckoutView>` distintos), não a transição de `orderId`
   // dentro de um mount só.
-  const [pedidoTemCobrancaIncerta, setPedidoTemCobrancaIncerta] =
-    useState(false);
+  //
+  // C6 (P2, 02/10/2026): o efeito de reset por `orderId` deixou de ser morto
+  // — e passou a APAGAR a marca. A saída "Pagar com PIX" da verificação, na
+  // retomada, marca o pedido e liga `orderId` ("" → pedido) no MESMO toque;
+  // o efeito rodava depois e zerava a marca, e "Cancelar pedido" voltava
+  // sobre um cartão 3DS que podia estar vivo. Agora a marca guarda O PEDIDO a
+  // que pertence (o mesmo desenho de `recusas`, em PagamentoOnline): vale só
+  // para ele, e um pedido diferente nasce sem marca sem precisar de efeito.
+  const [pedidoComCobrancaIncerta, setPedidoComCobrancaIncerta] = useState<
+    string | null
+  >(null);
+  const pedidoTemCobrancaIncerta =
+    orderId !== "" && pedidoComCobrancaIncerta === orderId;
+  // ── C6 (P1, achado B1, 02/10/2026): a recusa DEPOIS do 3DS aparece ──────
+  // A tentativa de cartão em curso (avisada pela tela do cartão, só com o
+  // token de cerca — o `paymentId` da resposta 200) e o número da leitura da
+  // vaga em que o aviso chegou. Ref, não estado: só a verificação periódica
+  // lê, e o aviso não muda nada na tela.
+  const leiturasDaVagaRef = useRef(0);
+  const cartaoEmCursoRef = useRef<
+    (CartaoEmCurso & { readonly desdeLeitura: number }) | null
+  >(null);
+  // A leitura da vaga provou que a tentativa terminou sem pagamento — a tela
+  // do cartão vira a recusa "não foi concluído" (chave pedido + token de
+  // cerca: a marca de uma order nunca encerra outra).
+  const [cartaoEncerrado, setCartaoEncerrado] = useState<CartaoEmCurso | null>(
+    null,
+  );
+  // A verificação periódica, para o realtime pedir UMA leitura agora.
+  const lerAVagaAgoraRef = useRef<(() => void) | null>(null);
+  // ── Lacuna L1 (02/10/2026): soltura da vaga e DEPOIS o pedido fechado ───
+  // A tentativa que a leitura da vaga já encerrou (C6). Depois da recusa, a
+  // tela do cartão desarma a tentativa (a etapa "recusado" não está em
+  // `ETAPAS_COM_CARTAO_EM_CURSO`), mas a recusa continua na tela com "Tentar
+  // outro cartão"/"Pagar com PIX" — se o pedido fechar em seguida, os dois só
+  // levariam a 409 terminal (L1b). Este ref deixa a leitura reconhecer que a
+  // vaga vazia de um pedido fechado é a MESMA tentativa provada morta. Sai de
+  // cena quando a tentativa muda (outro token armado) ou em QUALQUER troca
+  // para o PIX (A1.1, revisão do front) — sem isso, com a vaga do PIX solta e
+  // o pedido fechado, a tela do PIX ganharia a frase do CARTÃO:
+  // - NECESSÁRIA na tela do cartão (`onTrocarParaPix`) e na caixa vermelha:
+  //   ali o pedido pode não ter marca de cobrança incerta, e só a limpeza
+  //   impede a frase (testes "TROCA PARA O PIX" e "CAMINHO PARA O PIX —
+  //   caixa vermelha");
+  // - DEFESA EM PROFUNDIDADE na verificação (`pagarComPixDepoisDaVerificacao`)
+  //   e na escolha da forma (`escolherFormaDaRetomada`): hoje esses caminhos
+  //   só chegam com o pedido JÁ marcado com cobrança incerta, e a guarda da
+  //   marca na regra L1 já impede a frase (testes "GUARDA DE REGRESSÃO"). A
+  //   limpeza passa a ser necessária se alguém afrouxar essa guarda ou criar
+  //   um caminho até a escolha da forma sem marcar o pedido.
+  const cartaoEncerradoRef = useRef<CartaoEmCurso | null>(null);
+  // Espelho da marca de cobrança incerta (`pedidoComCobrancaIncerta`, acima)
+  // para a verificação periódica, que vive fora do render. Pedido com
+  // cobrança incerta nunca ganha "não foi concluído" pela leitura da vaga:
+  // existe uma tentativa cujo desfecho a tela NÃO conhece.
+  //
+  // A1.1 (revisão financeira): o espelho é gravado NO MESMO PONTO da marca
+  // (`marcarCobrancaIncerta`), não num efeito — o efeito roda um commit
+  // depois, e uma leitura que terminasse entre a marca e o commit ainda via
+  // o pedido sem marca (prova: teste "JANELA DO COMMIT" em
+  // lacuna-l1-soltura-expiracao.test.tsx). O efeito fica só como rede: se
+  // algum caminho futuro gravar o estado sem passar por
+  // `marcarCobrancaIncerta`, o espelho ainda alcança o estado no commit.
+  const pedidoComCobrancaIncertaRef = useRef<string | null>(null);
+  const marcarCobrancaIncerta = useCallback((pedido: string) => {
+    pedidoComCobrancaIncertaRef.current = pedido;
+    setPedidoComCobrancaIncerta(pedido);
+  }, []);
   useEffect(() => {
-    setPedidoTemCobrancaIncerta(false);
-  }, [orderId]);
+    pedidoComCobrancaIncertaRef.current = pedidoComCobrancaIncerta;
+  }, [pedidoComCobrancaIncerta]);
+  const registrarCartaoEmCurso = useCallback((cartao: CartaoEmCurso | null) => {
+    cartaoEmCursoRef.current = cartao
+      ? { ...cartao, desdeLeitura: leiturasDaVagaRef.current }
+      : null;
+    if (
+      cartao &&
+      cartaoEncerradoRef.current !== null &&
+      (cartaoEncerradoRef.current.orderId !== cartao.orderId ||
+        cartaoEncerradoRef.current.paymentId !== cartao.paymentId)
+    ) {
+      cartaoEncerradoRef.current = null;
+    }
+    // Higiene: uma tentativa NOVA (outro pedido ou outro token) tira de
+    // cena a marca da anterior. A garantia não é esta linha — é o token na
+    // comparação da tela do cartão —, mas a marca velha não fica rodando.
+    if (cartao) {
+      setCartaoEncerrado((atual) =>
+        atual !== null &&
+        (atual.orderId !== cartao.orderId ||
+          atual.paymentId !== cartao.paymentId)
+          ? null
+          : atual,
+      );
+    }
+  }, []);
+  // C5 (front B2, 02/10/2026): o POST de cartão DESTA sessão voltou sem order
+  // confirmada (`sem_registro`, `aguardando` sem `paymentId`, 503
+  // `indisponivel`) — a tela vira a verificação do C4 a partir dessa
+  // resposta, em vez de "em análise pelo banco". Os erros ambíguos do cartão
+  // (sinal `cartaoEmAnalise`, ou sem sinal em modo cartão) vão para a MESMA
+  // verificação pelo `erroPagamento` — ver `verificacaoNaSessao`, no ramo do
+  // pagamento.
+  const [cobrancaEmDuvida, setCobrancaEmDuvida] = useState<{
+    readonly pontoDePartida: PontoDePartidaDaVerificacao;
+  } | null>(null);
   // CHECKOUT-070 (#197): saída para pagamento falho. `isCancelandoPedido`
   // trava o botão contra clique repetido (cancelar duas vezes bateria na
   // guarda de status da RPC, mas evitar a segunda viagem de rede evita até
@@ -1182,14 +1511,434 @@ export function CheckoutView({
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
   // cartão por uma cobrança PIX criada sozinha.
   const [metodoDoPedido, setMetodoDoPedido] = useState<MetodoOnline>("pix");
+  // Recarga (04/10/2026): o pedido que veio do registro da aba e que a
+  // leitura provou não ser deste cliente, não existir ou não ser de pagamento
+  // online sai de cena CALADO — daqui em diante o checkout é o de sempre, e
+  // nenhum caminho que lê `retomarPedidoId` (a verificação, a escolha da
+  // forma, o "Pagar com PIX" da verificação) enxerga o id descartado.
+  const [retomadaDescartada, setRetomadaDescartada] = useState<string | null>(
+    null,
+  );
+  const retomarPedidoId =
+    retomarPedidoIdRecebido !== undefined &&
+    retomarPedidoIdRecebido !== retomadaDescartada
+      ? retomarPedidoIdRecebido
+      : undefined;
+  // O dono que a leitura da recarga confere (e de quem é o registro da aba).
+  const idDoUsuarioDaRetomada = user?.id;
+  // Recarga: pago entre a saída e a volta — a tela de confirmado, nada monta.
+  // Carrega o PEDIDO, o USUÁRIO e o VALOR a que pertence (o mesmo invariante
+  // de `falhaDaRetomada`): só vale enquanto a retomada e o usuário forem
+  // esses — outra retomada (ou outra conta) na mesma instância nunca herda a
+  // confirmação, nem o valor, de um pedido anterior.
+  const [confirmacaoDaRecarga, setConfirmacaoDaRecarga] = useState<{
+    readonly pedidoId: string;
+    readonly userId: string;
+    readonly valor: number;
+  } | null>(null);
+  const retomadaJaPaga =
+    confirmacaoDaRecarga !== null &&
+    retomarPedidoId !== undefined &&
+    confirmacaoDaRecarga.pedidoId === retomarPedidoId &&
+    idDoUsuarioDaRetomada !== undefined &&
+    confirmacaoDaRecarga.userId === idDoUsuarioDaRetomada;
+  // F4: `"falhou"` mostra a mensagem; `"relendo"` é o intervalo entre o toque
+  // em "Tentar de novo" e a resposta (a mensagem fica, sem o botão, em vez de
+  // piscar o checkout vazio). `tentativaDaRetomada` refaz a leitura.
+  //
+  // R3 (revisão): o estado carrega o PEDIDO a que pertence (mesmo desenho de
+  // `pedidoComCobrancaIncerta`) — se `retomarPedidoId` mudar, o aviso do
+  // pedido A não fica por cima da leitura do B, sem precisar de efeito.
+  const [falhaDaRetomada, setFalhaDaRetomada] = useState<{
+    readonly pedido: string;
+    readonly estado: "falhou" | "relendo";
+  } | null>(null);
+  const retomadaFalhouNaLeitura =
+    falhaDaRetomada !== null && falhaDaRetomada.pedido === retomarPedidoId
+      ? falhaDaRetomada.estado
+      : null;
+  const [tentativaDaRetomada, setTentativaDaRetomada] = useState(0);
+  // ── Frente 10 (missão de pagamentos, 29/09/2026): RETOMADA ──────────────
+  // O cliente que sai do checkout antes de pagar voltava pelo card do pedido
+  // (OrderDetailsView → "Retomar pagamento") e caía num checkout de CARRINHO
+  // (vazio — o pedido já nasceu). Com `retomarPedidoId`, este componente
+  // nasce DIRETO na tela de pagamento do pedido existente: `orderId` +
+  // `aguardandoPagamento` ligam o early-return de sempre (`Finalize o
+  // pagamento`), e o PagamentoOnline chama a MESMA edge — o servidor é quem
+  // decide o que é seguro: reconsulta e devolve o MESMO QR se a cobrança
+  // vive, cria outra com chave de tentativa nova se a anterior morreu, e
+  // 409 terminal se o pedido não é mais cobrável (a tela já trata o
+  // terminal). Nunca cobrança duplicada, nunca pedido perdido.
+  //
+  // F4 (04/10/2026): a leitura que NÃO volta — erro, estouro de tempo ou
+  // pedido que não aparece (não existe, ou a RLS não deixa ler) — antes caía
+  // calada num checkout de carrinho vazio. Agora vira `retomadaFalhouNaLeitura`
+  // (mensagem com "Tentar de novo" e "Ver meus pedidos", mais abaixo). Nada
+  // monta nem cobra sem a leitura: tudo o que liga o pagamento continua
+  // DEPOIS de `data` chegar. Uma leitura por toque, sem repetição automática.
+  useEffect(() => {
+    if (!retomarPedidoId) return;
+    const pedidoRetomado = retomarPedidoId;
+    let vivo = true;
+    // Só a PRIMEIRA saída vale: o estouro e a resposta correm lado a lado, e
+    // a resposta que chega depois do aviso não liga cobrança por baixo da
+    // mensagem (o cliente decide no "Tentar de novo").
+    let respondeu = false;
+    const relogio = setTimeout(
+      () => falhar(),
+      TEMPO_LIMITE_DA_LEITURA_DA_RETOMADA_MS,
+    );
+    const falhar = () => {
+      if (!vivo || respondeu) return;
+      respondeu = true;
+      clearTimeout(relogio);
+      setFalhaDaRetomada({ pedido: pedidoRetomado, estado: "falhou" });
+    };
+    // P1 da revisão da PR #711 (29/09/2026): NADA liga antes da leitura do
+    // método REAL do pedido. `metodoDoPedido` nasce "pix"; se
+    // orderId/aguardandoPagamento ligassem aqui, um pedido de CARTÃO em
+    // desafio 3DS montaria o PagamentoComPix — cujo efeito de MONTAGEM
+    // dispara `criarPagamento` PIX — e a edge leria como troca de método,
+    // cancelando a order de cartão no Mercado Pago. Valor, método, orderId
+    // e aguardandoPagamento ligam JUNTOS, DEPOIS da leitura; leitura sem
+    // resposta não liga nada (a retomada fica parada, nada monta, nada
+    // dispara).
+    supabase
+      .from("marketplace_orders")
+      .select(
+        "total, metodo_online, gateway_payment_id, payment_status, status, user_id",
+      )
+      .eq("id", retomarPedidoId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!vivo || respondeu) return;
+        // Recarga: o id veio do registro da aba, não de um toque — o que não
+        // é pedido de pagamento online DESTE cliente sai de cena calado
+        // (`retomadaDescartada`), e o checkout segue o fluxo de sempre. Erro
+        // de leitura NÃO é descarte: o aviso com "Tentar de novo" de sempre.
+        const descartarCalado = () => {
+          respondeu = true;
+          clearTimeout(relogio);
+          setFalhaDaRetomada(null);
+          setRetomadaDescartada(pedidoRetomado);
+        };
+        if (retomadaDaRecarga && !error && !data) {
+          descartarCalado();
+          return;
+        }
+        if (error || !data) {
+          falhar();
+          return;
+        }
+        if (retomadaDaRecarga) {
+          const {
+            user_id: dono,
+            payment_status: pagamento,
+            status: situacao,
+          } = data as {
+            user_id?: unknown;
+            payment_status?: unknown;
+            status?: unknown;
+          };
+          // O dono é conferido na LINHA, não só pela RLS: a política de
+          // leitura deixa o admin ver pedido alheio. Sem sessão, sem dono.
+          // Pedido de entrega tem `payment_status` NULL (ou
+          // `recebido_na_entrega`) — nunca passou por pagamento online.
+          if (
+            typeof dono !== "string" ||
+            dono !== idDoUsuarioDaRetomada ||
+            typeof pagamento !== "string" ||
+            pagamento === "recebido_na_entrega"
+          ) {
+            descartarCalado();
+            return;
+          }
+          if (pagamento === "pago" && situacao !== "cancelled") {
+            respondeu = true;
+            clearTimeout(relogio);
+            setFalhaDaRetomada(null);
+            setConfirmacaoDaRecarga({
+              pedidoId: pedidoRetomado,
+              userId: dono,
+              valor: Number((data as { total: unknown }).total ?? 0),
+            });
+            return;
+          }
+        }
+        respondeu = true;
+        clearTimeout(relogio);
+        setFalhaDaRetomada(null);
+        // SENTINELA (P1 + ordem do dono, 29/09/2026): vaga
+        // "verificando:..." é um CARTÃO ambíguo aguardando reconciliação
+        // no servidor (metodo_online costuma vir null nesse estado, mas o
+        // gate depende SÓ do gateway_payment_id — bloqueia também método
+        // preenchido com sentinela na vaga, estado igualmente ambíguo; PIX
+        // legítimo nunca carrega sentinela). Montar pagamento aqui
+        // dispararia criar-pagamento PIX que a edge leria como troca de
+        // método — cancelando cobrança de cartão que pode estar viva.
+        // Nada monta enquanto a dúvida durar. C4 (M1, 02/10/2026): no lugar
+        // da tela parada (que prometia "daqui a alguns minutos" sem nada
+        // resolver o sentinela), a `VerificacaoDoPagamento` pede à edge a
+        // CONSULTA sem cobrança e mostra o que ela responde; se a vaga
+        // deixar de estar em dúvida, `liberarRetomadaDepoisDaVerificacao`
+        // leva à escolha da forma.
+        const gateway = (data as { gateway_payment_id?: unknown })
+          .gateway_payment_id;
+        if (typeof gateway === "string" && gateway.startsWith("verificando:")) {
+          setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
+          setRetomadaBloqueadaPorSentinela(true);
+          return;
+        }
+        // Pedido que já não espera pagamento (pago, cancelado, expirado — a
+        // lista de pedidos pode estar desatualizada): nada monta, nada chama
+        // a edge. Só valores CONHECIDOS bloqueiam; campo ausente segue para a
+        // edge, que recusa o que não é cobrável.
+        const { status, payment_status: statusPagamento } = data as {
+          status?: unknown;
+          payment_status?: unknown;
+        };
+        if (
+          (typeof status === "string" && status !== "pending") ||
+          (typeof statusPagamento === "string" &&
+            statusPagamento !== "aguardando" &&
+            statusPagamento !== "recusado")
+        ) {
+          setRetomadaSemPagamentoPendente(true);
+          return;
+        }
+        setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
+        const metodo = (data as { metodo_online?: unknown }).metodo_online;
+        // Lacuna L2 (02/10/2026): reload no meio do 3DS (ou do "em análise")
+        // com o id REAL da order de cartão na vaga. Antes, a retomada abria o
+        // FORMULÁRIO do cartão: o desafio só voltava se o cliente digitasse o
+        // cartão de novo (token novo; o servidor, ramo d, devolvia o MESMO
+        // desafio), o formulário não tinha saída para o PIX, e depois de
+        // `expires_at` o POST batia no 409 terminal de `podeCobrar` — o 3DS
+        // que o banco ainda podia aprovar (a 20261186 segura o pedido por até
+        // 24 h) nunca mais aparecia. Agora vai para a MESMA verificação do
+        // sentinela: UMA consulta `verificar` (só GET no MP; nunca POST de
+        // cobrança), com a cadência do C4, o desafio com "Pagar com PIX" antes
+        // do prazo (C6), "em análise" só com order, e a escolha da forma
+        // quando a consulta prova a vaga morta/livre.
+        //
+        // Só `aguardando` + `pending` (o domínio do `verificar`; fora dele a
+        // edge responde 409 terminal e a retomada de hoje já trata). Vaga
+        // VAZIA continua abrindo o formulário (nada a consultar).
+        //
+        // PORTÃO DE PUBLICAÇÃO: só em loja cujo `criar-pagamento` já aceita
+        // `verificar` (C2 no ar, medido loja a loja). Sem o C2 a consulta volta
+        // 400 e a tela fica em "indisponível" — perde a saída de hoje
+        // (redigitar o cartão), sem risco de dinheiro.
+        if (
+          (metodo === "credito" || metodo === "debito") &&
+          typeof gateway === "string" &&
+          gateway !== "" &&
+          statusPagamento === "aguardando" &&
+          status === "pending"
+        ) {
+          setRetomadaBloqueadaPorSentinela(true);
+          return;
+        }
+        if (metodo === "credito" || metodo === "debito") {
+          setMetodoDoPedido("cartao");
+        } else if (metodo !== "pix") {
+          // Bug do teste real da 1.5.14 (02/10/2026): `metodo_online` só é
+          // gravado junto da cobrança, então pedido de cartão cujo formulário
+          // não enviou nada chega aqui com NULL. Assumir "pix" montava o
+          // PagamentoComPix, que CRIA a cobrança PIX na montagem — o cliente
+          // que escolheu cartão caía no QR Code. Forma desconhecida não
+          // monta nada: o cliente escolhe (tela abaixo), e só o toque dele
+          // liga o pagamento.
+          setRetomadaEscolhendoForma(true);
+          return;
+        }
+        setOrderId(retomarPedidoId);
+        setAguardandoPagamento(true);
+      }, falhar);
+    return () => {
+      vivo = false;
+      clearTimeout(relogio);
+    };
+  }, [
+    retomarPedidoId,
+    tentativaDaRetomada,
+    retomadaDaRecarga,
+    idDoUsuarioDaRetomada,
+  ]);
+  // Valor e método vêm do PEDIDO (o carrinho já foi limpo): o valor aqui é
+  // COSMÉTICO (quem decide o valor cobrado é a edge, `pedido.total`); o
+  // método retoma o da última tentativa quando legível. O gateway_payment_id
+  // entra para reconhecer o SENTINELA de cartão (gate no efeito acima).
+  // Lacuna L2: o nome ficou do C4, mas o estado liga a VERIFICAÇÃO da
+  // retomada nos dois casos — sentinela, ou id real de cartão em
+  // `aguardando`/`pending`.
+  const [retomadaBloqueadaPorSentinela, setRetomadaBloqueadaPorSentinela] =
+    useState(false);
+  const [retomadaSemPagamentoPendente, setRetomadaSemPagamentoPendente] =
+    useState(false);
+  const [retomadaEscolhendoForma, setRetomadaEscolhendoForma] = useState(false);
+  // C4 (M1): a consulta do cartão em dúvida provou que a vaga não está mais
+  // em dúvida (vazia, cartão morto, ou PIX). A retomada vai para a ESCOLHA da
+  // forma — nunca monta pagamento sozinha (nenhuma cobrança sem toque); o
+  // cartão morto ganha o aviso dele em cima das formas. "Não foi concluído",
+  // nunca "não foi aprovado": o `recusado` da consulta inclui o desafio 3DS
+  // que só EXPIROU (canceled/expired), e a tela não distingue os dois
+  // (veredito A2, item 4).
+  //
+  // C5: a MESMA saída para a verificação aberta dentro da sessão (POST de
+  // cartão em dúvida) — a dúvida e o erro dela saem de cena, e o cliente
+  // escolhe a forma: nada cobra sozinho (o PIX nasceria ao montar).
+  const [avisoDaRetomada, setAvisoDaRetomada] = useState<string | null>(null);
+  const liberarRetomadaDepoisDaVerificacao = useCallback(
+    (verificacao: DesfechoQueLiberaARetomada) => {
+      setAvisoDaRetomada(
+        verificacao === "recusado"
+          ? "O pagamento com cartão não foi concluído."
+          : null,
+      );
+      setRetomadaBloqueadaPorSentinela(false);
+      setCobrancaEmDuvida(null);
+      setErroPagamento(null);
+      setErroCancelamento(null);
+      setRetomadaEscolhendoForma(true);
+    },
+    [],
+  );
+  // C6 (P2, 02/10/2026): "Pagar com PIX" da verificação com o 3DS de order
+  // CONFIRMADA (`paymentId` do GET) — a mesma troca da tela do cartão da
+  // sessão, com o cartão VIVO no toque: a marca de cobrança incerta é do
+  // PEDIDO (nunca "Cancelar pedido" enquanto o servidor não provar o fim do
+  // cartão). Só o toque liga o PIX: o PagamentoComPix faz o POST ao montar,
+  // e o servidor (ramo f) cancela o 3DS no MP antes de criar o PIX, ou
+  // responde 409 `cartaoEmAnalise` (caixa âmbar, "Tentar de novo" por toque).
+  const pagarComPixDepoisDaVerificacao = () => {
+    const pedido = retomarPedidoId ?? orderId;
+    if (!pedido) return;
+    marcarCobrancaIncerta(pedido);
+    // A1.1: a tela agora é do PIX — a recusa do cartão sai de cena.
+    cartaoEncerradoRef.current = null;
+    setAvisoDaRetomada(null);
+    setRetomadaBloqueadaPorSentinela(false);
+    setCobrancaEmDuvida(null);
+    setErroPagamento(null);
+    setErroCancelamento(null);
+    setMetodoDoPedido("pix");
+    setOrderId(pedido);
+    setAguardandoPagamento(true);
+  };
+  // A escolha do cliente na retomada de forma desconhecida liga o pagamento
+  // do pedido retomado — o mesmo trio que o efeito de leitura liga quando a
+  // forma é conhecida.
+  // C5: na sessão (verificação depois de um POST em dúvida) o pedido é o
+  // `orderId` que já está ligado.
+  const escolherFormaDaRetomada = (metodo: MetodoOnline) => {
+    const pedidoDaEscolha = retomarPedidoId ?? orderId;
+    if (!pedidoDaEscolha) return;
+    // A1.1: escolher o PIX tira a recusa do cartão de cena.
+    if (metodo === "pix") cartaoEncerradoRef.current = null;
+    setMetodoDoPedido(metodo);
+    setRetomadaEscolhendoForma(false);
+    setOrderId(pedidoDaEscolha);
+    setAguardandoPagamento(true);
+  };
+  // Recarga (04/10/2026): o registro da aba (SÓ o id do pedido — ver
+  // pedido-pendente-do-checkout.ts) acompanha o pedido que ESTA tela está
+  // pagando ou retomando, para a recarga voltar a ele. Some quando o pedido
+  // sai de pendente (pago, pago fora do prazo, morto no servidor, não aguarda
+  // mais) e quando não há pedido em pagamento na tela (checkout de carrinho,
+  // pedido descartado). A recusa do cartão NÃO tira o pedido de pendente: ele
+  // continua retomável (a mesma regra do "Retomar pagamento" do card).
+  // Nada é limpo ao desmontar de propósito: a recarga não desmonta, e a
+  // saída do checkout é limpa pelo App (handleNavigate).
+  const pedidoEmPagamentoNaTela =
+    aguardandoPagamento && orderId !== "" ? orderId : (retomarPedidoId ?? null);
+  const pedidoSaiuDePendente =
+    statusPagamentoPix !== null ||
+    (pedidoEmPagamentoNaTela !== null &&
+      pedidoMortoNoServidorId === pedidoEmPagamentoNaTela) ||
+    retomadaSemPagamentoPendente ||
+    retomadaJaPaga;
+  const pedidoParaARecarga = pedidoSaiuDePendente
+    ? null
+    : pedidoEmPagamentoNaTela;
+  // O registro só se apaga por uma DECISÃO: o pedido que esta instância
+  // acompanhava saiu de cena (pago, morto, descartado pela leitura, pagamento
+  // cancelado na tela). "Nenhum pedido na tela" SEM nunca ter acompanhado um
+  // NÃO é decisão: com a rede lenta este checkout monta antes de a sessão
+  // chegar (sem usuário, sem pedido), e apagar aqui desfazia a recarga — o
+  // registro do usuário que acabou de chegar sumia sem ninguém tê-lo lido.
+  const pedidoQueEstaTelaAcompanhouRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!idDoUsuarioDaRetomada) return;
+    if (pedidoParaARecarga) {
+      guardarPedidoPendenteDoCheckout(
+        idDoUsuarioDaRetomada,
+        pedidoParaARecarga,
+      );
+      pedidoQueEstaTelaAcompanhouRef.current = pedidoParaARecarga;
+    } else if (pedidoQueEstaTelaAcompanhouRef.current !== null) {
+      esquecerPedidoPendenteDoCheckout(idDoUsuarioDaRetomada);
+      pedidoQueEstaTelaAcompanhouRef.current = null;
+    }
+  }, [idDoUsuarioDaRetomada, pedidoParaARecarga]);
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
   const itensDoPedidoParaRestaurarRef = useRef<CartItem[]>([]);
-  const [appliedCoupon, setAppliedCoupon] = useState<{
+  const [cupomGuardado, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
+    /**
+     * DONO do cupom na tela (id da conta; null = convidado), gravado na hora
+     * do Aplicar/restauração/revalidação. O rascunho carimba ESTE dono —
+     * nunca a conta de agora: no commit em que a conta troca, o cupom velho
+     * ainda está no estado, e carimbá-lo com a conta nova o faria reaparecer
+     * na tela dela.
+     */
+    conta: string | null;
   } | null>(null);
+  // Frente B: o código em validação agora (toque em "Aplicar") — mostra
+  // "Aplicando…" e trava o toque duplo. A TRAVA de verdade é o ref (síncrono:
+  // dois toques no mesmo instante enxergam o mesmo estado velho); o estado
+  // só desenha.
+  const [aplicandoCupom, setAplicandoCupom] = useState<string | null>(null);
+  const aplicacaoDoCupomEmVooRef = useRef<object | null>(null);
+  // O par (código, subtotal, conta) que o toque em "Aplicar" — ou a última
+  // revalidação — ACABOU de conferir: o efeito de revalidação não repete a
+  // mesma consulta (antes cada toque validava duas vezes). Qualquer mudança
+  // no trio, ou tirar o cupom, volta a conferir.
+  const cupomConferidoRef = useRef<{
+    code: string;
+    subtotal: number;
+    conta: string | null;
+  } | null>(null);
+  // A conta de AGORA (id; null = convidado ou autenticação ainda sem usuário),
+  // espelhada em ref para a resposta que chega tarde saber se a conta mudou.
+  const contaDoCheckout = user?.id ?? null;
+  const contaRef = useRef<string | null>(contaDoCheckout);
+  useEffect(() => {
+    if (contaRef.current === contaDoCheckout) return;
+    contaRef.current = contaDoCheckout;
+    // A validação em voo era de OUTRA conta: a resposta dela será descartada,
+    // e a conta nova não fica presa atrás dela.
+    aplicacaoDoCupomEmVooRef.current = null;
+    setAplicandoCupom(null);
+  }, [contaDoCheckout]);
+  // CUPONS DESLIGADOS (issue #645, decisão do dono 08/10/2026): com a chave
+  // `enable_coupons` em FALSO nenhum desconto de cupom entra no pedido — nem o
+  // de quem aplicou antes de a lojista desligar, nem o que o rascunho da
+  // sessão repõe antes de a config chegar. Só `=== false` conta (o
+  // StoreContext já trata NULL como ligado). `appliedCoupon` é o cupom que
+  // VALE: todo consumidor abaixo (desconto, total, código enviado ao pedido,
+  // rascunho, painel do resumo) lê esta visão e enxerga null na hora, sem
+  // esperar o efeito que limpa o estado guardado e avisa a pessoa.
+  const cuponsDesligados = config.enableCoupons === false;
+  const appliedCoupon = cuponsDesligados ? null : cupomGuardado;
+  // O código do cupom que a loja tirou do pedido (aviso fixo na tela: toast
+  // some antes de a pessoa ler e o campo de cupom nem está visível).
+  const [cupomTiradoPelaLoja, setCupomTiradoPelaLoja] = useState<string | null>(
+    null,
+  );
   const [couponError, setCouponError] = useState<string>("");
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
@@ -1361,18 +2110,40 @@ export function CheckoutView({
   const codigoDoCupom = appliedCoupon?.code ?? null;
   useEffect(() => {
     if (!codigoDoCupom) return;
+    // A conta que PEDIU esta conferência: resposta que chega com outra conta
+    // na tela é descartada, e o dono carimbado é quem de fato validou.
+    const contaQueConferiu = contaRef.current;
+    const conferido = cupomConferidoRef.current;
+    if (
+      conferido &&
+      conferido.code === codigoDoCupom &&
+      conferido.subtotal === subtotal &&
+      conferido.conta === contaQueConferiu
+    ) {
+      return;
+    }
     let vivo = true;
     (async () => {
       try {
         const resultado = await validateCoupon(codigoDoCupom, subtotal);
-        if (!vivo) return;
+        if (!vivo || contaRef.current !== contaQueConferiu) return;
         if (resultado.networkError) return;
         if (resultado.valid) {
+          // O par que ACABOU de ser validado vira a referência: subtotal que
+          // vai e volta (100 → 150 → 100) revalida de novo em vez de manter o
+          // desconto de 150.
+          cupomConferidoRef.current = {
+            code: codigoDoCupom,
+            subtotal,
+            conta: contaQueConferiu,
+          };
           setAppliedCoupon({
             code: codigoDoCupom,
             discount: resultado.discount,
+            conta: contaQueConferiu,
           });
         } else {
+          cupomConferidoRef.current = null;
           setAppliedCoupon(null);
           setCouponError(resultado.message || "Cupom inválido");
         }
@@ -1383,11 +2154,41 @@ export function CheckoutView({
     return () => {
       vivo = false;
     };
-  }, [codigoDoCupom, subtotal, validateCoupon, isOffline]);
+  }, [codigoDoCupom, subtotal, validateCoupon, isOffline, contaDoCheckout]);
+  // `contaDoCheckout` nos deps: convidado que entra na conta com o cupom na
+  // tela revalida para a conta nova.
   // `isOffline` nos deps é a pílula da re-revisão do PR #374 (ressalva 2):
   // em falha de REDE a revalidação mantém o cupom com desconto 0 e não
   // havia retry — com a conexão de volta o efeito roda de novo e o desconto
   // real chega (ou o motivo da recusa aparece na tela).
+
+  // CUPONS DESLIGADOS (#645): reage à CONFIG, não só uma vez. Cobre o cupom
+  // aplicado antes de a lojista desligar (a config chega por realtime/refresh
+  // com a tela aberta) e o rascunho restaurado antes de a config assentar.
+  // Tira o cupom do estado, do rascunho da sessão e do erro do campo, e deixa
+  // o aviso fixo (o campo de cupom nem aparece com a chave desligada).
+  useEffect(() => {
+    if (!cuponsDesligados || !cupomGuardado) return;
+    setCupomTiradoPelaLoja(cupomGuardado.code);
+    setAppliedCoupon(null);
+    setCouponError("");
+    const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+    if (rascunho?.cupom) {
+      salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+        ...rascunho,
+        cupom: null,
+      });
+    }
+  }, [cuponsDesligados, cupomGuardado]);
+
+  // A lista de cupons que a cliente pode usar (vitrine da loja + os exclusivos
+  // DELA). Com os cupons desligados pela loja nem busca. Declarado antes do
+  // primeiro return da tela (regra dos hooks).
+  const cuponsDoCheckout = useCuponsDoCheckout({
+    subtotal,
+    userId: user?.id ?? null,
+    ligado: !cuponsDesligados,
+  });
 
   // GRAVAÇÃO DO RASCUNHO (laudo ofensiva 3108, N7): cada mudança de campo,
   // de notas ou de cupom repõe o rascunho da sessão. Os espelhos em ref
@@ -1434,7 +2235,15 @@ export function CheckoutView({
         estado: valores.state ?? "",
         complemento: valores.complement ?? "",
         notas: notasRef.current,
-        cupom: cupomRef.current?.code ?? null,
+        // Cupom ainda pendente (auth carregando) não se perde numa gravação.
+        cupom:
+          cupomRef.current?.code ??
+          cupomPendenteDoRascunhoRef.current?.codigo ??
+          null,
+        // O dono do cupom que ESTÁ no estado — nunca a conta de agora.
+        contaDoCupom: cupomRef.current
+          ? cupomRef.current.conta
+          : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
       };
       if (!rascunhoTemConteudo(rascunho)) return;
       salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
@@ -1459,7 +2268,13 @@ export function CheckoutView({
       estado: form.getValues("state") ?? "",
       complemento: form.getValues("complement") ?? "",
       notas: notes,
-      cupom: appliedCoupon?.code ?? null,
+      cupom:
+        appliedCoupon?.code ??
+        cupomPendenteDoRascunhoRef.current?.codigo ??
+        null,
+      contaDoCupom: appliedCoupon
+        ? appliedCoupon.conta
+        : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
     };
     if (!rascunhoTemConteudo(rascunho)) return;
     salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
@@ -1876,9 +2691,12 @@ export function CheckoutView({
         return;
       }
 
+      // C6 (P1): o número desta leitura sai ANTES do `await` — é a cerca
+      // contra a leitura que saiu antes do aviso da tentativa e chega depois.
+      const leitura = ++leiturasDaVagaRef.current;
       const { data, error } = await supabase
         .from("marketplace_orders")
-        .select("payment_status, expires_at")
+        .select("payment_status, expires_at, gateway_payment_id, status")
         .eq("id", orderId)
         .single();
 
@@ -1893,6 +2711,111 @@ export function CheckoutView({
       if (data.payment_status === "pago_apos_expirar") {
         setStatusPagamentoPix("fora-do-prazo");
         return;
+      }
+
+      // F1: o pedido morto no servidor — mesma definição de "fechado" que a
+      // regra L1, abaixo, usa para o cartão (que não é tocada por isto).
+      if (
+        data.payment_status === "expirado" ||
+        (data.payment_status === "aguardando" && data.status === "cancelled")
+      ) {
+        setPedidoMortoNoServidorId(orderId);
+      }
+
+      // C6 (P1, achado B1): a tentativa de cartão terminou sem pagamento.
+      //
+      // INVARIANTE de que esta regra depende (mudança obrigatória 3 do
+      // revisor financeiro): só a RPC `liberar_cobranca_do_pedido` esvazia a
+      // vaga (`gateway_payment_id`), e só por prova (order recusada,
+      // cancelada ou expirada no Mercado Pago) ou por cancelamento confirmado
+      // (o ramo f do `criar-pagamento`, que o cliente pediu ao tocar "Pagar
+      // com PIX"). Qualquer escrita futura que esvazie a vaga por outro
+      // motivo QUEBRA esta regra: a tela mostraria "não foi concluído" — e
+      // ofereceria outro cartão ou PIX — para um cartão que pode estar vivo.
+      //
+      // Por isso a regra exige as quatro coisas juntas:
+      // - a tentativa armada é DESTE pedido (chave pedido + token de cerca);
+      // - esta leitura SAIU depois do aviso da tentativa — o servidor grava a
+      //   order na vaga ANTES de responder o 200 com o `paymentId`, então só
+      //   uma leitura posterior ao aviso prova que a vaga foi esvaziada
+      //   depois da order (cerca: a leitura velha nunca encerra nada);
+      // - o pedido ainda espera pagamento (`aguardando` + `pending`) — vaga
+      //   vazia num pedido expirado ou cancelado não é recusa;
+      // - a vaga está vazia de fato (`null`; ausente não conta).
+      const cartao = cartaoEmCursoRef.current;
+      if (
+        cartao !== null &&
+        cartao.orderId === orderId &&
+        leitura > cartao.desdeLeitura &&
+        data.payment_status === "aguardando" &&
+        data.status === "pending" &&
+        data.gateway_payment_id === null
+      ) {
+        cartaoEncerradoRef.current = {
+          orderId: cartao.orderId,
+          paymentId: cartao.paymentId,
+        };
+        setCartaoEncerrado({
+          orderId: cartao.orderId,
+          paymentId: cartao.paymentId,
+        });
+      }
+
+      // Lacuna L1 (02/10/2026): a tentativa terminou sem pagamento e DEPOIS
+      // o pedido fechou — a varredura `expirar_pedidos_vencidos` (20261186)
+      // grava `expirado`/`cancelled` sem tocar a vaga, ou o pedido foi
+      // cancelado. Sem esta regra a tela ficava presa em "Confirmando com o
+      // banco…" (a regra do C6, acima, exige `aguardando` + `pending`).
+      //
+      // Por que isto PROVA que o cartão morreu antes do fechamento: só a RPC
+      // `liberar_cobranca_do_pedido` esvazia a vaga, por prova, e ela EXIGE
+      // `payment_status = 'aguardando'` (20261176000000) — depois de expirado
+      // ninguém esvazia. A expiração e o cancelamento não tocam a vaga, e o
+      // cartão VIVO segura a expiração (20261186) com o id NA vaga: nunca
+      // casa com vaga vazia.
+      //
+      // As guardas, juntas:
+      // - a tentativa é DESTE pedido e esta leitura saiu depois do aviso dela
+      //   (a MESMA cerca do C6 — mantida mesmo sendo redundante aqui: uma
+      //   leitura velha não vê `expirado` de um pedido que ainda aceitou o
+      //   cartão), OU é a tentativa que o C6 já encerrou (L1b);
+      // - vaga vazia de fato (`null`; ausente não conta);
+      // - pedido fechado: `expirado`, ou `aguardando` + `cancelled`;
+      // - o pedido NÃO tem cobrança incerta (houve tentativa de desfecho
+      //   desconhecido: a tela não afirma nada sobre ela).
+      // O texto nunca diz "nada foi cobrado" — a prova é sobre ESTA
+      // tentativa, não sobre o que o banco mostra ao cliente. E a verificação
+      // continua: um `pago_apos_expirar` tardio ainda troca a tela (acima).
+      const tentativaProvada =
+        (cartao !== null &&
+          cartao.orderId === orderId &&
+          leitura > cartao.desdeLeitura) ||
+        cartaoEncerradoRef.current?.orderId === orderId;
+      const expirou = data.payment_status === "expirado";
+      const cancelado =
+        data.payment_status === "aguardando" && data.status === "cancelled";
+      if (
+        tentativaProvada &&
+        data.gateway_payment_id === null &&
+        (expirou || cancelado) &&
+        pedidoComCobrancaIncertaRef.current !== orderId
+      ) {
+        setErroPagamento((atual) =>
+          // O terminal que já está na tela GANHA (revisão financeira do
+          // desenho L1): um 409 "pode ter sido cobrado", ou qualquer outra
+          // frase definitiva da edge, nunca vira "não foi concluído".
+          atual?.categoria === "terminal"
+            ? atual
+            : {
+                mensagem: expirou
+                  ? MENSAGEM_CARTAO_NAO_CONCLUIDO_PRAZO_ACABOU
+                  : MENSAGEM_CARTAO_NAO_CONCLUIDO_PEDIDO_CANCELADO,
+                categoria: "terminal",
+                cartaoEmAnalise: false,
+                semCobranca: false,
+                anunciar: true,
+              },
+        );
       }
 
       // Os outros dois status terminais não têm tela própria aqui — só
@@ -1968,9 +2891,17 @@ export function CheckoutView({
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", aoVoltarAFicarVisivel);
     }
+    // C6 (P1): o realtime pede uma leitura avulsa — mesmas guardas, não conta
+    // como tick do teto.
+    const lerAgora = () => {
+      verificarPagamento();
+    };
+    lerAVagaAgoraRef.current = lerAgora;
 
     return () => {
       parado = true;
+      if (lerAVagaAgoraRef.current === lerAgora)
+        lerAVagaAgoraRef.current = null;
       clearInterval(intervalId);
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", aoVoltarAFicarVisivel);
@@ -2145,6 +3076,9 @@ export function CheckoutView({
     : null;
 
   const handleRemoveCoupon = () => {
+    // Quem remove o cupom escolhe: o do rascunho que esperava a conta não volta depois.
+    cupomPendenteDoRascunhoRef.current = null;
+    cupomConferidoRef.current = null;
     setAppliedCoupon(null);
     setCouponError("");
   };
@@ -2189,18 +3123,46 @@ export function CheckoutView({
   };
 
   const handleApplyCoupon = async (code: string) => {
+    // Toque duplo (ou toque em outro cartão) com uma validação em voo: nada.
+    if (aplicacaoDoCupomEmVooRef.current) return;
+    // Quem aplica um cupom escolhe: o do rascunho que esperava a conta não o troca depois.
+    cupomPendenteDoRascunhoRef.current = null;
+    const minhaAplicacao = {};
+    aplicacaoDoCupomEmVooRef.current = minhaAplicacao;
     setCouponError("");
+    setAplicandoCupom(code);
+    // A conta que PEDIU a validação: se outra entrar enquanto a resposta não
+    // chega, a resposta é descartada — o cupom de uma conta nunca aparece
+    // aplicado na tela da outra.
+    const contaQuePediu = contaRef.current;
     try {
       const result = await validateCoupon(code, subtotal);
+      if (contaRef.current !== contaQuePediu) return;
 
       if (result.valid) {
-        setAppliedCoupon({ code, discount: result.discount });
+        cupomConferidoRef.current = { code, subtotal, conta: contaQuePediu };
+        setAppliedCoupon({
+          code,
+          discount: result.discount,
+          conta: contaQuePediu,
+        });
       } else {
         setCouponError(result.message || "Cupom inválido");
+        // O cupom da lista pode ter esgotado ou vencido desde a última busca.
+        cuponsDoCheckout.tentarDeNovo();
       }
     } catch (error) {
       console.error("Error applying coupon:", error);
-      setCouponError("Erro ao validar cupom");
+      if (contaRef.current === contaQuePediu) {
+        setCouponError("Erro ao validar cupom");
+      }
+    } finally {
+      // Só solta a trava que é DESTA aplicação: a troca de conta já a soltou,
+      // e a conta nova pode ter uma validação própria em voo.
+      if (aplicacaoDoCupomEmVooRef.current === minhaAplicacao) {
+        aplicacaoDoCupomEmVooRef.current = null;
+        setAplicandoCupom(null);
+      }
     }
   };
 
@@ -2670,6 +3632,12 @@ export function CheckoutView({
       if (ehErroDeFormaDePagamentoDesligada(error)) {
         refreshStoreConfig({ onlyConfig: true }).catch(() => {});
       }
+      // CUPONS DESLIGADOS (#645): a mesma corrida — a chave virou entre a
+      // tela e o clique. A recusa já leva a "Tirar o cupom" (painel
+      // genérico); a config nova faz o campo de cupom sumir da tela.
+      if (ehErroDeCuponsDesligados(error)) {
+        refreshStoreConfig({ onlyConfig: true }).catch(() => {});
+      }
       // Este catch recebe o MESMO erro que useOrders.ts (createOrder) já
       // relança depois do próprio toast interno — mesma tradução aqui, para
       // não haver dois textos diferentes para a mesma falha.
@@ -2798,7 +3766,19 @@ export function CheckoutView({
         // `cancelamentoBloqueadoPelaGuardaDoCartao`, acima: NUNCA
         // `pedidoTemCobrancaIncerta` aqui, que também esconderia "Pagar com
         // PIX".
-        if (guardaBarrouComMensagemPropria) {
+        // S1 (04/10/2026): o cancelamento agora passa pela edge, que anula
+        // a cobrança no MP antes. Cartão em análise e "acabou de ser pago"
+        // são a mesma situação da guarda acima para este botão: cancelar de
+        // novo bateria na mesma resposta — esconde só ele (o pago aparece na
+        // tela de pedidos quando a confirmação chegar). "Tente de novo" e
+        // "mudou" mantêm o botão.
+        const naoConcluidoPelaEdge =
+          erroRpc instanceof ErroCancelamentoNaoConcluido ? erroRpc : null;
+        if (
+          guardaBarrouComMensagemPropria ||
+          naoConcluidoPelaEdge?.desfecho === "em_analise" ||
+          naoConcluidoPelaEdge?.desfecho === "ja_pago"
+        ) {
           setCancelamentoBloqueadoPelaGuardaDoCartao(true);
         }
         // Precedente ADMIN-010 (#94): só não segue em frente quando a
@@ -2807,9 +3787,11 @@ export function CheckoutView({
         setErroCancelamento(
           statusFinal && statusFinal !== "pending"
             ? "Este pedido não está mais pendente — o lojista já deve ter começado a prepará-lo. Fale com a loja se ainda quiser cancelar."
-            : guardaBarrouComMensagemPropria
-              ? mensagemAmigavelErroAtualizacaoStatus(erroRpc)
-              : "Não foi possível confirmar o cancelamento. Tente novamente.",
+            : naoConcluidoPelaEdge
+              ? naoConcluidoPelaEdge.message
+              : guardaBarrouComMensagemPropria
+                ? mensagemAmigavelErroAtualizacaoStatus(erroRpc)
+                : "Não foi possível confirmar o cancelamento. Tente novamente.",
         );
         return;
       }
@@ -2842,11 +3824,13 @@ export function CheckoutView({
     "",
   );
   const lojaTemWhatsappNoCheckout = lojaTemWhatsapp(config.whatsappNumber);
-  const handleFalarComALojaSobreCartao = () => {
+  // C4 (M1): o pedido vem por parâmetro — na retomada do cartão em dúvida o
+  // `orderId` ainda não foi ligado (nada monta), e o pedido é o retomado.
+  const falarComALojaSobreCartao = (idDoPedido: string) => {
     if (!lojaTemWhatsappNoCheckout) return;
     let phone = numeroLimpoDoCheckout;
     if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
-    const mensagem = `Olá! Meu pedido #${orderId.slice(-6).toUpperCase()} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
+    const mensagem = `Olá! Meu pedido #${numeroDoPedido(idDoPedido)} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -2857,6 +3841,169 @@ export function CheckoutView({
     // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
     globalThis.open(url, "_blank", "noopener,noreferrer");
   };
+  const handleFalarComALojaSobreCartao = () =>
+    falarComALojaSobreCartao(orderId);
+
+  if (retomadaBloqueadaPorSentinela && retomarPedidoId) {
+    return (
+      <VerificacaoDoPagamento
+        orderId={retomarPedidoId}
+        onVerMeusPedidos={() => onNavigate("orders")}
+        onFalarComALoja={
+          lojaTemWhatsappNoCheckout
+            ? () => falarComALojaSobreCartao(retomarPedidoId)
+            : undefined
+        }
+        onRetomadaLiberada={liberarRetomadaDepoisDaVerificacao}
+        onPagarComPix={pagarComPixDepoisDaVerificacao}
+      />
+    );
+  }
+
+  if (retomadaFalhouNaLeitura !== null && retomarPedidoId) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Retomar o pagamento do pedido
+        </h1>
+        {retomadaFalhouNaLeitura === "relendo" ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 text-sm text-zinc-600"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            Abrindo o pedido…
+          </p>
+        ) : (
+          <>
+            <p role="alert" className="text-sm font-medium text-red-700">
+              Não foi possível abrir o pagamento deste pedido agora. Nada foi
+              cobrado nesta tentativa.
+            </p>
+            <Button
+              onClick={() => {
+                setFalhaDaRetomada({
+                  pedido: retomarPedidoId,
+                  estado: "relendo",
+                });
+                setTentativaDaRetomada((n) => n + 1);
+              }}
+              className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+            >
+              Tentar de novo
+            </Button>
+          </>
+        )}
+        <Button
+          onClick={() => onNavigate("orders")}
+          variant="outline"
+          className="w-full rounded-xl"
+        >
+          Ver meus pedidos
+        </Button>
+      </div>
+    );
+  }
+
+  if (retomadaJaPaga && confirmacaoDaRecarga) {
+    return (
+      <PagamentoConfirmadoView
+        orderId={confirmacaoDaRecarga.pedidoId}
+        valor={confirmacaoDaRecarga.valor}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  if (retomadaSemPagamentoPendente) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Este pedido não está aguardando pagamento
+        </h1>
+        <p className="text-sm text-zinc-600">
+          Ele já foi pago, cancelado ou o prazo para pagar acabou. Abra "Ver
+          meus pedidos" para conferir a situação dele.
+        </p>
+        <Button
+          onClick={() => onNavigate("orders")}
+          variant="outline"
+          className="w-full rounded-xl"
+        >
+          Ver meus pedidos
+        </Button>
+      </div>
+    );
+  }
+
+  if (retomadaEscolhendoForma) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Como você quer pagar este pedido?
+        </h1>
+        {/* `role="alert"`, não `status`: o aviso nasce JUNTO com a troca
+            de tela, já preenchido — uma região `status` montada cheia não é
+            anunciada pelo leitor de tela (mesmo defeito do dd346db4). */}
+        {avisoDaRetomada && (
+          <p role="alert" className="text-sm font-medium text-red-700">
+            {avisoDaRetomada}
+          </p>
+        )}
+        <p className="text-sm text-zinc-600">
+          Nada é cobrado até você escolher e confirmar o pagamento.
+        </p>
+        {/* A lista de formas SÓ aparece quando a config do cartão está
+            pronta: com ela ainda carregando, "Pagar com PIX" sozinho
+            pareceria a lista final (bug do teste real da 1.5.14/1.5.15). Em
+            erro, a frase diz a verdade — não deu para conferir — em vez de
+            fingir "cartão desligado"; o PIX não depende dessa leitura e fica
+            como opção explícita. Nenhum caminho cobra sozinho: PIX e cartão
+            só com toque. */}
+        {estadoDoCartao.estado === "carregando" && (
+          <p
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 text-sm text-zinc-600"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            Carregando formas de pagamento…
+          </p>
+        )}
+        {estadoDoCartao.estado === "erro" && (
+          <>
+            <p role="alert" className="text-sm font-medium text-amber-800">
+              Não foi possível conferir se o cartão está disponível agora.
+            </p>
+            <Button
+              onClick={() => estadoDoCartao.tentarDeNovo()}
+              className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+            >
+              Tentar de novo
+            </Button>
+          </>
+        )}
+        {configDoCartao && (
+          <Button
+            onClick={() => escolherFormaDaRetomada("cartao")}
+            className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+          >
+            {rotuloDaOpcaoDeCartao(configDoCartao)}
+          </Button>
+        )}
+        {estadoDoCartao.estado !== "carregando" && (
+          <Button
+            onClick={() => escolherFormaDaRetomada("pix")}
+            variant="outline"
+            className="w-full rounded-xl"
+          >
+            Pagar com PIX
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   if (aguardandoPagamento && orderId) {
     // CHECKOUT-090: pagamento confirmado — troca o QR (e o aviso de reserva
@@ -2879,6 +4026,41 @@ export function CheckoutView({
           orderId={orderId}
           valor={valorDoPedido}
           onNavigate={onNavigate}
+        />
+      );
+    }
+
+    // C5 (front B2, 02/10/2026): cobrança de cartão em DÚVIDA nesta sessão —
+    // nenhuma order confirmada chegou à tela, então nada de "em análise pelo
+    // banco", e nada de "Tentar de novo" (o Brick pediria o cartão de novo:
+    // token novo sobre a dúvida). A verificação do C4 só consulta
+    // (`metodo: "verificar"`), sem PIX, sem cancelar, sem cartão novo:
+    // - resposta do POST sem order (`cobrancaEmDuvida`): começa por ela;
+    // - erro ambíguo do cartão (o mesmo `cartaoEmAnalise` que abria a caixa
+    //   âmbar, em modo cartão e não terminal): uma consulta ao abrir.
+    // Terminal fica na caixa âmbar de sempre (a frase da edge). Em modo PIX
+    // (a saída A2 com o cartão vivo) também: lá "Tentar de novo" é o mesmo
+    // pedido de PIX que a edge só atende quando cancela o cartão.
+    const verificacaoNaSessao =
+      cobrancaEmDuvida ??
+      (metodoDoPedido === "cartao" &&
+      erroPagamento?.cartaoEmAnalise === true &&
+      erroPagamento.categoria !== "terminal"
+        ? { pontoDePartida: undefined }
+        : null);
+    if (verificacaoNaSessao) {
+      return (
+        <VerificacaoDoPagamento
+          orderId={orderId}
+          onVerMeusPedidos={() => onNavigate("orders")}
+          onFalarComALoja={
+            lojaTemWhatsappNoCheckout
+              ? handleFalarComALojaSobreCartao
+              : undefined
+          }
+          onRetomadaLiberada={liberarRetomadaDepoisDaVerificacao}
+          onPagarComPix={pagarComPixDepoisDaVerificacao}
+          pontoDePartida={verificacaoNaSessao.pontoDePartida}
         />
       );
     }
@@ -2925,10 +4107,13 @@ export function CheckoutView({
                 aria-hidden="true"
                 className="mt-0.5 size-5 shrink-0 text-amber-600"
               />
+              {/* C5 (front B2): sem order confirmada na tela, nunca "em
+                  análise pelo banco". O não terminal só chega aqui em modo
+                  PIX (em modo cartão a dúvida é a verificação, acima). */}
               <p className="text-sm font-medium text-amber-800">
                 {erroPagamento.categoria === "terminal"
                   ? erroPagamento.mensagem
-                  : "Seu cartão está em análise pelo banco. Aguarde a resposta; você será avisado aqui."}
+                  : "Não conseguimos confirmar se a tentativa de pagamento com cartão deste pedido foi cobrada. Para não cobrar duas vezes, o PIX só é gerado depois dessa confirmação."}
               </p>
             </div>
             {erroPagamento.categoria === "terminal" ? (
@@ -2971,27 +4156,11 @@ export function CheckoutView({
                 <p className="text-xs text-amber-700">
                   Se nada mudar em alguns minutos, toque em Tentar de novo.
                 </p>
-                {/* Achado 4, rodada 4: em modo cartão, "Tentar de novo" pede
-                    o cartão de NOVO (o Brick remonta do zero) — sem isto, a
-                    caixa parecia exigir digitar o cartão outra vez só para
-                    "conferir", quando a verificação periódica e o tempo
-                    real já cobrem isso sozinhos.
-                    Achado 1, rodada 5 (addendum): a frase antiga dizia "use
-                    só se quiser tentar outro cartão" — mas enquanto o
-                    PRIMEIRO cartão ainda está vivo (em análise, branch (d) da
-                    edge), um cartão DIFERENTE cai na mesma branch e recebe o
-                    MESMO status "em análise". Prometer que trocar de cartão
-                    muda o resultado é falso nesse caso — a frase agora não
-                    promete nada sobre o resultado, só explica o que o botão
-                    faz. */}
-                {metodoDoPedido === "cartao" && (
-                  <p className="text-xs text-amber-700">
-                    Você não precisa fazer nada agora: esta tela muda sozinha
-                    quando o banco decidir. "Tentar de novo" confere com o banco
-                    de novo; se o cartão ainda estiver em análise, a resposta
-                    será a mesma.
-                  </p>
-                )}
+                {/* C5 (front B2): a explicação do "Tentar de novo" em modo
+                    cartão (achado 4, rodada 4; achado 1, rodada 5) saiu com o
+                    modo cartão — ele não chega mais a esta caixa: pedir o
+                    cartão de novo sobre uma cobrança em dúvida é o que a
+                    verificação, acima, substitui. */}
                 <Button
                   onClick={() => {
                     setErroPagamento(null);
@@ -3008,7 +4177,10 @@ export function CheckoutView({
           <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
-              <p className="text-sm font-medium text-red-700">
+              <p
+                role={erroPagamento.anunciar ? "alert" : undefined}
+                className="text-sm font-medium text-red-700"
+              >
                 {erroPagamento.mensagem}
               </p>
             </div>
@@ -3047,6 +4219,9 @@ export function CheckoutView({
               !pedidoTemCobrancaIncerta && (
                 <Button
                   onClick={() => {
+                    // A1.1: a tela agora é do PIX — a recusa do cartão sai
+                    // de cena.
+                    cartaoEncerradoRef.current = null;
                     setMetodoDoPedido("pix");
                     setErroPagamento(null);
                     setErroCancelamento(null);
@@ -3094,8 +4269,19 @@ export function CheckoutView({
                 cartão): a tela de pedidos não oferece nada que cobra, e
                 cancelar por lá esbarra na MESMA guarda P0001. */}
             {pedidoTemCobrancaIncerta ? (
-              erroPagamento.categoria === "terminal" &&
-              (lojaTemWhatsappNoCheckout ? (
+              erroPagamento.categoria !== "terminal" ? (
+                // Fase 3 (04/10/2026, R2 da revisão): erro RECUPERÁVEL com a
+                // cobrança incerta — só havia "Tentar de novo"; se o erro se
+                // repetisse, o cliente ficava sem saída. "Ver meus pedidos"
+                // não cobra nada e "Cancelar pedido" continua escondido.
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Ver meus pedidos
+                </Button>
+              ) : lojaTemWhatsappNoCheckout ? (
                 <Button
                   onClick={handleFalarComALojaSobreCartao}
                   variant="outline"
@@ -3111,7 +4297,7 @@ export function CheckoutView({
                 >
                   Ver meus pedidos
                 </Button>
-              ))
+              )
             ) : cancelamentoBloqueadoPelaGuardaDoCartao ? (
               lojaTemWhatsappNoCheckout ? (
                 <Button
@@ -3167,6 +4353,39 @@ export function CheckoutView({
               </p>
             )}
           </div>
+        ) : metodoDoPedido === "cartao" &&
+          estadoDoCartao.estado === "carregando" ? (
+          // Pedido de CARTÃO com a config ainda no ar: o PagamentoOnline
+          // recebe `null` e diria "o pagamento com cartão não está
+          // disponível nesta loja agora" — frase de cartão desligado de
+          // verdade, dita a quem só está esperando a leitura. Nada monta
+          // (nem Brick, nem edge) até a config estar pronta. Só ocupa o
+          // MOMENTO de montar: uma caixa de erro já aberta (ramos acima)
+          // nunca é substituída por isto.
+          <p
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 text-sm text-zinc-600"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            Carregando o pagamento com cartão…
+          </p>
+        ) : metodoDoPedido === "cartao" && estadoDoCartao.estado === "erro" ? (
+          // Leitura falhada NÃO é cartão desligado: o cartão pode estar ligado
+          // e até em análise. Sem PIX automático aqui — a troca explícita
+          // para PIX continua só pelos caminhos seguros do PagamentoOnline,
+          // depois de montado.
+          <div className="space-y-3">
+            <p role="alert" className="text-sm font-medium text-amber-800">
+              Não foi possível conferir o pagamento com cartão agora.
+            </p>
+            <Button
+              onClick={() => estadoDoCartao.tentarDeNovo()}
+              className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+            >
+              Tentar de novo
+            </Button>
+          </div>
         ) : (
           <PagamentoOnline
             orderId={orderId}
@@ -3174,6 +4393,11 @@ export function CheckoutView({
             metodo={metodoDoPedido}
             configDoCartao={configDoCartao}
             emailDoPagador={user?.email ?? null}
+            cobrancaIncerta={pedidoTemCobrancaIncerta}
+            pedidoMortoNoServidor={
+              orderId !== "" && pedidoMortoNoServidorId === orderId
+            }
+            onVerMeusPedidos={() => onNavigate("orders")}
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
             //
@@ -3185,9 +4409,41 @@ export function CheckoutView({
             // chegava com `metodoDoPedido` já em "pix" — fora do alcance da
             // regra "sem sinal em modo cartão é incerto" — e "Cancelar
             // pedido" reaparecia sobre um cartão que podia ter sido aprovado.
+            onCartaoEmCurso={registrarCartaoEmCurso}
+            cartaoEncerrado={cartaoEncerrado}
+            // Confirmação do cartão sem fim (03/10/2026): a consulta sem
+            // cobrança da tela do cartão (`verificar`) provou a vaga desta
+            // tentativa solta — a MESMA marca que a leitura da vaga (C6)
+            // grava, para a regra L1b reconhecer a tentativa se o pedido
+            // fechar depois.
+            onCartaoEncerradoPelaConsulta={(cartao) => {
+              if (cartao.orderId !== orderId) return;
+              cartaoEncerradoRef.current = cartao;
+              setCartaoEncerrado(cartao);
+            }}
+            // Sem sessão a consulta do cartão é recusada pela edge (404 de
+            // dono) e a verificação periódica nem roda: a tela do cartão
+            // pede para entrar de novo em vez de girar. Defesa em
+            // profundidade: no app, o App.tsx monta esta tela com a chave
+            // `checkout-${user.id}` — trocar de usuário (A→B) ou sair
+            // DESMONTA tudo, e a limpeza dos efeitos descarta a consulta
+            // pendente do usuário anterior (nenhuma resposta dele pinta a
+            // tela do outro).
+            sessaoAtiva={Boolean(user?.id)}
+            onEntrarDeNovo={() => onNavigate("auth")}
             onTrocarParaPix={(cartaoAindaVivo) => {
-              if (cartaoAindaVivo) setPedidoTemCobrancaIncerta(true);
+              if (cartaoAindaVivo) marcarCobrancaIncerta(orderId);
+              // Lacuna L1b: a tela agora é do PIX — a recusa do cartão saiu
+              // de cena, e a vaga passa a ser de outra cobrança.
+              cartaoEncerradoRef.current = null;
               setMetodoDoPedido("pix");
+            }}
+            // C5 (front B2): resposta do cartão sem order confirmada — a
+            // cobrança fica incerta POR PEDIDO (mesma regra do erro ambíguo)
+            // e a tela vira a verificação a partir dessa resposta.
+            onCobrancaEmDuvida={(pontoDePartida) => {
+              marcarCobrancaIncerta(orderId);
+              setCobrancaEmDuvida({ pontoDePartida });
             }}
             onErro={(msg, categoria, sinal) => {
               // Achados 1 e 2, rodada 3 da revisão de risco pré-publicação
@@ -3214,7 +4470,7 @@ export function CheckoutView({
               // comentário grande de `pedidoTemCobrancaIncerta`, acima).
               // Nunca desmarcado aqui, mesmo que ESTE erro em particular não
               // seja incerto.
-              if (cartaoTalvezEmCurso) setPedidoTemCobrancaIncerta(true);
+              if (cartaoTalvezEmCurso) marcarCobrancaIncerta(orderId);
 
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
@@ -3258,6 +4514,7 @@ export function CheckoutView({
         addresses={addresses}
         onNewAddressSubmit={handleNewAddressSubmit}
         onCancel={() => globalThis.history.back()}
+        nomeDaConta={profile?.full_name || user?.user_metadata?.name || ""}
       />
     );
   }
@@ -3906,13 +5163,27 @@ export function CheckoutView({
                             formatado,
                           );
 
-                          const isNational =
-                            config.shippingCoverage === "national";
+                          // A busca vale em TODA loja (decisão do dono,
+                          // 03/10/2026): a cobertura de entrega decide para
+                          // onde a loja entrega, no `calculate-shipping`, e
+                          // nunca onde o cliente pode dizer que mora.
                           // `limpo.length === 8` é portante, não só filtro
                           // de busca — ver o comentário equivalente em
                           // AddressForm.tsx.
-                          if (isNational && limpo.length === 8) {
+                          if (limpo.length === 8) {
+                            // Mesmo CEP da última busca (ou dono dos campos
+                            // atuais): apagar e redigitar o último dígito
+                            // não pode fazer a rua que o cliente corrigiu
+                            // virar "da busca". CEP DIFERENTE: o que ele
+                            // digitou à mão valia para o CEP anterior (ou
+                            // antes deste) — a busca que sai agora volta a
+                            // poder preencher tudo.
+                            const mesmoCep =
+                              limpo === cepEmBuscaRef.current ||
+                              limpo === cepAssociadoRef.current;
                             cepEmBuscaRef.current = limpo;
+                            if (!mesmoCep)
+                              camposEditadosAMaoRef.current.clear();
                             await buscarCep(limpo);
                           }
                         }}
@@ -3971,7 +5242,7 @@ export function CheckoutView({
                     </label>
                     <input
                       id="guest-street"
-                      {...form.register("street")}
+                      {...registrarCampoDoEndereco("street")}
                       placeholder="Nome da rua"
                       aria-invalid={
                         form.formState.errors.street ? true : undefined
@@ -4001,7 +5272,7 @@ export function CheckoutView({
                     </label>
                     <input
                       id="guest-neighborhood"
-                      {...form.register("neighborhood")}
+                      {...registrarCampoDoEndereco("neighborhood")}
                       placeholder="Seu bairro"
                       aria-invalid={
                         form.formState.errors.neighborhood ? true : undefined
@@ -4031,7 +5302,7 @@ export function CheckoutView({
                     </label>
                     <input
                       id="guest-city"
-                      {...form.register("city")}
+                      {...registrarCampoDoEndereco("city")}
                       placeholder="Cidade"
                       // Sem mensagem renderizada para este campo, mas o erro
                       // existe no schema (convidado): `aria-invalid` + foco
@@ -4051,7 +5322,7 @@ export function CheckoutView({
                     </label>
                     <input
                       id="guest-state"
-                      {...form.register("state")}
+                      {...registrarCampoDoEndereco("state")}
                       maxLength={2}
                       placeholder={
                         config.shippingCoverage === "national" ? "UF" : "MG"
@@ -4183,26 +5454,33 @@ export function CheckoutView({
           />
         )}
 
-        {/* Coupon */}
-        {config.enableCoupons && (
-          <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-              <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-                <Tag className="size-4" />
-              </div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                Vantagem Exclusiva
-              </span>
-            </div>
-            <div className="p-4">
-              <CouponInput
-                onApply={handleApplyCoupon}
-                onRemove={handleRemoveCoupon}
-                appliedCoupon={appliedCoupon}
-                error={couponError}
-              />
-            </div>
+        {/* CUPONS DESLIGADOS (#645): o campo de cupom some com a chave
+            desligada, então o motivo de o desconto ter saído mora FORA dele.
+            Fixo na tela (toast some antes de a pessoa ler). */}
+        {cuponsDesligados && cupomTiradoPelaLoja && (
+          <div
+            role="status"
+            className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
+          >
+            A loja desativou os cupons de desconto. O desconto do cupom{" "}
+            {cupomTiradoPelaLoja} foi removido do seu pedido.
           </div>
+        )}
+
+        {/* Cupons: os cartões que a cliente pode usar (vitrine + exclusivos
+            dela) e o campo de digitar. Some com a chave de cupons desligada;
+            o aviso do desconto retirado fica acima, fora desta seção. */}
+        {config.enableCoupons && (
+          <CuponsDoCheckout
+            cupons={cuponsDoCheckout.cupons}
+            situacao={cuponsDoCheckout.situacao}
+            onTentarDeNovo={cuponsDoCheckout.tentarDeNovo}
+            appliedCoupon={appliedCoupon}
+            couponError={couponError}
+            aplicando={aplicandoCupom}
+            onApply={handleApplyCoupon}
+            onRemove={handleRemoveCoupon}
+          />
         )}
 
         {/* Payment Method */}
@@ -4235,6 +5513,36 @@ export function CheckoutView({
                 </span>
                 <div className="grid grid-cols-1 gap-2.5">
                   {opcoesNoApp.map(renderOpcaoDePagamento)}
+                  {/* O cartão pelo app depende de uma leitura: enquanto ela
+                      não responde, a opção aparece como "carregando" (em vez
+                      de sumir, o que faria a lista parcial parecer final); se
+                      falhou, diz isso e deixa tentar de novo — erro não é
+                      "cartão desligado". Não é uma forma escolhível (não é
+                      `radio`): só vira opção quando a config está pronta. */}
+                  {estadoDoCartao.estado === "carregando" && (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600"
+                    >
+                      <Loader2 className="size-4 shrink-0 animate-spin" />
+                      Cartão: carregando…
+                    </div>
+                  )}
+                  {estadoDoCartao.estado === "erro" && (
+                    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600">
+                      <span role="alert">
+                        Cartão: não foi possível conferir agora.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => estadoDoCartao.tentarDeNovo()}
+                        className="rounded-lg border border-zinc-900 px-3 py-1.5 text-xs font-bold normal-case tracking-normal text-zinc-900 active:scale-[0.98]"
+                      >
+                        Tentar de novo
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -4254,9 +5562,14 @@ export function CheckoutView({
             {selectedShippingOption && !ehEntregaLocal && (
               <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
                 {pagamentoOnlineLigado()
-                  ? cartaoDisponivel
-                    ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
-                    : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
+                  ? estadoDoCartao.estado !== "pronto"
+                    ? // Config do cartão ainda carregando ou com leitura
+                      // falhada: o checkout NÃO sabe quais formas existem,
+                      // então não afirma "só PIX" nem que o cartão está lá.
+                      "Envio por transportadora exige pagamento antecipado — as formas de pagamento disponíveis aparecem abaixo."
+                    : cartaoDisponivel
+                      ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
+                      : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
                   : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
               </p>
             )}
@@ -5028,7 +6341,7 @@ function SuccessView({
     if (numeroLimpo.length === 11 || numeroLimpo.length === 10) {
       numeroLimpo = `55${numeroLimpo}`;
     }
-    const mensagem = `Olá! Quero acompanhar o meu pedido #${orderId.slice(-6).toUpperCase()}.`;
+    const mensagem = `Olá! Quero acompanhar o meu pedido #${numeroDoPedido(orderId)}.`;
     const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -5058,9 +6371,7 @@ function SuccessView({
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
           Identificador:{" "}
-          <span className="text-zinc-900">
-            #{orderId.slice(-6).toUpperCase()}
-          </span>
+          <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
@@ -5142,9 +6453,7 @@ function PagamentoConfirmadoView({
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
           Pedido:{" "}
-          <span className="text-zinc-900">
-            #{orderId.slice(-6).toUpperCase()}
-          </span>
+          <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <p className="text-lg font-black text-emerald-700">
           R$ {valor.toFixed(2).replace(".", ",")} recebido
@@ -5220,7 +6529,7 @@ function PagamentoForaDoPrazoView({
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
     }
-    const mensagem = `Olá! Paguei o pedido #${orderId.slice(-6).toUpperCase()}, mas o prazo de reserva venceu. Podem me ajudar?`;
+    const mensagem = `Olá! Paguei o pedido #${numeroDoPedido(orderId)}, mas o prazo de reserva venceu. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -5248,9 +6557,7 @@ function PagamentoForaDoPrazoView({
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
           Pedido:{" "}
-          <span className="text-zinc-900">
-            #{orderId.slice(-6).toUpperCase()}
-          </span>
+          <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <p className="text-lg font-black text-amber-600">
           R$ {valor.toFixed(2).replace(".", ",")} recebido
@@ -5294,6 +6601,8 @@ interface AddressSelectionViewProps {
   addresses: Address[];
   onNewAddressSubmit: (data: Omit<Address, "id" | "user_id">) => Promise<void>;
   onCancel: () => void;
+  /** Nome da conta: já vem em "Quem vai receber" do endereço novo. */
+  nomeDaConta?: string;
 }
 
 function AddressSelectionView({
@@ -5301,9 +6610,10 @@ function AddressSelectionView({
   addresses,
   onNewAddressSubmit,
   onCancel,
+  nomeDaConta,
 }: Readonly<AddressSelectionViewProps>) {
   return (
-    <div className="min-h-screen bg-white pb-16 duration-500 animate-in slide-in-from-right">
+    <div className="pb-customer min-h-screen bg-background duration-500 animate-in slide-in-from-right">
       <div className="mx-auto max-w-md p-4">
         <div className="group relative mb-5 overflow-hidden rounded-2xl bg-primary p-5 shadow-lg">
           <div className="absolute right-0 top-0 -mr-16 -mt-16 size-32 rounded-full bg-white/5 blur-2xl transition-colors group-hover:bg-white/10" />
@@ -5322,7 +6632,7 @@ function AddressSelectionView({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <AddressForm
             initialData={
               editingAddressId
@@ -5331,6 +6641,7 @@ function AddressSelectionView({
             }
             onSubmit={onNewAddressSubmit}
             onCancel={onCancel}
+            nomeDaConta={nomeDaConta}
           />
         </div>
 

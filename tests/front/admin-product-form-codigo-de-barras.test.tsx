@@ -344,7 +344,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
       await new Promise((resolve) => setTimeout(resolve, 300));
     });
     await act(async () => {
-      localizarBotaoPorTexto(document, "Efetivar Variante")!.click();
+      localizarBotaoPorTexto(document, "Salvar variação")!.click();
       await esperarMicrotarefas();
       await esperarMicrotarefas();
     });

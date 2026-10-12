@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// O CEP de origem só conclui a "entrega" do cartão do Início com oito dígitos.
+// Desde o cartão dos seis passos, o endereço (CEP + número) é um passo à
+// parte; aqui a loja tem nome, logo, WhatsApp, PIX e produto, e só o CEP varia
+// — o que se observa é a linha "Como você entrega" da lista dos seis.
 import { LojaProntaEEstoqueBaixo } from "@/components/admin/dashboard/LojaProntaEEstoqueBaixo";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -7,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("CEP de origem só conclui o checklist com oito dígitos", () => {
+describe("CEP de origem só conclui a entrega do cartão com oito dígitos", () => {
   let hospedeiro: HTMLDivElement;
   let raiz: Root;
 
@@ -42,9 +47,16 @@ describe("CEP de origem só conclui o checklist com oito dígitos", () => {
       raiz.render(
         <LojaProntaEEstoqueBaixo
           stats={{ inventoryAlerts: 0 }}
-          originCep={cep}
+          config={{
+            storeName: "Loja",
+            logoUrl: "https://exemplo.test/logo.png",
+            originCep: cep,
+            storeAddress: null,
+            whatsappNumber: "34999999999",
+          }}
           ligado={true}
           chaveOk={true}
+          formasNaEntrega={[]}
           produtos={[{ isActive: true }]}
           configCarregando={false}
           produtosCarregando={false}
@@ -54,25 +66,28 @@ describe("CEP de origem só conclui o checklist com oito dígitos", () => {
       );
     });
 
-    const itemCep = Array.from(hospedeiro.querySelectorAll("ul > li")).find(
-      (item) => item.textContent?.includes("CEP"),
+    // A lista dos seis nasce recolhida: abre para ler a linha da entrega.
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>("button[aria-expanded]")
+        ?.click();
+    });
+    const itemEntrega = Array.from(hospedeiro.querySelectorAll("ul > li")).find(
+      (item) => /entrega/i.test(item.textContent ?? ""),
     );
-    expect(itemCep).toBeDefined();
+    expect(itemEntrega).toBeDefined();
     if (feito) {
-      expect(itemCep?.textContent).toContain(
-        "CEP de origem do frete preenchido",
-      );
-      expect(itemCep?.querySelector("button")).toBeNull();
-      expect(hospedeiro.textContent).toContain("está pronta para vender.");
+      expect(itemEntrega?.textContent).toContain("Entrega configurada");
+      expect(itemEntrega?.querySelector("button")).toBeNull();
     } else {
-      expect(itemCep?.textContent).toContain(
-        "Cadastrar CEP de origem do frete",
-      );
-      expect(hospedeiro.textContent).not.toContain("está pronta para vender.");
-      const botao = itemCep?.querySelector("button");
+      expect(itemEntrega?.textContent).toContain("Configurar a entrega");
+      const botao = itemEntrega?.querySelector("button");
       expect(botao).toBeTruthy();
       await act(async () => botao?.click());
       expect(onNavigate).toHaveBeenCalledWith("admin-shipping");
     }
+    // O endereço (CEP + número) é outro passo: sem texto montado, ele segue
+    // pendente e a loja nunca aparece como pronta por causa do CEP sozinho.
+    expect(hospedeiro.textContent).not.toContain("Loja pronta para vender");
   });
 });

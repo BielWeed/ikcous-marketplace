@@ -1,9 +1,9 @@
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
+import { useAuth } from "@/hooks/useAuth";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import type { Address } from "@/types";
-import { MapPin, Sparkles } from "lucide-react";
 import { useEffect } from "react";
 
 interface AddressFormViewProps {
@@ -13,6 +13,7 @@ interface AddressFormViewProps {
 
 export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   const { config } = useStore();
+  const { user, profile } = useAuth();
   const { addresses, fetchAddresses, addAddress, updateAddress } =
     useAddresses();
 
@@ -23,6 +24,10 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   const editingAddress = addressId
     ? addresses.find((a) => a.id === addressId)
     : undefined;
+
+  // "Quem vai receber" já nasce com o nome da conta (mesma fonte que o
+  // checkout usa para o nome do comprador).
+  const nomeDaConta = profile?.full_name || user?.user_metadata?.name || "";
 
   const handleSubmit = async (data: Omit<Address, "id" | "user_id">) => {
     let success;
@@ -39,48 +44,33 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   };
 
   return (
-    <div className="flex min-h-full flex-col bg-white">
-      <div className="mx-auto max-w-md px-4 py-8">
-        {/* Visual Header */}
-        <div className="group relative mb-8 overflow-hidden rounded-[2.5rem] bg-zinc-900 p-8 shadow-2xl">
-          {/* Decorative elements */}
-          <div className="absolute right-0 top-0 -mr-16 -mt-16 size-32 rounded-full bg-white/5 blur-2xl transition-colors group-hover:bg-white/10" />
-          <div className="absolute bottom-0 left-0 -mb-12 -ml-12 size-24 rounded-full bg-white/5 blur-xl" />
-
-          <div className="relative z-10 flex items-start gap-5">
-            <div className="mt-1 flex size-12 flex-shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/10 backdrop-blur-md">
-              <MapPin className="size-6 text-white" />
-            </div>
-            <div className="flex flex-col">
-              <h2 className="mb-1 flex items-center gap-2 text-3xl font-black tracking-tighter text-white">
-                {addressId ? "Editar Endereço" : "Novo Endereço"}
-                <Sparkles className="size-5 animate-pulse text-amber-400" />
-              </h2>
-              <p className="text-[10px] font-black uppercase leading-tight tracking-[0.2em] text-zinc-400">
-                {addressId
-                  ? "Atualize os dados para entrega"
-                  : `Onde entregaremos seu produto da ${nomeDaLoja(config)}?`}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Form Container */}
-        <div className="rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-sm duration-700 animate-in fade-in slide-in-from-bottom-4">
-          <AddressForm
-            initialData={editingAddress}
-            onSubmit={handleSubmit}
-            onCancel={onBack}
-          />
-        </div>
-
-        {/* Hint/Footer info */}
-        <div className="mt-8 px-6 text-center">
-          <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-300">
-            Seus dados estão seguros e serão usados apenas para a logística de
-            entrega.
+    <div className="pb-customer flex min-h-full flex-col bg-background">
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-5 pt-5">
+        <div className="mb-5">
+          {/* O nome da tela, como na prévia aprovada (barra "Novo endereço"):
+              o app não tem título de tela no cabeçalho, e a jornada
+              trocar-endereco-carrinho (e2e) procura este texto. */}
+          {!addressId && (
+            <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Novo endereço
+            </p>
+          )}
+          <h2 className="text-2xl font-extrabold leading-[1.15] tracking-tight text-foreground">
+            {addressId ? "Editar endereço" : "Para onde vamos entregar?"}
+          </h2>
+          <p className="mt-1.5 text-sm leading-snug text-muted-foreground">
+            {addressId
+              ? "Atualize os dados para entrega."
+              : `Seu pedido da ${nomeDaLoja(config)}: comece pelo CEP e a gente completa o resto.`}
           </p>
         </div>
+
+        <AddressForm
+          initialData={editingAddress}
+          onSubmit={handleSubmit}
+          onCancel={onBack}
+          nomeDaConta={nomeDaConta}
+        />
       </div>
     </div>
   );

@@ -1,0 +1,85 @@
+# Conferência CENTRAL da frota: confere, de fora (como o cliente vê), se TODOS
+# os endereços do site servem a release esperada e se cada loja continua
+# servindo a ficha dela (cabeçalho de caderneta, ref do Supabase e título,
+# em 3 amostras). Só LEITURA: abre /version.json e / de cada endereço.
+#
+# PARA QUE SERVE: rodar ANTES de publicar (a frota está toda na versão
+# anterior e íntegra?) e DEPOIS de publicar (todos os endereços subiram para o
+# SHA novo?). Em 05/10/2026 a release 1.5.18 ficou só em 1 endereço e 9
+# continuaram na 1.5.17, por publicação parcial deliberada (dependências da
+# Savy, coordenação manual) e sem conferência central que mostrasse quem
+# ficou para trás; esta conferência torna isso visível,
+# diz o TIPO da divergência (endereço antigo, loja trocada, build divergente,
+# inalcançável...) e como recuperar. A lógica mora em
+# scripts/frota/conferir-frota.mjs; a política da casa, em
+# scripts/frota/politica.json.
+#
+# USO: Actions -> Run workflow -> `sha` = SHA COMPLETO (40 hex) da release
+# esperada (obrigatório: sem ele, frota inteira velha daria verde);
+# `enderecos` (opcional) = domínios extras a conferir, um por linha.
+#
+# LIMITE 1 — INVENTÁRIO PARCIAL: aqui NÃO há --vercel (exige o CLI da Vercel
+# logado, só existe na máquina do dono). Sem ele o inventário é a lista de
+# reserva da política + `enderecos`, e o resumo do run diz "inventário:
+# PARCIAL" e "endereço→deployment: NÃO CONFERIDO". O verde daqui NÃO prova que
+# não existe um endereço novo na Vercel fora da lista. O inventário completo
+# (todos os aliases do projeto) é o `--vercel`, rodado localmente.
+#
+# LIMITE 2 — SEM AGENDAMENTO: não há `schedule:` de propósito. O ramo padrão
+# do GitHub deste repositório é `develop` (parado) e agendamento só dispara a
+# partir do ramo padrão; um cron aqui nunca rodaria. Mudar o ramo padrão é
+# decisão do dono.
+#
+# SEGURANÇA: nenhum segredo, nenhuma escrita (contents: read). As entradas
+# chegam ao shell por variável de ambiente, nunca interpoladas no script.
+name: Conferir frota
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "SHA completo (40 hex) da release esperada em todos os endereços"
+        required: true
+      enderecos:
+        description: "Endereços extras (um domínio por linha, opcional)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frota-conferir
+  cancel-in-progress: false
+
+jobs:
+  conferir:
+    name: Conferir a frota contra o SHA informado
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Valida o SHA (40 hex) antes de qualquer requisição
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          if ! [[ "$SHA" =~ ^[a-fA-F0-9]{40}$ ]]; then
+            echo "::error::sha precisa ter exatamente 40 caracteres hexadecimais"; exit 1
+          fi
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Confere cada endereço
+        env:
+          SHA: ${{ inputs.sha }}
+          ENDERECOS: ${{ inputs.enderecos }}
+        run: |
+          args=(--sha "$SHA")
+          if [ -n "${ENDERECOS//[[:space:]]/}" ]; then
+            printf '%s\n' "$ENDERECOS" > "$RUNNER_TEMP/enderecos.txt"
+            args+=(--enderecos "$RUNNER_TEMP/enderecos.txt")
+          fi
+          node scripts/frota/conferir-frota.mjs "${args[@]}"

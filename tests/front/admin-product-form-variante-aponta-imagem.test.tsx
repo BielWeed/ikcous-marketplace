@@ -244,7 +244,7 @@ describe("AdminProductFormView — imagem da variante aponta para as imagens do 
     expect(depoisDeEscolher[1].getAttribute("aria-pressed")).toBe("true");
 
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
 
     // A variante entrou na lista APONTANDO a imagem do produto: a <img>

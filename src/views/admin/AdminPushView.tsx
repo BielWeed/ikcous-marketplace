@@ -4,6 +4,8 @@ import {
   LocalBufferedInput,
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
+import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -13,12 +15,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
+import { destinoDaUrl, urlDoDestino } from "@/lib/destino-do-aviso";
 import { supabase } from "@/lib/supabase";
+import { normalizeText } from "@/lib/utils";
 import type { View } from "@/types";
 import {
   type ContagemMedida,
@@ -102,7 +107,7 @@ function SecaoColapsavel({
               {titulo}
             </span>
             {descricao ? (
-              <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+              <span className="mt-0.5 block text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                 {descricao}
               </span>
             ) : null}
@@ -111,7 +116,7 @@ function SecaoColapsavel({
         <span className="flex shrink-0 items-center gap-2">
           {extra}
           {aberta && comPendencia && (
-            <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
+            <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">
               Salve antes de fechar
             </span>
           )}
@@ -231,7 +236,7 @@ function PreviaNoCelular({
       <div className="w-full max-w-[300px] rounded-[34px] border border-zinc-700/60 bg-gradient-to-b from-zinc-900 to-black p-1.5 shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
         <div className="relative overflow-hidden rounded-[26px] bg-[#0a0a0c] pb-3">
           {/* Status bar — hora real à esquerda, punch hole no meio, sinais à direita */}
-          <div className="relative flex items-center justify-between px-4.5 pt-2.5 text-[9.5px] font-semibold text-zinc-400">
+          <div className="relative flex items-center justify-between px-4.5 pt-2.5 text-[11px] font-semibold text-zinc-400">
             <span className="tabular-nums">{hora}</span>
             <span className="absolute left-1/2 top-2.5 size-3 -translate-x-1/2 rounded-full bg-black ring-1 ring-zinc-800" />
             <span className="flex items-center gap-1.5 text-zinc-500">
@@ -242,7 +247,7 @@ function PreviaNoCelular({
           </div>
 
           {/* Relógio da tela de bloqueio, como o cliente vê ao acender */}
-          <p className="mt-4 text-center text-[10px] font-medium capitalize text-zinc-500">
+          <p className="mt-4 text-center text-[11px] font-medium capitalize text-zinc-500">
             {data}
           </p>
           <p className="text-center text-4xl font-thin tabular-nums text-zinc-100">
@@ -259,10 +264,10 @@ function PreviaNoCelular({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-[9.5px] font-medium text-zinc-400">
+                  <span className="truncate text-[11px] font-medium text-zinc-400">
                     {nome}
                   </span>
-                  <span className="shrink-0 text-[9.5px] text-zinc-500">
+                  <span className="shrink-0 text-[11px] text-zinc-500">
                     agora
                   </span>
                 </div>
@@ -285,7 +290,7 @@ function PreviaNoCelular({
           </div>
         </div>
       </div>
-      <p className="text-[10px] text-zinc-500">
+      <p className="text-[11px] text-zinc-500">
         Prévia ao vivo — é assim que chega no celular do cliente
       </p>
     </div>
@@ -357,6 +362,7 @@ export const AdminPushView = memo(function AdminPushView({
   const [destType, setDestType] = useState<string>("home");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [customPath, setCustomPath] = useState<string>("");
+  const [filtroDeProduto, setFiltroDeProduto] = useState("");
   const [products, setProducts] = useState<{ id: string; nome: string }[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
@@ -387,31 +393,22 @@ export const AdminPushView = memo(function AdminPushView({
     loadProducts();
   }, []);
 
+  // A URL de cada destino mora em `src/lib/destino-do-aviso.ts` (função pura,
+  // com a tabela de URLs presa em teste): este componente só guarda a escolha.
   const updateUrl = (type: string, prodId: string, custom: string) => {
-    let finalUrl = "/";
-    if (type === "home") {
-      finalUrl = "/";
-    } else if (type === "search") {
-      finalUrl = "/search";
-    } else if (type === "cart") {
-      finalUrl = "/cart";
-    } else if (type === "favorites") {
-      finalUrl = "/favorites";
-    } else if (type === "orders") {
-      finalUrl = "/orders";
-    } else if (type === "profile") {
-      finalUrl = "/profile";
-    } else if (type === "product") {
-      finalUrl = prodId ? `/product-detail?id=${prodId}` : "/product-detail";
-    } else if (type === "custom") {
-      finalUrl = custom;
-    }
-    setNotification((prev) => ({ ...prev, url: finalUrl }));
+    setNotification((prev) => ({
+      ...prev,
+      url: urlDoDestino(type, prodId, custom),
+    }));
   };
 
   const handleDestTypeChange = (type: string) => {
     setDestType(type);
-    updateUrl(type, selectedProductId, customPath);
+    // O caminho manual (Avançado) só vale enquanto "Outra página" é o destino:
+    // escolher uma tela da lista o esvazia para o campo não mostrar um caminho
+    // que o aviso já não leva.
+    setCustomPath("");
+    updateUrl(type, selectedProductId, "");
   };
 
   const handleProductChange = (prodId: string) => {
@@ -419,39 +416,50 @@ export const AdminPushView = memo(function AdminPushView({
     updateUrl(destType, prodId, customPath);
   };
 
+  // Digitar no Avançado É escolher a "outra página": o destino vira `custom`.
+  // Campo vazio volta para a página inicial (a URL "" é lida como "home").
+  // O campo devolve o valor também ao perder o foco SEM mudança, e ele existe
+  // sempre (o Avançado só o esconde): sem a guarda, focar e sair viraria
+  // "escolhi outra página" e zeraria o destino já escolhido na lista.
   const handleCustomPathChange = (val: string) => {
+    if (val === customPath) return;
     setCustomPath(val);
-    updateUrl(destType, selectedProductId, val);
+    setDestType("custom");
+    updateUrl("custom", selectedProductId, val);
   };
 
   useEffect(() => {
-    const url = notification.url;
-    if (url === "/" || url === "" || url === "/home") {
-      if (destType !== "home") setDestType("home");
-    } else if (url === "/search") {
-      if (destType !== "search") setDestType("search");
-    } else if (url === "/cart") {
-      if (destType !== "cart") setDestType("cart");
-    } else if (url === "/favorites") {
-      if (destType !== "favorites") setDestType("favorites");
-    } else if (url === "/orders") {
-      if (destType !== "orders") setDestType("orders");
-    } else if (url === "/profile") {
-      if (destType !== "profile") setDestType("profile");
-    } else if (
-      url.startsWith("/product-detail?id=") ||
-      url.startsWith("/product/")
-    ) {
-      if (destType !== "product") setDestType("product");
-      const id = url.includes("?id=")
-        ? url.split("?id=")[1] || ""
-        : url.split("/product/")[1] || "";
-      if (selectedProductId !== id) setSelectedProductId(id);
-    } else {
-      if (destType !== "custom") setDestType("custom");
-      if (customPath !== url) setCustomPath(url);
-    }
+    const destino = destinoDaUrl(notification.url);
+    if (destType !== destino.tipo) setDestType(destino.tipo);
+    if (
+      destino.idDoProduto !== null &&
+      selectedProductId !== destino.idDoProduto
+    )
+      setSelectedProductId(destino.idDoProduto);
+    if (destino.caminho !== null && customPath !== destino.caminho)
+      setCustomPath(destino.caminho);
+    // O destino virou uma tela da lista (ex.: um modelo pronto): o caminho
+    // manual que sobrou não é mais o do aviso. Um caminho que é a própria URL
+    // (digitou "/cart" à mão) fica como está.
+    if (
+      destino.tipo !== "custom" &&
+      customPath !== "" &&
+      customPath !== notification.url
+    )
+      setCustomPath("");
   }, [notification.url]);
+
+  // Produtos que o filtro por nome deixa à vista. O produto já escolhido fica
+  // sempre na lista: sem ele o seletor ficaria vazio enquanto o aviso sairia
+  // com aquele produto.
+  const produtosVisiveis = (() => {
+    const termo = normalizeText(filtroDeProduto);
+    if (!termo) return products;
+    return products.filter(
+      (p) =>
+        p.id === selectedProductId || normalizeText(p.nome).includes(termo),
+    );
+  })();
 
   useEffect(() => {
     if (targetUserId) {
@@ -713,6 +721,7 @@ export const AdminPushView = memo(function AdminPushView({
                 "A mensagem foi registrada como aviso dentro do app — ele vai ver na próxima vez que abrir a loja.",
             });
             setNotification({ title: "", body: "", url: "/" });
+            setCustomPath("");
           } catch (inAppErr) {
             console.error("Error saving in-app notification:", inAppErr);
             toast.error("Não foi possível registrar o aviso para este cliente");
@@ -908,6 +917,7 @@ export const AdminPushView = memo(function AdminPushView({
       );
 
       setNotification({ title: "", body: "", url: "/" });
+      setCustomPath("");
       fetchHistory();
     } catch (error) {
       console.error("Error sending push:", error);
@@ -981,11 +991,11 @@ export const AdminPushView = memo(function AdminPushView({
               cabe, em vez de mudar o componente para todo mundo. */}
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
             <AdminPageHeader
-              titulo="Enviar Notificações"
+              titulo={NOMES_DO_PAINEL["admin-push"]}
               acoes={
                 <>
                   {/* Indicadores no Topbar (os mesmos de antes) */}
-                  <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold text-zinc-300">
+                  <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
                     <Smartphone className="size-3.5 text-admin-gold" />
                     <span>
                       <strong className="text-white font-bold">
@@ -994,11 +1004,11 @@ export const AdminPushView = memo(function AdminPushView({
                       Celulares Cadastrados
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold">
+                  <div className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[11px] font-semibold">
                     <span
                       className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-admin-gold animate-pulse" : "bg-zinc-600"}`}
                     />
-                    <span className="text-zinc-400 uppercase tracking-wider text-[9px]">
+                    <span className="text-zinc-400 uppercase tracking-wider text-[11px]">
                       {config.realTimeSalesAlerts
                         ? "Avisos de Vendas Ativos"
                         : "Avisos Desativados"}
@@ -1010,14 +1020,19 @@ export const AdminPushView = memo(function AdminPushView({
               <button
                 type="button"
                 onClick={() => setShowHelpModal(true)}
-                className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+                className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
                 title="Ajuda e explicação desta tela"
               >
-                <HelpCircle className="size-4" />
+                <span
+                  aria-hidden="true"
+                  className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                >
+                  <HelpCircle className="size-4" />
+                </span>
               </button>
             </AdminPageHeader>
           </div>
-          <p className="mt-1 text-[9px] font-extrabold uppercase tracking-widest text-zinc-500">
+          <p className="mt-1 text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">
             Envie mensagens e avisos direto no celular dos clientes
           </p>
         </div>
@@ -1047,12 +1062,12 @@ export const AdminPushView = memo(function AdminPushView({
               </span>
               <span className="min-w-0">
                 <span className="block truncate">No ar agora</span>
-                <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                <span className="mt-0.5 block text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                   Escreva e envie mensagens para os clientes
                 </span>
               </span>
             </p>
-            <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-admin-gold/20 bg-admin-gold/10 px-2.5 py-0.5 text-[10px] font-bold text-admin-gold">
+            <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-admin-gold/20 bg-admin-gold/10 px-2.5 py-0.5 text-[11px] font-bold text-admin-gold">
               <Radio className="size-3 animate-pulse" />
               <span>Receberão: {textoDeAlcanceEmAparelhos(reachExibido)}</span>
             </div>
@@ -1141,7 +1156,7 @@ export const AdminPushView = memo(function AdminPushView({
             {isOffline && (
               <div className="flex items-center gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-rose-300 animate-in fade-in">
                 <AlertCircle className="size-4 shrink-0" />
-                <div className="text-[10px]">
+                <div className="text-[11px]">
                   <span className="font-bold uppercase">
                     Você está offline:
                   </span>{" "}
@@ -1159,11 +1174,11 @@ export const AdminPushView = memo(function AdminPushView({
                 <div className="flex items-center justify-between mb-1">
                   <Label
                     htmlFor="push-title"
-                    className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                    className="text-[11px] font-black uppercase tracking-widest text-zinc-400"
                   >
                     Título da mensagem
                   </Label>
-                  <span className="text-[8px] font-mono tabular-nums text-zinc-500">
+                  <span className="text-[11px] font-mono tabular-nums text-zinc-500">
                     {notification.title.length}/60
                   </span>
                 </div>
@@ -1194,11 +1209,11 @@ export const AdminPushView = memo(function AdminPushView({
                 <div className="flex items-center justify-between mb-1">
                   <Label
                     htmlFor="push-body"
-                    className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                    className="text-[11px] font-black uppercase tracking-widest text-zinc-400"
                   >
                     Texto da mensagem
                   </Label>
-                  <span className="text-[8px] font-mono tabular-nums text-zinc-500">
+                  <span className="text-[11px] font-mono tabular-nums text-zinc-500">
                     {notification.body.length}/140
                   </span>
                 </div>
@@ -1251,7 +1266,7 @@ export const AdminPushView = memo(function AdminPushView({
                 porque é o selecionar que dispara a medição daquele segmento. */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                <span className="text-[11px] font-black uppercase tracking-widest text-zinc-400">
                   Quem recebe{" "}
                   <span className="font-semibold normal-case tracking-normal text-zinc-500">
                     — contado agora, de verdade
@@ -1264,7 +1279,7 @@ export const AdminPushView = memo(function AdminPushView({
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="size-4 text-admin-gold" />
                     <div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-admin-gold leading-none">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-admin-gold leading-tight">
                         Mensagem para Cliente Específico
                       </p>
                       <p className="text-xs font-bold text-white mt-0.5">
@@ -1275,7 +1290,7 @@ export const AdminPushView = memo(function AdminPushView({
                   <button
                     onClick={() => onNavigate("admin-push")}
                     disabled={isOffline}
-                    className="rounded-md border border-white/10 bg-zinc-900 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                    className="rounded-md border border-white/10 bg-zinc-900 px-2.5 py-1 text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:bg-zinc-800 hover:text-white"
                   >
                     Mudar para todos os clientes
                   </button>
@@ -1292,7 +1307,7 @@ export const AdminPushView = memo(function AdminPushView({
               {podeGravarAvisoSemPush && (
                 <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-300 animate-in fade-in">
                   <AlertCircle className="size-3.5 shrink-0" />
-                  <p className="text-[10px] font-medium leading-tight">
+                  <p className="text-[11px] font-medium leading-tight">
                     Este cliente não tem aparelho inscrito para push — a
                     mensagem será registrada como aviso dentro do app, e ele vai
                     ver na próxima vez que abrir a loja.
@@ -1368,7 +1383,7 @@ export const AdminPushView = memo(function AdminPushView({
                           : "border-white/5 bg-white/[0.02] text-zinc-400 hover:bg-white/5 hover:text-white"
                       } disabled:cursor-not-allowed disabled:opacity-40`}
                     >
-                      <span className="w-full truncate text-[9px] font-black uppercase tracking-wider">
+                      <span className="w-full break-words text-[11px] font-black uppercase leading-tight tracking-wider">
                         {s.label}
                       </span>
                       {/* O número GRANDE do chip (direção B), no span
@@ -1385,7 +1400,7 @@ export const AdminPushView = memo(function AdminPushView({
                       >
                         {rotuloDaContagem(s.count)}
                       </span>
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-500">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                         {/* Zero MEDIDO tem motivo na cara (a regra do
                             servidor, em palavras — é o que a direção B
                             pediu). Desconhecido não tem motivo: null não é
@@ -1400,13 +1415,16 @@ export const AdminPushView = memo(function AdminPushView({
 
             {/* Destino — inline (direção B): o próprio gatilho do Select é a
                 linha "Ao clicar na mensagem, o cliente abre … mudar ↗" — um
-                clique abre as opções. Os 8 itens e a trava PAINEL-07 são os
+                clique abre as opções. Os 7 itens da lista (o caminho manual
+                foi para o "Avançado", abaixo) e a trava PAINEL-07 são os
                 de antes; a leitura mono do URL saiu (o destino escolhido já
                 aparece no próprio gatilho — dizer de novo era redundância). */}
             <div className="space-y-2">
               <Select
                 name="destType"
-                value={destType}
+                // "custom" (caminho digitado no Avançado) não é item da lista:
+                // o seletor fica vazio e o placeholder diz onde está o destino.
+                value={destType === "custom" ? "" : destType}
                 onValueChange={handleDestTypeChange}
                 // PAINEL-07: sem o loadingProducts aqui, escolher
                 // "Produto" antes da lista carregar gerava um URL
@@ -1420,11 +1438,17 @@ export const AdminPushView = memo(function AdminPushView({
                   className="h-auto w-full justify-between gap-3 rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-left shadow-inner focus:border-admin-gold/50 focus:ring-0 [&>svg]:opacity-50"
                 >
                   <span className="min-w-0">
-                    <span className="block text-[10px] font-semibold text-zinc-400">
+                    <span className="block text-[11px] font-semibold text-zinc-400">
                       Ao clicar na mensagem, o cliente abre
                     </span>
                     <span className="mt-0.5 flex items-center gap-2 text-[13px] font-bold text-white">
-                      <SelectValue placeholder="Selecione a tela..." />
+                      <SelectValue
+                        placeholder={
+                          destType === "custom"
+                            ? "Outra página (veja Avançado)"
+                            : "Selecione a tela..."
+                        }
+                      />
                       <span className="shrink-0 text-[11px] font-black text-admin-gold">
                         mudar ↗
                       </span>
@@ -1443,9 +1467,6 @@ export const AdminPushView = memo(function AdminPushView({
                   <SelectItem value="product">
                     Abrir um Produto Específico
                   </SelectItem>
-                  <SelectItem value="custom">
-                    Outra Página (Link manual)
-                  </SelectItem>
                 </SelectContent>
               </Select>
 
@@ -1453,10 +1474,21 @@ export const AdminPushView = memo(function AdminPushView({
                 <div className="space-y-1 duration-200 animate-in fade-in">
                   <Label
                     htmlFor="push-product-select"
-                    className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                    className="text-[11px] font-black uppercase tracking-widest text-zinc-400"
                   >
                     Selecione o produto
                   </Label>
+                  <Input
+                    id="push-product-filter"
+                    type="search"
+                    autoComplete="off"
+                    aria-label="Buscar produto pelo nome"
+                    placeholder="Buscar pelo nome..."
+                    value={filtroDeProduto}
+                    onChange={(e) => setFiltroDeProduto(e.target.value)}
+                    disabled={isOffline || loading || loadingProducts}
+                    className="h-9 rounded-lg border-white/10 bg-black/50 text-xs text-white shadow-inner placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-0"
+                  />
                   <Select
                     name="productId"
                     value={selectedProductId}
@@ -1476,7 +1508,7 @@ export const AdminPushView = memo(function AdminPushView({
                       />
                     </SelectTrigger>
                     <SelectContent className="max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-zinc-950 text-white shadow-2xl">
-                      {products.map((p) => (
+                      {produtosVisiveis.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.nome}
                         </SelectItem>
@@ -1486,13 +1518,20 @@ export const AdminPushView = memo(function AdminPushView({
                 </div>
               )}
 
-              {destType === "custom" && (
-                <div className="space-y-1 duration-200 animate-in fade-in">
+              {/* Avançado: o caminho manual (mesmo `#push-custom-path` de
+                  antes). Recolhido por padrão; abre sozinho quando a URL de
+                  um modelo pronto não é uma das telas da lista (destino
+                  `custom`), para o caminho nunca ficar escondido. */}
+              <SecaoRecolhivel
+                titulo="Avançado: abrir outra página"
+                temErro={destType === "custom"}
+              >
+                <div className="space-y-1">
                   <Label
                     htmlFor="push-custom-path"
-                    className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                    className="text-[11px] font-black uppercase tracking-widest text-zinc-400"
                   >
-                    Digite o caminho da página
+                    Endereço da página (comece com /)
                   </Label>
                   <LocalBufferedInput
                     id="push-custom-path"
@@ -1501,12 +1540,12 @@ export const AdminPushView = memo(function AdminPushView({
                     value={customPath}
                     onFlush={handleCustomPathChange}
                     disabled={isOffline || loading}
-                    placeholder="/exemplo-pagina"
+                    placeholder="/nome-da-pagina"
                     useShadcn={true}
                     className="h-9 rounded-lg border-white/10 bg-black/50 font-mono text-xs text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 placeholder:text-zinc-600"
                   />
                 </div>
-              )}
+              </SecaoRecolhivel>
             </div>
 
             {/* Botão de Ação */}
@@ -1550,11 +1589,11 @@ export const AdminPushView = memo(function AdminPushView({
             */}
           <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
             <div className="flex items-center justify-between mb-2">
-              <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+              <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-zinc-400">
                 <Users className="size-3.5 text-admin-gold" /> Clientes Prontos
                 para Receber
               </p>
-              <span className="text-[9px] font-mono text-admin-gold font-bold uppercase">
+              <span className="text-[11px] font-mono text-admin-gold font-bold uppercase">
                 Ativos
               </span>
             </div>
@@ -1564,7 +1603,7 @@ export const AdminPushView = memo(function AdminPushView({
                 <h2 className="text-3xl font-black tabular-nums tracking-tight text-white">
                   {rotuloDaContagem(subCount)}
                 </h2>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-admin-gold">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-admin-gold">
                   Celulares e Computadores Cadastrados
                 </span>
               </div>
@@ -1576,7 +1615,7 @@ export const AdminPushView = memo(function AdminPushView({
             <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-admin-gold/20 bg-admin-gold/10 text-admin-gold">
               <Clock className="size-3.5 text-admin-gold" />
             </div>
-            <p className="text-[10px] font-medium text-zinc-300 leading-tight">
+            <p className="text-[11px] font-medium text-zinc-300 leading-tight">
               <span className="font-bold text-admin-gold uppercase tracking-wider">
                 Dica de Vendas:
               </span>{" "}
@@ -1598,7 +1637,7 @@ export const AdminPushView = memo(function AdminPushView({
           icone={History}
           abertaPorPadrao
           extra={
-            <span className="text-[8px] font-mono text-zinc-500">
+            <span className="text-[11px] font-mono text-zinc-500">
               Últimas 20 mensagens
             </span>
           }
@@ -1606,7 +1645,7 @@ export const AdminPushView = memo(function AdminPushView({
           <div className="max-h-[350px] overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-zinc-700">
             {history === null ? (
               <div className="py-6 text-center italic text-zinc-600">
-                <p className="text-[9px] font-bold uppercase tracking-widest">
+                <p className="text-[11px] font-bold uppercase tracking-widest">
                   Não foi possível carregar o histórico
                 </p>
               </div>
@@ -1618,7 +1657,7 @@ export const AdminPushView = memo(function AdminPushView({
                 <p className="text-[11px] font-bold text-zinc-300">
                   Nenhuma mensagem enviada até agora
                 </p>
-                <span className="mt-1 block text-[10px] font-medium text-zinc-500">
+                <span className="mt-1 block text-[11px] font-medium text-zinc-500">
                   Quando você enviar, cada mensagem aparece aqui — com quantos
                   aparelhos receberam de verdade.
                 </span>
@@ -1629,7 +1668,7 @@ export const AdminPushView = memo(function AdminPushView({
                   key={item.id}
                   className="rounded-lg border border-white/5 bg-black/30 p-2.5 transition-all hover:border-white/10 hover:bg-black/50"
                 >
-                  <div className="flex items-center justify-between text-[8px] font-bold uppercase tracking-widest text-zinc-400 mb-1">
+                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                     <span className="text-zinc-500 font-mono">
                       {new Date(item.sent_at).toLocaleDateString()} às{" "}
                       {new Date(item.sent_at).toLocaleTimeString([], {
@@ -1642,14 +1681,14 @@ export const AdminPushView = memo(function AdminPushView({
                       {textoDeAlcanceEmAparelhos(item.recipient_count)}
                     </span>
                   </div>
-                  <h4 className="text-[10px] font-bold text-white line-clamp-1">
+                  <h4 className="text-[11px] font-bold text-white line-clamp-1">
                     {item.title}
                   </h4>
-                  <p className="text-[9px] text-zinc-400 line-clamp-1 mt-0.5 font-medium">
+                  <p className="text-[11px] text-zinc-400 line-clamp-1 mt-0.5 font-medium">
                     {item.body}
                   </p>
-                  <div className="mt-1.5 flex items-center justify-between border-t border-white/5 pt-1 text-[8px]">
-                    <span className="font-mono text-zinc-500 truncate max-w-[150px]">
+                  <div className="mt-1.5 flex items-center justify-between border-t border-white/5 pt-1 text-[11px]">
+                    <span className="min-w-0 flex-1 font-mono text-zinc-500 truncate">
                       Ao clicar: {item.url}
                     </span>
                     {/* Achado 11 da auditoria de 20/08/2026: o registro
@@ -1659,11 +1698,11 @@ export const AdminPushView = memo(function AdminPushView({
                             "ninguém confirmou ainda". O selo deixou de
                             afirmar sucesso sem olhar o número. */}
                     {item.recipient_count > 0 ? (
-                      <span className="font-bold uppercase text-admin-gold">
+                      <span className="shrink-0 pl-2 font-bold uppercase text-admin-gold">
                         Entregue
                       </span>
                     ) : (
-                      <span className="font-bold uppercase text-amber-400">
+                      <span className="shrink-0 pl-2 font-bold uppercase text-amber-400">
                         Não confirmada
                       </span>
                     )}
@@ -1726,7 +1765,7 @@ export const AdminPushView = memo(function AdminPushView({
                         />
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-[10px] text-zinc-400 leading-none">
+                        <p className="text-[11px] text-zinc-400 leading-tight">
                           Mostra na loja avisos de compras em tempo real.
                         </p>
                         <button
@@ -1734,7 +1773,7 @@ export const AdminPushView = memo(function AdminPushView({
                           onClick={() =>
                             setIsSocialProofExpanded(!isSocialProofExpanded)
                           }
-                          className="flex items-center text-[10px] font-bold text-admin-gold hover:text-admin-gold/80 leading-none"
+                          className="flex items-center text-[11px] font-bold text-admin-gold hover:text-admin-gold/80 leading-none"
                         >
                           {isSocialProofExpanded ? (
                             <ChevronUp className="size-3" />
@@ -1763,7 +1802,7 @@ export const AdminPushView = memo(function AdminPushView({
                       transition={{ duration: 0.2, ease: "easeInOut" }}
                       className="overflow-hidden"
                     >
-                      <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[10px] leading-relaxed text-zinc-400 space-y-1">
+                      <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[11px] leading-relaxed text-zinc-400 space-y-1">
                         <p>
                           Esta opção exibe pequenas notificações discretas na
                           loja quando alguém faz um pedido, passando mais
@@ -1782,7 +1821,7 @@ export const AdminPushView = memo(function AdminPushView({
               <button
                 onClick={handleTestSubscription}
                 disabled={isOffline}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 py-2 text-[9px] font-black uppercase tracking-wider text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 py-2 text-[11px] font-black uppercase tracking-wider text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
               >
                 <Zap className="size-3 fill-admin-gold" />
                 Testar Recebimento Neste Aparelho
@@ -1805,7 +1844,7 @@ export const AdminPushView = memo(function AdminPushView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               O que você pode fazer aqui
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

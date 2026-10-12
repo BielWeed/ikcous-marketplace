@@ -1,0 +1,44 @@
+{
+  "plano": "painel-simples-onda-i",
+  "frentes": [
+    {
+      "nome": "banco-estoque-e-inventario",
+      "descricao": "I1+I6 (RISCO/banco, revisor-risco, serial por dentro): tres migrations com preflight por md5 e rollback-manual — 20261212 painel_inicio conta estoque baixo pela regra unica (estoque efetivo <= COALESCE(estoque_minimo, 5), a mesma de get_admin_analytics_v2 e do front); 20261213 o filtro 'low' de get_admin_products_paged segue a mesma regra; 20261214 get_admin_analytics_v2 so soma valor de venda de produto COM custo (Lucro se vender tudo deixa de inflar). Provas vivas novas + adaptacao das provas que fixam os corpos da 20261199 + rotulo dos cartoes de Produtos",
+      "faixa_migrations": { "de": "20261212", "ate": "20261219" },
+      "posse": [
+        "tests/migration_o_inicio_conta_estoque_baixo_pela_regra_da_loja_test.ts",
+        "tests/migration_o_filtro_de_estoque_baixo_do_admin_segue_a_regra_test.ts",
+        "tests/migration_o_lucro_do_estoque_so_conta_produto_com_custo_test.ts",
+        "tests/banco/estoque-baixo-uma-regra-viva.cjs",
+        "tests/banco/inventario-so-com-custo-viva.cjs",
+        "tests/banco/sucessoras-da-99.cjs",
+        "tests/banco/admin-atual-portas-viva.cjs",
+        "tests/banco/admin-atual-viva.cjs",
+        "tests/banco/pagamentos-rpc-viva.cjs",
+        "tests/front/pedidos-para-preparar.test.ts",
+        "tests/front/dashboard-diz-o-que-falta-para-vender.test.tsx",
+        "tests/front/inicio-estoque-baixo-mesmo-limiar.test.ts",
+        "src/views/admin/AdminProductsView.tsx",
+        "tests/front/admin-products-lucro-so-com-custo.test.tsx"
+      ]
+    },
+    {
+      "nome": "provas-de-leitura",
+      "descricao": "I2 + prova da I5 (RISCO/dinheiro, so leitura, revisor-risco): receita-uma-regua-viva caracteriza painel_inicio.mes.receita x crm_visao/crm__vendas x entradas de venda de fin_resumo com semente de 6 casos (divergencia NAO se corrige: vira achado); estoque-minimo-editavel-viva prova que o admin grava estoque_minimo (numero e NULL) por vw_produtos_admin e por produtos, e que cliente/anon nao gravam. Nenhuma migration",
+      "posse": [
+        "tests/banco/receita-uma-regua-viva.cjs",
+        "tests/banco/estoque-minimo-editavel-viva.cjs"
+      ]
+    },
+    {
+      "nome": "estoque-minimo-no-produto",
+      "descricao": "H2/I5 (ROTINA, front): campo 'Avisar quando o estoque chegar a' na secao Avancado do formulario de produto; vazio grava NULL (usa o padrao 5), numero inteiro >= 0 grava o numero; useProducts leva estoque_minimo no update online (vw_produtos_admin), no insert e na fila offline (produtos). Sem migration: o UPDATE ja passa (grants da 20261090, view da 20261160, gatilho da 20261012 so carimba ultima_atualizacao)",
+      "posse": [
+        "src/views/admin/AdminProductFormView.tsx",
+        "src/hooks/useProducts.ts",
+        "tests/front/produto-estoque-minimo.test.tsx",
+        "tests/front/use-products-estoque-minimo-percorre-o-caminho.test.tsx"
+      ]
+    }
+  ]
+}

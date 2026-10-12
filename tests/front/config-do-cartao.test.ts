@@ -156,19 +156,22 @@ describe("buscarConfigDoCartao / lerConfigDoCartao", () => {
     });
   });
 
-  it("erro do banco ou exceção: buscar diz que falhou; ler devolve DESLIGADA", async () => {
+  it("erro do banco ou exceção: buscar e ler dizem que FALHOU — nunca fingem 'desligada'", async () => {
     banco.resposta = { data: null, error: { message: "permission denied" } };
     await expect(buscarConfigDoCartao()).resolves.toEqual({ ok: false });
-    await expect(lerConfigDoCartao()).resolves.toEqual(
-      CONFIG_DO_CARTAO_DESLIGADA,
-    );
+    await expect(lerConfigDoCartao()).resolves.toEqual({ ok: false });
 
     esquecerConfigDoCartao();
     banco.lancar = true;
     await expect(buscarConfigDoCartao()).resolves.toEqual({ ok: false });
-    await expect(lerConfigDoCartao()).resolves.toEqual(
-      CONFIG_DO_CARTAO_DESLIGADA,
-    );
+    await expect(lerConfigDoCartao()).resolves.toEqual({ ok: false });
+  });
+
+  it("ler: linha ausente é 'ok' com config DESLIGADA (desligado de verdade ≠ falha)", async () => {
+    await expect(lerConfigDoCartao()).resolves.toEqual({
+      ok: true,
+      config: CONFIG_DO_CARTAO_DESLIGADA,
+    });
   });
 
   it("ler tem cache de módulo — mas falha NÃO fica em cache", async () => {
@@ -179,9 +182,8 @@ describe("buscarConfigDoCartao / lerConfigDoCartao", () => {
       error: null,
     };
     await expect(lerConfigDoCartao()).resolves.toEqual({
-      credito: true,
-      debito: false,
-      parcelasMax: 3,
+      ok: true,
+      config: { credito: true, debito: false, parcelasMax: 3 },
     });
     expect(banco.from).toHaveBeenCalledTimes(2);
 
@@ -203,10 +205,14 @@ describe("buscarConfigDoCartao / lerConfigDoCartao", () => {
       error: null,
     };
     vi.setSystemTime(new Date("2026-09-26T12:00:59Z"));
-    await expect(lerConfigDoCartao()).resolves.toMatchObject({ credito: true });
+    await expect(lerConfigDoCartao()).resolves.toMatchObject({
+      ok: true,
+      config: { credito: true },
+    });
     vi.setSystemTime(new Date("2026-09-26T12:01:01Z"));
     await expect(lerConfigDoCartao()).resolves.toMatchObject({
-      credito: false,
+      ok: true,
+      config: { credito: false },
     });
   });
 });

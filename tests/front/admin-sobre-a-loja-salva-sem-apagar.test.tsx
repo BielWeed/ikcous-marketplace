@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 //
-// Frente "Sobre a Loja" (pedido do dono, 20/09/2026): a tela do painel grava
-// endereço e descrição (os campos novos da 20261167000000) num único
+// Frente "Sobre a Loja" (pedido do dono, 20/09/2026) → "Minha loja" (painel
+// simples, 09/10/2026): a tela do painel grava endereço e descrição num único
 // updateConfig — e o payload NUNCA leva os campos que não são dela
 // (horário/WhatsApp/nome/logo são de outros editores; o CASE da RPC só
-// sobrescreve o que veio, mas o aceite começa na tela não mandando). A
+// sobrescreve o que veio, mas o aceite começa na tela não mandando). O
+// endereço é a fonte única da loja: CEP, texto, cidade e UF vão JUNTOS, na
+// MESMA chamada da descrição, e só quando a lojista mexeu no endereço. A
 // entrada no TIPO_DAS_COLUNAS_STORE_CONFIG é a outra metade do contrato: sem
 // ela o save "grava" e a conferência acusa falha (falso negativo do
 // ADMIN-010 ao contrário). O helper da descrição também é provado aqui:
@@ -21,6 +23,8 @@ import {
   vi,
 } from "vitest";
 
+import { pararABuscaDeCep } from "./duble-busca-de-cep";
+
 let updateConfigMock: ReturnType<typeof vi.fn>;
 let configAtual: Record<string, unknown>;
 
@@ -34,6 +38,9 @@ vi.mock("@/contexts/StoreContext", () => ({
   // "coluna desconhecida nunca fica confirmada" mora nela.
   TIPO_DAS_COLUNAS_STORE_CONFIG: new Map<string, string>([
     ["store_address", "texto"],
+    ["store_city", "texto"],
+    ["store_state", "texto"],
+    ["origin_cep", "texto"],
     ["store_description", "texto"],
     ["business_hours", "texto"],
   ]),
@@ -82,6 +89,23 @@ const BASE_CONFIG = {
   storeDescription: null,
 };
 
+// Os provedores de CEP respondendo com a Avenida Paulista (ViaCEP é o 1º da
+// cadeia; os outros nem são consultados). Cada teste que PRECISA da busca
+// instala este; os demais ficam com `pararABuscaDeCep` (nunca vai à rede).
+function instalarCepDeSaoPaulo(
+  endereco: Record<string, string> = {
+    logradouro: "Avenida Paulista",
+    bairro: "Bela Vista",
+    localidade: "São Paulo",
+    uf: "SP",
+  },
+) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify(endereco), { status: 200 })),
+  );
+}
+
 describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os outros campos", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -91,6 +115,8 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     configAtual = { ...BASE_CONFIG };
     updateConfigMock = vi.fn(async () => true);
     onSetDirty = vi.fn((_dirty: boolean) => {});
+    // A conferência do CEP salvo não pode ir à rede de verdade.
+    pararABuscaDeCep();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -101,6 +127,7 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.unstubAllGlobals();
   });
 
   async function renderizarTela() {
@@ -114,22 +141,13 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     });
   }
 
-  async function preencherESalvar(endereco: string, descricao: string) {
-    const enderecoInput = hospedeiro.querySelector(
-      "#store-address",
-    ) as HTMLInputElement;
+  const botaoSalvar = () =>
+    hospedeiro.querySelector("button.bg-admin-gold") as HTMLButtonElement;
+
+  async function digitarNaDescricao(descricao: string) {
     const descricaoInput = hospedeiro.querySelector(
       "#store-description",
     ) as HTMLTextAreaElement;
-    // inputs controlados do React: setar valor via setter nativo
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    setter?.call(enderecoInput, endereco);
-    await act(async () => {
-      enderecoInput.dispatchEvent(new Event("input", { bubbles: true }));
-    });
     const setterTa = Object.getOwnPropertyDescriptor(
       HTMLTextAreaElement.prototype,
       "value",
@@ -138,15 +156,37 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     await act(async () => {
       descricaoInput.dispatchEvent(new Event("input", { bubbles: true }));
     });
+  }
 
-    const botaoSalvar = hospedeiro.querySelector(
-      "button.bg-admin-gold",
-    ) as HTMLButtonElement | null;
-    expect(botaoSalvar).not.toBeNull();
+  async function clicarSalvar() {
+    const botao = botaoSalvar();
+    expect(botao).not.toBeNull();
     await act(async () => {
-      botaoSalvar?.click();
+      botao.click();
       await Promise.resolve();
       await Promise.resolve();
+    });
+  }
+
+  async function preencherESalvar(descricao: string) {
+    await digitarNaDescricao(descricao);
+    await clicarSalvar();
+  }
+
+  // Os campos do endereço entregam o valor 200 ms depois de parar de digitar.
+  async function digitarNoEndereco(id: string, valor: string) {
+    const input = hospedeiro.querySelector(`#${id}`) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      input.focus();
+      setter?.call(input, valor);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 260));
     });
   }
 
@@ -159,38 +199,82 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     expect(botao?.disabled).toBe(true);
   });
 
-  it("salvar manda SÓ os campos da tela (endereço + descrição), nunca horário/nome/whatsapp", async () => {
+  it("o título da tela é 'Minha loja'", async () => {
     await renderizarTela();
-    await preencherESalvar(
-      "Rua das Flores, 123",
-      "Primeiro parágrafo\n\nSegundo",
-    );
+    expect(hospedeiro.querySelector("h1")?.textContent).toBe("Minha loja");
+  });
+
+  it("salvar só a descrição manda SÓ a descrição, nunca endereço/horário/nome/whatsapp", async () => {
+    await renderizarTela();
+    await preencherESalvar("Primeiro parágrafo\n\nSegundo");
 
     expect(updateConfigMock).toHaveBeenCalledTimes(1);
     const updates = updateConfigMock.mock.calls[0][0] as Record<
       string,
       unknown
     >;
-    expect(updates.storeAddress).toBe("Rua das Flores, 123");
     expect(updates.storeDescription).toBe(
       "<p>Primeiro parágrafo</p><p>Segundo</p>",
     );
     // O aceite "um campo não apaga os outros" começa aqui: a tela não manda
-    // o que não é dela — o CASE da RPC preserva o resto no banco.
+    // o que não é dela — o CASE da RPC preserva o resto no banco. O endereço
+    // que a lojista NÃO mexeu também não vai de carona.
+    expect(updates.storeAddress).toBeUndefined();
+    expect(updates.originCep).toBeUndefined();
+    expect(updates.storeCity).toBeUndefined();
+    expect(updates.storeState).toBeUndefined();
     expect(updates.businessHours).toBeUndefined();
     expect(updates.storeName).toBeUndefined();
     expect(updates.whatsappNumber).toBeUndefined();
     expect(updates.logoUrl).toBeUndefined();
   });
 
-  it("campos em branco gravam null (ausência honesta), não string vazia", async () => {
+  it("mudar CEP e número e salvar: UMA chamada com CEP, endereço, cidade, UF e descrição", async () => {
+    instalarCepDeSaoPaulo();
     await renderizarTela();
-    await preencherESalvar("   ", "");
+    await digitarNoEndereco("endereco-cep", "01310100");
+    await digitarNoEndereco("endereco-numero", "1578");
+    await digitarNaDescricao("Nossa história");
+    await clicarSalvar();
+
+    expect(updateConfigMock).toHaveBeenCalledTimes(1);
+    expect(updateConfigMock.mock.calls[0][0]).toEqual({
+      originCep: "01310-100",
+      storeAddress:
+        "Avenida Paulista, 1578 — Bela Vista, São Paulo/SP — CEP 01310-100",
+      storeCity: "São Paulo",
+      storeState: "SP",
+      storeDescription: "<p>Nossa história</p>",
+    });
+    const { toast } = await import("sonner");
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it("CEP digitado sem número: o Salvar espera, com o motivo à vista; nada é gravado", async () => {
+    instalarCepDeSaoPaulo();
+    await renderizarTela();
+    await digitarNoEndereco("endereco-cep", "01310100");
+    await digitarNaDescricao("Nossa história");
+
+    expect(botaoSalvar().disabled).toBe(true);
+    expect(hospedeiro.textContent).toContain("Falta o número do endereço");
+    // dirty de verdade: sair da tela agora perderia o que ela digitou
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    await clicarSalvar();
+    expect(updateConfigMock).not.toHaveBeenCalled();
+  });
+
+  it("descrição em branco grava null (ausência honesta), não string vazia", async () => {
+    configAtual = {
+      ...BASE_CONFIG,
+      storeDescription: "<p>Texto de antes</p>",
+    };
+    await renderizarTela();
+    await preencherESalvar("   ");
     const updates = updateConfigMock.mock.calls[0][0] as Record<
       string,
       unknown
     >;
-    expect(updates.storeAddress).toBeNull();
     expect(updates.storeDescription).toBeNull();
   });
 
@@ -199,7 +283,7 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     await renderizarTela();
     // montagem relata dirty false antes de qualquer digitação
     expect(onSetDirty).toHaveBeenCalledWith(false);
-    await preencherESalvar("Rua das Flores, 123", "texto");
+    await preencherESalvar("texto");
     // dirty verdadeiro propagado ao digitar (formDirty)…
     expect(onSetDirty).toHaveBeenCalledWith(true);
     // …e NÃO voltou a false depois da falha (o lojista não perde o texto
@@ -214,18 +298,22 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     expect(toast.error).toHaveBeenCalled();
   });
 
-  it("updateConfig lançando (rede fora): o erro é avisado e o rascunho não some", async () => {
+  it("updateConfig lançando (rede fora): o erro é avisado em frase de pessoa e o rascunho não some", async () => {
     updateConfigMock = vi.fn(async () => {
-      throw new Error("rede caiu");
+      throw new Error("Failed to fetch");
     });
     await renderizarTela();
-    await preencherESalvar("Rua das Flores, 123", "texto");
+    await preencherESalvar("texto");
     const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalled();
+    const aviso = vi.mocked(toast.error).mock.calls.at(-1)?.[0] as string;
+    // pelo erro-do-painel: sem a mensagem crua da rede
+    expect(aviso).toContain("Sem conexão");
+    expect(aviso).not.toContain("Failed to fetch");
     // o texto digitado permanece no campo (rascunho preservado)
     expect(
-      (hospedeiro.querySelector("#store-address") as HTMLInputElement).value,
-    ).toBe("Rua das Flores, 123");
+      (hospedeiro.querySelector("#store-description") as HTMLTextAreaElement)
+        .value,
+    ).toBe("texto");
   });
   // A entrada das duas colunas no TIPO_DAS_COLUNAS_STORE_CONFIG (o contrato
   // "coluna desconhecida nunca fica confirmada") é provada contra o módulo
@@ -257,6 +345,8 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
     };
     updateConfigMock = vi.fn(async () => true);
     onSetDirty = vi.fn((_dirty: boolean) => {});
+    // A conferência do CEP salvo não pode ir à rede de verdade.
+    pararABuscaDeCep();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -267,6 +357,7 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.unstubAllGlobals();
   });
 
   async function renderizarTela() {
@@ -277,6 +368,9 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
     });
   }
 
+  const ENDERECO_NOVO =
+    "Avenida Paulista, 1578 — Bela Vista, São Paulo/SP — CEP 01310-100";
+
   it("config chega DEPOIS da montagem (hidratação): os campos sincronizam e o botão nasce desabilitado", async () => {
     await renderizarTela();
 
@@ -285,19 +379,24 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
     await act(async () => {
       configAtual = {
         ...BASE_CONFIG,
-        storeAddress: "Rua do Banco, 9",
+        originCep: "01310-100",
+        storeCity: "São Paulo",
+        storeState: "SP",
+        storeAddress: ENDERECO_NOVO,
         storeDescription: "<p>Descrição do banco</p>",
       };
       raiz.render(<Componente onNavigate={() => {}} onSetDirty={onSetDirty} />);
     });
 
-    const endereco = hospedeiro.querySelector(
-      "#store-address",
-    ) as HTMLInputElement;
+    const campo = (id: string) =>
+      (hospedeiro.querySelector(`#${id}`) as HTMLInputElement).value;
     const descricao = hospedeiro.querySelector(
       "#store-description",
     ) as HTMLTextAreaElement;
-    expect(endereco.value).toBe("Rua do Banco, 9");
+    expect(campo("endereco-cep")).toBe("01310-100");
+    expect(campo("endereco-rua")).toBe("Avenida Paulista");
+    expect(campo("endereco-numero")).toBe("1578");
+    expect(campo("endereco-cidade")).toBe("São Paulo");
     expect(descricao.value).toBe("Descrição do banco");
     // sem edição nenhuma do lojista, nada está pendente
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
@@ -311,32 +410,140 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
     await renderizarTela();
 
     // o lojista digita antes do fetch completar
-    const endereco = hospedeiro.querySelector(
-      "#store-address",
-    ) as HTMLInputElement;
+    const descricao = hospedeiro.querySelector(
+      "#store-description",
+    ) as HTMLTextAreaElement;
     const setter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
+      HTMLTextAreaElement.prototype,
       "value",
     )?.set;
     await act(async () => {
-      setter?.call(endereco, "Digitando meu endereço real…");
-      endereco.dispatchEvent(new Event("input", { bubbles: true }));
+      setter?.call(descricao, "Digitando minha história real…");
+      descricao.dispatchEvent(new Event("input", { bubbles: true }));
     });
 
     // o config atualiza por fora (realtime/fetch) com valor do banco
     await act(async () => {
       configAtual = {
         ...BASE_CONFIG,
-        storeAddress: "Valor do banco que chegou depois",
+        storeDescription: "<p>Valor do banco que chegou depois</p>",
       };
       raiz.render(<Componente onNavigate={() => {}} onSetDirty={onSetDirty} />);
     });
 
     // a edição do lojista é PRESERVADA (o sync não sobrescreve quem digitou)
     expect(
-      (hospedeiro.querySelector("#store-address") as HTMLInputElement).value,
-    ).toBe("Digitando meu endereço real…");
+      (hospedeiro.querySelector("#store-description") as HTMLTextAreaElement)
+        .value,
+    ).toBe("Digitando minha história real…");
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
+  });
+
+  it("a atualização do config NÃO apaga o número que a lojista está digitando no endereço", async () => {
+    configAtual = {
+      ...BASE_CONFIG,
+      originCep: "01310-100",
+      storeCity: "São Paulo",
+      storeState: "SP",
+      storeAddress: ENDERECO_NOVO,
+    };
+    await renderizarTela();
+
+    const numero = hospedeiro.querySelector(
+      "#endereco-numero",
+    ) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      numero.focus();
+      setter?.call(numero, "2000");
+      numero.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+
+    // chega descrição nova de fora; o endereço continua como ela deixou
+    await act(async () => {
+      configAtual = {
+        ...configAtual,
+        storeDescription: "<p>Chegou de fora</p>",
+      };
+      raiz.render(<Componente onNavigate={() => {}} onSetDirty={onSetDirty} />);
+    });
+
+    expect(
+      (hospedeiro.querySelector("#endereco-numero") as HTMLInputElement).value,
+    ).toBe("2000");
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+  });
+});
+
+describe("AdminAboutStoreView — aviso quando o CEP é de outra cidade (D4)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    updateConfigMock = vi.fn(async () => true);
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    vi.unstubAllGlobals();
+  });
+
+  async function renderizarTela() {
+    const { AdminAboutStoreView } = await import(
+      "@/views/admin/AdminAboutStoreView"
+    );
+    await act(async () => {
+      raiz.render(<AdminAboutStoreView onNavigate={() => {}} />);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+  }
+
+  it("CEP de Campinas e cidade cadastrada São Paulo: aparece 'Seu CEP é de Campinas/SP'", async () => {
+    configAtual = {
+      ...BASE_CONFIG,
+      originCep: "13010-000",
+      storeCity: "São Paulo",
+      storeState: "SP",
+      storeAddress: null,
+    };
+    instalarCepDeSaoPaulo({
+      logradouro: "Rua Barão de Jaguara",
+      bairro: "Centro",
+      localidade: "Campinas",
+      uf: "SP",
+    });
+    await renderizarTela();
+
+    expect(hospedeiro.textContent).toContain("Seu CEP é de Campinas/SP");
+    expect(hospedeiro.textContent).toContain("São Paulo/SP");
+  });
+
+  it("CEP e cidade que combinam: sem aviso", async () => {
+    configAtual = {
+      ...BASE_CONFIG,
+      originCep: "01310-100",
+      storeCity: "São Paulo",
+      storeState: "SP",
+      storeAddress: null,
+    };
+    instalarCepDeSaoPaulo();
+    await renderizarTela();
+
+    expect(hospedeiro.textContent).not.toContain("Seu CEP é de");
   });
 });
 

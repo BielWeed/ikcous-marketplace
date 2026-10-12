@@ -108,19 +108,19 @@ export const TopProductsList = memo(function TopProductsList({
                         {/* Rank indicators */}
                         <div className="relative flex size-5 shrink-0 items-center justify-center">
                           {idx === 0 ? (
-                            <div className="flex size-5 select-none items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600 text-[9px] font-black text-zinc-950 shadow-[0_0_8px_rgba(234,179,8,0.3)]">
+                            <div className="flex size-5 select-none items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600 text-[11px] font-black text-zinc-950 shadow-[0_0_8px_rgba(234,179,8,0.3)]">
                               01
                             </div>
                           ) : idx === 1 ? (
-                            <div className="flex size-5 select-none items-center justify-center rounded-full bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 text-[9px] font-black text-zinc-950">
+                            <div className="flex size-5 select-none items-center justify-center rounded-full bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 text-[11px] font-black text-zinc-950">
                               02
                             </div>
                           ) : idx === 2 ? (
-                            <div className="flex size-5 select-none items-center justify-center rounded-full bg-gradient-to-br from-amber-700 via-amber-800 to-amber-900 text-[9px] font-black text-amber-100">
+                            <div className="flex size-5 select-none items-center justify-center rounded-full bg-gradient-to-br from-amber-700 via-amber-800 to-amber-900 text-[11px] font-black text-amber-100">
                               03
                             </div>
                           ) : (
-                            <div className="flex size-5 select-none items-center justify-center text-[10px] font-bold text-zinc-500 group-hover:text-zinc-400">
+                            <div className="flex size-5 select-none items-center justify-center text-[11px] font-bold text-zinc-500 group-hover:text-zinc-400">
                               {(idx + 1).toString().padStart(2, "0")}
                             </div>
                           )}
@@ -155,7 +155,7 @@ export const TopProductsList = memo(function TopProductsList({
                           </h4>
 
                           <div className="mt-0.5 flex items-center gap-1.5">
-                            <span className="shrink-0 text-[10px] font-semibold text-admin-gold/90">
+                            <span className="shrink-0 text-[11px] font-semibold text-admin-gold/90">
                               {item.quantity}{" "}
                               {item.quantity === 1 ? "venda" : "vendas"}
                             </span>

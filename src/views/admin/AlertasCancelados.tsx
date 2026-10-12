@@ -1,6 +1,12 @@
 import { Button } from "@/components/ui/button";
+import type { EstornoEmCurso } from "@/hooks/useEstornosEmCursoDosPedidos";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
-import { valorDevolverAgora } from "@/lib/valor-devolver-agora";
+import {
+  TERMO_EM_ANDAMENTO,
+  devolvidoPeloMercadoPagoForaDaLista,
+  valorDevolverAgora,
+  valorDevolverAgoraDescontandoLedger,
+} from "@/lib/valor-devolver-agora";
 import type { CanalDaVenda, Order } from "@/types";
 import { AlertTriangle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -30,6 +36,10 @@ import { useEffect, useRef, useState } from "react";
  * lista completa, nem o botão nasce (mesma regra dos blocos antigos).
  */
 
+/** Valor em reais no formato da lista ("1.234,50"). */
+const reais = (valor: number) =>
+  valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+
 interface PedidoDaLista {
   id: string;
   total?: number | null;
@@ -49,6 +59,9 @@ interface AlertasCanceladosProps {
   readonly avisoPagoAposCancelado: string;
   readonly pedidosEsperandoRetorno: readonly Order[];
   readonly pedidosParaDevolverAgora: readonly Order[];
+  /** L3e': estorno que o Mercado Pago já está fazendo, por pedido de
+   * `pedidosParaDevolverAgora` (`useEstornosEmCursoDosPedidos`). */
+  readonly estornosEmCurso: ReadonlyMap<string, EstornoEmCurso>;
   /** A consulta de cancelados pode ter vindo truncada (erro/truncagem na
    * RPC) — o aviso fica dentro do dropdown, junto de quem ele descreve. */
   readonly incompleto: boolean;
@@ -63,6 +76,12 @@ interface AlertasCanceladosProps {
   readonly confirmandoRetornoId: string | null;
   readonly onConfirmarRetorno: (orderId: string) => void;
   readonly estornandoId: string | null;
+  /** Rodada 4 (F2c): o "Já estornei" deste pedido está lendo o ledger de
+   * novo antes de perguntar — o botão mostra "Conferindo…". */
+  readonly conferindoEstornoId?: string | null;
+  /** Rodada 4 (F2a): chamado ao ABRIR o painel — quem mostra a lista relê o
+   * ledger (devolução que começou sem mudar a lista não tem outro aviso). */
+  readonly onAbrir?: () => void;
   readonly onRegistrarEstorno: (pedido: PedidoDaLista) => void;
   /** Grava os filtros de cancelados e rola até a lista — o clique do lojista
    * tem resposta visível (era o "botão que não funciona" do relato). */
@@ -74,12 +93,15 @@ export function AlertasCancelados({
   avisoPagoAposCancelado,
   pedidosEsperandoRetorno,
   pedidosParaDevolverAgora,
+  estornosEmCurso,
   incompleto,
   foraDaJanela,
   onIncluirAntigos,
   confirmandoRetornoId,
   onConfirmarRetorno,
   estornandoId,
+  conferindoEstornoId,
+  onAbrir,
   onRegistrarEstorno,
   onVerPedidos,
 }: AlertasCanceladosProps) {
@@ -138,7 +160,7 @@ export function AlertasCancelados({
     pedidosEsperandoRetorno.length > 0 &&
       `produto a voltar (${pedidosEsperandoRetorno.length})`,
     pedidosParaDevolverAgora.length > 0 &&
-      `estorno devido (${pedidosParaDevolverAgora.length})`,
+      `devolver ao cliente (${pedidosParaDevolverAgora.length})`,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -174,12 +196,12 @@ export function AlertasCancelados({
   // teste painel-lista-estorno-devido), o sinal permanente é o próprio
   // botão, que nasce mesmo sem pendência; o texto completo fica a um clique.
   const avisoIncompleto = incompleto ? (
-    <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/20 p-5">
+    <div className="relative overflow-hidden rounded-[2rem] border border-amber-500/20 bg-zinc-950/40 p-5 shadow-2xl backdrop-blur-2xl">
       <div className="flex items-start gap-3">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
           <AlertTriangle className="size-4" />
         </div>
-        <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-amber-500">
+        <p className="text-[11px] font-bold uppercase leading-relaxed tracking-widest text-amber-500">
           Não foi possível confirmar a lista completa de pedidos cancelados
           agora. Os painéis de mercadoria e estorno abaixo podem estar
           incompletos.
@@ -198,14 +220,19 @@ export function AlertasCancelados({
         {...(aberto ? { "aria-controls": "alertas-cancelados-conteudo" } : {})}
         aria-label={descricaoBotao}
         title={descricaoBotao}
-        onClick={() => setAberto((antes) => !antes)}
+        onClick={() => {
+          // F2a: abrir relê o ledger (nunca dentro do updater do estado —
+          // ele pode rodar duas vezes no StrictMode).
+          if (!aberto) onAbrir?.();
+          setAberto(!aberto);
+        }}
         className="relative flex size-9 shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-500 transition-all duration-300 hover:border-amber-500/50 hover:bg-amber-500/20 active:scale-95"
       >
         <AlertTriangle className="size-4" />
         {badge > 0 ? (
           <span
             data-testid="alertas-cancelados-badge"
-            className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[9px] font-black leading-none text-black"
+            className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[11px] font-black leading-none text-black"
           >
             {badge}
           </span>
@@ -216,7 +243,7 @@ export function AlertasCancelados({
           incompleto && (
             <span
               data-testid="alertas-cancelados-badge"
-              className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[9px] font-black leading-none text-black"
+              className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[11px] font-black leading-none text-black"
             >
               !
             </span>
@@ -239,20 +266,21 @@ export function AlertasCancelados({
               nunca sumir em silêncio — é o mesmo motivo do BLOQUEIA da
               revisão de 17/09. */}
           {temForaDaJanela && (
-            <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/20 p-6">
+            <div className="relative overflow-hidden rounded-[2rem] border border-amber-500/20 bg-zinc-950/40 p-6 shadow-2xl backdrop-blur-2xl">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500">
+                  <h3 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
                     {foraDaJanela}{" "}
                     {foraDaJanela === 1
                       ? "cancelamento anterior à janela"
                       : "cancelamentos anteriores à janela"}{" "}
                     de {JANELA_PEDIDOS_CANCELADOS_DIAS} dias
                   </h3>
-                  <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
+                  <p className="mt-1.5 max-w-2xl text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
                     A varredura enxuta olha só os cancelamentos recentes. Os
-                    pedidos de fora continuam existindo — com estorno devido e
-                    mercadoria a voltar — e não estão nas listas abaixo.
+                    pedidos de fora continuam existindo — com dinheiro a
+                    devolver ao cliente e mercadoria a voltar — e não estão nas
+                    listas abaixo.
                   </p>
                 </div>
                 <Button
@@ -263,7 +291,7 @@ export function AlertasCancelados({
                     // recarregando por trás, não o dropdown aberto sobre ela.
                     setAberto(false);
                   }}
-                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[10px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
+                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[11px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
                 >
                   Buscar também os antigos
                 </Button>
@@ -276,7 +304,7 @@ export function AlertasCancelados({
               o defeito passar despercebido antes, escondido só numa
               etiqueta do cartão que rola para fora de vista. */}
           {temDinheiroPreso && (
-            <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/30 bg-amber-500/5 p-6">
+            <div className="relative overflow-hidden rounded-[2rem] border border-amber-500/30 bg-amber-500/5 p-6 shadow-2xl backdrop-blur-2xl">
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent" />
               <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
@@ -284,14 +312,14 @@ export function AlertasCancelados({
                     <AlertTriangle className="size-5" />
                   </div>
                   <div>
-                    <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500">
+                    <h3 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
                       {avisoPagoAposCancelado}
                     </h3>
-                    <p className="mt-1.5 text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
+                    <p className="mt-1.5 text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
                       O dinheiro entrou e o pedido está cancelado. Veja abaixo,
-                      em Estorno devido, quais já podem ser devolvidos no painel
-                      do Mercado Pago — os que ainda esperam a mercadoria voltar
-                      aparecem em Produtos que ainda não voltaram.
+                      em Devolver ao cliente, quais já podem ser devolvidos no
+                      painel do Mercado Pago — os que ainda esperam a mercadoria
+                      voltar aparecem em Produtos que ainda não voltaram.
                     </p>
                   </div>
                 </div>
@@ -303,7 +331,7 @@ export function AlertasCancelados({
                     // cobrindo exatamente a lista para onde a página vai.
                     setAberto(false);
                   }}
-                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[10px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
+                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[11px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
                 >
                   Ver pedidos
                 </Button>
@@ -313,16 +341,16 @@ export function AlertasCancelados({
 
           {/* Produtos que ainda não voltaram — lista DERIVADA de
               `pedidosCancelados`, nunca gravada, e trata só de MERCADORIA:
-              nenhuma palavra sobre dinheiro devido (a lojista que lia
-              "Estorno devido" sobre pedido nunca cobrado concluía que devia
-              R$ 100 a quem nunca pagou nada). Some sozinha assim que
+              nenhuma palavra sobre dinheiro devido (a lojista que lia o
+              título de dinheiro a devolver sobre pedido nunca cobrado concluía
+              que devia R$ 100 a quem nunca pagou nada). Some sozinha assim que
               `confirmarRetornoDoProduto` resolve o pedido. */}
           {pedidosEsperandoRetorno.length > 0 && (
             <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+              <h3 className="text-[11px] font-black uppercase tracking-widest text-zinc-400">
                 Produtos que ainda não voltaram
               </h3>
-              <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
+              <p className="mt-1.5 max-w-2xl text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
                 O pedido já saiu para entrega e foi cancelado. Confirme aqui só
                 quando a mercadoria voltar de verdade à sua mão — é isso que
                 devolve o item ao estoque. Isto não fala de dinheiro: aparece
@@ -331,24 +359,34 @@ export function AlertasCancelados({
               </p>
 
               <div className="mt-5">
-                <h4 className="text-[9px] font-black uppercase tracking-widest text-amber-500">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
                   Esperando o produto voltar ({pedidosEsperandoRetorno.length})
                 </h4>
                 <ul className="mt-3 space-y-2">
                   {pedidosEsperandoRetorno.map((pedido) => (
+                    // Painel simples (onda 3): abaixo de `sm` o botão desce
+                    // para a linha de baixo — lado a lado, no celular de
+                    // 360px, ele deixava ~15px para o número e o cliente, e a
+                    // lojista não via de qual pedido era cada botão. Só o
+                    // NOME encurta; o valor nunca some.
                     <li
                       key={pedido.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3"
+                      className="flex flex-col gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0">
-                        <span className="block truncate text-[10px] font-black uppercase tracking-widest text-white">
+                        <span className="block truncate text-[11px] font-black uppercase tracking-widest text-white">
                           #{pedido.id.slice(-6).toUpperCase()}
                         </span>
-                        <span className="block truncate text-[9px] font-bold uppercase text-zinc-500">
-                          {pedido.customer?.name || "Cliente"} · R${" "}
-                          {(pedido.total || 0).toLocaleString("pt-BR", {
-                            minimumFractionDigits: 2,
-                          })}
+                        <span className="flex min-w-0 items-baseline gap-1 text-[11px] font-bold uppercase text-zinc-500">
+                          <span className="min-w-0 truncate">
+                            {pedido.customer?.name || "Cliente"} ·
+                          </span>{" "}
+                          <span className="shrink-0">
+                            R${" "}
+                            {(pedido.total || 0).toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
                         </span>
                       </div>
                       <Button
@@ -356,7 +394,7 @@ export function AlertasCancelados({
                         variant="outline"
                         onClick={() => onConfirmarRetorno(pedido.id)}
                         disabled={confirmandoRetornoId === pedido.id}
-                        className="h-9 shrink-0 rounded-xl border-emerald-500/30 bg-emerald-500/10 px-4 text-[9px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
+                        className="h-9 shrink-0 rounded-xl border-emerald-500/30 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
                       >
                         {confirmandoRetornoId === pedido.id
                           ? "Confirmando..."
@@ -369,7 +407,8 @@ export function AlertasCancelados({
             </div>
           )}
 
-          {/* Estorno devido — lista DERIVADA de `pedidosCancelados`, nunca
+          {/* Devolver ao cliente (era "Estorno devido") — lista DERIVADA de
+              `pedidosCancelados`, nunca
               gravada, e trata só de DINHEIRO: só existe pedido aqui quando
               `baldeDeEstorno` confirma que o pagamento ENTROU. Some sozinha
               assim que `payment_status` vira 'estornado' (webhook do Mercado
@@ -378,57 +417,195 @@ export function AlertasCancelados({
               pergunta diferente (BLOQUEIA 2 da revisão de 26/08/2026). */}
           {pedidosParaDevolverAgora.length > 0 && (
             <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                Estorno devido
+              <h3 className="text-[11px] font-black uppercase tracking-widest text-zinc-400">
+                Devolver ao cliente
               </h3>
-              {/* A frase que não pode virar promessa falsa: o app não
-                  estorna sozinho. Quem devolve o dinheiro é a lojista, no
-                  painel do Mercado Pago — esta lista só lembra o que ela
-                  ainda deve. */}
-              <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
-                Estornar é uma ação sua, feita direto no painel do Mercado Pago
-                — esta tela não devolve dinheiro nenhum, só lembra o que ainda
-                falta resolver. O item some sozinho assim que você registra o
-                estorno lá.
+              {/* L3e (lacunas de pagamento, 02/10/2026): a frase antiga
+                  ("esta tela não devolve dinheiro nenhum") deixou de ser
+                  verdade em 07/09/2026 — cancelar pedido PAGO que ainda não
+                  saiu grava a devolução em `order_refunds` e o cron a pede
+                  ao Mercado Pago sozinho. Quem acreditava e devolvia por fora
+                  pagava o cliente duas vezes. A frase nova é verdadeira nos
+                  DOIS casos porque se apoia no aviso por pedido, que vem das
+                  linhas reais (`estornosEmCurso`), não numa regra adivinhada
+                  aqui. */}
+              <p className="mt-1.5 max-w-2xl text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
+                Os pedidos marcados com “{TERMO_EM_ANDAMENTO}” têm dinheiro
+                voltando ao cliente pelo Mercado Pago — o app pede isso sozinho
+                quando um pedido já pago é cancelado antes de sair para entrega.
+                Nesses, NÃO devolva por outro meio (PIX, dinheiro) o valor
+                marcado: o cliente receberia duas vezes. Se o aviso disser que
+                não consegui confirmar, confira no painel do Mercado Pago antes.
+                Os outros dependem de você: devolva ao cliente — pelo painel do
+                Mercado Pago, se ele pagou por lá — e toque em “Já estornei no
+                Mercado Pago”. O item some sozinho quando o estorno fica
+                registrado.
               </p>
 
               <div className="mt-5">
-                <h4 className="text-[9px] font-black uppercase tracking-widest text-rose-500">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-rose-500">
                   Devolver agora ({pedidosParaDevolverAgora.length})
                 </h4>
                 <ul className="mt-3 space-y-2">
-                  {pedidosParaDevolverAgora.map((pedido) => (
-                    <li
-                      key={pedido.id}
-                      className="rounded-xl border border-white/5 bg-black/20 px-4 py-3"
-                    >
-                      <span className="block truncate text-[10px] font-black uppercase tracking-widest text-white">
-                        #{pedido.id.slice(-6).toUpperCase()}
-                      </span>
-                      <span className="block truncate text-[9px] font-bold uppercase text-zinc-500">
+                  {pedidosParaDevolverAgora.map((pedido) => {
+                    // L3e': sem leitura ainda (ou com leitura falha), o valor
+                    // é o de sempre e o aviso diz que não conferiu — nunca
+                    // "nada em curso" calado.
+                    const ledger: EstornoEmCurso = estornosEmCurso.get(
+                      pedido.id,
+                    ) ?? { tipo: "conferindo" };
+                    const conferido =
+                      ledger.tipo === "conferido" ? ledger : null;
+                    const valor = conferido
+                      ? valorDevolverAgoraDescontandoLedger(pedido, conferido)
+                      : valorDevolverAgora(pedido);
+                    const concluidoForaDaLista = conferido
+                      ? devolvidoPeloMercadoPagoForaDaLista(
+                          pedido,
+                          conferido.concluido,
+                        )
+                      : 0;
+                    return (
+                      <li
+                        key={pedido.id}
+                        data-testid={`devolver-agora-item-${pedido.id}`}
+                        className="rounded-xl border border-white/5 bg-black/20 px-4 py-3"
+                      >
+                        <span className="block truncate text-[11px] font-black uppercase tracking-widest text-white">
+                          #{pedido.id.slice(-6).toUpperCase()}
+                        </span>
                         {/* Achado 1 (rodada 2): o valor que FALTA devolver,
                             não o total do pedido — descontado o que uma
-                            devolução deste pedido já devolveu por fora. */}
-                        {pedido.customer?.name || "Cliente"} · R${" "}
-                        {valorDevolverAgora(pedido).toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                      {/* Laudo #2 (L-2): a saída manual que faltava — quando
+                            devolução deste pedido já devolveu por fora, e
+                            (L3e') o que o Mercado Pago já está devolvendo ou
+                            acabou de devolver. Painel simples (onda 3): só o
+                            NOME encurta com reticência; o valor nunca some
+                            (no celular de 360px, nome longo escondia o R$). */}
+                        <span className="flex min-w-0 items-baseline gap-1 text-[11px] font-bold uppercase text-zinc-500">
+                          <span className="min-w-0 truncate">
+                            {pedido.customer?.name || "Cliente"} ·
+                          </span>{" "}
+                          <span
+                            data-testid="devolver-agora-valor"
+                            className="shrink-0"
+                          >
+                            R$ {reais(valor)}
+                          </span>
+                        </span>
+                        {/* Rodada 4 (F3): UMA região viva por pedido, montada
+                            junto com o item e que NÃO some quando o aviso
+                            muda — leitor de tela (NVDA/JAWS) não anuncia
+                            região que já nasce com conteúdo. Releitura igual
+                            não re-renderiza (mesmaLeitura), então não inunda. */}
+                        <div role="status" data-testid="avisos-do-estorno">
+                          {/* B1c: o "Conferindo…" do botão também é DITO —
+                              o botão mantém o foco, e a região viva anuncia. */}
+                          {conferindoEstornoId === pedido.id && (
+                            <span className="sr-only">
+                              Conferindo este pedido no Mercado Pago antes de
+                              perguntar…
+                            </span>
+                          )}
+                          {/* L3e' rodada 2: um aviso por ORIGEM do dinheiro em
+                            curso, cada um dizendo só o que é verdade dele —
+                            "o app pediu" só quando o app pediu; a linha do
+                            próprio MP (contestação) não é pedido do app; a
+                            travada (5+ tentativas) não tem confirmação. O
+                            "Não devolva por fora" nomeia o VALOR, nunca o
+                            pedido inteiro. */}
+                          {conferido && conferido.pedidoPeloApp > 0 && (
+                            <span
+                              data-testid="estorno-em-curso"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-emerald-400"
+                            >
+                              {TERMO_EM_ANDAMENTO}: o app já pediu ao Mercado
+                              Pago a devolução de R${" "}
+                              {reais(conferido.pedidoPeloApp)}. Não devolva por
+                              fora estes R$ {reais(conferido.pedidoPeloApp)}.
+                            </span>
+                          )}
+                          {conferido && conferido.sistema > 0 && (
+                            <span
+                              data-testid="estorno-em-curso-sistema"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-emerald-400"
+                            >
+                              {TERMO_EM_ANDAMENTO}: o Mercado Pago tem uma
+                              devolução ou disputa em andamento de R${" "}
+                              {reais(conferido.sistema)}. Não devolva por fora
+                              estes R$ {reais(conferido.sistema)}.
+                            </span>
+                          )}
+                          {conferido && conferido.semConfirmacao > 0 && (
+                            <span
+                              data-testid="estorno-sem-confirmacao"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-amber-500"
+                            >
+                              {TERMO_EM_ANDAMENTO} sem confirmação: não consegui
+                              confirmar esta devolução de R${" "}
+                              {reais(conferido.semConfirmacao)} — confira no
+                              painel do Mercado Pago antes de devolver por outro
+                              meio.
+                            </span>
+                          )}
+                          {concluidoForaDaLista > 0 && (
+                            <span
+                              data-testid="estorno-concluido-recente"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-emerald-400"
+                            >
+                              Já devolvido pelo Mercado Pago: R${" "}
+                              {reais(concluidoForaDaLista)} (já descontado do
+                              valor acima).
+                            </span>
+                          )}
+                          {ledger.tipo === "conferindo" && (
+                            <span
+                              data-testid="estorno-conferindo"
+                              className="mt-1 block text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500"
+                            >
+                              Conferindo se o Mercado Pago já está devolvendo…
+                            </span>
+                          )}
+                          {ledger.tipo === "nao_conferido" && (
+                            <span
+                              data-testid="estorno-nao-conferido"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-amber-500"
+                            >
+                              Não deu para conferir se o Mercado Pago já está
+                              devolvendo este pedido. Abra o pedido antes de
+                              enviar o produto ou de devolver por fora.
+                            </span>
+                          )}
+                        </div>
+                        {/* Laudo #2 (L-2): a saída manual que faltava — quando
                           a notificação do MP nunca chega, era estagnado para
                           sempre. A confirmação evita registrar por engano. */}
-                      <button
-                        type="button"
-                        disabled={estornandoId === pedido.id}
-                        onClick={() => onRegistrarEstorno(pedido)}
-                        className="mt-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[8.5px] font-black uppercase tracking-widest text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-                      >
-                        {estornandoId === pedido.id
-                          ? "Registrando..."
-                          : "Já estornei no Mercado Pago"}
-                      </button>
-                    </li>
-                  ))}
+                        <button
+                          type="button"
+                          // B1c (revisão do front): enquanto confere, o botão
+                          // NÃO usa `disabled` (tiraria o foco do teclado):
+                          // aria-disabled + aria-busy, e o clique volta cedo.
+                          disabled={estornandoId === pedido.id}
+                          aria-disabled={
+                            conferindoEstornoId === pedido.id ? true : undefined
+                          }
+                          aria-busy={
+                            conferindoEstornoId === pedido.id ? true : undefined
+                          }
+                          onClick={() => {
+                            if (conferindoEstornoId === pedido.id) return;
+                            onRegistrarEstorno(pedido);
+                          }}
+                          className="mt-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                        >
+                          {conferindoEstornoId === pedido.id
+                            ? "Conferindo…"
+                            : estornandoId === pedido.id
+                              ? "Registrando..."
+                              : "Já estornei no Mercado Pago"}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             </div>

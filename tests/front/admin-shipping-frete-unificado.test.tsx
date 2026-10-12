@@ -336,7 +336,8 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
     const payload = updateConfig.mock.calls[0][0];
     // Os campos LOCAIS saem na MESMA chamada (com o valor atual salvo, sem
     // ter sido tocados) — é isso que faz o save ser UMA ação só.
-    expect(payload).toHaveProperty("originCep", "38400-000");
+    // O CEP da loja NÃO sai daqui: é de Minha loja (P2, um CEP só).
+    expect(payload).not.toHaveProperty("originCep");
     expect(payload).toHaveProperty("localDeliveryFee", 10);
     expect(payload).toHaveProperty("shippingCoverage", "national");
     // E o campo nacional que foi de fato editado:

@@ -92,13 +92,37 @@ describe("AddressForm — CEP de 7 dígitos é recusado", () => {
     vi.restoreAllMocks();
   });
 
-  async function renderizarEEnviar(cepDigitado: string) {
+  // `ancora` é a mensagem que prova que a validação RODOU. Com 7 dígitos a
+  // tela só mostra o CEP (os outros campos nem existem ainda), então a âncora
+  // é a própria mensagem sob teste; com 8 dígitos e CEP não achado os campos
+  // abrem, e a âncora é o erro de um campo obrigatório vazio.
+  async function renderizarEEnviar(cepDigitado: string, ancora: string) {
+    // A busca de CEP agora vale em TODA loja (esta config é "local"): sem este
+    // dublê o teste bateria na rede de verdade. Todos os provedores dizem que
+    // o CEP não existe — é o caminho "campos manuais".
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes("viacep")
+            ? { ok: true, status: 200, json: async () => ({ erro: "true" }) }
+            : {
+                ok: false,
+                status: 404,
+                json: async () => ({ error: true, code: "not_found" }),
+              },
+        ),
+      ),
+    );
     const { AddressForm } = await import("@/components/ui/custom/AddressForm");
     await act(async () => {
       raiz.render(<AddressForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
     });
 
     digitar("cep", cepDigitado);
+    await act(async () => {
+      for (let i = 0; i < 30; i++) await Promise.resolve();
+    });
 
     // jsdom não dispara o submit do form no clique de botão type=submit —
     // mesmo padrão de shipping-calculator-erro-traduzido...: o evento vai
@@ -114,21 +138,21 @@ describe("AddressForm — CEP de 7 dígitos é recusado", () => {
     // (vazio) prova que o submit percorreu o zod — sem esperar por ela, a
     // ausência de "CEP inválido" não distinguiria regra certa de validação
     // que nem chegou a rodar.
-    await esperarAte(
-      () =>
-        hospedeiro.textContent?.includes("Logradouro é obrigatório") ?? false,
-    );
+    await esperarAte(() => hospedeiro.textContent?.includes(ancora) ?? false);
     return hospedeiro.textContent ?? "";
   }
 
   it("7 dígitos (máscara conta o hífen): mostra 'CEP inválido' e não deixa salvar", async () => {
-    const texto = await renderizarEEnviar("1234567");
+    const texto = await renderizarEEnviar("1234567", "CEP inválido");
 
     expect(texto).toContain("CEP inválido");
   });
 
   it("8 dígitos: sem erro de CEP — e a validação rodou (âncora nos outros campos)", async () => {
-    const texto = await renderizarEEnviar("38500000");
+    const texto = await renderizarEEnviar(
+      "38500000",
+      "Logradouro é obrigatório",
+    );
 
     // Âncora: as mensagens dos campos obrigatórios vazios provam que o
     // submit rodou a validação — sem ela, a ausência abaixo não provaria nada.

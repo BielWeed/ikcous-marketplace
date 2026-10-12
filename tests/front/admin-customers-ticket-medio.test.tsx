@@ -210,6 +210,9 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
     await abrirTela();
 
     expect(texto()).toContain("R$ 40,95");
+    // O cartão agora se chama "Valor médio por venda" (antes "Ticket Médio").
+    expect(texto()).toContain("Valor médio por venda");
+    expect(texto()).not.toMatch(/Ticket M[ée]dio/i);
     // O número que a conta local (abandonada) daria com estes dados.
     expect(texto()).not.toContain("R$ 45,03");
     // O número que a conta local mais antiga (dividir por clientes) daria.

@@ -159,7 +159,7 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     vi.restoreAllMocks();
   });
 
-  it("mostra 'Aguardando pagamento' no cabeçalho e na seção Pagamento", async () => {
+  it("mostra 'Aguardando pagamento' UMA vez, na seção Pagamento (redesenho 08/10/2026: o selo saiu do cabeçalho e da caixa 'Como vai ser pago')", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
@@ -172,9 +172,13 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     const ocorrencias = hospedeiro.textContent?.split(
       "Aguardando pagamento",
     ).length;
-    // split por N ocorrências dá N+1 pedaços: duas ocorrências (cabeçalho +
-    // seção Pagamento) viram 3 pedaços.
-    expect(ocorrencias).toBeGreaterThanOrEqual(3);
+    // split por N ocorrências dá N+1 pedaços: UMA ocorrência vira 2 pedaços.
+    expect(ocorrencias).toBe(2);
+    // E ela mora na seção Pagamento (a que tem o h3 "Pagamento").
+    const secao = Array.from(hospedeiro.querySelectorAll("h3"))
+      .find((h) => h.textContent?.trim() === "Pagamento")
+      ?.closest("section");
+    expect(secao?.textContent).toContain("Aguardando pagamento");
   });
 
   it("paymentStatus nulo mostra 'Sem cobrança online', não texto de reserva inventado", async () => {

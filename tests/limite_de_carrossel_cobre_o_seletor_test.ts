@@ -12,97 +12,115 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  * O conserto trocou os três cortes literais (`6`, `10`, `10`) pela constante
  * `LIMITE_MAX_ITENS_CARROSSEL`. E aí ficou o buraco que este teste tapa: o
  * conserto DECLARA uma invariante em comentário — "este número tem de ser >= ao
- * maior valor oferecido pelo seletor" — e **nada a fiscaliza**. Medido no dia:
- * `grep -rl LIMITE_MAX_ITENS_CARROSSEL tests/` devolvia vazio.
+ * maior valor oferecido pelo painel" — e **nada a fiscaliza**.
  *
- * POR QUE UM TESTE DE VARREDURA, E NÃO UM TESTE DA TELA: o defeito é de CLASSE.
- * Consertar o 6 não impede alguém de acrescentar `<option value={12}>` no
- * seletor na semana que vem — e nesse dia o cliente volta a ver 10 enquanto o
- * painel promete 12, com o comentário do `carrossel.ts` ainda jurando que isso
- * não acontece. Renderizar a tela também não serviria: `AdminCarouselsView`
- * depende do `StoreContext`, que puxa `@/lib/supabase` na carga do módulo.
+ * REDESENHO DA TELA (03/10/2026): o seletor "Max" deixou de ser um `<select>`
+ * com `<option value={N}>` literais dentro de `AdminCarouselsView` e virou uma
+ * fileira de botões no painel de edição (`FolhaEditarVitrine`), desenhada a
+ * partir de `OPCOES_MAX_ITENS_CARROSSEL` (src/config/carrossel.ts). A
+ * invariante agora é comparada contra ESSA lista — que é exatamente o que a
+ * tela oferece, porque a tela só sabe desenhar opção que vem dela.
  *
- * A ARMADILHA, e por isso a calibragem existe: um extrator que deixa de casar
- * devolve zero opção, `Math.max()` de lista vazia devolve `-Infinity`, e a
- * comparação `LIMITE >= -Infinity` passa. O teste ficaria VERDE justamente
- * quando parou de medir. Por isso a calibragem prova as duas coisas na MESMA
- * rodada: que o extrator REAGE (achou as opções, e uma por `<option>`) e que
- * ele DISCRIMINA (não conta o `value={sec.maxItems ?? 6}` do próprio `<select>`,
- * que tem a mesma cara e não é uma opção).
+ * A ARMADILHA, e por isso a calibragem existe: se a tela voltasse a ter opções
+ * literais (um `<select>` novo, ou um botão escrito à mão), a lista deixaria
+ * de ser o que o painel oferece e a comparação passaria sem medir nada. A
+ * calibragem prova, na MESMA rodada, que (1) a lista existe e tem valores
+ * válidos, (2) o painel DESENHA a partir dela, (3) não há `<select>`/`<option>`
+ * literal na tela nem no painel, e (4) a quantidade só é escolhida por UM
+ * ponto — o botão desenhado dentro do `.map` da lista: `aoMudarQuantidade(`
+ * aparece uma única vez no painel, com o argumento do próprio `.map`, e a
+ * tela não repassa número literal a `handleUpdateMaxItems`. Um botão extra
+ * escrito à mão (`aoMudarQuantidade(12)`) faz esta varredura cair.
  */
 import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { LIMITE_MAX_ITENS_CARROSSEL } from "../src/config/carrossel.ts";
+import {
+  LIMITE_MAX_ITENS_CARROSSEL,
+  OPCOES_MAX_ITENS_CARROSSEL,
+} from "../src/config/carrossel.ts";
 
 // `fromFileUrl` e não `.pathname`: o caminho deste projeto tem espaços, e o
 // pathname devolve `%20` mais uma barra sobrando no Windows.
-const PAINEL = fromFileUrl(
-  new URL("../src/views/admin/AdminCarouselsView.tsx", import.meta.url),
+const caminho = (relativo: string) =>
+  fromFileUrl(new URL(relativo, import.meta.url));
+
+const TELA = Deno.readTextFileSync(
+  caminho("../src/views/admin/AdminCarouselsView.tsx"),
+);
+const PAINEL = Deno.readTextFileSync(
+  caminho("../src/components/admin/vitrines/FolhaEditarVitrine.tsx"),
 );
 
-const fonte = Deno.readTextFileSync(PAINEL);
-
-/** Valores numéricos oferecidos pelo seletor de `maxItems`.
- *
- * O JSX quebra `<option` e `value={N}` em linhas diferentes, então casar os
- * dois juntos exigiria varrer entre eles. Como o arquivo tem UM ÚNICO
- * `<select>` (asserido abaixo), todo `value={<dígitos>}` do arquivo é opção
- * dele — e `value={sec.maxItems ?? 6}`, que é do `<select>` e não de uma
- * opção, não casa por não ser só dígitos. */
-function opcoesDoSeletor(texto: string): number[] {
-  return [...texto.matchAll(/value=\{(\d+)\}/g)].map((m) => Number(m[1]));
-}
-
-Deno.test("calibragem: o extrator reage e discrimina", () => {
-  const opcoes = opcoesDoSeletor(fonte);
-
-  // REAGE: achou opções de verdade. Sem isto, um extrator quebrado deixaria a
-  // varredura verde medindo o vazio.
+Deno.test("calibragem: a lista de opções existe e é a que o painel desenha", () => {
+  // REAGE: a lista tem valores, todos inteiros positivos. Sem isto, uma lista
+  // vazia deixaria `Math.max()` devolver -Infinity e a comparação passar.
   assert(
-    opcoes.length >= 2,
-    `o extrator achou ${opcoes.length} opcao(oes) em AdminCarouselsView. Ou o seletor mudou de forma, ou o extrator quebrou — nos dois casos alguem tem de olhar, e nao seguir verde.`,
+    OPCOES_MAX_ITENS_CARROSSEL.length >= 2,
+    `OPCOES_MAX_ITENS_CARROSSEL tem ${OPCOES_MAX_ITENS_CARROSSEL.length} opcao(oes). O painel oferece escolha entre varias — alguem tem de olhar, e nao seguir verde.`,
   );
+  for (const n of OPCOES_MAX_ITENS_CARROSSEL) {
+    assert(
+      Number.isInteger(n) && n > 0,
+      `opcao invalida em OPCOES_MAX_ITENS_CARROSSEL: ${n}`,
+    );
+  }
 
-  // Uma opção por `<option>`: se aparecer `value={N}` fora de uma opção, ou uma
-  // opção sem valor numérico, os números divergem e o teste chama um humano.
-  const quantosOption = [...fonte.matchAll(/<option\b/g)].length;
-  assertEquals(
-    opcoes.length,
-    quantosOption,
-    `achei ${opcoes.length} valor(es) numerico(s) e ${quantosOption} <option>. Divergiram: a premissa de que todo value={N} do arquivo e uma opcao do seletor de maxItems deixou de valer.`,
-  );
-
-  // DISCRIMINA: o próprio `<select>` tem `value={sec.maxItems ?? 6}`, que se
-  // parece com uma opção e não é. Se um dia o extrator passar a contá-lo, este
-  // caso cai antes de a varredura mentir.
+  // O painel DESENHA a partir da lista (uma opção por item) e a importa de lá.
   assert(
-    fonte.includes("value={sec.maxItems ?? 6}"),
-    "o `<select>` deixou de ter `value={sec.maxItems ?? 6}` — o caso de " +
-      "discriminacao desta calibragem sumiu do arquivo e precisa ser refeito.",
+    PAINEL.includes("OPCOES_MAX_ITENS_CARROSSEL.map("),
+    "FolhaEditarVitrine deixou de desenhar as quantidades a partir de OPCOES_MAX_ITENS_CARROSSEL — se agora escreve opcoes a mao, esta varredura deixou de medir o que o painel oferece.",
   );
-  assertEquals(
-    opcoesDoSeletor("value={sec.maxItems ?? 6}").length,
-    0,
-    "o extrator passou a contar o value do proprio <select> como opcao",
+  assert(
+    PAINEL.includes('from "@/config/carrossel"'),
+    "FolhaEditarVitrine nao importa a lista de src/config/carrossel",
   );
 
-  // A premissa de "um select só" é do extrator, então ela também se assere.
+  // UM só ponto de escolha: a chamada nasce dentro do `.map` e usa o argumento
+  // dele. Qualquer outra chamada (botão escrito à mão) aumenta a contagem.
+  const mapa = PAINEL.match(
+    /OPCOES_MAX_ITENS_CARROSSEL\.map\(\(\s*(\w+)\s*\)\s*=>/,
+  );
+  assert(
+    mapa,
+    "nao achei o `.map((x) =>` de OPCOES_MAX_ITENS_CARROSSEL no painel",
+  );
+  const chamadas = [...PAINEL.matchAll(/aoMudarQuantidade\(/g)];
   assertEquals(
-    [...fonte.matchAll(/<select\b/g)].length,
+    chamadas.length,
     1,
-    "AdminCarouselsView passou a ter mais de um <select>: os value={N} do " +
-      "arquivo nao pertencem mais todos ao seletor de maxItems.",
+    `aoMudarQuantidade( aparece ${chamadas.length}x em FolhaEditarVitrine: so o botao desenhado dentro do .map da lista pode escolher a quantidade — um botao escrito a mao escapa da comparacao com o limite de carga.`,
   );
+  assert(
+    PAINEL.indexOf(`aoMudarQuantidade(${mapa[1]})`) > mapa.index,
+    "a unica chamada de aoMudarQuantidade nao usa o argumento do .map (ou esta fora dele)",
+  );
+  assertEquals(
+    [...TELA.matchAll(/handleUpdateMaxItems\([^)]*\b\d+\s*\)/g)].length,
+    0,
+    "AdminCarouselsView passa um numero literal a handleUpdateMaxItems: a opcao nao vem de OPCOES_MAX_ITENS_CARROSSEL",
+  );
+
+  // DISCRIMINA: sem `<select>`/`<option>` literal na tela nem no painel. Se
+  // voltar um, as opcoes dele nao passam pela lista e escapam da comparacao.
+  for (const [nome, fonte] of [
+    ["AdminCarouselsView", TELA],
+    ["FolhaEditarVitrine", PAINEL],
+  ]) {
+    assertEquals(
+      [...fonte.matchAll(/<select\b|<option\b/g)].length,
+      0,
+      `${nome} voltou a ter <select>/<option> literal: as opcoes dele nao passam por OPCOES_MAX_ITENS_CARROSSEL e a varredura nao as enxerga.`,
+    );
+  }
 });
 
 Deno.test("o limite de carga cobre a maior opcao que o painel oferece", () => {
-  const opcoes = opcoesDoSeletor(fonte);
-  const maiorOferecida = Math.max(...opcoes);
+  const maiorOferecida = Math.max(...OPCOES_MAX_ITENS_CARROSSEL);
 
   assert(
     LIMITE_MAX_ITENS_CARROSSEL >= maiorOferecida,
-    `LIMITE_MAX_ITENS_CARROSSEL vale ${LIMITE_MAX_ITENS_CARROSSEL}, mas o seletor de "Max" em AdminCarouselsView oferece ate ${maiorOferecida} (opcoes: ${opcoes.join(", ")}).\n\nEfeito para quem usa a loja: o lojista escolhe ${maiorOferecida}, a previa do painel mostra ${maiorOferecida}, e o cliente ve ${LIMITE_MAX_ITENS_CARROSSEL} — calado.\n\nConserto: suba LIMITE_MAX_ITENS_CARROSSEL em src/config/carrossel.ts para pelo menos ${maiorOferecida}, ou tire a opcao do seletor.`,
+    `LIMITE_MAX_ITENS_CARROSSEL vale ${LIMITE_MAX_ITENS_CARROSSEL}, mas o painel de vitrines oferece ate ${maiorOferecida} (opcoes: ${OPCOES_MAX_ITENS_CARROSSEL.join(", ")}).\n\nEfeito para quem usa a loja: o lojista escolhe ${maiorOferecida}, a previa do painel mostra ${maiorOferecida}, e o cliente ve ${LIMITE_MAX_ITENS_CARROSSEL} — calado.\n\nConserto: suba LIMITE_MAX_ITENS_CARROSSEL em src/config/carrossel.ts para pelo menos ${maiorOferecida}, ou tire a opcao de OPCOES_MAX_ITENS_CARROSSEL.`,
   );
 });

@@ -11,3 +11,10 @@
 // maxItems em AdminCarouselsView. O corte REAL por seção (o `max` que o
 // lojista escolheu) continua sendo aplicado no render da Home.
 export const LIMITE_MAX_ITENS_CARROSSEL = 10;
+
+// As quantidades que o painel oferece em "Quantos produtos mostrar". Moram
+// aqui (e não como literais dentro da tela) para o teste de varredura
+// `tests/limite_de_carrossel_cobre_o_seletor_test.ts` comparar o limite de
+// carga contra o que o painel REALMENTE oferece — a tela desenha uma opção
+// por item desta lista.
+export const OPCOES_MAX_ITENS_CARROSSEL = [4, 6, 8, 10] as const;

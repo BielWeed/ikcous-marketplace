@@ -4,12 +4,12 @@
 //
 // PARTE 1 — ORDENAÇÃO INICIAL DO LTV
 //   `handleSort(field)` (AdminCustomersView.tsx:359-368) sempre iniciava um
-//   campo novo em "asc". O chip de atalho "Maior LTV" (ORDENACOES_CLIENTES)
+//   campo novo em "asc". O chip de atalho "Maior total comprado" (antes "Maior LTV"; ORDENACOES_CLIENTES)
 //   usa "desc" pra esse mesmo campo (`total_spent`) — e o estado inicial da
 //   tela (`sortField`/`sortDirection`, linhas 111-112) TAMBÉM já nasce como
 //   `total_spent`/"desc", igual ao chip. Só que, como o handler comparava
 //   `sortField === field` contra esse estado pré-populado (não contra "o
-//   lojista já clicou nisto"), o PRIMEIRO clique no cabeçalho "LTV (Gasto)"
+//   lojista já clicou nisto"), o PRIMEIRO clique no cabeçalho "Total já comprado" (antes "LTV (Gasto)")
 //   caía no ramo de alternância e invertia direto pra "asc" — a lista virava
 //   menor→maior gasto na primeira tentativa, ao contrário do chip
 //   equivalente. Um segundo defeito, no mesmo handler: trocar para um campo
@@ -109,7 +109,7 @@ function esperar(ms = 0): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-describe("AdminCustomersView — ordenação inicial do LTV e ajuda honesta", () => {
+describe("AdminCustomersView — ordenação inicial do total já comprado e ajuda honesta", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let armazem: Map<string, string>;
@@ -211,7 +211,7 @@ describe("AdminCustomersView — ordenação inicial do LTV e ajuda honesta", ()
     return chamada.args;
   }
 
-  it("clicar em 'LTV (Gasto)' pela primeira vez mantém desc (maior gasto no topo), igual ao chip 'Maior LTV'", async () => {
+  it("clicar em 'Total já comprado' pela primeira vez mantém desc (maior gasto no topo), igual ao chip 'Maior total comprado'", async () => {
     await abrirTela();
 
     // Estado inicial da tela: já nasce total_spent/desc (mesmo do chip).
@@ -221,7 +221,7 @@ describe("AdminCustomersView — ordenação inicial do LTV e ajuda honesta", ()
     });
 
     await act(async () => {
-      cabecalho("LTV (Gasto)").click();
+      cabecalho("Total já comprado").click();
       await esperar(400);
     });
 
@@ -235,7 +235,7 @@ describe("AdminCustomersView — ordenação inicial do LTV e ajuda honesta", ()
     });
   });
 
-  it("trocar de coluna (Cliente → LTV) usa o padrão de CADA campo, não sempre 'asc'", async () => {
+  it("trocar de coluna (Cliente → Total já comprado) usa o padrão de CADA campo, não sempre 'asc'", async () => {
     await abrirTela();
 
     await act(async () => {
@@ -248,11 +248,11 @@ describe("AdminCustomersView — ordenação inicial do LTV e ajuda honesta", ()
     });
 
     await act(async () => {
-      cabecalho("LTV (Gasto)").click();
+      cabecalho("Total já comprado").click();
       await esperar(400);
     });
 
-    // O chip "Maior LTV" usa desc para total_spent; o cabeçalho, ao ser
+    // O chip "Maior total comprado" usa desc para total_spent; o cabeçalho, ao ser
     // escolhido pela primeira vez depois de sair de outro campo, tem que
     // concordar — não "asc" fixo.
     expect(ultimaChamada()).toMatchObject({
@@ -265,11 +265,11 @@ describe("AdminCustomersView — ordenação inicial do LTV e ajuda honesta", ()
     await abrirTela();
 
     await act(async () => {
-      cabecalho("LTV (Gasto)").click(); // 1º clique: fica em desc (ver teste acima)
+      cabecalho("Total já comprado").click(); // 1º clique: fica em desc (ver teste acima)
       await esperar(400);
     });
     await act(async () => {
-      cabecalho("LTV (Gasto)").click(); // 2º clique: agora sim alterna
+      cabecalho("Total já comprado").click(); // 2º clique: agora sim alterna
       await esperar(400);
     });
 

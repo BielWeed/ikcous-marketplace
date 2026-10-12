@@ -145,6 +145,17 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
     acao: "remover_cupom",
   },
   { padrao: /^Cupom .+ inválido ou expirado\.$/, acao: "remover_cupom" },
+  // CUPONS DESLIGADOS (issue #645, 08/10/2026 — migration 20261203000000): a
+  // lojista desligou a chave `enable_coupons` ENTRE a tela e o clique (aba
+  // velha). O gatilho de marketplace_orders recusa o INSERT com cupom, e
+  // NENHUM pedido nasceu. Sem esta regra a frase caía em `conferir_antes`
+  // ("Ver meus pedidos") e travava o botão de finalizar sobre um pedido que
+  // provadamente não existe. Sem código do cupom na frase (a chave vale para
+  // a loja toda), por isso o padrão é exato.
+  {
+    padrao: /^Os cupons estão desativados nesta loja\.$/,
+    acao: "remover_cupom",
+  },
   { padrao: /^A cotação de frete expirou\./, acao: "recotar_frete" },
   {
     padrao: /^Entrega local não disponível para o CEP informado\.$/,

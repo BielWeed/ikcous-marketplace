@@ -71,7 +71,7 @@ export function corDoValor(valor: number): string {
 // ---------------------------------------------------------------------------
 
 export const CLASSE_TITULO_SECAO =
-  "text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500";
+  "text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 
 export function CartaoSecao({
   titulo,
@@ -113,6 +113,36 @@ export function CartaoSecao({
   );
 }
 
+/**
+ * Casca de cartão de métrica, a mesma do KpiCard do painel (redesenho de
+ * 10/10/2026): borda de 10%, fundo zinc translúcido e brilho no topo. Os
+ * mini-cartões das abas (Vencido, Entrou, Esperado…) usam a mesma casca, e
+ * o rótulo em frase normal de 12px (cinza 300, contraste AA).
+ */
+export const CLASSE_CASCA_DO_CARTAO =
+  "rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent";
+
+export const CLASSE_ROTULO_DO_CARTAO =
+  "text-xs font-semibold leading-tight text-zinc-300";
+
+/**
+ * Casca de linha-botão (a do AtalhosDaAba): gradiente para a direita, borda
+ * que esquenta no hover e foco visível. O chamador põe `group`, `min-h-*` e o
+ * miolo; a seta usa `CLASSE_SETA_DA_LINHA_BOTAO`.
+ */
+export const CLASSE_CASCA_DA_LINHA_BOTAO =
+  "group rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent text-left shadow-lg transition-all hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]";
+
+export const CLASSE_SETA_DA_LINHA_BOTAO =
+  "size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold";
+
+/**
+ * Piso do cartão de KPI e do esqueleto (uma constante só, para não divergirem).
+ * É piso, não altura exata: com detalhe ou rótulo de duas linhas o cartão real
+ * passa disso e o conteúdo abaixo ainda se ajusta quando os números chegam.
+ */
+const ALTURA_MINIMA_DO_KPI = "min-h-[100px]";
+
 export function BlocoKpi({
   rotulo,
   icone: Icone,
@@ -131,27 +161,48 @@ export function BlocoKpi({
 }) {
   return (
     <div
-      className={cn(
-        "flex min-w-0 flex-col gap-1.5 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg",
-        className,
-      )}
+      // Valor em dinheiro: 17px na base, 24px de `sm`, 18px em `lg` (grade de
+      // 4 colunas ao lado da sidebar: ~145px úteis a 1024px) e 24px de `xl`.
+      // Medido no Chromium, "−R$ 123.456,78" cabe a 360px (≈129/136px, folga
+      // ≈7px com `px-2.5`; com `px-3` eram ≈3px), a 1024px (≈137/145px) e a
+      // 1280px (≈182/209px). O padding é 10px na base e 12px de `sm` em diante
+      // (o selo é `absolute right-3` e não muda). Folga curta: valor maior
+      // ou fonte mais larga que a medida volta a cortar (o `truncate` é só
+      // rede de segurança). Template e não `cn`: o tailwind-merge trata
+      // `bg-gradient-to-*` como conflito de `bg-zinc-900/70` e descartaria o
+      // fundo da casca.
+      className={`relative flex min-w-0 flex-col gap-1.5 overflow-hidden px-2.5 py-3.5 shadow-lg sm:px-3 ${CLASSE_CASCA_DO_CARTAO} ${ALTURA_MINIMA_DO_KPI}${className ? ` ${className}` : ""}`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          {rotulo}
-        </span>
-        {Icone ? (
+      {/* O ícone fica num selo no canto (nunca some); o rótulo reserva a
+          faixa dele (`pr-9`) só quando há ícone, e o valor usa a largura toda. */}
+      {Icone ? (
+        <span className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06]">
           <Icone
             aria-hidden="true"
-            className={cn("size-4 shrink-0", destaque ?? "text-zinc-500")}
+            className={cn("size-4 shrink-0", destaque ?? "text-zinc-400")}
           />
-        ) : null}
-      </div>
-      <div className="min-w-0 truncate text-lg font-black tabular-nums tracking-tight text-white sm:text-xl">
+        </span>
+      ) : null}
+      {/* Rótulo longo ("Sobra depois dos custos da venda") quebra em até duas
+          linhas em vez de cortar; a altura de duas linhas vale para todos,
+          para os valores dos cartões lado a lado ficarem na mesma altura. */}
+      <span
+        data-rotulo-do-kpi=""
+        className={cn(
+          "line-clamp-2 min-h-[2.5em] min-w-0 break-words",
+          CLASSE_ROTULO_DO_CARTAO,
+          Icone && "pr-9",
+        )}
+      >
+        {rotulo}
+      </span>
+      <div className="min-w-0 truncate text-[17px] font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight lg:text-lg xl:text-2xl">
         {children}
       </div>
       {detalhe ? (
-        <div className="min-w-0 text-[11px] text-zinc-500">{detalhe}</div>
+        <div className="min-w-0 text-xs font-medium leading-tight text-zinc-400">
+          {detalhe}
+        </div>
       ) : null}
     </div>
   );
@@ -179,7 +230,10 @@ export function EsqueletoDeKpis({
     >
       <span className="sr-only">Carregando…</span>
       {Array.from({ length: quantos }, (_, i) => (
-        <Skeleton key={i} className="h-[92px] rounded-2xl bg-white/5" />
+        <Skeleton
+          key={i}
+          className={`${ALTURA_MINIMA_DO_KPI} rounded-2xl bg-white/5`}
+        />
       ))}
     </div>
   );
@@ -358,7 +412,7 @@ export function Etiqueta({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
+        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider",
         tom === "neutro" && "border-white/10 bg-white/5 text-zinc-400",
         tom === "aviso" && "border-amber-500/30 bg-amber-500/10 text-amber-300",
         tom === "perigo" && "border-red-500/30 bg-red-500/10 text-red-300",

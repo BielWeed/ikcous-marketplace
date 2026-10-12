@@ -48,9 +48,10 @@ Pago**, painel admin do lojista, Q&A e avaliações. Versão em 18/09/2026: 1.35
 
 ## Integrações
 
-Mercado Pago (Orders + Payments) · ViaCEP · Melhor Envio e Frenet (frete) ·
-SMTP da loja (OTP e comprovante) · Web Push (VAPID) · wa.me (deep links) ·
-linkrastreio. Sem axios — tudo `fetch`.
+Mercado Pago (Orders + Payments) · busca de CEP (ViaCEP, com OpenCEP e
+AwesomeAPI de reserva) · Melhor Envio e Frenet (frete) · SMTP da loja (OTP e
+comprovante) · Web Push (VAPID) · wa.me (deep links) · linkrastreio. Sem axios —
+tudo `fetch`.
 
 ## Verificação e deploy (o que realmente cobra)
 

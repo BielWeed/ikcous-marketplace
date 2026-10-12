@@ -12,6 +12,9 @@
  *       é recusada com exceção.
  *   (c) RESOLVER_LOJA: só resolve host ATIVO da frota, com a chave certa;
  *       comparação de host sem sensibilidade a maiúscula.
+ *   (f) LEDGER (Lote A, 20261192000000): o mesmo refund do MP não vira duas
+ *       linhas de order_refunds — índice único parcial, corrida real entre
+ *       duas conexões, preflight que recusa duplicata com contagem.
  *
  * Tudo contra o Postgres EFÊMERO do job (migrations aplicadas do zero pelo
  * aplicar-migrations.cjs). Dinheiro aqui é dado de FIXTURE — uuids fixos,
@@ -278,6 +281,14 @@ PROVAS.push({
        VALUES ($1, 'admin@prova.teste', '{"role":"admin"}'::jsonb)`,
       [U_ADMIN],
     );
+    // 20261198000000 (admin ATUAL): update_order_status_atomic exige o papel
+    // admin AGORA em auth.users E em profiles (contradição nega) — o admin
+    // de verdade tem os dois (o gatilho de profiles sincroniza o papel).
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin prova', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
 
     await logar(cliente, U_CLIENTE);
     const pedidoId = await criarPedido(cliente, {
@@ -464,6 +475,16 @@ PROVAS.push({
        VALUES ($1, 'admin2@prova.teste', '{"role":"admin"}'::jsonb)
        ON CONFLICT (id) DO NOTHING`,
       [U_ADMIN_2],
+    );
+    // 20261199000000 (admin ATUAL): a venda no balcão exige o papel admin
+    // AGORA em auth.users E em profiles — os dois admins da prova têm os dois
+    // (o gatilho de profiles sincroniza o papel). A 20261198000000 exige o
+    // mesmo em update_order_status_atomic.
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES
+         ($1, 'Admin prova', 'admin'), ($2, 'Admin prova 2', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN, U_ADMIN_2],
     );
     // Um pedido da VITRINE carimbado com uma chave conhecida: é o controle
     // negativo da guarda de idempotência (canal diferente).
@@ -1022,6 +1043,234 @@ PROVAS.push({
       endereco: null,
       gratis: 0.01,
     });
+  },
+});
+
+// ---- (f) Lote A (04/10/2026): o ledger registra cada estorno do MP uma vez --
+// Migration 20261192000000: UNIQUE (order_id, mp_refund_id) WHERE
+// mp_refund_id IS NOT NULL. Prova o índice NO BANCO que nasceu das
+// migrations, a CORRIDA de verdade (duas conexões, a segunda espera a
+// primeira e recebe 23505), o preflight que RECUSA com contagem quando já há
+// duplicata (nunca apaga/funde) e a reaplicação idempotente.
+const P_LEDGER = "aaaaaaaa-0000-0000-0000-000000000006";
+const MIGRATION_LEDGER =
+  "20261192000000_o_ledger_registra_cada_estorno_do_mp_uma_vez.sql";
+const DEF_INDICE_REFUND =
+  "CREATE UNIQUE INDEX uq_order_refunds_pedido_refund_mp ON public.order_refunds USING btree (order_id, mp_refund_id) WHERE (mp_refund_id IS NOT NULL)";
+const DEF_INDICE_CONTESTACAO =
+  "CREATE UNIQUE INDEX uq_order_refunds_pedido_contestacao ON public.order_refunds USING btree (order_id, mp_chargeback_id) WHERE (mp_chargeback_id IS NOT NULL)";
+
+async function reservaDeContestacao(cliente, pedidoId, idContestacao) {
+  return cliente.query(
+    `INSERT INTO public.order_refunds
+       (order_id, amount, solicitado_por, status, motivo, mp_chargeback_id, mp_status, mp_status_detail)
+     VALUES ($1, 20.00, 'sistema', 'em_processamento', 'contestação em análise (prova f)', $2, 'charged_back', 'in_process')`,
+    [pedidoId, idContestacao],
+  );
+}
+
+function lerMigrationDoLedger(nome) {
+  // Caminho montado de segmentos FIXOS deste repositório (mesma convenção do
+  // aplicar-migrations.cjs), nunca de entrada externa.
+  const caminho = require("node:path").join(
+    __dirname,
+    "..",
+    "..",
+    "supabase",
+    "migrations",
+    nome,
+  );
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- ver acima
+  return require("node:fs").readFileSync(caminho, "utf8");
+}
+
+async function linhaSistema(cliente, pedidoId, mpRefundId) {
+  return cliente.query(
+    `INSERT INTO public.order_refunds
+       (order_id, amount, solicitado_por, status, motivo, mp_refund_id, mp_status)
+     VALUES ($1, 20.00, 'sistema', 'concluido', 'estorno feito fora do app (prova f)', $2, 'refunded')`,
+    [pedidoId, mpRefundId],
+  );
+}
+
+async function codigoDoErro(promessa) {
+  try {
+    await promessa;
+    return null;
+  } catch (erro) {
+    return { code: erro.code, message: erro.message };
+  }
+}
+
+PROVAS.push({
+  nome: "(f) ledger: o mesmo refund do MP não vira duas linhas (índice único parcial, corrida real, preflight recusa duplicata)",
+  corpo: async (cliente) => {
+    await garantirLojaFixture(cliente);
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data)
+       VALUES ($1, 'cliente@prova.teste', '{}'::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [U_CLIENTE],
+    );
+    await cliente.query(
+      `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
+       VALUES ($1, 'Produto Prova Ledger', 30.00, 50.00, 10, true, false)`,
+      [P_LEDGER],
+    );
+    await logar(cliente, U_CLIENTE);
+    const pedidoId = await criarPedido(cliente, {
+      produtos: [{ id: P_LEDGER, quantidade: 2 }],
+      cupom: null,
+      total: "100.00",
+    });
+
+    // 1. O índice nasceu das migrations, com a definição exata.
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT pg_get_indexdef(to_regclass('public.uq_order_refunds_pedido_refund_mp'))",
+      ),
+      DEF_INDICE_REFUND,
+      "o índice único parcial existe com a definição da 20261192000000",
+    );
+
+    // 2. Mesmo (pedido, refund) duas vezes: a segunda é recusada com 23505.
+    await linhaSistema(cliente, pedidoId, "r-prova-f");
+    const repetido = await codigoDoErro(
+      linhaSistema(cliente, pedidoId, "r-prova-f"),
+    );
+    assert.equal(
+      repetido?.code,
+      "23505",
+      "o 2º INSERT do mesmo refund recusa com 23505",
+    );
+
+    // 3. Parcial: várias linhas SEM id no mesmo pedido continuam valendo
+    // (linhas do app nascem sem id e o recebem só quando o MP responde).
+    await linhaSistema(cliente, pedidoId, null);
+    await linhaSistema(cliente, pedidoId, null);
+
+    // 3b. Contestação (R1-NULL): a coluna nasceu NULL e aceita NULL; o MESMO
+    // CBK duas vezes no pedido é recusado com 23505; dois casos diferentes e
+    // linhas sem CBK continuam valendo.
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT pg_get_indexdef(to_regclass('public.uq_order_refunds_pedido_contestacao'))",
+      ),
+      DEF_INDICE_CONTESTACAO,
+      "o índice único parcial da contestação existe com a definição da 20261192000000",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        `SELECT format_type(atttypid, atttypmod) || CASE WHEN attnotnull THEN ' NOT NULL' ELSE '' END
+           FROM pg_attribute WHERE attrelid = 'public.order_refunds'::regclass AND attname = 'mp_chargeback_id'`,
+      ),
+      "text",
+      "mp_chargeback_id é text e aceita NULL",
+    );
+    await reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-1");
+    const contestacaoRepetida = await codigoDoErro(
+      reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-1"),
+    );
+    assert.equal(
+      contestacaoRepetida?.code,
+      "23505",
+      "o 2º registro do mesmo caso recusa com 23505",
+    );
+    await reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-2");
+    await reservaDeContestacao(cliente, pedidoId, null);
+    await reservaDeContestacao(cliente, pedidoId, null);
+
+    // 4. A CORRIDA de verdade: a 2ª conexão insere o MESMO refund enquanto a
+    // 1ª ainda não fez COMMIT — espera a trava e, no COMMIT, recebe 23505.
+    const outro = new Client({ connectionString: lerDatabaseUrlEfemera() });
+    await outro.connect();
+    try {
+      await cliente.query("BEGIN");
+      await linhaSistema(cliente, pedidoId, "r-corrida");
+      const segunda = codigoDoErro(linhaSistema(outro, pedidoId, "r-corrida"));
+      await new Promise((r) => setTimeout(r, 300));
+      await cliente.query("COMMIT");
+      const resultado = await segunda;
+      assert.equal(
+        resultado?.code,
+        "23505",
+        "a entrega paralela esbarra no índice, não grava 2ª linha",
+      );
+    } finally {
+      await cliente.query("ROLLBACK").catch(() => {});
+      await outro.end().catch(() => {});
+    }
+    assert.equal(
+      Number(
+        await valorUnico(
+          cliente,
+          "SELECT count(*) FROM public.order_refunds WHERE order_id = $1 AND mp_refund_id = 'r-corrida'",
+          [pedidoId],
+        ),
+      ),
+      1,
+      "a corrida termina com UMA linha",
+    );
+
+    // 5. Preflight: com duplicata pré-existente (índice ausente), a migration
+    // RECUSA com a contagem e não grava nada — nunca apaga nem funde.
+    const migration = lerMigrationDoLedger(MIGRATION_LEDGER);
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query(
+        "DROP INDEX public.uq_order_refunds_pedido_refund_mp",
+      );
+      await linhaSistema(cliente, pedidoId, "r-prova-f");
+      const recusa = await codigoDoErro(cliente.query(migration));
+      assert.ok(
+        recusa && /LEDGER_DUPLICADO: 1 par/.test(recusa.message),
+        `preflight recusa com a contagem (veio: ${recusa?.message})`,
+      );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    assert.equal(
+      Number(
+        await valorUnico(
+          cliente,
+          "SELECT count(*) FROM public.order_refunds WHERE order_id = $1 AND mp_refund_id = 'r-prova-f'",
+          [pedidoId],
+        ),
+      ),
+      1,
+      "a recusa não apagou nem fundiu nada (ROLLBACK devolveu o estado)",
+    );
+
+    // 6. Reaplicar com o índice já no ar: idempotente, sem erro; e o par
+    // rollback -> migration volta ao mesmo índice.
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query(migration);
+      await cliente.query(
+        lerMigrationDoLedger(`rollback-manual-${MIGRATION_LEDGER}`),
+      );
+      assert.equal(
+        await valorUnico(
+          cliente,
+          "SELECT to_regclass('public.uq_order_refunds_pedido_refund_mp')::text",
+        ),
+        null,
+        "o rollback-manual apaga só o índice",
+      );
+      await cliente.query(migration);
+      assert.equal(
+        await valorUnico(
+          cliente,
+          "SELECT pg_get_indexdef(to_regclass('public.uq_order_refunds_pedido_refund_mp'))",
+        ),
+        DEF_INDICE_REFUND,
+      );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
   },
 });
 

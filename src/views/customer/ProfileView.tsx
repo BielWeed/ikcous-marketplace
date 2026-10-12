@@ -73,6 +73,7 @@ const itemVariants = {
 
 import { useStore } from "@/contexts/StoreContext";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { haptic } from "@/utils/haptic";
 
 interface ProfileViewProps {
@@ -293,7 +294,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
   }, [user, profile]);
 
   const handleWhatsAppSupport = (orderId: string) => {
-    const message = `Olá! Tenho uma dúvida sobre meu pedido #${orderId.slice(0, 8)}.`;
+    const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
     let phone = (config.whatsappNumber || "").replace(/\D/g, "");
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
@@ -594,7 +595,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
                           )}
                           <div className="mt-1 flex items-center gap-2">
                             <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[9px] font-black tracking-widest text-zinc-500">
-                              ID #{order.id.slice(0, 8)}
+                              ID #{numeroDoPedido(order.id)}
                             </span>
                             <span className="size-1.5 rounded-full bg-zinc-200" />
                             <span className="text-[9px] font-bold tracking-tight text-zinc-400">

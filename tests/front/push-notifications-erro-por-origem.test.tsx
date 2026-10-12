@@ -211,7 +211,11 @@ describe("usePushNotifications — o erro deixa de ser um catch só para três c
     ).rejects.toThrow();
 
     expect(subscribeNoNavegador).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_PERMISSAO);
+    // Instrução longa: fica 8000 ms na tela (o `<Toaster>` fecharia em 2500
+    // antes de dar para ler até o fim). A duração vai no PRÓPRIO aviso.
+    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_PERMISSAO, {
+      duration: 8000,
+    });
   });
 
   // Anotado 1 da revisão: `result === "default"` (a pessoa fechou o balão do

@@ -30,7 +30,11 @@ import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
-import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
+import {
+  conjuntoDeImagens,
+  imagemRedimensionada,
+  usarImagemOriginal,
+} from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -839,6 +843,12 @@ export const ProductView = React.memo(function ProductView({
                   // Ocupa a largura toda no celular; a partir do desktop fica limitada pela altura.
                   sizes="(min-width: 1024px) 720px, 100vw"
                   alt={product.name}
+                  onError={(event) =>
+                    usarImagemOriginal(
+                      event.currentTarget,
+                      variantImage || product.images?.at(currentImageIndex),
+                    )
+                  }
                   className="main-product-image h-full w-auto max-w-full object-contain"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -999,6 +1009,9 @@ export const ProductView = React.memo(function ProductView({
                       quality: 80,
                     })}
                     alt=""
+                    onError={(event) =>
+                      usarImagemOriginal(event.currentTarget, foto)
+                    }
                     loading="lazy"
                     decoding="async"
                     className="lg:size-full lg:object-contain"
@@ -1257,6 +1270,12 @@ export const ProductView = React.memo(function ProductView({
                                       quality: 70,
                                     })}
                                     alt=""
+                                    onError={(event) =>
+                                      usarImagemOriginal(
+                                        event.currentTarget,
+                                        v.imageUrl,
+                                      )
+                                    }
                                     loading="lazy"
                                     decoding="async"
                                     className="size-5 rounded-md bg-white object-cover shadow-sm"

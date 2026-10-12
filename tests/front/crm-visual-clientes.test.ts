@@ -2,7 +2,7 @@
 // `docs/superpowers/specs/2026-09-27-crm-visual-profissional-design.md`):
 // agrupar os 10 segmentos RFM em 3 faixas de saúde da relação (Melhores ·
 // Atenção · Perdendo) e o texto da linha de filtro ativo
-// ("Mostrando: Em risco · 2"). Arquivo novo para não conflitar com
+// ("Mostrando: Podem não voltar · 2"). Arquivo novo para não conflitar com
 // `crm-e-inicio-funcoes-puras.test.ts`, que outro agente também está editando.
 import {
   FAIXAS_DE_SEGMENTOS_DO_CRM,
@@ -51,19 +51,19 @@ describe("textoDoFiltroDeSegmento", () => {
 
   it("mostra o rótulo do segmento e a contagem de clientes filtrados", () => {
     expect(textoDoFiltroDeSegmento("em_risco", 2)).toBe(
-      "Mostrando: Em risco · 2",
+      "Mostrando: Podem não voltar · 2",
     );
   });
 
   it("formata a contagem com separador de milhar", () => {
     expect(textoDoFiltroDeSegmento("campeoes", 1234)).toBe(
-      "Mostrando: Campeões · 1.234",
+      "Mostrando: Melhores clientes · 1.234",
     );
   });
 
   it("mostra 0 quando o segmento escolhido não tem cliente algum", () => {
     expect(textoDoFiltroDeSegmento("hibernando", 0)).toBe(
-      "Mostrando: Hibernando · 0",
+      "Mostrando: Parados há muito tempo · 0",
     );
   });
 });

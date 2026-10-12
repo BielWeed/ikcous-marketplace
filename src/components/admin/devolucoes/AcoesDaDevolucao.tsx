@@ -50,7 +50,7 @@ const BOTAO_PERIGO =
 const CAMPO =
   "w-full rounded-xl border border-white/10 bg-zinc-950 p-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none";
 const ROTULO =
-  "mb-1.5 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500";
+  "mb-1.5 block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 
 /** O pedido foi pago pelo app (o reembolso volta pelo Mercado Pago)? */
 function pagoPeloApp(detalhe: DevolucaoDetalhe): boolean {
@@ -253,9 +253,9 @@ export function AcoesDaDevolucao({
   return (
     <section
       data-testid="acoes-devolucao"
-      className="admin-glass space-y-4 rounded-2xl border border-admin-gold/20 p-4 shadow-2xl sm:p-6"
+      className="space-y-4 rounded-2xl border border-admin-gold/20 bg-zinc-950/40 p-4 shadow-2xl backdrop-blur-2xl sm:p-6"
     >
-      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-admin-gold">
+      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-admin-gold">
         Próximo passo
       </h3>
 
@@ -458,7 +458,7 @@ export function AcoesDaDevolucao({
             também recusa sozinha se o pagamento já tiver sido confirmado, mas
             nem sempre há esse marcador gravado).
           </p>
-          <label className="flex items-start gap-2 text-[11px] font-bold text-zinc-300">
+          <label className="flex min-h-11 items-start gap-2 text-[11px] font-bold text-zinc-300">
             <input
               type="checkbox"
               checked={confirmado}
@@ -467,7 +467,7 @@ export function AcoesDaDevolucao({
                   e.target.checked ? detalhe.me_reverse_id : null,
                 )
               }
-              className="mt-0.5 size-4 shrink-0"
+              className="mt-0.5 size-5 shrink-0"
             />
             Conferi em Meus envios que este envio NÃO foi pago.
           </label>
@@ -587,7 +587,7 @@ export function AcoesDaDevolucao({
                     </button>
                   ))}
                 </div>
-                <p className="mt-1.5 text-[10px] text-zinc-500">
+                <p className="mt-1.5 text-[11px] text-zinc-500">
                   O cliente pediu: {rotuloResolucao(detalhe.resolucao_desejada)}
                 </p>
               </fieldset>
@@ -605,7 +605,7 @@ export function AcoesDaDevolucao({
                     onFlush={setValor}
                     className={cn(CAMPO, "h-11 py-0 tabular-nums")}
                   />
-                  <p className="text-[10px] leading-relaxed text-zinc-500">
+                  <p className="text-[11px] leading-relaxed text-zinc-500">
                     Itens {formatarReais(detalhe.valor_itens)}
                     {detalhe.valor_frete_ida > 0 &&
                       ` + frete de ida ${formatarReais(detalhe.valor_frete_ida)} (o pedido voltou inteiro)`}

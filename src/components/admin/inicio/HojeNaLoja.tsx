@@ -63,7 +63,7 @@ function DivisaoAppBalcao({
           <dd className="mt-0.5 truncate font-bold tabular-nums text-white">
             {formatarMoeda(online)}
             {total > 0 ? (
-              <span className="ml-1 font-semibold text-zinc-500">
+              <span className="ml-1 font-semibold text-zinc-400">
                 {formatarPercentual(pctApp, 0)}
               </span>
             ) : null}
@@ -78,7 +78,7 @@ function DivisaoAppBalcao({
           <dd className="mt-0.5 truncate font-bold tabular-nums text-white">
             {formatarMoeda(presencial)}
             {total > 0 ? (
-              <span className="ml-1 font-semibold text-zinc-500">
+              <span className="ml-1 font-semibold text-zinc-400">
                 {formatarPercentual(pctBalcao, 0)}
               </span>
             ) : null}
@@ -105,11 +105,11 @@ export function HojeNaLoja({
       <div className="relative flex items-baseline justify-between gap-3">
         <h2
           id="inicio-hoje-titulo"
-          className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
         >
           Hoje
         </h2>
-        <p className="truncate text-[11px] capitalize text-zinc-500">
+        <p className="truncate text-[11px] capitalize text-zinc-400">
           {DIA_DE_HOJE.format(new Date())}
         </p>
       </div>
@@ -123,6 +123,9 @@ export function HojeNaLoja({
       ) : (
         <div className="relative mt-3 space-y-4">
           <div className="space-y-2">
+            <p className="text-xs font-semibold text-zinc-300">
+              Vendas pagas hoje
+            </p>
             <p className="text-4xl font-black tracking-tight text-white sm:text-5xl">
               {formatarMoeda(hoje?.receita)}
             </p>
@@ -138,7 +141,7 @@ export function HojeNaLoja({
                 <strong className="font-bold tabular-nums text-white">
                   {formatarInteiro(pedidos)}
                 </strong>{" "}
-                {pedidos === 1 ? "pedido" : "pedidos"}
+                {pedidos === 1 ? "venda" : "vendas"}
               </span>
             </div>
           </div>

@@ -1,51 +1,98 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
-import { Switch } from "@/components/ui/switch";
+import { CartaoDaVitrine } from "@/components/admin/vitrines/CartaoDaVitrine";
+import { FolhaEditarVitrine } from "@/components/admin/vitrines/FolhaEditarVitrine";
+import { FolhaNovaVitrine } from "@/components/admin/vitrines/FolhaNovaVitrine";
+import {
+  QUANTIDADE_PADRAO,
+  type SecaoDaHome,
+  tituloExibido,
+} from "@/components/admin/vitrines/tipos";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
-import { cn, normalizeText } from "@/lib/utils";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { View } from "@/types";
+import { Reorder } from "framer-motion";
 import {
-  ArrowDown,
-  ArrowUp,
-  Check,
-  Edit,
-  Eye,
-  EyeOff,
-  Flame,
-  GripVertical,
   HelpCircle,
-  Layers,
-  Package,
+  MoreHorizontal,
   Plus,
   RotateCcw,
-  Search,
-  Sparkles,
-  Tag,
   Trash2,
-  X,
-  Zap,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-
-interface CarouselSection {
-  id: string;
-  title: string;
-  active: boolean;
-  type?: "new_arrivals" | "offers" | "bestsellers" | "custom";
-  maxItems?: number;
-  productIds?: string[];
-  isCustom?: boolean;
-}
 
 interface AdminCarouselsViewProps {
   onNavigate: (view: View) => void;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
+}
+
+/** Uma linha do diálogo de restaurar; `chave` é estável e única por linha. */
+interface EfeitoDeRestaurar {
+  chave: string;
+  texto: string;
+}
+
+/** "Some a vitrine X" / "Somem as N vitrines personalizadas", sem encher a tela. */
+function efeitosDeRestaurar(
+  secoes: readonly SecaoDaHome[],
+): EfeitoDeRestaurar[] {
+  const efeitos: EfeitoDeRestaurar[] = [];
+  const personalizadas = secoes.filter((s) => s.isCustom);
+  if (personalizadas.length > 0 && personalizadas.length <= 3) {
+    // A chave leva o id: duas vitrines com o mesmo nome são duas linhas.
+    for (const s of personalizadas) {
+      efeitos.push({
+        chave: `some-${s.id}`,
+        texto: `Some a vitrine "${tituloExibido(s)}"`,
+      });
+    }
+  } else if (personalizadas.length > 3) {
+    efeitos.push({
+      chave: "somem-personalizadas",
+      texto: `Somem as ${personalizadas.length} vitrines personalizadas`,
+    });
+  }
+  const escolhidos = secoes.reduce(
+    (soma, s) => soma + (s.productIds?.length ?? 0),
+    0,
+  );
+  if (escolhidos === 1) {
+    efeitos.push({
+      chave: "produtos-escolhidos",
+      texto: "Some o produto escolhido à mão",
+    });
+  } else if (escolhidos > 1) {
+    efeitos.push({
+      chave: "produtos-escolhidos",
+      texto: `Somem os ${escolhidos} produtos escolhidos à mão`,
+    });
+  }
+  efeitos.push({
+    chave: "voltam-ao-original",
+    texto: "Nomes, quantidades, ordem e visibilidade voltam ao original",
+  });
+  return efeitos;
 }
 
 export const AdminCarouselsView = memo(function AdminCarouselsView({
@@ -56,16 +103,17 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   const { products } = useProducts();
   const isOffline = useOnlineStatus();
 
-  // Modals state
+  // Painéis e diálogos
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showAddVitrineModal, setShowAddVitrineModal] = useState(false);
   const [newVitrineTitle, setNewVitrineTitle] = useState("");
-  const [curationSectionId, setCurationSectionId] = useState<string | null>(
-    null,
-  );
-  const [searchCurationQuery, setSearchCurationQuery] = useState("");
+  const [criandoVitrine, setCriandoVitrine] = useState(false);
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [confirmarRestaurar, setConfirmarRestaurar] = useState(false);
+  const [vitrineParaExcluir, setVitrineParaExcluir] =
+    useState<SecaoDaHome | null>(null);
 
-  const defaultHomeSections = useMemo<CarouselSection[]>(
+  const defaultHomeSections = useMemo<SecaoDaHome[]>(
     () => [
       {
         id: "new_arrivals",
@@ -99,18 +147,16 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     return config.homeSections ?? defaultHomeSections;
   }, [config.homeSections, defaultHomeSections]);
 
-  // Tecla Esc para fechar modais
+  // Tecla Esc fecha a ajuda. O painel de edição e os diálogos de confirmação
+  // são do Radix e já fecham sozinhos com Esc.
   useEffect(() => {
+    if (!showHelpModal) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (curationSectionId) setCurationSectionId(null);
-        else if (showAddVitrineModal) setShowAddVitrineModal(false);
-        else if (showHelpModal) setShowHelpModal(false);
-      }
+      if (e.key === "Escape") setShowHelpModal(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [curationSectionId, showAddVitrineModal, showHelpModal]);
+  }, [showHelpModal]);
 
   /**
    * Devolve `true` só quando a gravação foi confirmada.
@@ -141,6 +187,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const handleToggleSectionActive = (sectionId: string) => {
+    if (salvandoOrdem) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para alterar a visibilidade.",
@@ -153,20 +200,37 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     handleUpdateHomeSections(updated, false);
   };
 
-  const handleRenameSection = (sectionId: string, newTitle: string) => {
+  // Devolve `true` quando o nome já está gravado (inclusive "nada mudou"): o
+  // painel de edição só fecha por "Concluir" com isso confirmado.
+  const handleRenameSection = async (
+    sectionId: string,
+    newTitle: string,
+  ): Promise<boolean> => {
+    // O campo de nome grava ao sair dele, mesmo sem ter mudado nada: sem este
+    // corte, abrir e fechar o painel regravava a vitrine (e, sem internet,
+    // reclamava de uma edição que ninguém fez).
+    if (homeSections.find((s) => s.id === sectionId)?.title === newTitle) {
+      return true;
+    }
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para renomear as vitrines.",
       });
-      return;
+      return false;
     }
     const updated = homeSections.map((s) =>
       s.id === sectionId ? { ...s, title: newTitle } : s,
     );
-    handleUpdateHomeSections(updated, false);
+    return handleUpdateHomeSections(updated, false);
   };
 
   const handleUpdateMaxItems = (sectionId: string, maxItems: number) => {
+    if (
+      (homeSections.find((s) => s.id === sectionId)?.maxItems ??
+        QUANTIDADE_PADRAO) === maxItems
+    ) {
+      return;
+    }
     if (isOffline) {
       toast.error("Sem conexão", { description: "Você precisa estar online." });
       return;
@@ -178,6 +242,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const moveSection = (index: number, direction: "up" | "down") => {
+    if (salvandoOrdem) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para reordenar.",
@@ -195,7 +260,79 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     handleUpdateHomeSections(updated, false);
   };
 
+  // ── Arrastar para reordenar ───────────────────────────────────────────
+  // Enquanto o dedo arrasta, a ordem nova vive só na tela (`ordemArrastada`);
+  // grava UMA vez, ao soltar, pelo mesmo `handleUpdateHomeSections` das setas.
+  // Depois da gravação a tela volta a ler `homeSections`: se gravou, é a ordem
+  // nova; se falhou, é a ordem antiga — sem remendo de "desfazer".
+  //
+  // O `updateConfig` não é otimista: entre soltar e o banco confirmar,
+  // `homeSections` ainda está na ordem ANTIGA enquanto a tela mostra a nova.
+  // Qualquer outra gravação nessa janela (seta, liga/desliga, painel, nova
+  // vitrine) montaria a lista sobre a ordem velha e desfaria o arrasto em
+  // silêncio. Por isso a lista TRAVA (`salvandoOrdem`) até a confirmação: o
+  // que está na tela volta a ser a base de toda gravação.
+  const [ordemArrastada, setOrdemArrastada] = useState<SecaoDaHome[] | null>(
+    null,
+  );
+  const [salvandoOrdem, setSalvandoOrdem] = useState(false);
+  const ordemArrastadaRef = useRef<SecaoDaHome[] | null>(null);
+  const secoesNaLista = ordemArrastada ?? homeSections;
+
+  const handleReordenando = (novaOrdem: SecaoDaHome[]) => {
+    if (salvandoOrdem) return;
+    ordemArrastadaRef.current = novaOrdem;
+    setOrdemArrastada(novaOrdem);
+  };
+
+  const handleSoltou = async () => {
+    if (salvandoOrdem) return;
+    const novaOrdem = ordemArrastadaRef.current;
+    ordemArrastadaRef.current = null;
+    if (!novaOrdem) return;
+
+    // A ordem vem do arrasto, mas o CONTEÚDO vem das vitrines de agora, por
+    // id: uma mudança confirmada durante o arrasto (desligar, renomear) não
+    // pode ser desfeita pelas cópias guardadas no primeiro `onReorder`.
+    const porId = new Map(homeSections.map((s) => [s.id, s]));
+    const reordenada: SecaoDaHome[] = [];
+    for (const item of novaOrdem) {
+      const atual = porId.get(item.id);
+      if (atual) reordenada.push(atual);
+    }
+    if (
+      reordenada.length !== homeSections.length ||
+      new Set(reordenada.map((s) => s.id)).size !== homeSections.length
+    ) {
+      // Lista incompleta/duplicada (uma vitrine surgiu ou sumiu no meio do
+      // arrasto): não grava, e a tela volta ao que está salvo.
+      setOrdemArrastada(null);
+      return;
+    }
+
+    const mudou = reordenada.some((s, i) => s.id !== homeSections.at(i)?.id);
+    if (!mudou) {
+      setOrdemArrastada(null);
+      return;
+    }
+    if (isOffline) {
+      toast.error("Sem conexão com a internet", {
+        description: "Você precisa estar online para reordenar.",
+      });
+      setOrdemArrastada(null);
+      return;
+    }
+    setSalvandoOrdem(true);
+    try {
+      await handleUpdateHomeSections(reordenada, false);
+    } finally {
+      setOrdemArrastada(null);
+      setSalvandoOrdem(false);
+    }
+  };
+
   const handleAddCustomVitrine = async () => {
+    if (criandoVitrine) return;
     if (!newVitrineTitle.trim()) {
       toast.error("Informe um título para a vitrine");
       return;
@@ -216,10 +353,13 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     };
 
     const updated = [...homeSections, newSection];
-    // Só limpa o título e fecha o modal se a vitrine foi mesmo gravada. Antes
+    // Só limpa o título e fecha o painel se a vitrine foi mesmo gravada. Antes
     // isso acontecia incondicionalmente: o admin via o modal fechar, o campo
     // esvaziar, e a vitrine não existia (ADMIN-010, #94).
-    if (!(await handleUpdateHomeSections(updated, true))) return;
+    setCriandoVitrine(true);
+    const salvou = await handleUpdateHomeSections(updated, true);
+    setCriandoVitrine(false);
+    if (!salvou) return;
     setNewVitrineTitle("");
     setShowAddVitrineModal(false);
   };
@@ -254,7 +394,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     const productMap = new Map(products.map((p) => [p.id, p]));
 
     homeSections.forEach((sec) => {
-      const max = sec.maxItems ?? 6;
+      const max = sec.maxItems ?? QUANTIDADE_PADRAO;
       if (sec.productIds && sec.productIds.length > 0) {
         // Manual curated products preserving exact selection order
         map[sec.id] = sec.productIds
@@ -304,6 +444,52 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     await handleUpdateHomeSections(updated, false);
   };
 
+  /** "Automático": a loja volta a escolher sozinha (lista de produtos vazia). */
+  const handleVoltarAoAutomatico = async (sectionId: string) => {
+    const atual = homeSections.find((s) => s.id === sectionId);
+    if (!atual || (atual.productIds?.length ?? 0) === 0) return;
+    if (isOffline) {
+      toast.error("Sem conexão com a internet");
+      return;
+    }
+    await handleUpdateHomeSections(
+      homeSections.map((s) =>
+        s.id === sectionId ? { ...s, productIds: [] } : s,
+      ),
+      false,
+    );
+  };
+
+  /**
+   * "Escolher": fixa os produtos que a loja mostra hoje como ponto de partida
+   * — o mesmo que o primeiro toque num produto já fazia — para a lojista tirar
+   * e pôr a partir dali.
+   */
+  const handleEscolherManualmente = async (sectionId: string) => {
+    const atual = homeSections.find((s) => s.id === sectionId);
+    if (!atual || (atual.productIds?.length ?? 0) > 0) return;
+    const idsHoje = (previewProducts[sectionId] || []).map((p) => p.id);
+    if (idsHoje.length === 0) {
+      toast.info("Nenhum produto aparece nesta vitrine agora", {
+        description:
+          products.length > 0
+            ? "Toque em um produto da lista abaixo para escolher."
+            : "Cadastre produtos para poder escolhê-los aqui.",
+      });
+      return;
+    }
+    if (isOffline) {
+      toast.error("Sem conexão com a internet");
+      return;
+    }
+    await handleUpdateHomeSections(
+      homeSections.map((s) =>
+        s.id === sectionId ? { ...s, productIds: idsHoje } : s,
+      ),
+      false,
+    );
+  };
+
   const activeVitrinesCount = useMemo(
     () => homeSections.filter((sec) => sec.active).length,
     [homeSections],
@@ -320,712 +506,317 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     return count;
   }, [homeSections, previewProducts]);
 
-  // Section currently being curated
-  const activeCurationSection = useMemo(() => {
-    if (!curationSectionId) return null;
-    return homeSections.find((s) => s.id === curationSectionId) ?? null;
-  }, [curationSectionId, homeSections]);
+  // Vitrine aberta no painel de edição
+  const secaoEmEdicao = useMemo(() => {
+    if (!editingSectionId) return null;
+    return homeSections.find((s) => s.id === editingSectionId) ?? null;
+  }, [editingSectionId, homeSections]);
 
-  const isManualCurated = useMemo(() => {
-    return Boolean(
-      activeCurationSection?.productIds &&
-        activeCurationSection.productIds.length > 0,
-    );
-  }, [activeCurationSection]);
-
-  const activeCurationProductIds = useMemo(() => {
-    if (!activeCurationSection) return [];
-    if (
-      activeCurationSection.productIds &&
-      activeCurationSection.productIds.length > 0
-    ) {
-      return activeCurationSection.productIds;
+  const idsEmExibicaoNaEdicao = useMemo(() => {
+    if (!secaoEmEdicao) return [];
+    if (secaoEmEdicao.productIds && secaoEmEdicao.productIds.length > 0) {
+      return secaoEmEdicao.productIds;
     }
-    // In automatic mode, active products are the ones computed in previewProducts
-    return (previewProducts[activeCurationSection.id] || []).map((p) => p.id);
-  }, [activeCurationSection, previewProducts]);
-
-  // Products filtered and sorted inside curation modal (active products appear at top first)
-  const filteredCurationProducts = useMemo(() => {
-    let list = products;
-    if (searchCurationQuery.trim()) {
-      // Busca sem acento acha produto acentuado ("alianca" acha "Aliança") —
-      // mesma regra (normalizeText) da busca da loja.
-      const q = normalizeText(searchCurationQuery);
-      list = products.filter(
-        (p) =>
-          normalizeText(p.name).includes(q) ||
-          normalizeText(p.category).includes(q),
-      );
-    }
-    if (!activeCurationSection) return list;
-
-    const activeSet = new Set(activeCurationProductIds);
-    const activeProducts: typeof products = [];
-    const activeMap = new Map(list.map((p) => [p.id, p]));
-
-    // Preserve activeCurationProductIds order first
-    activeCurationProductIds.forEach((id) => {
-      const p = activeMap.get(id);
-      if (p) activeProducts.push(p);
-    });
-
-    const inactiveProducts = list.filter((p) => !activeSet.has(p.id));
-
-    return [...activeProducts, ...inactiveProducts];
-  }, [
-    products,
-    searchCurationQuery,
-    activeCurationSection,
-    activeCurationProductIds,
-  ]);
+    // Modo automático: os que aparecem são os calculados em previewProducts
+    return (previewProducts[secaoEmEdicao.id] || []).map((p) => p.id);
+  }, [secaoEmEdicao, previewProducts]);
 
   return (
-    <div className="relative h-auto w-full max-w-full overflow-x-hidden bg-[#09090b] pb-admin font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white">
-      {/* Ambient background */}
-      <div className="pointer-events-none absolute left-1/3 top-0 h-[250px] w-[250px] rounded-full bg-admin-gold/5 blur-[90px]" />
-
-      {/* Sticky Desktop Header */}
-      <div className="hidden lg:block sticky top-0 z-40 w-full border-b border-white/10 bg-[#09090b]/95 px-3 py-1.5 shadow-md backdrop-blur-md">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="flex size-6 items-center justify-center rounded-md border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
-              <Layers className="size-3" />
-            </div>
-            {/* Onda 3 da reforma visual (03/09): o título minúsculo (text-xs)
-                virou o AdminPageHeader, igual ao das listas aprovadas. */}
-            <AdminPageHeader titulo="Vitrines & Carrosséis" />
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleResetDefaultVitrines}
-              className="flex items-center gap-1 rounded-xl border border-white/10 bg-zinc-900 px-2 py-1 text-[9px] font-bold text-zinc-400 hover:border-amber-500/40 hover:text-amber-400 transition-colors"
-              title="Restaurar Vitrines Padrão"
-            >
-              <RotateCcw className="size-2.5" /> Restaurar Padrão
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowHelpModal(true)}
-              className="flex size-5 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:border-[#FFBF00]/40 hover:text-[#FFBF00]"
-              title="Ajuda"
-            >
-              <HelpCircle className="size-3" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="relative z-10 mx-auto max-w-5xl space-y-3 p-2.5 sm:p-4">
-        {/* Top Micro Stats Bar + Quick Action Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/80 p-2 text-[10px] backdrop-blur-md shadow-sm">
-          {/* Stats Chips */}
-          <div className="flex items-center gap-1.5">
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-xl bg-zinc-900/80 border border-white/5">
-              <Eye className="size-3 text-emerald-400 shrink-0" />
-              <span className="font-mono font-bold text-white">
-                {activeVitrinesCount}/{homeSections.length}
-              </span>
-              <span className="hidden sm:inline text-zinc-400">Ativas</span>
-            </div>
-
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-xl bg-zinc-900/80 border border-white/5">
-              <Package className="size-3 text-[#FFBF00] shrink-0" />
-              <span className="font-mono font-bold text-white">
-                ~{totalProductsInActiveVitrines}
-              </span>
-              <span className="hidden sm:inline text-zinc-400">Produtos</span>
-            </div>
-          </div>
-
-          {/* Action Buttons: Add Vitrine + Reset */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setShowAddVitrineModal(true)}
-              className="flex items-center gap-1 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00]/15 px-2.5 py-1 font-mono text-[9px] font-black text-[#FFBF00] hover:bg-[#FFBF00]/25 transition-all shadow-xs active:scale-95"
-            >
-              <Plus className="size-3" />+ Nova Vitrine
-            </button>
-
-            <button
-              type="button"
-              onClick={handleResetDefaultVitrines}
-              className="sm:hidden flex items-center justify-center size-6 rounded-xl border border-white/10 bg-zinc-900 text-zinc-400"
-              title="Restaurar Vitrines Padrão"
-            >
-              <RotateCcw className="size-3" />
-            </button>
-          </div>
-        </div>
-
-        {/* Vitrines Cards Section */}
-        <div className="space-y-2">
-          {/* Header Line */}
-          <div className="flex items-center justify-between px-1 text-[11px] font-black uppercase tracking-wider text-white">
-            <div className="flex items-center gap-1.5">
-              <Edit className="size-3 text-[#FFBF00]" />
-              <span>Gerenciador de Vitrines ({homeSections.length})</span>
-            </div>
-            <span className="text-[9px] font-normal normal-case text-zinc-500">
-              Clique em "Produtos" para selecionar
-            </span>
-          </div>
-
-          {/* Vitrines Cards List */}
-          <div className="space-y-2">
-            {homeSections.map((sec, index) => {
-              const previewItems = previewProducts[sec.id] || [];
-              const isNew = sec.id === "new_arrivals";
-              const isOffers = sec.id === "offers";
-              const isBestsellers = sec.id === "bestsellers";
-              const curatedCount = sec.productIds?.length ?? 0;
-
-              // Theme styling per section
-              const theme = isNew
-                ? {
-                    badgeText: "Lançamentos",
-                    badgeClass:
-                      "bg-[#FFBF00]/15 text-[#FFBF00] border-[#FFBF00]/30",
-                    glowClass:
-                      "from-[#FFBF00]/10 via-zinc-950/90 to-zinc-950 border-[#FFBF00]/25",
-                    icon: <Sparkles className="size-3 text-[#FFBF00]" />,
-                  }
-                : isOffers
-                  ? {
-                      badgeText: "Ofertas",
-                      badgeClass:
-                        "bg-rose-500/15 text-rose-400 border-rose-500/30",
-                      glowClass:
-                        "from-rose-500/10 via-zinc-950/90 to-zinc-950 border-rose-500/25",
-                      icon: (
-                        <Flame className="size-3 text-rose-500 fill-rose-500/20" />
-                      ),
-                    }
-                  : isBestsellers
-                    ? {
-                        badgeText: "Destaques",
-                        badgeClass:
-                          "bg-amber-400/15 text-amber-300 border-amber-400/30",
-                        glowClass:
-                          "from-amber-500/10 via-zinc-950/90 to-zinc-950 border-amber-500/25",
-                        icon: <Zap className="size-3 text-amber-400" />,
-                      }
-                    : {
-                        badgeText: "Customizada",
-                        badgeClass:
-                          "bg-purple-500/15 text-purple-300 border-purple-500/30",
-                        glowClass:
-                          "from-purple-500/10 via-zinc-950/90 to-zinc-950 border-purple-500/25",
-                        icon: <Layers className="size-3 text-purple-400" />,
-                      };
-
-              return (
-                <div
-                  key={sec.id}
-                  className={cn(
-                    "group relative overflow-hidden rounded-2xl border bg-gradient-to-r p-2.5 shadow-md backdrop-blur-md transition-all duration-200",
-                    theme.glowClass,
-                    !sec.active &&
-                      "opacity-55 saturate-50 hover:opacity-100 hover:saturate-100",
-                  )}
-                >
-                  <div className="flex flex-col gap-2">
-                    {/* Top Row inside Card: Badges + Action Buttons */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                        <GripVertical className="size-3.5 text-zinc-600 shrink-0" />
-
-                        <span className="rounded-md border border-white/10 bg-zinc-900/90 px-1.5 py-0.5 font-mono text-[9px] font-black text-white shrink-0">
-                          #{index + 1}
-                        </span>
-
-                        <span
-                          className={cn(
-                            "flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[8px] font-black uppercase tracking-wider shrink-0",
-                            theme.badgeClass,
-                          )}
-                        >
-                          {theme.icon}
-                          {theme.badgeText}
-                        </span>
-
-                        {/* Max items limit selector */}
-                        <div className="flex items-center gap-1 rounded-md border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[8px] font-bold text-zinc-400 shrink-0">
-                          <span>Max:</span>
-                          <select
-                            value={sec.maxItems ?? 6}
-                            onChange={(e) =>
-                              handleUpdateMaxItems(
-                                sec.id,
-                                Number(e.target.value),
-                              )
-                            }
-                            className="bg-transparent text-white font-mono font-bold focus:outline-none cursor-pointer pr-1"
-                          >
-                            <option
-                              value={4}
-                              className="bg-zinc-900 text-white"
-                            >
-                              4
-                            </option>
-                            <option
-                              value={6}
-                              className="bg-zinc-900 text-white"
-                            >
-                              6
-                            </option>
-                            <option
-                              value={8}
-                              className="bg-zinc-900 text-white"
-                            >
-                              8
-                            </option>
-                            <option
-                              value={10}
-                              className="bg-zinc-900 text-white"
-                            >
-                              10
-                            </option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Right Cluster: Delete Custom + Visibility Switch + Reorder */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {/* Delete Custom Section Button */}
-                        {sec.isCustom && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteVitrine(sec.id)}
-                            className="flex size-6 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 active:scale-95 transition-colors"
-                            title="Excluir Vitrine"
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
-                        )}
-
-                        {/* Visibility Switch */}
-                        <div className="flex items-center gap-1 bg-zinc-900/80 px-1.5 py-0.5 rounded-xl border border-white/5">
-                          <span className="text-[8px] font-bold uppercase tracking-wider text-zinc-400">
-                            {sec.active ? (
-                              <span className="text-emerald-400 flex items-center gap-0.5">
-                                <Eye className="size-2.5" /> Exibir
-                              </span>
-                            ) : (
-                              <span className="text-zinc-500 flex items-center gap-0.5">
-                                <EyeOff className="size-2.5" /> Ocultar
-                              </span>
-                            )}
-                          </span>
-                          <Switch
-                            checked={sec.active}
-                            onCheckedChange={() =>
-                              handleToggleSectionActive(sec.id)
-                            }
-                            className="scale-75 origin-right data-[state=checked]:bg-[#FFBF00]"
-                          />
-                        </div>
-
-                        {/* Reorder Buttons */}
-                        <div className="flex items-center gap-0.5 bg-zinc-900/90 p-0.5 rounded-xl border border-white/10">
-                          <button
-                            type="button"
-                            onClick={() => moveSection(index, "up")}
-                            disabled={index === 0}
-                            className="flex size-6 items-center justify-center rounded-lg border border-white/5 bg-zinc-800 text-zinc-300 transition-colors hover:bg-[#FFBF00]/20 hover:text-[#FFBF00] active:scale-95 disabled:pointer-events-none disabled:opacity-20"
-                            title="Subir"
-                          >
-                            <ArrowUp className="size-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveSection(index, "down")}
-                            disabled={index === homeSections.length - 1}
-                            className="flex size-6 items-center justify-center rounded-lg border border-white/5 bg-zinc-800 text-zinc-300 transition-colors hover:bg-[#FFBF00]/20 hover:text-[#FFBF00] active:scale-95 disabled:pointer-events-none disabled:opacity-20"
-                            title="Descer"
-                          >
-                            <ArrowDown className="size-3" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bottom Row inside Card: Editable Title Input + Manual Curation Button + Mini Avatars */}
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      {/* Title Input */}
-                      <div className="relative flex-1">
-                        <LocalBufferedInput
-                          id={`vitrine-title-${sec.id}`}
-                          name="title"
-                          value={sec.title || ""}
-                          onFlush={(val) => handleRenameSection(sec.id, val)}
-                          placeholder="Título da vitrine"
-                          useShadcn={true}
-                          className="h-8 rounded-xl border-white/10 bg-zinc-900/90 pl-2.5 pr-8 text-xs font-bold text-white placeholder-zinc-600 focus:border-[#FFBF00]/50 focus:ring-1 focus:ring-[#FFBF00]"
-                        />
-                        <Edit className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
-                      </div>
-
-                      {/* Manual Curation Trigger Button */}
-                      <button
-                        type="button"
-                        onClick={() => setCurationSectionId(sec.id)}
-                        className={cn(
-                          "flex items-center gap-1.5 h-8 px-2.5 rounded-xl border font-mono text-[9px] font-bold transition-all shrink-0 active:scale-95",
-                          curatedCount > 0
-                            ? "bg-[#FFBF00]/15 border-[#FFBF00]/40 text-[#FFBF00] hover:bg-[#FFBF00]/25"
-                            : "bg-zinc-900/90 border-white/10 text-zinc-300 hover:border-white/20 hover:text-white",
-                        )}
-                        title="Selecionar produtos manualmente para esta vitrine"
-                      >
-                        <Package className="size-3" />
-                        <span>
-                          {curatedCount > 0
-                            ? `Curadoria (${curatedCount})`
-                            : "Selecionar Produtos"}
-                        </span>
-                      </button>
-
-                      {/* Product Mini Avatars */}
-                      <div className="flex items-center gap-1 shrink-0 overflow-x-auto py-0.5">
-                        {previewItems.length === 0 ? (
-                          <span className="text-[9px] text-zinc-600 italic">
-                            Sem produtos
-                          </span>
-                        ) : (
-                          previewItems.map((prod) => (
-                            <div
-                              key={prod.id}
-                              className="relative size-6 shrink-0 rounded-md border border-white/10 bg-zinc-900 overflow-hidden"
-                              title={`${prod.name} - R$ ${prod.price.toFixed(2)}`}
-                            >
-                              {prod.images?.[0] ? (
-                                <img
-                                  src={prod.images[0]}
-                                  alt={prod.name}
-                                  className="size-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex size-full items-center justify-center text-zinc-600">
-                                  <Tag className="size-2.5" />
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Modal 1: Adicionar Nova Vitrine Customizada */}
-      {showAddVitrineModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md space-y-4 rounded-3xl border border-[#FFBF00]/30 bg-zinc-950 p-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="flex size-7 items-center justify-center rounded-xl border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
-                  <Plus className="size-4" />
-                </div>
-                <h3 className="text-xs font-black uppercase tracking-wider text-white">
-                  Criar Nova Vitrine Personalizada
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddVitrineModal(false)}
-                className="flex size-6 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:text-white"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label
-                  htmlFor="titulo-da-nova-vitrine"
-                  className="text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                >
-                  Título da Vitrine
-                </label>
-                <input
-                  id="titulo-da-nova-vitrine"
-                  type="text"
-                  value={newVitrineTitle}
-                  onChange={(e) => setNewVitrineTitle(e.target.value)}
-                  placeholder="Ex: Kits Especiais de Beleza"
-                  className="h-10 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-xs font-bold text-white placeholder-zinc-600 focus:border-[#FFBF00] focus:outline-none"
-                />
-              </div>
-
-              {/* Suggestions */}
-              <div className="space-y-1">
-                <span className="text-[9px] font-bold text-zinc-500 uppercase">
-                  Sugestões rápidas:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    "Kits de Presente",
-                    "Mais Vendidos da Semana",
-                    "Linha Skincare",
-                    "Coleção Verão",
-                    "Recomendados para Você",
-                  ].map((sug) => (
-                    <button
-                      key={sug}
-                      type="button"
-                      onClick={() => setNewVitrineTitle(sug)}
-                      className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[9px] font-medium text-zinc-300 hover:border-[#FFBF00]/40 hover:text-[#FFBF00] transition-colors"
-                    >
-                      + {sug}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
-              <button
-                type="button"
-                onClick={() => setShowAddVitrineModal(false)}
-                className="h-9 px-4 rounded-xl border border-white/10 bg-zinc-900 text-xs font-bold text-zinc-300 hover:bg-zinc-800"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleAddCustomVitrine}
-                className="h-9 px-4 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00] text-xs font-black text-black hover:bg-amber-400 transition-all shadow-md active:scale-95"
-              >
-                Criar Vitrine
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 2: Seleção Manual de Produtos (Curadoria) */}
-      {activeCurationSection && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-xl max-h-[85vh] flex flex-col rounded-3xl border border-[#FFBF00]/30 bg-zinc-950 p-4 sm:p-5 shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="flex size-7 items-center justify-center rounded-xl border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
-                  <Package className="size-4" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-wider text-white">
-                    Curadoria de Produtos
-                  </h3>
-                  <p className="text-[10px] text-zinc-400">
-                    Vitrine:{" "}
-                    <span className="text-[#FFBF00] font-bold">
-                      {activeCurationSection.title}
-                    </span>
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCurationSectionId(null)}
-                className="flex size-6 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:text-white"
-              >
-                <X className="size-3.5" />
-              </button>
-            </div>
-
-            {/* Search input */}
-            <div className="py-3 shrink-0">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
-                <input
-                  type="text"
-                  value={searchCurationQuery}
-                  onChange={(e) => setSearchCurationQuery(e.target.value)}
-                  placeholder="Buscar produto por nome ou categoria..."
-                  className="h-9 w-full rounded-xl border border-white/10 bg-zinc-900 pl-9 pr-8 text-xs font-bold text-white placeholder-zinc-600 focus:border-[#FFBF00] focus:outline-none"
-                />
-                {searchCurationQuery && (
+    <div className="pb-admin relative h-auto w-full max-w-full overflow-x-hidden bg-admin-bg font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white">
+      <div className="relative z-10 mx-auto max-w-5xl space-y-4 p-4">
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <AdminPageHeader
+              titulo={NOMES_DO_PAINEL["admin-carousels"]}
+              acoes={
+                <>
                   <button
                     type="button"
-                    onClick={() => setSearchCurationQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                    onClick={() => setShowHelpModal(true)}
+                    aria-label="Ajuda"
+                    title="Ajuda"
+                    className="group flex min-h-11 min-w-11 items-center justify-center rounded-[12px]"
                   >
-                    <X className="size-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Counter bar */}
-            <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 pb-2 border-b border-white/5 shrink-0">
-              {isManualCurated ? (
-                <span className="text-[#FFBF00]">
-                  {activeCurationSection.productIds?.length} produto(s)
-                  selecionado(s) manualmente
-                </span>
-              ) : (
-                <span className="text-amber-400 flex items-center gap-1">
-                  <Sparkles className="size-3 shrink-0" />
-                  Modo Automático: {activeCurationProductIds.length} produto(s)
-                  pré-selecionados (Em exibição)
-                </span>
-              )}
-
-              {isManualCurated && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleUpdateHomeSections(
-                      homeSections.map((s) =>
-                        s.id === activeCurationSection.id
-                          ? { ...s, productIds: [] }
-                          : s,
-                      ),
-                      false,
-                    )
-                  }
-                  className="text-rose-400 hover:underline text-[9px]"
-                >
-                  Resetar Seleção (Voltar pro Automático)
-                </button>
-              )}
-            </div>
-
-            {/* Products Selection List */}
-            <div className="flex-1 overflow-y-auto py-2 space-y-1.5 scrollbar-thin">
-              {filteredCurationProducts.length === 0 ? (
-                <div className="py-8 text-center text-xs text-zinc-500">
-                  Nenhum produto encontrado na busca.
-                </div>
-              ) : (
-                filteredCurationProducts.map((prod) => {
-                  const isSelected = activeCurationProductIds.includes(prod.id);
-
-                  return (
-                    <button
-                      key={prod.id}
-                      type="button"
-                      onClick={() =>
-                        handleToggleProductInCuration(
-                          activeCurationSection.id,
-                          prod.id,
-                        )
-                      }
-                      className={cn(
-                        "w-full flex items-center justify-between p-2 rounded-xl border text-left transition-all",
-                        isSelected
-                          ? "bg-[#FFBF00]/15 border-[#FFBF00]/50 text-white"
-                          : "bg-zinc-900/60 border-white/5 hover:border-white/20 text-zinc-300",
-                      )}
+                    <span
+                      aria-hidden="true"
+                      className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors group-hover:text-white"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {/* Image Avatar */}
-                        <div className="size-8 rounded-lg border border-white/10 overflow-hidden bg-zinc-800 shrink-0">
-                          {prod.images?.[0] ? (
-                            <img
-                              src={prod.images[0]}
-                              alt={prod.name}
-                              className="size-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex size-full items-center justify-center text-zinc-600">
-                              <Tag className="size-3" />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Details */}
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-xs font-bold truncate text-white">
-                              {prod.name}
-                            </span>
-                            {!isManualCurated && isSelected && (
-                              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-bold text-amber-300 border border-amber-500/30">
-                                Automático
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-[9px] text-zinc-400 font-mono">
-                            <span className="text-[#FFBF00] font-bold">
-                              R$ {prod.price.toFixed(2)}
-                            </span>
-                            <span>• {prod.category}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Checkbox indicator */}
-                      <div
-                        className={cn(
-                          "flex size-5 items-center justify-center rounded-lg border transition-all shrink-0 ml-2",
-                          isSelected
-                            ? "border-[#FFBF00] bg-[#FFBF00] text-black"
-                            : "border-zinc-700 bg-zinc-900 text-transparent",
-                        )}
+                      <HelpCircle className="size-[17px]" />
+                    </span>
+                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Mais ações"
+                        title="Mais ações"
+                        disabled={salvandoOrdem}
+                        className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors hover:text-white"
                       >
-                        <Check className="size-3 stroke-[3]" />
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+                        <MoreHorizontal className="size-[17px]" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="min-w-56 rounded-2xl border-white/10 bg-zinc-900 p-1.5 text-zinc-200"
+                    >
+                      <DropdownMenuItem
+                        onSelect={() => setConfirmarRestaurar(true)}
+                        className="gap-2.5 rounded-[12px] px-3 py-2.5 text-[13.5px] font-semibold focus:bg-white/5 focus:text-white"
+                      >
+                        <RotateCcw className="size-4 text-zinc-400" />
+                        Restaurar padrão
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              }
+            />
+          </div>
+          <p className="mt-2 text-[13px] leading-snug text-zinc-400">
+            Carrosséis da página inicial, na ordem do cliente.
+          </p>
+        </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-end pt-3 border-t border-white/10 shrink-0">
-              <button
-                type="button"
-                onClick={() => setCurationSectionId(null)}
-                className="h-9 px-5 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00] text-xs font-black text-black hover:bg-amber-400 transition-all shadow-md active:scale-95"
-              >
-                Concluir Curadoria
-              </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+          <div className="grid flex-1 grid-cols-2 overflow-hidden rounded-[20px] border border-white/5 bg-zinc-900/40">
+            <div className="px-4 py-3.5">
+              <b className="block text-[22px] font-extrabold tabular-nums tracking-tight text-white">
+                {activeVitrinesCount}
+                <small className="ml-0.5 text-sm font-semibold text-zinc-500">
+                  /{homeSections.length}
+                </small>
+              </b>
+              <span className="text-xs font-medium text-zinc-400">
+                ligadas na loja
+              </span>
+            </div>
+            <div className="border-l border-white/5 px-4 py-3.5">
+              <b className="block text-[22px] font-extrabold tabular-nums tracking-tight text-white">
+                {totalProductsInActiveVitrines}
+              </b>
+              <span className="text-xs font-medium text-zinc-400">
+                produtos em exibição
+              </span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowAddVitrineModal(true)}
+            disabled={salvandoOrdem}
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-admin-gold px-6 text-[14.5px] font-extrabold text-zinc-950 shadow-[0_10px_24px_-10px] shadow-admin-gold/55 transition-all hover:bg-admin-gold/90 active:scale-[0.99] disabled:opacity-60 sm:h-auto sm:w-56"
+          >
+            <Plus className="size-[18px] stroke-[2.5]" />
+            Nova vitrine
+          </button>
         </div>
+
+        {salvandoOrdem ? (
+          <p role="status" className="px-1 text-xs font-medium text-zinc-400">
+            Salvando ordem…
+          </p>
+        ) : null}
+
+        <Reorder.Group
+          as="div"
+          axis="y"
+          aria-busy={salvandoOrdem}
+          values={secoesNaLista}
+          onReorder={handleReordenando}
+          className="flex flex-col gap-2.5"
+        >
+          {secoesNaLista.map((sec, index) => (
+            <CartaoDaVitrine
+              key={sec.id}
+              secao={sec}
+              indice={index}
+              total={secoesNaLista.length}
+              produtosEmExibicao={previewProducts[sec.id] ?? []}
+              aoAbrir={setEditingSectionId}
+              aoAlternarAtiva={handleToggleSectionActive}
+              aoMover={moveSection}
+              aoSoltar={handleSoltou}
+              travado={salvandoOrdem}
+            />
+          ))}
+        </Reorder.Group>
+      </div>
+
+      {/* Painel: nova vitrine */}
+      {showAddVitrineModal && (
+        <FolhaNovaVitrine
+          titulo={newVitrineTitle}
+          aoMudarTitulo={setNewVitrineTitle}
+          aoCriar={handleAddCustomVitrine}
+          aoFechar={() => setShowAddVitrineModal(false)}
+          criando={criandoVitrine}
+        />
       )}
+
+      {/* Painel: editar vitrine (nome, quantidade e produtos) */}
+      {secaoEmEdicao && (
+        <FolhaEditarVitrine
+          secao={secaoEmEdicao}
+          posicao={homeSections.findIndex((s) => s.id === secaoEmEdicao.id) + 1}
+          produtos={products}
+          idsEmExibicao={idsEmExibicaoNaEdicao}
+          aoFechar={() => setEditingSectionId(null)}
+          aoRenomear={(titulo) => handleRenameSection(secaoEmEdicao.id, titulo)}
+          aoMudarQuantidade={(quantidade) =>
+            handleUpdateMaxItems(secaoEmEdicao.id, quantidade)
+          }
+          aoAlternarProduto={(idDoProduto) =>
+            handleToggleProductInCuration(secaoEmEdicao.id, idDoProduto)
+          }
+          aoVoltarAoAutomatico={() =>
+            handleVoltarAoAutomatico(secaoEmEdicao.id)
+          }
+          aoEscolherManualmente={() =>
+            handleEscolherManualmente(secaoEmEdicao.id)
+          }
+          aoPedirExclusao={
+            secaoEmEdicao.isCustom
+              ? () => {
+                  // O painel fecha ANTES do diálogo abrir: o clique no
+                  // diálogo (portal fora do painel) seria engolido pelo
+                  // guardião do clique fora da folha.
+                  setVitrineParaExcluir(secaoEmEdicao);
+                  setEditingSectionId(null);
+                }
+              : undefined
+          }
+        />
+      )}
+
+      {/* Confirmação: restaurar as vitrines de fábrica */}
+      <AlertDialog
+        open={confirmarRestaurar}
+        onOpenChange={setConfirmarRestaurar}
+      >
+        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+          <AlertDialogHeader>
+            <div className="flex size-11 items-center justify-center rounded-[14px] bg-rose-500/10 text-rose-400">
+              <RotateCcw className="size-5" />
+            </div>
+            <AlertDialogTitle className="mt-2 text-lg font-extrabold tracking-tight text-white">
+              Voltar às 3 vitrines de fábrica?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-[13.5px] leading-relaxed text-zinc-400">
+              A loja volta a mostrar Lançamentos, Ofertas e Destaques,
+              escolhidos automaticamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="space-y-1.5">
+            {efeitosDeRestaurar(homeSections).map((efeito) => (
+              <li
+                key={efeito.chave}
+                className="flex items-center gap-2 text-[13px] text-zinc-300"
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-0.5 w-3 shrink-0 rounded bg-rose-400"
+                />
+                {efeito.texto}
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter className="mt-2 gap-2">
+            <AlertDialogCancel className="h-11 rounded-[14px] border-0 bg-zinc-900 px-5 text-sm font-bold text-zinc-300 hover:bg-zinc-800 hover:text-white">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetDefaultVitrines}
+              className="h-11 rounded-[14px] border-0 bg-red-600 px-5 text-sm font-bold text-white hover:bg-red-700"
+            >
+              Restaurar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação: excluir uma vitrine personalizada */}
+      <AlertDialog
+        open={vitrineParaExcluir !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setVitrineParaExcluir(null);
+        }}
+      >
+        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+          <AlertDialogHeader>
+            <div className="flex size-11 items-center justify-center rounded-[14px] bg-rose-500/10 text-rose-400">
+              <Trash2 className="size-5" />
+            </div>
+            <AlertDialogTitle className="mt-2 text-lg font-extrabold tracking-tight text-white">
+              Excluir a vitrine "
+              {vitrineParaExcluir ? tituloExibido(vitrineParaExcluir) : ""}"?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-[13.5px] leading-relaxed text-zinc-400">
+              Ela some da loja e não dá para desfazer. Os produtos continuam no
+              catálogo; só deixam de estar nesta vitrine.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-2 gap-2">
+            <AlertDialogCancel
+              onClick={() => {
+                // Desistiu: volta ao painel de onde pediu a exclusão.
+                if (vitrineParaExcluir) {
+                  setEditingSectionId(vitrineParaExcluir.id);
+                }
+              }}
+              className="h-11 rounded-[14px] border-0 bg-zinc-900 px-5 text-sm font-bold text-zinc-300 hover:bg-zinc-800 hover:text-white"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (vitrineParaExcluir) {
+                  handleDeleteVitrine(vitrineParaExcluir.id);
+                }
+              }}
+              className="h-11 rounded-[14px] border-0 bg-red-600 px-5 text-sm font-bold text-white hover:bg-red-700"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modal de Ajuda */}
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Guia do Gerenciador de Vitrines (Carrosséis)"
+        title={`Como usar as ${NOMES_DO_PAINEL["admin-carousels"]}`}
       >
         <div className="space-y-3 text-xs leading-relaxed text-zinc-400">
           <p>
             Esta tela permite organizar a exibição dos carrosséis de produtos na
-            página inicial do aplicativo.
+            página inicial do aplicativo. Toque em uma vitrine para editar.
           </p>
           <div className="space-y-2">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-wider text-white">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-wider text-white">
               Recursos Avançados
             </h4>
-            <ul className="list-disc pl-4 space-y-1 text-zinc-400">
+            <ul className="list-disc space-y-1 pl-4 text-zinc-400">
               <li>
-                <strong>+ Nova Vitrine:</strong> Crie seções personalizadas com
+                <strong>Nova vitrine:</strong> Crie seções personalizadas com
                 seus próprios títulos.
               </li>
               <li>
-                <strong>Curadoria de Produtos:</strong> Escolha manualmente
-                quais produtos específicos aparecem em cada vitrine.
+                <strong>Escolher produtos:</strong> Escolha manualmente quais
+                produtos específicos aparecem em cada vitrine.
               </li>
               <li>
-                <strong>Limite Max:</strong> Altere a quantidade de produtos
+                <strong>Quantidade:</strong> Altere quantos produtos são
                 exibidos (4, 6, 8 ou 10).
               </li>
               <li>
-                <strong>Reordenar:</strong> Use as setas para alterar qual
-                vitrine aparece primeiro na Home.
+                <strong>Reordenar:</strong> Segure e arraste a alça de pontinhos
+                do cartão, ou use as setas, para alterar qual vitrine aparece
+                primeiro na Home.
+              </li>
+              <li>
+                <strong>Restaurar padrão:</strong> No menu de três pontinhos;
+                pergunta antes de apagar.
               </li>
             </ul>
           </div>

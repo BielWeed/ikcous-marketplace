@@ -15,8 +15,8 @@ import { memo } from "react";
  * Os três estados vêm PRONTOS da view (derivados do config SALVO, nunca do
  * formulário — a faixa descreve a realidade da loja; a intenção pendente
  * tem a barra de salvar fixa no rodapé). Markup burro de propósito: a regra
- * de derivação mora em UM lugar (AdminShippingView), e aqui não há como
- * divergir.
+ * de derivação mora em UM lugar (`src/lib/status-da-entrega.ts`), e aqui não
+ * há como divergir.
  *
  * Números grandes tabulares (`tabular-nums`), verde do token --admin-accent
  * (nada de hex fora do sistema) e sem webfont novo — a fonte é a stack do
@@ -68,7 +68,7 @@ export const FreteResumoFaixa = memo(function FreteResumoFaixa({
                   : "border-t border-white/5 md:border-l md:border-t-0"
               }`}
             >
-              <div className="flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">
                 {ponto && (
                   <span
                     aria-hidden="true"

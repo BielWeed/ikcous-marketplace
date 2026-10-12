@@ -11,9 +11,14 @@ import {
   type EnderecoFixtura,
   PRODUTO_ROUPAS,
   abrirLoja,
+  exigirRedeSemImprevistos,
   instalarLojaFixtura,
   instalarSessaoClienteFixtura,
 } from "./kit-jornadas";
+
+// Guarda de rede (kit das jornadas): requisição não prevista derruba o
+// teste, com a lista na mensagem.
+test.afterEach(exigirRedeSemImprevistos);
 
 /**
  * VALIDAÇÃO VISUAL ISOLADA — SuperFrete 1.5.6 ("Entrega econômica" = PAC ou

@@ -160,7 +160,7 @@ describe("AdminProductFormView — um tipo de variação por produto", () => {
       await new Promise((r) => setTimeout(r, 300));
     });
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
   }
 

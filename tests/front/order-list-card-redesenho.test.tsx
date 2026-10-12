@@ -9,6 +9,7 @@
 //   - a trilha mostra as etapas e marca a atual; cancelado não tem trilha;
 //   - o selo de pagamento continua dentro da faixa (é ele que diz "não pague");
 //   - o card inteiro abre o pedido, e tocar no número só copia.
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -177,7 +178,7 @@ describe("OrderList — card do pedido redesenhado", () => {
     expect(card?.classList.contains("relative")).toBe(true);
 
     const botaoId = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes(`#${pedidoBase.id.slice(0, 8)}`),
+      (b) => b.textContent?.includes(`#${numeroDoPedido(pedidoBase.id)}`),
     );
     expect(botaoId?.classList.contains("relative")).toBe(true);
     expect(botaoId?.classList.contains("z-10")).toBe(true);
@@ -200,7 +201,7 @@ describe("OrderList — card do pedido redesenhado", () => {
     await renderizar(pedidoBase);
 
     const botaoId = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes(`#${pedidoBase.id.slice(0, 8)}`),
+      (b) => b.textContent?.includes(`#${numeroDoPedido(pedidoBase.id)}`),
     );
     expect(botaoId).toBeTruthy();
     await act(async () => {

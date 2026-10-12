@@ -6,7 +6,9 @@
 //    contagem de TODOS os pedidos não cancelados dos últimos 30 dias,
 //    inclusive os que nunca saíram de "Novo Pedido". O filtro "Finalizado",
 //    a poucos centímetros do cartão, devolve um número diferente. Prova:
-//    com `month.count=6` e `deliveredTotal=3`, o cartão mostra 3.
+//    com `month.count=6` e `deliveredTotal=3`, o cartão mostra 3. (Onda F,
+//    F3: o cartão se chama "Finalizados", o nome do chip de status; a
+//    fonte continua `deliveredTotal`.)
 // 2. Pedido pago depois de cancelado (`payment_status='pago_apos_expirar'`
 //    + `status='cancelled'`) não tinha nenhum aviso fixo na tela — só uma
 //    etiqueta no cartão da lista, que rola para fora de vista conforme
@@ -146,7 +148,7 @@ async function esperarAte(
   });
 }
 
-describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado", () => {
+describe("AdminOrdersView — Finalizados e aviso de pago após cancelado", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -202,7 +204,7 @@ describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado",
     mockAnalyticsStats = null;
   });
 
-  it("cartão 'Total Concluído' mostra deliveredTotal, não month.count", async () => {
+  it("cartão 'Finalizados' mostra deliveredTotal, não month.count", async () => {
     mockAnalyticsStats = statsFake({ monthCount: 6, deliveredTotal: 3 });
 
     const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
@@ -212,7 +214,7 @@ describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado",
     });
 
     const rotulo = Array.from(hospedeiro.querySelectorAll("p")).find(
-      (p) => p.textContent === "Total Concluído",
+      (p) => p.textContent === "Finalizados",
     );
     expect(rotulo).toBeTruthy();
     const cartao = rotulo!.parentElement!.parentElement!;
@@ -236,7 +238,7 @@ describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado",
     });
 
     const rotulo = Array.from(hospedeiro.querySelectorAll("p")).find(
-      (p) => p.textContent === "Total Concluído",
+      (p) => p.textContent === "Finalizados",
     );
     const cartao = rotulo!.parentElement!.parentElement!;
     expect(cartao.querySelector("h3")?.textContent).toBe("—");

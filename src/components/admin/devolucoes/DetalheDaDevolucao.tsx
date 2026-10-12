@@ -26,6 +26,7 @@ import {
   rotuloStatus,
   textoDoPrazo,
 } from "@/lib/devolucao";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 
@@ -35,7 +36,7 @@ import { SeloDoStatus, SeloDoTipo } from "./SelosDaDevolucao";
 const SECAO =
   "admin-glass space-y-3 rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6";
 const TITULO_SECAO =
-  "text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500";
+  "text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 
 function Linha({
   rotulo,
@@ -199,7 +200,7 @@ export function DetalheDaDevolucao({
                   className={BOTAO_SECUNDARIO}
                 >
                   <ExternalLink className="size-4" />
-                  Pedido #{detalhe.order_id.slice(0, 8)}
+                  Pedido #{numeroDoPedido(detalhe.order_id)}
                 </button>
                 {whatsapp && (
                   <a
@@ -298,7 +299,7 @@ export function DetalheDaDevolucao({
                     ) : (
                       <div
                         key={caminho}
-                        className="flex aspect-square items-center justify-center rounded-xl border border-white/5 bg-zinc-900 p-2 text-center text-[10px] text-zinc-500"
+                        className="flex aspect-square items-center justify-center rounded-xl border border-white/5 bg-zinc-900 p-2 text-center text-[11px] text-zinc-500"
                       >
                         {fotos.has(caminho)
                           ? "Foto indisponível"

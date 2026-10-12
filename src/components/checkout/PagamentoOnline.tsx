@@ -3,12 +3,19 @@ import type {
   RespostaCriarPagamento,
 } from "@/hooks/useOrders";
 import { useOrders } from "@/hooks/useOrders";
-import { type ConfigDoCartao, cartaoLigado } from "@/lib/config-do-cartao";
+import {
+  type ConfigDoCartao,
+  type TipoDeCartao,
+  cartaoLigado,
+  esquecerConfigDoCartao,
+} from "@/lib/config-do-cartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { PagamentoComCartao } from "./PagamentoComCartao";
+import { type CartaoEmCurso, PagamentoComCartao } from "./PagamentoComCartao";
+import type { PontoDePartidaDaVerificacao } from "./VerificacaoDoPagamento";
 
 // O carregador do SDK mora em módulo próprio desde o cartão (26/09/2026) —
 // ver o comentário lá. Reexportado para quem já o importava daqui.
@@ -68,6 +75,48 @@ export type SinalDeErroPagamento = "cartaoEmAnalise" | "semCobranca";
 type CriarPagamento = (
   args: ArgsCriarPagamento,
 ) => Promise<RespostaCriarPagamento>;
+
+/**
+ * Diagnóstico do checkout (29/09/2026): a criação do PIX dependia de
+ * `supabase.functions.invoke` SEM tempo limite — rede presa deixava o
+ * spinner "Gerando o QR code do Pix…" rodando para sempre, sem erro e sem
+ * saída. O prazo é LOCAL (`Promise.race`): nunca cancela o POST em voo, só
+ * deixa de esperar por ele. O desfecho é o erro RECUPERÁVEL que a tela já
+ * tem — a retentativa converge, porque a edge reconsulta a MESMA cobrança
+ * pelo `gateway_payment_id` (ou cria do zero se a primeira nunca chegou).
+ */
+export const TEMPO_LIMITE_CRIACAO_PIX_MS = 20_000;
+export const MENSAGEM_TEMPO_LIMITE_PIX =
+  "O Pix está demorando mais que o normal para ser gerado. Verifique sua conexão e toque em Tentar de novo.";
+
+/**
+ * Corre `promessa` contra um relógio local. O estouro rejeita com erro
+ * MARCADO (`tempoLimite: true`) — quem consome decide o que fazer (o PIX
+ * avisa o cliente; o SDK do cartão cai na falha de montagem que já existe).
+ * Assentamento TARDIO da original: nada acontece com o `race`, o timer morre
+ * no `finally` — e a original é consumida em silêncio (`catch` vazio) para
+ * uma rejeição tardia nunca virar rejeição não tratada (o caso do SDK, cuja
+ * promessa memoizada pode ficar sem espectador depois do estouro).
+ */
+export function comTempoLimite<T>(
+  promessa: Promise<T>,
+  prazoMs: number,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const estouro = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          Object.assign(new Error("tempo limite esgotado"), {
+            tempoLimite: true,
+          }),
+        ),
+      prazoMs,
+    );
+  });
+  promessa.catch(() => {});
+  return Promise.race([promessa.finally(() => clearTimeout(timer)), estouro]);
+}
 
 type DadosDoPix = {
   qrCodeBase64?: string;
@@ -261,7 +310,9 @@ export function dispararPagamentoPix({
     promessa.then(removerDoCache, removerDoCache);
   }
 
-  promessa
+  // O relógio local corre por CADA acoplamento à promessa (não só na
+  // criação): reusar a promessa em cache do StrictMode herda o mesmo prazo.
+  comTempoLimite(promessa, TEMPO_LIMITE_CRIACAO_PIX_MS)
     .then((r) => {
       if (cancelado) return;
       const resultado = classificarRespostaPagamento(r);
@@ -277,11 +328,34 @@ export function dispararPagamentoPix({
     })
     .catch((err: any) => {
       if (cancelado) return;
+      // Tempo limite LOCAL (rede presa, resposta que nunca chega): sai como
+      // erro recuperável com mensagem própria, e a promessa pendurada SAI DO
+      // CACHE — sem isso, o "Tentar de novo" reusaria a MESMA promessa
+      // pendurada (só sai do mapa na assentação, que nunca chega) e o
+      // spinner voltaria para sempre. Repetir o POST é seguro pela própria
+      // edge: a segunda chamada reconsulta a MESMA cobrança pelo
+      // `gateway_payment_id`, ou cria do zero se a primeira nunca chegou.
+      if (err?.tempoLimite === true) {
+        if (promessasPagamentoPix.get(orderId) === promessa) {
+          promessasPagamentoPix.delete(orderId);
+        }
+        onErro(MENSAGEM_TEMPO_LIMITE_PIX, "recuperavel");
+        return;
+      }
       // Contrato do CHECKOUT-050: `.terminal` (e, desde o B3, `.cartaoEmAnalise`)
       // vindo de `criarPagamento` (useOrders.ts) é um DADO lido do corpo do
       // 409/etc. da edge function, nunca reconstruído a partir do texto da
       // mensagem — texto que muda quebraria uma comparação por igualdade.
-      const terminal = err?.terminal === true;
+      //
+      // F3 (fase 3 dos pagamentos, 04/10/2026): o 503 NÃO é terminal, mesmo
+      // marcado. A edge também grava `terminal: true` no 503 "Pagamento
+      // indisponível." (a credencial do Mercado Pago não pôde ser lida
+      // AGORA), que não fala do pedido — o PIX nem foi criado, e repetir é
+      // seguro: a edge reavalia `podeCobrar` e reconsulta a vaga por CAS,
+      // nunca cria uma segunda cobrança. Mesma régua do cartão
+      // (confirmacao-do-cartao.ts, achado M1): `terminal` com 409/404/403 e
+      // sem status legível segue terminal como sempre foi.
+      const terminal = err?.terminal === true && err?.httpStatus !== 503;
       const mensagem = err?.message ?? "Não foi possível gerar a cobrança.";
       const categoria = terminal ? "terminal" : "recuperavel";
       // Terceiro argumento OMITIDO quando não há sinal (não `undefined`
@@ -329,7 +403,16 @@ export function PagamentoOnline({
   metodo = "pix",
   configDoCartao = null,
   emailDoPagador,
+  cobrancaIncerta = false,
+  pedidoMortoNoServidor = false,
   onTrocarParaPix,
+  onVerMeusPedidos,
+  onCobrancaEmDuvida,
+  onCartaoEmCurso,
+  cartaoEncerrado,
+  onCartaoEncerradoPelaConsulta,
+  sessaoAtiva = true,
+  onEntrarDeNovo,
 }: {
   orderId: string;
   valor: number;
@@ -342,59 +425,168 @@ export function PagamentoOnline({
   metodo?: MetodoOnline;
   configDoCartao?: ConfigDoCartao | null;
   emailDoPagador?: string | null;
+  cobrancaIncerta?: boolean;
+  // F1 (04/10/2026): o SERVIDOR já gravou o pedido como morto (`expirado`, ou
+  // `aguardando` + `cancelled`). Só o PIX o lê: o código deixa de aparecer
+  // como válido. Nunca é inferido do relógio do aparelho.
+  pedidoMortoNoServidor?: boolean;
   // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
   // repassa se o cartão ainda podia estar vivo NO MOMENTO da troca — ver o
   // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
   onTrocarParaPix?: (cartaoAindaVivo: boolean) => void;
+  onVerMeusPedidos?: () => void;
+  // C5 (front B2): repassado à tela do cartão — ver `PagamentoComCartao`.
+  onCobrancaEmDuvida?: (pontoDePartida: PontoDePartidaDaVerificacao) => void;
+  // C6 (P1): repassados à tela do cartão — ver `CartaoEmCurso`.
+  onCartaoEmCurso?: (cartao: CartaoEmCurso | null) => void;
+  cartaoEncerrado?: CartaoEmCurso | null;
+  // Confirmação do cartão sem fim (03/10/2026): repassados à tela do cartão
+  // — ver `confirmacao-do-cartao.ts` e `PagamentoComCartao`.
+  onCartaoEncerradoPelaConsulta?: (cartao: CartaoEmCurso) => void;
+  sessaoAtiva?: boolean;
+  onEntrarDeNovo?: () => void;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
+  // Tipos que o servidor recusou com "forma desligada" NESTE pedido. Só o
+  // tipo recusado sai da config da tela: o outro, se ainda ligado, continua
+  // (ex.: a lojista desligou só o débito). Sem tipo nenhum sobrando, cai na
+  // tela de "cartão indisponível" abaixo, com as mesmas regras de sempre.
+  // As recusas carregam o pedido a que pertencem: o render de um pedido novo
+  // NUNCA usa recusas do anterior — nem no primeiro quadro (um efeito de
+  // "zerar" só roda depois dele).
+  const [recusas, setRecusas] = useState<{
+    readonly orderId: string;
+    readonly tipos: readonly TipoDeCartao[];
+  }>({ orderId, tipos: [] });
+  const tiposRecusados = recusas.orderId === orderId ? recusas.tipos : [];
+  const avisarFormaDesligada = (tipoRecusado: TipoDeCartao) => {
+    esquecerConfigDoCartao();
+    setRecusas((atual) => {
+      const tipos = atual.orderId === orderId ? atual.tipos : [];
+      return tipos.includes(tipoRecusado)
+        ? atual
+        : { orderId, tipos: [...tipos, tipoRecusado] };
+    });
+  };
+  const configEfetiva: ConfigDoCartao | null = configDoCartao && {
+    ...configDoCartao,
+    credito: configDoCartao.credito && !tiposRecusados.includes("credit_card"),
+    debito: configDoCartao.debito && !tiposRecusados.includes("debit_card"),
+  };
   const pagarComPix = (cartaoAindaVivo: boolean) => {
     setTrocouParaPix(true);
     onTrocarParaPix?.(cartaoAindaVivo);
   };
 
+  // Diagnóstico do checkout (29/09/2026) — a troca cartão→PIX não pode
+  // esconder a cobrança incerta: a tela do cartão esteve em cena nesta
+  // montagem e a config sumiu DEPOIS (a loja desligou o cartão ou o
+  // pagamento pelo app no meio do pagamento), o fallback assume DESMONTANDO
+  // a tela do cartão — inclusive "em análise"/3DS, onde uma cobrança PODE
+  // existir. Nesse caso a troca tem de avisar `cartaoAindaVivo: true`, para
+  // o CheckoutView marcar a cobrança incerta e "Cancelar pedido" nunca
+  // reaparecer sobre um cartão que o banco pode aprovar. Fallback que nasce
+  // COM a tela (config ausente desde o primeiro render) nunca teve POST de
+  // cartão — `false` continua sendo o valor verdadeiro ali. Estado, não ref:
+  // o valor entra no `onClick` durante o render.
+  const cartaoEmCena =
+    metodo === "cartao" &&
+    !trocouParaPix &&
+    !!configEfetiva &&
+    cartaoLigado(configEfetiva);
+  const [cartaoEsteveEmCena, setCartaoEsteveEmCena] = useState(false);
+  useEffect(() => {
+    if (cartaoEmCena) setCartaoEsteveEmCena(true);
+  }, [cartaoEmCena]);
+
   if (metodo === "cartao" && !trocouParaPix) {
-    if (configDoCartao && cartaoLigado(configDoCartao)) {
+    if (configEfetiva && cartaoLigado(configEfetiva)) {
       return (
         <PagamentoComCartao
+          // Cada recusa remonta o formulário do zero, só com o que sobrou. O
+          // pedido entra na chave: trocar de pedido desmonta o formulário do
+          // anterior, e uma resposta atrasada dele não chega a este.
+          key={`${orderId}|${tiposRecusados.join(",")}`}
           orderId={orderId}
           valor={valor}
-          config={configDoCartao}
+          config={configEfetiva}
           emailDoPagador={emailDoPagador}
           onErro={onErro}
+          onFormaDesligada={avisarFormaDesligada}
           onPagarComPix={pagarComPix}
+          onCobrancaEmDuvida={onCobrancaEmDuvida}
+          onCartaoEmCurso={onCartaoEmCurso}
+          cartaoEncerrado={cartaoEncerrado}
+          onCartaoEncerradoPelaConsulta={onCartaoEncerradoPelaConsulta}
+          onVerMeusPedidos={onVerMeusPedidos}
+          sessaoAtiva={sessaoAtiva}
+          onEntrarDeNovo={onEntrarDeNovo}
         />
       );
     }
     // A loja desligou o cartão entre a escolha e a tela de pagamento (ou a
-    // config sumiu) — nenhum cartão chegou a ser submetido, então nunca há
-    // cobrança em curso.
+    // config sumiu). Se a tela do cartão ESTEVE em cena nesta montagem, uma
+    // cobrança pode existir — ver o comentário de `cartaoEsteveEmCena`.
     return (
       <div className="mx-auto w-full max-w-md space-y-3 rounded-2xl border border-zinc-100 bg-white p-4 text-center sm:p-6">
         <p className="text-sm text-zinc-700">
           O pagamento com cartão não está disponível nesta loja agora.
         </p>
-        <button
-          type="button"
-          onClick={() => pagarComPix(false)}
-          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
-        >
-          Pagar com PIX
-        </button>
+        {cobrancaIncerta ? (
+          <>
+            {/* C5 (front B2): sem order conhecida aqui, nunca "em análise". */}
+            <p className="text-sm text-amber-800">
+              Não conseguimos confirmar se uma tentativa anterior com cartão foi
+              cobrada. Acompanhe o pedido antes de tentar outra forma de
+              pagamento.
+            </p>
+            {onVerMeusPedidos && (
+              <button
+                type="button"
+                onClick={onVerMeusPedidos}
+                className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+              >
+                Ver meus pedidos
+              </button>
+            )}
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => pagarComPix(cartaoEsteveEmCena)}
+            className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+          >
+            Pagar com PIX
+          </button>
+        )}
       </div>
     );
   }
 
-  return <PagamentoComPix orderId={orderId} valor={valor} onErro={onErro} />;
+  return (
+    <PagamentoComPix
+      orderId={orderId}
+      valor={valor}
+      onErro={onErro}
+      pedidoMortoNoServidor={pedidoMortoNoServidor}
+      onVerMeusPedidos={onVerMeusPedidos}
+    />
+  );
 }
 
 function PagamentoComPix({
   orderId,
   valor,
   onErro,
+  pedidoMortoNoServidor = false,
+  onVerMeusPedidos,
 }: {
   orderId: string;
   valor: number;
+  pedidoMortoNoServidor?: boolean;
+  // Saída do aviso de pedido morto: leva à lista de pedidos. Ausente = o
+  // botão não aparece (nunca um botão mudo).
+  onVerMeusPedidos?: () => void;
   // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
   onErro: (
     msg: string,
@@ -570,6 +762,57 @@ function PagamentoComPix({
     );
   }
 
+  // F1 (04/10/2026): o servidor já gravou o pedido como morto — o código que
+  // o cliente tem na mão o banco recusaria. QR, "Copiar código", o texto do
+  // copia e cola e o link saem da tela; fica o aviso. Quem pagou antes
+  // continua vendo a confirmação (o CheckoutView segue verificando e troca a
+  // tela quando o pagamento atrasado chega). O texto NÃO diz "prazo de
+  // reserva venceu": essa frase é da tela de "pago fora do prazo".
+  if (pix && pedidoMortoNoServidor) {
+    return (
+      <section
+        aria-labelledby={idTitulo}
+        className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6"
+      >
+        <header className="space-y-1 text-center">
+          <h2
+            id={idTitulo}
+            className="text-xs font-bold uppercase tracking-wider text-zinc-500"
+          >
+            Pagamento via Pix
+          </h2>
+          {orderId && (
+            <p className="text-xs text-zinc-500">
+              Pedido #{numeroDoPedido(orderId)}
+            </p>
+          )}
+        </header>
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
+        >
+          <AlertCircle
+            aria-hidden="true"
+            className="mt-0.5 size-5 shrink-0 text-amber-600"
+          />
+          <p className="text-sm text-amber-800">
+            Este código não vale mais. Se você já pagou, fique nesta tela: a
+            confirmação aparece aqui. Se ainda não pagou, faça um pedido novo.
+          </p>
+        </div>
+        {onVerMeusPedidos && (
+          <button
+            type="button"
+            onClick={onVerMeusPedidos}
+            className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+          >
+            Ver meus pedidos
+          </button>
+        )}
+      </section>
+    );
+  }
+
   if (pix) {
     const valorConhecido = Number.isFinite(valor) && valor > 0;
     const descritoPeloAviso = horarioPrevistoPassou
@@ -599,7 +842,7 @@ function PagamentoComPix({
           )}
           {orderId && (
             <p className="text-xs text-zinc-500">
-              Pedido #{orderId.slice(0, 8)}
+              Pedido #{numeroDoPedido(orderId)}
             </p>
           )}
         </header>

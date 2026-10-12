@@ -946,7 +946,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       "div.space-y-3",
     ) as HTMLElement | null;
     expect(cartaoME?.textContent).toContain(
-      "Desligue esta transportadora antes de usar o modo de testes.",
+      "Desligue esta transportadora antes de usar o modo de teste.",
     );
   });
 
@@ -980,7 +980,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
             success: false,
             motivo: "sandbox",
             error:
-              "Desligue esta transportadora antes de usar o modo de testes.",
+              "Desligue esta transportadora antes de usar o modo de teste.",
           },
           error: null,
         });
@@ -991,7 +991,7 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     const { toast } = await import("sonner");
     await clicar(botoes(/^Salvar$/)[1]);
     expect(toast.error).toHaveBeenCalledWith(
-      "Desligue esta transportadora antes de usar o modo de testes.",
+      "Desligue esta transportadora antes de usar o modo de teste.",
     );
     expect(descartarCache).not.toHaveBeenCalled();
   });

@@ -34,7 +34,7 @@ export const AdminErrorState = React.memo(function AdminErrorState({
         <Button
           onClick={onRetry}
           disabled={isLoading}
-          className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-zinc-900 px-6 text-[10px] font-bold uppercase tracking-widest text-white transition-all hover:bg-zinc-800 active:scale-95"
+          className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-zinc-900 px-6 text-[11px] font-bold uppercase tracking-widest text-white transition-all hover:bg-zinc-800 active:scale-95"
         >
           <RefreshCw
             className={`size-3.5 ${isLoading ? "animate-spin" : ""}`}

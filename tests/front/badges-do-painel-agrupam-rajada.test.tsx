@@ -32,6 +32,7 @@ function builderOrders() {
   builder.select = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) => {
@@ -46,6 +47,7 @@ function builderSemContador() {
   builder.select = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) =>
@@ -81,8 +83,14 @@ vi.mock("@/lib/supabase", () => ({
     from: vi.fn((tabela: string) =>
       tabela === "marketplace_orders" ? builderOrders() : builderSemContador(),
     ),
-    rpc: vi.fn(() =>
-      Promise.resolve({ data: { total_count: 0 }, error: null }),
+    rpc: vi.fn((nome: string) =>
+      Promise.resolve({
+        data:
+          nome === "admin_devolucoes_listar"
+            ? { total: 0, itens: [], contagem: { solicitada: 0 } }
+            : { total_count: 0 },
+        error: null,
+      }),
     ),
     channel: vi.fn((_nome: string) => {
       const canal: any = {};

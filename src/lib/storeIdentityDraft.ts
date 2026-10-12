@@ -31,9 +31,23 @@ export interface IdentityEditorDraft {
   readonly expected: StoreIdentitySnapshot;
   readonly fields: IdentityDraftFields;
   readonly assets: BrandingAssets;
+  readonly individualIconRoles: readonly IdentityAssetRole[];
 }
+export const APP_ICON_ROLES = [
+  "icon_512",
+  "icon_192",
+  "apple_touch",
+  "maskable_512",
+] as const;
+export type AppIconRole = (typeof APP_ICON_ROLES)[number];
 export type IdentityDraftChange =
   | { readonly kind: "fields"; readonly fields: IdentityDraftFields }
+  | {
+      readonly kind: "app-icons";
+      readonly uploaded: Readonly<
+        Record<AppIconRole, VerifiedPublicIdentityAsset>
+      >;
+    }
   | {
       readonly kind: "asset";
       readonly roles: readonly IdentityAssetRole[];
@@ -159,6 +173,7 @@ export function createIdentityEditorDraft(
     expected,
     fields: presented(identity),
     assets: identity.assets,
+    individualIconRoles: Object.freeze([]),
   });
 }
 
@@ -167,7 +182,15 @@ function draftFrom(
   origin: string,
 ): IdentityEditorDraft {
   const copy = capture(value);
-  exact(copy, ["expected", "fields", "assets"]);
+  exact(copy, ["expected", "fields", "assets", "individualIconRoles"]);
+  const individualIconRoles = copy.individualIconRoles;
+  if (
+    !Array.isArray(individualIconRoles) ||
+    individualIconRoles.some(
+      (role) => !APP_ICON_ROLES.some((allowed) => allowed === role),
+    )
+  )
+    invalid();
   const baseline = checked(() =>
     createIdentityEditorDraft(copy.expected as StoreIdentitySnapshot, origin),
   );
@@ -175,6 +198,9 @@ function draftFrom(
     expected: baseline.expected,
     fields: fieldsFrom(copy.fields),
     assets: checked(() => parseBrandingAssets(copy.assets)),
+    individualIconRoles: Object.freeze([
+      ...individualIconRoles,
+    ]) as readonly IdentityAssetRole[],
   });
 }
 function uploadedFrom(
@@ -215,7 +241,39 @@ export function changeIdentityEditorDraft(
   const copy = draftFrom(draft, origin);
   const action = capture(change);
   let assets = copy.assets;
+  let individualIconRoles = copy.individualIconRoles;
   switch (action.kind) {
+    case "app-icons": {
+      exact(action, ["kind", "uploaded"]);
+      exact(action.uploaded, APP_ICON_ROLES);
+      const uploaded = action.uploaded;
+      const icons = Object.fromEntries(
+        APP_ICON_ROLES.map((role) => [
+          role,
+          // role belongs to the closed APP_ICON_ROLES list.
+          // eslint-disable-next-line security/detect-object-injection
+          uploadedFrom(uploaded[role], assets, origin),
+        ]),
+      );
+      // Validate the complete set even when an individual choice will be kept.
+      const all = checked(() => parseBrandingAssets({ ...assets, ...icons }));
+      assets = checked(() =>
+        parseBrandingAssets({
+          ...all,
+          ...Object.fromEntries(
+            individualIconRoles
+              .filter((role) => role !== "icon_512")
+              .map((role) => [
+                role,
+                // role was validated against APP_ICON_ROLES by draftFrom.
+                // eslint-disable-next-line security/detect-object-injection
+                assets[role],
+              ]),
+          ),
+        }),
+      );
+      break;
+    }
     case "fields": {
       exact(action, ["kind", "fields"]);
       return Object.freeze({ ...copy, fields: fieldsFrom(action.fields) });
@@ -241,6 +299,14 @@ export function changeIdentityEditorDraft(
           ...Object.fromEntries(roles.map((role) => [role, asset])),
         }),
       );
+      individualIconRoles = Object.freeze([
+        ...new Set([
+          ...individualIconRoles,
+          ...roles.filter((role) =>
+            APP_ICON_ROLES.some((icon) => icon === role),
+          ),
+        ]),
+      ]);
       break;
     }
     case "source-add": {
@@ -301,7 +367,7 @@ export function changeIdentityEditorDraft(
     default:
       return invalid();
   }
-  return Object.freeze({ ...copy, assets });
+  return Object.freeze({ ...copy, assets, individualIconRoles });
 }
 
 export function identityEditorDraftIsDirty(
@@ -389,5 +455,10 @@ export function reconcileIdentityEditorDraft(
         : copy.assets.originals,
     }),
   );
-  return Object.freeze({ expected: next.expected, fields, assets });
+  return Object.freeze({
+    expected: next.expected,
+    fields,
+    assets,
+    individualIconRoles: copy.individualIconRoles,
+  });
 }

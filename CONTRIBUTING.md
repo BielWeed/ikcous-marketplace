@@ -198,6 +198,22 @@ tem hora que é a saída certa. É que ninguém mais tem como saber.
 
 ## Modelo de branches
 
+> **Estado atual (08/10/2026): a base de trabalho é `claude/app-major-upgrade-wmc8x2`,
+> não a `develop`.** É a branch padrão do repositório e a que carrega a versão
+> oficial (1.5.x). Dos últimos 40 PRs juntados, 26 foram para ela e 4 para a
+> `develop`.
+>
+> - **`develop`** ficou parada na linha antiga de versões (1.35.0). Não abra
+>   branch nem PR a partir dela sem combinar com o dono.
+> - **`production`** registra a versão que está no ar (PRs `chore(release)`).
+> - **Onde as receitas abaixo dizem `develop`, leia
+>   `claude/app-major-upgrade-wmc8x2`** — inclusive em `git switch`,
+>   `gh pr create --base` e nas comparações de "apagar branch".
+>
+> O restante do guia descreve o GitFlow original e ainda não foi reescrito para
+> esse estado. Se um passo depender de `develop` de um jeito que não faz sentido
+> assim (por exemplo, "volta a release para develop"), pare e pergunte ao dono.
+
 ```mermaid
 gitGraph
     commit id: "loja no ar"
@@ -230,7 +246,8 @@ gitGraph
 | Branch | Sai de | Volta para | Regra |
 | --- | --- | --- | --- |
 | `main` | — | — | Só código em produção. Todo commit aqui vira deploy. **Não é protegida pelo GitHub** — ver acima. |
-| `develop` | `main` | — | Integração. Base de toda branch nova. Branch padrão do repositório. |
+| `develop` | `main` | — | Integração no modelo original. **Hoje parada em 1.35.0 e fora do fluxo** — ver "Estado atual" acima. |
+| `claude/app-major-upgrade-wmc8x2` | — | — | **Base de toda branch nova hoje.** Branch padrão do repositório, versão oficial 1.5.x. |
 | `feat/<escopo>` | `develop` | `develop` | Funcionalidade nova. |
 | `fix/<escopo>` | `develop` | `develop` | Correção que pode esperar o próximo release. |
 | `chore/<escopo>` | `develop` | `develop` | Infra, dependência, configuração. |
@@ -241,7 +258,8 @@ gitGraph
 
 Existem branches antigas com prefixo `claude/` no remoto. São de sessões de
 agente anteriores ao GitFlow. Não crie mais nenhuma; a limpeza delas está em
-INFRA-180.
+INFRA-180. **A exceção é a `claude/app-major-upgrade-wmc8x2`**, que é a base de
+trabalho atual e não deve ser apagada.
 
 **O passo que todo mundo esquece:** `release` e `hotfix` fazem merge em **duas**
 branches. Se você mergear o hotfix só na `main`, o bug volta no próximo release,

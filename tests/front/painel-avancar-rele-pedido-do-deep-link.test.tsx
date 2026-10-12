@@ -27,6 +27,7 @@
 // `AdminOrdersView.tsx:971` só manda `statusEsperado` quando o id do
 // pedido que está avançando bate com o do `selectedOrder` atual.
 import { mapOrderFromDB } from "@/lib/mappers";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type { Order } from "@/types";
 import { act } from "react";
 import type { ReactNode } from "react";
@@ -402,7 +403,7 @@ describe("AdminOrdersView — a ficha aberta por DEEP LINK reflete o status VERD
 
     // A ficha agora mostra o pedido B — o diálogo de confirmação continua
     // aberto, com o id do pedido A ainda capturado dentro dele.
-    expect(hospedeiro.textContent).toContain(PEDIDO_ID_OUTRO.slice(-6));
+    expect(hospedeiro.textContent).toContain(numeroDoPedido(PEDIDO_ID_OUTRO));
     const botaoConfirmar = botaoConfirmarAvancoMesmoAssim();
     expect(botaoConfirmar).toBeTruthy();
 

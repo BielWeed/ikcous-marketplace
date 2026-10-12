@@ -193,6 +193,9 @@ describe("AdminNotificationsView", () => {
 
     expect(todosOsAvisos()).toHaveLength(0);
     expect(raizDom.textContent).toContain("Tudo em dia");
+    // O sino acende por devolucao solicitada; a frase que afirma "nada esperando"
+    // tem de listar a devolucao junto com as outras fontes.
+    expect(raizDom.textContent).toContain("devolução");
   });
 
   it("o estoque fica no bloco De olho e os outros tres no Precisa de voce", async () => {
@@ -267,5 +270,48 @@ describe("AdminNotificationsView", () => {
     });
 
     expect(recarregarFalso).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AvisoCard — desenho de botão-linha novo (10/10/2026)", () => {
+  it("o cartão é um botão-linha: rounded-2xl, gradiente, alvo mínimo de 44px", async () => {
+    await montar();
+    const cartao = container?.querySelector('[data-aviso="pedido"]');
+    expect(cartao).not.toBeNull();
+    for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {
+      expect(cartao?.classList.contains(classe)).toBe(true);
+    }
+    expect(cartao?.className).toContain("border-white/10");
+    // Seta no padrão novo: ChevronRight de 20px.
+    expect(
+      cartao?.querySelector("svg.lucide-chevron-right.size-5"),
+    ).not.toBeNull();
+  });
+
+  it("o rótulo do tipo é legível (nada de cinza 500) e o nome do aviso é 15px", async () => {
+    await montar();
+    const cartao = container?.querySelector('[data-aviso="pedido"]');
+    const rotulo = cartao?.querySelector("span.uppercase");
+    expect(rotulo?.className).not.toMatch(/text-zinc-[567]00/);
+    expect(rotulo?.className).toMatch(/text-zinc-[34]00/);
+    expect(cartao?.querySelector("h3")?.className).toContain("text-[15px]");
+  });
+
+  it("a legenda do bloco também passa do cinza 500", async () => {
+    await montar();
+    const legenda = container?.querySelector(
+      '[data-bloco="de-olho"] h2 + span',
+    );
+    expect(legenda?.className).not.toMatch(/text-zinc-[567]00/);
+  });
+
+  it("o texto da tela vazia também passa do cinza 500", async () => {
+    AVISOS = [];
+    const raizDom = await montar();
+    const texto = Array.from(raizDom.querySelectorAll("p")).find((p) =>
+      p.textContent?.includes("Nenhum pedido"),
+    );
+    expect(texto).toBeTruthy();
+    expect(texto?.className).not.toMatch(/text-zinc-[567]00/);
   });
 });

@@ -12,6 +12,7 @@ import { SerieDe14Dias } from "@/components/admin/inicio/SerieDe14Dias";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { buildIdentity } from "@/config/buildIdentity";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -19,6 +20,7 @@ import { usePainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { pagamentoOnlineLigado } from "@/lib/flags";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { cn } from "@/lib/utils";
@@ -59,9 +61,14 @@ function SecaoLojaProntaEEstoqueBaixo({
   return (
     <LojaProntaEEstoqueBaixo
       stats={estoqueBaixo == null ? null : { inventoryAlerts: estoqueBaixo }}
-      originCep={config.originCep}
+      config={config}
       ligado={pagamentoOnlineLigado()}
       chaveOk={pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined)}
+      // Mesma normalização de AdminSettingsView e CheckoutView: ausente ou
+      // corrompido cai no padrão das três formas.
+      formasNaEntrega={formasPagamentoNaEntregaValidas(
+        config.formasPagamentoEntrega,
+      )}
       produtos={products}
       configCarregando={!isLoaded}
       produtosCarregando={loadingProducts}
@@ -147,11 +154,11 @@ export const AdminDashboardView = memo(function AdminDashboardView({
   return (
     <div
       ref={viewRef}
-      className="pb-admin h-auto bg-[#09090b] text-white selection:bg-emerald-500/30 lg:pb-12"
+      className="pb-admin h-auto bg-admin-bg text-white selection:bg-emerald-500/30 lg:pb-12"
     >
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
-          titulo="Início"
+          titulo={NOMES_DO_PAINEL["admin-dashboard"]}
           acoes={
             <button
               type="button"
@@ -167,7 +174,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 )}
                 aria-hidden="true"
               />
-              <span className="hidden text-[10px] font-black uppercase tracking-widest text-zinc-400 sm:inline">
+              <span className="hidden text-[11px] font-black uppercase tracking-widest text-zinc-400 sm:inline">
                 Sincronizar
               </span>
             </button>
@@ -176,11 +183,16 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           <button
             type="button"
             onClick={() => setMostrarAjuda(true)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
             title="Como ler o Início"
             aria-label="Como ler o Início"
           >
-            <HelpCircle className="size-4.5" aria-hidden="true" />
+            <span
+              aria-hidden="true"
+              className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+            >
+              <HelpCircle className="size-4.5" aria-hidden="true" />
+            </span>
           </button>
           <PontoDeOperacao sincronizando={carregando} />
         </AdminPageHeader>
@@ -211,7 +223,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
             <button
               type="button"
               onClick={() => void atualizar()}
-              className="flex min-h-11 shrink-0 items-center rounded-xl border border-red-500/20 px-3 text-[10px] font-black uppercase tracking-wider text-red-300 transition-colors hover:bg-red-500/10"
+              className="flex min-h-11 shrink-0 items-center rounded-xl border border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider text-red-300 transition-colors hover:bg-red-500/10"
             >
               Tentar de novo
             </button>
@@ -296,14 +308,16 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           </p>
           <ul className="list-inside list-disc space-y-2">
             <li>
-              <strong className="text-white">Hoje:</strong> quanto entrou hoje,
-              quanto veio do app e quanto do balcão, comparado com o mesmo dia
-              da semana passada.
+              <strong className="text-white">Vendas pagas hoje:</strong> quanto
+              entrou hoje, quanto veio do app e quanto do balcão, comparado com
+              o mesmo dia da semana passada.
             </li>
             <li>
-              <strong className="text-white">Lucro estimado:</strong> a receita
-              do mês menos o custo cadastrado dos produtos vendidos. Produto sem
-              custo cadastrado conta custo zero.
+              <strong className="text-white">Lucro estimado:</strong> o
+              resultado do Financeiro no mês — o que entrou, menos estornos e
+              devoluções, o custo cadastrado dos produtos vendidos e as despesas
+              lançadas (mesmo as ainda não pagas). Produto sem custo cadastrado
+              conta custo zero.
             </li>
             <li>
               <strong className="text-white">
@@ -322,7 +336,10 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           </ul>
           <p>
             As métricas completas (o antigo Dashboard, clientes, canais e funil)
-            ficam no botão <strong className="text-white">Dashboard CRM</strong>
+            ficam no botão{" "}
+            <strong className="text-white">
+              {NOMES_DO_PAINEL["admin-crm"]}
+            </strong>
             .
           </p>
         </div>

@@ -1,4 +1,3 @@
-import { LazyImage } from "@/components/LazyImage";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import {
   AdminKpiCarousel,
@@ -8,19 +7,20 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
-import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
-import { BotaoDevolucoes } from "@/components/admin/devolucoes/BotaoDevolucoes";
+import {
+  AdminOrderCard,
+  AdminOrderCardSkeleton,
+} from "@/components/admin/orders/AdminOrderCard";
+import { GuiaDoPagamentoQueNaoFechou } from "@/components/admin/orders/GuiaDoPagamentoQueNaoFechou";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
-  OrderStatusBadge,
-  PaymentStatusBadge,
   type PaymentStatusKey,
   getPaymentStatusConfig,
   paymentStatusKey,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
-import { podeRegistrarPagamento } from "@/components/admin/orders/podeRegistrarPagamento";
-import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
+import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
+import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
@@ -29,25 +29,37 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useDevolucoesAbertas } from "@/hooks/useDevolucoesAdmin";
+import {
+  type EstornoEmCurso,
+  useEstornosEmCursoDosPedidos,
+} from "@/hooks/useEstornosEmCursoDosPedidos";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useNumerosDosPedidos } from "@/hooks/useNumerosDosPedidos";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  ErroCancelamentoNaoConcluido,
   ErroPedidoMudou,
   mensagemAmigavelErroAtualizacaoStatus,
   useOrders,
 } from "@/hooks/useOrders";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
-import { horarioRelativo } from "@/lib/horario-relativo";
+import { formatarInteiro } from "@/lib/crm";
 import { mapOrderFromDB } from "@/lib/mappers";
-import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { pedidosParaCsv } from "@/lib/pedidos-csv";
+import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import { valorDevolverAgora } from "@/lib/valor-devolver-agora";
+import {
+  valorDevolverAgora,
+  valorDevolverAgoraDescontandoLedger,
+} from "@/lib/valor-devolver-agora";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type {
   CanalDaVenda,
@@ -58,24 +70,18 @@ import type {
 } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
-import { motion } from "framer-motion";
 import {
-  Calendar,
   CheckCircle2,
-  ChevronRight,
   Clock,
-  DollarSign,
   Download,
   Filter,
   HelpCircle,
   LayoutGrid,
   List,
   Loader2,
-  MessageCircle,
   Package,
   Search,
-  TrendingUp,
-  User,
+  Truck,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -90,20 +96,20 @@ const STATUS_ORDER_COLORS: Record<string, string> = {
 };
 
 /**
- * Subtítulo do cartão "Ações Pendentes" — achado 10 da auditoria de
- * 20/08/2026. Antes alternava entre "Urgente" e "Limpo" conforme
- * `stats.pending`, e um pedido parado em "Em Separação" desde 24/03/2026
- * deixou "Urgente" aceso por cinco meses seguidos: um alarme que nunca
- * apaga deixa de ser lido no dia em que significar alguma coisa.
+ * Subtítulo do cartão "Para preparar" — achado 10 da auditoria de
+ * 20/08/2026. O cartão antigo ("Ações Pendentes") alternava entre "Urgente"
+ * e "Limpo" conforme o número, e um pedido parado em "Em Separação" desde
+ * 24/03/2026 deixou "Urgente" aceso por cinco meses seguidos: um alarme que
+ * nunca apaga deixa de ser lido no dia em que significar alguma coisa.
  *
  * Em vez de julgar o número, o subtítulo descreve o que ele conta — e isso
  * é verdade sempre, então não precisa mudar. Derivado de
- * `STATUS_PEDIDOS_COM_ACAO_PENDENTE` (mesma lista que o crachá de Pedidos
- * usa em `AdminLayout.tsx`) para as duas contagens nunca voltarem a
- * divergir. `"new"` não tem rótulo em `statusConfig` (valor histórico do
- * banco, nunca modelado no front) e é descartado aqui.
+ * `STATUS_PARA_PREPARAR` (a regra única do selo da aba e do Início, onda F)
+ * para as contagens nunca voltarem a divergir. `"new"` não tem rótulo em
+ * `statusConfig` (valor histórico do banco, nunca modelado no front) e é
+ * descartado aqui.
  */
-const ACOES_PENDENTES_SUBTITULO = STATUS_PEDIDOS_COM_ACAO_PENDENTE.map(
+const SUBTITULO_PARA_PREPARAR = STATUS_PARA_PREPARAR.map(
   (status) => statusConfig[status as OrderStatus]?.label,
 )
   .filter((label): label is string => Boolean(label))
@@ -301,6 +307,27 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload),
   });
   const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
+  // Os três números do fluxo no topo (onda F, F3); `null` = "—". O hook
+  // carrega sozinho ao ficar ativo; daqui só se pede recarga (coalescida na
+  // janela de 1 s) por tempo real, ação na tela ou volta da conexão — nunca
+  // por filtro.
+  const {
+    paraPreparar,
+    aguardandoPagamento,
+    aCaminho,
+    abertosComPagamentoAConferir,
+    pedirRecarga: pedirRecargaDosNumeros,
+  } = useNumerosDosPedidos(active ?? false);
+  // Revisão da onda F (S3): pedido aberto com pagamento recusado/estornado
+  // saiu de todo contador; este aviso (só leitura) o mantém à vista. `null`
+  // (consulta falhou) e 0 escondem o aviso — nunca "0 pedidos".
+  const avisoPagamentoAConferir =
+    abertosComPagamentoAConferir === null || abertosComPagamentoAConferir <= 0
+      ? null
+      : `${abertosComPagamentoAConferir} ${
+          abertosComPagamentoAConferir === 1 ? "pedido" : "pedidos"
+        } em aberto com pagamento recusado ou estornado — confira no filtro Status de Pagamento.`;
+  const { abertas: devolucoesAbertas } = useDevolucoesAbertas(active);
 
   const [searchQuery, setSearchQuery] = useLocalStorage<string>(
     "admin_orders_search_query",
@@ -388,16 +415,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
   // Removed ref tracking for filter changes in favor of direct state resets
 
+  // Onda F (F3): "Receita Hoje" e "Valor médio por venda" saíram do topo —
+  // a receita do dia vive no Início (`painel_inicio`, pelo dia do pagamento)
+  // e em Relatórios; o valor médio por venda, em Clientes e Relatórios. O
+  // `today_pending` da RPC também saiu: contava o PIX que espera a cliente
+  // (ver `useNumerosDosPedidos`).
   const [stats, setStats] = useState(() => ({
-    // PAINEL-05: `?? null` + "—" na exibição — `|| 0` afirma "R$ 0,00"
-    // quando a RPC falhou; o travessão não afirma nada (mesma razão do
-    // `completed` abaixo, que já fazia certo).
-    revenueDay: analyticsStats?.today?.revenue ?? null,
-    pending: analyticsStats?.today?.pending ?? null,
-    avgTicket:
-      analyticsStats?.averageTicket ??
-      analyticsStats?.executive?.avgTicket ??
-      null,
     // `deliveredTotal` (status='delivered') veio pra substituir
     // `month.count`, que contava TODOS os pedidos não cancelados dos
     // últimos 30 dias — inclusive os que nunca saíram de "Novo Pedido".
@@ -414,12 +437,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   useEffect(() => {
     if (analyticsStats) {
       setStats({
-        revenueDay: analyticsStats.today?.revenue ?? null,
-        pending: analyticsStats.today?.pending ?? null,
-        avgTicket:
-          analyticsStats.averageTicket ??
-          analyticsStats.executive?.avgTicket ??
-          null,
         completed: analyticsStats.deliveredTotal ?? null,
       });
     }
@@ -469,6 +486,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       pedidosCancelados.filter((o) => baldeDeEstorno(o) === "devolver_agora"),
     [pedidosCancelados],
   );
+  // L3e' (lacunas de pagamento, 02/10/2026): o estorno que o Mercado Pago
+  // JÁ está fazendo em cada pedido do balde (linhas solicitado/
+  // em_processamento de order_refunds). Sem isto, "Devolver agora" pedia o
+  // total enquanto o app já devolvia — e quem devolvia por fora pagava duas
+  // vezes. Só leitura; ver o hook. Rodada 4: o hook recebe os PEDIDOS (id
+  // + valorEstornado) — a leitura vale só para o retrato da lista em que foi
+  // feita, e expõe `recarregar` (abrir o painel) e `conferirAgora` (o
+  // "Já estornei" decide com leitura fresca).
+  const estornos = useEstornosEmCursoDosPedidos(pedidosParaDevolverAgora, {
+    // G1 (rodada 2): a releitura periódica só com a tela de pedidos ativa.
+    ativo: Boolean(active),
+  });
+  const estornosEmCurso = estornos.porPedido;
   const [confirmandoRetornoId, setConfirmandoRetornoId] = useState<
     string | null
   >(null);
@@ -520,44 +550,40 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [registrarPagamentoRecebido],
   );
 
+  // PAINEL-05: número que não se sabe é "—", nunca "0" — um `0` afirma
+  // "nenhum pedido" quando a consulta simplesmente falhou.
   const kpiCards = useMemo<readonly KpiCardConfig[]>(
     () => [
       {
-        label: "Receita Hoje",
-        value:
-          stats.revenueDay !== null
-            ? `R$ ${stats.revenueDay.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-            : "—",
-        icon: DollarSign,
-        accent: "text-emerald-500",
-        subValue: "Finanças",
-      },
-      {
-        label: "Ações Pendentes",
-        value: stats.pending !== null ? stats.pending.toString() : "—",
-        icon: Clock,
+        label: "Para preparar",
+        value: formatarInteiro(paraPreparar),
+        icon: Package,
         accent: "text-amber-500",
-        subValue: ACOES_PENDENTES_SUBTITULO,
+        subValue: SUBTITULO_PARA_PREPARAR,
       },
       {
-        label: "Ticket Médio",
-        value:
-          stats.avgTicket !== null
-            ? `R$ ${stats.avgTicket.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-            : "—",
-        icon: TrendingUp,
-        accent: "text-admin-gold",
-        subValue: "Rendimento",
+        label: "Aguardando pagamento",
+        value: formatarInteiro(aguardandoPagamento),
+        icon: Clock,
+        accent: "text-blue-500",
+        subValue: "PIX ou cartão ainda não pago",
       },
       {
-        label: "Total Concluído",
-        value: stats.completed === null ? "—" : stats.completed.toString(),
+        label: "Em trânsito",
+        value: formatarInteiro(aCaminho),
+        icon: Truck,
+        accent: "text-indigo-500",
+        subValue: "Enviados",
+      },
+      {
+        label: "Finalizados",
+        value: formatarInteiro(stats.completed),
         icon: CheckCircle2,
         accent: "text-sky-500",
-        subValue: "Concluído",
+        subValue: "Desde o início · app e balcão",
       },
     ],
-    [stats],
+    [paraPreparar, aguardandoPagamento, aCaminho, stats],
   );
 
   const loadStats = useCallback(async () => {
@@ -792,6 +818,27 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // sempre. A RPC no servidor é guarda de admin; o confirm aqui evita
   // registrar por engano um estorno que ainda não aconteceu.
   const [estornandoId, setEstornandoId] = useState<string | null>(null);
+  // Rodada 4 (F2c): enquanto a leitura FRESCA do pedido não volta, o botão
+  // mostra "Conferindo…" e fica desligado. O ref barra o clique duplo no
+  // mesmo tick (o estado só chega ao DOM no próximo render).
+  const [conferindoEstornoId, setConferindoEstornoId] = useState<string | null>(
+    null,
+  );
+  const conferindoEstornoRef = useRef(false);
+  // B1c (revisão do front): quantas vezes a tela DEIXOU de estar ativa (ou
+  // desmontou). O "Já estornei" guarda o número no clique; se mudou durante
+  // a leitura fresca, a pergunta não abre — o lojista saiu da tela, e um
+  // `confirm` sobre outra tela registraria às cegas. Ele toca de novo.
+  const desativacoesDaTelaRef = useRef(0);
+  useEffect(() => {
+    if (!active) desativacoesDaTelaRef.current += 1;
+  }, [active]);
+  useEffect(
+    () => () => {
+      desativacoesDaTelaRef.current += 1;
+    },
+    [],
+  );
   const registrarEstornoFeito = async (pedido: {
     id: string;
     total?: number | null;
@@ -807,14 +854,95 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     valorDevolvidoPorDevolucao?: number;
     valorEstornado?: number;
   }) => {
-    const valor = valorDevolverAgora(pedido).toLocaleString("pt-BR", {
-      minimumFractionDigits: 2,
-    });
+    if (conferindoEstornoRef.current) return;
+    const reais = (v: number) =>
+      v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+    // Rodada 4 (F2c): o ponto de DECISÃO nunca usa a leitura da lista —
+    // uma devolução que começou depois dela (card "Devolver", outro admin)
+    // não muda marketplace_orders e não teria como aparecer. Leitura fresca
+    // deste pedido; falha ou prazo estourado = "não conferido", que cai na
+    // pergunta do estado desconhecido (rodada 3).
+    conferindoEstornoRef.current = true;
+    setConferindoEstornoId(pedido.id);
+    const desativacoesNoClique = desativacoesDaTelaRef.current;
+    let ledger: EstornoEmCurso;
+    try {
+      ledger = await estornos.conferirAgora(pedido.id);
+    } finally {
+      conferindoEstornoRef.current = false;
+      setConferindoEstornoId(null);
+    }
+    // B1c: a tela deixou de estar ativa durante a leitura — abandona sem
+    // perguntar e sem registrar. B2b: e AVISA — o toque não pode sumir em
+    // silêncio. O <Toaster /> é global (App.tsx), então o aviso aparece na
+    // tela para onde ele foi; por isso nomeia "Pedidos". 10 s porque ele
+    // está lendo outra coisa; o sonner pausa o tempo com a aba do navegador
+    // escondida.
+    if (desativacoesDaTelaRef.current !== desativacoesNoClique) {
+      toast.info(
+        "Conferência interrompida: nada foi registrado. Para registrar o estorno, volte em “Pedidos” e toque de novo em “Já estornei no Mercado Pago”.",
+        { duration: 10_000 },
+      );
+      return;
+    }
+    // A lista acompanha o que acabou de ser lido.
+    estornos.recarregar();
+    const conferido = ledger.tipo === "conferido" ? ledger : null;
+    // O que falta devolver SEM descontar o que está em curso (mas já sem o
+    // que o MP concluiu depois do retrato da lista, rodada 2/R2): é o valor
+    // que o lojista precisa ter devolvido por fora para "Já estornei" ser
+    // verdade, porque o registro marca o pedido INTEIRO como devolvido.
+    const devidoSemDescontarEmCurso = conferido
+      ? valorDevolverAgoraDescontandoLedger(pedido, {
+          emCurso: 0,
+          concluido: conferido.concluido,
+        })
+      : valorDevolverAgora(pedido);
+    const valor = reais(devidoSemDescontarEmCurso);
     const cliente = pedido.customer?.name || "o cliente";
-    const pergunta =
-      pedido.canal === "presencial"
-        ? `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no balcão?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`
-        : `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
+    // L3e' rodada 2 (R1, revisão do front): com devolução em curso pelo MP,
+    // "Já estornei" marca o pedido INTEIRO como estornado. Antes da
+    // migration C-S (20261189) o servidor aceita e a linha `solicitado` é
+    // recusada pela guarda do executor — um pedido de R$100 com R$30 em
+    // curso, confirmado por quem só devolveu R$70 por fora, deixava o
+    // cliente com R$70. Depois da C-S, `solicitado` vira `recusado` e
+    // `em_processamento` faz o servidor RECUSAR o registro. O texto abaixo é
+    // verdadeiro nos dois mundos: "pode ser cancelada", "pode recusar", "ou o
+    // cliente pode receber as duas" (POST já saído antes da C-S).
+    let pergunta: string;
+    if (conferido && conferido.emCurso > 0) {
+      const emCurso = reais(conferido.emCurso);
+      const descontado = valorDevolverAgoraDescontandoLedger(pedido, conferido);
+      // "o app pediu" só quando nenhuma parte veio do próprio MP
+      // (`solicitado_por = 'sistema'`, contestação): aí só o genérico é
+      // verdade.
+      const quemPediu =
+        conferido.sistema > 0
+          ? `O Mercado Pago tem uma devolução ou disputa em andamento de R$ ${emCurso} neste pedido.`
+          : `O app já pediu ao Mercado Pago a devolução de R$ ${emCurso} deste pedido.`;
+      // Rodada 4 (F1, revisão financeira): linha TRAVADA (5+ tentativas) não
+      // é "dinheiro voltando" — o próprio cron grava "não consegui confirmar
+      // … confira no painel do MP". Mandar "esperar terminar" deixava o
+      // cliente sem nada quando o MP nunca recebeu o pedido.
+      const seDevolveuMenos =
+        conferido.semConfirmacao > 0
+          ? `Não consegui confirmar a devolução de R$ ${reais(conferido.semConfirmacao)} pelo Mercado Pago. Confira no painel do Mercado Pago antes de confirmar ou de devolver por outro meio.`
+          : descontado > 0
+            ? `Se você devolveu só R$ ${reais(descontado)} (ou nada), toque em Cancelar e espere a devolução do Mercado Pago terminar; depois confirme.`
+            : "Se você não devolveu nada por fora, toque em Cancelar: o dinheiro já está voltando pelo Mercado Pago.";
+      pergunta = `ATENÇÃO: ${quemPediu}\n\nSe você confirmar e o registro for aceito, o pedido inteiro passa a contar como devolvido, e essa devolução do Mercado Pago pode ser cancelada. Se ela já estiver saindo, o app pode recusar o registro — ou o cliente pode receber as duas.\n\nConfirme só se você já devolveu a ${cliente}, por fora (PIX, dinheiro ou painel do Mercado Pago), o valor TOTAL de R$ ${valor}. ${seDevolveuMenos}`;
+    } else if (!conferido) {
+      // Rodada 3: estado DESCONHECIDO (leitura pendente ou falha) — é
+      // exatamente quando o lojista não tem como saber se o MP já está
+      // devolvendo. Nada de promessa: só o que não deu para conferir, onde
+      // conferir, e o valor TOTAL que o registro marca como devolvido.
+      pergunta = `ATENÇÃO: Não consegui conferir agora se o Mercado Pago já está devolvendo parte deste pedido. Antes de confirmar, abra o painel do Mercado Pago e veja se há devolução em andamento — se houver, toque em Cancelar.\n\nConfirme só se você já devolveu a ${cliente}, por fora (PIX, dinheiro ou painel do Mercado Pago), o valor TOTAL de R$ ${valor}.\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
+    } else {
+      pergunta =
+        pedido.canal === "presencial"
+          ? `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no balcão?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`
+          : `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
+    }
     if (!globalThis.confirm(pergunta)) {
       return;
     }
@@ -823,7 +951,25 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const { error } = await supabase.rpc("registrar_estorno_manual", {
         p_order_id: pedido.id,
       });
-      if (error) throw error;
+      if (error) {
+        // R4 (B1b): a recusa de NEGÓCIO do servidor (SQLSTATE 22023) chega
+        // com texto leigo escrito para o lojista — "o Mercado Pago já está
+        // devolvendo… faça-a pelo painel do Mercado Pago, nunca por outro
+        // caminho" (C-S, 20261189) ou "não tem mais nada a devolver"
+        // (20261176). Trocar isso por "Tente de novo" empurrava o lojista
+        // a pagar por fora. O resto (rede, permissão) segue genérico.
+        if (
+          (error as { code?: string }).code === "22023" &&
+          typeof error.message === "string" &&
+          error.message.trim() !== ""
+        ) {
+          console.error("Estorno manual recusado pelo servidor:", error);
+          toast.error(error.message);
+          await fetchPedidosCancelados().catch(() => {});
+          return;
+        }
+        throw error;
+      }
       toast.success("Estorno registrado — o pedido saiu da lista.");
       await fetchPedidosCancelados().catch(() => {});
     } catch (e) {
@@ -835,9 +981,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   };
 
   // Estável de propósito: vai para o `<OrderDetail>` (memo) e para o botão
-  // do cabeçalho — a tela de Devoluções (filha de Pedidos no roteador).
+  // do cabeçalho; o id opcional abre uma ficha específica de Devoluções.
   const abrirDevolucoes = useCallback(
-    () => onNavigate("admin-devolucoes"),
+    (id?: string) => onNavigate("admin-devolucoes", id),
     [onNavigate],
   );
 
@@ -891,9 +1037,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         icon: "⚡",
       });
       loadAllData(currentPage);
+      // Eventos perdidos enquanto estava sem conexão: confere o topo de novo.
+      pedirRecargaDosNumeros();
     }
     wasOfflineRef.current = isOffline;
-  }, [isOffline, active, currentPage, loadAllData]);
+  }, [isOffline, active, currentPage, loadAllData, pedirRecargaDosNumeros]);
 
   useEffect(() => {
     onRealtimeEventRef.current = (payload) => {
@@ -918,7 +1066,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // Dispara aviso Toast
       if (payload.eventType === "INSERT") {
         const newId = payload.new?.id;
-        toast.info(`Novo pedido recebido! #${newId ? newId.slice(-6) : ""}`, {
+        toast.info(`Novo pedido recebido! #${numeroDoPedido(newId)}`, {
           action: {
             label: "Ver",
             onClick: () => {
@@ -940,14 +1088,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           setRevalidacaoDaFicha((n) => n + 1);
         }
         toast.info(
-          `Pedido #${updatedId ? updatedId.slice(-6) : ""} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
+          `Pedido #${numeroDoPedido(updatedId)} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
         );
       }
 
       // Atualiza apenas os KPIs (listagem já é atualizada reativamente em memória)
       loadStats();
+      pedirRecargaDosNumeros();
     };
-  }, [loadStats, handleSelectOrder, selectedOrderId]);
+  }, [loadStats, pedirRecargaDosNumeros, handleSelectOrder, selectedOrderId]);
 
   const totalPages = Math.ceil(totalOrders / itemsPerPage);
   const paginatedOrders = useMemo(
@@ -1129,6 +1278,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       );
 
       loadStats();
+      // Coalescida com o eco de tempo real desta mesma ação: uma recarga só.
+      pedirRecargaDosNumeros();
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);
@@ -1148,6 +1299,29 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             : prev,
         );
         throw err;
+      }
+      // S1 (04/10/2026): o cancelamento pela edge NÃO aconteceu (o hook já
+      // mostrou o desfecho). Quando a edge relê o pedido (pago no meio, a
+      // cobrança mudou), a ficha passa a mostrar o estado de verdade — sem
+      // toast extra. Nunca marca cancelado: isso só vem da resposta da edge.
+      if (err instanceof ErroCancelamentoNaoConcluido && err.pedido) {
+        const relido = err.pedido;
+        setSelectedOrder((prev) =>
+          prev?.id === orderId
+            ? {
+                ...prev,
+                ...(typeof relido.status === "string"
+                  ? { status: relido.status as OrderStatus }
+                  : {}),
+                ...(typeof relido.paymentStatus === "string"
+                  ? {
+                      paymentStatus:
+                        relido.paymentStatus as Order["paymentStatus"],
+                    }
+                  : {}),
+              }
+            : prev,
+        );
       }
       // `useOrders.updateOrderStatus` (catch de useOrders.ts, por volta da
       // linha 1115) já mostra o PRÓPRIO toast traduzido via
@@ -1195,7 +1369,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
     try {
       const title = "Status do Pedido Atualizado";
-      const body = `Seu pedido #${orderId.slice(-6)} agora está: ${statusConfig[newStatus].label}`;
+      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${statusConfig[newStatus].label}`;
 
       const {
         data: { session },
@@ -1255,7 +1429,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // botaria o valor cru do banco, em inglês, dentro da mensagem que a
       // lojista manda para a cliente.
       const statusMsg = statusConfig[order.status] || statusConfig.pending;
-      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${order.id.slice(-6)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
+      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
 
       // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
       // O util decide: sem link, o toque não abre janela nenhuma.
@@ -1275,7 +1449,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // concluído sem resultado = tela de erro com botão de voltar.
   if (selectedOrderId && loadingDetail) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-admin-bg text-white">
         <div className="relative size-16">
           <div className="absolute inset-0 animate-ping rounded-full border-2 border-amber-500/10 duration-1000" />
           <div className="size-16 animate-spin rounded-full border-2 border-amber-500/10 border-t-amber-500" />
@@ -1284,10 +1458,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
         </div>
         <div className="mt-6 flex flex-col items-center gap-1.5 text-center">
-          <p className="animate-pulse text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">
+          <p className="animate-pulse text-[11px] font-black uppercase tracking-[0.2em] text-amber-500">
             Carregando Pedido
           </p>
-          <p className="text-[9px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+          <p className="text-[11px] font-bold uppercase leading-none tracking-widest text-zinc-500">
             Aguarde um instante
           </p>
         </div>
@@ -1299,7 +1473,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // PAINEL-03: fetch concluiu sem resultado — erro de rede, id inválido,
     // ou sessão expirou. Antes: spinner eterno; agora: erro + voltar.
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-admin-bg text-white">
         <div className="flex size-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
           <svg
             className="size-8 text-red-400"
@@ -1316,15 +1490,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </svg>
         </div>
         <div className="mt-6 flex flex-col items-center gap-1.5 text-center">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-red-400">
             Não foi possível carregar
           </p>
-          <p className="max-w-[240px] text-[9px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+          <p className="max-w-[240px] text-[11px] font-bold uppercase leading-none tracking-widest text-zinc-500">
             Verifique a conexão e tente novamente
           </p>
           <button
             onClick={() => onNavigate("admin-orders")}
-            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30 hover:bg-amber-500/10"
+            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30 hover:bg-amber-500/10"
           >
             Voltar aos pedidos
           </button>
@@ -1356,45 +1530,44 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       className="h-auto bg-admin-bg pb-admin lg:pb-12 font-sans text-white duration-200 animate-in fade-in selection:bg-admin-gold/30"
     >
       {/* Header Elite */}
+      {/* Botão de alerta + dropdown no canto direito da linha do título (sem
+          pendência e lista completa, ele nem nasce). A porta de Devoluções NÃO
+          mora aqui: é a da faixa de atalhos da aba, com o contador. */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
-          titulo="Pedidos"
-          acoes={
-            // Botão de alerta + dropdown (pedido do Gabriel, 02/09 à tarde:
-            // a pílula amarela virou botão com ícone de alerta no canto
-            // direito da linha do título; os detalhes descem dele). Sem
-            // pendência e lista completa, ele nem nasce. (1.19.0 — só trocou
-            // de container: a marcação interna é a mesma de antes.)
-            // Devoluções (plano 2026-09-26): a porta da tela de devolução de
-            // produto mora ao lado, com quantas estão em andamento.
-            <>
-              <BotaoDevolucoes onAbrir={abrirDevolucoes} ativo={active} />
-              <AlertasCancelados
-                pagoCanceladoCount={paidOnCancelledCount}
-                avisoPagoAposCancelado={avisoPagoAposCancelado}
-                pedidosEsperandoRetorno={pedidosEsperandoRetorno}
-                pedidosParaDevolverAgora={pedidosParaDevolverAgora}
-                incompleto={pedidosCanceladosIncompleto}
-                foraDaJanela={canceladosForaDaJanela}
-                onIncluirAntigos={() => {
-                  void buscarTambemCanceladosAntigos();
-                }}
-                confirmandoRetornoId={confirmandoRetornoId}
-                onConfirmarRetorno={handleConfirmarRetorno}
-                estornandoId={estornandoId}
-                onRegistrarEstorno={registrarEstornoFeito}
-                onVerPedidos={irParaPedidosCancelados}
-              />
-            </>
-          }
+          titulo={NOMES_DO_PAINEL["admin-orders"]}
+          acoes=<AlertasCancelados
+            pagoCanceladoCount={paidOnCancelledCount}
+            avisoPagoAposCancelado={avisoPagoAposCancelado}
+            pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+            pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+            estornosEmCurso={estornosEmCurso}
+            incompleto={pedidosCanceladosIncompleto}
+            foraDaJanela={canceladosForaDaJanela}
+            onIncluirAntigos={() => {
+              void buscarTambemCanceladosAntigos();
+            }}
+            confirmandoRetornoId={confirmandoRetornoId}
+            onConfirmarRetorno={handleConfirmarRetorno}
+            estornandoId={estornandoId}
+            conferindoEstornoId={conferindoEstornoId}
+            onAbrir={estornos.recarregar}
+            onRegistrarEstorno={registrarEstornoFeito}
+            onVerPedidos={irParaPedidosCancelados}
+          />
         >
           <button
             type="button"
             onClick={() => setShowHelpModal(true)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
             title="Guia de Ajuda e Explicações"
           >
-            <HelpCircle className="size-4.5" />
+            <span
+              aria-hidden="true"
+              className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+            >
+              <HelpCircle className="size-4.5" />
+            </span>
           </button>
           {/* Missão 06 (C3): a tag "Operações ao Vivo" mentia — ficava verde
               depois da carga mesmo com o tempo real morto. O ponto mostra o
@@ -1410,7 +1583,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
         {/* Support Section */}
         <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-          <SupportBanners onNavigate={onNavigate} />
+          <AtalhosDaAba
+            aba="pedidos"
+            onNavigate={onNavigate}
+            contadores={{
+              "admin-devolucoes": {
+                valor: devolucoesAbertas ?? 0,
+                legenda: "em andamento",
+              },
+            }}
+          />
         </div>
 
         {active && (
@@ -1423,6 +1605,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 title="Métricas de Pedidos"
               />
             </LocalErrorBoundary>
+            {avisoPagamentoAConferir && (
+              <div role="status" data-aviso="pagamento-a-conferir">
+                <SeloDeStatus tom="atencao" className="rounded-xl text-left">
+                  {avisoPagamentoAConferir}
+                </SeloDeStatus>
+              </div>
+            )}
           </div>
         )}
 
@@ -1434,7 +1623,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             container que rola — sticky só anda dentro do próprio containing
             block. O id="admin-pedidos-lista" (âncora do scroll do botão
             "Ver pedidos") fica no bloco da lista, mais abaixo. */}
-        <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-admin-bg/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex w-full items-center gap-3">
             <div className="group relative w-full flex-1">
               <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
@@ -1450,7 +1639,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               <DebouncedSearchInput
                 id="orders-search"
                 name="search"
-                placeholder="Buscar pedidos..."
+                placeholder="Buscar…"
                 className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
                 value={searchQuery}
                 onChange={(val) => {
@@ -1487,7 +1676,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 className="mt-2 w-80 rounded-3xl border-zinc-800/50 bg-zinc-950 p-4 shadow-2xl backdrop-blur-3xl"
               >
                 <div className="space-y-4">
-                  <h4 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <h4 className="px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                     Filtro Temporal
                   </h4>
                   <div className="grid grid-cols-2 gap-3">
@@ -1509,7 +1698,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       />
                       <label
                         htmlFor="filter-date-start"
-                        className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
+                        className="pointer-events-none absolute left-4 top-2 text-[11px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
                       >
                         Início
                       </label>
@@ -1532,7 +1721,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       />
                       <label
                         htmlFor="filter-date-end"
-                        className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
+                        className="pointer-events-none absolute left-4 top-2 text-[11px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
                       >
                         Fim
                       </label>
@@ -1541,7 +1730,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   {(dateRange.start || dateRange.end) && (
                     <Button
                       variant="ghost"
-                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[11px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
                       onClick={() => {
                         setDateRange({ start: "", end: "" });
                         setCurrentPage(0);
@@ -1551,7 +1740,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     </Button>
                   )}
 
-                  <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <h4 className="mt-6 px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                     Status de Pagamento
                   </h4>
                   <div className="flex flex-wrap gap-2">
@@ -1562,7 +1751,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         setCurrentPage(0);
                       }}
                       className={cn(
-                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                         paymentFilter === "all"
                           ? "bg-admin-gold border-admin-gold text-black"
                           : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1579,7 +1768,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                           setCurrentPage(0);
                         }}
                         className={cn(
-                          "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                          "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                           paymentFilter === value
                             ? "bg-admin-gold border-admin-gold text-black"
                             : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1592,7 +1781,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   {paymentFilter !== "all" && (
                     <Button
                       variant="ghost"
-                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[11px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
                       onClick={() => {
                         setPaymentFilter("all");
                         setCurrentPage(0);
@@ -1605,7 +1794,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   {/* C4.4: chip de canal — molde literal do grupo "Status de
                       Pagamento" acima. Filtra NO BANCO (p_canal na RPC), não
                       em memória. */}
-                  <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <h4 className="mt-6 px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                     Canal da venda
                   </h4>
                   <div className="flex flex-wrap gap-2">
@@ -1616,7 +1805,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         setCurrentPage(0);
                       }}
                       className={cn(
-                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                         canalFilter === "all"
                           ? "bg-admin-gold border-admin-gold text-black"
                           : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1631,7 +1820,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         setCurrentPage(0);
                       }}
                       className={cn(
-                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                         canalFilter === "online"
                           ? "bg-admin-gold border-admin-gold text-black"
                           : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1646,7 +1835,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         setCurrentPage(0);
                       }}
                       className={cn(
-                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                         canalFilter === "presencial"
                           ? "bg-admin-gold border-admin-gold text-black"
                           : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1658,7 +1847,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   {canalFilter !== "all" && (
                     <Button
                       variant="ghost"
-                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[11px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
                       onClick={() => {
                         setCanalFilter("all");
                         setCurrentPage(0);
@@ -1714,7 +1903,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               disabled={totalOrders === 0 || gerandoCsv}
               aria-label={rotuloExportarCsv}
               title={rotuloExportarCsv}
-              className="group h-11 shrink-0 gap-1.5 rounded-xl border-zinc-800 bg-zinc-900/60 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 hover:text-white focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
+              className="group h-11 shrink-0 gap-1.5 rounded-xl border-zinc-800 bg-zinc-900/60 px-3 text-[11px] font-black uppercase tracking-widest text-zinc-500 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 hover:text-white focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
             >
               {gerandoCsv ? (
                 <Loader2 className="size-4 shrink-0 animate-spin text-admin-gold" />
@@ -1739,7 +1928,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 setCurrentPage(0);
               }}
               className={cn(
-                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
+                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                 filter === "open"
                   ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                   : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
@@ -1755,7 +1944,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   setCurrentPage(0);
                 }}
                 className={cn(
-                  "relative isolate flex h-11 shrink-0 snap-center items-center gap-1.5 rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
+                  "relative isolate flex h-11 shrink-0 snap-center items-center gap-1.5 rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                   filter === status
                     ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                     : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
@@ -1779,7 +1968,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 setCurrentPage(0);
               }}
               className={cn(
-                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
+                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                 filter === "all"
                   ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                   : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
@@ -1807,65 +1996,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               )}
               {!isLoaded && paginatedOrders.length === 0 ? (
                 viewMode === "detailed" ? (
-                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-5 sm:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]">
                     {Array.from({ length: 6 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="flex h-[278px] animate-pulse flex-col justify-between space-y-6 rounded-[3rem] border border-white/5 bg-zinc-950/40 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-md"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Skeleton className="size-10 rounded-xl bg-white/5" />
-                            <div className="space-y-2">
-                              <Skeleton className="h-3 w-16 bg-white/5" />
-                              <Skeleton className="h-2.5 w-12 bg-white/5" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-5 w-16 rounded-full bg-white/5" />
-                        </div>
-                        <div className="space-y-2">
-                          <Skeleton className="h-6 w-3/4 bg-white/5" />
-                          <Skeleton className="h-3 w-1/2 bg-white/5" />
-                        </div>
-                        <div className="flex items-end justify-between border-t border-white/5 pt-4">
-                          <div className="space-y-1">
-                            <Skeleton className="h-2.5 w-12 bg-white/5" />
-                            <Skeleton className="h-6 w-24 bg-white/5" />
-                          </div>
-                          <Skeleton className="size-12 rounded-2xl bg-white/5" />
-                        </div>
-                      </div>
+                      <AdminOrderCardSkeleton key={i} viewMode="detailed" />
                     ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
                     {Array.from({ length: 10 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="flex h-[164px] animate-pulse flex-col justify-between rounded-[2rem] border border-white/5 bg-zinc-950/40 p-4 shadow-lg backdrop-blur-md sm:p-5"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Skeleton className="size-8 rounded-lg bg-white/5" />
-                            <div className="space-y-1">
-                              <Skeleton className="h-2.5 w-12 bg-white/5" />
-                              <Skeleton className="h-2 w-8 bg-white/5" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-4.5 w-12 rounded-full bg-white/5" />
-                        </div>
-                        <div className="space-y-1">
-                          <Skeleton className="h-4 w-3/4 bg-white/5" />
-                          <Skeleton className="h-2.5 w-1/2 bg-white/5" />
-                        </div>
-                        <div className="flex items-center justify-between border-t border-white/5 pt-3">
-                          <div className="space-y-1">
-                            <Skeleton className="h-2 w-8 bg-white/5" />
-                            <Skeleton className="h-4 w-16 bg-white/5" />
-                          </div>
-                          <Skeleton className="size-9 rounded-xl bg-white/5" />
-                        </div>
-                      </div>
+                      <AdminOrderCardSkeleton key={i} viewMode="compact" />
                     ))}
                   </div>
                 )
@@ -1885,7 +2024,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
                         Ainda não tem nenhum pedido
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                         Quando a primeira venda acontecer, o pedido aparece aqui
                         — com status, valor e o atalho de WhatsApp para o
                         cliente.
@@ -1901,7 +2040,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
                         Nenhum pedido com esse filtro de pagamento
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                         Nenhum pedido com esse status de pagamento. Limpe o
                         filtro para ver todos os pedidos.
                       </p>
@@ -1918,7 +2057,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
                         Nenhum pedido nesse canal
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                         Limpe o filtro de canal da venda para ver todos os
                         pedidos.
                       </p>
@@ -1940,7 +2079,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         Nenhum pedido corresponde ao que está sendo mostrado
                         agora
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                         Pode ser o filtro de status, a busca ou o período
                         aplicado. Toque em "Todos", no fim da fileira de
                         filtros, ou limpe a busca e o período para ver todos os
@@ -1956,7 +2095,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   )}
                 </div>
               ) : viewMode === "detailed" ? (
-                <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-5 sm:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]">
                   {paginatedOrders.map((order) => (
                     <AdminOrderCard
                       key={order.id}
@@ -1971,7 +2110,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
                   {paginatedOrders.map((order) => (
                     <AdminOrderCard
                       key={order.id}
@@ -2021,7 +2160,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Ciclo de Vida do Pedido
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -2072,7 +2211,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Recursos e Ações Rápidas
             </h4>
             <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">
@@ -2099,426 +2238,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               </li>
             </ul>
           </div>
+
+          <GuiaDoPagamentoQueNaoFechou />
         </div>
       </AdminHelpModal>
     </div>
-  );
-});
-
-interface AdminOrderCardProps {
-  readonly order: Order;
-  readonly viewMode: "detailed" | "compact";
-  readonly onSelect: (order: Order) => void;
-  readonly onWhatsApp: (order: Order) => void;
-  readonly changeType?: "INSERT" | "UPDATE";
-  /** Task 4 — chama `registrarPagamentoRecebido(orderId, recebido)` do hook. */
-  readonly onRegistrarPagamento: (orderId: string, recebido: boolean) => void;
-  /** Task 4 — true enquanto ESTE pedido está em voo na RPC (desabilita o botão). */
-  readonly registrandoPagamento: boolean;
-}
-
-const AdminOrderCard = memo(function AdminOrderCard({
-  order,
-  viewMode,
-  onSelect,
-  onWhatsApp,
-  changeType,
-  onRegistrarPagamento,
-  registrandoPagamento,
-}: AdminOrderCardProps) {
-  if (viewMode === "detailed") {
-    return (
-      <motion.div
-        layout
-        onClick={() => onSelect(order)}
-        role="button"
-        // Âncora estável para teste (achado 6 da rodada de correção do
-        // C4.4): a tela tem outros elementos com `role="button"` (os
-        // atalhos de Feedback/Dúvidas), então medir o subárvore do card
-        // pelo primeiro `[role="button"]` encontrado pega o card errado.
-        data-testid="pedido-card"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelect(order);
-          }
-        }}
-        className={cn(
-          "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_20px_60px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto animate-in fade-in slide-in-from-bottom-2 duration-300 min-h-[278px] flex flex-col justify-between transform-gpu",
-          changeType === "INSERT" &&
-            "border-admin-gold shadow-[0_0_25px_rgba(212,175,55,0.3)] animate-pulse",
-          changeType === "UPDATE" &&
-            "border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.3)] animate-pulse",
-          !changeType && "border-white/5",
-        )}
-      >
-        {/* Glow Background */}
-        <div className="pointer-events-none absolute inset-0 z-0 rounded-[3rem] bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 transition-all duration-700 group-hover:from-admin-gold/5 group-hover:to-transparent" />
-
-        <div className="relative z-10 mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative shrink-0">
-              {order.items?.[0]?.image ? (
-                <LazyImage
-                  src={order.items[0].image}
-                  alt="Produto"
-                  className="size-10 shrink-0 rounded-xl border border-white/10 object-cover"
-                />
-              ) : (
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900">
-                  <Package className="size-5 text-zinc-600" />
-                </div>
-              )}
-              {order.items?.length > 1 && (
-                <div className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold text-[9px] font-black text-black shadow-lg">
-                  +{order.items.length - 1}
-                </div>
-              )}
-            </div>
-            <div>
-              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover:text-admin-gold">
-                #{order.id.slice(-6).toUpperCase()}
-              </span>
-              <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">
-                <Calendar className="size-3" />
-                {new Date(order.createdAt).toLocaleDateString("pt-BR", {
-                  day: "2-digit",
-                  month: "short",
-                })}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1.5">
-            {/* C4.4 (rodada de correção, achado "ANTES DE CRESCER" sobre a
-                altura do card): o selo de canal vai na MESMA linha do
-                OrderStatusBadge, não empilhado como uma terceira pill. Esta
-                coluna dita, junto com a miniatura do outro lado, a altura da
-                fileira inteira do grid — uma pill a mais aqui esticaria
-                TODOS os cards vizinhos na mesma fileira, não só este. Com o
-                selo ao lado do status, a coluna continua com duas linhas
-                (status+canal, depois pagamento) com ou sem venda de balcão. */}
-            <div className="flex items-center gap-1.5">
-              <OrderStatusBadge status={order.status} />
-              {order.canal === "presencial" && (
-                <span
-                  data-testid="selo-canal"
-                  className="flex items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-zinc-400"
-                >
-                  Balcão
-                </span>
-              )}
-            </div>
-            <PaymentStatusBadge
-              paymentStatus={order.paymentStatus}
-              orderStatus={order.status}
-              canal={order.canal}
-            />
-          </div>
-        </div>
-
-        <div className="relative z-10 space-y-6">
-          <div>
-            <h4 className="mb-2 truncate text-lg font-black text-white transition-colors group-hover:text-admin-gold sm:text-xl">
-              {(() => {
-                if (!order.items || order.items.length === 0)
-                  return "Pedido Vazio";
-                if (order.items.length === 1) return order.items[0].name;
-                return `${order.items[0].name} e mais ${order.items.length - 1}`;
-              })()}
-            </h4>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5 rounded-md border border-white/5 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-                <User className="size-3" />
-                {(() => {
-                  const nameParts = (order.customer?.name || "Cliente").split(
-                    " ",
-                  );
-                  return nameParts.length > 1
-                    ? `${nameParts[0][0]}. ${nameParts.at(-1)}`
-                    : nameParts[0];
-                })()}
-              </div>
-              <span className="rounded-md border border-white/5 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-zinc-500">
-                {order.items?.length || 0} Prod.
-              </span>
-              <div className="size-1 rounded-full bg-zinc-800" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                {rotuloDaFormaDePagamento(order.paymentMethod)}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-end justify-between border-t border-white/5 pt-6">
-            <div className="space-y-1">
-              {/* "Valor": o termo antigo "Valor Capital" não dizia nada para
-                  o lojista leigo (relato do Gabriel, 02/09). */}
-              <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-600 ">
-                Valor
-              </span>
-              <p className="text-2xl font-black tabular-nums tracking-widest text-white">
-                <span className="mr-1 text-[10px] font-black uppercase text-zinc-500">
-                  R$
-                </span>
-                {(order.total || 0).toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Laudo 0109 (A-7, ressalva da revisão): sem número válido o
-                  toque não tinha efeito — botão mudo. Some como na ficha. */}
-              {linkWhatsappDoCliente(order.customer?.whatsapp) && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onWhatsApp(order);
-                  }}
-                  className="relative z-10 flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-xl transition-all hover:bg-emerald-500 hover:text-black"
-                >
-                  <MessageCircle className="size-5" />
-                </button>
-              )}
-              <div className="flex size-12 items-center justify-center text-zinc-500 transition-all duration-300 group-hover:text-admin-gold">
-                <ChevronRight className="size-6 transform filter transition-transform duration-300 group-hover:translate-x-1 group-hover:drop-shadow-[0_0_8px_rgba(212,175,55,0.5)]" />
-              </div>
-            </div>
-          </div>
-
-          {/* Task 4 do plano recebimento-na-entrega — botão de pagamento
-              recebido na mão. `podeRegistrarPagamento` é a MESMA condição
-              (definida uma vez, acima) que decide se este bloco existe e
-              qual dos dois ramos aparece dentro dele. */}
-          {podeRegistrarPagamento(order) && (
-            <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-4">
-              {order.pagamentoRecebidoEm ? (
-                <>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                    Recebido em{" "}
-                    {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
-                      "pt-BR",
-                      { day: "2-digit", month: "short" },
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRegistrarPagamento(order.id, false);
-                    }}
-                    disabled={registrandoPagamento}
-                    className="relative z-10 shrink-0 rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
-                  >
-                    Desfazer
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRegistrarPagamento(order.id, true);
-                  }}
-                  disabled={registrandoPagamento}
-                  className="relative z-10 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
-                >
-                  {registrandoPagamento
-                    ? "Registrando..."
-                    : "Marcar como recebido"}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </motion.div>
-    );
-  }
-
-  // compact mode — REDESENHO (relato do Gabriel, 02/09: card com visual
-  // mal acabado — id e data truncados, badge de pagamento estourando a
-  // coluna ("PAGÃO FORA DO FLUXO — PRECIS..."), hierarquia invertida).
-  // Hierarquia nova, por pergunta do lojista: QUEM comprou (destaque) e O
-  // QUÊ (apoio) no topo, com id/data como metadado; badges com rótulo CURTO
-  // e truncamento limpo (a frase inteira vai no title); dinheiro e ações no
-  // rodapé, sem elemento dominando o card.
-  return (
-    <motion.div
-      layout
-      onClick={() => onSelect(order)}
-      role="button"
-      data-testid="pedido-card"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect(order);
-        }
-      }}
-      className={cn(
-        "group relative flex flex-col rounded-[1.5rem] border bg-zinc-950/40 p-4 backdrop-blur-md transition-all duration-300 hover:border-admin-gold/30 hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 animate-in fade-in slide-in-from-bottom-2 duration-300 transform-gpu",
-        changeType === "INSERT" &&
-          "border-admin-gold shadow-[0_0_20px_rgba(212,175,55,0.3)] animate-pulse",
-        changeType === "UPDATE" &&
-          "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse",
-        !changeType && "border-white/10",
-      )}
-    >
-      {/* Topo — hierarquia da direção A (Missão 06): VALOR dominante no canto
-          superior direito; nome e produto na coluna do meio, protegida com
-          min-w-0. Sem badges aqui: em card de ~250px a coluna direita com
-          badge largo esmagava o nome até sumir (achado do Gabriel no ao-vivo,
-          02/09) — os badges ganham faixa própria logo abaixo. */}
-      <div className="flex items-start gap-3">
-        <div className="relative shrink-0">
-          {order.items?.[0]?.image ? (
-            <LazyImage
-              src={order.items[0].image}
-              alt="Produto"
-              className="size-11 shrink-0 rounded-xl border border-white/10 object-cover"
-            />
-          ) : (
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900">
-              <Package className="size-5 text-zinc-600" />
-            </div>
-          )}
-          {order.items?.length > 1 && (
-            <div className="absolute -right-1.5 -top-1.5 flex size-4.5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold text-[8px] font-black text-black shadow-lg">
-              +{order.items.length - 1}
-            </div>
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <h4
-            title={order.customer?.name || "Cliente"}
-            className="line-clamp-2 text-[13px] font-bold leading-tight text-white transition-colors group-hover:text-admin-gold"
-          >
-            {order.customer?.name || "Cliente"}
-          </h4>
-          <p
-            title={(() => {
-              if (!order.items || order.items.length === 0)
-                return "Pedido vazio";
-              if (order.items.length === 1) return order.items[0].name;
-              return `${order.items[0].name} e mais ${order.items.length - 1}`;
-            })()}
-            className="mt-0.5 truncate text-[11px] font-medium text-zinc-400"
-          >
-            {(() => {
-              if (!order.items || order.items.length === 0)
-                return "Pedido vazio";
-              if (order.items.length === 1) return order.items[0].name;
-              return `${order.items[0].name} e mais ${order.items.length - 1}`;
-            })()}
-          </p>
-        </div>
-
-        <p className="shrink-0 text-xl font-black tabular-nums leading-none text-white">
-          <span className="mr-1 text-[10px] font-bold uppercase text-zinc-500">
-            R$
-          </span>
-          {(order.total || 0).toLocaleString("pt-BR", {
-            minimumFractionDigits: 2,
-          })}
-        </p>
-      </div>
-
-      {/* Faixa de identificação: id · horário relativo (quem opera pensa em
-          "há 5 min", não em "23/08") e os badges com largura de card inteira
-          — wrap honesto: nunca estouram a borda nem esmagam vizinho. */}
-      <div className="relative z-10 mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <span className="text-[10px] font-semibold tabular-nums text-zinc-500">
-          #{order.id.slice(-6).toUpperCase()} ·{" "}
-          {horarioRelativo(order.createdAt)}
-        </span>
-        <div className="flex flex-wrap items-center gap-1">
-          <OrderStatusBadge status={order.status} />
-          <PaymentStatusBadge
-            paymentStatus={order.paymentStatus}
-            orderStatus={order.status}
-            canal={order.canal}
-            compact
-          />
-          {/* C4.4: mesmo selo do card detalhado — o `flex-wrap` do
-              container já absorve a peça extra sem estourar a borda.
-              `data-testid` igual ao do card detalhado (rodada de correção,
-              achado sobre a prova por texto): ancora a prova no ELEMENTO,
-              não no texto da subárvore, que também contém "balcão" minúsculo
-              no rótulo do PaymentStatusBadge ("Recebido no balcão"). */}
-          {order.canal === "presencial" && (
-            <span
-              data-testid="selo-canal"
-              className="flex items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-zinc-400"
-            >
-              Balcão
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Rodapé — Missão 06 (direção A): o dinheiro subiu para o topo do card;
-          sobram as ações, com o WhatsApp discreto (fim da fileira de botões
-          verdes grandes) e o chevron de abertura. */}
-      <div className="relative z-10 mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
-        {linkWhatsappDoCliente(order.customer?.whatsapp) ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onWhatsApp(order);
-            }}
-            className="relative z-10 flex size-8 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
-            title="WhatsApp"
-          >
-            <MessageCircle className="size-4" />
-          </button>
-        ) : (
-          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-600">
-            Ver detalhes
-          </span>
-        )}
-        <ChevronRight className="size-4.5 shrink-0 text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
-      </div>
-
-      {/* Task 4 do plano recebimento-na-entrega — mesmo bloco do modo
-          "detailed", ver o comentário lá. */}
-      {podeRegistrarPagamento(order) && (
-        <div className="relative z-10 mt-3 flex items-center justify-between gap-1.5 border-t border-white/10 pt-3">
-          {order.pagamentoRecebidoEm ? (
-            <>
-              <span className="truncate text-[8px] font-black uppercase tracking-widest text-emerald-400">
-                Recebido em{" "}
-                {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
-                  "pt-BR",
-                  { day: "2-digit", month: "short" },
-                )}
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRegistrarPagamento(order.id, false);
-                }}
-                disabled={registrandoPagamento}
-                className="relative z-10 shrink-0 rounded-lg border border-zinc-700/50 bg-zinc-800/50 px-2 py-1 text-[8px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
-              >
-                Desfazer
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRegistrarPagamento(order.id, true);
-              }}
-              disabled={registrandoPagamento}
-              className="relative z-10 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[8px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
-            >
-              {registrandoPagamento ? "Registrando..." : "Marcar como recebido"}
-            </button>
-          )}
-        </div>
-      )}
-    </motion.div>
   );
 });

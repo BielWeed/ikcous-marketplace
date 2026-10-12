@@ -1,3 +1,4 @@
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type { AdminUserDetailView as TipoTelaFicha } from "@/views/admin/AdminUserDetailView";
 // @vitest-environment jsdom
 //
@@ -319,7 +320,7 @@ describe("AdminUserDetailView — o painel não mente sobre o carrinho nem o ped
     await abrirFicha();
 
     const linhaDoPedido = [...hospedeiro.querySelectorAll("tr")].find((tr) =>
-      tr.textContent?.includes("PEDIDO-1"),
+      tr.textContent?.includes(numeroDoPedido("pedido-123")),
     );
     if (!linhaDoPedido) throw new Error("Linha do pedido não está na tela.");
 

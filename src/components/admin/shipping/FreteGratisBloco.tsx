@@ -126,7 +126,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
               aria-checked={ativo}
               disabled={desabilitado}
               onClick={() => onEscolher(p.id)}
-              className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-left transition-colors duration-200 disabled:pointer-events-none disabled:opacity-50 ${
+              className={`flex min-h-11 items-start gap-2.5 rounded-xl border px-4 py-3 text-left transition-colors duration-200 disabled:pointer-events-none disabled:opacity-50 ${
                 ativo
                   ? "border-admin-accent/70 bg-admin-accent/10"
                   : "border-white/10 hover:border-white/25"
@@ -134,7 +134,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
             >
               <span
                 aria-hidden="true"
-                className={`mt-0.5 flex size-[17px] shrink-0 items-center justify-center rounded-full border text-[10px] font-black ${
+                className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
                   ativo
                     ? "border-admin-accent bg-admin-accent text-zinc-950"
                     : "border-zinc-600 text-transparent"

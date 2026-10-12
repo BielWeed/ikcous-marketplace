@@ -202,6 +202,13 @@ PROVAS.push({
        ON CONFLICT (id) DO NOTHING`,
       [U_ADMIN, U_COMPRADOR],
     );
+    // 20261199000000 (admin ATUAL): o CRM exige o papel admin AGORA em
+    // auth.users E em profiles — o admin da prova tem os dois.
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin da Loja', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
     await pedido(cliente, {
       userId: U_COMPRADOR,
       total: 150,

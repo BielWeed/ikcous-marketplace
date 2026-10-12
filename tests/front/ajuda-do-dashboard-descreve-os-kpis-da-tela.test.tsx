@@ -171,7 +171,7 @@ describe("A ajuda do dashboard (hoje no Dashboard CRM) documenta os KPIs que a t
     // DOM em vez de dormir um tick fixo.
     await esperarAte(
       () =>
-        document.body.textContent?.includes("Central de Inteligência") ?? false,
+        document.body.textContent?.includes("Como ler os relatórios") ?? false,
     );
 
     const texto = document.body.textContent ?? "";

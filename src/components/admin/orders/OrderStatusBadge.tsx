@@ -49,30 +49,55 @@ export const statusConfig: Record<
   cancelled: {
     label: "Cancelado",
     icon: XCircle,
-    color: "text-zinc-500",
+    // zinc-400 (e nao 500): sobre o fundo escuro do painel o 500 dava ~3,6:1,
+    // abaixo do minimo AA de 4,5:1; o 400 da ~6,7:1.
+    color: "text-zinc-400",
     bgColor: "bg-zinc-500/10",
     borderColor: "border-zinc-500/20",
-    className: "text-zinc-500",
+    className: "text-zinc-400",
   },
 };
+
+/**
+ * "padrao" é o selo de sempre (usado na ficha e nas filas). "cartao" é
+ * a escala do card de pedido da lista (AdminOrderCard): mais respiro e um
+ * ponto de cor na frente — o selo antigo ficava ilegível ao lado do valor em
+ * tela de celular. Os dois têm o rótulo em 11px (piso do painel).
+ */
+type TamanhoDoSelo = "padrao" | "cartao";
 
 interface OrderStatusBadgeProps {
   status: OrderStatus;
   className?: string;
+  tamanho?: TamanhoDoSelo;
 }
 
 export const OrderStatusBadge = memo(function OrderStatusBadge({
   status,
   className,
+  tamanho = "padrao",
 }: Readonly<OrderStatusBadgeProps>) {
   const cfg = statusConfig[status || "pending"] || statusConfig.pending;
+  const cartao = tamanho === "cartao";
 
   return (
     <div
-      className={`flex items-center rounded-full px-2 py-0.5 ${cfg.bgColor} ${className}`}
+      className={`flex items-center rounded-full ${
+        cartao ? "gap-1.5 px-2.5 py-1" : "px-2 py-0.5"
+      } ${cfg.bgColor} ${className}`}
     >
+      {cartao && (
+        <span
+          aria-hidden="true"
+          className={`size-1.5 shrink-0 rounded-full bg-current ${cfg.color}`}
+        />
+      )}
       <span
-        className={`text-[9px] font-black uppercase tracking-widest ${cfg.color}`}
+        className={`uppercase ${
+          cartao
+            ? "text-[11px] font-bold tracking-wider"
+            : "text-[11px] font-black tracking-wider"
+        } ${cfg.color}`}
       >
         {cfg.label}
       </span>
@@ -183,7 +208,8 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
     },
     sem_cobranca: {
       label: "Sem cobrança online",
-      color: "text-zinc-500",
+      // Mesmo motivo do "Cancelado": zinc-500 ficava abaixo de 4,5:1.
+      color: "text-zinc-400",
       bgColor: "bg-zinc-500/10",
       borderColor: "border-zinc-500/20",
     },
@@ -239,6 +265,8 @@ interface PaymentStatusBadgeProps {
    * frase inteira; o card fica limpo.
    */
   compact?: boolean;
+  /** Escala do selo — ver `TamanhoDoSelo`. */
+  tamanho?: TamanhoDoSelo;
 }
 
 /**
@@ -246,8 +274,11 @@ interface PaymentStatusBadgeProps {
  * DEPOIS foi cancelado — produzível hoje pelo botão "Cancelar Pedido" da
  * tela do cliente, que aparece para todo pedido pendente sem olhar o
  * pagamento. Sem isso, o painel mostrava "Pago" verde comum para um pedido
- * em que o dinheiro está com a loja, o estoque já voltou à prateleira e não
- * existe estorno automático em lugar nenhum deste app.
+ * em que o dinheiro pode ainda estar com a loja e o estoque já voltou à
+ * prateleira. (Desde 07/09/2026 o cancelamento de pedido pago e ainda não
+ * enviado pede a devolução ao Mercado Pago sozinho — linha em
+ * `order_refunds`; o rótulo continua valendo até o estorno concluir, quando
+ * `payment_status` vira 'estornado'.)
  *
  * Mesma família visual de `pago_apos_expirar` (dinheiro fora do fluxo, cores
  * reaproveitadas dali) — a causa é o espelho uma da outra: aqui o pedido
@@ -325,6 +356,7 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   canal,
   className,
   compact = false,
+  tamanho = "padrao",
 }: Readonly<PaymentStatusBadgeProps>) {
   // `recebido_na_entrega` (Task 3b de
   // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md) entra no
@@ -336,12 +368,18 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   return (
     <div
       title={compact ? label : undefined}
-      className={`flex max-w-full items-center rounded-full border px-2 py-0.5 ${cfg.bgColor} ${cfg.borderColor} ${
+      className={`flex max-w-full items-center rounded-full border ${
+        tamanho === "cartao" ? "px-2.5 py-1" : "px-2 py-0.5"
+      } ${cfg.bgColor} ${cfg.borderColor} ${
         cfg.needsAttention ? "animate-pulse ring-1 ring-red-500/60" : ""
       } ${className || ""}`}
     >
       <span
-        className={`truncate text-[9px] font-black uppercase tracking-widest ${cfg.color}`}
+        className={`truncate uppercase ${
+          tamanho === "cartao"
+            ? "text-[11px] font-bold tracking-wider"
+            : "text-[11px] font-black tracking-wider"
+        } ${cfg.color}`}
       >
         {compact ? (cfg.shortLabel ?? label) : label}
       </span>
