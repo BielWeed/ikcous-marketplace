@@ -11,8 +11,12 @@ describe("varredura libs-puras", () => {
       expect(precoDaLinha("1.234,56")).toBe(1234.56);
       expect(limparNumero("1.234,56")).toBe("1234.56");
     });
-    it("'1.234' (3 digitos apos o ponto) vale 1234", () => {
-      expect(precoDaLinha("1.234")).toBe(1234);
+    it("limparNumero e idempotente: a segunda passada nao muda o valor", () => {
+      for (const bruto of ["1,500", "0,500", "12,345", "1.234,567", "89,90"]) {
+        const uma = limparNumero(bruto);
+        expect(limparNumero(uma)).toBe(uma);
+      }
+      expect(precoDaLinha(limparNumero("1,500"))).toBe(1.5);
     });
     it("'1.234.567,5' vale 1234567.5", () => {
       expect(precoDaLinha("1.234.567,5")).toBe(1234567.5);
