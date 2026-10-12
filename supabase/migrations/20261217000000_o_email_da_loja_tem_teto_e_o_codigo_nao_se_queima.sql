@@ -50,9 +50,13 @@
 --
 --   código, por pedido ........................ 5 em 24 h
 --   código + comprovante, por destinatário ..... 10 em 24 h (somados)
---   código, da loja inteira .................... 60 em 24 h (contador próprio)
---   comprovante, da loja inteira ............... 120 em 24 h (contador próprio)
+--   código, da loja inteira .................... 40 em 24 h (contador próprio)
+--   comprovante, da loja inteira ............... 40 em 24 h (contador próprio)
 --   O comprovante nunca consome a vaga do código (contadores separados).
+--   Por que 40 + 40: a cota real da conta de Gmail da loja é desconhecida e
+--   pode ser ~100 por dia; 80 fica abaixo de 100 e deixa folga para o
+--   comprovante de pedido PAGO, que fura o teto (só conta). Para subir os
+--   números depois, uma migration nova.
 --
 -- 4. DADOS EXISTENTES
 --
@@ -99,8 +103,8 @@ BEGIN
   FOR r IN
     SELECT *
       FROM (VALUES
-        ('public.generate_order_otp_v2(text,text,text)', '8fab5091db4a380bf07592f7dc896856', 'f4ad891391a17e4aab46027c77b9f885'),
-        ('public.reivindicar_email_de_confirmacao(uuid)', '45be19bf714f266f8234f11df820b76b', '3fe16bc5c8e891527ca5243faa703200'),
+        ('public.generate_order_otp_v2(text,text,text)', '8fab5091db4a380bf07592f7dc896856', '92fdc055f2c9868c7a4592ede3dab3b9'),
+        ('public.reivindicar_email_de_confirmacao(uuid)', '45be19bf714f266f8234f11df820b76b', '74e559c6ba26ebc01d6357b9dd87f1dd'),
         ('public.get_orders_by_otp_v1(text,text)', 'b472f00d6b36002522b25bf04113a035', '277776acaf395fa864cc3e2cb0638237'),
         ('public.get_orders_by_otp_v2(text,text,text,text)', NULL, '53b5e632657b82206daa6aa992a50c0d'),
         ('public.reservar_vaga_de_email(text,integer)', NULL, '373815e668edf9480d2dce94fb59d467'),
@@ -231,9 +235,12 @@ DECLARE
     -- Tetos dos e-mails de codigo (janela de 24 h que anda; ajuste aqui).
     -- O de destinatario e' o MESMO contador do comprovante
     -- (reivindicar_email_de_confirmacao) e precisa do mesmo numero la.
+    -- O da loja: a cota real da conta de Gmail e desconhecida (pode ser ~100
+    -- por dia); 40 do codigo + 40 do comprovante = 80 < 100, com folga para o
+    -- comprovante de pedido PAGO, que fura o teto e so conta. Subir = migration nova.
     v_teto_por_pedido CONSTANT integer := 5;
     v_teto_por_destinatario CONSTANT integer := 10;
-    v_teto_do_codigo_na_loja CONSTANT integer := 60;
+    v_teto_do_codigo_na_loja CONSTANT integer := 40;
     v_otp text;
     v_order_id uuid;
     v_fragmento text := trim(coalesce(p_order_fragment, ''));
@@ -342,9 +349,11 @@ DECLARE
     -- Tetos do comprovante (janela de 24 h que anda; ajuste aqui). O de
     -- destinatario e' o MESMO contador do codigo (generate_order_otp_v2) e
     -- precisa do mesmo numero la; o da loja e' SO do comprovante, entao o
-    -- comprovante nunca gasta a vaga do codigo.
+    -- comprovante nunca gasta a vaga do codigo. A cota real da conta de Gmail e
+    -- desconhecida (pode ser ~100 por dia): 40 do comprovante + 40 do codigo =
+    -- 80 < 100; o pedido PAGO fura este teto e so conta. Subir = migration nova.
     v_teto_por_destinatario CONSTANT integer := 10;
-    v_teto_do_comprovante_na_loja CONSTANT integer := 120;
+    v_teto_do_comprovante_na_loja CONSTANT integer := 40;
     v_reservado boolean;
     v_dados jsonb;
     v_user_id uuid;

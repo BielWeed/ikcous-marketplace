@@ -239,11 +239,11 @@ Deno.test("os corpos trocados preservam o vigente: nenhuma linha antiga some (a 
   );
 });
 
-Deno.test("generate: tetos nomeados (5, 10, 60) e na ordem trio -> 60 s -> pedido -> destinatario -> loja -> INSERT", () => {
+Deno.test("generate: tetos nomeados (5, 10, 40) e na ordem trio -> 60 s -> pedido -> destinatario -> loja -> INSERT", () => {
   const g = corpo(depois.generate_order_otp_v2);
   assert.match(g, /v_teto_por_pedido\s+CONSTANT integer := 5;/);
   assert.match(g, /v_teto_por_destinatario\s+CONSTANT integer := 10;/);
-  assert.match(g, /v_teto_do_codigo_na_loja\s+CONSTANT integer := 60;/);
+  assert.match(g, /v_teto_do_codigo_na_loja\s+CONSTANT integer := 40;/);
   const pos = [
     g.indexOf("^[0-9a-fA-F-]{6,}$"),
     g.indexOf("'muito_recente'"),
@@ -271,10 +271,10 @@ Deno.test("generate: tetos nomeados (5, 10, 60) e na ordem trio -> 60 s -> pedid
   assert.deepEqual(motivos(g), motivos(corpo(antes.generate_order_otp_v2)));
 });
 
-Deno.test("reivindicar: tetos nomeados (10, 120), pedido pago conta sem recusar, e o contador do comprovante e' separado", () => {
+Deno.test("reivindicar: tetos nomeados (10, 40), pedido pago conta sem recusar, e o contador do comprovante e' separado", () => {
   const r = corpo(depois.reivindicar_email_de_confirmacao);
   assert.match(r, /v_teto_por_destinatario\s+CONSTANT integer := 10;/);
-  assert.match(r, /v_teto_do_comprovante_na_loja\s+CONSTANT integer := 120;/);
+  assert.match(r, /v_teto_do_comprovante_na_loja\s+CONSTANT integer := 40;/);
   assert.ok(r.includes("'comprovante:loja'"));
   assert.ok(
     !r.includes("'codigo:loja'"),

@@ -712,9 +712,11 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       assinantes (IKCOUS e Savy). Cria a tabela `email_da_loja_contadores` (RLS ligada, nenhum privilegio
       para `anon`/`authenticated`) e duas funcoes de apoio so do servidor (`reservar_vaga_de_email`,
       `chave_do_destinatario`); troca o corpo de `generate_order_otp_v2` (tetos por pedido 5/24 h, por
-      destinatario 10/24 h somando codigo e comprovante, e da loja 60 codigos/24 h), de
-      `reivindicar_email_de_confirmacao` (mesma assinatura; teto da loja 120 comprovantes/24 h e o do
-      destinatario; pedido PAGO conta mas nunca e recusado) e de `get_orders_by_otp_v1` (deixa de devolver
+      destinatario 10/24 h somando codigo e comprovante, e da loja 40 codigos/24 h), de
+      `reivindicar_email_de_confirmacao` (mesma assinatura; teto da loja 40 comprovantes/24 h e o do
+      destinatario; pedido PAGO conta mas nunca e recusado; 40 + 40 = 80 fica abaixo de ~100/dia, a cota
+      provavel da conta de Gmail da loja, que e desconhecida; subir = migration nova) e de
+      `get_orders_by_otp_v1` (deixa de devolver
       `restantes`); cria `get_orders_by_otp_v2` (o rastreio do convidado confere o codigo junto com o
       trio e-mail + WhatsApp + inicio do pedido). Nenhuma linha de pedido, codigo ou cliente e lida ou
       reescrita ao aplicar. Duas consultas, so leitura, so catalogo, de ROL FECHADO (14 e 8 linhas, so

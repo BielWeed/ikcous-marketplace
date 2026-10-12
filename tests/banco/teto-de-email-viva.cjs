@@ -11,10 +11,10 @@
  *  FLUXO      o caminho legitimo continua igual: trio -> codigo -> codigo certo -> o pedido (pela v2
  *             com o trio, e pela v1 com e-mail + codigo); o comprovante sai uma vez por pedido.
  *  CODIGO     teto por PEDIDO (5), por DESTINATARIO (10, normalizado: +apelido, pontos do Gmail,
- *             googlemail) e da LOJA (60) em 24 h que andam; estourou = ERRO generico sem e-mail na
+ *             googlemail) e da LOJA (40) em 24 h que andam; estourou = ERRO generico sem e-mail na
  *             mensagem e nada gravado; a janela de 60 s continua respondendo muito_recente; pedido que
  *             nao confere nao gasta vaga; falha do contador fecha.
- *  COMPROVANTE teto da loja (120, contador SO dele) e o do destinatario (o mesmo do codigo); sem vaga =
+ *  COMPROVANTE teto da loja (40, contador SO dele) e o do destinatario (o mesmo do codigo); sem vaga =
  *             false e o pedido sem marca; pedido pago fura; reserva repetida nao gasta; a vaga de um
  *             contador volta quando o outro recusa; falha do contador abre.
  *  CORRIDA    duas reservas ao mesmo tempo na ultima vaga: a segunda espera a trava e e' recusada.
@@ -429,16 +429,16 @@ prova(
 );
 
 prova(
-  "CODIGO: a loja inteira para em 60 codigos nas ultimas 24 h; o contador do comprovante nao conta",
+  "CODIGO: a loja inteira para em 40 codigos nas ultimas 24 h; o contador do comprovante nao conta",
   () =>
     emTransacao(async () => {
-      await gasto("codigo:loja", 59, "20 hours");
+      await gasto("codigo:loja", 39, "20 hours");
       await gasto("comprovante:loja", 500, "3 hours");
       const a = await pedido({ email: "a@teste.invalid", fone: "11955550001" });
       assert.equal(
         (await gerar("a@teste.invalid", "11955550001", a)).r.ok,
         true,
-        "o 60o passa",
+        "o 40o passa",
       );
       const b = await pedido({ email: "b@teste.invalid", fone: "11955550002" });
       assert.match(
@@ -495,10 +495,10 @@ prova("CODIGO: falha do contador FECHA (erro, nenhum codigo gravado)", () =>
 // ---------------------------------------------------------------------------
 
 prova(
-  "COMPROVANTE: a loja para em 120; o pedido fica sem marca e pode receber quando a vaga voltar; o codigo segue",
+  "COMPROVANTE: a loja para em 40; o pedido fica sem marca e pode receber quando a vaga voltar; o codigo segue",
   () =>
     emTransacao(async () => {
-      await gasto("comprovante:loja", 120, "5 hours");
+      await gasto("comprovante:loja", 40, "5 hours");
       const id = await pedido({
         email: "comp@teste.invalid",
         fone: "11933330001",
@@ -528,12 +528,12 @@ prova(
 
 prova("COMPROVANTE: pedido PAGO fura o teto (conta, mas nao e' recusado)", () =>
   emTransacao(async () => {
-    await gasto("comprovante:loja", 120, "5 hours");
+    await gasto("comprovante:loja", 40, "5 hours");
     const email = "pago@teste.invalid";
     await gasto(`destinatario:${await chave(email)}`, 10, "1 hour");
     const id = await pedido({ email, fone: "11933330003", pago: true });
     assert.equal(await reivindicar(id), true);
-    assert.equal(await somaDe("comprovante:loja"), 121);
+    assert.equal(await somaDe("comprovante:loja"), 41);
   }),
 );
 
@@ -609,7 +609,7 @@ prova(
     const ids = [];
     try {
       // fixtures COMMITADAS (as duas conexoes precisam enxergar)
-      await gasto("codigo:loja", 59, "3 hours");
+      await gasto("codigo:loja", 39, "3 hours");
       await C.query(
         "UPDATE public.email_da_loja_contadores SET hora = date_trunc('hour', now()) WHERE chave = 'codigo:loja'",
       );
@@ -654,7 +654,7 @@ prova(
       assert.ok(r2.erro, `as duas passaram: ${JSON.stringify(r2.linha)}`);
       assert.match(r2.erro, TETO);
       const n = await somaDe("codigo:loja");
-      assert.equal(n, 60, "o contador passou do teto");
+      assert.equal(n, 40, "o contador passou do teto");
     } finally {
       await C.query("ROLLBACK").catch(() => {});
       await C2.query("ROLLBACK").catch(() => {});

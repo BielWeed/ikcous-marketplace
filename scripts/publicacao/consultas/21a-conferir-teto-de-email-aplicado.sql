@@ -59,10 +59,10 @@ WITH alvo(nome, assinatura) AS (
                      WHERE n.nspname = 'public') > 0 THEN '>0' ELSE '0' END
   UNION ALL
   SELECT 'generate_order_otp_v2: corpo e o da 20261217000000 (sha256)',
-         '4050356f6b186f7bb50aa4b4b090113072d0976933c90d8fd5d67a3a86535e52',
-         COALESCE((SELECT CASE WHEN f.h IN ('4050356f6b186f7bb50aa4b4b090113072d0976933c90d8fd5d67a3a86535e52',
-                                            'ebd86579c5c7e6533956acfc0a31d2129687348dcbccda5d3e0648f89e929b3a')
-                               THEN '4050356f6b186f7bb50aa4b4b090113072d0976933c90d8fd5d67a3a86535e52'
+         '30d5e84347fb2f3654b016433eab5bd19a7a4ea78ac6d431927e6eecc48478f9',
+         COALESCE((SELECT CASE WHEN f.h IN ('30d5e84347fb2f3654b016433eab5bd19a7a4ea78ac6d431927e6eecc48478f9',
+                                            'e924bbb0fdd5c3e314a516c0ef769088e14490bde66ac823e6138cb081bbd73b')
+                               THEN '30d5e84347fb2f3654b016433eab5bd19a7a4ea78ac6d431927e6eecc48478f9'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'generate_order_otp_v2'), 'AUSENTE')
   UNION ALL
@@ -71,10 +71,10 @@ WITH alvo(nome, assinatura) AS (
                      FROM fn f WHERE f.nome = 'generate_order_otp_v2'), 'AUSENTE')
   UNION ALL
   SELECT 'reivindicar_email_de_confirmacao: corpo e o da 20261217000000 (sha256)',
-         'bc31a13e49d13a9f90a279d55cdb50b65d8377b127f62fbb58c1b26d6c276b8d',
-         COALESCE((SELECT CASE WHEN f.h IN ('bc31a13e49d13a9f90a279d55cdb50b65d8377b127f62fbb58c1b26d6c276b8d',
-                                            'f5b76a61814f6b8774698a42b5655179749acb7be03a172ee0cbaab61eebc1fb')
-                               THEN 'bc31a13e49d13a9f90a279d55cdb50b65d8377b127f62fbb58c1b26d6c276b8d'
+         '67ccd76f26f9731c63ba04e4ad8f383e7d731c4a2081ef157611ba631be0a29e',
+         COALESCE((SELECT CASE WHEN f.h IN ('67ccd76f26f9731c63ba04e4ad8f383e7d731c4a2081ef157611ba631be0a29e',
+                                            '746d0e5ddd4bb66b0bc5028abc0ee7a1bd32f7eb7370b5ed8e62f31ed04dfc85')
+                               THEN '67ccd76f26f9731c63ba04e4ad8f383e7d731c4a2081ef157611ba631be0a29e'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'reivindicar_email_de_confirmacao'), 'AUSENTE')
   UNION ALL

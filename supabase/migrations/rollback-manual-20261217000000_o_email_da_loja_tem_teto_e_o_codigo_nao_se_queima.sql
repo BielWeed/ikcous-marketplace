@@ -40,8 +40,8 @@ BEGIN
   FOR r IN
     SELECT *
       FROM (VALUES
-        ('public.generate_order_otp_v2(text,text,text)', 'f4ad891391a17e4aab46027c77b9f885'),
-        ('public.reivindicar_email_de_confirmacao(uuid)', '3fe16bc5c8e891527ca5243faa703200'),
+        ('public.generate_order_otp_v2(text,text,text)', '92fdc055f2c9868c7a4592ede3dab3b9'),
+        ('public.reivindicar_email_de_confirmacao(uuid)', '74e559c6ba26ebc01d6357b9dd87f1dd'),
         ('public.get_orders_by_otp_v1(text,text)', '277776acaf395fa864cc3e2cb0638237')
       ) AS esperado(assinatura, hash_desta)
   LOOP

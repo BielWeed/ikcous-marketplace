@@ -295,7 +295,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 - **teto de e-mail e código do convidado (`teto-de-email-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261217000000`. Cada caso numa transação desfeita (a corrida usa conexões reais e limpa o que gravou).
   O fluxo legítimo (código, verificação pela v2 e pela v1, comprovante uma vez) passa; o teto por pedido
-  (5), por destinatário (10, com o e-mail normalizado) e da loja (60 códigos / 120 comprovantes, contadores
+  (5), por destinatário (10, com o e-mail normalizado) e da loja (40 códigos / 40 comprovantes, contadores
   separados) em 24 h que andam; estourou = erro genérico sem dado do cliente e nada gravado; a janela de
   60 s continua; pedido que não confere não gasta vaga; falha do contador fecha no código e abre no
   comprovante; pedido pago nunca é recusado; duas reservas simultâneas na última vaga: a segunda espera a
