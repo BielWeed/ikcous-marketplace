@@ -16,6 +16,12 @@ import {
   validarOrigemEFrete,
 } from "./index.ts";
 import * as edge from "./index.ts";
+import {
+  bancoFalso as bancoDeApoio,
+  CARRINHO_P1 as CARRINHO_DE_APOIO,
+  cotacao as pedidoDeApoio,
+  rodar as rodarComApoio,
+} from "./apoio-dos-testes.ts";
 
 Deno.test("calculateSmartFallback - same region", () => {
   // Test same region: starts with same character
@@ -3959,4 +3965,141 @@ Deno.test("1.5.7 log: o ME também ganha a SUA linha (uma por provedor, não só
 Deno.test("1.5.7 versão: VERSAO_DA_INTEGRACAO_SUPERFRETE é 1.5.7 e a marca do cache SF continua 2 (o corpo da SF não mudou; a assinatura invalida o resto)", () => {
   assertEquals(edge.VERSAO_DA_INTEGRACAO_SUPERFRETE, "1.5.7");
   assertEquals(edge.VERSAO_DA_COTACAO_SUPERFRETE, 2);
+});
+
+// --- O carrinho tem limite de linhas e de tamanho de id (12/10/2026) ---------
+//
+// O teto é o da maior venda que a casa já aceita (o balcão recusa mais de 200
+// itens). O id não precisa ser UUID (as fixtures usam "p1"); só não passa de
+// 64 caracteres. A recusa sai ANTES de qualquer leitura ou gravação — inclusive
+// a linha do histórico da entrega local, que é gravada antes de qualquer
+// conferência do carrinho. O histórico guarda só [{produto, variante, qtd}].
+
+const CEP_LOCAL_DE_APOIO = "38500-120";
+const linhasDoCarrinho = (n: number, item: Record<string, unknown> = CARRINHO_DE_APOIO[0]) =>
+  Array.from({ length: n }, () => structuredClone(item));
+
+for (const [rotulo, cep] of [["fora da cidade", "01001-000"], ["na cidade (entrega local)", CEP_LOCAL_DE_APOIO]] as const) {
+  Deno.test(`carrinho: 201 linhas ${rotulo} -> 400 carrinho_grande_demais, nada lido, nada gravado, nenhuma transportadora`, async () => {
+    const r = await rodarComApoio(pedidoDeApoio({ cep, cart: linhasDoCarrinho(edge.MAX_LINHAS_DO_CARRINHO + 1) }));
+    assertEquals(r.resposta.status, 400);
+    assertEquals(r.corpo.codigo, "carrinho_grande_demais");
+    assertEquals(r.registro.logs.length, 0);
+    assertEquals(r.registro.upsertsCache.length, 0);
+    assertEquals(r.registro.eventos, []);
+    assertEquals(r.chamadas.length, 0);
+  });
+
+  Deno.test(`carrinho: 200 linhas ${rotulo} (o maior carrinho aceito) segue até o fim`, async () => {
+    const r = await rodarComApoio(pedidoDeApoio({ cep, cart: linhasDoCarrinho(edge.MAX_LINHAS_DO_CARRINHO) }));
+    assertEquals(r.resposta.status, 200, r.texto);
+    assertEquals(r.corpo.options.length > 0, true, r.texto);
+    assertEquals(r.registro.logs.length, 1);
+  });
+}
+
+Deno.test("carrinho: os tetos são 200 linhas e 64 caracteres de id", () => {
+  assertEquals(edge.MAX_LINHAS_DO_CARRINHO, 200);
+  assertEquals(edge.MAX_TAMANHO_DO_ID, 64);
+});
+
+for (
+  const [rotulo, montar] of [
+    ["product.id", (id: string) => ({ product: { id }, quantity: 1 })],
+    ["productId", (id: string) => ({ productId: id, quantity: 1 })],
+    ["variantId", (id: string) => ({ product: { id: "p1" }, variantId: id, quantity: 1 })],
+  ] as const
+) {
+  Deno.test(`carrinho: ${rotulo} com 65 caracteres -> 400 sem gravar; com 64 segue`, async () => {
+    for (const cep of ["01001-000", CEP_LOCAL_DE_APOIO]) {
+      const longo = await rodarComApoio(pedidoDeApoio({ cep, cart: [montar("a".repeat(65))] }));
+      assertEquals(longo.resposta.status, 400, cep);
+      assertEquals(longo.corpo.codigo, "carrinho_grande_demais", cep);
+      assertEquals(longo.registro.logs.length, 0, cep);
+      assertEquals(longo.registro.eventos, [], cep);
+      assertEquals(longo.chamadas.length, 0, cep);
+    }
+    const noLimite = await rodarComApoio(pedidoDeApoio({ cep: CEP_LOCAL_DE_APOIO, cart: [montar("a".repeat(64))] }));
+    assertEquals(noLimite.resposta.status, 200, noLimite.texto);
+  });
+}
+
+Deno.test("carrinho: id que não é texto conta pelo texto que vira no hash (lista de 65 caracteres recusa)", async () => {
+  const r = await rodarComApoio(pedidoDeApoio({ cep: CEP_LOCAL_DE_APOIO, cart: [{ productId: ["a".repeat(65)], quantity: 1 }] }));
+  assertEquals(r.resposta.status, 400);
+  assertEquals(r.registro.logs.length, 0);
+});
+
+Deno.test("carrinho: as ações de admin não passam pelo limite do carrinho (não têm carrinho)", async () => {
+  const r = await rodarComApoio({ action: "revisao_config_frete", cart: linhasDoCarrinho(edge.MAX_LINHAS_DO_CARRINHO + 1) });
+  assertEquals(r.resposta.status, 200, r.texto);
+  assertEquals(r.corpo?.codigo, undefined);
+});
+
+Deno.test("histórico: entrega local com descrição de 50 KB guarda só [{produto, variante, qtd}], abaixo de 1 KB", async () => {
+  const pesado = [{
+    product: { id: "p1", price: 1, description: "x".repeat(50_000), images: ["https://img/" + "y".repeat(5_000)] },
+    variantId: "v1",
+    quantity: 2,
+  }];
+  const r = await rodarComApoio(pedidoDeApoio({ cep: CEP_LOCAL_DE_APOIO, cart: pesado }));
+  assertEquals(r.resposta.status, 200, r.texto);
+  assertEquals(r.registro.logs.length, 1);
+  assertEquals(r.registro.logs[0].cart_items, [{ produto: "p1", variante: "v1", qtd: 2 }]);
+  assertEquals(JSON.stringify(r.registro.logs[0].cart_items).length < 1024, true);
+});
+
+Deno.test("histórico: carrinho que não é lista vira [] no histórico (nunca o texto cru)", async () => {
+  const r = await rodarComApoio(pedidoDeApoio({ cep: CEP_LOCAL_DE_APOIO, cart: "z".repeat(20_000) }));
+  assertEquals(r.resposta.status, 200, r.texto);
+  assertEquals(r.registro.logs.length, 1);
+  assertEquals(r.registro.logs[0].cart_items, []);
+});
+
+Deno.test("histórico: id que não é texto nem número não entra cru (objeto vira null)", async () => {
+  const r = await rodarComApoio(pedidoDeApoio({
+    cep: CEP_LOCAL_DE_APOIO,
+    cart: [{ productId: { a: "w".repeat(10_000) }, variantId: 7, quantity: "muitos" }],
+  }));
+  assertEquals(r.resposta.status, 200, r.texto);
+  assertEquals(r.registro.logs[0].cart_items, [{ produto: null, variante: "7", qtd: null }]);
+});
+
+for (
+  const [rotulo, banco] of [
+    ["cotação de fora com sucesso", () => bancoDeApoio()],
+    ["sem transportadora com chave (resposta sem cotação de fora)", () => bancoDeApoio({ credenciais: [] })],
+    ["credenciais ilegíveis", () => bancoDeApoio({ falhas: { credenciais: "erro" } })],
+  ] as const
+) {
+  Deno.test(`histórico: ${rotulo} grava a projeção enxuta, não o carrinho do navegador`, async () => {
+    const carrinho = [{ product: { id: "p1", price: 1, description: "d".repeat(10_000) }, quantity: 3 }];
+    const r = await rodarComApoio(pedidoDeApoio({ cart: carrinho }), { banco: banco() });
+    assertEquals(r.registro.logs.length >= 1, true, r.texto);
+    for (const linha of r.registro.logs) {
+      assertEquals(linha.cart_items, [{ produto: "p1", variante: null, qtd: 3 }]);
+    }
+  });
+}
+
+Deno.test("histórico: cache acertado também grava a projeção enxuta", async () => {
+  const banco = bancoDeApoio();
+  const carrinho = [{ product: { id: "p1", price: 1, description: "d".repeat(10_000) }, quantity: 1 }];
+  const primeira = await rodarComApoio(pedidoDeApoio({ cart: carrinho }), { banco });
+  assertEquals(primeira.resposta.status, 200, primeira.texto);
+  const segunda = await rodarComApoio(pedidoDeApoio({ cart: carrinho }), { banco });
+  assertEquals(segunda.resposta.status, 200, segunda.texto);
+  const linhaDoCache = banco.registro.logs.find((l: any) => String(l.provider).includes("(Cache)"));
+  assertEquals(linhaDoCache?.cart_items, [{ produto: "p1", variante: null, qtd: 1 }]);
+});
+
+Deno.test("cart_hash gravado no cache continua montado com o carrinho CRU (a RPC do pedido compara contra ele)", async () => {
+  const carrinho = [
+    { product: { id: "p1", price: 1, description: "d".repeat(2_000) }, quantity: 2 },
+    { productId: "p1", variantId: "v9", quantity: 1 },
+  ];
+  const r = await rodarComApoio(pedidoDeApoio({ cart: carrinho }));
+  assertEquals(r.resposta.status, 200, r.texto);
+  assertEquals(r.registro.upsertsCache.length, 1);
+  assertEquals(r.registro.upsertsCache[0].linha.cart_hash, getCartHash(carrinho));
 });

@@ -502,7 +502,7 @@ async function respostaSemCotacaoDeFora(
                 origin_cep: log.originCep,
                 destination_cep: log.destinationCep,
                 provider: log.provider,
-                cart_items: log.cart || [],
+                cart_items: carrinhoParaOHistorico(log.cart),
                 response_time_ms: 0,
                 status: 'error',
                 error_message: log.motivo,
@@ -584,6 +584,65 @@ export function getCartHash(cart: any[]): string {
         const quantity = item.quantity || 1
         return `${prodId}:${variantId}:${quantity}`
     }).join(',')
+}
+
+/**
+ * O CARRINHO TEM LIMITE (12/10/2026). 200 linhas é o teto que a casa já aceita
+ * para a maior venda (o balcão recusa venda com mais de 200 itens), com folga
+ * enorme sobre um carrinho online real. O id não precisa ser UUID (as fixtures
+ * usam "p1"); só não passa de 64 caracteres (um UUID tem 36).
+ *
+ * NÃO há teto de bytes no corpo: o carrinho honesto carrega o `product`
+ * inteiro (`description`, `images`, `variants`) sem limite conhecido, e um teto
+ * em KB recusaria carrinho legítimo do app que já está no ar. O que enchia o
+ * banco era gravar o carrinho cru — ver `carrinhoParaOHistorico`.
+ */
+export const MAX_LINHAS_DO_CARRINHO = 200
+export const MAX_TAMANHO_DO_ID = 64
+
+/**
+ * O id medido pelo TEXTO que ele vira no `cart_hash` (`${prodId}`), não pelo
+ * tipo: uma lista ou um número contam pelo que escrevem lá.
+ */
+const idLongoDemais = (valor: unknown): boolean =>
+    valor !== undefined && valor !== null && String(valor).length > MAX_TAMANHO_DO_ID
+
+/**
+ * Carrinho acima dos tetos? `cart` que não é lista segue a regra de sempre
+ * (lista vazia), então não conta aqui.
+ */
+export function carrinhoGrandeDemais(cart: unknown): boolean {
+    if (!Array.isArray(cart)) return false
+    if (cart.length > MAX_LINHAS_DO_CARRINHO) return true
+    return cart.some((item: any) =>
+        idLongoDemais(item?.product?.id) || idLongoDemais(item?.productId) || idLongoDemais(item?.variantId))
+}
+
+/** Só texto ou número entram no histórico, cortados no teto do id. */
+const idParaOHistorico = (valor: unknown): string | null =>
+    typeof valor === 'string' || typeof valor === 'number' ? String(valor).slice(0, MAX_TAMANHO_DO_ID) : null
+
+/**
+ * O que o histórico de cotações (`shipping_calculation_logs.cart_items`)
+ * guarda do carrinho: `[{produto, variante, qtd}]` — os mesmos três campos de
+ * `montarInsumos`, no máximo `MAX_LINHAS_DO_CARRINHO` linhas. Antes ia o corpo
+ * cru do navegador (com `description` e `images` de cada produto). Ninguém lê
+ * esta coluna: a tela do histórico não mostra o carrinho.
+ *
+ * SÓ o histórico recebe a projeção. `getCartHash` e `montarInsumos` continuam
+ * recebendo o carrinho CRU — o hash é comparado pela RPC do pedido, e mudá-lo
+ * recusaria o pedido honesto no último clique.
+ */
+export function carrinhoParaOHistorico(cart: unknown): Array<{ produto: string | null; variante: string | null; qtd: number | null }> {
+    if (!Array.isArray(cart)) return []
+    return cart.slice(0, MAX_LINHAS_DO_CARRINHO).map((item: any) => {
+        const qtd = Number(item?.quantity || 1)
+        return {
+            produto: idParaOHistorico(item?.product?.id || item?.productId || null),
+            variante: idParaOHistorico(item?.variantId || null),
+            qtd: Number.isFinite(qtd) ? qtd : null,
+        }
+    })
 }
 
 /**
@@ -773,6 +832,14 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         const cleanCep = String(cep).replace(/\D/g, '')
         if (cleanCep.length !== 8) return respostaJson({ error: 'CEP inválido' }, 400)
 
+        // O carrinho tem limite: a recusa sai ANTES de qualquer leitura ou
+        // gravação — inclusive a linha do histórico da entrega local, que
+        // `cotarUmaVez` grava antes de conferir o carrinho. Depois das ações
+        // de admin (elas não têm carrinho).
+        if (carrinhoGrandeDemais(cart)) {
+            return respostaJson({ error: 'Carrinho grande demais para calcular o frete.', codigo: 'carrinho_grande_demais' }, 400)
+        }
+
         const pedido = { cleanCep, cart, aceitaRetirada, contratoCliente: body?.contratoCliente }
         // R3-2: a revisão mudou entre a leitura e a gravação? Recota UMA vez;
         // na segunda, `cotarUmaVez` responde como falha de gravação.
@@ -897,7 +964,7 @@ async function cotarUmaVez(
                 origin_cep: originCep,
                 destination_cep: cleanCep,
                 provider: 'local',
-                cart_items: cart,
+                cart_items: carrinhoParaOHistorico(cart),
                 response_time_ms: 0,
                 status: 'success',
             }),
@@ -944,7 +1011,7 @@ async function cotarUmaVez(
             origin_cep: originCep,
             destination_cep: cleanCep,
             provider: provedorDoLog,
-            cart_items: cart,
+            cart_items: carrinhoParaOHistorico(cart),
             response_time_ms: 0,
             status: 'error',
             error_message: 'Não foi possível ler a revisão da configuração do frete; a cotação de fora da cidade não foi feita.',
@@ -1028,7 +1095,7 @@ async function cotarUmaVez(
                 origin_cep: originCep,
                 destination_cep: cleanCep,
                 provider: `${provedorNoHistorico} (Cache)`,
-                cart_items: cart,
+                cart_items: carrinhoParaOHistorico(cart),
                 response_time_ms: 0,
                 status: 'success',
             }),
@@ -1097,7 +1164,7 @@ async function cotarUmaVez(
             origin_cep: originCep,
             destination_cep: cleanCep,
             provider: provedorNoHistorico,
-            cart_items: cart,
+            cart_items: carrinhoParaOHistorico(cart),
             response_time_ms: latency,
             status: 'error',
             error_message: apiError || 'Nenhum método de envio retornado.',
@@ -1120,7 +1187,7 @@ async function cotarUmaVez(
             origin_cep: originCep,
             destination_cep: cleanCep,
             provider: provedorNoHistorico,
-            cart_items: cart,
+            cart_items: carrinhoParaOHistorico(cart),
             response_time_ms: latency,
             status: 'error',
             error_message: 'configuracao_mudou_durante_cotacao: a configuração do frete mudou duas vezes durante a cotação; nada foi gravado.',
@@ -1153,7 +1220,7 @@ async function cotarUmaVez(
         origin_cep: originCep,
         destination_cep: cleanCep,
         provider: provedorNoHistorico,
-        cart_items: cart,
+        cart_items: carrinhoParaOHistorico(cart),
         response_time_ms: latency,
         status: erroDeGravacao ? 'error' : 'success',
         error_message: erroDeGravacao
