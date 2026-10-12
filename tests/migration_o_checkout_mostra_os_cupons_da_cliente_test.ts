@@ -690,11 +690,16 @@ Deno.test("208 composição: a migration entra no FIM de POSTERIORES_A_97 em adm
     // as anteriores) e so com migrations MAIS NOVAS depois dela: uma posterior
     // que entre no fim nao tira a 208 do lugar.
     const pos = nomes.indexOf(NOME);
-    const pos98 = nomes.indexOf("20261198000000_cancelar_pedido_anula_a_cobranca.sql");
+    const pos98 = nomes.indexOf(
+      "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
+    );
     assert(pos98 >= 0, `${arq}: sem a 98 na lista`);
     assert(pos > pos98, `${arq}: a 208 não está depois das entradas indexadas`);
     for (const depois of nomes.slice(pos + 1)) {
-      assert(depois > NOME, `${arq}: ${depois} vem depois da 208 sem ser mais nova`);
+      assert(
+        depois > NOME,
+        `${arq}: ${depois} vem depois da 208 sem ser mais nova`,
+      );
     }
     assertStringIncludes(lista, "public.admin_cupom_clientes(uuid)");
   }

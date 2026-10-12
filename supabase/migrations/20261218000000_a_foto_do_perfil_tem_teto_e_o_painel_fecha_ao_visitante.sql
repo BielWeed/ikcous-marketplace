@@ -8,10 +8,9 @@
 --
 --   a. A foto e a capa do perfil (`profiles.avatar_url` e `profiles.cover_url`,
 --      texto livre, copiadas para `public_profiles` pelo gatilho
---      `sync_public_profile`) não tinham tamanho máximo: qualquer conta logada
---      gravava um texto de vários MB, pela RPC `update_my_profile_secure` ou
---      por UPDATE direto na própria linha. O app comprime a foto para JPEG
---      200x200 e a capa para 800x300 (dezenas de KB).
+--      `sync_public_profile`) não tinham tamanho máximo; o tamanho da imagem do
+--      perfil passa a ter teto. O app comprime a foto para JPEG 200x200 e a
+--      capa para 800x300 (dezenas de KB).
 --   b. `get_segmented_push_count` (contagem de destinatários do push, só do
 --      painel) era executável por PUBLIC e pelo visitante sem login. O corpo já
 --      recusava quem não é admin; agora a porta também.

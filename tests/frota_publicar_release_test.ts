@@ -5449,7 +5449,10 @@ Deno.test("lote 20261218+181+219 — apply feito (as três no ledger) e 22a POSI
     const b = depsLote22([], NEG203, { rol, quando: "2026-10-06T19:10:00Z" });
     const rb = await executar(b.d, true);
     assertEquals(rb.codigo, 1, `${rol}: ${rb.relatorio}`);
-    assert(!rb.relatorio.includes("aplicar-migrations.yml"), `${rol}: ${rb.relatorio}`);
+    assert(
+      !rb.relatorio.includes("aplicar-migrations.yml"),
+      `${rol}: ${rb.relatorio}`,
+    );
   }
   const sem = depsLote22([]);
   sem.d.canais = { ...canais, provasDeObjetos: [] };
@@ -5462,7 +5465,9 @@ Deno.test("lote 20261218+181+219 — apply feito (as três no ledger) e 22a POSI
         r3.bloqueios.some(
           (b: any) =>
             b.alvo.includes(ref) &&
-            b.motivo.includes(`migration nova ${v} sem prova de objetos declarada`),
+            b.motivo.includes(
+              `migration nova ${v} sem prova de objetos declarada`,
+            ),
         ),
         `${v}: ${JSON.stringify(r3.bloqueios)}`,
       );

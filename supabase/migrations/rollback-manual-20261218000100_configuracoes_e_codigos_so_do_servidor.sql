@@ -2,8 +2,8 @@
 -- Rollback manual — as configurações da loja e os códigos de verificação só
 -- são lidos e gravados pelo servidor (20261218000100)
 -- ============================================================================
--- Devolve o estado medido na Savy em 12/10/2026 (consulta 22m), antes da
--- migration: anon e authenticated com TODOS os privilégios de tabela em
+-- Devolve o estado anterior desta loja, antes da migration: anon e
+-- authenticated com TODOS os privilégios de tabela em
 -- `app_settings` e `otp_verifications` (DELETE, INSERT, MAINTAIN, REFERENCES,
 -- SELECT, TRIGGER, TRUNCATE, UPDATE; grantor postgres; nenhuma permissão de
 -- coluna própria). PUBLIC não tinha nada e continua sem nada.

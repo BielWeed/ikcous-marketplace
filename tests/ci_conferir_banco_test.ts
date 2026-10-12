@@ -8306,69 +8306,66 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
       "a saida final tem de ser tipo, objeto, detalhe, com ORDER BY ordem, objeto, detalhe",
     );
   });
-  await t.step(
-    "cobre cada medicao do plano, cada uma com o seu tipo",
-    () => {
-      for (const tipo of [
-        "controle",
-        "migration",
-        "dono",
-        "politica",
-        "politicas",
-        "contagem",
-        "coluna",
-        "indice",
-        "imagem-perfil",
-        "funcao",
-        "acl-funcao",
-        "acl-tabela",
-        "privilegio-efetivo",
-        "acl-coluna",
-        "papel",
-        "gatilho",
-        "bucket",
-        "storage-objetos",
-      ])
-        assertStringIncludes(limpo, `'${tipo}'`, `falta o tipo ${tipo}`);
-      // a linha de controle diz quem leu e se a RLS vale para ele (contagem 0 com RLS valendo nao e "0")
-      for (const parte of [
-        "rolbypassrls",
-        "row_security_active",
-        "pg_read_all_data",
-        "pg_write_all_data",
-        "server_version_num",
-      ])
-        assertStringIncludes(limpo, parte, `falta ${parte}`);
-      // ACL de funcao e tabela com PUBLIC medido pela entrada sem dono e o grantor de cada entrada
-      for (const parte of [
-        "acldefault('f'",
-        "acldefault('r'",
-        "a.grantor",
-        "attacl",
-        "has_table_privilege",
-        "has_any_column_privilege",
-        "has_function_privilege",
-      ])
-        assertStringIncludes(limpo, parte, `falta ${parte}`);
-      // os objetos que o lote vai tocar estao todos medidos
-      for (const objeto of [
-        "public.public_profiles",
-        "public.profiles",
-        "public.vw_reviews_public",
-        "public.vw_questions_public",
-        "public.vw_produtos_admin",
-        "public.app_settings",
-        "public.otp_verifications",
-        "public.get_segmented_push_count(text,numeric,integer)",
-        "public.handle_public_profile_sync()",
-        "public.get_reviews_metrics(text,integer)",
-        "public.rls_admin_atual()",
-        "idx_reviews_user_id",
-        "idx_questions_user_id",
-      ])
-        assertStringIncludes(limpo, `'${objeto}'`, `falta ${objeto}`);
-    },
-  );
+  await t.step("cobre cada medicao do plano, cada uma com o seu tipo", () => {
+    for (const tipo of [
+      "controle",
+      "migration",
+      "dono",
+      "politica",
+      "politicas",
+      "contagem",
+      "coluna",
+      "indice",
+      "imagem-perfil",
+      "funcao",
+      "acl-funcao",
+      "acl-tabela",
+      "privilegio-efetivo",
+      "acl-coluna",
+      "papel",
+      "gatilho",
+      "bucket",
+      "storage-objetos",
+    ])
+      assertStringIncludes(limpo, `'${tipo}'`, `falta o tipo ${tipo}`);
+    // a linha de controle diz quem leu e se a RLS vale para ele (contagem 0 com RLS valendo nao e "0")
+    for (const parte of [
+      "rolbypassrls",
+      "row_security_active",
+      "pg_read_all_data",
+      "pg_write_all_data",
+      "server_version_num",
+    ])
+      assertStringIncludes(limpo, parte, `falta ${parte}`);
+    // ACL de funcao e tabela com PUBLIC medido pela entrada sem dono e o grantor de cada entrada
+    for (const parte of [
+      "acldefault('f'",
+      "acldefault('r'",
+      "a.grantor",
+      "attacl",
+      "has_table_privilege",
+      "has_any_column_privilege",
+      "has_function_privilege",
+    ])
+      assertStringIncludes(limpo, parte, `falta ${parte}`);
+    // os objetos que o lote vai tocar estao todos medidos
+    for (const objeto of [
+      "public.public_profiles",
+      "public.profiles",
+      "public.vw_reviews_public",
+      "public.vw_questions_public",
+      "public.vw_produtos_admin",
+      "public.app_settings",
+      "public.otp_verifications",
+      "public.get_segmented_push_count(text,numeric,integer)",
+      "public.handle_public_profile_sync()",
+      "public.get_reviews_metrics(text,integer)",
+      "public.rls_admin_atual()",
+      "idx_reviews_user_id",
+      "idx_questions_user_id",
+    ])
+      assertStringIncludes(limpo, `'${objeto}'`, `falta ${objeto}`);
+  });
   await t.step(
     "objeto ausente nao derruba a consulta: tabela, view e funcao sao resolvidas por to_regclass/to_regprocedure, nunca por cast",
     () => {
@@ -8429,53 +8426,232 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
       // metadata (so size/mimetype). Acrescentar qualquer outra coisa aqui e decisao de revisao.
       const permitidos = new Set([
         // SQL
-        "all", "and", "as", "by", "case", "cross", "distinct", "else", "end", "exists", "false",
-        "filter", "from", "group", "in", "is", "join", "left", "like", "not", "null", "on", "or",
-        "order", "select", "then", "union", "values", "when", "where", "with", "within",
-        "bigint", "text",
+        "all",
+        "and",
+        "as",
+        "by",
+        "case",
+        "cross",
+        "distinct",
+        "else",
+        "end",
+        "exists",
+        "false",
+        "filter",
+        "from",
+        "group",
+        "in",
+        "is",
+        "join",
+        "left",
+        "like",
+        "not",
+        "null",
+        "on",
+        "or",
+        "order",
+        "select",
+        "then",
+        "union",
+        "values",
+        "when",
+        "where",
+        "with",
+        "within",
+        "bigint",
+        "text",
         // funcoes
-        "acldefault", "aclexplode", "array_to_string", "chr", "coalesce", "concat_ws", "count",
-        "current_database", "current_setting", "current_user", "has_any_column_privilege",
-        "has_function_privilege", "has_table_privilege", "lower", "max", "md5", "nullif",
-        "octet_length", "percentile_disc", "pg_get_expr", "pg_get_triggerdef", "pg_get_userbyid",
-        "pg_has_role", "regexp_replace", "replace", "row_security_active", "string_agg", "substring",
-        "to_regclass", "to_regprocedure", "to_regrole", "unnest",
+        "acldefault",
+        "aclexplode",
+        "array_to_string",
+        "chr",
+        "coalesce",
+        "concat_ws",
+        "count",
+        "current_database",
+        "current_setting",
+        "current_user",
+        "has_any_column_privilege",
+        "has_function_privilege",
+        "has_table_privilege",
+        "lower",
+        "max",
+        "md5",
+        "nullif",
+        "octet_length",
+        "percentile_disc",
+        "pg_get_expr",
+        "pg_get_triggerdef",
+        "pg_get_userbyid",
+        "pg_has_role",
+        "regexp_replace",
+        "replace",
+        "row_security_active",
+        "string_agg",
+        "substring",
+        "to_regclass",
+        "to_regprocedure",
+        "to_regrole",
+        "unnest",
         // catalogo, schemas e tabelas nomeadas (lidas so por agregado)
-        "pg_attribute", "pg_class", "pg_indexes", "pg_policy", "pg_proc", "pg_roles", "pg_trigger",
-        "public", "storage", "supabase_migrations", "schema_migrations", "buckets", "objects",
-        "profiles", "public_profiles", "reviews", "questions",
+        "pg_attribute",
+        "pg_class",
+        "pg_indexes",
+        "pg_policy",
+        "pg_proc",
+        "pg_roles",
+        "pg_trigger",
+        "public",
+        "storage",
+        "supabase_migrations",
+        "schema_migrations",
+        "buckets",
+        "objects",
+        "profiles",
+        "public_profiles",
+        "reviews",
+        "questions",
         // colunas de catalogo
-        "allowed_mime_types", "attacl", "attisdropped", "attname", "attnum", "attrelid",
-        "file_size_limit", "grantee", "grantor", "indexdef", "indexname", "is_grantable", "oid",
-        "polcmd", "polname", "polpermissive", "polqual", "polrelid", "polroles", "polwithcheck",
-        "privilege_type", "proacl", "proowner", "prosecdef", "prosrc", "relacl",
-        "relforcerowsecurity", "relkind", "reloptions", "relowner", "relrowsecurity", "rolbypassrls",
-        "rolcanlogin", "rolinherit", "rolname", "rolsuper", "schemaname", "tgenabled",
-        "tgisinternal", "tgname", "tgrelid", "version",
+        "allowed_mime_types",
+        "attacl",
+        "attisdropped",
+        "attname",
+        "attnum",
+        "attrelid",
+        "file_size_limit",
+        "grantee",
+        "grantor",
+        "indexdef",
+        "indexname",
+        "is_grantable",
+        "oid",
+        "polcmd",
+        "polname",
+        "polpermissive",
+        "polqual",
+        "polrelid",
+        "polroles",
+        "polwithcheck",
+        "privilege_type",
+        "proacl",
+        "proowner",
+        "prosecdef",
+        "prosrc",
+        "relacl",
+        "relforcerowsecurity",
+        "relkind",
+        "reloptions",
+        "relowner",
+        "relrowsecurity",
+        "rolbypassrls",
+        "rolcanlogin",
+        "rolinherit",
+        "rolname",
+        "rolsuper",
+        "schemaname",
+        "tgenabled",
+        "tgisinternal",
+        "tgname",
+        "tgrelid",
+        "version",
         // colunas de tabela do app (com as regras dos passos abaixo)
-        "id", "user_id", "avatar_url", "cover_url", "bucket_id", "metadata",
+        "id",
+        "user_id",
+        "avatar_url",
+        "cover_url",
+        "bucket_id",
+        "metadata",
         // CTEs, colunas de CTE e apelidos
-        "acl_alvo", "assinatura", "autenticado", "anon", "buckets_alvo", "bytes", "coluna",
-        "detalhe", "dono_pp", "fc", "fn", "img", "img_agg", "indices", "maior", "nome", "objeto",
-        "ordem", "p95", "p99", "papeis", "papeis_alvo", "papeis_api", "papel", "qtd", "rc", "rel",
-        "servico", "sto", "svg", "tab_gat", "tab_pol", "tipo", "tipos", "versao", "versoes",
-        "acima_128k", "acima_512k",
-        "a", "at", "b", "ba", "c", "d", "dn", "e", "eu", "f", "g", "i", "k", "m", "o", "p", "pa",
-        "pf", "pol", "pp", "q", "qs", "r", "ro", "rv", "s", "t", "tg", "v", "x",
+        "acl_alvo",
+        "assinatura",
+        "autenticado",
+        "anon",
+        "buckets_alvo",
+        "bytes",
+        "coluna",
+        "detalhe",
+        "dono_pp",
+        "fc",
+        "fn",
+        "img",
+        "img_agg",
+        "indices",
+        "maior",
+        "nome",
+        "objeto",
+        "ordem",
+        "p95",
+        "p99",
+        "papeis",
+        "papeis_alvo",
+        "papeis_api",
+        "papel",
+        "qtd",
+        "rc",
+        "rel",
+        "servico",
+        "sto",
+        "svg",
+        "tab_gat",
+        "tab_pol",
+        "tipo",
+        "tipos",
+        "versao",
+        "versoes",
+        "acima_128k",
+        "acima_512k",
+        "a",
+        "at",
+        "b",
+        "ba",
+        "c",
+        "d",
+        "dn",
+        "e",
+        "eu",
+        "f",
+        "g",
+        "i",
+        "k",
+        "m",
+        "o",
+        "p",
+        "pa",
+        "pf",
+        "pol",
+        "pp",
+        "q",
+        "qs",
+        "r",
+        "ro",
+        "rv",
+        "s",
+        "t",
+        "tg",
+        "v",
+        "x",
       ]);
       const usados = new Set(
         [...semTexto.matchAll(/\b[a-z_][a-z0-9_]*\b/gi)].map((m) =>
-          m[0].toLowerCase()
+          m[0].toLowerCase(),
         ),
       );
       const fora = [...usados].filter((u) => !permitidos.has(u)).sort();
-      assertEquals(fora, [], `identificadores fora da lista do permitido: ${fora.join(", ")}`);
+      assertEquals(
+        fora,
+        [],
+        `identificadores fora da lista do permitido: ${fora.join(", ")}`,
+      );
     },
   );
   await t.step(
     "nenhuma linha inteira vira texto: sem to_json/to_jsonb/row_to_json, sem `apelido.*`, sem `apelido::` e tabela do app so como public./storage. no FROM",
     () => {
-      assert(!/\b(to_json|to_jsonb|row_to_json|json_agg|jsonb_agg|hstore|row)\b/i.test(semTexto));
+      assert(
+        !/\b(to_json|to_jsonb|row_to_json|json_agg|jsonb_agg|hstore|row)\b/i.test(
+          semTexto,
+        ),
+      );
       assert(!/\w\.\*/.test(semTexto), "`apelido.*` le a linha inteira");
       // toda leitura de tabela de dado tem NENHUM apelido ou EXATAMENTE pf (profiles), rv (reviews),
       // qs (questions), o (storage.objects); public_profiles sem apelido. Outro apelido escaparia das
@@ -8488,11 +8664,21 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
         "storage.objects": "o",
       };
       const SEGUEM_SEM_APELIDO = new Set([
-        "where", "group", "order", "union", "left", "join", "cross", "inner", "on", "limit", "",
+        "where",
+        "group",
+        "order",
+        "union",
+        "left",
+        "join",
+        "cross",
+        "inner",
+        "on",
+        "limit",
+        "",
       ]);
       const leituras = [
         ...semTexto.matchAll(
-          /\b(?:FROM|JOIN)\s+(public\.(?:profiles|reviews|questions|public_profiles)|storage\.objects)\b\s*(?:AS\s+)?([a-z_]\w*)?/gi,
+          /\b(?:FROM|JOIN)\s+(public\.(?:profiles|reviews|questions|public_profiles)|storage\.objects)\b\s*(?:AS\s)?\s*([a-z_]\w*|)/gi,
         ),
       ];
       assert(leituras.length >= 6, "as leituras das tabelas de dado");
@@ -8519,7 +8705,9 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
         "",
       );
       assert(
-        !/\b(profiles|public_profiles|reviews|questions|objects)\b/i.test(semQualificado),
+        !/\b(profiles|public_profiles|reviews|questions|objects)\b/i.test(
+          semQualificado,
+        ),
         "tabela do app citada fora do FROM/JOIN qualificado",
       );
     },
@@ -8527,7 +8715,10 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
   await t.step(
     "colunas de pessoa so na igualdade do autor: pf/rv/qs so em `rv|qs.user_id = pf.id`; id e user_id nunca soltos",
     () => {
-      const semIgualdade = semTexto.replace(/\b(rv|qs)\.user_id = pf\.id\b/g, "");
+      const semIgualdade = semTexto.replace(
+        /\b(rv|qs)\.user_id = pf\.id\b/g,
+        "",
+      );
       assert(
         !/\b(pf|rv|qs)\./.test(semIgualdade),
         "pf./rv./qs. fora de `user_id = pf.id`",
@@ -8541,7 +8732,10 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
       const semIdPermitido = semIgualdade
         .replace(/\b(b|ba)\.id\b/g, "")
         .replace(/\bbuckets_alvo\(id\)/g, "");
-      assert(!/\bid\b/.test(semIdPermitido), "`id` solto: leria o id de uma tabela do app");
+      assert(
+        !/\bid\b/.test(semIdPermitido),
+        "`id` solto: leria o id de uma tabela do app",
+      );
       assert(!/\buser_id\b/.test(semIgualdade), "`user_id` solto");
     },
   );
@@ -8551,10 +8745,17 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
       const SEM_LITERAL = String.raw`, '''\[\^''\]\*''', '''\?''', 'g'\)`;
       const ALVO = String.raw`(?:pg_get_expr\(pol\.(?:polqual|polwithcheck), pol\.polrelid\)|pg_get_triggerdef\(tg\.oid\)|x\.indexdef)`;
       // eslint-disable-next-line security/detect-non-literal-regexp -- os dois pedacos sao constantes deste teste, nunca entrada externa
-      const sanitizado = new RegExp(String.raw`regexp_replace\(${ALVO}${SEM_LITERAL}`, "g");
+      const sanitizado = new RegExp(
+        String.raw`regexp_replace\(${ALVO}${SEM_LITERAL}`,
+        "g",
+      );
       // eslint-disable-next-line security/detect-non-literal-regexp -- idem
       const emMd5 = new RegExp(String.raw`md5\(${ALVO}\)`, "g");
-      assertEquals([...limpo.matchAll(sanitizado)].length, 4, "qual, check, gatilho e indice sanitizados");
+      assertEquals(
+        [...limpo.matchAll(sanitizado)].length,
+        4,
+        "qual, check, gatilho e indice sanitizados",
+      );
       const resto = limpo
         .replace(sanitizado, "")
         .replace(emMd5, "")
@@ -8562,11 +8763,16 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
         // a CTE `fc` so repassa o corpo adiante; ele so sai pelo md5 acima
         .replace(/\bp\.prosecdef, p\.prosrc, p\.proacl\b/, "");
       assert(
-        !/\b(pg_get_expr|pg_get_triggerdef|indexdef|prosrc|pg_get_viewdef|pg_get_functiondef)\b/.test(resto),
+        !/\b(pg_get_expr|pg_get_triggerdef|indexdef|prosrc|pg_get_viewdef|pg_get_functiondef)\b/.test(
+          resto,
+        ),
         "texto de politica/gatilho/indice/corpo sai cru (com literais) em algum lugar",
       );
       // e reviews.status nao e citada (a coluna nao existe em toda loja): so o catalogo diz se ela existe
-      assert(!/\bstatus\b/.test(semTexto), "citar reviews.status derruba a consulta numa loja sem a 20261031");
+      assert(
+        !/\bstatus\b/.test(semTexto),
+        "citar reviews.status derruba a consulta numa loja sem a 20261031",
+      );
       assertStringIncludes(limpo, "at.attname = 'status'");
     },
   );
@@ -8593,8 +8799,8 @@ Deno.test(`${NOME_22M} — no menu, UM SELECT so leitura de rol aberto, so catal
   await t.step(
     "de storage.objects so saem o tamanho e o tipo MIME de formato fechado, agregados por bucket",
     () => {
-      const usos = [...limpo.matchAll(/\bmetadata\b[^\n]{0,20}/g)].map((m) =>
-        m[0]
+      const usos = [...limpo.matchAll(/\bmetadata\b[^\n]{0,20}/g)].map(
+        (m) => m[0],
       );
       assert(usos.length > 0, "a 22m nao mede o storage");
       for (const uso of usos)
@@ -9593,7 +9799,10 @@ async function hashesDoLote22() {
   /** O texto entre as aspas de dolar da ULTIMA definicao de public.<nome>( no texto. */
   const corpoDe = (texto: string, nome: string) => {
     // eslint-disable-next-line security/detect-non-literal-regexp -- nome fixo das chamadas abaixo
-    const re = new RegExp(`^CREATE (?:OR REPLACE )?FUNCTION public\\.${nome}\\(`, "gm");
+    const re = new RegExp(
+      `^CREATE (?:OR REPLACE )?FUNCTION public\\.${nome}\\(`,
+      "gm",
+    );
     const achados = [...texto.matchAll(re)];
     if (achados.length === 0) return null;
     const ini = achados[achados.length - 1].index as number;
@@ -9607,7 +9816,9 @@ async function hashesDoLote22() {
   /** A ULTIMA migration versionada (ate `ate`, inclusive) que define public.<nome>. */
   const ultimaDefinicao = async (nome: string, ate: string) => {
     const nomes = [...Deno.readDirSync(MIGRATIONS_DIR)]
-      .filter((e) => e.isFile && /^\d{14}_.*\.sql$/.test(e.name) && e.name <= ate)
+      .filter(
+        (e) => e.isFile && /^\d{14}_.*\.sql$/.test(e.name) && e.name <= ate,
+      )
       .map((e) => e.name)
       .sort();
     let achado: { arquivo: string; corpo: string } | null = null;
@@ -9625,14 +9836,21 @@ async function hashesDoLote22() {
   const rb219 = await ler(rollbackDe(MIGRACAO_219));
   const gatilho = corpoDe(mig218, "perfil_recusa_imagem_grande");
   assert(gatilho !== null);
-  const push = await ultimaDefinicao("get_segmented_push_count", "20261219999999");
+  const push = await ultimaDefinicao(
+    "get_segmented_push_count",
+    "20261219999999",
+  );
   const admin = await ultimaDefinicao("rls_admin_atual", "20261219999999");
   // o literal deparseado que o pre-voo e a conferencia da 20261219 citam (E'' com \n e '')
   const lit = mig219.match(/v_qual = E'((?:[^']|'')*)'/);
   assert(lit, "a 20261219 nao cita o literal deparseado");
   const deparse = lit[1].replace(/''/g, "'").replace(/\\n/g, "\n");
   return {
-    gatilho: { lf: sha(gatilho), crlf: sha(gatilho.replace(/\n/g, "\r\n")), md5: md5(gatilho) },
+    gatilho: {
+      lf: sha(gatilho),
+      crlf: sha(gatilho.replace(/\n/g, "\r\n")),
+      md5: md5(gatilho),
+    },
     push: { arquivo: push.arquivo, md5: md5(push.corpo) },
     admin: { arquivo: admin.arquivo, md5: md5(admin.corpo) },
     politica: md5(deparse.replace(/public\./g, "").replace(/auth\./g, "")),
@@ -9699,7 +9917,10 @@ for (const [nome, nItens] of [
       "itens",
     ]);
     for (const alvo of alvos)
-      assert(permitidos.has(alvo), `le de "${alvo}", que nao e catalogo nem CTE`);
+      assert(
+        permitidos.has(alvo),
+        `le de "${alvo}", que nao e catalogo nem CTE`,
+      );
     assert(
       !/\b(?:FROM|JOIN)\s+(?:public\.)?(?:profiles|public_profiles|reviews|questions|app_settings|otp_verifications|vw_produtos_admin)\b/i.test(
         estrutura,
@@ -9728,93 +9949,163 @@ Deno.test("22a/22b — os hashes sao EXATAMENTE os que os arquivos definem (gati
   const sqlB = sqlSemComentarios(
     await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_22B}.sql`),
   );
-  const hex = (sql: string, n: number) => [
-    // eslint-disable-next-line security/detect-non-literal-regexp -- n e' 32 ou 64, fixo nas chamadas
-    // todo token hex de n digitos, sozinho no literal ou seguido de texto ('<md5> PUBLIC=...')
+  // todo token hex de 32 (md5) ou 64 (sha256) digitos, sozinho no literal ou seguido de texto
+  // ('<md5> PUBLIC=...')
+  const hex = (sql: string, n: 32 | 64) => [
     ...new Set(
-      [...sql.matchAll(new RegExp(`(?<![0-9a-f])([0-9a-f]{${n}})(?![0-9a-f])`, "g"))].map((m) => m[1]),
+      [
+        ...sql.matchAll(
+          n === 64
+            ? /(?<![0-9a-f])([0-9a-f]{64})(?![0-9a-f])/g
+            : /(?<![0-9a-f])([0-9a-f]{32})(?![0-9a-f])/g,
+        ),
+      ].map((m) => m[1]),
     ),
   ];
   await t.step("as definicoes de onde vem cada valor sao as esperadas", () => {
-    assertEquals(h.push.arquivo, "20261199000000_portas_do_painel_exigem_admin_atual.sql");
-    assertEquals(h.admin.arquivo, "20261197000000_dinheiro_exige_admin_atual.sql");
-    assert(h.gatilho.lf !== h.gatilho.crlf);
-  });
-  await t.step("22a: so os 2 sha256 do corpo do gatilho, na linha [LF, LF, CRLF, LF]", () => {
-    assertEquals(hex(sqlA, 64).sort(), [h.gatilho.lf, h.gatilho.crlf].sort());
-    const linha = linhaDoItem(
-      sqlA,
-      "perfil_recusa_imagem_grande: corpo e o da 20261218000000 (sha256)",
+    assertEquals(
+      h.push.arquivo,
+      "20261199000000_portas_do_painel_exigem_admin_atual.sql",
     );
     assertEquals(
-      [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
-      [h.gatilho.lf, h.gatilho.lf, h.gatilho.crlf, h.gatilho.lf],
+      h.admin.arquivo,
+      "20261197000000_dinheiro_exige_admin_atual.sql",
     );
+    assert(h.gatilho.lf !== h.gatilho.crlf);
   });
-  await t.step("22a: so os md5 da politica (do literal da migration) e do push", () => {
-    assertEquals(hex(sqlA, 32).sort(), [h.politica, h.push.md5].sort());
-    assertStringIncludes(
-      linhaDoItem(sqlA, "public_profiles: condicao da politica e a da 20261219000000 (md5)"),
-      `'${h.politica}'`,
-    );
-    assertStringIncludes(
-      linhaDoItem(sqlA, "get_segmented_push_count: corpo e o vigente (md5)"),
-      `'${h.push.md5}'`,
-    );
-  });
-  await t.step("22b: nenhum sha256; so os md5 do push e do rls_admin_atual; nada do DEPOIS", () => {
-    assertEquals(hex(sqlB, 64), []);
-    assertEquals(hex(sqlB, 32).sort(), [h.push.md5, h.admin.md5].sort());
-    assertStringIncludes(
-      linhaDoItem(sqlB, "get_segmented_push_count: corpo e o da 20261199000000 (md5)"),
-      `'${h.push.md5}'`,
-    );
-    assertStringIncludes(
-      linhaDoItem(sqlB, "rls_admin_atual: corpo da 20261197000000 (md5) e EXECUTE"),
-      `'${h.admin.md5} PUBLIC=nao anon=nao authenticated=sim service_role=sim'`,
-    );
-    for (const proibido of [h.politica, h.gatilho.lf, h.gatilho.crlf])
-      assert(!sqlB.includes(proibido), `22b aceitaria ${proibido}`);
-  });
-  await t.step("pre-voos e conferencias das migrations e dos rollbacks citam os mesmos valores", () => {
-    for (const [arq, texto] of [
-      ["20261218000000", h.mig218],
-      ["rollback 20261218000000", h.rb218],
-    ]) {
-      assertStringIncludes(texto, `'${h.push.md5}'`, `${arq}: sem o md5 do push`);
-      assertStringIncludes(texto, `'${h.gatilho.md5}'`, `${arq}: sem o md5 do gatilho`);
-    }
-    assertStringIncludes(h.mig219, `'${h.admin.md5}'`, "20261219: sem o md5 de rls_admin_atual");
-    // o literal deparseado aparece no pre-voo e na conferencia da migration e no pre-voo do rollback
-    const literal = h.mig219.match(/v_qual = E'((?:[^']|'')*)'/);
-    assert(literal);
-    assertEquals(h.mig219.split(literal[1]).length - 1, 2, "pre-voo e conferencia da 20261219");
-    assertStringIncludes(h.rb219, literal[1], "pre-voo do rollback da 20261219");
-  });
-  await t.step("a definicao do gatilho que a 22a exige e a que a migration cria e confere", () => {
-    const i = h.mig218.indexOf("CREATE OR REPLACE TRIGGER tr_perfil_recusa_imagem_grande");
-    assert(i >= 0);
-    const criado = h.mig218
-      .slice(i, h.mig218.indexOf(";", i))
-      .replace(/\s+/g, " ")
-      .replace("CREATE OR REPLACE TRIGGER", "CREATE TRIGGER")
-      .replace(/public\./g, "");
-    const def =
-      "CREATE TRIGGER tr_perfil_recusa_imagem_grande BEFORE INSERT OR UPDATE OF avatar_url, cover_url ON profiles FOR EACH ROW EXECUTE FUNCTION perfil_recusa_imagem_grande()";
-    assertEquals(criado, def);
-    assertStringIncludes(sqlA, `'${def}'`);
-    assertStringIncludes(h.mig218, `'${def}'`, "a conferencia da 20261218 nao cita a definicao");
-  });
+  await t.step(
+    "22a: so os 2 sha256 do corpo do gatilho, na linha [LF, LF, CRLF, LF]",
+    () => {
+      assertEquals(hex(sqlA, 64).sort(), [h.gatilho.lf, h.gatilho.crlf].sort());
+      const linha = linhaDoItem(
+        sqlA,
+        "perfil_recusa_imagem_grande: corpo e o da 20261218000000 (sha256)",
+      );
+      assertEquals(
+        [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
+        [h.gatilho.lf, h.gatilho.lf, h.gatilho.crlf, h.gatilho.lf],
+      );
+    },
+  );
+  await t.step(
+    "22a: so os md5 da politica (do literal da migration) e do push",
+    () => {
+      assertEquals(hex(sqlA, 32).sort(), [h.politica, h.push.md5].sort());
+      assertStringIncludes(
+        linhaDoItem(
+          sqlA,
+          "public_profiles: condicao da politica e a da 20261219000000 (md5)",
+        ),
+        `'${h.politica}'`,
+      );
+      assertStringIncludes(
+        linhaDoItem(sqlA, "get_segmented_push_count: corpo e o vigente (md5)"),
+        `'${h.push.md5}'`,
+      );
+    },
+  );
+  await t.step(
+    "22b: nenhum sha256; so os md5 do push e do rls_admin_atual; nada do DEPOIS",
+    () => {
+      assertEquals(hex(sqlB, 64), []);
+      assertEquals(hex(sqlB, 32).sort(), [h.push.md5, h.admin.md5].sort());
+      assertStringIncludes(
+        linhaDoItem(
+          sqlB,
+          "get_segmented_push_count: corpo e o da 20261199000000 (md5)",
+        ),
+        `'${h.push.md5}'`,
+      );
+      assertStringIncludes(
+        linhaDoItem(
+          sqlB,
+          "rls_admin_atual: corpo da 20261197000000 (md5) e EXECUTE",
+        ),
+        `'${h.admin.md5} PUBLIC=nao anon=nao authenticated=sim service_role=sim'`,
+      );
+      for (const proibido of [h.politica, h.gatilho.lf, h.gatilho.crlf])
+        assert(!sqlB.includes(proibido), `22b aceitaria ${proibido}`);
+    },
+  );
+  await t.step(
+    "pre-voos e conferencias das migrations e dos rollbacks citam os mesmos valores",
+    () => {
+      for (const [arq, texto] of [
+        ["20261218000000", h.mig218],
+        ["rollback 20261218000000", h.rb218],
+      ]) {
+        assertStringIncludes(
+          texto,
+          `'${h.push.md5}'`,
+          `${arq}: sem o md5 do push`,
+        );
+        assertStringIncludes(
+          texto,
+          `'${h.gatilho.md5}'`,
+          `${arq}: sem o md5 do gatilho`,
+        );
+      }
+      assertStringIncludes(
+        h.mig219,
+        `'${h.admin.md5}'`,
+        "20261219: sem o md5 de rls_admin_atual",
+      );
+      // o literal deparseado aparece no pre-voo e na conferencia da migration e no pre-voo do rollback
+      const literal = h.mig219.match(/v_qual = E'((?:[^']|'')*)'/);
+      assert(literal);
+      assertEquals(
+        h.mig219.split(literal[1]).length - 1,
+        2,
+        "pre-voo e conferencia da 20261219",
+      );
+      assertStringIncludes(
+        h.rb219,
+        literal[1],
+        "pre-voo do rollback da 20261219",
+      );
+    },
+  );
+  await t.step(
+    "a definicao do gatilho que a 22a exige e a que a migration cria e confere",
+    () => {
+      const i = h.mig218.indexOf(
+        "CREATE OR REPLACE TRIGGER tr_perfil_recusa_imagem_grande",
+      );
+      assert(i >= 0);
+      const criado = h.mig218
+        .slice(i, h.mig218.indexOf(";", i))
+        .replace(/\s+/g, " ")
+        .replace("CREATE OR REPLACE TRIGGER", "CREATE TRIGGER")
+        .replace(/public\./g, "");
+      const def =
+        "CREATE TRIGGER tr_perfil_recusa_imagem_grande BEFORE INSERT OR UPDATE OF avatar_url, cover_url ON profiles FOR EACH ROW EXECUTE FUNCTION perfil_recusa_imagem_grande()";
+      assertEquals(criado, def);
+      assertStringIncludes(sqlA, `'${def}'`);
+      assertStringIncludes(
+        h.mig218,
+        `'${def}'`,
+        "a conferencia da 20261218 nao cita a definicao",
+      );
+    },
+  );
 });
 
 Deno.test("22a/22b — os papeis e a condicao que as consultas esperam sao os que as migrations e os rollbacks deixam", async () => {
   const mig218 = sqlSemComentarios(await Deno.readTextFile(MIGRACAO_218));
-  const rb218 = sqlSemComentarios(await Deno.readTextFile(rollbackDe(MIGRACAO_218)));
+  const rb218 = sqlSemComentarios(
+    await Deno.readTextFile(rollbackDe(MIGRACAO_218)),
+  );
   const mig2181 = sqlSemComentarios(await Deno.readTextFile(MIGRACAO_2181));
   const mig219 = sqlSemComentarios(await Deno.readTextFile(MIGRACAO_219));
-  const rb219 = sqlSemComentarios(await Deno.readTextFile(rollbackDe(MIGRACAO_219)));
-  const sqlA = sqlSemComentarios(await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_22A}.sql`));
-  const sqlB = sqlSemComentarios(await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_22B}.sql`));
+  const rb219 = sqlSemComentarios(
+    await Deno.readTextFile(rollbackDe(MIGRACAO_219)),
+  );
+  const sqlA = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_22A}.sql`),
+  );
+  const sqlB = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_22B}.sql`),
+  );
   // gatilho: EXECUTE fechado para os tres e nao e' SECURITY DEFINER
   for (const papel of ["PUBLIC", "anon", "authenticated"])
     assertStringIncludes(
@@ -9822,21 +10113,35 @@ Deno.test("22a/22b — os papeis e a condicao que as consultas esperam sao os qu
       `REVOKE ALL ON FUNCTION public.perfil_recusa_imagem_grande() FROM ${papel};`,
     );
   const cab = mig218.slice(
-    mig218.indexOf("CREATE OR REPLACE FUNCTION public.perfil_recusa_imagem_grande()"),
+    mig218.indexOf(
+      "CREATE OR REPLACE FUNCTION public.perfil_recusa_imagem_grande()",
+    ),
   );
   assert(!/SECURITY DEFINER/i.test(cab.slice(0, cab.indexOf("AS $$"))));
   assertStringIncludes(
-    linhaDoItem(sqlA, "perfil_recusa_imagem_grande: EXECUTE fechado e sem SECURITY DEFINER"),
+    linhaDoItem(
+      sqlA,
+      "perfil_recusa_imagem_grande: EXECUTE fechado e sem SECURITY DEFINER",
+    ),
     "'PUBLIC=nao anon=nao authenticated=nao definer=nao'",
   );
   // push: DEPOIS so authenticated e service_role; o rollback devolve PUBLIC e anon (= a 22b)
   const push = "public.get_segmented_push_count(text, numeric, integer)";
   for (const papel of ["PUBLIC", "anon"])
-    assertStringIncludes(mig218, `REVOKE ALL ON FUNCTION ${push} FROM ${papel};`);
+    assertStringIncludes(
+      mig218,
+      `REVOKE ALL ON FUNCTION ${push} FROM ${papel};`,
+    );
   for (const papel of ["authenticated", "service_role"])
-    assertStringIncludes(mig218, `GRANT EXECUTE ON FUNCTION ${push} TO ${papel};`);
+    assertStringIncludes(
+      mig218,
+      `GRANT EXECUTE ON FUNCTION ${push} TO ${papel};`,
+    );
   for (const papel of ["PUBLIC", "anon"])
-    assertStringIncludes(rb218, `GRANT EXECUTE ON FUNCTION ${push} TO ${papel};`);
+    assertStringIncludes(
+      rb218,
+      `GRANT EXECUTE ON FUNCTION ${push} TO ${papel};`,
+    );
   assertStringIncludes(
     linhaDoItem(sqlA, "get_segmented_push_count: EXECUTE"),
     "'PUBLIC=nao anon=nao authenticated=sim service_role=sim'",
@@ -9845,19 +10150,35 @@ Deno.test("22a/22b — os papeis e a condicao que as consultas esperam sao os qu
     linhaDoItem(sqlB, "get_segmented_push_count: EXECUTE"),
     "'PUBLIC=sim anon=sim authenticated=sim service_role=sim'",
   );
-  assert(!/CREATE (?:OR REPLACE )?FUNCTION public\.get_segmented_push_count/.test(mig218), "a 20261218 recria o push");
+  assert(
+    !/CREATE (?:OR REPLACE )?FUNCTION public\.get_segmented_push_count/.test(
+      mig218,
+    ),
+    "a 20261218 recria o push",
+  );
   // view do painel: REVOKE ALL de PUBLIC e anon; o rollback devolve SELECT e REFERENCES ao anon
   for (const papel of ["PUBLIC", "anon"])
-    assertStringIncludes(mig218, `REVOKE ALL ON TABLE public.vw_produtos_admin FROM ${papel};`);
+    assertStringIncludes(
+      mig218,
+      `REVOKE ALL ON TABLE public.vw_produtos_admin FROM ${papel};`,
+    );
   assert(
-    !/\b(?:GRANT|REVOKE)\b[^;]*\bvw_produtos_admin\b[^;]*\bauthenticated\b/.test(mig218),
+    !/\b(?:GRANT|REVOKE)\b[^;]*\bvw_produtos_admin\b[^;]*\bauthenticated\b/.test(
+      mig218,
+    ),
     "a 20261218 mexe no authenticated da view",
   );
-  assertStringIncludes(rb218, "GRANT SELECT, REFERENCES ON TABLE public.vw_produtos_admin TO anon;");
+  assertStringIncludes(
+    rb218,
+    "GRANT SELECT, REFERENCES ON TABLE public.vw_produtos_admin TO anon;",
+  );
   // configuracoes e codigos: REVOKE ALL dos tres papeis nas duas tabelas
   for (const tabela of ["app_settings", "otp_verifications"])
     for (const papel of ["PUBLIC", "anon", "authenticated"])
-      assertStringIncludes(mig2181, `REVOKE ALL ON TABLE public.${tabela} FROM ${papel};`);
+      assertStringIncludes(
+        mig2181,
+        `REVOKE ALL ON TABLE public.${tabela} FROM ${papel};`,
+      );
   // politica: DEPOIS so authenticated; o rollback devolve USING (true) para todos (= a 22b)
   assertStringIncludes(
     mig219,
@@ -9867,8 +10188,14 @@ Deno.test("22a/22b — os papeis e a condicao que as consultas esperam sao os qu
     rb219,
     "CREATE POLICY public_profiles_select_policy ON public.public_profiles FOR SELECT USING (true);",
   );
-  assertStringIncludes(sqlA, "'public_profiles_select_policy SELECT permissiva authenticated'");
-  assertStringIncludes(sqlB, "'public_profiles_select_policy SELECT permissiva public'");
+  assertStringIncludes(
+    sqlA,
+    "'public_profiles_select_policy SELECT permissiva authenticated'",
+  );
+  assertStringIncludes(
+    sqlB,
+    "'public_profiles_select_policy SELECT permissiva public'",
+  );
   // as colunas que a 22b exige aparecem nas migrations do lote
   const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_22B}.sql`);
   const lista = b.match(/unnest\(ARRAY\[([\s\S]*?)\]\)/);
@@ -9878,7 +10205,11 @@ Deno.test("22a/22b — os papeis e a condicao que as consultas esperam sao os qu
   for (const c of colunas) {
     const [, tabela, coluna] = c.split(".");
     const texto = tabela === "profiles" ? mig218 : mig219;
-    assertStringIncludes(texto, coluna, `a coluna ${c} nao aparece na migration`);
+    assertStringIncludes(
+      texto,
+      coluna,
+      `a coluna ${c} nao aparece na migration`,
+    );
   }
 });
 

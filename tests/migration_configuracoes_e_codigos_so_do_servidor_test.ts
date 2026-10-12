@@ -5,8 +5,9 @@
 // numa loja ja fechada, reaplicar e o rollback no banco) e' provado em
 // tests/banco/portas-do-banco-viva.cjs. Aqui fica o que se prova so lendo o texto.
 //
-// Riscos: lista de privilegios no lugar de REVOKE ALL deixa o MAINTAIN do PG17; REVOKE so do anon
-// deixa a conta logada lendo os codigos e o cofre pela API; tocar no service_role para as edge
+// Riscos: lista de privilegios no lugar de REVOKE ALL deixa o MAINTAIN do PG17; as tabelas
+// internas passam a ser acessadas so pelo servidor, e REVOKE so do anon deixaria a conta logada
+// de fora disso; tocar no service_role para as edge
 // functions de pagamento; REVOKE que so avisa (grantor diferente) passa calado sem a conferencia;
 // rollback que devolve menos (ou mais) do que o medido deixa a loja num terceiro estado.
 import assert from "node:assert/strict";

@@ -117,9 +117,14 @@ Deno.test("o pre-voo cita o md5 REAL do corpo vigente da contagem do push (a ult
 
 Deno.test("o corpo da contagem do push NAO e recriado (so a ACL muda)", () => {
   for (const sql of [migration, rollback]) {
+    const texto = semComentarios(sql);
     assert.doesNotMatch(
-      semComentarios(sql),
-      /(CREATE|DROP|ALTER)\s+(OR\s+REPLACE\s+)?FUNCTION\s+public\.get_segmented_push_count/i,
+      texto,
+      /(CREATE|DROP|ALTER)\s+FUNCTION\s+public\.get_segmented_push_count/i,
+    );
+    assert.doesNotMatch(
+      texto,
+      /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.get_segmented_push_count/i,
     );
   }
 });
@@ -224,12 +229,18 @@ Deno.test("view do painel: REVOKE ALL de PUBLIC e anon; authenticated intocado; 
   );
   assert.doesNotMatch(sql, /vw_produtos_admin[^;]*\bauthenticated\b/);
   assert.doesNotMatch(sql, /security_invoker/i);
-  assert.doesNotMatch(sql, /(CREATE|DROP|ALTER)\s+(OR\s+REPLACE\s+)?VIEW/i);
+  assert.doesNotMatch(sql, /(CREATE|DROP|ALTER)\s+VIEW/i);
+  assert.doesNotMatch(sql, /CREATE\s+OR\s+REPLACE\s+VIEW/i);
 });
 
 Deno.test("a conferencia final RECUSA (RAISE EXCEPTION) cada efeito que nao aconteceu", () => {
   const i = migration.indexOf("DO $conferencia_20261218$");
-  assert.ok(i > migration.indexOf("REVOKE ALL ON TABLE public.vw_produtos_admin FROM anon;"));
+  assert.ok(
+    i >
+      migration.indexOf(
+        "REVOKE ALL ON TABLE public.vw_produtos_admin FROM anon;",
+      ),
+  );
   const c = migration.slice(i);
   for (const trecho of [
     "t.tgenabled = 'O'",

@@ -48,15 +48,21 @@ const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
 
-const MIGRATIONS = path.resolve(__dirname, "..", "..", "supabase", "migrations");
+const MIGRATIONS = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "supabase",
+  "migrations",
+);
 const LOTE = [
   "20261218000000_a_foto_do_perfil_tem_teto_e_o_painel_fecha_ao_visitante.sql",
   "20261218000100_configuracoes_e_codigos_so_do_servidor.sql",
   "20261219000000_perfil_publico_so_de_quem_escreveu.sql",
 ];
 const ler = (nome) => fs.readFileSync(path.join(MIGRATIONS, nome), "utf8");
-const migration = (i) => ler(LOTE[i]);
-const rollback = (i) => ler(`rollback-manual-${LOTE[i]}`);
+const migration = (i) => ler(LOTE.at(i));
+const rollback = (i) => ler(`rollback-manual-${LOTE.at(i)}`);
 
 const U = {
   admin: "a1200000-0000-4000-8000-000000000001",
@@ -81,19 +87,37 @@ const claims = (uid, papel) =>
     role: "authenticated",
     app_metadata: papel ? { role: papel } : {},
   });
-const QUEM = {
-  anon: { papel: "anon", uid: "", jwt: "" },
-  servico: { papel: "service_role", uid: "", jwt: "" },
-  admin: { papel: "authenticated", uid: U.admin, jwt: claims(U.admin, "admin") },
-  rebaixado: {
-    papel: "authenticated",
-    uid: U.rebaixado,
-    jwt: claims(U.rebaixado, "admin"),
-  },
-  terceiro: { papel: "authenticated", uid: U.terceiro, jwt: claims(U.terceiro, null) },
-  autorPub: { papel: "authenticated", uid: U.autorPub, jwt: claims(U.autorPub, null) },
-  grande: { papel: "authenticated", uid: U.grande, jwt: claims(U.grande, null) },
-};
+const QUEM = new Map(
+  Object.entries({
+    anon: { papel: "anon", uid: "", jwt: "" },
+    servico: { papel: "service_role", uid: "", jwt: "" },
+    admin: {
+      papel: "authenticated",
+      uid: U.admin,
+      jwt: claims(U.admin, "admin"),
+    },
+    rebaixado: {
+      papel: "authenticated",
+      uid: U.rebaixado,
+      jwt: claims(U.rebaixado, "admin"),
+    },
+    terceiro: {
+      papel: "authenticated",
+      uid: U.terceiro,
+      jwt: claims(U.terceiro, null),
+    },
+    autorPub: {
+      papel: "authenticated",
+      uid: U.autorPub,
+      jwt: claims(U.autorPub, null),
+    },
+    grande: {
+      papel: "authenticated",
+      uid: U.grande,
+      jwt: claims(U.grande, null),
+    },
+  }),
+);
 
 let C;
 const PROVAS = [];
@@ -111,7 +135,8 @@ async function emTransacao(fn) {
 
 /** Roda `sql` como `quem`; o erro nao derruba a transacao: {ok, rows, n} ou {ok:false, code, message}. */
 async function como(quem, sql, params = []) {
-  const q = QUEM[quem];
+  const q = QUEM.get(quem);
+  if (!q) throw new Error(`papel de prova desconhecido: ${quem}`);
   await C.query("SAVEPOINT sp_como");
   try {
     await C.query(`SET LOCAL ROLE ${q.papel}`);
@@ -151,8 +176,12 @@ async function voltarParaAntes() {
 
 /** Fabrica do Supabase que o provisionar.cjs nao emula (so neste clone) + as pessoas da prova. */
 async function semear() {
-  await C.query("GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role");
-  await C.query("GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role");
+  await C.query(
+    "GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role",
+  );
+  await C.query(
+    "GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role",
+  );
   for (const id of Object.values(U)) {
     await C.query(
       "INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1::uuid, $1::text || '@l2.teste', '{}'::jsonb)",
@@ -164,7 +193,15 @@ async function semear() {
        ($1, 'Admin Atual', 'admin'), ($2, 'Rebaixado', 'customer'), ($3, 'Terceiro', 'customer'),
        ($4, 'Autor Publicada', 'customer'), ($5, 'Autor Pendente', 'customer'),
        ($6, 'Autor Pergunta', 'customer'), ($7, 'Calado', 'customer')`,
-    [U.admin, U.rebaixado, U.terceiro, U.autorPub, U.autorPend, U.autorPerg, U.calado],
+    [
+      U.admin,
+      U.rebaixado,
+      U.terceiro,
+      U.autorPub,
+      U.autorPend,
+      U.autorPerg,
+      U.calado,
+    ],
   );
   // admin atual nas duas fontes; o rebaixado so tem o cracha velho (auth.users + JWT dizendo admin)
   await C.query(
@@ -203,7 +240,10 @@ async function semear() {
 }
 
 const nomesVistos = async (quem) => {
-  const r = await como(quem, "SELECT full_name FROM public.public_profiles ORDER BY full_name");
+  const r = await como(
+    quem,
+    "SELECT full_name FROM public.public_profiles ORDER BY full_name",
+  );
   assert.ok(r.ok, `${quem} leu public_profiles: ${r.message}`);
   return r.rows.map((l) => l.full_name);
 };
@@ -221,25 +261,31 @@ const TODOS = [
 // PERFIS (20261219000000)
 // ---------------------------------------------------------------------------
 
-prova("PERFIS: CONTROLE — antes do lote o visitante lista todos os perfis", () =>
-  emTransacao(async () => {
-    await semear();
-    await voltarParaAntes();
-    assert.deepEqual(await nomesVistos("anon"), TODOS);
-    assert.deepEqual(await nomesVistos("terceiro"), TODOS);
-  }),
+prova(
+  "PERFIS: CONTROLE — antes do lote o visitante lista todos os perfis",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      await voltarParaAntes();
+      assert.deepEqual(await nomesVistos("anon"), TODOS);
+      assert.deepEqual(await nomesVistos("terceiro"), TODOS);
+    }),
 );
 
-prova("PERFIS: o visitante recebe ZERO linhas, sem erro (nem 42501 de rls_admin_atual)", () =>
-  emTransacao(async () => {
-    await semear();
-    assert.deepEqual(await nomesVistos("anon"), []);
-    const porId = await como("anon", "SELECT id FROM public.public_profiles WHERE id = $1", [
-      U.autorPub,
-    ]);
-    assert.ok(porId.ok, porId.message);
-    assert.equal(porId.n, 0);
-  }),
+prova(
+  "PERFIS: o visitante recebe ZERO linhas, sem erro (nem 42501 de rls_admin_atual)",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      assert.deepEqual(await nomesVistos("anon"), []);
+      const porId = await como(
+        "anon",
+        "SELECT id FROM public.public_profiles WHERE id = $1",
+        [U.autorPub],
+      );
+      assert.ok(porId.ok, porId.message);
+      assert.equal(porId.n, 0);
+    }),
 );
 
 prova(
@@ -253,66 +299,79 @@ prova(
         "Terceiro",
       ]);
       // o autor da publicada ve a si e aos autores; o da pendente ve a si (a propria avaliacao)
-      assert.deepEqual(await nomesVistos("autorPub"), ["Autor Pergunta", "Autor Publicada"]);
+      assert.deepEqual(await nomesVistos("autorPub"), [
+        "Autor Pergunta",
+        "Autor Publicada",
+      ]);
     }),
 );
 
-prova("PERFIS: o admin atual ve todos; o rebaixado com cracha velho NAO ve quem nunca escreveu", () =>
-  emTransacao(async () => {
-    await semear();
-    assert.deepEqual(await nomesVistos("admin"), TODOS);
-    const reb = await nomesVistos("rebaixado");
-    assert.ok(!reb.includes("Calado"), `rebaixado viu: ${reb.join(", ")}`);
-    assert.deepEqual(reb, ["Autor Pergunta", "Autor Publicada", "Rebaixado"]);
-  }),
+prova(
+  "PERFIS: o admin atual ve todos; o rebaixado com cracha velho NAO ve quem nunca escreveu",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      assert.deepEqual(await nomesVistos("admin"), TODOS);
+      const reb = await nomesVistos("rebaixado");
+      assert.ok(!reb.includes("Calado"), `rebaixado viu: ${reb.join(", ")}`);
+      assert.deepEqual(reb, ["Autor Pergunta", "Autor Publicada", "Rebaixado"]);
+    }),
 );
 
-prova("PERFIS: a vitrine do visitante (views) continua com nome e foto do autor", () =>
-  emTransacao(async () => {
-    await semear();
-    await C.query("UPDATE public.profiles SET avatar_url = 'data:image/svg+xml;utf8,<svg/>' WHERE id = $1", [
-      U.autorPub,
-    ]);
-    const av = await como(
-      "anon",
-      "SELECT author_name, author_avatar_url FROM public.vw_reviews_public WHERE id = $1",
-      [R_PUB],
-    );
-    assert.ok(av.ok, av.message);
-    assert.deepEqual(av.rows, [
-      { author_name: "Autor Publicada", author_avatar_url: "data:image/svg+xml;utf8,<svg/>" },
-    ]);
-    const pe = await como(
-      "anon",
-      "SELECT author_name FROM public.vw_questions_public WHERE id = $1",
-      [Q_PERG],
-    );
-    assert.ok(pe.ok, pe.message);
-    assert.deepEqual(pe.rows, [{ author_name: "Autor Pergunta" }]);
-  }),
+prova(
+  "PERFIS: a vitrine do visitante (views) continua com nome e foto do autor",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      await C.query(
+        "UPDATE public.profiles SET avatar_url = 'data:image/svg+xml;utf8,<svg/>' WHERE id = $1",
+        [U.autorPub],
+      );
+      const av = await como(
+        "anon",
+        "SELECT author_name, author_avatar_url FROM public.vw_reviews_public WHERE id = $1",
+        [R_PUB],
+      );
+      assert.ok(av.ok, av.message);
+      assert.deepEqual(av.rows, [
+        {
+          author_name: "Autor Publicada",
+          author_avatar_url: "data:image/svg+xml;utf8,<svg/>",
+        },
+      ]);
+      const pe = await como(
+        "anon",
+        "SELECT author_name FROM public.vw_questions_public WHERE id = $1",
+        [Q_PERG],
+      );
+      assert.ok(pe.ok, pe.message);
+      assert.deepEqual(pe.rows, [{ author_name: "Autor Pergunta" }]);
+    }),
 );
 
-prova("PERFIS: toda avaliacao e pergunta que o logado ve tem o autor visivel (o embed do app)", () =>
-  emTransacao(async () => {
-    await semear();
-    for (const quem of ["terceiro", "autorPub", "admin"]) {
-      const r = await como(
-        quem,
-        `SELECT 'r' AS k, r.id, pp.full_name FROM public.reviews r
+prova(
+  "PERFIS: toda avaliacao e pergunta que o logado ve tem o autor visivel (o embed do app)",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      for (const quem of ["terceiro", "autorPub", "admin"]) {
+        const r = await como(
+          quem,
+          `SELECT 'r' AS k, r.id, pp.full_name FROM public.reviews r
            LEFT JOIN public.public_profiles pp ON pp.id = r.user_id
          UNION ALL
          SELECT 'q', q.id, pp.full_name FROM public.questions q
            LEFT JOIN public.public_profiles pp ON pp.id = q.user_id`,
-      );
-      assert.ok(r.ok, `${quem}: ${r.message}`);
-      assert.ok(r.n >= 2, `${quem} ve avaliacao e pergunta`);
-      assert.deepEqual(
-        r.rows.filter((l) => l.full_name === null),
-        [],
-        `${quem}: autor nulo`,
-      );
-    }
-  }),
+        );
+        assert.ok(r.ok, `${quem}: ${r.message}`);
+        assert.ok(r.n >= 2, `${quem} ve avaliacao e pergunta`);
+        assert.deepEqual(
+          r.rows.filter((l) => l.full_name === null),
+          [],
+          `${quem}: autor nulo`,
+        );
+      }
+    }),
 );
 
 // ---------------------------------------------------------------------------
@@ -327,58 +386,121 @@ const SQL_RPC =
 const SQL_UPD_FOTO = "UPDATE public.profiles SET avatar_url = $2 WHERE id = $1";
 const SQL_UPD_CAPA = "UPDATE public.profiles SET cover_url = $2 WHERE id = $1";
 
-prova("IMAGEM: CONTROLE — antes do lote a foto de 200 KB entra pelo UPDATE direto e pela RPC", () =>
-  emTransacao(async () => {
-    await semear();
-    await voltarParaAntes();
-    const d = await como("terceiro", SQL_UPD_FOTO, [U.terceiro, imagem(200000)]);
-    assert.ok(d.ok && d.n === 1, d.message);
-    const r = await como("terceiro", SQL_RPC, [null, null, null, imagem(700000)]);
-    assert.ok(r.ok, r.message);
-  }),
+prova(
+  "IMAGEM: CONTROLE — antes do lote a foto de 200 KB entra pelo UPDATE direto e pela RPC",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      await voltarParaAntes();
+      const d = await como("terceiro", SQL_UPD_FOTO, [
+        U.terceiro,
+        imagem(200000),
+      ]);
+      assert.ok(d.ok && d.n === 1, d.message);
+      const r = await como("terceiro", SQL_RPC, [
+        null,
+        null,
+        null,
+        imagem(700000),
+      ]);
+      assert.ok(r.ok, r.message);
+    }),
 );
 
-prova("IMAGEM: UPDATE direto e RPC recusam acima do teto (23514) e aceitam no teto, 'REMOVE' e NULL", () =>
-  emTransacao(async () => {
-    await semear();
-    const casos = [
-      ["foto direta 1 byte acima", SQL_UPD_FOTO, [U.terceiro, imagem(FOTO_MAX + 1)], "23514"],
-      ["capa direta 1 byte acima", SQL_UPD_CAPA, [U.terceiro, imagem(CAPA_MAX + 1)], "23514"],
-      ["foto pela RPC (5 MB)", SQL_RPC, [null, null, imagem(5 * 1024 * 1024), null], "23514"],
-      ["capa pela RPC (600 KB)", SQL_RPC, [null, null, null, imagem(600000)], "23514"],
-      ["foto no teto", SQL_UPD_FOTO, [U.terceiro, imagem(FOTO_MAX)], null],
-      ["capa no teto", SQL_UPD_CAPA, [U.terceiro, imagem(CAPA_MAX)], null],
-      ["foto realista pela RPC (60 KB)", SQL_RPC, [null, null, imagem(60000), null], null],
-      ["capa realista pela RPC (300 KB)", SQL_RPC, [null, null, null, imagem(300000)], null],
-      ["foto pre-definida (SVG)", SQL_RPC, [null, null, "data:image/svg+xml;utf8,<svg/>", null], null],
-      ["REMOVE pela RPC", SQL_RPC, [null, null, "REMOVE", "REMOVE"], null],
-      ["NULL direto", SQL_UPD_FOTO, [U.terceiro, null], null],
-    ];
-    const sincronizado = async () =>
-      (
-        await C.query(
-          "SELECT octet_length(avatar_url) AS f, octet_length(cover_url) AS c FROM public.public_profiles WHERE id = $1",
-          [U.terceiro],
-        )
-      ).rows[0];
-    for (const [rotulo, sql, params, codigo] of casos) {
-      const antes = await sincronizado();
-      const r = await como("terceiro", sql, params);
-      if (codigo) {
-        assert.equal(r.ok, false, `${rotulo}: passou`);
-        assert.equal(r.code, codigo, `${rotulo}: ${r.message}`);
-        assert.match(r.message, /grande demais/);
-        assert.deepEqual(await sincronizado(), antes, `${rotulo}: nada mudou`);
-      } else {
-        assert.ok(r.ok, `${rotulo}: ${r.message}`);
-        if (rotulo === "foto no teto")
-          assert.equal((await sincronizado()).f, FOTO_MAX, "a foto no teto sincronizou");
-        if (rotulo === "capa no teto")
-          assert.equal((await sincronizado()).c, CAPA_MAX, "a capa no teto sincronizou");
+prova(
+  "IMAGEM: UPDATE direto e RPC recusam acima do teto (23514) e aceitam no teto, 'REMOVE' e NULL",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      const casos = [
+        [
+          "foto direta 1 byte acima",
+          SQL_UPD_FOTO,
+          [U.terceiro, imagem(FOTO_MAX + 1)],
+          "23514",
+        ],
+        [
+          "capa direta 1 byte acima",
+          SQL_UPD_CAPA,
+          [U.terceiro, imagem(CAPA_MAX + 1)],
+          "23514",
+        ],
+        [
+          "foto pela RPC (5 MB)",
+          SQL_RPC,
+          [null, null, imagem(5 * 1024 * 1024), null],
+          "23514",
+        ],
+        [
+          "capa pela RPC (600 KB)",
+          SQL_RPC,
+          [null, null, null, imagem(600000)],
+          "23514",
+        ],
+        ["foto no teto", SQL_UPD_FOTO, [U.terceiro, imagem(FOTO_MAX)], null],
+        ["capa no teto", SQL_UPD_CAPA, [U.terceiro, imagem(CAPA_MAX)], null],
+        [
+          "foto realista pela RPC (60 KB)",
+          SQL_RPC,
+          [null, null, imagem(60000), null],
+          null,
+        ],
+        [
+          "capa realista pela RPC (300 KB)",
+          SQL_RPC,
+          [null, null, null, imagem(300000)],
+          null,
+        ],
+        [
+          "foto pre-definida (SVG)",
+          SQL_RPC,
+          [null, null, "data:image/svg+xml;utf8,<svg/>", null],
+          null,
+        ],
+        ["REMOVE pela RPC", SQL_RPC, [null, null, "REMOVE", "REMOVE"], null],
+        ["NULL direto", SQL_UPD_FOTO, [U.terceiro, null], null],
+      ];
+      const sincronizado = async () =>
+        (
+          await C.query(
+            "SELECT octet_length(avatar_url) AS f, octet_length(cover_url) AS c FROM public.public_profiles WHERE id = $1",
+            [U.terceiro],
+          )
+        ).rows[0];
+      for (const [rotulo, sql, params, codigo] of casos) {
+        const antes = await sincronizado();
+        const r = await como("terceiro", sql, params);
+        if (codigo) {
+          assert.equal(r.ok, false, `${rotulo}: passou`);
+          assert.equal(r.code, codigo, `${rotulo}: ${r.message}`);
+          assert.match(r.message, /grande demais/);
+          assert.deepEqual(
+            await sincronizado(),
+            antes,
+            `${rotulo}: nada mudou`,
+          );
+        } else {
+          assert.ok(r.ok, `${rotulo}: ${r.message}`);
+          if (rotulo === "foto no teto")
+            assert.equal(
+              (await sincronizado()).f,
+              FOTO_MAX,
+              "a foto no teto sincronizou",
+            );
+          if (rotulo === "capa no teto")
+            assert.equal(
+              (await sincronizado()).c,
+              CAPA_MAX,
+              "a capa no teto sincronizou",
+            );
+        }
       }
-    }
-    assert.deepEqual(await sincronizado(), { f: null, c: null }, "o REMOVE e o NULL sincronizaram");
-  }),
+      assert.deepEqual(
+        await sincronizado(),
+        { f: null, c: null },
+        "o REMOVE e o NULL sincronizaram",
+      );
+    }),
 );
 
 prova("IMAGEM: o INSERT de perfil tambem confere (foto e capa)", () =>
@@ -420,12 +542,24 @@ prova(
         [U.grande, imagem(1024 * 1024), imagem(2 * 1024 * 1024)],
       );
       for (const i of [0, 1, 2]) await C.query(migration(i));
-      const rpc = await como("grande", SQL_RPC, ["Grande Novo", "11977776666", null, null]);
+      const rpc = await como("grande", SQL_RPC, [
+        "Grande Novo",
+        "11977776666",
+        null,
+        null,
+      ]);
       assert.ok(rpc.ok, `RPC sem imagem: ${rpc.message}`);
       // o app manda a mesma imagem de volta: nao mudou, nao e' conferida
-      const mesma = await como("grande", SQL_RPC, [null, null, imagem(1024 * 1024), imagem(2 * 1024 * 1024)]);
+      const mesma = await como("grande", SQL_RPC, [
+        null,
+        null,
+        imagem(1024 * 1024),
+        imagem(2 * 1024 * 1024),
+      ]);
       assert.ok(mesma.ok, `RPC com a mesma imagem: ${mesma.message}`);
-      const cpf = await como("grande", "SELECT public.set_my_cpf($1)", ["52998224725"]);
+      const cpf = await como("grande", "SELECT public.set_my_cpf($1)", [
+        "52998224725",
+      ]);
       assert.ok(cpf.ok, `set_my_cpf: ${cpf.message}`);
       const direto = await como(
         "grande",
@@ -437,25 +571,34 @@ prova(
         "SELECT full_name, octet_length(avatar_url) AS f, octet_length(cover_url) AS c FROM public.public_profiles WHERE id = $1",
         [U.grande],
       );
-      assert.deepEqual(pp.rows, [{ full_name: "Grande Direto", f: 1024 * 1024, c: 2 * 1024 * 1024 }]);
+      assert.deepEqual(pp.rows, [
+        { full_name: "Grande Direto", f: 1024 * 1024, c: 2 * 1024 * 1024 },
+      ]);
       // trocar a imagem por OUTRA grande, agora, e' recusado
-      const outra = await como("grande", SQL_UPD_FOTO, [U.grande, imagem(1024 * 1024 + 1)]);
+      const outra = await como("grande", SQL_UPD_FOTO, [
+        U.grande,
+        imagem(1024 * 1024 + 1),
+      ]);
       assert.equal(outra.code, "23514", outra.message);
     }),
 );
 
-prova("IMAGEM: a funcao do gatilho nao e' SECURITY DEFINER e ninguem de fora a executa", () =>
-  emTransacao(async () => {
-    const r = await C.query(
-      `SELECT p.prosecdef,
+prova(
+  "IMAGEM: a funcao do gatilho nao e' SECURITY DEFINER e ninguem de fora a executa",
+  () =>
+    emTransacao(async () => {
+      const r = await C.query(
+        `SELECT p.prosecdef,
               has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
               has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth,
               EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
                        WHERE a.grantee = 0) AS publico
          FROM pg_proc p WHERE p.oid = to_regprocedure('public.perfil_recusa_imagem_grande()')`,
-    );
-    assert.deepEqual(r.rows, [{ prosecdef: false, anon: false, auth: false, publico: false }]);
-  }),
+      );
+      assert.deepEqual(r.rows, [
+        { prosecdef: false, anon: false, auth: false, publico: false },
+      ]);
+    }),
 );
 
 // ---------------------------------------------------------------------------
@@ -464,58 +607,85 @@ prova("IMAGEM: a funcao do gatilho nao e' SECURITY DEFINER e ninguem de fora a e
 
 const SQL_PUSH = "SELECT public.get_segmented_push_count('all') AS n";
 
-prova("PUSH: CONTROLE — antes do lote o visitante chega ao corpo (recusa do corpo, nao de permissao)", () =>
-  emTransacao(async () => {
-    await semear();
-    await voltarParaAntes();
-    const r = await como("anon", SQL_PUSH);
-    assert.equal(r.ok, false);
-    assert.notEqual(r.code, "42501", "antes, a porta estava aberta ao visitante");
-    assert.match(r.message, /Acesso negado/);
-  }),
+prova(
+  "PUSH: CONTROLE — antes do lote o visitante chega ao corpo (recusa do corpo, nao de permissao)",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      await voltarParaAntes();
+      const r = await como("anon", SQL_PUSH);
+      assert.equal(r.ok, false);
+      assert.notEqual(
+        r.code,
+        "42501",
+        "antes, a porta estava aberta ao visitante",
+      );
+      assert.match(r.message, /Acesso negado/);
+    }),
 );
 
-prova("PUSH: o visitante recebe 42501; o admin atual conta; o logado comum cai na recusa do corpo", () =>
-  emTransacao(async () => {
-    await semear();
-    const anon = await como("anon", SQL_PUSH);
-    assert.equal(anon.code, "42501", anon.message);
-    const adm = await como("admin", SQL_PUSH);
-    assert.ok(adm.ok, adm.message);
-    assert.equal(typeof adm.rows[0].n, "string", "bigint");
-    const cli = await como("terceiro", SQL_PUSH);
-    assert.equal(cli.ok, false);
-    assert.notEqual(cli.code, "42501");
-    assert.match(cli.message, /Acesso negado/);
-    const reb = await como("rebaixado", SQL_PUSH);
-    assert.equal(reb.ok, false, "o rebaixado nao conta");
-  }),
+prova(
+  "PUSH: o visitante recebe 42501; o admin atual conta; o logado comum cai na recusa do corpo",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      const anon = await como("anon", SQL_PUSH);
+      assert.equal(anon.code, "42501", anon.message);
+      const adm = await como("admin", SQL_PUSH);
+      assert.ok(adm.ok, adm.message);
+      assert.equal(typeof adm.rows[0].n, "string", "bigint");
+      const cli = await como("terceiro", SQL_PUSH);
+      assert.equal(cli.ok, false);
+      assert.notEqual(cli.code, "42501");
+      assert.match(cli.message, /Acesso negado/);
+      const reb = await como("rebaixado", SQL_PUSH);
+      assert.equal(reb.ok, false, "o rebaixado nao conta");
+    }),
 );
 
-prova("VIEW: CONTROLE antes (o visitante le, zero linhas); DEPOIS 42501; o admin le e cadastra produto pela view", () =>
-  emTransacao(async () => {
-    await semear();
-    await C.query("SAVEPOINT antes_da_view");
-    await voltarParaAntes();
-    const antes = await como("anon", "SELECT id FROM public.vw_produtos_admin");
-    assert.ok(antes.ok, antes.message);
-    assert.equal(antes.n, 0);
-    await C.query("ROLLBACK TO SAVEPOINT antes_da_view");
-    const depois = await como("anon", "SELECT id FROM public.vw_produtos_admin");
-    assert.equal(depois.code, "42501", depois.message);
-    const le = await como("admin", "SELECT id, custo FROM public.vw_produtos_admin WHERE id = $1", [P_PROD]);
-    assert.ok(le.ok, le.message);
-    assert.equal(le.n, 1);
-    const cad = await como(
-      "admin",
-      "INSERT INTO public.vw_produtos_admin (id, nome, preco_venda, custo, estoque) VALUES ($1, 'Novo pela view', 10, 4, 0) RETURNING id",
-      [P_NOVO],
-    );
-    assert.ok(cad.ok, `cadastro pela view: ${cad.message}`);
-    const cli = await como("terceiro", "SELECT id FROM public.vw_produtos_admin");
-    assert.ok(cli.ok, cli.message);
-    assert.equal(cli.n, 0, "o logado comum segue vendo zero (o WHERE da view)");
-  }),
+prova(
+  "VIEW: CONTROLE antes (o visitante le, zero linhas); DEPOIS 42501; o admin le e cadastra produto pela view",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      await C.query("SAVEPOINT antes_da_view");
+      await voltarParaAntes();
+      const antes = await como(
+        "anon",
+        "SELECT id FROM public.vw_produtos_admin",
+      );
+      assert.ok(antes.ok, antes.message);
+      assert.equal(antes.n, 0);
+      await C.query("ROLLBACK TO SAVEPOINT antes_da_view");
+      const depois = await como(
+        "anon",
+        "SELECT id FROM public.vw_produtos_admin",
+      );
+      assert.equal(depois.code, "42501", depois.message);
+      const le = await como(
+        "admin",
+        "SELECT id, custo FROM public.vw_produtos_admin WHERE id = $1",
+        [P_PROD],
+      );
+      assert.ok(le.ok, le.message);
+      assert.equal(le.n, 1);
+      const cad = await como(
+        "admin",
+        "INSERT INTO public.vw_produtos_admin (id, nome, preco_venda, custo, estoque) VALUES ($1, 'Novo pela view', 10, 4, 0) RETURNING id",
+        [P_NOVO],
+      );
+      assert.ok(cad.ok, `cadastro pela view: ${cad.message}`);
+      const cli = await como(
+        "terceiro",
+        "SELECT id FROM public.vw_produtos_admin",
+      );
+      assert.ok(cli.ok, cli.message);
+      assert.equal(
+        cli.n,
+        0,
+        "o logado comum segue vendo zero (o WHERE da view)",
+      );
+    }),
 );
 
 // ---------------------------------------------------------------------------
@@ -524,120 +694,164 @@ prova("VIEW: CONTROLE antes (o visitante le, zero linhas); DEPOIS 42501; o admin
 
 const TABELAS = ["public.app_settings", "public.otp_verifications"];
 
-prova("SERVIDOR: CONTROLE — antes (o estado da loja que tinha os grants) anon e authenticated tinham privilegio", () =>
-  emTransacao(async () => {
-    await voltarParaAntes();
-    for (const t of TABELAS) {
-      for (const p of ["anon", "authenticated"]) {
-        const r = await C.query("SELECT has_table_privilege($1, $2, 'SELECT') AS s", [p, t]);
-        assert.equal(r.rows[0].s, true, `${p} em ${t}`);
+prova(
+  "SERVIDOR: CONTROLE — antes (o estado da loja que tinha os grants) anon e authenticated tinham privilegio",
+  () =>
+    emTransacao(async () => {
+      await voltarParaAntes();
+      for (const t of TABELAS) {
+        for (const p of ["anon", "authenticated"]) {
+          const r = await C.query(
+            "SELECT has_table_privilege($1, $2, 'SELECT') AS s",
+            [p, t],
+          );
+          assert.equal(r.rows[0].s, true, `${p} em ${t}`);
+        }
+        const r = await como("anon", `SELECT count(*) FROM ${t}`);
+        assert.ok(
+          r.ok,
+          `antes, o anon passava do grant (a RLS devolvia zero): ${r.message}`,
+        );
       }
-      const r = await como("anon", `SELECT count(*) FROM ${t}`);
-      assert.ok(r.ok, `antes, o anon passava do grant (a RLS devolvia zero): ${r.message}`);
-    }
-  }),
+    }),
 );
 
-prova("SERVIDOR: anon e authenticated (ate o admin) recebem 42501; service_role le e grava", () =>
-  emTransacao(async () => {
-    await semear();
-    for (const t of TABELAS) {
-      for (const quem of ["anon", "terceiro", "admin"]) {
-        const r = await como(quem, `SELECT count(*) FROM ${t}`);
-        assert.equal(r.code, "42501", `${quem} em ${t}: ${r.message}`);
+prova(
+  "SERVIDOR: anon e authenticated (ate o admin) recebem 42501; service_role le e grava",
+  () =>
+    emTransacao(async () => {
+      await semear();
+      for (const t of TABELAS) {
+        for (const quem of ["anon", "terceiro", "admin"]) {
+          const r = await como(quem, `SELECT count(*) FROM ${t}`);
+          assert.equal(r.code, "42501", `${quem} em ${t}: ${r.message}`);
+        }
+        const ins = await como("anon", `DELETE FROM ${t}`);
+        assert.equal(ins.code, "42501");
       }
-      const ins = await como("anon", `DELETE FROM ${t}`);
-      assert.equal(ins.code, "42501");
-    }
-    // Fabrica do Supabase que o provisionar.cjs nao emula: service_role tem BYPASSRLS (as edge
-    // functions leem o cofre sem politica). ALTER ROLE e' transacional: o ROLLBACK do caso o desfaz.
-    await C.query("ALTER ROLE service_role BYPASSRLS");
-    const s = await como(
-      "servico",
-      `INSERT INTO public.app_settings (key, value) VALUES ('teste_l2', '"x"') RETURNING key`,
-    );
-    assert.ok(s.ok, `service_role grava: ${s.message}`);
-    const u = await como("servico", "UPDATE public.app_settings SET value = '\"y\"' WHERE key = 'teste_l2'");
-    assert.ok(u.ok && u.n === 1, u.message);
-    const l = await como("servico", "SELECT value FROM public.app_settings WHERE key = 'teste_l2'");
-    assert.ok(l.ok && l.n === 1, l.message);
-    const d = await como("servico", "DELETE FROM public.app_settings WHERE key = 'teste_l2'");
-    assert.ok(d.ok && d.n === 1, d.message);
-    const o = await como("servico", "SELECT count(*) FROM public.otp_verifications");
-    assert.ok(o.ok, o.message);
-  }),
+      // Fabrica do Supabase que o provisionar.cjs nao emula: service_role tem BYPASSRLS (as edge
+      // functions leem o cofre sem politica). ALTER ROLE e' transacional: o ROLLBACK do caso o desfaz.
+      await C.query("ALTER ROLE service_role BYPASSRLS");
+      const s = await como(
+        "servico",
+        `INSERT INTO public.app_settings (key, value) VALUES ('teste_l2', '"x"') RETURNING key`,
+      );
+      assert.ok(s.ok, `service_role grava: ${s.message}`);
+      const u = await como(
+        "servico",
+        "UPDATE public.app_settings SET value = '\"y\"' WHERE key = 'teste_l2'",
+      );
+      assert.ok(u.ok && u.n === 1, u.message);
+      const l = await como(
+        "servico",
+        "SELECT value FROM public.app_settings WHERE key = 'teste_l2'",
+      );
+      assert.ok(l.ok && l.n === 1, l.message);
+      const d = await como(
+        "servico",
+        "DELETE FROM public.app_settings WHERE key = 'teste_l2'",
+      );
+      assert.ok(d.ok && d.n === 1, d.message);
+      const o = await como(
+        "servico",
+        "SELECT count(*) FROM public.otp_verifications",
+      );
+      assert.ok(o.ok, o.message);
+    }),
 );
 
-prova("SERVIDOR: o codigo do rastreio do convidado continua saindo (service_role) e sendo conferido (anon)", () =>
-  emTransacao(async () => {
-    const email = "convidado@l2.teste";
-    const fone = "11988887777";
-    await C.query(
-      `INSERT INTO public.marketplace_orders
+prova(
+  "SERVIDOR: o codigo do rastreio do convidado continua saindo (service_role) e sendo conferido (anon)",
+  () =>
+    emTransacao(async () => {
+      const email = "convidado@l2.teste";
+      const fone = "11988887777";
+      await C.query(
+        `INSERT INTO public.marketplace_orders
          (id, user_id, customer_name, customer_phone, customer_data, total, subtotal, payment_status)
        VALUES ($1, NULL, 'Convidado L2', $2, $3::jsonb, 100, 100, 'aguardando')`,
-      [O_PEDIDO, fone, JSON.stringify({ email, whatsapp: fone })],
-    );
-    const frag = O_PEDIDO.slice(-6);
-    const g = await como("servico", "SELECT public.generate_order_otp_v2($1, $2, $3) AS r", [email, fone, frag]);
-    assert.ok(g.ok, g.message);
-    assert.equal(g.rows[0].r.ok, true, JSON.stringify(g.rows[0].r));
-    const v = await como("anon", "SELECT public.get_orders_by_otp_v2($1, $2, $3, $4) AS r", [
-      email,
-      fone,
-      frag,
-      g.rows[0].r.otp_code,
-    ]);
-    assert.ok(v.ok, v.message);
-    assert.equal(v.rows[0].r.ok, true, JSON.stringify(v.rows[0].r));
-    assert.equal(v.rows[0].r.orders[0].id, O_PEDIDO);
-  }),
+        [O_PEDIDO, fone, JSON.stringify({ email, whatsapp: fone })],
+      );
+      const frag = O_PEDIDO.slice(-6);
+      const g = await como(
+        "servico",
+        "SELECT public.generate_order_otp_v2($1, $2, $3) AS r",
+        [email, fone, frag],
+      );
+      assert.ok(g.ok, g.message);
+      assert.equal(g.rows[0].r.ok, true, JSON.stringify(g.rows[0].r));
+      const v = await como(
+        "anon",
+        "SELECT public.get_orders_by_otp_v2($1, $2, $3, $4) AS r",
+        [email, fone, frag, g.rows[0].r.otp_code],
+      );
+      assert.ok(v.ok, v.message);
+      assert.equal(v.rows[0].r.ok, true, JSON.stringify(v.rows[0].r));
+      assert.equal(v.rows[0].r.orders[0].id, O_PEDIDO);
+    }),
 );
 
-prova("SERVIDOR: numa loja ja fechada a migration e' no-op (o mesmo estado)", () =>
-  emTransacao(async () => {
-    for (const t of TABELAS)
-      await C.query(`REVOKE ALL ON TABLE ${t} FROM PUBLIC, anon, authenticated`);
-    const acl = async () =>
-      (
+prova(
+  "SERVIDOR: numa loja ja fechada a migration e' no-op (o mesmo estado)",
+  () =>
+    emTransacao(async () => {
+      for (const t of TABELAS)
         await C.query(
-          "SELECT string_agg(c.relname || '=' || coalesce(c.relacl::text, ''), ';' ORDER BY c.relname) AS a FROM pg_class c WHERE c.oid IN ('public.app_settings'::regclass, 'public.otp_verifications'::regclass)",
-        )
-      ).rows[0].a;
-    const antes = await acl();
-    await C.query(migration(1));
-    assert.equal(await acl(), antes);
-  }),
+          `REVOKE ALL ON TABLE ${t} FROM PUBLIC, anon, authenticated`,
+        );
+      const acl = async () =>
+        (
+          await C.query(
+            "SELECT string_agg(c.relname || '=' || coalesce(c.relacl::text, ''), ';' ORDER BY c.relname) AS a FROM pg_class c WHERE c.oid IN ('public.app_settings'::regclass, 'public.otp_verifications'::regclass)",
+          )
+        ).rows[0].a;
+      const antes = await acl();
+      await C.query(migration(1));
+      assert.equal(await acl(), antes);
+    }),
 );
 
-prova("SERVIDOR: grant de COLUNA ao anon some junto com o REVOKE de tabela", () =>
-  emTransacao(async () => {
-    await voltarParaAntes();
-    await C.query("REVOKE ALL ON TABLE public.app_settings FROM anon");
-    await C.query("GRANT SELECT (key) ON public.app_settings TO anon");
-    const antes = await C.query(
-      "SELECT has_any_column_privilege('anon', 'public.app_settings', 'SELECT') AS c",
-    );
-    assert.equal(antes.rows[0].c, true, "controle: o grant de coluna existia");
-    await C.query(migration(1));
-    const depois = await C.query(
-      "SELECT has_any_column_privilege('anon', 'public.app_settings', 'SELECT') AS c",
-    );
-    assert.equal(depois.rows[0].c, false);
-  }),
+prova(
+  "SERVIDOR: grant de COLUNA ao anon some junto com o REVOKE de tabela",
+  () =>
+    emTransacao(async () => {
+      await voltarParaAntes();
+      await C.query("REVOKE ALL ON TABLE public.app_settings FROM anon");
+      await C.query("GRANT SELECT (key) ON public.app_settings TO anon");
+      const antes = await C.query(
+        "SELECT has_any_column_privilege('anon', 'public.app_settings', 'SELECT') AS c",
+      );
+      assert.equal(
+        antes.rows[0].c,
+        true,
+        "controle: o grant de coluna existia",
+      );
+      await C.query(migration(1));
+      const depois = await C.query(
+        "SELECT has_any_column_privilege('anon', 'public.app_settings', 'SELECT') AS c",
+      );
+      assert.equal(depois.rows[0].c, false);
+    }),
 );
 
-prova("SERVIDOR: grant dado por OUTRO grantor (o REVOKE so avisa) faz a conferencia recusar o apply inteiro", () =>
-  emTransacao(async () => {
-    await voltarParaAntes();
-    await C.query("GRANT ALL ON TABLE public.otp_verifications TO service_role WITH GRANT OPTION");
-    await C.query("SET LOCAL ROLE service_role");
-    await C.query("GRANT SELECT ON TABLE public.otp_verifications TO anon");
-    await C.query("RESET ROLE");
-    const r = await tentarComoDono(migration(1));
-    assert.equal(r.ok, false, "a migration passou com o anon ainda lendo");
-    assert.match(r.message, /conferencia 20261218000100: anon ainda alcanca public\.otp_verifications/);
-  }),
+prova(
+  "SERVIDOR: grant dado por OUTRO grantor (o REVOKE so avisa) faz a conferencia recusar o apply inteiro",
+  () =>
+    emTransacao(async () => {
+      await voltarParaAntes();
+      await C.query(
+        "GRANT ALL ON TABLE public.otp_verifications TO service_role WITH GRANT OPTION",
+      );
+      await C.query("SET LOCAL ROLE service_role");
+      await C.query("GRANT SELECT ON TABLE public.otp_verifications TO anon");
+      await C.query("RESET ROLE");
+      const r = await tentarComoDono(migration(1));
+      assert.equal(r.ok, false, "a migration passou com o anon ainda lendo");
+      assert.match(
+        r.message,
+        /conferencia 20261218000100: anon ainda alcanca public\.otp_verifications/,
+      );
+    }),
 );
 
 // ---------------------------------------------------------------------------
@@ -668,61 +882,81 @@ const DIGITAL = `
   ) x`;
 const digital = async () => (await C.query(DIGITAL)).rows[0].d;
 
-prova("MIGRATION: reaplicar (LF e CRLF) = o mesmo estado; o rollback devolve o estado de antes; de novo = depois", () =>
-  emTransacao(async () => {
-    const depois = await digital();
-    for (const i of [0, 1, 2]) await C.query(migration(i));
-    assert.equal(await digital(), depois, "reaplicar");
-    for (const i of [0, 1, 2]) await C.query(migration(i).replace(/\r?\n/g, "\r\n"));
-    assert.equal(await digital(), depois, "CRLF");
-    await voltarParaAntes();
-    const antes = await digital();
-    assert.notEqual(antes, depois, "o rollback mudou alguma coisa");
-    await voltarParaAntes();
-    assert.equal(await digital(), antes, "rollback duas vezes");
-    for (const i of [0, 1, 2]) await C.query(migration(i));
-    assert.equal(await digital(), depois, "de novo");
-    // o antes e' o banco das migrations ANTERIORES: a politica USING (true) de PUBLIC, sem gatilho
-    await voltarParaAntes();
-    const pol = await C.query(
-      "SELECT pg_get_expr(polqual, polrelid) AS q, polroles::regrole[]::text AS r FROM pg_policy WHERE polrelid = 'public.public_profiles'::regclass",
-    );
-    assert.deepEqual(pol.rows, [{ q: "true", r: "{-}" }]);
-  }),
+prova(
+  "MIGRATION: reaplicar (LF e CRLF) = o mesmo estado; o rollback devolve o estado de antes; de novo = depois",
+  () =>
+    emTransacao(async () => {
+      const depois = await digital();
+      for (const i of [0, 1, 2]) await C.query(migration(i));
+      assert.equal(await digital(), depois, "reaplicar");
+      for (const i of [0, 1, 2])
+        await C.query(migration(i).replace(/\r?\n/g, "\r\n"));
+      assert.equal(await digital(), depois, "CRLF");
+      await voltarParaAntes();
+      const antes = await digital();
+      assert.notEqual(antes, depois, "o rollback mudou alguma coisa");
+      await voltarParaAntes();
+      assert.equal(await digital(), antes, "rollback duas vezes");
+      for (const i of [0, 1, 2]) await C.query(migration(i));
+      assert.equal(await digital(), depois, "de novo");
+      // o antes e' o banco das migrations ANTERIORES: a politica USING (true) de PUBLIC, sem gatilho
+      await voltarParaAntes();
+      const pol = await C.query(
+        "SELECT pg_get_expr(polqual, polrelid) AS q, polroles::regrole[]::text AS r FROM pg_policy WHERE polrelid = 'public.public_profiles'::regclass",
+      );
+      assert.deepEqual(pol.rows, [{ q: "true", r: "{-}" }]);
+    }),
 );
 
-prova("MIGRATION: o pre-voo de cada uma recusa um banco divergente SEM escrever nada", () =>
-  emTransacao(async () => {
-    await voltarParaAntes();
-    const antes = await digital();
-    // 1: corpo da contagem do push diferente do vigente
-    await C.query("SAVEPOINT div1");
-    await C.query(
-      "CREATE OR REPLACE FUNCTION public.get_segmented_push_count(p_segment text DEFAULT 'all'::text, p_min_ltv numeric DEFAULT 150, p_days_inactive integer DEFAULT 30) RETURNS bigint LANGUAGE sql AS $$ SELECT 0::bigint $$",
-    );
-    let r = await tentarComoDono(migration(0));
-    assert.match(r.message || "", /B1_BASELINE_DIVERGENT: corpo vivo de public\.get_segmented_push_count/);
-    await C.query("ROLLBACK TO SAVEPOINT div1");
-    // 2: service_role sem DELETE em otp_verifications
-    await C.query("SAVEPOINT div2");
-    await C.query("REVOKE DELETE ON public.otp_verifications FROM service_role");
-    r = await tentarComoDono(migration(1));
-    assert.match(r.message || "", /B1_BASELINE_DIVERGENT: service_role sem/);
-    await C.query("ROLLBACK TO SAVEPOINT div2");
-    // 3: uma segunda politica em public_profiles
-    await C.query("SAVEPOINT div3");
-    await C.query("CREATE POLICY outra ON public.public_profiles FOR SELECT TO anon USING (true)");
-    r = await tentarComoDono(migration(2));
-    assert.match(r.message || "", /B1_BASELINE_DIVERGENT: public\.public_profiles tem 2 políticas/);
-    await C.query("ROLLBACK TO SAVEPOINT div3");
-    // 3: a politica com outra expressao
-    await C.query("SAVEPOINT div4");
-    await C.query("ALTER POLICY public_profiles_select_policy ON public.public_profiles USING (id IS NOT NULL)");
-    r = await tentarComoDono(migration(2));
-    assert.match(r.message || "", /B1_BASELINE_DIVERGENT: política public_profiles_select_policy/);
-    await C.query("ROLLBACK TO SAVEPOINT div4");
-    assert.equal(await digital(), antes, "nenhuma escrita sobrou");
-  }),
+prova(
+  "MIGRATION: o pre-voo de cada uma recusa um banco divergente SEM escrever nada",
+  () =>
+    emTransacao(async () => {
+      await voltarParaAntes();
+      const antes = await digital();
+      // 1: corpo da contagem do push diferente do vigente
+      await C.query("SAVEPOINT div1");
+      await C.query(
+        "CREATE OR REPLACE FUNCTION public.get_segmented_push_count(p_segment text DEFAULT 'all'::text, p_min_ltv numeric DEFAULT 150, p_days_inactive integer DEFAULT 30) RETURNS bigint LANGUAGE sql AS $$ SELECT 0::bigint $$",
+      );
+      let r = await tentarComoDono(migration(0));
+      assert.match(
+        r.message || "",
+        /B1_BASELINE_DIVERGENT: corpo vivo de public\.get_segmented_push_count/,
+      );
+      await C.query("ROLLBACK TO SAVEPOINT div1");
+      // 2: service_role sem DELETE em otp_verifications
+      await C.query("SAVEPOINT div2");
+      await C.query(
+        "REVOKE DELETE ON public.otp_verifications FROM service_role",
+      );
+      r = await tentarComoDono(migration(1));
+      assert.match(r.message || "", /B1_BASELINE_DIVERGENT: service_role sem/);
+      await C.query("ROLLBACK TO SAVEPOINT div2");
+      // 3: uma segunda politica em public_profiles
+      await C.query("SAVEPOINT div3");
+      await C.query(
+        "CREATE POLICY outra ON public.public_profiles FOR SELECT TO anon USING (true)",
+      );
+      r = await tentarComoDono(migration(2));
+      assert.match(
+        r.message || "",
+        /B1_BASELINE_DIVERGENT: public\.public_profiles tem 2 políticas/,
+      );
+      await C.query("ROLLBACK TO SAVEPOINT div3");
+      // 3: a politica com outra expressao
+      await C.query("SAVEPOINT div4");
+      await C.query(
+        "ALTER POLICY public_profiles_select_policy ON public.public_profiles USING (id IS NOT NULL)",
+      );
+      r = await tentarComoDono(migration(2));
+      assert.match(
+        r.message || "",
+        /B1_BASELINE_DIVERGENT: política public_profiles_select_policy/,
+      );
+      await C.query("ROLLBACK TO SAVEPOINT div4");
+      assert.equal(await digital(), antes, "nenhuma escrita sobrou");
+    }),
 );
 
 async function main() {
@@ -737,7 +971,9 @@ async function main() {
         console.log(`  ok  ${nome}`);
       } catch (e) {
         falhas.push(nome);
-        console.log(`  FALHOU  ${nome}\n    ${String(e.message).split("\n").join("\n    ")}`);
+        console.log(
+          `  FALHOU  ${nome}\n    ${String(e.message).split("\n").join("\n    ")}`,
+        );
         await C.query("ROLLBACK").catch(() => {});
       }
     }
@@ -745,9 +981,14 @@ async function main() {
     await C.end().catch(() => {});
   }
   if (falhas.length) {
-    falhar("FALHOU", `${falhas.length} de ${PROVAS.length} provas do lote L2 falharam.`);
+    falhar(
+      "FALHOU",
+      `${falhas.length} de ${PROVAS.length} provas do lote L2 falharam.`,
+    );
   }
-  console.log(`\n[portas-do-banco] ${PROVAS.length}/${PROVAS.length} provas passaram.`);
+  console.log(
+    `\n[portas-do-banco] ${PROVAS.length}/${PROVAS.length} provas passaram.`,
+  );
 }
 
 main().catch((e) => {

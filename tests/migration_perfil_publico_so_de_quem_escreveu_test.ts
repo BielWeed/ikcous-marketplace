@@ -132,16 +132,21 @@ Deno.test("a politica nova: SELECT so para authenticated, quatro ramos, nenhum r
 Deno.test("so a politica muda: nenhum GRANT/REVOKE, nada de tabela, funcao ou outra politica", () => {
   const sql = limpo(migration);
   assert.doesNotMatch(sql, /\b(GRANT|REVOKE)\b/i);
-  assert.doesNotMatch(sql, /\b(CREATE|ALTER|DROP)\s+(TABLE|FUNCTION|VIEW|TRIGGER)\b/i);
+  assert.doesNotMatch(
+    sql,
+    /\b(CREATE|ALTER|DROP)\s+(TABLE|FUNCTION|VIEW|TRIGGER)\b/i,
+  );
   assert.equal((sql.match(/\bCREATE POLICY\b/g) || []).length, 1);
   assert.equal((sql.match(/\bDROP POLICY\b/g) || []).length, 1);
 });
 
 Deno.test("pre-voo, conferencia e pre-voo do rollback citam o MESMO literal deparseado, e o md5 REAL de rls_admin_atual()", () => {
   const literais = (sql) =>
-    [...sql.matchAll(/v_qual (?:=|IS DISTINCT FROM) E'(\(\(id = [^\n]*?\)\)\)\))'/g)].map(
-      (m) => m[1],
-    );
+    [
+      ...sql.matchAll(
+        /v_qual (?:=|IS DISTINCT FROM) E'(\(\(id = [^\n]*?\)\)\)\))'/g,
+      ),
+    ].map((m) => m[1]);
   const todos = [...literais(migration), ...literais(rollback)];
   assert.equal(todos.length, 3, "pre-voo + conferencia + pre-voo do rollback");
   assert.equal(new Set(todos).size, 1, "os tres literais sao o mesmo");
@@ -161,10 +166,14 @@ Deno.test("pre-voo, conferencia e pre-voo do rollback citam o MESMO literal depa
     assert.ok(sql.includes("set_config('search_path', v_caminho, true)"));
   }
   const da97 = ler("20261197000000_dinheiro_exige_admin_atual.sql");
-  const i = da97.indexOf("\nCREATE OR REPLACE FUNCTION public.rls_admin_atual()");
+  const i = da97.indexOf(
+    "\nCREATE OR REPLACE FUNCTION public.rls_admin_atual()",
+  );
   assert.ok(i >= 0);
   const f = da97.slice(i + 1, da97.indexOf("\n$$;", i + 1) + "\n$$;".length);
-  const h = md5(f.slice(f.indexOf("AS $$") + "AS $$".length, f.length - "$$;".length));
+  const h = md5(
+    f.slice(f.indexOf("AS $$") + "AS $$".length, f.length - "$$;".length),
+  );
   assert.equal(h, "ccb7a56e835b8181795fffb7bee97305");
   assert.ok(migration.includes(`IS DISTINCT FROM '${h}'`));
   assert.ok(
@@ -177,7 +186,8 @@ Deno.test("pre-voo, conferencia e pre-voo do rollback citam o MESMO literal depa
 Deno.test("a conferencia final recusa politica para PUBLIC/anon, mais de uma politica ou RLS desligada", () => {
   const c = migration.slice(migration.indexOf("DO $conferencia_20261219$"));
   assert.ok(
-    migration.indexOf("DO $conferencia_20261219$") > migration.indexOf(politica),
+    migration.indexOf("DO $conferencia_20261219$") >
+      migration.indexOf(politica),
   );
   for (const trecho of [
     "relrowsecurity",
@@ -233,34 +243,58 @@ function reaberturas(sql) {
         .replace(/\bWITH GRANT OPTION\b|\bGRANTED BY\b.*$/gi, "")
         .split(",")
         .map((p) => p.trim().replace(/"/g, "").toLowerCase());
-      const emMassa = /\ball (tables|functions|routines) in schema\b/.test(objetos);
+      const emMassa = /\ball (tables|functions|routines) in schema\b/.test(
+        objetos,
+      );
+      // os nomes citados no GRANT, palavra a palavra (o mesmo que \b<nome>\b)
+      const nomes = objetos.split(/[^a-z0-9_]+/);
       for (const [obj, proibidos] of Object.entries(FECHADAS_A)) {
-        if (!emMassa && !new RegExp(`\\b${obj}\\b`).test(objetos)) continue;
+        if (!emMassa && !nomes.includes(obj)) continue;
         const ruim = papeis.filter((p) => proibidos.includes(p));
-        if (ruim.length) achados.push(`GRANT de ${obj} a ${ruim.join(",")}: ${cmd}`);
+        if (ruim.length)
+          achados.push(`GRANT de ${obj} a ${ruim.join(",")}: ${cmd}`);
       }
       continue;
     }
-    const pol = /^(CREATE|ALTER) POLICY\b.*?\bON (?:public\.)?"?(public_profiles|profiles)"?\b(.*)$/i.exec(cmd);
+    const pol =
+      /^(CREATE|ALTER) POLICY\b.*?\bON (?:public\.)?"?(public_profiles|profiles)"?\b(.*)$/i.exec(
+        cmd,
+      );
     if (pol) {
       const resto = pol[3];
       const to = /\bTO (.*?)(?:\bUSING\b|\bWITH CHECK\b|$)/i.exec(resto);
-      const papeis = to ? to[1].toLowerCase().split(",").map((p) => p.trim()) : [];
+      const papeis = to
+        ? to[1]
+            .toLowerCase()
+            .split(",")
+            .map((p) => p.trim())
+        : [];
       if (pol[1].toUpperCase() === "CREATE" && !to)
         achados.push(`politica em ${pol[2]} sem TO (vale para PUBLIC): ${cmd}`);
       if (papeis.some((p) => p === "public" || p === "anon"))
         achados.push(`politica em ${pol[2]} para PUBLIC/anon: ${cmd}`);
-      if (pol[2].toLowerCase() === "public_profiles" && /\bUSING \(\s*true\s*\)/i.test(resto))
+      if (
+        pol[2].toLowerCase() === "public_profiles" &&
+        /\bUSING \(\s*true\s*\)/i.test(resto)
+      )
         achados.push(`politica em public_profiles com USING (true): ${cmd}`);
       continue;
     }
     if (/^DROP FUNCTION\b.*\bget_segmented_push_count\b/i.test(cmd))
-      achados.push(`DROP da contagem do push (renasce com EXECUTE de PUBLIC): ${cmd}`);
+      achados.push(
+        `DROP da contagem do push (renasce com EXECUTE de PUBLIC): ${cmd}`,
+      );
     if (/^(DROP VIEW\b.*|CREATE VIEW\b.*)\bvw_produtos_admin\b/i.test(cmd))
-      achados.push(`view do painel recriada do zero (renasce com o grant padrao do anon): ${cmd}`);
+      achados.push(
+        `view do painel recriada do zero (renasce com o grant padrao do anon): ${cmd}`,
+      );
     if (/^DROP TRIGGER\b.*\btr_perfil_recusa_imagem_grande\b/i.test(cmd))
       achados.push(`teto da imagem do perfil removido: ${cmd}`);
-    if (/^ALTER TABLE\b.*\b(public_profiles|app_settings|otp_verifications)\b.*\bDISABLE ROW LEVEL SECURITY\b/i.test(cmd))
+    if (
+      /^ALTER TABLE\b.*\b(public_profiles|app_settings|otp_verifications)\b.*\bDISABLE ROW LEVEL SECURITY\b/i.test(
+        cmd,
+      )
+    )
       achados.push(`RLS desligada: ${cmd}`);
   }
   return achados;
@@ -316,7 +350,11 @@ Deno.test("guarda de reabertura: o proprio lote nao reabre, e NENHUMA migration 
   );
   const posteriores = migracoes().filter((n) => n > NOME);
   for (const n of posteriores)
-    assert.deepEqual(reaberturas(ler(n)), [], `${n} reabre o que este lote fechou`);
+    assert.deepEqual(
+      reaberturas(ler(n)),
+      [],
+      `${n} reabre o que este lote fechou`,
+    );
 });
 
 Deno.test("composicao: a migration entra em POSTERIORES_A_97 (admin-atual-viva e pagamentos-rpc-viva), depois das entradas indexadas", () => {
@@ -333,10 +371,18 @@ Deno.test("composicao: a migration entra em POSTERIORES_A_97 (admin-atual-viva e
     const lista = t.slice(ini, fim);
     const nomes = [...lista.matchAll(/nome: "([^"]+)"/g)].map((x) => x[1]);
     const pos = nomes.indexOf(NOME);
-    const pos98 = nomes.indexOf("20261198000000_cancelar_pedido_anula_a_cobranca.sql");
-    assert.ok(pos98 >= 0 && pos > pos98, `${arq}: a 20261219 fora do fim da lista`);
+    const pos98 = nomes.indexOf(
+      "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
+    );
+    assert.ok(
+      pos98 >= 0 && pos > pos98,
+      `${arq}: a 20261219 fora do fim da lista`,
+    );
     for (const depois of nomes.slice(pos + 1))
-      assert.ok(depois > NOME, `${arq}: ${depois} vem depois da 20261219 sem ser mais nova`);
+      assert.ok(
+        depois > NOME,
+        `${arq}: ${depois} vem depois da 20261219 sem ser mais nova`,
+      );
     const entrada = lista.slice(lista.indexOf(`nome: "${NOME}"`));
     assert.ok(
       /polname = 'public_profiles_select_policy'[\s\S]*rls_admin_atual/.test(
