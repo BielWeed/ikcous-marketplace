@@ -66,6 +66,8 @@ on:
       - "scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql"
       - "scripts/publicacao/consultas/21a-conferir-teto-de-email-aplicado.sql"
       - "scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/22a-conferir-portas-do-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -102,6 +104,8 @@ on:
       - "scripts/publicacao/consultas/20b-antes-fotos-da-devolucao-sem-delete.sql"
       - "scripts/publicacao/consultas/21a-conferir-teto-de-email-aplicado.sql"
       - "scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/22a-conferir-portas-do-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -492,6 +496,19 @@ jobs:
       - name: Prova viva do portao do teto de e-mail (consultas 21a e 21b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/teto-de-email-portao-viva.cjs
+      # Portas pequenas do banco (migrations 20261218000000, 20261218000100 e 20261219000000). A primeira
+      # prova e o COMPORTAMENTO com os papeis reais: a lista de perfis so para quem esta logado (o
+      # visitante recebe zero linhas e a vitrine segue com o autor), o teto da foto e da capa do perfil
+      # (imagem antiga grande continua editavel), a contagem do push e a view do painel fechadas ao
+      # visitante, configuracoes e codigos so pelo servidor; o ANTES (os rollback-manual) e o controle de
+      # cada recusa. A segunda e o PORTAO: as consultas 22a (DEPOIS, 15 linhas) e 22b (ANTES, 11 linhas)
+      # devolvem o rol exato em qualquer estado e cada defeito reprova SO a sua linha. BLOQUEANTES. CLONE proprio.
+      - name: Prova viva das portas pequenas do banco (migrations 20261218 e 20261219)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-do-banco-viva.cjs
+      - name: Prova viva do portao das portas pequenas do banco (consultas 22a e 22b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-do-banco-portao-viva.cjs
       # Onda I do painel simples (20261212 a 20261214): o estoque baixo e uma regua so (Inicio, lista, analytics),
       # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (sem migration) e o estoque
       # minimo e editavel so pelo admin. Cada prova clona o banco.

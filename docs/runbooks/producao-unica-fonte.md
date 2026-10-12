@@ -747,6 +747,50 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         chamadas, pedido pago passa, v1/v2) num Postgres 17 efemero; nao prova a cota real do Gmail da
         loja (os numeros sao conservadores e ficam em constantes no topo de cada funcao).
 
+  19. **Lote de TRES migrations, de apply normal: `20261218000000`, `20261218000100` e `20261219000000`
+      (as portas pequenas do banco).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy). A `20261218000000` cria o gatilho `tr_perfil_recusa_imagem_grande` em
+      `profiles` (foto ate 128 KiB e capa ate 512 KiB, conferidas so quando a imagem muda; a imagem ja
+      gravada fica como esta) e tira do visitante sem login o `EXECUTE` de `get_segmented_push_count` e
+      tudo na view `vw_produtos_admin`. A `20261218000100` tira de `anon` e `authenticated` todo
+      privilegio em `app_settings` e `otp_verifications` (so o servidor as usa; na IKCOUS e no-op). A
+      `20261219000000` recria `public_profiles_select_policy` so para `authenticated`: a propria conta, o
+      admin atual e quem escreveu avaliacao publicada ou pergunta. **A 20261218000100 e a 20261219000000
+      NAO sao aditivas** (restringem leitura): o apply espera o SQL mostrado ao dono. Nenhuma linha de
+      dado e lida ou reescrita ao aplicar. Duas consultas, so leitura, so catalogo, de ROL FECHADO (15 e
+      11 linhas, so valem com `rol=ok`):
+      - **`22a-conferir-portas-do-banco-aplicado`** (a consulta do lote) prova DEPOIS do apply a politica
+        (papeis e md5 da condicao), o gatilho (definicao, ligado, corpo sha256 LF ou CRLF, `EXECUTE`
+        fechado, sem SECURITY DEFINER), o `EXECUTE` da contagem do push, a view do painel e as duas
+        tabelas do servidor fechadas com a `service_role` intacta.
+      - **`22b-antes-portas-do-banco-estado-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: a
+        politica `USING (true)` para PUBLIC, o gatilho ausente, o corpo e o `EXECUTE` de sempre da
+        contagem do push, o `anon` lendo a view, a porta `rls_admin_atual` e as colunas que o lote le.
+        Nao tem linha das duas tabelas do servidor (na IKCOUS o antes delas ja e o depois).
+      - **Caminho, uma loja por vez:** `22a` (sai NEGATIVA) → `22b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com os TRES arquivos, na ordem 18000000, 18000100, 19000000 → o ensaio
+        pede a `22a` DE NOVO, que tem de sair POSITIVA. `22a` POSITIVA com as versoes fora do ledger:
+        PARAR (sem backfill). Estado parcial (so parte das tres no banco ou no ledger): PARAR; com o
+        dono, o rollback do que entrou e o lote inteiro de novo.
+      - **Ordem:** o banco de CADA loja (IKCOUS, depois Savy). Nenhuma edge function e nenhum front
+        mudam: o front ja le o autor das avaliacoes e perguntas pelas views e nunca leu as duas tabelas
+        do servidor. So a imagem de perfil acima do teto passa a ser recusada (aviso generico da tela).
+      - **Desfazer (decisao do DONO, nunca automatica), na ordem inversa, pelo `aplicar-migrations.yml`:**
+        `rollback-manual-20261219000000_perfil_publico_so_de_quem_escreveu.sql` (a politica volta a
+        `USING (true)` para PUBLIC); `rollback-manual-20261218000100_configuracoes_e_codigos_so_do_servidor.sql`
+        (devolve `GRANT ALL` a `anon` e `authenticated`; NAO se aplica na IKCOUS, onde as tabelas nunca
+        estiveram abertas); `rollback-manual-20261218000000_a_foto_do_perfil_tem_teto_e_o_painel_fecha_ao_visitante.sql`
+        (apaga o gatilho e devolve o `EXECUTE` de PUBLIC/`anon` e o SELECT/REFERENCES de `anon` na view).
+        Depois dos tres a `22b` volta a ser POSITIVA e a `22a` NEGATIVA (provado em
+        `tests/banco/portas-do-banco-portao-viva.cjs`).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a
+        `22a` e a `22b` DE NOVO.
+      - **Limites:** `tests/banco/portas-do-banco-viva.cjs` prova o comportamento (visitante sem linha,
+        cliente logado ve a si e aos autores, admin atual ve todos, teto da imagem por UPDATE, RPC e
+        INSERT, perfil antigo grande continua editavel, contagem do push e view so com login, as duas
+        tabelas so pelo servidor) num Postgres 17 efemero com os papeis reais; nao prova o Postgres da
+        Supabase nem o papel `supabase_read_only_user` de cada loja.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

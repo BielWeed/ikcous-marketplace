@@ -1708,6 +1708,17 @@ const POSTERIORES_A_97 = [
     nome: "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql",
     noAr: `SELECT to_regprocedure('public.admin_cupom_clientes(uuid)') IS NOT NULL AS sim`,
   },
+  // 20261219000000: a lista de perfis publicos so para quem esta logado. A politica de
+  // public_profiles usa rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). No FIM da lista de proposito.
+  {
+    nome: "20261219000000_perfil_publico_so_de_quem_escreveu.sql",
+    noAr: `SELECT EXISTS (
+       SELECT 1 FROM pg_policy
+        WHERE polname = 'public_profiles_select_policy'
+          AND polrelid = to_regclass('public.public_profiles')
+          AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%') AS sim`,
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(c) {
