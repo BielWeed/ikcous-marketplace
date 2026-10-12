@@ -6,8 +6,8 @@
 // recarregar não encolhe a lista; carregarMais não duplica id; "agora"
 // acompanha a volta da aba.
 import { act } from "react";
-import { renderToString } from "react-dom/server";
 import { type Root, createRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
@@ -104,8 +104,9 @@ async function drenar() {
 }
 
 async function montar(active = true) {
-  const { AdminDevolucoesView } =
-    await import("@/views/admin/AdminDevolucoesView");
+  const { AdminDevolucoesView } = await import(
+    "@/views/admin/AdminDevolucoesView"
+  );
   const el = (a: boolean) => (
     <AdminDevolucoesView onNavigate={vi.fn()} active={a} />
   );
@@ -127,7 +128,7 @@ const idsNaTela = () => cartoes().map((c) => c.dataset.id);
 
 function chip(indice: number): HTMLButtonElement {
   const grupo = hospedeiro.querySelector('[role="group"]');
-  return grupo!.querySelectorAll("button")[indice] as HTMLButtonElement;
+  return grupo!.querySelectorAll("button").item(indice);
 }
 
 async function clicar(el: Element | null | undefined) {
@@ -173,8 +174,9 @@ describe("lista de devoluções do painel", () => {
   });
 
   it("item 3: o primeiro render não afirma 'Nenhuma devolução ainda'", async () => {
-    const { AdminDevolucoesView } =
-      await import("@/views/admin/AdminDevolucoesView");
+    const { AdminDevolucoesView } = await import(
+      "@/views/admin/AdminDevolucoesView"
+    );
     const html = renderToString(
       <AdminDevolucoesView onNavigate={vi.fn()} active />,
     );
@@ -201,11 +203,22 @@ describe("lista de devoluções do painel", () => {
     rpc.mockResolvedValueOnce(pagina(ids(1, 50), 61));
     await montar();
     // Entrou um item novo no topo: a página 2 repete d-50.
-    rpc.mockResolvedValueOnce(pagina(["d-50", ...ids(51, 60)], 61));
+    rpc.mockResolvedValueOnce(pagina(["d-50", ...ids(51, 59)], 61));
     await clicar(mostrarMais());
     const lista = idsNaTela();
     expect(new Set(lista).size).toBe(lista.length);
-    expect(lista).toHaveLength(60);
+    expect(lista).toHaveLength(59);
+
+    // Total 61, 59 na tela, mas o servidor já entregou 60 linhas cruas
+    // (50 + 10): ainda faltam linhas e o próximo clique AVANÇA o offset (60).
+    expect(mostrarMais()).toBeTruthy();
+    rpc.mockResolvedValueOnce(pagina(["d-60", "d-61"], 61));
+    await clicar(mostrarMais());
+    expect((rpc.mock.calls.at(-1)![1] as { p_offset: number }).p_offset).toBe(
+      60,
+    );
+    expect(idsNaTela()).toHaveLength(61);
+    expect(mostrarMais()).toBeUndefined();
   });
 
   it("item 5: 'agora' é renovado quando a tela volta a ficar ativa", async () => {

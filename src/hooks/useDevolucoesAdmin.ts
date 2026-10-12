@@ -73,6 +73,10 @@ export function useDevolucoesAdmin(args: {
   const [erro, setErro] = useState(false);
   const ativoRef = useRef(true);
   const rodadaRef = useRef(0);
+  // Offset do SERVIDOR: soma das linhas cruas recebidas. `itens.length` fica
+  // menor depois do dedupe e faria "Mostrar mais" repetir a mesma página.
+  const [lidas, setLidas] = useState(0);
+  const lidasRef = useRef(0);
   const chaveRef = useRef(`${status ?? ""}|${busca}`);
 
   const buscar = useCallback(
@@ -99,6 +103,11 @@ export function useDevolucoesAdmin(args: {
           const vistos = new Set(antes.map((i) => i.id));
           return [...antes, ...lista.itens.filter((i) => !vistos.has(i.id))];
         });
+        lidasRef.current =
+          offset === 0
+            ? lista.itens.length
+            : lidasRef.current + lista.itens.length;
+        setLidas(lidasRef.current);
         setTotal(lista.total);
         setContagem(lista.contagem);
         setErro(false);
@@ -121,8 +130,14 @@ export function useDevolucoesAdmin(args: {
         chaveRef.current = chave;
         setItens([]);
         setTotal(0);
+        setLidas(0);
+        lidasRef.current = 0;
       }
-      void buscar(0);
+      // Volta a ativa com a lista paginada: relê tudo, não encolhe a 50.
+      void buscar(
+        0,
+        Math.min(LIMITE_MAXIMO, Math.max(PAGINA, lidasRef.current)),
+      );
     }
     return () => {
       ativoRef.current = false;
@@ -135,11 +150,11 @@ export function useDevolucoesAdmin(args: {
     contagem,
     carregando,
     erro,
-    temMais: itens.length < total,
-    carregarMais: () => void buscar(itens.length),
+    temMais: lidas < total,
+    carregarMais: () => void buscar(lidas),
     // Releitura no lugar: mantém o que já foi paginado (até o teto da RPC).
     recarregar: () =>
-      void buscar(0, Math.min(LIMITE_MAXIMO, Math.max(PAGINA, itens.length))),
+      void buscar(0, Math.min(LIMITE_MAXIMO, Math.max(PAGINA, lidas))),
   };
 }
 
