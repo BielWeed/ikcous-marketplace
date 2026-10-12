@@ -763,6 +763,78 @@ export async function chaveDeIdempotencia(
   return chaveDoCartaoDaTentativa(id, tentativas);
 }
 
+/**
+ * TETO DE TENTATIVAS DE CARTÃO (auditoria L3, 12/10/2026). Teste de cartão
+ * alheio em série gera recusa atrás de recusa na conta do Mercado Pago da
+ * loja — o que leva a bloqueio da conta e a contestação. Dois tetos, os dois
+ * só sobre a CRIAÇÃO de cobrança de cartão (nunca a reconsulta, o
+ * `verificar`, o `cancelar` nem o PIX):
+ *   - por PEDIDO: 5 cobranças mortas no pedido (decisão do dono, P3);
+ *   - por CLIENTE: 15 cobranças mortas somadas nos pedidos que ele criou nas
+ *     últimas 24 h — sem isso, abrir pedido novo zeraria a conta.
+ *
+ * O que se conta é `tentativas_de_pagamento`, a coluna que já existe: ela
+ * soma TODA cobrança que morreu no pedido — cartão recusado, mas também o PIX
+ * cancelado na troca para cartão e o cartão em desafio cancelado na troca
+ * para PIX. Então o teto chega um pouco antes para quem alternou de forma;
+ * quem chega nele continua pagando com PIX, que nunca é barrado nem contado
+ * contra a criação do PIX. Contar só o cartão RECUSADO pede coluna nova —
+ * fica para o lote de migration.
+ */
+export const LIMITE_DE_TENTATIVAS_DE_CARTAO_POR_PEDIDO = 5;
+export const LIMITE_DE_TENTATIVAS_DE_CARTAO_POR_CLIENTE_24H = 15;
+const JANELA_DO_LIMITE_POR_CLIENTE_MS = 24 * 60 * 60 * 1000;
+
+/** `tentativas_de_pagamento` fora de inteiro ≥ 0 vale 0 — a mesma leitura de
+ * `chaveDeIdempotencia`. */
+function tentativasDoPedido(valor: unknown): number {
+  const bruto = Number(valor);
+  return Number.isInteger(bruto) && bruto >= 0 ? bruto : 0;
+}
+
+/**
+ * Algum teto do cartão já foi atingido? `acrescimo` é a cobrança que ESTA
+ * chamada vai matar antes de criar o cartão (o PIX aberto que a troca
+ * cancelaria): o teto é conferido com ela já contada, ANTES de cancelar —
+ * nunca se cancela um PIX vivo para depois negar o cartão.
+ *
+ * A soma do cliente lê os pedidos dele criados na janela (`user_id`, só
+ * cliente com conta paga online). Falha nessa leitura não nega o cartão (o
+ * teto do pedido continua valendo) — fica no log.
+ */
+async function tetoDoCartaoAtingido(
+  supabase: ReturnType<typeof createClient>,
+  pedido: { id: unknown; user_id?: unknown; tentativas_de_pagamento?: unknown },
+  acrescimo = 0,
+): Promise<"pedido" | "cliente" | null> {
+  const doPedido = tentativasDoPedido(pedido.tentativas_de_pagamento) + acrescimo;
+  if (doPedido >= LIMITE_DE_TENTATIVAS_DE_CARTAO_POR_PEDIDO) return "pedido";
+  if (typeof pedido.user_id !== "string" || pedido.user_id === "") return null;
+  try {
+    const desde = new Date(Date.now() - JANELA_DO_LIMITE_POR_CLIENTE_MS).toISOString();
+    const { data, error } = await supabase
+      .from("marketplace_orders")
+      .select("tentativas_de_pagamento")
+      .eq("user_id", pedido.user_id)
+      .gte("created_at", desde)
+      .gt("tentativas_de_pagamento", 0)
+      .limit(200);
+    if (error) throw error;
+    const doCliente = (Array.isArray(data) ? data : []).reduce(
+      (soma: number, linha: { tentativas_de_pagamento?: unknown }) =>
+        soma + tentativasDoPedido(linha?.tentativas_de_pagamento),
+      0,
+    ) + acrescimo;
+    return doCliente >= LIMITE_DE_TENTATIVAS_DE_CARTAO_POR_CLIENTE_24H ? "cliente" : null;
+  } catch (erro) {
+    console.error("criar-pagamento: falha ao somar as tentativas do cliente (teto do pedido segue valendo)", {
+      pedidoId: String(pedido.id),
+      erro: erro instanceof Error ? erro.message : String((erro as { message?: unknown })?.message ?? erro),
+    });
+    return null;
+  }
+}
+
 export type DadosDoCartao = {
   token: string;
   paymentMethodId: string;
@@ -1814,6 +1886,25 @@ async function handler(
       cartaoSemChaveDeAssinatura: true,
     }, 409);
   };
+  // Teto de tentativas do cartão (auditoria L3, 12/10/2026 —
+  // `tetoDoCartaoAtingido`): o 409 é o MESMO contrato da forma desligada
+  // (`codigo` exato, sem `terminal`, sem `cartaoEmAnalise`, sem `semCobranca`)
+  // — a tela tira o cartão DESTE pedido e cai na oferta de PIX
+  // (PagamentoOnline.tsx, `avisarFormaDesligada`). Nunca `terminal`: para a
+  // tela isso é "o pedido não espera mais pagamento", e ele espera — pelo PIX.
+  // `limiteDeTentativas` só marca o motivo (nenhuma tela lê hoje). Só ids e
+  // contagem no log: nada do pagador.
+  const respostaTetoDoCartao = (teto: "pedido" | "cliente") => {
+    console.warn("criar-pagamento: cartão negado pelo teto de tentativas", {
+      pedidoId: String(body.orderId),
+      teto,
+    });
+    return json({
+      error: "Muitas tentativas com cartão. Para concluir, pague com PIX.",
+      codigo: "CARTAO_FORMA_DESLIGADA",
+      limiteDeTentativas: true,
+    }, 409);
+  };
 
   // `let`, não `const` (Fase 3.5): quando a vaga ocupada é liberada, o
   // pedido é RELIDO (tentativas novas) e o resto do handler cobra a partir
@@ -1901,6 +1992,8 @@ async function handler(
   //    cliente continua podendo pagar com PIX; nada foi tocado.
   // 3. Crédito acima do teto de parcelas da loja: 400 recuperável — o Brick
   //    já limita, isto é a defesa do servidor.
+  //    (O teto de tentativas do cartão NÃO mora aqui: ele só vale para a
+  //    CRIAÇÃO, depois da vaga — ver `respostaTetoDoCartao`.)
   if (dadosCartao) {
     if (pedido.user_id === null) return respostaExigeConta();
     // S2: vaga LIVRE — a única saída daqui é um POST novo.
@@ -2440,6 +2533,11 @@ async function handler(
         return json({ error: "Não foi possível trocar para cartão agora. Tente de novo em instantes." }, 409);
       }
       if (!cobrancaMorta) {
+        // Teto do cartão ANTES de cancelar o PIX vivo, com o PIX já contado
+        // (a troca o mataria, +1): atingido, o PIX fica na vaga e continua
+        // pagável — nunca se cancela um PIX para depois negar o cartão.
+        const teto = await tetoDoCartaoAtingido(supabase, pedido, 1);
+        if (teto) return respostaTetoDoCartao(teto);
         const cancelamento = await cancelarOrder({
           token: mpToken,
           orderId: idGatewayReconsulta,
@@ -2613,6 +2711,16 @@ async function handler(
       pedidoId: pedido.id,
     });
     return json({ error: "Este pedido não tem valor a pagar online.", terminal: true }, 409);
+  }
+
+  // Teto de tentativas do cartão (auditoria L3, 12/10/2026): mesmo lugar das
+  // travas de conta/forma/valor, e pelo mesmo motivo — SÓ a criação passa por
+  // aqui. Cartão em análise, em desafio, em dúvida (sentinela) ou aprovado já
+  // respondeu lá em cima, então ele sempre vence o teto. `pedido` aqui é o
+  // relido depois de uma liberação: a cobrança que acabou de morrer já conta.
+  if (dadosCartao) {
+    const teto = await tetoDoCartaoAtingido(supabase, pedido);
+    if (teto) return respostaTetoDoCartao(teto);
   }
 
   // decisao.acao === "criar" a partir daqui.
