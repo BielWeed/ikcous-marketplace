@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
 
 /** Status possíveis de uma linha de `order_refunds` (Task 1 do plano-mãe de
@@ -73,8 +74,11 @@ const ESTADOS_EM_CURSO: readonly StatusEstorno[] = [
 
 const INTERVALO_DE_RECARGA_MS = 15_000;
 
-const TEXTO_REGISTRADO_CRON =
-  "Pedido de devolução registrado; o Mercado Pago é acionado em até 10 minutos.";
+/** Os avisos de `solicitarEstorno` são toasts GLOBAIS: se o lojista trocar de
+ *  ficha antes da resposta, o aviso do pedido anterior apareceria sobre o
+ *  aberto sem dizer de quem é. Por isso todos levam o número do pedido. */
+const textoRegistradoCron = (numero: string) =>
+  `Devolução do pedido #${numero} registrada; o Mercado Pago é acionado em até 10 minutos.`;
 
 interface SaldoDoPedido {
   total: number;
@@ -233,6 +237,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
       if (enviandoRef.current) return;
       enviandoRef.current = true;
       setEnviando(true);
+      const numero = numeroDoPedido(orderId);
       try {
         const { data, error } = await supabase.rpc("solicitar_estorno", {
           p_order_id: orderId,
@@ -243,7 +248,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
         // A RPC já devolve mensagem leiga, escrita para o lojista na
         // migration que a cria — não se traduz de novo aqui.
         if (error) {
-          toast.error(error.message);
+          toast.error(`Devolução do pedido #${numero}: ${error.message}`);
           // AC 3 do laudo 08/09: a recusa prova que o snapshot em tela está
           // velho (outra aba/sessão já mexeu no saldo) — recarrega mesmo no
           // erro, senão o saldo errado e o botão continuam na tela.
@@ -254,7 +259,9 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
         const refundId = (data as unknown as { refund_id?: string } | null)
           ?.refund_id;
         if (!refundId) {
-          toast.error("Não consegui registrar o pedido de devolução.");
+          toast.error(
+            `Não consegui registrar a devolução do pedido #${numero}.`,
+          );
           return;
         }
 
@@ -268,9 +275,9 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
             "estornar-pagamento",
             { body: { refund_id: refundId } },
           );
-          if (erroDoInvoke) toast.info(TEXTO_REGISTRADO_CRON);
+          if (erroDoInvoke) toast.info(textoRegistradoCron(numero));
         } catch {
-          toast.info(TEXTO_REGISTRADO_CRON);
+          toast.info(textoRegistradoCron(numero));
         }
 
         await carregar();

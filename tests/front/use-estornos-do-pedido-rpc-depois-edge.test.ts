@@ -12,6 +12,7 @@
 // Mesmo padrão de `use-avisos-do-lojista.test.ts`: `@/lib/supabase`
 // mockado com um builder thenable inspecionável, sonda montada com
 // `createRoot`/`act` (react-dom/client + jsdom).
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -199,8 +200,10 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
 
     expect(CHAMADAS).toHaveLength(1);
     expect(CHAMADAS[0].tipo).toBe("rpc");
+    // O toast é global: se o lojista trocar de ficha antes da resposta, o
+    // aviso do pedido anterior não pode parecer do aberto — leva o número.
     expect(toastMock.error).toHaveBeenCalledWith(
-      "o valor pedido é maior que o disponível",
+      `Devolução do pedido #${numeroDoPedido("pedido-1")}: o valor pedido é maior que o disponível`,
     );
     // AC 3 do laudo 08/09: a recusa da RPC prova que o snapshot está velho
     // — `carregar()` roda de novo mesmo no ramo de erro.
@@ -218,7 +221,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(CHAMADAS).toHaveLength(1);
     expect(CHAMADAS[0].tipo).toBe("rpc");
     expect(toastMock.error).toHaveBeenCalledWith(
-      "Não consegui registrar o pedido de devolução.",
+      `Não consegui registrar a devolução do pedido #${numeroDoPedido("pedido-1")}.`,
     );
   });
 
@@ -249,7 +252,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     ).resolves.not.toThrow();
 
     expect(toastMock.info).toHaveBeenCalledWith(
-      "Pedido de devolução registrado; o Mercado Pago é acionado em até 10 minutos.",
+      `Devolução do pedido #${numeroDoPedido("pedido-1")} registrada; o Mercado Pago é acionado em até 10 minutos.`,
     );
     // Recarregou: houve uma nova rodada de leitura de order_refunds +
     // marketplace_orders depois da montagem inicial.
