@@ -11,15 +11,7 @@
 // conferência IMEDIATA como sempre; retorno de foco também.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let handlersPorCanal: Map<string, (payload?: any) => void> = new Map();
 // O marcador de conferência é a consulta de PEDIDOS do fetchInitialCounts —
@@ -132,7 +124,8 @@ describe("AdminLayout — rajada de eventos vira UMA conferência de badges", ()
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
-  beforeAll(async () => {
+  beforeEach(() => {
+    // Por teste (não em `beforeAll`): `unstubGlobals` desfaz a stub a cada teste.
     vi.stubGlobal(
       "BroadcastChannel",
       class {
@@ -151,9 +144,6 @@ describe("AdminLayout — rajada de eventos vira UMA conferência de badges", ()
       removeListener: () => {},
       dispatchEvent: () => false,
     }));
-  }, 15000);
-
-  beforeEach(() => {
     handlersPorCanal = new Map();
     conferenciasDePedidos = 0;
     hospedeiro = document.createElement("div");
