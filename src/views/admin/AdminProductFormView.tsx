@@ -40,6 +40,7 @@ import { useProducts } from "@/hooks/useProducts";
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
+import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
@@ -275,6 +276,27 @@ interface AdminProductFormViewProps {
   productId?: string;
   onNavigate: (view: View, id?: string, bypassDirtyCheck?: boolean) => void;
   onSetDirty?: (dirty: boolean) => void;
+  /**
+   * L10 — uid de quem está no formulário: o rascunho (com custo e margem do
+   * produto) vive em `ikcous_product_form_draft:<uid>` /
+   * `ikcous_product_form_draft_edit_<id>:<uid>`. Sem uid a tela não lê nem
+   * grava rascunho — nunca cai numa chave compartilhada entre admins.
+   */
+  userId?: string;
+}
+
+/** L10 — a chave do rascunho DO USUÁRIO (`null` sem uid). */
+function chaveDoRascunhoDoProduto(
+  userId: string | undefined,
+  productId?: string,
+): string | null {
+  if (!userId) return null;
+  return chaveDoUsuario(
+    productId
+      ? `ikcous_product_form_draft_edit_${productId}`
+      : "ikcous_product_form_draft",
+    userId,
+  );
 }
 
 const containerVariants = {
@@ -406,6 +428,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   productId,
   onNavigate,
   onSetDirty,
+  userId,
 }: AdminProductFormViewProps) {
   const {
     addProduct,
@@ -841,8 +864,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // Draft recovery on mount for new products
   useEffect(() => {
     if (!productId) {
-      const savedDraft = localStorage.getItem("ikcous_product_form_draft");
-      if (savedDraft) {
+      const chaveDoRascunho = chaveDoRascunhoDoProduto(userId);
+      const savedDraft = chaveDoRascunho
+        ? localStorage.getItem(chaveDoRascunho)
+        : null;
+      if (savedDraft && chaveDoRascunho) {
         try {
           const parsed = JSON.parse(savedDraft);
           const draftFields = {
@@ -881,7 +907,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             action: {
               label: "Descartar",
               onClick: () => {
-                localStorage.removeItem("ikcous_product_form_draft");
+                localStorage.removeItem(chaveDoRascunho);
                 const emptyFields = {
                   name: "",
                   description: "",
@@ -919,14 +945,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       }
       setDraftChecked(true);
     }
-  }, [productId]);
+  }, [productId, userId]);
 
   // Draft recovery on mount for existing products
   useEffect(() => {
     if (productId && !isLoading) {
-      const draftKey = `ikcous_product_form_draft_edit_${productId}`;
-      const savedDraft = localStorage.getItem(draftKey);
-      if (savedDraft) {
+      const draftKey = chaveDoRascunhoDoProduto(userId, productId);
+      const savedDraft = draftKey ? localStorage.getItem(draftKey) : null;
+      if (savedDraft && draftKey) {
         try {
           const parsed = JSON.parse(savedDraft);
 
@@ -1004,7 +1030,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       }
       setDraftChecked(true);
     }
-  }, [productId, isLoading, initialData]);
+  }, [productId, isLoading, initialData, userId]);
 
   // Prevent leaving with unsaved changes
   useEffect(() => {
@@ -1316,16 +1342,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // chave de edição dele, e esta chave NÃO pode ser recriada.
       if (!productId && produtoNovoJaCriadoRef.current) return;
       const isDirty = isProductFormDirty(formData, initialData);
-      const draftKey = !productId
-        ? "ikcous_product_form_draft"
-        : `ikcous_product_form_draft_edit_${productId}`;
-      if (isDirty) {
+      const draftKey = chaveDoRascunhoDoProduto(userId, productId);
+      if (isDirty && draftKey) {
         localStorage.setItem(draftKey, JSON.stringify(formData));
       }
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [formData, initialData, productId, isLoading, draftChecked]);
+  }, [formData, initialData, productId, isLoading, draftChecked, userId]);
 
   const processAndUploadImages = useCallback(
     async (files: File[]) => {
@@ -2074,10 +2098,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           // agendado e reescreveria a chave de produto novo), depois move.
           produtoNovoJaCriadoRef.current = true;
           try {
-            localStorage.setItem(
-              `ikcous_product_form_draft_edit_${criado.id}`,
-              JSON.stringify(formData),
-            );
+            const chaveDeEdicao = chaveDoRascunhoDoProduto(userId, criado.id);
+            if (chaveDeEdicao) {
+              localStorage.setItem(chaveDeEdicao, JSON.stringify(formData));
+            }
           } catch (erroDeCota) {
             // Sem rascunho a lojista perde só a digitação da grade; com a chave
             // de produto novo de pé ela criaria a cópia. Apagar vence.
@@ -2086,7 +2110,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               erroDeCota,
             );
           }
-          localStorage.removeItem("ikcous_product_form_draft");
+          const chaveDoNovo = chaveDoRascunhoDoProduto(userId);
+          if (chaveDoNovo) localStorage.removeItem(chaveDoNovo);
           const motivo = criado.variantesNaoSalvas.motivo;
           toast.error(
             `O produto foi criado, mas as variações NÃO foram salvas.${
@@ -2109,11 +2134,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // remover — sem isto, o timer pendente na última edição publica o
       // rascunho de volta ~1s depois.
       setInitialData(formData);
-      if (!productId) {
-        localStorage.removeItem("ikcous_product_form_draft");
-      } else {
-        localStorage.removeItem(`ikcous_product_form_draft_edit_${productId}`);
-      }
+      const chaveParaApagar = chaveDoRascunhoDoProduto(userId, productId);
+      if (chaveParaApagar) localStorage.removeItem(chaveParaApagar);
 
       // #98 (ADMIN-060): guardado em ref e cancelado no unmount (efeito
       // logo abaixo) — sem isto, sair da tela na janela de "Salvo" ainda

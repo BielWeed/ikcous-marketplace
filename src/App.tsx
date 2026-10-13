@@ -3008,6 +3008,7 @@ const AppContent = () => {
                   handleAdminUserDetailBack={handleAdminUserDetailBack}
                   backOverride={backOverride}
                   isTransitionSupported={isTransitionSupported}
+                  userId={user?.id}
                   fallback={<AdminRouteLoading />}
                 />
               ) : (

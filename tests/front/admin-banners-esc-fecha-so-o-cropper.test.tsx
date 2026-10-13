@@ -57,6 +57,12 @@ const bannerPublicado = {
   order: 1,
 };
 
+// L10: o rascunho do formulário de banner é do usuário (`:<uid>`) — a tela
+// agora lê o hook de auth, dublado aqui.
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "lojista-1" } }),
+}));
+
 vi.mock("@/hooks/useBanners", () => ({
   useBanners: () => ({
     banners: [bannerPublicado],

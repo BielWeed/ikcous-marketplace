@@ -34,6 +34,7 @@ import { branding } from "@/config/branding";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
+import { useAuth } from "@/hooks/useAuth";
 import {
   chaveDoItemDoCupom,
   useVendaPresencial,
@@ -65,7 +66,11 @@ export function AdminPdvView({
   onSetDirty,
   onSetBackOverride,
 }: AdminPdvViewProps): ReactElement {
-  const { estado, despachar, subtotal, limparCupom } = useVendaPresencial();
+  // L10: o rascunho do caixa é do usuário que está nele (`:<uid>`).
+  const { user } = useAuth();
+  const { estado, despachar, subtotal, limparCupom } = useVendaPresencial({
+    userId: user?.id,
+  });
   const { anular } = useAnularVendaDoBalcao();
   // Amarra o pedido do recibo (o botão do recibo só conhece o motivo).
   const anularEstaVenda = (orderId: string) => (motivo: string) =>
