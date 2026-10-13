@@ -545,6 +545,72 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     expect(html).not.toContain("Nome Do Build Nunca Deveria Aparecer");
   });
 
+  // L11 (13/10/2026): o nome da loja é escrito pelo lojista e entrava CRU em
+  // title/og:title/twitter:title (os vizinhos nome/descrição já eram
+  // escapados). Um `<` ou `"` no nome fecharia a tag/atributo no HTML que o
+  // robô de prévia lê.
+  it("robô escapa o storeName no title/og:title/twitter:title (nome com <script> e aspas nunca aparece cru)", async () => {
+    const origemProjeto = "https://projetoiiiiiiiiiiiii.supabase.co";
+    const nomeHostil = '<script>alert(1)</script> "Loja" & Cia';
+    const produto = {
+      nome: "Camiseta Azul",
+      descricao: "desc",
+      preco_venda: 49.9,
+      imagem_url: "https://cdn.exemplo.com/i.jpg",
+      imagem_urls: null,
+    };
+    const fetchDuble: typeof fetch = (async (input) => {
+      const url = requestUrl(input);
+      if (url.pathname === "/rest/v1/v_store_config") {
+        if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
+          return new Response(
+            JSON.stringify([linhaConfiguracaoPublica("loja-hostil.exemplo")]),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify([identidadeFixture(nomeHostil, origemProjeto)]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.pathname === "/rest/v1/vw_produtos_public")
+        return new Response(JSON.stringify([produto]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      throw new Error(`URL não mapeada no dublê: ${url.toString()}`);
+    }) as typeof fetch;
+
+    const resp = await comProcessEnv(
+      {
+        ...ENV_LIMPO,
+        VITE_SUPABASE_URL: origemProjeto,
+        VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_projeto",
+      },
+      () =>
+        comFetch(fetchDuble, () =>
+          middleware(
+            new Request("https://loja-hostil.exemplo/product-detail?id=1", {
+              headers: { "user-agent": UA_ROBO },
+            }),
+          ),
+        ),
+    );
+    expect(resp.status).toBe(200);
+    const html = await resp.text();
+    const nomeEscapado =
+      "&lt;script&gt;alert(1)&lt;/script&gt; &quot;Loja&quot; &amp; Cia";
+    expect(html).not.toContain("<script>");
+    expect(html).not.toContain(nomeHostil);
+    expect(html).toContain(`<title>Camiseta Azul | ${nomeEscapado}</title>`);
+    expect(html).toContain(
+      `<meta property="og:title" content="Camiseta Azul - R$ 49,90 | ${nomeEscapado}" />`,
+    );
+    expect(html).toContain(
+      `<meta name="twitter:title" content="Camiseta Azul | ${nomeEscapado}" />`,
+    );
+  });
+
   it("robô + produto sem foto -> og:image usa localUrls.og da FICHA (Storage absoluto), nunca o og-image.png do domínio da loja", async () => {
     const origemProjeto = "https://projetohhhhhhhhhhhhh.supabase.co";
     const produtoSemFoto = {
