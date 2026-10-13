@@ -75,6 +75,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
         "assets/Admin*.js",
         "assets/ImageAdjuster-*.js",
         "assets/PhoneSimulator-*.js",
+        // O renderer do mapa do cartão de endereço (chunk maplibre-gl, 1 MB
+        // cru) e o worker empacotado dele (maplibre-gl-worker): só baixam
+        // quando um mapa monta, como diz a categoria "opcional" do portão de
+        // tamanho. Sem isto o `**/*.js` os punha no install de todo visitante.
+        // Fora do precache, o catch-all de assets do sw.ts os guarda na
+        // primeira abertura; offline o mapa não monta de qualquer jeito
+        // (precisa da rede para geocode e tiles).
+        "assets/maplibre-gl*",
       ],
       maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
     },
