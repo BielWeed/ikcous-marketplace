@@ -9,7 +9,7 @@
 // (`mesclarFilaOfflineAposPassada`); esta é a mesma regra para produtos.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const CHAVE = "products_offline_updates_queue";
+const CHAVE = "products_offline_updates_queue:lojista-1";
 
 const { liberarUpdate, updates } = vi.hoisted(() => ({
   liberarUpdate: { fn: null as null | (() => void) },
@@ -32,7 +32,11 @@ vi.mock("@/lib/supabase", () => ({
     removeChannel: vi.fn(),
     storage: { from: vi.fn() },
     functions: { invoke: vi.fn() },
-    auth: { getSession: vi.fn() },
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "lojista-1" } } },
+      }),
+    },
   },
 }));
 
@@ -64,15 +68,17 @@ describe("fila offline de produtos — edição feita DURANTE o sync não se per
     );
     localStorage.setItem(
       CHAVE,
-      JSON.stringify([{ id: "p1", updates: { name: "A" }, timestamp: 1 }]),
+      JSON.stringify([
+        { id: "p1", updates: { name: "A" }, timestamp: Date.now() },
+      ]),
     );
 
-    const sync = _syncOfflineUpdatesParaTeste();
+    const sync = _syncOfflineUpdatesParaTeste("lojista-1");
     // O sync está no await do UPDATE do p1: a conexão oscilou e o lojista
     // editou o p2, que foi para a fila.
     await vi.waitFor(() => expect(updates).toHaveLength(1));
     const fila = JSON.parse(localStorage.getItem(CHAVE) ?? "[]");
-    fila.push({ id: "p2", updates: { name: "B" }, timestamp: 2 });
+    fila.push({ id: "p2", updates: { name: "B" }, timestamp: Date.now() + 1 });
     localStorage.setItem(CHAVE, JSON.stringify(fila));
 
     liberarUpdate.fn?.();
@@ -88,9 +94,11 @@ describe("fila offline de produtos — edição feita DURANTE o sync não se per
     );
     localStorage.setItem(
       CHAVE,
-      JSON.stringify([{ id: "p1", updates: { name: "A" }, timestamp: 1 }]),
+      JSON.stringify([
+        { id: "p1", updates: { name: "A" }, timestamp: Date.now() },
+      ]),
     );
-    const sync = _syncOfflineUpdatesParaTeste();
+    const sync = _syncOfflineUpdatesParaTeste("lojista-1");
     await vi.waitFor(() => expect(updates).toHaveLength(1));
     liberarUpdate.fn?.();
     await sync;

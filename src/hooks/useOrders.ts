@@ -2,9 +2,16 @@ import { statusConfig } from "@/components/admin/orders/OrderStatusBadge";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import {
+  CHAVE_BASE_DA_FILA_DE_PEDIDOS,
+  chaveDoUsuario,
+  migrarFilaLegada,
+  separarItensVencidos,
+} from "@/lib/fila-offline-por-usuario";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -336,6 +343,22 @@ export function erroDeSincronizacaoEhTerminal(err: unknown): boolean {
   );
 }
 
+/**
+ * L10 — sem usuário identificado não há de quem ser a alteração guardada
+ * offline: a fila é por dono (`orders_offline_updates_queue:<uid>`), e um item
+ * sem dono seria enviado por quem entrasse depois. Lançado ANTES do update
+ * otimista, já com o aviso na tela (mesmo molde de
+ * `ErroCancelamentoOfflineRecusado`).
+ */
+export class ErroFilaOfflineSemSessao extends Error {
+  constructor() {
+    super(
+      "Sem conexão e sem sessão confirmada neste aparelho. A alteração não foi guardada — entre na conta e tente de novo.",
+    );
+    this.name = "ErroFilaOfflineSemSessao";
+  }
+}
+
 type ItemDaFila = {
   orderId: string;
   status: string;
@@ -361,31 +384,75 @@ export function mesclarFilaOfflineAposPassada(
   });
 }
 
-let sincronizacaoEmVoo: Promise<boolean> | null = null;
+// L10 — a passada em voo é POR USUÁRIO (mesmo padrão de `checkInFlight` no
+// AuthContext): a passada do admin A em voo nunca é "compartilhada" com o
+// admin B, que ficaria sem a sua. Quem chega com outro usuário espera a
+// passada em curso terminar e roda a sua.
+let sincronizacaoEmVoo: { userId: string; promise: Promise<boolean> } | null =
+  null;
 
-function syncOfflineOrderUpdates(): Promise<boolean> {
-  if (sincronizacaoEmVoo) return sincronizacaoEmVoo;
-  sincronizacaoEmVoo = processarFilaOfflineDePedidos().finally(() => {
-    sincronizacaoEmVoo = null;
+function syncOfflineOrderUpdates(userId: string): Promise<boolean> {
+  if (sincronizacaoEmVoo?.userId === userId) return sincronizacaoEmVoo.promise;
+  const anterior = sincronizacaoEmVoo?.promise.catch(() => false);
+  const promise: Promise<boolean> = (
+    anterior
+      ? anterior.then(() => processarFilaOfflineDePedidos(userId))
+      : processarFilaOfflineDePedidos(userId)
+  ).finally(() => {
+    if (sincronizacaoEmVoo?.promise === promise) sincronizacaoEmVoo = null;
   });
-  return sincronizacaoEmVoo;
+  sincronizacaoEmVoo = { userId, promise };
+  return promise;
 }
 
+/** L10 — a mensagem de descarte por validade (singular/plural). */
+function avisoDeItensVencidos(n: number): string {
+  return n === 1
+    ? "1 alteração offline antiga foi descartada (mais de 72 horas na fila)."
+    : `${n} alterações offline antigas foram descartadas (mais de 72 horas na fila).`;
+}
+
+/**
+ * Envia a fila offline do DONO `userId` (chave `<fila>:<uid>`): nunca olha a
+ * fila de outro usuário. Antes de CADA envio confere que a sessão do cliente
+ * Supabase ainda é a dele; se não for, encerra a passada — o que já saiu sai
+ * da fila dele, o resto fica, e nada é gravado em chave de outro usuário.
+ */
 async function processarFilaOfflineDePedidos(
+  userId: string,
   segundaPassada = false,
 ): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   // Declarado fora do try: se o storage falhar na ESCRITA, depois das RPCs, o
   // catch precisa resolver ESTE toast em vez de deixá-lo "Sincronizando…".
   let toastId: string | number | undefined;
+  const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PEDIDOS, userId);
 
   try {
     // A leitura vive dentro do try: storage bloqueado (SecurityError) é
     // "a sincronização não concluiu", nunca uma promessa rejeitada.
-    const queueStr = localStorage.getItem("orders_offline_updates_queue");
+    const queueStr = localStorage.getItem(chaveDaFila);
     if (!queueStr) return false;
-    const queue = JSON.parse(queueStr);
-    if (!Array.isArray(queue) || queue.length === 0) return false;
+    const filaBruta = JSON.parse(queueStr);
+    if (!Array.isArray(filaBruta) || filaBruta.length === 0) return false;
+
+    // Validade: item com mais de 72 h não é enviado. Sem timestamp (formato
+    // antigo) vale — o envio de status é relido contra o servidor (abaixo).
+    // Leitura e gravação síncronas: nenhuma gravação da aba se intercala.
+    const { validos: queue, vencidos } = separarItensVencidos(
+      filaBruta,
+      Date.now(),
+      "valido",
+    );
+    if (vencidos.length > 0) {
+      if (queue.length > 0) {
+        localStorage.setItem(chaveDaFila, JSON.stringify(queue));
+      } else {
+        localStorage.removeItem(chaveDaFila);
+      }
+      toast.warning(avisoDeItensVencidos(vencidos.length));
+    }
+    if (queue.length === 0) return false;
 
     const remainingQueue: ItemDaFila[] = [];
     const processados = new Map<string, number>();
@@ -393,11 +460,12 @@ async function processarFilaOfflineDePedidos(
     let syncedAny = false;
     let falhasTransitorias = 0;
     let descartesTerminais = 0;
+    let interrompida = false;
     toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
     );
 
-    for (const item of queue) {
+    for (const [indice, item] of queue.entries()) {
       const { orderId, status, notes, silent } = item;
       // Itens antigos sem timestamp saem ao concluir; qualquer versão datada
       // que entrar durante a RPC continua sendo mais nova.
@@ -455,6 +523,18 @@ async function processarFilaOfflineDePedidos(
         }
       }
 
+      // L10 — a sessão é conferida imediatamente antes de CADA envio (e
+      // DEPOIS da releitura acima, que é uma ida ao banco): a passada
+      // começou com o dono da fila e a tela pode ter trocado de conta no
+      // meio. Se a sessão já não é a dele, o envio NÃO sai: a passada
+      // encerra, o que já saiu é tirado da fila DELE (abaixo, mesma
+      // mescla), o resto continua lá, e nada é gravado em outra chave.
+      if (!(await sessaoAindaEhDoDono(userId))) {
+        interrompida = true;
+        remainingQueue.push(...queue.slice(indice));
+        break;
+      }
+
       try {
         const { error } = await (supabase.rpc as any)(
           "update_order_status_atomic",
@@ -487,9 +567,7 @@ async function processarFilaOfflineDePedidos(
 
     let filaFresca: unknown = null;
     try {
-      filaFresca = JSON.parse(
-        localStorage.getItem("orders_offline_updates_queue") ?? "null",
-      );
+      filaFresca = JSON.parse(localStorage.getItem(chaveDaFila) ?? "null");
     } catch {
       // A reserva em memória conserva as falhas se o storage foi corrompido.
     }
@@ -500,13 +578,17 @@ async function processarFilaOfflineDePedidos(
     );
 
     if (final.length > 0) {
-      localStorage.setItem(
-        "orders_offline_updates_queue",
-        JSON.stringify(final),
-      );
+      localStorage.setItem(chaveDaFila, JSON.stringify(final));
     } else {
-      localStorage.removeItem("orders_offline_updates_queue");
+      localStorage.removeItem(chaveDaFila);
       clearAnalyticsCache();
+    }
+
+    if (interrompida) {
+      // A sessão trocou no meio: sem toast de sucesso nem de falha — a
+      // passada não terminou e o dono a refaz quando voltar.
+      toast.dismiss(toastId);
+      return syncedAny || descartesTerminais > 0;
     }
 
     if (falhasTransitorias > 0) {
@@ -545,7 +627,10 @@ async function processarFilaOfflineDePedidos(
     });
     const filaAvancou = syncedAny || descartesTerminais > 0;
     if (!segundaPassada && temItemNovo && navigator.onLine) {
-      const sincronizouNaSegunda = await processarFilaOfflineDePedidos(true);
+      const sincronizouNaSegunda = await processarFilaOfflineDePedidos(
+        userId,
+        true,
+      );
       return sincronizouNaSegunda || filaAvancou;
     }
 
@@ -3083,6 +3168,20 @@ export function useOrders(
           }
         }
 
+        // L10 — offline sem usuário identificado: recusa ANTES do update
+        // otimista (nada é pintado nem guardado). O uid de guardar vem do
+        // contexto de auth (`user.id`), que continua certo no tablet offline;
+        // `supabase.auth.getSession()` não serviria aqui — sem rede e com o
+        // token vencido ele devolve sessão nula.
+        if (
+          typeof navigator !== "undefined" &&
+          !navigator.onLine &&
+          !user?.id
+        ) {
+          toast.warning(new ErroFilaOfflineSemSessao().message);
+          throw new ErroFilaOfflineSemSessao();
+        }
+
         // Optimistic update
         originalCache = cachedAdminOrders ? [...cachedAdminOrders] : null;
         cachedAdminOrders = (cachedAdminOrders || []).map((o) => {
@@ -3132,8 +3231,14 @@ export function useOrders(
 
         // Check if offline
         if (typeof navigator !== "undefined" && !navigator.onLine) {
-          const queueStr =
-            localStorage.getItem("orders_offline_updates_queue") || "[]";
+          // L10 — a fila é do USUÁRIO que grava (`:<uid>`; `user?.id` está
+          // garantido pela recusa acima). Regravar o mesmo pedido só
+          // substitui o item DELE; a fila de outro usuário nem é lida.
+          const chaveDaFila = chaveDoUsuario(
+            CHAVE_BASE_DA_FILA_DE_PEDIDOS,
+            user?.id as string,
+          );
+          const queueStr = localStorage.getItem(chaveDaFila) || "[]";
           const queue = JSON.parse(queueStr);
           const cleanQueue = queue.filter(
             (item: any) => item.orderId !== orderId,
@@ -3145,10 +3250,7 @@ export function useOrders(
             silent,
             timestamp: Date.now(),
           });
-          localStorage.setItem(
-            "orders_offline_updates_queue",
-            JSON.stringify(cleanQueue),
-          );
+          localStorage.setItem(chaveDaFila, JSON.stringify(cleanQueue));
 
           if (!silent) {
             toast.info("Alteração de status guardada offline.", {
@@ -3229,6 +3331,7 @@ export function useOrders(
           err instanceof ErroReleituraDeStatusFalhou ||
           err instanceof ErroStatusEsperadoDesconhecido ||
           err instanceof ErroCancelamentoOfflineRecusado ||
+          err instanceof ErroFilaOfflineSemSessao ||
           err instanceof ErroCancelamentoNaoConcluido;
         if (!erroJaTratado) {
           cachedAdminOrders = originalCache;
@@ -3962,6 +4065,33 @@ export function useOrders(
   // pendente) — aqui a mudança de `user?.id` é o próprio gatilho que falta.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // L10 — a fila offline é por usuário (`<fila>:<uid>`): sem sessão não há
+    // fila de ninguém para enviar (a RPC falharia por falta de login de
+    // qualquer jeito). Quando a autenticação terminar de carregar, `user?.id`
+    // muda e este efeito roda de novo — é a retentativa descrita acima.
+    const userId = user?.id;
+    if (!userId) return;
+    // L10 — a fila ANTIGA (chave sem `:<uid>`, gravada antes deste desenho)
+    // só passa para a chave de um admin CONFIRMADO (`isUserAdmin` vem da RPC
+    // `is_admin`, nunca do cache). Para cliente ou sessão ainda não
+    // confirmada a chave antiga fica intocada; `isUserAdmin` nas
+    // dependências refaz isto quando a confirmação chega.
+    if (isUserAdmin) {
+      try {
+        migrarFilaLegada(
+          CHAVE_BASE_DA_FILA_DE_PEDIDOS,
+          userId,
+          (item) => (item as ItemDaFila | null)?.orderId,
+        );
+      } catch (erroDeMigracao) {
+        // Storage bloqueado ou cheio: a chave antiga fica inteira e a
+        // migração é tentada de novo na próxima execução.
+        console.error(
+          "[Offline Sync] Não foi possível migrar a fila de pedidos antiga:",
+          erroDeMigracao,
+        );
+      }
+    }
     // O desmonte (e a re-execução por `user?.id`) cancela o que ainda estiver
     // esperando o segundo de espera: sem isto a sincronização rodava DEPOIS do
     // desmonte, contra um `localStorage` que já não é o da tela.
@@ -3969,7 +4099,7 @@ export function useOrders(
     const handleOnlineSync = () => {
       const timer = setTimeout(() => {
         timersPendentes.delete(timer);
-        syncOfflineOrderUpdates()
+        syncOfflineOrderUpdates(userId)
           .then((filaAvancou) => {
             if (filaAvancou) {
               recarregarAposReconexaoRef
@@ -3996,7 +4126,7 @@ export function useOrders(
       for (const timer of timersPendentes) clearTimeout(timer);
       timersPendentes.clear();
     };
-  }, [user?.id]);
+  }, [user?.id, isUserAdmin]);
 
   useEffect(() => {
     // Em StrictMode (dev) o React roda setup → cleanup → setup na PRIMEIRA

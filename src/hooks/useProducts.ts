@@ -5,8 +5,15 @@ import {
   caminhoDaCopia,
   caminhoDaImagemDoProduto,
 } from "@/lib/copiar-imagem-para-duplicacao";
+import {
+  CHAVE_BASE_DA_FILA_DE_PRODUTOS,
+  chaveDoUsuario,
+  migrarFilaLegada,
+  separarItensVencidos,
+} from "@/lib/fila-offline-por-usuario";
 import { mapProductFromDB } from "@/lib/mappers";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
+import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import type { Product, ProductVariant } from "@/types";
 import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
@@ -99,27 +106,61 @@ let cachedAdminProductsTotal = 0;
 
 /** Só para teste: o sync é privado e não tem outro ponto de entrada sem montar
  *  o hook inteiro e esperar o `setTimeout` do evento `online`. */
-export function _syncOfflineUpdatesParaTeste(): Promise<boolean> {
-  return syncOfflineUpdates();
+export function _syncOfflineUpdatesParaTeste(userId: string): Promise<boolean> {
+  return syncOfflineUpdates(userId);
 }
 
-async function syncOfflineUpdates(): Promise<boolean> {
+/**
+ * L10 — envia a fila offline do DONO `userId` (chave `<fila>:<uid>`): nunca
+ * olha a fila de outro usuário. Antes de CADA envio confere que a sessão do
+ * cliente Supabase ainda é a dele; se não for, encerra a passada — o que já
+ * saiu sai da fila dele, o resto fica, e nada é gravado em chave de outro
+ * usuário. Item com mais de 72 h não é enviado: produto grava valor ABSOLUTO
+ * (`estoque`, `preco_venda`), e o estoque de 30 dias atrás por cima do de
+ * hoje o corrompe.
+ */
+async function syncOfflineUpdates(userId: string): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
-  const queueStr = localStorage.getItem("products_offline_updates_queue");
+  const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
+  const queueStr = localStorage.getItem(chaveDaFila);
   if (!queueStr) return false;
 
   try {
-    const queue = JSON.parse(queueStr);
-    if (!Array.isArray(queue) || queue.length === 0) return false;
+    const filaBruta = JSON.parse(queueStr);
+    if (!Array.isArray(filaBruta) || filaBruta.length === 0) return false;
+
+    // Sem timestamp numérico o item não prova a própria idade: valor absoluto
+    // de idade desconhecida não se envia. Leitura e gravação síncronas
+    // (nenhuma gravação da aba se intercala).
+    const { validos: queue, vencidos } = separarItensVencidos(
+      filaBruta,
+      Date.now(),
+      "vencido",
+    );
+    if (vencidos.length > 0) {
+      if (queue.length > 0) {
+        localStorage.setItem(chaveDaFila, JSON.stringify(queue));
+      } else {
+        localStorage.removeItem(chaveDaFila);
+      }
+      toast.warning(
+        vencidos.length === 1
+          ? "1 alteração offline antiga foi descartada (mais de 72 horas na fila)."
+          : `${vencidos.length} alterações offline antigas foram descartadas (mais de 72 horas na fila).`,
+      );
+    }
+    if (queue.length === 0) return false;
 
     const remainingQueue: any[] = [];
     const discarded: string[] = [];
     let syncedCount = 0;
+    let interrompida = false;
+    let naoTentados: any[] = [];
     const toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações pendentes offline...`,
     );
 
-    for (const item of queue) {
+    for (const [indice, item] of queue.entries()) {
       const { id, updates } = item;
 
       // TruthGate: a fila vive no localStorage e pode ter sido adulterada entre
@@ -137,6 +178,17 @@ async function syncOfflineUpdates(): Promise<boolean> {
         );
         discarded.push(id);
         continue;
+      }
+
+      // L10 — a sessão é conferida imediatamente antes de CADA envio: a
+      // passada começou com o dono da fila e a tela pode ter trocado de conta
+      // no meio (tablet de balcão). Se já não é a dele, o envio NÃO sai: o
+      // resto fica na fila dele (entra na fila final abaixo, sem contar como
+      // falha) e nada é gravado em outra chave.
+      if (!(await sessaoAindaEhDoDono(userId))) {
+        interrompida = true;
+        naoTentados = queue.slice(indice);
+        break;
       }
 
       try {
@@ -196,9 +248,7 @@ async function syncOfflineUpdates(): Promise<boolean> {
     );
     let filaFresca: any[] = [];
     try {
-      const bruta = JSON.parse(
-        localStorage.getItem("products_offline_updates_queue") || "[]",
-      );
+      const bruta = JSON.parse(localStorage.getItem(chaveDaFila) || "[]");
       if (Array.isArray(bruta)) filaFresca = bruta;
     } catch {
       filaFresca = [];
@@ -208,16 +258,29 @@ async function syncOfflineUpdates(): Promise<boolean> {
       return enviado === undefined || (Number(i.timestamp) || 0) > enviado;
     });
     const idsNovos = new Set(novos.map((i: any) => i.id));
+    // `naoTentados` (passada interrompida por troca de sessão) volta para a
+    // fila do dono como o que falhou volta: sem eles, `idsEnviados` os daria
+    // por enviados. Fora isso, a conta é a de sempre.
     const filaFinal = [
-      ...remainingQueue.filter((i: any) => !idsNovos.has(i.id)),
+      ...[...remainingQueue, ...naoTentados].filter(
+        (i: any) => !idsNovos.has(i.id),
+      ),
       ...novos,
     ];
 
     if (filaFinal.length > 0) {
-      localStorage.setItem(
-        "products_offline_updates_queue",
-        JSON.stringify(filaFinal),
-      );
+      localStorage.setItem(chaveDaFila, JSON.stringify(filaFinal));
+    }
+    if (interrompida) {
+      // A sessão trocou no meio: sem toast de sucesso nem de falha — a
+      // passada não terminou e o dono a refaz quando voltar.
+      toast.dismiss(toastId);
+      if (discarded.length > 0) {
+        toast.warning(
+          `${discarded.length} alteração(ões) offline foram descartadas por violarem os axiomas do produto.`,
+        );
+      }
+      return syncedCount > 0;
     }
     if (remainingQueue.length > 0) {
       toast.error(
@@ -226,7 +289,7 @@ async function syncOfflineUpdates(): Promise<boolean> {
       );
     } else {
       if (filaFinal.length === 0) {
-        localStorage.removeItem("products_offline_updates_queue");
+        localStorage.removeItem(chaveDaFila);
       }
       if (syncedCount > 0) clearAnalyticsCache();
       if (discarded.length > 0) {
@@ -547,7 +610,10 @@ export function useProducts({ autoFetch = true } = {}) {
     return !autoFetch && cachedAdminProducts ? cachedAdminProducts : [];
   });
   const [loading, setLoading] = useState(false);
-  const { isAdmin } = useAuth();
+  // L10 — `user?.id` é o uid de GUARDAR a fila offline (continua certo no
+  // tablet offline; `supabase.auth.getSession()` não serviria: sem rede e com
+  // o token vencido devolve sessão nula).
+  const { isAdmin, user } = useAuth();
   const lastLoadId = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -850,9 +916,38 @@ export function useProducts({ autoFetch = true } = {}) {
   // Synchronize queued offline updates when coming back online
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // L10 — a fila offline é por usuário (`<fila>:<uid>`): sem sessão não há
+    // fila de ninguém para enviar. Quando a autenticação terminar de carregar,
+    // `user?.id` muda e este efeito roda de novo (retentativa ao autenticar).
+    const userId = user?.id;
+    if (!userId) return;
+    // L10 — a fila ANTIGA (chave sem `:<uid>`, anterior a este desenho) só
+    // passa para a chave de um admin CONFIRMADO (`isAdmin` vem da RPC
+    // `is_admin`). Para cliente ou sessão não confirmada ela fica intocada: a
+    // atualização de produto por não-admin dá 0 linhas SEM erro, e o envio a
+    // contaria como sincronizada e a apagaria.
+    if (isAdmin) {
+      try {
+        migrarFilaLegada(
+          CHAVE_BASE_DA_FILA_DE_PRODUTOS,
+          userId,
+          (item) => (item as { id?: string } | null)?.id,
+        );
+      } catch (erroDeMigracao) {
+        console.error(
+          "[Offline Sync] Não foi possível migrar a fila de produtos antiga:",
+          erroDeMigracao,
+        );
+      }
+    }
+    // O temporizador de 1 s morre com a tela (ou com a troca de usuário): sem
+    // isto ele disparava DEPOIS da saída, contra uma sessão que já não é a
+    // dona da fila.
+    const timersPendentes = new Set<ReturnType<typeof setTimeout>>();
     const handleOnlineSync = () => {
-      setTimeout(() => {
-        syncOfflineUpdates().then((synced) => {
+      const timer = setTimeout(() => {
+        timersPendentes.delete(timer);
+        syncOfflineUpdates(userId).then((synced) => {
           if (synced) {
             refreshContext().catch(() => {});
             if (!autoFetch && isAdmin) {
@@ -861,6 +956,7 @@ export function useProducts({ autoFetch = true } = {}) {
           }
         });
       }, 1000);
+      timersPendentes.add(timer);
     };
 
     window.addEventListener("online", handleOnlineSync);
@@ -869,8 +965,10 @@ export function useProducts({ autoFetch = true } = {}) {
     }
     return () => {
       window.removeEventListener("online", handleOnlineSync);
+      for (const timer of timersPendentes) clearTimeout(timer);
+      timersPendentes.clear();
     };
-  }, [refreshContext, autoFetch, isAdmin, loadProducts]);
+  }, [refreshContext, autoFetch, isAdmin, loadProducts, user?.id]);
 
   const getProductById = useCallback(
     (id: string) => {
@@ -1051,6 +1149,20 @@ export function useProducts({ autoFetch = true } = {}) {
 
       // Check if offline
       if (typeof navigator !== "undefined" && !navigator.onLine) {
+        // L10 — a fila é por dono (`products_offline_updates_queue:<uid>`).
+        // Sem usuário identificado não há de quem ser a alteração: recusa
+        // ANTES de pintar ou guardar qualquer coisa (um item sem dono seria
+        // enviado por quem entrasse depois).
+        if (!user?.id) {
+          toast.error(
+            "Sem conexão e sem sessão confirmada neste aparelho. A alteração não foi guardada — entre na conta e tente de novo.",
+          );
+          return;
+        }
+        const chaveDaFila = chaveDoUsuario(
+          CHAVE_BASE_DA_FILA_DE_PRODUTOS,
+          user.id,
+        );
         let oldProduct: Product | null | undefined = products.find(
           (p) => p.id === id,
         );
@@ -1087,8 +1199,10 @@ export function useProducts({ autoFetch = true } = {}) {
             );
           }
 
-          const queueStr =
-            localStorage.getItem("products_offline_updates_queue") || "[]";
+          // A fila lida e reescrita é a do USUÁRIO que grava: juntar as
+          // alterações do mesmo produto acontece dentro dela, e o que outro
+          // usuário deixou pendente nem é lido (não vaza para este item).
+          const queueStr = localStorage.getItem(chaveDaFila) || "[]";
           const queue = JSON.parse(queueStr);
           const cleanQueue = queue.filter((item: any) => item.id !== id);
           const existingItem = queue.find((item: any) => item.id === id);
@@ -1101,10 +1215,7 @@ export function useProducts({ autoFetch = true } = {}) {
             updates: mergedUpdates,
             timestamp: Date.now(),
           });
-          localStorage.setItem(
-            "products_offline_updates_queue",
-            JSON.stringify(cleanQueue),
-          );
+          localStorage.setItem(chaveDaFila, JSON.stringify(cleanQueue));
 
           toast.info("Alteração guardada offline.", {
             description:
@@ -1220,7 +1331,14 @@ export function useProducts({ autoFetch = true } = {}) {
         throw err;
       }
     },
-    [isAdmin, products, refreshContext, backupStorageFile, fetchProduct],
+    [
+      isAdmin,
+      products,
+      refreshContext,
+      backupStorageFile,
+      fetchProduct,
+      user?.id,
+    ],
   );
 
   // #99 (ADMIN-070): mídia é movida para backup/ DEPOIS do soft-delete já

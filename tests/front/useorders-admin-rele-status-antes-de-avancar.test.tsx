@@ -370,7 +370,7 @@ describe("updateOrderStatus (admin) relÃª o status no servidor antes de gravar â
     expect(from).not.toHaveBeenCalled();
     expect(chamadasUpdateOrderStatus).toHaveLength(0);
     const fila = JSON.parse(
-      armazem.get("orders_offline_updates_queue") || "[]",
+      armazem.get("orders_offline_updates_queue:lojista-1") || "[]",
     );
     expect(fila).toHaveLength(1);
     expect(fila[0]).toMatchObject({ orderId: "pedido-1", status: "shipping" });
