@@ -590,6 +590,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        // A RPC grava em `auth.uid()` da sessão de AGORA: se ela já é de
+        // outro usuário (troca de conta entre montar o carrinho e enviá-lo),
+        // o carrinho de `user` substituiria o dessa conta no banco.
+        const donoDaSessao = session.user?.id;
+        if (donoDaSessao && donoDaSessao !== user.id) {
+          console.warn(
+            "[CartContext] Sync abortado: a sessão ativa é de outro usuário.",
+          );
+          syncPending.current = false;
+          pedirReenvioSeDevido();
+          return;
+        }
+
         console.log("[CartContext] 📤 Syncing to Supabase...");
         const itemMap = new Map<string, any>();
         currentCart.forEach((item) => {
