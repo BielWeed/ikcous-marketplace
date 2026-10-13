@@ -539,6 +539,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const syncPending = useRef(false);
   const lastSyncedCart = useRef<string>("");
+  // O carrinho mudou enquanto um sync ainda esperava o servidor: o efeito
+  // abaixo pula (um por vez) e, sem isto, ninguém reagendava ao fim — a
+  // alteração só ia ao banco na próxima mudança do carrinho. O contador
+  // reabre o efeito com o carrinho de agora quando o sync em voo termina.
+  const reenvioDevido = useRef(false);
+  const [reenvio, setReenvio] = useState(0);
+  const pedirReenvioSeDevido = useCallback(() => {
+    if (!reenvioDevido.current) return;
+    reenvioDevido.current = false;
+    setReenvio((n) => n + 1);
+  }, []);
 
   // Sync back to Supabase (Atomic-ish Strategy)
   const syncToDB = useCallback(
@@ -560,6 +571,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             "[CartContext] Bypassing sync: session not active/ready in client",
           );
           syncPending.current = false;
+          pedirReenvioSeDevido();
           return;
         }
 
@@ -593,12 +605,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         if (syncError) throw syncError;
         lastSyncedCart.current = cartHash;
         syncPending.current = false;
+        pedirReenvioSeDevido();
       } catch (err) {
         console.error("[CartContext] ❌ DB Sync Failed:", err);
         syncPending.current = false;
+        pedirReenvioSeDevido();
       }
     },
-    [user, authLoading],
+    [user, authLoading, pedirReenvioSeDevido],
   );
 
   useEffect(() => {
@@ -607,11 +621,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => {
       if (!syncPending.current) {
         syncToDB(cart);
+      } else {
+        reenvioDevido.current = true;
       }
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [cart, syncToDB]);
+    // `reenvio` reabre o efeito quando o sync em voo termina (ver acima).
+  }, [cart, syncToDB, reenvio]);
 
   const addToCart = useCallback(
     (
