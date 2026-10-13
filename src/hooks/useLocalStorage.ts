@@ -17,6 +17,18 @@ export function useLocalStorage<T>(
   });
 
   const isFirstRender = useRef(true);
+  // `initialValue` costuma chegar como literal novo a cada render (`[]`, `{}`):
+  // nas deps do efeito de sync ele o re-rodaria a cada render. Fica em ref.
+  const initialValueRef = useRef(initialValue);
+  useEffect(() => {
+    initialValueRef.current = initialValue;
+  });
+  // Último valor conhecido, síncrono: permite gravar FORA do updater do
+  // setState (o updater tem de ser puro e roda dentro do render).
+  const valorRef = useRef(storedValue);
+  useEffect(() => {
+    valorRef.current = storedValue;
+  }, [storedValue]);
 
   // Sync with localStorage when key changes
   useEffect(() => {
@@ -28,7 +40,7 @@ export function useLocalStorage<T>(
 
     try {
       const item = window.localStorage.getItem(key);
-      const newValue = item ? JSON.parse(item) : initialValue;
+      const newValue = item ? JSON.parse(item) : initialValueRef.current;
 
       // Update state only if it actually changed to prevent loops
       // Wrap in setTimeout to move out of the render cycle and suppress lint warnings
@@ -44,18 +56,18 @@ export function useLocalStorage<T>(
     } catch (error) {
       console.error("Error syncing with localStorage:", error);
     }
-  }, [key, initialValue]);
+  }, [key]);
 
   const setValue = useCallback(
     (value: T | ((prev: T) => T)) => {
       try {
-        setStoredValue((prev) => {
-          const valueToStore = value instanceof Function ? value(prev) : value;
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
-          }
-          return valueToStore;
-        });
+        const valueToStore =
+          value instanceof Function ? value(valorRef.current) : value;
+        valorRef.current = valueToStore;
+        setStoredValue(valueToStore);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        }
       } catch (error) {
         console.error("Error saving to localStorage:", error);
       }

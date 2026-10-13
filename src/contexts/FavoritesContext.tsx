@@ -210,14 +210,30 @@ export function FavoritesProvider({
     setLocalFavoritesRaw((prev) => prev.map(idDaEntradaLocal));
   }, [user, localFavoritesRaw, setLocalFavoritesRaw]);
 
+  // Varredura 12/10/2026 — a resposta do `select` de A podia chegar DEPOIS da
+  // troca direta A->B e gravar os favoritos de A em `dbFavoriteIds` de B.
+  // Cada consulta pega um número de rodada e, ao voltar, só grava se ainda é a
+  // mais nova E se o usuário atual continua o mesmo que a disparou.
+  const rodadaRef = useRef(0);
+  const usuarioAtualIdRef = useRef<string | null>(user?.id ?? null);
+  useEffect(() => {
+    usuarioAtualIdRef.current = user?.id ?? null;
+  }, [user]);
+
   const fetchDbFavorites = useCallback(async () => {
     if (!user) return;
+    const rodada = ++rodadaRef.current;
+    const donoDaRodada = user.id;
+    const ehVelha = () =>
+      rodada !== rodadaRef.current ||
+      usuarioAtualIdRef.current !== donoDaRodada;
     try {
       const { data, error } = await supabase
         .from("favorites")
         .select("product_id")
         .eq("user_id", user.id);
 
+      if (ehVelha()) return;
       if (error) {
         console.error("Error fetching favorites", error);
         setErro("Não conseguimos carregar seus favoritos.");
@@ -227,6 +243,7 @@ export function FavoritesProvider({
         setErro(null);
       }
     } catch (err) {
+      if (ehVelha()) return;
       console.error("Fetch favorites failed", err);
       setErro("Não conseguimos carregar seus favoritos.");
     }

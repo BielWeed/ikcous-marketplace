@@ -183,14 +183,22 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     reviewsLengthRef.current = adminReviews.length;
   }, [adminReviews.length]);
 
+  // Cada leitura leva um número de rodada: a resposta superada por uma mais
+  // nova (o realtime dispara outra enquanto esta ainda espera) é descartada,
+  // senão a mais velha, chegando por último, sobrescreve os totais. Mesmo
+  // padrão de AdminCustomersView.
+  const rodadaRef = useRef(0);
+
   const loadReviews = useCallback(
     async (pageToFetch: number, silent = false) => {
+      const rodada = ++rodadaRef.current;
       try {
         const result = await getAllReviews(pageToFetch, pageSize, {
           rating: ratingFilter,
           search: searchQuery,
           silent,
         });
+        if (rodada !== rodadaRef.current) return;
         if (result) {
           setTotalReviews(result.total);
           setGlobalVerifiedCount(result.globalVerifiedCount || 0);
@@ -214,6 +222,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           .from("reviews" as any)
           .select("*", { count: "exact", head: true })
           .eq("status", "pendente");
+        if (rodada !== rodadaRef.current) return;
         if (!error && typeof count === "number") {
           setPendentesNoBanco(count);
         }

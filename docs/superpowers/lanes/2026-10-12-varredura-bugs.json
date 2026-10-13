@@ -1,0 +1,67 @@
+{
+  "plano": "varredura-bugs",
+  "frentes": [
+    {
+      "nome": "libs-puras",
+      "descricao": "limparNumero com milhar BR, rating 0, subtracao em centavos, arredondamento do destaque de cupom",
+      "posse": [
+        "src/utils/preco-da-grade.ts",
+        "src/lib/mappers.ts",
+        "src/lib/valor-devolver-agora.ts",
+        "src/lib/cupons-do-checkout.ts",
+        "tests/front/varredura-libs-puras.test.ts",
+        "tests/front/preco-da-grade.test.ts",
+        "tests/front/mappers.test.ts",
+        "tests/front/cupons-do-checkout-lib.test.ts"
+      ]
+    },
+    {
+      "nome": "devolucoes-admin",
+      "descricao": "lista do painel de devolucoes: limpar itens ao trocar filtro/falha, carregando inicial, dedupe por id",
+      "posse": [
+        "src/hooks/useDevolucoesAdmin.ts",
+        "src/views/admin/AdminDevolucoesView.tsx",
+        "tests/front/varredura-devolucoes-lista.test.tsx"
+      ]
+    },
+    {
+      "nome": "hooks-corrida",
+      "descricao": "corridas e erros engolidos em hooks de leitura: frete exibido, estornos do pedido, devolucao do cliente, localStorage",
+      "posse": [
+        "src/hooks/useEconomiaDoFreteExibida.ts",
+        "src/hooks/useEstornosDoPedido.ts",
+        "src/hooks/useDevolucaoDoPedidoCliente.ts",
+        "src/hooks/useLocalStorage.ts",
+        "tests/front/varredura-hooks-corrida.test.tsx"
+      ]
+    },
+    {
+      "nome": "contextos",
+      "descricao": "guardas de usuario/rodada em Favorites e Notification; localStorage protegido no Cart",
+      "posse": [
+        "src/contexts/FavoritesContext.tsx",
+        "src/contexts/NotificationContext.tsx",
+        "src/contexts/CartContext.tsx",
+        "tests/front/varredura-contextos.test.tsx"
+      ]
+    },
+    {
+      "nome": "telas-formatacao-a11y",
+      "descricao": "dinheiro com milhar via formatCurrency, nome acessivel do botao de foto, iniciais com nome em branco",
+      "posse": [
+        "src/views/customer/OrderDetailsView.tsx",
+        "src/views/customer/ProductView.tsx",
+        "src/views/customer/ProfileView.tsx",
+        "src/views/customer/AccountSettingsView.tsx",
+        "src/views/customer/UserProfileView.tsx",
+        "src/components/ui/custom/CartItemsList.tsx",
+        "src/components/ui/custom/CouponInput.tsx",
+        "src/components/ui/custom/ShippingProgress.tsx",
+        "src/components/ui/custom/ReviewCard.tsx",
+        "src/components/ui/custom/ProductQA.tsx",
+        "tests/front/varredura-telas-formatacao.test.tsx"
+      ]
+    }
+  ],
+  "liberados": {}
+}

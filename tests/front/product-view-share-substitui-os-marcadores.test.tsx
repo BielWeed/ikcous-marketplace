@@ -188,17 +188,17 @@ describe("ProductView — share substitui os marcadores que o painel promete", (
     expect(texto).not.toContain("[preco]");
     expect(texto).not.toContain("[link]");
     // Mensagem com marcador é completa: o sufixo padrão não se gruda depois.
-    expect(texto).not.toContain(" por R$49.90");
+    expect(texto).not.toContain(" por R$ 49,90");
   });
 
   it("texto sem marcadores (o default): mantém o comportamento de sempre", async () => {
     shareTextDaLoja = "Olha que achei na Loja X!";
     const texto = await compartilhar();
 
-    // Exatamente o formato atual: shareText + nome + "por R$" com ponto,
-    // e o link colado no final pelo caminho do clipboard.
+    // shareText + nome + "por R$" no formato pt-BR (milhar e virgula, como o
+    // resto da tela), e o link colado no final pelo caminho do clipboard.
     expect(texto).toBe(
-      `Olha que achei na Loja X! Produto Compartilhavel por R$49.90 - ${globalThis.location.href}`,
+      `Olha que achei na Loja X! Produto Compartilhavel por R$ 49,90 - ${globalThis.location.href}`,
     );
   });
 });

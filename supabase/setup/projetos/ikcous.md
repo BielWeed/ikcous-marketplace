@@ -21,15 +21,15 @@ Este documento registra os procedimentos de qualidade e os resultados da verific
 Para atingir a conformidade total (zero avisos e erros nas validações), foram realizados os seguintes ajustes no repositório:
 
 1. **Ajustes de Linter no Frontend (ESLint):**
-   - **Arquivo:** [OrderDetail.tsx](file:///c:/Users/Gabriel/Downloads/app_mkt/src/components/admin/orders/OrderDetail.tsx)
+   - **Arquivo:** [OrderDetail.tsx](../../../src/components/admin/orders/OrderDetail.tsx)
    - **Correção:** Alterado a captura do bloco catch de `catch (err)` para `catch` (optional catch binding) para eliminar o aviso `@typescript-eslint/no-unused-vars` de variável não utilizada.
 
 2. **Ajustes de Linter nas Edge Functions (ESLint):**
-   - **Arquivo:** [calculate-shipping/index.ts](file:///c:/Users/Gabriel/Downloads/app_mkt/supabase/functions/calculate-shipping/index.ts)
+   - **Arquivo:** [calculate-shipping/index.ts](../../functions/calculate-shipping/index.ts)
    - **Correção:** Alterado `catch (fallbackErr)` para `catch` para evitar aviso de variável declarada e nunca utilizada.
 
 3. **Ajuste de Linter Deno (Edge Functions):**
-   - **Arquivo Criado:** [deno.json](file:///c:/Users/Gabriel/Downloads/app_mkt/deno.json)
+   - **Arquivo Criado:** [deno.json](../../../deno.json)
    - **Correção:** Criado arquivo de configuração do Deno para tolerar o formato herdado do código. Foram desabilitadas as seguintes regras específicas do linter que geravam incompatibilidades com o padrão do projeto:
      - `no-import-prefix`: Permite importações diretas de URLs externas (`https://...`), necessárias para o estilo Deno v1 utilizado nas funções.
      - `no-explicit-any`: Permite o uso do tipo genérico `any` em variáveis flexíveis nas funções de cálculo.

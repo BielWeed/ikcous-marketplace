@@ -386,7 +386,7 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     const botaoRemover = hospedeiro.querySelector(
       'button[aria-label^="Remover"]',
     ) as HTMLButtonElement;
-    expect(botaoRemover).toBeDefined();
+    expect(botaoRemover).not.toBeNull();
     await act(async () => {
       botaoRemover.click();
     });

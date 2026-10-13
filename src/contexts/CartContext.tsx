@@ -145,6 +145,33 @@ function saveTombstones(map: Map<string, CartTombstone>) {
   }
 }
 
+// localStorage pode lançar (modo privado, cota cheia, acesso bloqueado):
+// o carrinho segue em memória, sem persistir, em vez de derrubar o Provider.
+function lerSeguro(chave: string): string | null {
+  try {
+    return localStorage.getItem(chave);
+  } catch (e) {
+    console.error("[CartContext] Failed to read localStorage:", e);
+    return null;
+  }
+}
+
+function gravarSeguro(chave: string, valor: string): void {
+  try {
+    localStorage.setItem(chave, valor);
+  } catch (e) {
+    console.error("[CartContext] Failed to write localStorage:", e);
+  }
+}
+
+function removerSeguro(chave: string): void {
+  try {
+    localStorage.removeItem(chave);
+  } catch (e) {
+    console.error("[CartContext] Failed to remove from localStorage:", e);
+  }
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { config } = useStore();
   const { user, loading: authLoading } = useAuth();
@@ -156,7 +183,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [userId]);
 
   const [cart, setCart] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem(CART_STORAGE_KEY);
+    const saved = lerSeguro(CART_STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -240,12 +267,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Only save to localStorage if we are not in the middle of an initial load
     if (!syncLocked.current && !isInitialLoad.current) {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+      gravarSeguro(CART_STORAGE_KEY, JSON.stringify(cart));
     }
   }, [cart]);
 
   // Track which user we have already synced for
   const lastSessionUserId = useRef<string | null>(null);
+
+  // Conta atual, para a leitura em voo saber se ainda é a dela quando voltar.
+  const userIdAtualRef = useRef<string | null>(userId ?? null);
+  useEffect(() => {
+    userIdAtualRef.current = userId ?? null;
+  }, [userId]);
 
   const syncFromDB = useCallback(
     async (force = false) => {
@@ -266,6 +299,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       if (!isInitialLoad.current && !force) return;
 
+      const uidDaLeitura = userId;
       try {
         const startTime = Date.now();
         console.log(
@@ -344,6 +378,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             })
             .filter((item): item is CartItem => item !== null);
 
+          // A conta saiu/trocou durante a leitura: o carrinho dela não é de
+          // quem está agora (o efeito de troca já limpou o estado).
+          if (userIdAtualRef.current !== (uidDaLeitura ?? null)) return;
+
           setCart((prev) => {
             const prevHash = JSON.stringify(prev);
             const reconHash = JSON.stringify(reconstructedCart);
@@ -410,9 +448,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error("[CartContext] ❌ Sync error:", err);
       } finally {
-        syncLocked.current = false;
-        setIsLoading(false);
-        isInitialLoad.current = false;
+        // Leitura de uma conta que já saiu não destrava o carregamento da
+        // conta atual (que tem a própria leitura em curso).
+        if (userIdAtualRef.current === (uidDaLeitura ?? null)) {
+          syncLocked.current = false;
+          setIsLoading(false);
+          isInitialLoad.current = false;
+        }
       }
     },
     [userId, authLoading],
@@ -432,8 +474,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           "[CartContext] ℹ️ Cleared old user items and tombstones from state and localStorage to prevent cross-account merge.",
         );
         setCart([]);
-        localStorage.removeItem(CART_STORAGE_KEY);
-        localStorage.removeItem(CART_TOMBSTONES_KEY);
+        removerSeguro(CART_STORAGE_KEY);
+        removerSeguro(CART_TOMBSTONES_KEY);
       }
       // Troca de conta/saída não herda nada da sessão anterior: itens,
       // tombstones, cotação de frete e endereço escolhido.
@@ -512,6 +554,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const syncPending = useRef(false);
   const lastSyncedCart = useRef<string>("");
+  // O carrinho mudou enquanto um sync ainda esperava o servidor: o efeito
+  // abaixo pula (um por vez) e, sem isto, ninguém reagendava ao fim — a
+  // alteração só ia ao banco na próxima mudança do carrinho. O contador
+  // reabre o efeito com o carrinho de agora quando o sync em voo termina.
+  const reenvioDevido = useRef(false);
+  const [reenvio, setReenvio] = useState(0);
+  const pedirReenvioSeDevido = useCallback(() => {
+    if (!reenvioDevido.current) return;
+    reenvioDevido.current = false;
+    setReenvio((n) => n + 1);
+  }, []);
 
   // Sync back to Supabase (Atomic-ish Strategy)
   const syncToDB = useCallback(
@@ -533,6 +586,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             "[CartContext] Bypassing sync: session not active/ready in client",
           );
           syncPending.current = false;
+          pedirReenvioSeDevido();
+          return;
+        }
+
+        // A RPC grava em `auth.uid()` da sessão de AGORA: se ela já é de
+        // outro usuário (troca de conta entre montar o carrinho e enviá-lo),
+        // o carrinho de `user` substituiria o dessa conta no banco.
+        const donoDaSessao = session.user?.id;
+        if (donoDaSessao && donoDaSessao !== user.id) {
+          console.warn(
+            "[CartContext] Sync abortado: a sessão ativa é de outro usuário.",
+          );
+          syncPending.current = false;
+          pedirReenvioSeDevido();
           return;
         }
 
@@ -566,12 +633,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         if (syncError) throw syncError;
         lastSyncedCart.current = cartHash;
         syncPending.current = false;
+        pedirReenvioSeDevido();
       } catch (err) {
         console.error("[CartContext] ❌ DB Sync Failed:", err);
         syncPending.current = false;
+        pedirReenvioSeDevido();
       }
     },
-    [user, authLoading],
+    [user, authLoading, pedirReenvioSeDevido],
   );
 
   useEffect(() => {
@@ -580,11 +649,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => {
       if (!syncPending.current) {
         syncToDB(cart);
+      } else {
+        reenvioDevido.current = true;
       }
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [cart, syncToDB]);
+    // `reenvio` reabre o efeito quando o sync em voo termina (ver acima).
+  }, [cart, syncToDB, reenvio]);
 
   const addToCart = useCallback(
     (
@@ -792,7 +864,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
     setSelectedShippingOption(null);
     setShippingCep(null);
-    localStorage.removeItem(CART_STORAGE_KEY);
+    removerSeguro(CART_STORAGE_KEY);
     toast.info("Carrinho limpo");
   }, [setSelectedShippingOption]);
 

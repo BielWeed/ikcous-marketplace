@@ -90,13 +90,16 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     setReplyingTo(q.id);
   };
 
+  // Nome só com espaços não tem inicial (cai no "U"), e `Array.from` pega o
+  // caractere inteiro — `charAt` partia emoji/símbolo astral ao meio.
   const getInitials = (name: string) => {
-    if (!name) return "U";
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-    return (
-      parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
-    ).toUpperCase();
+    const trimmed = name?.trim();
+    if (!trimmed) return "U";
+    const parts = trimmed.split(/\s+/);
+    const primeira = Array.from(parts[0])[0];
+    if (parts.length === 1) return primeira.toUpperCase();
+    const ultima = Array.from(parts[parts.length - 1])[0];
+    return (primeira + ultima).toUpperCase();
   };
 
   const handleNavigateToAuth = () => {
@@ -156,6 +159,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
               value={newQuestion}
               onChange={(e) => setNewQuestion(e.target.value)}
               placeholder="Escreva sua dúvida sobre o produto..."
+              aria-label="Sua dúvida sobre o produto"
               className="w-full rounded-2xl border border-zinc-200 bg-zinc-50/50 px-4 py-3.5 pr-12 text-sm transition-all duration-300 placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/10"
             />
             <button
@@ -163,6 +167,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
               disabled={!newQuestion.trim()}
               className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-xl bg-primary text-white shadow-sm transition-all duration-300 hover:opacity-90 hover:shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-20"
               title="Enviar pergunta"
+              aria-label="Enviar pergunta"
             >
               <Send className="size-3.5" />
             </button>
@@ -396,12 +401,18 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                           value={replyText}
                           onChange={(e) => setReplyText(e.target.value)}
                           placeholder="Escreva sua resposta oficial..."
+                          aria-label="Resposta oficial da loja"
                           className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 pr-10 text-xs transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <button
                           onClick={() => handleReply(q.id)}
                           disabled={!replyText.trim()}
                           title={
+                            q.answers.length > 0
+                              ? "Salvar edição"
+                              : "Enviar resposta"
+                          }
+                          aria-label={
                             q.answers.length > 0
                               ? "Salvar edição"
                               : "Enviar resposta"

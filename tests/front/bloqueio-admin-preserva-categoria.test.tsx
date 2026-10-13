@@ -311,6 +311,14 @@ describe("bloqueio de admin preserva a categoria", () => {
 
   afterEach(async () => {
     const paraDesmontar = raiz;
+    // O `popstate` do App agenda um `setTimeout` de 150 ms que atualiza a
+    // direção da navegação (App.tsx, `handlePopState`). Se o arquivo termina
+    // antes de ele disparar, o timer cai DEPOIS de o jsdom ser desmontado e o
+    // React acusa `window is not defined` como erro não tratado — intermitente,
+    // só sob a carga do CI. Espera o debounce do próprio app, ainda montado.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
     await act(async () => {
       paraDesmontar?.unmount();
     });

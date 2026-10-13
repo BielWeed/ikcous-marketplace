@@ -289,7 +289,7 @@ export function ShippingProgress({
                       {p.name}
                     </p>
                     <p className="mb-2 text-[11px] font-black tracking-tighter text-zinc-900">
-                      R$ {p.price.toFixed(2).replace(".", ",")}
+                      {formatCurrency(p.price)}
                     </p>
 
                     <div className="mb-2 flex items-center justify-between gap-1 rounded-lg border border-zinc-200 bg-white p-0.5">

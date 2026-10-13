@@ -166,7 +166,7 @@ describe("AdminBannersView — alternar ativo do banner avisa o lojista quando f
     const el = hospedeiro.querySelector(
       `#banner-card-active-${bannerPublicado.id}`,
     );
-    expect(el).toBeDefined();
+    expect(el).not.toBeNull();
     return el as HTMLElement;
   }
 

@@ -210,12 +210,6 @@ export const HomeView = React.memo(function HomeView({
       }
     });
 
-    if (result.length !== produtosAVenda.length || searchQuery) {
-      console.log(
-        `[HomeView] Filtered: ${result.length}/${produtosAVenda.length} products`,
-      );
-    }
-
     return result;
   }, [produtosAVenda, selectedCategory, searchQuery, sortBy]);
 

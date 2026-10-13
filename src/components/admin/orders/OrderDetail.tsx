@@ -1739,7 +1739,7 @@ export const OrderDetail = memo(function OrderDetail({
           (order.paymentStatus === "pago" ||
             order.paymentStatus === "pago_apos_expirar" ||
             order.paymentStatus === "estornado") && (
-            <EstornoCard order={order} />
+            <EstornoCard key={order.id} order={order} />
           )}
 
         <OrderDeliveryCard
