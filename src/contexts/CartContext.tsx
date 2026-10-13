@@ -274,6 +274,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // Track which user we have already synced for
   const lastSessionUserId = useRef<string | null>(null);
 
+  // Conta atual, para a leitura em voo saber se ainda é a dela quando voltar.
+  const userIdAtualRef = useRef<string | null>(userId ?? null);
+  useEffect(() => {
+    userIdAtualRef.current = userId ?? null;
+  }, [userId]);
+
   const syncFromDB = useCallback(
     async (force = false) => {
       if (authLoading) {
@@ -293,6 +299,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       if (!isInitialLoad.current && !force) return;
 
+      const uidDaLeitura = userId;
       try {
         const startTime = Date.now();
         console.log(
@@ -371,6 +378,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             })
             .filter((item): item is CartItem => item !== null);
 
+          // A conta saiu/trocou durante a leitura: o carrinho dela não é de
+          // quem está agora (o efeito de troca já limpou o estado).
+          if (userIdAtualRef.current !== (uidDaLeitura ?? null)) return;
+
           setCart((prev) => {
             const prevHash = JSON.stringify(prev);
             const reconHash = JSON.stringify(reconstructedCart);
@@ -437,9 +448,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error("[CartContext] ❌ Sync error:", err);
       } finally {
-        syncLocked.current = false;
-        setIsLoading(false);
-        isInitialLoad.current = false;
+        // Leitura de uma conta que já saiu não destrava o carregamento da
+        // conta atual (que tem a própria leitura em curso).
+        if (userIdAtualRef.current === (uidDaLeitura ?? null)) {
+          syncLocked.current = false;
+          setIsLoading(false);
+          isInitialLoad.current = false;
+        }
       }
     },
     [userId, authLoading],
