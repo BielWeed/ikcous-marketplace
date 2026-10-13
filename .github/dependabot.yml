@@ -1,0 +1,38 @@
+# Atualização automática de dependências (achado L12 da auditoria de 12/10/2026).
+#
+# Sem este arquivo o Dependabot só abre PR de SEGURANÇA; aqui ele passa a abrir
+# também as atualizações de versão, uma vez por semana. Para não inundar a fila
+# de PR, minor e patch vêm AGRUPADOS (um PR por grupo); major continua um PR por
+# pacote, de propósito: major pode quebrar contrato e pede revisão própria.
+#
+# O prefixo `chore(deps)` passa no commitlint (tipo convencional + escopo `deps`
+# na lista de escopos válidos). Cada PR roda o CI inteiro, então uma atualização
+# só entra com o CI verde no SHA do topo.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+      producao-minor-patch:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
