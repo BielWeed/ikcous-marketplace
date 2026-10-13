@@ -77,6 +77,10 @@ export function useDevolucoesAdmin(args: {
   // menor depois do dedupe e faria "Mostrar mais" repetir a mesma página.
   const [lidas, setLidas] = useState(0);
   const lidasRef = useRef(0);
+  // Total visto na última leitura aceita: se ele muda durante o "Mostrar
+  // mais", entrou/saiu devolução no servidor e o offset já não aponta onde
+  // apontava (a página repete uma linha e a nova nunca seria alcançada).
+  const totalRef = useRef(0);
   const chaveRef = useRef(`${status ?? ""}|${busca}`);
 
   const buscar = useCallback(
@@ -97,6 +101,12 @@ export function useDevolucoesAdmin(args: {
           setErro(true);
           return;
         }
+        if (offset > 0 && lista.total !== totalRef.current) {
+          // A lista andou sob nós: relê do início, com o que já estava na
+          // tela mais uma página, em vez de anexar a um offset deslocado.
+          void buscar(0, Math.min(LIMITE_MAXIMO, lidasRef.current + PAGINA));
+          return;
+        }
         setItens((antes) => {
           if (offset === 0) return lista.itens;
           // Item novo no servidor desloca a paginação: não repete id.
@@ -108,6 +118,7 @@ export function useDevolucoesAdmin(args: {
             ? lista.itens.length
             : lidasRef.current + lista.itens.length;
         setLidas(lidasRef.current);
+        totalRef.current = lista.total;
         setTotal(lista.total);
         setContagem(lista.contagem);
         setErro(false);
@@ -132,6 +143,7 @@ export function useDevolucoesAdmin(args: {
         setTotal(0);
         setLidas(0);
         lidasRef.current = 0;
+        totalRef.current = 0;
       }
       // Volta a ativa com a lista paginada: relê tudo, não encolhe a 50.
       void buscar(

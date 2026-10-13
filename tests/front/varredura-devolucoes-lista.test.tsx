@@ -199,26 +199,35 @@ describe("lista de devoluções do painel", () => {
     expect(cartoes()).toHaveLength(60);
   });
 
-  it("item 4: carregarMais não duplica id quando entra item novo", async () => {
-    rpc.mockResolvedValueOnce(pagina(ids(1, 50), 61));
+  it("item 4: entrou item novo entre páginas — relê do início, sem duplicar e sem perder a linha nova", async () => {
+    rpc.mockResolvedValueOnce(pagina(ids(1, 50), 60));
     await montar();
-    // Entrou um item novo no topo: a página 2 repete d-50.
-    rpc.mockResolvedValueOnce(pagina(["d-50", ...ids(51, 59)], 61));
+    // Entrou um item novo no topo (total 60 -> 61): a página 2 repete d-50 e
+    // o item novo ficaria inalcançável por offset. O hook relê do início.
+    rpc.mockResolvedValueOnce(pagina(["d-50", ...ids(51, 60)], 61));
+    rpc.mockResolvedValueOnce(pagina(["d-novo", ...ids(1, 60)], 61));
     await clicar(mostrarMais());
+
+    const ultima = rpc.mock.calls.at(-1)![1] as {
+      p_offset: number;
+      p_limite: number;
+    };
+    expect(ultima.p_offset).toBe(0);
+    expect(ultima.p_limite).toBeGreaterThanOrEqual(60);
     const lista = idsNaTela();
     expect(new Set(lista).size).toBe(lista.length);
-    expect(lista).toHaveLength(59);
-
-    // Total 61, 59 na tela, mas o servidor já entregou 60 linhas cruas
-    // (50 + 10): ainda faltam linhas e o próximo clique AVANÇA o offset (60).
-    expect(mostrarMais()).toBeTruthy();
-    rpc.mockResolvedValueOnce(pagina(["d-60", "d-61"], 61));
-    await clicar(mostrarMais());
-    expect((rpc.mock.calls.at(-1)![1] as { p_offset: number }).p_offset).toBe(
-      60,
-    );
-    expect(idsNaTela()).toHaveLength(61);
+    expect(lista).toHaveLength(61);
+    expect(lista).toContain("d-novo");
     expect(mostrarMais()).toBeUndefined();
+  });
+
+  it("item 4: sem item novo entre páginas, 'Mostrar mais' só anexa (não relê)", async () => {
+    rpc.mockResolvedValueOnce(pagina(ids(1, 50), 60));
+    await montar();
+    rpc.mockResolvedValueOnce(pagina(ids(51, 60), 60));
+    await clicar(mostrarMais());
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(idsNaTela()).toHaveLength(60);
   });
 
   it("item 5: 'agora' é renovado quando a tela volta a ficar ativa", async () => {
