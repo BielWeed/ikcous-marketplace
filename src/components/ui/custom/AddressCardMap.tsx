@@ -21,9 +21,10 @@ import "@/components/ui/custom/address-card-map.css";
  *   vizinhança da obra). Mapa interativo desligado: nada de zoom/satélite.
  * - maplibre-gl entra por IMPORT DINÂMICO: só é baixado quando um mapa
  *   realmente monta (chunk próprio; o bundle da cliente não cresce). O
- *   WORKER do MapLibre também: a URL empacotada pelo Vite (`?worker&url`)
- *   vem por import dinâmico no mesmo caminho e entra por `setWorkerUrl`
- *   antes do primeiro mapa (ver `importarRenderer`).
+ *   WORKER do MapLibre (~500 kB, asset à parte) também só é baixado quando
+ *   um mapa monta: a URL empacotada pelo Vite (`?worker&url`) vem por import
+ *   dinâmico no mesmo caminho e entra por `setWorkerUrl` antes do primeiro
+ *   mapa (ver `importarRenderer`).
  * - Falha de rede/estilo/geocode/timeout → mensagem amigável; o cartão
  *   continua útil (endereço + link externo do AddressList).
  * - Privacidade: a consulta de geocode usa SÓ campos geográficos —
@@ -122,10 +123,14 @@ function carregarEstilo(sinal: AbortSignal): Promise<unknown> {
  * repositório; o contrato do fonte está em
  * tests/front/mapa-worker-empacotado.test.ts.
  *
- * Os dois imports são DINÂMICOS e moram no mesmo caminho preguiçoso: nem o
- * MapLibre nem a URL do worker entram no JS inicial do cliente. Esta função
- * só roda pela promessa compartilhada abaixo, então `setWorkerUrl` acontece
- * UMA vez por sessão e sempre antes do primeiro `new maplibregl.Map`. */
+ * Os dois imports são DINÂMICOS e moram no mesmo caminho preguiçoso. O que
+ * NUNCA entra no JS inicial do cliente é o que pesa: o chunk do `maplibre-gl`
+ * e o worker (~500 kB, que o Vite emite como asset à parte, com hash). O
+ * módulo `?worker&url` em si é só a string da URL (dezenas de bytes) e o
+ * `experimentalMinChunkSize` do vite.config.ts pode fundi-lo no chunk de
+ * entrada — custo irrisório, sem arrastar nada do MapLibre. Esta função só
+ * roda pela promessa compartilhada abaixo, então `setWorkerUrl` acontece UMA
+ * vez por sessão e sempre antes do primeiro `new maplibregl.Map`. */
 async function importarRenderer(): Promise<typeof import("maplibre-gl")> {
   const [maplibregl, { default: urlDoWorker }] = await Promise.all([
     import("maplibre-gl"),
@@ -138,11 +143,25 @@ async function importarRenderer(): Promise<typeof import("maplibre-gl")> {
 /** Renderer compartilhado: 1 import dinâmico por sessão — todos os cartões
  * awaitam a MESMA promessa. Também corre contra o sinal do cartão (revisão
  * 3): um import lento demais perde para o timeout e o cartão degrada em
- * vez de construir um mapa depois do prazo, sem timer para cobri-lo. Uma
- * promessa de import que JÁ resolveu é boa para sempre — não se invalida. */
+ * vez de construir um mapa depois do prazo, sem timer para cobri-lo.
+ *
+ * Uma promessa que JÁ resolveu é boa para sempre — não se invalida. Uma que
+ * REJEITOU (queda de rede no download do chunk do maplibre ou do worker) NÃO
+ * fica gravada: como o cache do estilo, a limpeza confere IDENTIDADE (só
+ * derruba o cache se ele ainda guarda ESTA promessa) e a próxima montagem
+ * importa de novo. Sem isso, um soluço de rede deixava todo cartão
+ * "indisponível" até recarregar a página — e o chunk não vem mais no
+ * precache do service worker. Uma pendência lenta NÃO é invalidada pelo
+ * timeout do cartão: reimportar o mesmo módulo só juntaria a mesma busca. */
 let rendererEmCache: Promise<typeof import("maplibre-gl")> | undefined;
 function carregarRenderer(sinal: AbortSignal) {
-  rendererEmCache ??= importarRenderer();
+  if (!rendererEmCache) {
+    const promessa = importarRenderer();
+    rendererEmCache = promessa;
+    promessa.catch(() => {
+      if (rendererEmCache === promessa) rendererEmCache = undefined;
+    });
+  }
   return Promise.race([
     rendererEmCache,
     new Promise<never>((_, rejeitar) => {
@@ -174,27 +193,11 @@ function queryGeografica(address: Address): string {
     .join(", ");
 }
 
-/** Geocode resolvido, em cache de NÍVEL DE MÓDULO e por texto da consulta
- * (só campos geográficos — a mesma string que vai ao Photon). Expandir e
- * recolher cartões remonta o componente; sem isto cada remontagem reenviava
- * o endereço ao Photon (terceiro) e repetia o mesmo geocode (revisão da
- * PR #712). Só o SUCESSO fica guardado: rede caída, HTTP de erro e "sem
- * resultado" não são cacheados — a próxima montagem tenta de novo. Vive só
- * na memória da sessão (nada em storage); endereço alterado vira outra
- * chave. */
-const geocodesResolvidos = new Map<string, Location>();
-
-async function geocodeComCache(
-  query: string,
-  sinal: AbortSignal,
-): Promise<Location | null> {
-  const guardado = geocodesResolvidos.get(query);
-  if (guardado) return guardado;
-  const ponto = await geocode(query, sinal);
-  if (ponto) geocodesResolvidos.set(query, ponto);
-  return ponto;
-}
-
+/** Sem cache de geocode em nível de módulo, DE PROPÓSITO: um `Map` de módulo
+ * guardaria endereço completo + coordenada pela sessão e o logout não o
+ * limparia (o AuthContext só limpa os caches de módulo que conhece, e a
+ * política é limpar os que guardam dado pessoal). Cada montagem reconsulta.
+ * Os caches deste arquivo (estilo e renderer) são públicos: nada do usuário. */
 async function geocode(
   query: string,
   sinal: AbortSignal,
@@ -253,7 +256,7 @@ export function AddressCardMap({ address }: { address: Address }) {
       try {
         const [estilo, ponto] = await Promise.all([
           carregarEstilo(controller.signal),
-          geocodeComCache(queryGeografica(address), controller.signal),
+          geocode(queryGeografica(address), controller.signal),
         ]);
         if (!ativo) return;
         if (!ponto) {

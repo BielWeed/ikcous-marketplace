@@ -16,7 +16,9 @@ import { describe, expect, it } from "vitest";
 // empacotar o worker:
 //   - `?worker&url` (o `?url` sozinho NÃO basta: o worker importa o shared) —
 //     validado em harness com o Vite 7.3.6 do repositório;
-//   - import DINÂMICO (a URL não pode entrar no JS inicial do cliente);
+//   - import DINÂMICO, no mesmo caminho preguiçoso do `maplibre-gl` (o que não
+//     pode entrar no JS inicial é o chunk do maplibre e o worker de ~500 kB; o
+//     módulo da URL é só uma string e o build pode fundi-lo na entrada);
 //   - `setWorkerUrl` antes do primeiro `new maplibregl.Map`.
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo de arquivo do próprio repositório, sem entrada externa.
 const fonte = readFileSync(
@@ -34,6 +36,21 @@ const codigo = fonte
 const ESPECIFICADOR_DO_WORKER =
   "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 
+/** Posição do PRIMEIRO `import("<especificador>")` de verdade (chamada
+ * dinâmica), ou -1. Ignora o `import("...")` em POSIÇÃO DE TIPO — o que vem
+ * logo depois de `typeof ` (`Promise<typeof import("maplibre-gl")>`) ou de
+ * `as ` (`as import("maplibre-gl").StyleSpecification`): ele aparece ANTES do
+ * import real, é apagado pelo compilador e enganava a conferência de ordem. */
+function posicaoDoImportDinamico(especificador: string): number {
+  const alvo = `import("${especificador}")`;
+  let posicao = codigo.indexOf(alvo);
+  while (posicao !== -1) {
+    if (!/\b(?:typeof|as)\s+$/.test(codigo.slice(0, posicao))) return posicao;
+    posicao = codigo.indexOf(alvo, posicao + 1);
+  }
+  return -1;
+}
+
 describe("worker do MapLibre empacotado pelo Vite (contrato do fonte)", () => {
   it("importa a URL do worker por `?worker&url` (nunca `?url` sozinho, nunca nome fixo)", () => {
     // Todo specifier que menciona o arquivo do worker precisa ser exatamente
@@ -47,14 +64,16 @@ describe("worker do MapLibre empacotado pelo Vite (contrato do fonte)", () => {
     expect(codigo).not.toMatch(/["'`]\/assets\/[^"'`]*worker/);
   });
 
-  it("é import DINÂMICO: nenhum import estático arrasta o worker para o JS inicial", () => {
-    expect(codigo).toContain(`import("${ESPECIFICADOR_DO_WORKER}")`);
+  it("é import DINÂMICO: nenhum import estático do worker nem do maplibre-gl no topo do componente", () => {
+    expect(posicaoDoImportDinamico(ESPECIFICADOR_DO_WORKER)).toBeGreaterThan(
+      -1,
+    );
     // `import x from "...?worker&url"` e `import "...?worker&url"` no topo
     // entrariam no bundle de quem importa o componente (AddressList → Perfil).
     expect(codigo).not.toMatch(/^\s*import\s[^;(]*["'][^"']*\?worker/m);
     // O `maplibre-gl` em si segue dinâmico pelo mesmo motivo (import de TIPO
-    // é apagado pelo compilador e não conta).
-    expect(codigo).toContain('import("maplibre-gl")');
+    // é apagado pelo compilador e não conta — nem como o import dinâmico).
+    expect(posicaoDoImportDinamico("maplibre-gl")).toBeGreaterThan(-1);
     expect(codigo).not.toMatch(
       /^\s*import\s+(?!type\b)[^;(]*["']maplibre-gl["']/m,
     );
@@ -74,9 +93,9 @@ describe("worker do MapLibre empacotado pelo Vite (contrato do fonte)", () => {
 
     // Mesmo caminho preguiçoso: a URL só existe depois dos DOIS imports
     // dinâmicos (o do maplibre e o do worker), no mesmo trecho que os faz.
-    const posicaoImportDoMaplibre = codigo.indexOf('import("maplibre-gl")');
-    const posicaoImportDoWorker = codigo.indexOf(
-      `import("${ESPECIFICADOR_DO_WORKER}")`,
+    const posicaoImportDoMaplibre = posicaoDoImportDinamico("maplibre-gl");
+    const posicaoImportDoWorker = posicaoDoImportDinamico(
+      ESPECIFICADOR_DO_WORKER,
     );
     expect(posicaoImportDoMaplibre).toBeGreaterThan(0);
     expect(posicaoImportDoWorker).toBeGreaterThan(0);

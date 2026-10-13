@@ -24,12 +24,15 @@ import type { Address } from "@/types";
 //     mapa-worker-empacotado.test.ts — o mock daqui esconde o worker real);
 //   - a camada de POI NÃO chega ao mapa (filtro do estilo);
 //   - a região do mapa carrega o rótulo em português (o MapLibre põe "Map");
-//   - geocode em cache por consulta: expandir/recolher não reenvia o endereço;
+//   - SEM cache de geocode em módulo (endereço + coordenada não ficam na
+//     sessão; o logout não os limparia): cada montagem reconsulta;
+//   - o import do renderer que REJEITA não fica cacheado: a remontagem tenta
+//     de novo (queda de rede no chunk não trava os cartões até recarregar);
 //   - editar/excluir seguem funcionando com o mapa montado.
 //
 // ISOLAMENTO: cada teste recebe módulos NOVOS (resetModules + doMock no
-// beforeEach). Os caches do componente são de NÍVEL DE MÓDULO (estilo,
-// renderer, geocode) e a factory do mock só roda no 1º import de um registro —
+// beforeEach). Os caches do componente são de NÍVEL DE MÓDULO (estilo e
+// renderer) e a factory do mock só roda no 1º import de um registro —
 // sem isto, um teste herdava o cache do anterior e os contadores
 // ("maplibre nunca importado", "setWorkerUrl nunca chamado") não podiam
 // falhar: passavam por vazio depois do primeiro mapa montado.
@@ -131,7 +134,7 @@ function criarMaplibreFalso() {
 }
 
 /** Módulos NOVOS para o teste: zera os caches de nível de módulo do
- * componente (estilo, renderer, geocode) e REARMA os mocks — a factory do
+ * componente (estilo e renderer) e REARMA os mocks — a factory do
  * maplibre roda de novo no próximo import (contador vivo) e o `?worker&url`
  * vira `URL_DO_WORKER`. Devolve o AddressList do registro novo. */
 function armarModulosFrescos() {
@@ -518,7 +521,93 @@ describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
     ]);
   });
 
-  it("geocode em cache por consulta: recolher e expandir NÃO reenvia o endereço ao Photon", async () => {
+  /** Rearma o registro de módulos com `factory` no lugar do mock do
+   * especificador e troca o AddressList do teste por um do registro NOVO
+   * (caches de módulo vazios). `renderizar`/`remontar` usam o novo. */
+  async function usarMockQue(
+    especificador: string,
+    factory: () => Record<string, unknown>,
+  ): Promise<void> {
+    vi.doMock(especificador, factory);
+    vi.resetModules();
+    AddressList = (await import("@/components/ui/custom/AddressList"))
+      .AddressList;
+  }
+
+  const redeOk = () =>
+    vi.stubGlobal("fetch", (entrada: RequestInfo | URL) => {
+      const url = String(entrada);
+      if (url.includes("openfreemap")) return respostaOk(ESTILO);
+      return respostaGeocode();
+    });
+
+  it("import do maplibre que REJEITA (queda de rede no chunk) NÃO fica cacheado: a remontagem importa de novo e o mapa volta", async () => {
+    // O cache do renderer guardava a promessa REJEITADA pela sessão inteira:
+    // uma queda no download do chunk deixava todo cartão "indisponível" até
+    // recarregar a página (e o chunk não vem mais no precache do SW).
+    let tentativas = 0;
+    await usarMockQue("maplibre-gl", () => {
+      tentativas += 1;
+      if (tentativas === 1)
+        throw new TypeError("Failed to fetch dynamically imported module");
+      return criarMaplibreFalso();
+    });
+    redeOk();
+
+    await renderizar({ addresses: [CASA], showMaps: true });
+    await avancaMicrotarefas();
+    expect(fasesDosCartoes()).toEqual(["indisponivel"]);
+    expect(tentativas).toBe(1);
+    expect(mockEventos).toEqual([]); // sem renderer: nem worker, nem Map
+
+    // Mesma instância de módulo: sem limpar a rejeição, ficaria
+    // "indisponivel" para sempre e `tentativas` não passaria de 1.
+    await remontar({ addresses: [CASA], showMaps: true });
+    expect(tentativas).toBe(2); // importou DE NOVO
+    expect(fasesDosCartoes()).toEqual(["mapa"]);
+    expect(mockEventos).toEqual([`setWorkerUrl:${URL_DO_WORKER}`, "new Map"]);
+
+    // A promessa nova e VÁLIDA fica guardada: nada de reimportar nem de
+    // reconfigurar o worker a cada remontagem (a limpeza da rejeição antiga
+    // não pode levar a nova junto).
+    await remontar({ addresses: [CASA], showMaps: true });
+    expect(tentativas).toBe(2);
+    expect(fasesDosCartoes()).toEqual(["mapa"]);
+    expect(mockEventos).toEqual([
+      `setWorkerUrl:${URL_DO_WORKER}`,
+      "new Map",
+      "new Map",
+    ]);
+  });
+
+  it("URL do worker que REJEITA: o renderer não é configurado pela metade, e a remontagem tenta de novo", async () => {
+    // O `?worker&url` é um chunk à parte: pode cair sozinho. O mapa NÃO pode
+    // subir sem worker (voltaria ao defeito original: worker = HTML).
+    let tentativas = 0;
+    await usarMockQue(ESPECIFICADOR_DO_WORKER, () => {
+      tentativas += 1;
+      if (tentativas === 1)
+        throw new TypeError("Failed to fetch dynamically imported module");
+      return { default: URL_DO_WORKER };
+    });
+    redeOk();
+
+    await renderizar({ addresses: [CASA], showMaps: true });
+    await avancaMicrotarefas();
+    expect(fasesDosCartoes()).toEqual(["indisponivel"]);
+    expect(mockEventos).toEqual([]); // nenhum `new Map` sem worker configurado
+
+    await remontar({ addresses: [CASA], showMaps: true });
+    expect(tentativas).toBe(2);
+    expect(fasesDosCartoes()).toEqual(["mapa"]);
+    expect(mockEventos).toEqual([`setWorkerUrl:${URL_DO_WORKER}`, "new Map"]);
+  });
+
+  it("SEM cache de geocode em módulo: cada montagem reconsulta o Photon (endereço + coordenada não sobrevivem à desmontagem)", async () => {
+    // Decisão do orquestrador (rodada 2): um `Map` de módulo com endereço
+    // completo + coordenada não é limpo no logout (o AuthContext só limpa os
+    // caches de módulo que conhece). Este teste trava a escolha: se alguém
+    // reintroduzir o cache, ele quebra e a decisão volta à mesa.
     const fetchEspiao = vi.fn((entrada: RequestInfo | URL) => {
       const url = String(entrada);
       if (url.includes("openfreemap")) return respostaOk(ESTILO);
@@ -538,15 +627,10 @@ describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
     await remontar({ showMaps: true });
     await remontar({ showMaps: true });
     expect(fasesDosCartoes()).toEqual(["mapa", "mapa"]);
-    expect(chamadasAoPhoton()).toBe(2); // continua 2: o ponto veio do cache
-    // Os mapas montados a partir do cache usam o MESMO ponto do geocode
-    // original: 2 cartões × 3 montagens.
-    expect(mockMapas).toHaveLength(6);
-    for (const { opcoes } of mockMapas)
-      expect(opcoes.center).toEqual([-46.6559, -23.5614]);
+    expect(chamadasAoPhoton()).toBe(6); // 2 cartões × 3 montagens: sempre consulta
   });
 
-  it("endereço ALTERADO é outra consulta: o cache é por texto da consulta, não por cartão", async () => {
+  it("endereço ALTERADO gera OUTRA consulta com o texto novo (nada fica preso ao endereço antigo)", async () => {
     const fetchEspiao = vi.fn((entrada: RequestInfo | URL) => {
       const url = String(entrada);
       if (url.includes("openfreemap")) return respostaOk(ESTILO);
@@ -573,41 +657,6 @@ describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
       "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, 38600-123, Brasil",
       "Rua das Acácias, 121, Jardim Primavera, Paracatu, MG, 38600-123, Brasil",
     ]);
-  });
-
-  it("FALHA de geocode NÃO fica em cache: rede caída, 503 e 'sem resultado' tentam de novo; só o sucesso é guardado", async () => {
-    let tentativas = 0;
-    const fetchEspiao = vi.fn((entrada: RequestInfo | URL) => {
-      const url = String(entrada);
-      if (url.includes("openfreemap")) return respostaOk(ESTILO);
-      tentativas += 1;
-      if (tentativas === 1)
-        return Promise.reject(new TypeError("Failed to fetch"));
-      if (tentativas === 2) return Promise.resolve({ ok: false, status: 503 });
-      if (tentativas === 3) return respostaOk({ features: [] });
-      return respostaGeocode();
-    });
-    vi.stubGlobal("fetch", fetchEspiao);
-
-    await act(async () => {
-      raiz.render(<AddressList addresses={[CASA]} showMaps />);
-    });
-    await avancaMicrotarefas();
-    expect(fasesDosCartoes()).toEqual(["indisponivel"]); // rede caída
-
-    await remontar({ addresses: [CASA], showMaps: true });
-    expect(fasesDosCartoes()).toEqual(["indisponivel"]); // 503
-    await remontar({ addresses: [CASA], showMaps: true });
-    expect(fasesDosCartoes()).toEqual(["indisponivel"]); // sem resultado
-    expect(tentativas).toBe(3); // cada falha foi reconsultada
-
-    await remontar({ addresses: [CASA], showMaps: true });
-    expect(fasesDosCartoes()).toEqual(["mapa"]); // rede voltou: recupera
-    expect(tentativas).toBe(4);
-
-    await remontar({ addresses: [CASA], showMaps: true });
-    expect(fasesDosCartoes()).toEqual(["mapa"]);
-    expect(tentativas).toBe(4); // o sucesso, sim, ficou guardado
   });
 
   it("editar e excluir continuam funcionando com o mapa montado", async () => {
