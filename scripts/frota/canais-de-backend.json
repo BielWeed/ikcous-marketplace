@@ -109,7 +109,7 @@
       "_comentario": "Lote de TRES migrations (as portas pequenas do banco: a 20261218000000 cria o gatilho tr_perfil_recusa_imagem_grande em profiles, com teto de 128 KiB na foto e 512 KiB na capa conferido so quando a imagem muda, e tira o EXECUTE de get_segmented_push_count e o SELECT de vw_produtos_admin do visitante sem login; a 20261218000100 tira de anon e authenticated todo privilegio em app_settings e otp_verifications, que so o servidor usa; a 20261219000000 recria public_profiles_select_policy so para authenticated, com a propria conta, o admin atual e quem escreveu avaliacao publicada ou pergunta), de APPLY NORMAL: sem backfillLedger e sem nuncaAplicar. NAO ADITIVAS a 20261218000100 e a 20261219000000 (restringem leitura): o apply espera o SQL mostrado ao dono. Nenhuma linha de dado e lida ou reescrita ao aplicar; imagem ja gravada continua como esta. Cada migration tem pre-voo B1_BASELINE_DIVERGENT e um bloco DO no fim que aborta se o efeito nao aconteceu (um REVOKE que so avisa nao passa). Valem as duas lojas assinantes (IKCOUS e Savy); Almeida, Brand Meliz e Space sao lojas de teste e ficam de fora. Na IKCOUS a 20261218000100 e no-op (as duas tabelas ja estavam fechadas). Caminho: a 22a (so leitura, 15 linhas) prova DEPOIS do apply, por objeto, a politica (papeis e md5 da condicao), o gatilho (definicao, ligado, corpo sha256 LF ou CRLF, EXECUTE fechado), o EXECUTE da contagem do push, a view do painel e as duas tabelas do servidor fechadas com a service_role intacta; NEGATIVA = o lote ainda nao esta no banco, e entao o portao pede a 22b (ausenciaConfirmadaPor: o estado VIGENTE medido nas duas lojas, a porta rls_admin_atual e as colunas que o lote le; sem linha das duas tabelas do servidor, porque na IKCOUS o antes delas ja e o depois) e so com a 22b POSITIVA (da mesma janela ou mais nova que a 22a negativa, e dentro da validade) imprime UM apply pelo aplicar-migrations.yml com os TRES arquivos, na ordem 18000000, 18000100, 19000000; o apply grava o ledger na mesma transacao e o ensaio seguinte pede a 22a de novo, que tem de ser POSITIVA. ESTADO PARCIAL (so parte das tres no banco ou no ledger): a 22a reprova o que falta e a 22b o que entrou (a 20261218000100 sozinha a 22b nao enxerga, e ai o ledger parcial e a contradicao), e o portao PARA (nunca reaplica pela metade); com o dono: o rollback-manual do que entrou e o lote inteiro de novo, ou aplicar a mao as que faltam e rodar a 22a. 22a POSITIVA com o ledger sem as versoes e PARAR (sem backfillLedger: registrar a versao a mao e decisao do dono). As duas consultas sao de ROL FECHADO (15 e 11 linhas): so valem com rol=ok no veredito. Nenhuma edge function muda e nenhum front muda. Ordem: o banco de CADA loja (IKCOUS, depois Savy); banco novo com front velho funciona (o front ja le o autor pelas views sem login e nunca leu as duas tabelas do servidor); so a imagem de perfil acima do teto passa a ser recusada (aviso generico da tela). Rollback manual (so com o dono), na ordem inversa: rollback-manual-20261219000000_perfil_publico_so_de_quem_escreveu.sql devolve a politica USING (true) para PUBLIC; rollback-manual-20261218000100_configuracoes_e_codigos_so_do_servidor.sql devolve GRANT ALL a anon e authenticated e NAO se aplica na IKCOUS (la elas nunca estiveram abertas); rollback-manual-20261218000000_a_foto_do_perfil_tem_teto_e_o_painel_fecha_ao_visitante.sql apaga o gatilho e devolve o EXECUTE de PUBLIC/anon e o SELECT/REFERENCES de anon na view; depois dos tres a 22b POSITIVA e a 22a NEGATIVA. O rollback deve rodar pelo aplicar-migrations.yml, que apaga o registro do ledger; rodado a mao por psql -1 -f o ledger fica completo e o portao pula o lote sem pedir a 22a (fica cego). Passo a passo: item 19 de docs/runbooks/producao-unica-fonte.md."
     }
   ],
-  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
+  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; e, desde 13/10/2026 por decisao do dono, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, SO pelo nome: antes, uma delas que mudasse na release deixava a loja PARADA; a send-order-whatsapp segue proibida, nenhuma outra loja ganha rota, e a pre-condicao de publicar cada uma e medir o que esta no ar em CADA loja antes, passo 6 de docs/runbooks/producao-unica-fonte.md; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
   "canais": {
     "cafkrminfnokvgjqtkle": {
       "nome": "IKCOUS",
@@ -122,7 +122,12 @@
         "reconciliar-pagamentos",
         "estornar-pagamento",
         "credenciais-mercado-pago",
-        "send-order-confirmation"
+        "send-order-confirmation",
+        "calculate-shipping",
+        "notify-new-order",
+        "send-otp-email",
+        "melhor-envio-etiqueta",
+        "send-push"
       ]
     },
     "gnjsrucsmjkajijrakzr": {
@@ -136,7 +141,12 @@
         "reconciliar-pagamentos",
         "estornar-pagamento",
         "credenciais-mercado-pago",
-        "send-order-confirmation"
+        "send-order-confirmation",
+        "calculate-shipping",
+        "notify-new-order",
+        "send-otp-email",
+        "melhor-envio-etiqueta",
+        "send-push"
       ]
     }
   }

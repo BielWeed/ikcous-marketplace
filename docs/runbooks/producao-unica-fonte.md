@@ -124,7 +124,7 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    6. Banco pronto, entao `publicar-functions.yml` com o `projeto` da loja e as functions que o
       passo 2 apontou (o comando so aparece com o banco pronto: banco → functions → front). Por
       `ikcous-publicada` e `savy` saem as cinco financeiras mais a `send-order-confirmation`
-      (desde 09/10/2026: o comprovante do balcao divide `_shared/pedido.ts` e `comprovante.ts`
+      e mais as cinco nomeadas abaixo (a `send-order-confirmation` desde 09/10/2026: o comprovante do balcao divide `_shared/pedido.ts` e `comprovante.ts`
       com `criar-pagamento`, `webhook-mercadopago`, `reconciliar-pagamentos` e a propria
       `send-order-confirmation`, entao a release travaria se esses arquivos mudassem sem poder
       publicar a function do e-mail). Essa lista e `functionsPublicaveis` em
@@ -133,9 +133,37 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       workflow daquele commit recusa a function nas duas lojas). E `git revert` dos commits do
       texto num commit NOVO do ramo principal e publicar esse SHA pelo caminho normal. So a
       IKCOUS guarda o retrato "ANTES"; na Savy, anote a versao no ar antes de publicar.
-      **Se a release mudar outra function**
-      (ex.: `send-otp-email`), a loja fica PARADA pelo nome, sem comando: o caminho central nao a
-      publica, e como seguir (canal novo no workflow ou publicacao separada) e decisao do dono.
+      **Mais cinco functions pelo nome (desde 13/10/2026, decisao do dono):** `calculate-shipping`,
+      `notify-new-order`, `send-otp-email`, `melhor-envio-etiqueta` e `send-push` tambem estao em
+      `functionsPublicaveis` e no workflow, **so na IKCOUS e na Savy e so pelo nome** (o apelido
+      `cobranca` continua sendo so as cinco financeiras; a Almeida e qualquer outra loja cliente
+      seguem so nas cinco; a `send-order-whatsapp` segue proibida em todo destino). Antes disso, se a
+      release mudasse `calculate-shipping` ou `notify-new-order`, a loja ficava PARADA pelo nome e o
+      portao da release travava; agora o ensaio imprime o comando de publicar-functions para elas,
+      como para as financeiras (banco → functions → front). O workflow nunca passa
+      `--no-verify-jwt`: o `verify_jwt` de cada uma e o de `supabase/config.toml` (a
+      `notify-new-order` e `verify_jwt = false`; as outras quatro, `true`).
+      **PRE-CONDICAO DE PUBLICACAO das cinco (e de qualquer function deste passo), em CADA loja,
+      ANTES do primeiro comando:**
+      1. Medir o que esta no ar na IKCOUS (`cafkrminfnokvgjqtkle`) E na Savy
+         (`gnjsrucsmjkajijrakzr`): `supabase functions list --project-ref <ref>` com o token da
+         propria loja (IKCOUS: `SUPABASE_ACCESS_TOKEN_IKCOUS`; Savy: `SUPABASE_ACCESS_TOKEN_SAVY`).
+         Na IKCOUS o proprio workflow grava essa lista no resumo do run ("No ar ANTES"; o modo
+         `functions=listar` mede sem publicar nada). **Na Savy o workflow NAO guarda foto do
+         antes**: a medicao e a mao, e e dela que sai o desfazer.
+      2. Anotar, por function e por loja, a **versao e o `updated_at`** que a lista mostra. Para o
+         conteudo (o que de fato roda), quando o CLI deixar: `supabase functions download <nome>
+         --project-ref <ref>` numa pasta temporaria FORA do repositorio, e anotar o sha256 dos
+         arquivos baixados. Se o download nao for possivel naquela maquina, anote so versao e data
+         e diga no registro que o conteudo nao foi medido (a lista sozinha nao identifica o
+         bundle).
+      3. So depois disso disparar o comando do ensaio. O desfazer de cada uma e o mesmo da
+         `send-order-confirmation`: NAO e disparar o workflow no SHA antigo, e sim `git revert`
+         num commit NOVO do ramo principal e publicar esse SHA pelo caminho normal; a versao
+         anotada acima e o que se compara depois.
+      **Se a release mudar qualquer OUTRA function** (fora das onze acima), a loja fica PARADA pelo
+      nome, sem comando: o caminho central nao a publica, e como seguir (canal novo no workflow ou
+      publicacao separada) e decisao do dono.
    7. Passo 2 de novo. So segue com PRONTO.
    8. **Faixa historica 20261160..20261166 (so a IKCOUS/CAF; lote com `nuncaAplicar`).** O
       ledger da CAF salta de 20261150 para 20261167, mas o efeito dessas 7 migrations JA ESTA no
@@ -855,8 +883,9 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
 | Almeida, Brand Meliz, Space | — | lojas de teste: banco e functions nao se mexem |
 
 `ikcous-publicada` e `savy` aceitam nas functions as cinco financeiras mais a
-`send-order-confirmation` (desde 09/10/2026; a Almeida e o apelido `cobranca` seguem so nas
-cinco) e exigem `expected_sha` igual ao SHA do run. O destino `loja` das functions (`dekxabvqdsuukijblazl`) e o projeto antigo
+`send-order-confirmation` (desde 09/10/2026) e mais `calculate-shipping`, `notify-new-order`,
+`send-otp-email`, `melhor-envio-etiqueta` e `send-push` (desde 13/10/2026), todas pelo nome (a Almeida e o
+apelido `cobranca` seguem so nas cinco; o passo 6 diz a pre-condicao de publicar cada uma) e exigem `expected_sha` igual ao SHA do run. O destino `loja` das functions (`dekxabvqdsuukijblazl`) e o projeto antigo
 da principal; nos workflows de banco `loja` aponta para a CAF sem as travas da CAF explicita
 (achado registrado, fora deste escopo).
 

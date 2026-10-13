@@ -494,7 +494,21 @@ reais, e só elas) aceitam também `send-order-confirmation`, pelo nome; a `alme
 cinco, e o apelido `cobranca` continua sendo só as cinco. Motivo: o comprovante da venda de
 balcão compartilha `_shared/pedido.ts` e `_shared/comprovante.ts` com `criar-pagamento`,
 `webhook-mercadopago`, `reconciliar-pagamentos` e `send-order-confirmation`; sem poder publicar
-esta última, a release travaria sempre que esses arquivos mudassem. A lista que a release
+esta última, a release travaria sempre que esses arquivos mudassem.
+
+**Segunda exceção, desde 13/10/2026 (decisão do dono):** `ikcous-publicada` e `savy`, e só elas,
+aceitam também `calculate-shipping`, `notify-new-order`, `send-otp-email`, `melhor-envio-etiqueta`
+e `send-push`, **sempre pelo nome** (o apelido `cobranca` não as inclui, a `almeida` não as aceita
+e a `send-order-whatsapp` continua proibida). Antes, uma delas que mudasse numa release deixava a
+loja parada pelo nome, sem comando de publicação. O `verify_jwt` de cada uma é o de
+`supabase/config.toml` (o workflow nunca passa `--no-verify-jwt`; a `notify-new-order` é
+`verify_jwt = false` ali, e as outras quatro `true`). **Pré-condição de publicar qualquer uma
+delas:** medir o que está no ar em **cada** loja antes (`supabase functions list --project-ref
+<ref>`, e o conteúdo por `supabase functions download` quando o CLI deixar) e anotar versão e data;
+só a IKCOUS guarda esse retrato no resumo do run, a Savy não. Passo a passo e desfazer: passo 6 de
+`docs/runbooks/producao-unica-fonte.md`.
+
+A lista que a release
 enxerga é `functionsPublicaveis` em `scripts/frota/canais-de-backend.json`, e o teste
 `tests/ci_publicar_functions_test.ts` exige que ela concorde com o workflow. As outras lojas clientes (Brand Meliz e Space Loja do Kit) ficam em
 projetos de contas sem acesso deste token e **não têm rota** neste workflow.
