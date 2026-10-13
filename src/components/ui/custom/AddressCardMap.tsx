@@ -20,7 +20,10 @@ import "@/components/ui/custom/address-card-map.css";
  *   links (mínimo legal legível; diretriz OSMF aceita crédito na
  *   vizinhança da obra). Mapa interativo desligado: nada de zoom/satélite.
  * - maplibre-gl entra por IMPORT DINÂMICO: só é baixado quando um mapa
- *   realmente monta (chunk próprio; o bundle da cliente não cresce).
+ *   realmente monta (chunk próprio; o bundle da cliente não cresce). O
+ *   WORKER do MapLibre também: a URL empacotada pelo Vite (`?worker&url`)
+ *   vem por import dinâmico no mesmo caminho e entra por `setWorkerUrl`
+ *   antes do primeiro mapa (ver `importarRenderer`).
  * - Falha de rede/estilo/geocode/timeout → mensagem amigável; o cartão
  *   continua útil (endereço + link externo do AddressList).
  * - Privacidade: a consulta de geocode usa SÓ campos geográficos —
@@ -33,6 +36,11 @@ type Location = { lat: number; lng: number };
 const ESTILO_POSITRON = "https://tiles.openfreemap.org/styles/positron";
 const GEOCODE = "https://photon.komoot.io/api/";
 const TIMEOUT_MS = 12_000;
+/** Rótulo pt-BR da região do mapa. O MapLibre dá ao CANVAS (`role="region"`)
+ * o rótulo "Map" em inglês (string `Map.Title` do locale padrão); o `locale`
+ * oficial das opções troca esse texto já na construção — nada de mexer no
+ * DOM do MapLibre depois. */
+const ROTULO_DO_MAPA = "Localização aproximada no mapa";
 
 /** Estilo compartilhado: 1 fetch por sessão, independentemente do nº de cartões.
  *
@@ -100,6 +108,33 @@ function carregarEstilo(sinal: AbortSignal): Promise<unknown> {
   ]);
 }
 
+/** Importa o MapLibre JUNTO com a URL do worker empacotado e já o configura.
+ *
+ * Por que isto existe (revisão da PR #712, 13/10/2026): o MapLibre 6.10
+ * resolve o worker em runtime por `new URL("./maplibre-gl-worker.mjs",
+ * import.meta.url)`, mas o build do Vite NÃO emite esse arquivo (nem o
+ * `maplibre-gl-shared.mjs` que ele importa). No Vercel o rewrite
+ * `/(.*) -> /index.html` entregava HTML no lugar do worker e o mapa nunca
+ * carregava — só o timeout de 12 s rescatava. `?worker&url` faz o Vite
+ * empacotar o worker (shared incluso) num arquivo com HASH em `/assets/`
+ * (o `immutable` do vercel.json vale; nunca nome fixo). `?url` sozinho NÃO
+ * basta: emitiria só o worker, sem o shared. Validado com o Vite 7.3.6 do
+ * repositório; o contrato do fonte está em
+ * tests/front/mapa-worker-empacotado.test.ts.
+ *
+ * Os dois imports são DINÂMICOS e moram no mesmo caminho preguiçoso: nem o
+ * MapLibre nem a URL do worker entram no JS inicial do cliente. Esta função
+ * só roda pela promessa compartilhada abaixo, então `setWorkerUrl` acontece
+ * UMA vez por sessão e sempre antes do primeiro `new maplibregl.Map`. */
+async function importarRenderer(): Promise<typeof import("maplibre-gl")> {
+  const [maplibregl, { default: urlDoWorker }] = await Promise.all([
+    import("maplibre-gl"),
+    import("maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url"),
+  ]);
+  maplibregl.setWorkerUrl(urlDoWorker);
+  return maplibregl;
+}
+
 /** Renderer compartilhado: 1 import dinâmico por sessão — todos os cartões
  * awaitam a MESMA promessa. Também corre contra o sinal do cartão (revisão
  * 3): um import lento demais perde para o timeout e o cartão degrada em
@@ -107,7 +142,7 @@ function carregarEstilo(sinal: AbortSignal): Promise<unknown> {
  * promessa de import que JÁ resolveu é boa para sempre — não se invalida. */
 let rendererEmCache: Promise<typeof import("maplibre-gl")> | undefined;
 function carregarRenderer(sinal: AbortSignal) {
-  rendererEmCache ??= import("maplibre-gl");
+  rendererEmCache ??= importarRenderer();
   return Promise.race([
     rendererEmCache,
     new Promise<never>((_, rejeitar) => {
@@ -137,6 +172,27 @@ function queryGeografica(address: Address): string {
   ]
     .filter(Boolean)
     .join(", ");
+}
+
+/** Geocode resolvido, em cache de NÍVEL DE MÓDULO e por texto da consulta
+ * (só campos geográficos — a mesma string que vai ao Photon). Expandir e
+ * recolher cartões remonta o componente; sem isto cada remontagem reenviava
+ * o endereço ao Photon (terceiro) e repetia o mesmo geocode (revisão da
+ * PR #712). Só o SUCESSO fica guardado: rede caída, HTTP de erro e "sem
+ * resultado" não são cacheados — a próxima montagem tenta de novo. Vive só
+ * na memória da sessão (nada em storage); endereço alterado vira outra
+ * chave. */
+const geocodesResolvidos = new Map<string, Location>();
+
+async function geocodeComCache(
+  query: string,
+  sinal: AbortSignal,
+): Promise<Location | null> {
+  const guardado = geocodesResolvidos.get(query);
+  if (guardado) return guardado;
+  const ponto = await geocode(query, sinal);
+  if (ponto) geocodesResolvidos.set(query, ponto);
+  return ponto;
 }
 
 async function geocode(
@@ -197,7 +253,7 @@ export function AddressCardMap({ address }: { address: Address }) {
       try {
         const [estilo, ponto] = await Promise.all([
           carregarEstilo(controller.signal),
-          geocode(queryGeografica(address), controller.signal),
+          geocodeComCache(queryGeografica(address), controller.signal),
         ]);
         if (!ativo) return;
         if (!ponto) {
@@ -244,6 +300,8 @@ export function AddressCardMap({ address }: { address: Address }) {
           interactive: false,
           // A atribuição não sobrepõe o mapa: linha própria abaixo (créditos).
           attributionControl: false,
+          // A11y: a região do mapa (canvas) fala português, não "Map".
+          locale: { "Map.Title": ROTULO_DO_MAPA },
         });
         const pino = document.createElement("span");
         pino.className = "address-map__pin";
@@ -290,7 +348,7 @@ export function AddressCardMap({ address }: { address: Address }) {
     <div className="address-card-map" data-fase={fase}>
       <div
         ref={hospedeiro}
-        aria-label="Localização aproximada no mapa"
+        aria-label={ROTULO_DO_MAPA}
         className="address-card-map__canvas"
         hidden={fase !== "mapa"}
       />

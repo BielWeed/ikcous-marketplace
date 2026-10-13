@@ -1,7 +1,4 @@
-import {
-  AddressList,
-  queryMapsDoEndereco,
-} from "@/components/ui/custom/AddressList";
+import { queryMapsDoEndereco } from "@/components/ui/custom/AddressList";
 import type { Address } from "@/types";
 // @vitest-environment jsdom
 //
@@ -21,8 +18,21 @@ import type { Address } from "@/types";
 //   - expandido: mapa por cartão, zero iframes, créditos abaixo do canvas;
 //   - FALHA de rede e OFFLINE: degradação graciosa, sem baixar o maplibre;
 //   - carregamento SOB DEMANDA: maplibre só é importado quando um mapa monta;
+//   - WORKER do MapLibre: a URL empacotada pelo Vite (`?worker&url`) entra por
+//     `setWorkerUrl` UMA vez, ANTES do primeiro `new Map`, e NUNCA quando o
+//     mapa não monta (o contrato do FONTE, sem mock, está em
+//     mapa-worker-empacotado.test.ts — o mock daqui esconde o worker real);
 //   - a camada de POI NÃO chega ao mapa (filtro do estilo);
+//   - a região do mapa carrega o rótulo em português (o MapLibre põe "Map");
+//   - geocode em cache por consulta: expandir/recolher não reenvia o endereço;
 //   - editar/excluir seguem funcionando com o mapa montado.
+//
+// ISOLAMENTO: cada teste recebe módulos NOVOS (resetModules + doMock no
+// beforeEach). Os caches do componente são de NÍVEL DE MÓDULO (estilo,
+// renderer, geocode) e a factory do mock só roda no 1º import de um registro —
+// sem isto, um teste herdava o cache do anterior e os contadores
+// ("maplibre nunca importado", "setWorkerUrl nunca chamado") não podiam
+// falhar: passavam por vazio depois do primeiro mapa montado.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,8 +55,9 @@ vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
 
 // ── Mock do maplibre-gl: conta imports (prova de sob demanda) e captura o
 //    estilo recebido (prova da defesa contra camadas de POI), o centro do
-//    mapa, a interatividade e a atribuição desligada. Prefixo "mock" porque
-//    a factory do vi.mock é içada (hoisting). ──
+//    mapa, a interatividade, a atribuição desligada, o rótulo da região e a
+//    ORDEM entre `setWorkerUrl` e `new Map`. As factories são registradas por
+//    `vi.doMock` no beforeEach (módulos novos a cada teste — ver ISOLAMENTO). ──
 interface CamadaDeEstilo {
   "source-layer"?: string;
 }
@@ -58,7 +69,18 @@ interface OpcoesDoMapa {
   center?: [number, number];
   attributionControl?: boolean;
   interactive?: boolean;
+  locale?: Record<string, string>;
 }
+/** URL que o Vite daria ao worker empacotado (hash no nome, em /assets/). O
+ * módulo `?worker&url` é substituído por ela: o build real é coberto por
+ * mapa-worker-empacotado.test.ts e pela verificação de build do relatório. */
+const URL_DO_WORKER = "/assets/maplibre-gl-worker-TESTE123.js";
+const ESPECIFICADOR_DO_WORKER =
+  "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+/** Linha do tempo do MapLibre falso: `setWorkerUrl:<url>` e `new Map`, na
+ * ordem em que aconteceram. Prova "uma vez, com a URL do worker, ANTES do
+ * primeiro Map" e "nunca quando o mapa não monta". */
+const mockEventos: string[] = [];
 const mockMapas: { opcoes: OpcoesDoMapa }[] = [];
 const mockMarcadores: { lngLat: [number, number] }[] = [];
 /** Instâncias de Map criadas — provam o `map.remove()` da desmontagem
@@ -69,13 +91,19 @@ const mockInstancias: {
   emitir(evento: string): void;
 }[] = [];
 let mockImportacoesDoMaplibre = 0;
-vi.mock("maplibre-gl", () => {
-  mockImportacoesDoMaplibre += 1;
+
+/** Corpo do módulo `maplibre-gl` falso. Reaproveitado pelo teste do import
+ * LENTO (que só acrescenta uma barreira antes de devolvê-lo). */
+function criarMaplibreFalso() {
   return {
+    setWorkerUrl(url: string) {
+      mockEventos.push(`setWorkerUrl:${url}`);
+    },
     Map: class {
       readonly ouvintes = new Map<string, () => void>();
       removido = false;
       constructor(opcoes: OpcoesDoMapa) {
+        mockEventos.push("new Map");
         mockMapas.push({ opcoes });
         mockInstancias.push(this);
       }
@@ -100,7 +128,26 @@ vi.mock("maplibre-gl", () => {
       }
     },
   };
-});
+}
+
+/** Módulos NOVOS para o teste: zera os caches de nível de módulo do
+ * componente (estilo, renderer, geocode) e REARMA os mocks — a factory do
+ * maplibre roda de novo no próximo import (contador vivo) e o `?worker&url`
+ * vira `URL_DO_WORKER`. Devolve o AddressList do registro novo. */
+function armarModulosFrescos() {
+  vi.resetModules();
+  vi.doMock("maplibre-gl", () => {
+    mockImportacoesDoMaplibre += 1;
+    return criarMaplibreFalso();
+  });
+  vi.doMock(ESPECIFICADOR_DO_WORKER, () => ({ default: URL_DO_WORKER }));
+}
+
+async function carregarListaFresca() {
+  armarModulosFrescos();
+  const modulo = await import("@/components/ui/custom/AddressList");
+  return modulo.AddressList;
+}
 
 /** Estilo com uma camada de POI DE PROPÓSITO: o teste prova que o filtro do
  * componente a remove antes de construir o mapa (defesa em profundidade — o
@@ -181,15 +228,18 @@ async function avancaMicrotarefas() {
 describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
+  let AddressList: Awaited<ReturnType<typeof carregarListaFresca>>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
     mockMapas.length = 0;
     mockMarcadores.length = 0;
     mockInstancias.length = 0;
+    mockEventos.length = 0;
     mockImportacoesDoMaplibre = 0;
+    AddressList = await carregarListaFresca();
   });
 
   afterEach(() => {
@@ -246,6 +296,7 @@ describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mockImportacoesDoMaplibre).toBe(0);
+    expect(mockEventos).toEqual([]); // nem setWorkerUrl, nem Map
     // Sem mapa não há obra a creditar: a linha de atribuição também sai.
     expect(
       hospedeiro.querySelectorAll('[data-testid="creditos-mapa"]'),
@@ -276,7 +327,41 @@ describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
     );
     expect(estados).toEqual(["indisponivel", "indisponivel"]);
     expect(mockImportacoesDoMaplibre).toBe(0);
+    expect(mockEventos).toEqual([]); // nem setWorkerUrl, nem Map
     expect(hospedeiro.querySelectorAll("iframe")).toHaveLength(0);
+  });
+
+  it("estilo HTTP 500: degrada, o maplibre NEM é baixado e o worker NUNCA é configurado", async () => {
+    vi.stubGlobal("fetch", (entrada: RequestInfo | URL) => {
+      const url = String(entrada);
+      if (url.includes("openfreemap"))
+        return Promise.resolve({ ok: false, status: 500 });
+      return respostaGeocode();
+    });
+    await renderizar({ showMaps: true });
+    await avancaMicrotarefas();
+    const estados = [...hospedeiro.querySelectorAll(".address-card-map")].map(
+      (no) => no.getAttribute("data-fase"),
+    );
+    expect(estados).toEqual(["indisponivel", "indisponivel"]);
+    expect(mockImportacoesDoMaplibre).toBe(0);
+    expect(mockEventos).toEqual([]);
+  });
+
+  it("geocode sem resultado (features vazias): degrada, o maplibre NEM é baixado e o worker NUNCA é configurado", async () => {
+    vi.stubGlobal("fetch", (entrada: RequestInfo | URL) => {
+      const url = String(entrada);
+      if (url.includes("openfreemap")) return respostaOk(ESTILO);
+      return respostaOk({ features: [] });
+    });
+    await renderizar({ showMaps: true });
+    await avancaMicrotarefas();
+    const estados = [...hospedeiro.querySelectorAll(".address-card-map")].map(
+      (no) => no.getAttribute("data-fase"),
+    );
+    expect(estados).toEqual(["indisponivel", "indisponivel"]);
+    expect(mockImportacoesDoMaplibre).toBe(0);
+    expect(mockEventos).toEqual([]);
   });
 
   it("expandido com rede OK: um mapa por cartão, sob demanda, sem iframe, sem POI no estilo", async () => {
@@ -290,9 +375,17 @@ describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
     expect(mockImportacoesDoMaplibre).toBe(0); // nada importado antes de montar
     await renderizar({ showMaps: true });
     await avancaMicrotarefas(); // drena estilo+geocode → rAF → import dinâmico
-    expect(mockImportacoesDoMaplibre).toBeGreaterThanOrEqual(1); // sob demanda
+    expect(mockImportacoesDoMaplibre).toBe(1); // sob demanda, UMA vez p/ os 2 cartões
     const mapas = hospedeiro.querySelectorAll(".address-card-map");
     expect(mapas).toHaveLength(2);
+
+    // Worker empacotado: `setWorkerUrl` UMA vez, com a URL do `?worker&url`,
+    // ANTES do primeiro `new Map` (o MapLibre lê a URL na construção).
+    expect(mockEventos).toEqual([
+      `setWorkerUrl:${URL_DO_WORKER}`,
+      "new Map",
+      "new Map",
+    ]);
 
     // Zero iframes: o embed do Google saiu dos cartões.
     expect(hospedeiro.querySelectorAll("iframe")).toHaveLength(0);
@@ -330,6 +423,19 @@ describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
       expect(opcoes.center).toEqual([-46.6559, -23.5614]);
       expect(opcoes.attributionControl).toBe(false);
       expect(opcoes.interactive).toBe(false);
+      // A11y: o MapLibre dá ao canvas (role=region) o rótulo "Map" em inglês;
+      // o `locale` oficial troca para o rótulo em português JÁ na construção.
+      expect(opcoes.locale).toEqual({
+        "Map.Title": "Localização aproximada no mapa",
+      });
+    }
+    // O contêiner mantém o mesmo rótulo em português.
+    for (const canvas of hospedeiro.querySelectorAll(
+      ".address-card-map__canvas",
+    )) {
+      expect(canvas.getAttribute("aria-label")).toBe(
+        "Localização aproximada no mapa",
+      );
     }
     expect(mockMarcadores.map((m) => m.lngLat)).toContainEqual([
       -46.6559, -23.5614,
@@ -347,15 +453,161 @@ describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
       )}`,
     );
 
-    // Privacidade: nada pessoal na consulta de geocode.
+    // Privacidade: nada pessoal na consulta de geocode. A consulta ao Photon
+    // é conferida PELO VALOR EXATO do `q` (só campos geográficos) e nenhuma
+    // requisição — decodificada — carrega destinatário, complemento,
+    // referência NEM o apelido ("Casa"/"Trabalho": o campo `name`).
     const consultas = fetchEspiao.mock.calls.map((chamada) =>
-      String(chamada[0]),
+      decodeURIComponent(String(chamada[0]).replaceAll("+", " ")),
     );
+    const consultasAoPhoton = fetchEspiao.mock.calls
+      .map((chamada) => String(chamada[0]))
+      .filter((url) => url.includes("photon"))
+      .map((url) => new URL(url).searchParams.get("q"));
+    expect(consultasAoPhoton).toEqual([
+      "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, 38600-123, Brasil",
+      "Avenida Paulista, 1578, Bela Vista, São Paulo, SP, 01311-200, Brasil",
+    ]);
+    expect(consultas.length).toBeGreaterThanOrEqual(3); // estilo + 2 geocodes
     for (const consulta of consultas) {
       expect(consulta).not.toContain("Maria");
       expect(consulta).not.toContain("Apto");
       expect(consulta).not.toContain("mercado");
+      expect(consulta).not.toMatch(/\bcasa\b/i);
+      expect(consulta).not.toMatch(/\btrabalho\b/i);
     }
+  });
+
+  /** Desmonta a árvore atual e monta uma NOVA no mesmo registro de módulos
+   * (o que expandir/recolher faz no Perfil) — os caches do componente ficam. */
+  async function remontar(props: Record<string, unknown>) {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+    await renderizar(props);
+    await avancaMicrotarefas();
+  }
+
+  const fasesDosCartoes = () =>
+    [...hospedeiro.querySelectorAll(".address-card-map")].map((no) =>
+      no.getAttribute("data-fase"),
+    );
+
+  it("worker configurado UMA vez só: expandir/recolher/expandir reusa o renderer e não reconfigura", async () => {
+    vi.stubGlobal("fetch", (entrada: RequestInfo | URL) => {
+      const url = String(entrada);
+      if (url.includes("openfreemap")) return respostaOk(ESTILO);
+      return respostaGeocode();
+    });
+    await renderizar({ showMaps: true });
+    await avancaMicrotarefas();
+    await remontar({ showMaps: true }); // recolhe e expande de novo
+    expect(fasesDosCartoes()).toEqual(["mapa", "mapa"]);
+    expect(mockImportacoesDoMaplibre).toBe(1);
+    // 2 cartões × 2 montagens = 4 mapas, e UM único setWorkerUrl, na frente.
+    expect(mockEventos).toEqual([
+      `setWorkerUrl:${URL_DO_WORKER}`,
+      "new Map",
+      "new Map",
+      "new Map",
+      "new Map",
+    ]);
+  });
+
+  it("geocode em cache por consulta: recolher e expandir NÃO reenvia o endereço ao Photon", async () => {
+    const fetchEspiao = vi.fn((entrada: RequestInfo | URL) => {
+      const url = String(entrada);
+      if (url.includes("openfreemap")) return respostaOk(ESTILO);
+      return respostaGeocode();
+    });
+    vi.stubGlobal("fetch", fetchEspiao);
+    const chamadasAoPhoton = () =>
+      fetchEspiao.mock.calls.filter((chamada) =>
+        String(chamada[0]).includes("photon"),
+      ).length;
+
+    await renderizar({ showMaps: true });
+    await avancaMicrotarefas();
+    expect(fasesDosCartoes()).toEqual(["mapa", "mapa"]);
+    expect(chamadasAoPhoton()).toBe(2); // um por endereço
+
+    await remontar({ showMaps: true });
+    await remontar({ showMaps: true });
+    expect(fasesDosCartoes()).toEqual(["mapa", "mapa"]);
+    expect(chamadasAoPhoton()).toBe(2); // continua 2: o ponto veio do cache
+    // Os mapas montados a partir do cache usam o MESMO ponto do geocode
+    // original: 2 cartões × 3 montagens.
+    expect(mockMapas).toHaveLength(6);
+    for (const { opcoes } of mockMapas)
+      expect(opcoes.center).toEqual([-46.6559, -23.5614]);
+  });
+
+  it("endereço ALTERADO é outra consulta: o cache é por texto da consulta, não por cartão", async () => {
+    const fetchEspiao = vi.fn((entrada: RequestInfo | URL) => {
+      const url = String(entrada);
+      if (url.includes("openfreemap")) return respostaOk(ESTILO);
+      return respostaGeocode();
+    });
+    vi.stubGlobal("fetch", fetchEspiao);
+    const consultasAoPhoton = () =>
+      fetchEspiao.mock.calls
+        .map((chamada) => String(chamada[0]))
+        .filter((url) => url.includes("photon"))
+        .map((url) => new URL(url).searchParams.get("q"));
+
+    await act(async () => {
+      raiz.render(<AddressList addresses={[CASA]} showMaps />);
+    });
+    await avancaMicrotarefas();
+    await act(async () => {
+      raiz.render(
+        <AddressList addresses={[{ ...CASA, number: "121" }]} showMaps />,
+      );
+    });
+    await avancaMicrotarefas();
+    expect(consultasAoPhoton()).toEqual([
+      "Rua das Acácias, 120, Jardim Primavera, Paracatu, MG, 38600-123, Brasil",
+      "Rua das Acácias, 121, Jardim Primavera, Paracatu, MG, 38600-123, Brasil",
+    ]);
+  });
+
+  it("FALHA de geocode NÃO fica em cache: rede caída, 503 e 'sem resultado' tentam de novo; só o sucesso é guardado", async () => {
+    let tentativas = 0;
+    const fetchEspiao = vi.fn((entrada: RequestInfo | URL) => {
+      const url = String(entrada);
+      if (url.includes("openfreemap")) return respostaOk(ESTILO);
+      tentativas += 1;
+      if (tentativas === 1)
+        return Promise.reject(new TypeError("Failed to fetch"));
+      if (tentativas === 2) return Promise.resolve({ ok: false, status: 503 });
+      if (tentativas === 3) return respostaOk({ features: [] });
+      return respostaGeocode();
+    });
+    vi.stubGlobal("fetch", fetchEspiao);
+
+    await act(async () => {
+      raiz.render(<AddressList addresses={[CASA]} showMaps />);
+    });
+    await avancaMicrotarefas();
+    expect(fasesDosCartoes()).toEqual(["indisponivel"]); // rede caída
+
+    await remontar({ addresses: [CASA], showMaps: true });
+    expect(fasesDosCartoes()).toEqual(["indisponivel"]); // 503
+    await remontar({ addresses: [CASA], showMaps: true });
+    expect(fasesDosCartoes()).toEqual(["indisponivel"]); // sem resultado
+    expect(tentativas).toBe(3); // cada falha foi reconsultada
+
+    await remontar({ addresses: [CASA], showMaps: true });
+    expect(fasesDosCartoes()).toEqual(["mapa"]); // rede voltou: recupera
+    expect(tentativas).toBe(4);
+
+    await remontar({ addresses: [CASA], showMaps: true });
+    expect(fasesDosCartoes()).toEqual(["mapa"]);
+    expect(tentativas).toBe(4); // o sucesso, sim, ficou guardado
   });
 
   it("editar e excluir continuam funcionando com o mapa montado", async () => {
@@ -664,43 +916,13 @@ describe("AddressList — mapa do cartão (vetor positron, sem iframe)", () => {
     // mapa era construído depois do prazo, sem timer para cobri-lo. Agora o
     // renderer também corre contra o sinal e os checkpoints pós-await
     // testam `signal.aborted`. O import lento é simulado com `vi.doMock` +
-    // barreira: a factory do mock só resolve quando o teste libera (a
-    // factory do `vi.mock` global é cacheada no registro de mocks e não
-    // roda de novo — por isso o doMock aqui).
+    // barreira: a factory do mock só resolve quando o teste libera.
     let liberarImport: (() => void) | undefined;
     vi.doMock("maplibre-gl", async () => {
       await new Promise<void>((resolve) => {
         liberarImport = resolve;
       });
-      return {
-        Map: class {
-          readonly ouvintes = new Map<string, () => void>();
-          removido = false;
-          constructor(opcoes: OpcoesDoMapa) {
-            mockMapas.push({ opcoes });
-            mockInstancias.push(this);
-          }
-          on(evento: string, retorno: () => void) {
-            this.ouvintes.set(evento, retorno);
-            return this;
-          }
-          emitir(evento: string) {
-            this.ouvintes.get(evento)?.();
-          }
-          remove() {
-            this.removido = true;
-          }
-        },
-        Marker: class {
-          setLngLat(lngLat: [number, number]) {
-            mockMarcadores.push({ lngLat });
-            return this;
-          }
-          addTo() {
-            return this;
-          }
-        },
-      };
+      return criarMaplibreFalso();
     });
     vi.resetModules();
     const { AddressList: AddressListFresca } = await import(
@@ -968,7 +1190,10 @@ describe("ProfileView — expandir monta os mapas, recolher desmonta", () => {
     raiz = createRoot(hospedeiro);
     mockMapas.length = 0;
     mockMarcadores.length = 0;
+    mockInstancias.length = 0;
+    mockEventos.length = 0;
     mockImportacoesDoMaplibre = 0;
+    armarModulosFrescos(); // a factory do maplibre roda DE NOVO no 1º import real
     vi.stubGlobal("fetch", (entrada: RequestInfo | URL) => {
       const url = String(entrada);
       if (url.includes("openfreemap")) return respostaOk(ESTILO);
@@ -993,9 +1218,14 @@ describe("ProfileView — expandir monta os mapas, recolher desmonta", () => {
       await Promise.resolve();
     });
 
-    // Compacto: nenhum mapa montado, maplibre nunca baixado.
+    // Compacto: nenhum mapa montado, maplibre nunca baixado. O contador é
+    // VIVO (registro novo + factory rearmada no beforeEach): a verificação
+    // do `toBe(1)` mais abaixo prova que ele sobe quando o import acontece —
+    // antes, a factory já tinha rodado em teste anterior e este `toBe(0)`
+    // passava mesmo com o maplibre importado de forma estática.
     expect(hospedeiro.querySelectorAll(".address-card-map")).toHaveLength(0);
     expect(mockImportacoesDoMaplibre).toBe(0);
+    expect(mockEventos).toEqual([]);
 
     const botaoExpandir = [...hospedeiro.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Ver mais detalhes"),
@@ -1010,6 +1240,14 @@ describe("ProfileView — expandir monta os mapas, recolher desmonta", () => {
     const mapas = hospedeiro.querySelectorAll(".address-card-map");
     expect(mapas).toHaveLength(2);
     expect(hospedeiro.querySelectorAll("iframe")).toHaveLength(0);
+    // Só agora o maplibre foi importado — UMA vez — e o worker empacotado
+    // foi configurado antes do primeiro mapa.
+    expect(mockImportacoesDoMaplibre).toBe(1);
+    expect(mockEventos).toEqual([
+      `setWorkerUrl:${URL_DO_WORKER}`,
+      "new Map",
+      "new Map",
+    ]);
 
     const botaoRecolher = [...hospedeiro.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Ver menos detalhes"),
