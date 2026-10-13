@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDevolucaoCliente } from "@/hooks/useDevolucaoCliente";
 import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
@@ -534,7 +535,7 @@ export function OrderDetailsView({
       phone = `55${phone}`;
     }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    globalThis.open(url, "_blank");
+    abrirWhatsapp(url);
     haptic.light();
   };
 

@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
@@ -1676,10 +1677,7 @@ export const OrderDetail = memo(function OrderDetail({
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
     const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
-    globalThis.open(
-      `${whatsappUrl}?text=${encodeURIComponent(message)}`,
-      "_blank",
-    );
+    abrirWhatsapp(`${whatsappUrl}?text=${encodeURIComponent(message)}`);
   };
 
   // pb-[calc(7rem+safe-area)]: com a ação no topo (sticky, pedido do dono

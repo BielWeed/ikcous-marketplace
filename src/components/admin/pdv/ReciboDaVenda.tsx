@@ -15,6 +15,7 @@ import type {
   ClienteDaVenda,
   ReciboDaVendaRegistrada,
 } from "@/hooks/useVendaPresencial";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 import {
@@ -114,7 +115,7 @@ export function ReciboDaVenda({
       `Aqui está o comprovante da sua compra na ${storeName ?? "loja"}! ` +
         `Pedido #${recibo.numero} — Total R$ ${reais(recibo.total)}. Obrigado pela preferência!`,
     );
-    globalThis.open(`${linkWhatsapp}?text=${texto}`, "_blank");
+    abrirWhatsapp(`${linkWhatsapp}?text=${texto}`);
   }
 
   return (

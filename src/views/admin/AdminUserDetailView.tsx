@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { papel } from "@/lib/papeis-aria-da-tabela";
@@ -680,7 +681,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   title={avisoDoWhatsapp}
                   onClick={() => {
                     if (!linkWhatsapp || isOffline) return;
-                    globalThis.open(linkWhatsapp, "_blank");
+                    abrirWhatsapp(linkWhatsapp);
                   }}
                 >
                   <MessageSquare className="size-3.5" />

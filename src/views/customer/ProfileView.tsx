@@ -72,6 +72,7 @@ const itemVariants = {
 } as const;
 
 import { useStore } from "@/contexts/StoreContext";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { haptic } from "@/utils/haptic";
@@ -300,7 +301,7 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
       phone = `55${phone}`;
     }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    globalThis.open(url, "_blank");
+    abrirWhatsapp(url);
     haptic.light();
   };
 
