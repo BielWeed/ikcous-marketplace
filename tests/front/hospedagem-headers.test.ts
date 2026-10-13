@@ -157,13 +157,13 @@ describe("_headers traduzido do vercel.json", () => {
   });
 
   it("hosts de imagem vêm do img-src do CSP", () => {
-    // tile.openstreetmap.org está no img-src desde a frente do mapa de
-    // endereço (29/09/2026), mas nada em src/ pede tiles dessa origem hoje:
-    // o AddressCardMap é vetorial (MapLibre + OpenFreeMap, via connect-src) e
-    // não carrega imagem de tile. A asserção fica como está — retirar a
-    // origem do vercel.json é decisão do dono, não efeito colateral de teste.
+    // tile.openstreetmap.org saiu do img-src em 12/10/2026, decisão do dono:
+    // entrou com a frente do mapa de endereço (29/09/2026), mas nada em src/
+    // pedia tiles dessa origem — o AddressCardMap é vetorial (MapLibre +
+    // OpenFreeMap) e busca estilo, tiles, glyphs e sprite por fetch, ou seja,
+    // por connect-src. Esta lista é também a dos hosts que a prévia de
+    // compartilhamento aceita embutir, então origem sem consumidor não volta.
     expect(hospedagem.hostsDeImagem(vercel)).toEqual([
-      "tile.openstreetmap.org",
       "*.supabase.co",
       "images.unsplash.com",
       "placehold.co",
