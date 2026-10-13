@@ -97,6 +97,12 @@ async function callRpcWithRetry<T>(
 let cachedAdminProducts: Product[] | null = null;
 let cachedAdminProductsTotal = 0;
 
+/** Só para teste: o sync é privado e não tem outro ponto de entrada sem montar
+ *  o hook inteiro e esperar o `setTimeout` do evento `online`. */
+export function _syncOfflineUpdatesParaTeste(): Promise<boolean> {
+  return syncOfflineUpdates();
+}
+
 async function syncOfflineUpdates(): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const queueStr = localStorage.getItem("products_offline_updates_queue");
@@ -182,17 +188,46 @@ async function syncOfflineUpdates(): Promise<boolean> {
       }
     }
 
-    if (remainingQueue.length > 0) {
+    // Edição enfileirada DURANTE o sync (a conexão oscilou e o lojista mexeu
+    // em outro produto) não está em `queue`: relê a fila fresca e preserva o
+    // que é novo ou foi reeditado depois do envio, em vez de apagá-lo.
+    const idsEnviados = new Map<string, number>(
+      queue.map((i: any) => [i.id, Number(i.timestamp) || 0]),
+    );
+    let filaFresca: any[] = [];
+    try {
+      const bruta = JSON.parse(
+        localStorage.getItem("products_offline_updates_queue") || "[]",
+      );
+      if (Array.isArray(bruta)) filaFresca = bruta;
+    } catch {
+      filaFresca = [];
+    }
+    const novos = filaFresca.filter((i: any) => {
+      const enviado = idsEnviados.get(i?.id);
+      return enviado === undefined || (Number(i.timestamp) || 0) > enviado;
+    });
+    const idsNovos = new Set(novos.map((i: any) => i.id));
+    const filaFinal = [
+      ...remainingQueue.filter((i: any) => !idsNovos.has(i.id)),
+      ...novos,
+    ];
+
+    if (filaFinal.length > 0) {
       localStorage.setItem(
         "products_offline_updates_queue",
-        JSON.stringify(remainingQueue),
+        JSON.stringify(filaFinal),
       );
+    }
+    if (remainingQueue.length > 0) {
       toast.error(
         `Falha ao sincronizar ${remainingQueue.length} alterações. Tentando novamente mais tarde.`,
         { id: toastId },
       );
     } else {
-      localStorage.removeItem("products_offline_updates_queue");
+      if (filaFinal.length === 0) {
+        localStorage.removeItem("products_offline_updates_queue");
+      }
       if (syncedCount > 0) clearAnalyticsCache();
       if (discarded.length > 0) {
         toast.dismiss(toastId);
