@@ -16,6 +16,13 @@
 // cliente (550) e painel (450) NÃO mudaram — este arquivo continuaria
 // derrubando qualquer tentativa de mudá-los sem decisão.
 //
+// 13/10/2026 — onda 2 da PR #712 (decisão do dono de 12/10/2026): o worker do
+// MapLibre é um ASSET `.js` do Rollup (não chunk) e ganhou grupo PRÓPRIO,
+// `workerDoMapa` (allowlist ancorada, teto de 130 kB), no esquema versao 3.
+// E o `opcional` passou a exigir ALCANÇABILIDADE, não só nome: um chunk
+// `maplibre-gl-*` importado ESTATICAMENTE por quem a cliente baixa fica em
+// `cliente` (achado maior da revisão, `portaoDividido.ts:162`).
+//
 // Os casos de `classificarBundle` reproduzem dois achados REAIS do fixture
 // build de 26/09/2026 (documentados na docstring de portaoDividido.ts): um
 // boundary de UM chunk só (AdminArea.tsx) não basta, porque
@@ -26,10 +33,14 @@
 import { describe, expect, it } from "vitest";
 import {
   type ChunkParaClassificar,
+  type ClassificacaoDoBundle,
   classificarBundle,
   ehFronteiraDoPainel,
 } from "../../scripts/portaoDividido";
-import { validarClassificacaoContraDisco } from "../../scripts/validarPortaoDeTamanho.cjs";
+import {
+  type ClassificacaoDoPortao,
+  validarClassificacaoContraDisco,
+} from "../../scripts/validarPortaoDeTamanho.cjs";
 
 function chunk(
   parcial: Partial<ChunkParaClassificar> & { fileName: string },
@@ -133,7 +144,9 @@ describe("classificarBundle", () => {
   //   - tela do admin fundida sem facadeModuleId (o achado 2 —
   //     experimentalMinChunkSize)                                 -> painel
   //   - AdminLoginView, mesmo alcançada direto da entrada         -> cliente
-  // mais o leitor de código de barras, que fica de fora dos dois.
+  //   - maplibre-gl SÓ por import() dinâmico do cliente           -> opcional
+  //   - worker do MapLibre (ASSET .js, não chunk)                 -> workerDoMapa
+  // mais o leitor de código de barras, que fica de fora de todos.
   const bundle: ChunkParaClassificar[] = [
     chunk({
       fileName: "assets/index-h1.js",
@@ -208,8 +221,17 @@ describe("classificarBundle", () => {
       moduleIds: ["/repo/src/views/admin/AdminLoginView.tsx"],
     }),
   ];
+  // Assets do mesmo build falso: o worker do MapLibre (o Vite o emite com
+  // `emitFile({type: "asset"})`, por isso não aparece entre os chunks), o
+  // CSS, o binário do leitor e as imagens — só o `.js` em `assets/` conta.
+  const assetsDoBundle = [
+    "assets/maplibre-gl-worker-h1.js",
+    "assets/index-h1.css",
+    "assets/zxing_reader-h1.wasm",
+    "assets/logo-h1.png",
+  ];
 
-  const resultado = classificarBundle(bundle);
+  const resultado = classificarBundle(bundle, assetsDoBundle);
 
   it("põe o chunk de entrada em cliente", () => {
     expect(resultado.cliente).toContain("assets/index-h1.js");
@@ -249,27 +271,54 @@ describe("classificarBundle", () => {
     expect(resultado.painel).not.toContain("assets/AdminLoginView-h1.js");
   });
 
-  it("exclui o leitor de código de barras dos dois lados", () => {
-    expect(resultado.cliente).not.toContain("assets/leitor-zxing-h1.js");
-    expect(resultado.painel).not.toContain("assets/leitor-zxing-h1.js");
+  it("exclui o leitor de código de barras de todos os grupos", () => {
+    for (const grupo of [
+      resultado.cliente,
+      resultado.painel,
+      resultado.opcional,
+      resultado.workerDoMapa,
+    ])
+      expect(grupo).not.toContain("assets/leitor-zxing-h1.js");
   });
 
-  it("põe o chunk do mapa vetorial em `opcional` — fora de cliente e painel (allowlist)", () => {
+  it("põe o chunk do mapa vetorial em `opcional` — fora de cliente e painel (só import() dinâmico)", () => {
     // Decisão do dono 29/09/2026: `maplibre-gl` só é baixado quando um mapa
     // monta; teto próprio (250 kB) em vez de inflar o de cliente.
-    expect(resultado.opcional).toContain("assets/maplibre-gl-h1.js");
+    expect(resultado.opcional).toEqual(["assets/maplibre-gl-h1.js"]);
     expect(resultado.cliente).not.toContain("assets/maplibre-gl-h1.js");
     expect(resultado.painel).not.toContain("assets/maplibre-gl-h1.js");
   });
 
-  it("marca a versão do esquema e não deixa nenhum chunk de fora ou duplicado", () => {
-    expect(resultado.versao).toBe(2);
-    const semZxing = bundle
-      .map((c) => c.fileName)
+  it("põe o worker do mapa (asset .js) em `workerDoMapa` — nunca em cliente, painel ou opcional", () => {
+    // Decisão do dono 12/10/2026: orçamento PRÓPRIO de 130 kB para o worker.
+    expect(resultado.workerDoMapa).toEqual(["assets/maplibre-gl-worker-h1.js"]);
+    expect(resultado.cliente).not.toContain("assets/maplibre-gl-worker-h1.js");
+    expect(resultado.painel).not.toContain("assets/maplibre-gl-worker-h1.js");
+    expect(resultado.opcional).not.toContain("assets/maplibre-gl-worker-h1.js");
+  });
+
+  it("marca a versão 3 do esquema e não deixa nenhum JS de fora ou duplicado", () => {
+    expect(resultado.versao).toBe(3);
+    const semZxing = [...bundle.map((c) => c.fileName), ...assetsDoBundle]
+      .filter((nome) => nome.endsWith(".js"))
       .filter((nome) => !nome.startsWith("assets/leitor-zxing-"));
     expect(
-      [...resultado.cliente, ...resultado.painel, ...resultado.opcional].sort(),
+      [
+        ...resultado.cliente,
+        ...resultado.painel,
+        ...resultado.opcional,
+        ...resultado.workerDoMapa,
+      ].sort(),
     ).toEqual([...semZxing].sort());
+  });
+
+  it("o tipo da classificação é o que o validador declara (a .d.cts acompanha o esquema)", () => {
+    // Trava de TIPO, cobrada pelo `tsc -b` (tests/front entra no
+    // tsconfig.app.json): se a `.d.cts` ficar para trás (como ficou no v1
+    // enquanto o JSON já era v2), esta atribuição deixa de compilar.
+    const comoOValidadorDeclara: ClassificacaoDoPortao = resultado;
+    const comoOPluginGrava: ClassificacaoDoBundle = comoOValidadorDeclara;
+    expect(comoOPluginGrava.versao).toBe(3);
   });
 
   it("aceita um predicado de fronteira customizado (função pura, injetável)", () => {
@@ -288,38 +337,222 @@ describe("classificarBundle", () => {
         chunk({ fileName: "assets/c.js" }),
         chunk({ fileName: "assets/d.js" }),
       ],
+      [],
       (candidato) =>
         (candidato as ChunkParaClassificar).fileName === "assets/b.js",
     );
     // "b" não é atravessado: nem ele, nem "d" (que só existe atrás dele)
     // entram em cliente. "c", alcançado direto da raiz, entra normalmente.
-    // `classificarBundle` já devolve as duas listas ordenadas.
+    // `classificarBundle` já devolve as listas ordenadas.
     expect(comFronteiraEmB.cliente).toEqual(["assets/a.js", "assets/c.js"]);
     expect(comFronteiraEmB.painel).toEqual(["assets/b.js", "assets/d.js"]);
   });
 });
 
+describe("classificarBundle — `opcional` exige alcançabilidade SÓ por import() dinâmico, não só o nome", () => {
+  // Achado MAIOR da revisão da PR #712 (portaoDividido.ts:162): a allowlist
+  // `CHUNKS_OPCIONAIS` olhava SÓ o nome. Se alguém trocasse o `import()` do
+  // `AddressCardMap.tsx` por um `import` estático, o chunk `maplibre-gl-*`
+  // passaria a viajar com a rota (ou com a entrada) de TODO visitante — e a
+  // allowlist o tiraria de `cliente` mesmo assim, escondendo ~228 kB do teto
+  // de 550. Grafo sintético: cada caso é o MENOR que exercita a regra.
+  const entrada = (
+    parcial: Partial<ChunkParaClassificar> = {},
+  ): ChunkParaClassificar =>
+    chunk({ fileName: "assets/index-h1.js", isEntry: true, ...parcial });
+  const mapa = chunk({
+    fileName: "assets/maplibre-gl-h1.js",
+    isDynamicEntry: true,
+    moduleIds: ["/repo/node_modules/maplibre-gl/dist/maplibre-gl.js"],
+  });
+
+  it("importado ESTATICAMENTE pela entrada: fica em cliente", () => {
+    const r = classificarBundle(
+      [entrada({ imports: ["assets/maplibre-gl-h1.js"] }), mapa],
+      [],
+    );
+    expect(r.opcional).toEqual([]);
+    expect(r.cliente).toEqual([
+      "assets/index-h1.js",
+      "assets/maplibre-gl-h1.js",
+    ]);
+  });
+
+  it("importado ESTATICAMENTE por uma rota da cliente (chunk dinâmico): fica em cliente", () => {
+    const r = classificarBundle(
+      [
+        entrada({ dynamicImports: ["assets/Perfil-h1.js"] }),
+        chunk({
+          fileName: "assets/Perfil-h1.js",
+          isDynamicEntry: true,
+          moduleIds: ["/repo/src/views/customer/ProfileView.tsx"],
+          imports: ["assets/maplibre-gl-h1.js"],
+        }),
+        mapa,
+      ],
+      [],
+    );
+    expect(r.opcional).toEqual([]);
+    expect(r.cliente).toContain("assets/maplibre-gl-h1.js");
+  });
+
+  it("dinâmico por um chunk e estático por outro, ambos da cliente: basta o estático — fica em cliente", () => {
+    const r = classificarBundle(
+      [
+        entrada({
+          dynamicImports: ["assets/maplibre-gl-h1.js", "assets/Rota-h1.js"],
+        }),
+        chunk({
+          fileName: "assets/Rota-h1.js",
+          isDynamicEntry: true,
+          imports: ["assets/maplibre-gl-h1.js"],
+        }),
+        mapa,
+      ],
+      [],
+    );
+    expect(r.opcional).toEqual([]);
+    expect(r.cliente).toContain("assets/maplibre-gl-h1.js");
+  });
+
+  it("vale para QUALQUER chunk com o prefixo, não só o principal do maplibre", () => {
+    const r = classificarBundle(
+      [
+        entrada({ dynamicImports: ["assets/maplibre-gl-h1.js"] }),
+        chunk({
+          ...mapa,
+          imports: ["assets/maplibre-gl-compartilhado-h1.js"],
+        }),
+        // Pedaço que o Rollup separasse do maplibre: ESTÁTICO a partir de um
+        // chunk que a cliente alcança — não é "só dinâmico", fica em cliente.
+        chunk({ fileName: "assets/maplibre-gl-compartilhado-h1.js" }),
+      ],
+      [],
+    );
+    expect(r.opcional).toEqual(["assets/maplibre-gl-h1.js"]);
+    expect(r.cliente).toContain("assets/maplibre-gl-compartilhado-h1.js");
+  });
+
+  it("um chunk de ENTRADA com o prefixo fica em cliente (a página o carrega sempre)", () => {
+    const r = classificarBundle(
+      [chunk({ ...mapa, isEntry: true, isDynamicEntry: false })],
+      [],
+    );
+    expect(r.opcional).toEqual([]);
+    expect(r.cliente).toEqual(["assets/maplibre-gl-h1.js"]);
+  });
+
+  it("alcançável só atrás da fronteira do painel: vai para painel, não para opcional", () => {
+    const r = classificarBundle(
+      [
+        entrada({ dynamicImports: ["assets/AdminArea-h1.js"] }),
+        chunk({
+          fileName: "assets/AdminArea-h1.js",
+          isDynamicEntry: true,
+          moduleIds: ["/repo/src/components/layouts/AdminArea.tsx"],
+          dynamicImports: ["assets/maplibre-gl-h1.js"],
+        }),
+        mapa,
+      ],
+      [],
+    );
+    expect(r.opcional).toEqual([]);
+    expect(r.painel).toContain("assets/maplibre-gl-h1.js");
+  });
+});
+
+describe("classificarBundle — worker do mapa: allowlist ANCORADA, só para asset", () => {
+  const entradaQueImportaOMapa = [
+    chunk({
+      fileName: "assets/index-h1.js",
+      isEntry: true,
+      dynamicImports: ["assets/maplibre-gl-h1.js"],
+    }),
+    chunk({ fileName: "assets/maplibre-gl-h1.js", isDynamicEntry: true }),
+  ];
+
+  it.each([
+    // Sem hash (nome fixo quebraria o `immutable` do vercel.json).
+    "assets/maplibre-gl-worker.js",
+    // `.mjs` cru: o que o `?url` sozinho emitiria (sem o shared).
+    "assets/maplibre-gl-worker-h1.mjs",
+    // Sufixo extra depois do hash.
+    "assets/maplibre-gl-worker-h1.min.js",
+    // Outro worker qualquer.
+    "assets/outro-worker-h1.js",
+    // Em subpasta: a âncora `^assets/maplibre-gl-worker-` não casa.
+    "assets/sub/maplibre-gl-worker-h1.js",
+  ])(
+    "asset JS fora da allowlist (%s) conta em cliente — fail-closed: o teto de 550 reprova alto",
+    (nome) => {
+      const r = classificarBundle(entradaQueImportaOMapa, [nome]);
+      expect(r.workerDoMapa).toEqual([]);
+      expect(r.cliente).toContain(nome);
+    },
+  );
+
+  it("ignora o que não é JS de `assets/` (CSS, wasm, imagem, mapa de fonte, JS fora de assets/) e o leitor zxing", () => {
+    const r = classificarBundle(entradaQueImportaOMapa, [
+      "assets/index-h1.css",
+      "assets/zxing_reader-h1.wasm",
+      "assets/logo-h1.png",
+      "assets/maplibre-gl-worker-h1.js.map",
+      "registerSW.js",
+      "assets/leitor-zxing-h1.js",
+    ]);
+    expect(r.cliente).toEqual(["assets/index-h1.js"]);
+    expect(r.painel).toEqual([]);
+    expect(r.opcional).toEqual(["assets/maplibre-gl-h1.js"]);
+    expect(r.workerDoMapa).toEqual([]);
+  });
+
+  it("um CHUNK com o nome do worker não vira worker (a allowlist do worker vale só para asset)", () => {
+    const r = classificarBundle(
+      [
+        chunk({
+          fileName: "assets/index-h1.js",
+          isEntry: true,
+          imports: ["assets/maplibre-gl-worker-h1.js"],
+        }),
+        chunk({ fileName: "assets/maplibre-gl-worker-h1.js" }),
+      ],
+      [],
+    );
+    expect(r.workerDoMapa).toEqual([]);
+    expect(r.cliente).toContain("assets/maplibre-gl-worker-h1.js");
+  });
+});
+
 describe("validarClassificacaoContraDisco", () => {
   const classificacaoValida = {
-    versao: 2,
+    versao: 3,
     cliente: ["assets/index-h1.js", "assets/Home-h1.js"],
     painel: ["assets/AdminArea-h1.js"],
     opcional: ["assets/maplibre-gl-h1.js"],
+    workerDoMapa: ["assets/maplibre-gl-worker-h1.js"],
   };
   const discoBatendo = [
     "assets/index-h1.js",
     "assets/Home-h1.js",
     "assets/AdminArea-h1.js",
     "assets/maplibre-gl-h1.js",
+    "assets/maplibre-gl-worker-h1.js",
   ];
+  const semOWorker = discoBatendo.filter(
+    (arquivo) => arquivo !== "assets/maplibre-gl-worker-h1.js",
+  );
+  const semOMapa = discoBatendo.filter(
+    (arquivo) => arquivo !== "assets/maplibre-gl-h1.js",
+  );
 
-  it("aceita quando cliente ∪ painel ∪ opcional é exatamente o disco (sem zxing)", () => {
-    expect(
-      validarClassificacaoContraDisco(classificacaoValida, discoBatendo),
-    ).toEqual({
+  it("aceita quando cliente ∪ painel ∪ opcional ∪ workerDoMapa é exatamente o disco (sem zxing)", () => {
+    const { cliente, painel, opcional, workerDoMapa } =
+      validarClassificacaoContraDisco(classificacaoValida, discoBatendo);
+    expect({ cliente, painel, opcional, workerDoMapa }).toEqual({
       cliente: classificacaoValida.cliente,
       painel: classificacaoValida.painel,
       opcional: classificacaoValida.opcional,
+      workerDoMapa: classificacaoValida.workerDoMapa,
     });
   });
 
@@ -329,30 +562,74 @@ describe("validarClassificacaoContraDisco", () => {
     ).toThrow(/PORTAO_TAMANHO/);
   });
 
-  it("recusa versão de esquema diferente de 2 (inclusive a 1 antiga, sem opcional)", () => {
+  it.each([1, 2, 4, "3"])(
+    "recusa versão de esquema %j (só a 3 tem o grupo workerDoMapa)",
+    (versao) => {
+      expect(() =>
+        validarClassificacaoContraDisco(
+          { ...classificacaoValida, versao },
+          discoBatendo,
+        ),
+      ).toThrow(/PORTAO_TAMANHO/);
+    },
+  );
+
+  it.each(["cliente", "painel", "opcional", "workerDoMapa"] as const)(
+    "recusa classificação versão 3 sem o grupo %s",
+    (grupo) => {
+      const semOGrupo = Object.fromEntries(
+        Object.entries(classificacaoValida).filter(
+          ([chave]) => chave !== grupo,
+        ),
+      );
+      expect(() =>
+        validarClassificacaoContraDisco(semOGrupo, discoBatendo),
+      ).toThrow(/PORTAO_TAMANHO/);
+    },
+  );
+
+  it("recusa workerDoMapa que não é lista, ou com item que não é texto", () => {
     expect(() =>
       validarClassificacaoContraDisco(
-        { ...classificacaoValida, versao: 1 },
+        {
+          ...classificacaoValida,
+          workerDoMapa: "assets/maplibre-gl-worker-h1.js",
+        },
+        discoBatendo,
+      ),
+    ).toThrow(/PORTAO_TAMANHO/);
+    expect(() =>
+      validarClassificacaoContraDisco(
+        { ...classificacaoValida, workerDoMapa: [42] },
         discoBatendo,
       ),
     ).toThrow(/PORTAO_TAMANHO/);
   });
 
-  it("recusa classificação versão 2 sem o grupo opcional", () => {
-    const { opcional: _opcional, ...semOpcional } = classificacaoValida;
+  it("recusa arquivo repetido dentro do workerDoMapa", () => {
     expect(() =>
-      validarClassificacaoContraDisco(semOpcional, discoBatendo),
-    ).toThrow(/PORTAO_TAMANHO/);
+      validarClassificacaoContraDisco(
+        {
+          ...classificacaoValida,
+          workerDoMapa: [
+            "assets/maplibre-gl-worker-h1.js",
+            "assets/maplibre-gl-worker-h1.js",
+          ],
+        },
+        discoBatendo,
+      ),
+    ).toThrow(/repetido/);
   });
 
   it("recusa cliente e painel não disjuntos", () => {
     expect(() =>
       validarClassificacaoContraDisco(
         {
-          versao: 2,
+          versao: 3,
           cliente: ["assets/x.js"],
           painel: ["assets/x.js"],
           opcional: [],
+          workerDoMapa: [],
         },
         ["assets/x.js"],
       ),
@@ -363,15 +640,46 @@ describe("validarClassificacaoContraDisco", () => {
     expect(() =>
       validarClassificacaoContraDisco(
         {
-          versao: 2,
+          ...classificacaoValida,
           cliente: ["assets/maplibre-gl-h1.js"],
           painel: [],
-          opcional: ["assets/maplibre-gl-h1.js"],
         },
-        ["assets/maplibre-gl-h1.js"],
+        ["assets/maplibre-gl-h1.js", "assets/maplibre-gl-worker-h1.js"],
       ),
     ).toThrow(/disjuntos/);
   });
+
+  const worker = "assets/maplibre-gl-worker-h1.js";
+  it.each([
+    [
+      "cliente",
+      {
+        ...classificacaoValida,
+        cliente: [...classificacaoValida.cliente, worker],
+      },
+    ],
+    [
+      "painel",
+      {
+        ...classificacaoValida,
+        painel: [...classificacaoValida.painel, worker],
+      },
+    ],
+    [
+      "opcional",
+      {
+        ...classificacaoValida,
+        opcional: [...classificacaoValida.opcional, worker],
+      },
+    ],
+  ])(
+    "recusa workerDoMapa e %s não disjuntos (o worker contado em dois tetos)",
+    (_grupo, comOWorkerEmDoisGrupos) => {
+      expect(() =>
+        validarClassificacaoContraDisco(comOWorkerEmDoisGrupos, discoBatendo),
+      ).toThrow(/workerDoMapa não são disjuntos/);
+    },
+  );
 
   it("recusa classificação desatualizada — disco tem chunk novo (hash mudou)", () => {
     expect(() =>
@@ -388,7 +696,45 @@ describe("validarClassificacaoContraDisco", () => {
         "assets/index-h1.js",
         "assets/AdminArea-h1.js",
         "assets/maplibre-gl-h1.js",
+        "assets/maplibre-gl-worker-h1.js",
       ]),
     ).toThrow(/desatualizada/);
+  });
+
+  it("recusa o worker no disco que a classificação não conhece (o erro real da onda 1)", () => {
+    expect(() =>
+      validarClassificacaoContraDisco(classificacaoValida, [
+        ...semOWorker,
+        "assets/maplibre-gl-worker-h2.js",
+      ]),
+    ).toThrow(/desatualizada.*maplibre-gl-worker-h2/);
+  });
+
+  it("recusa o worker na classificação que não está no disco", () => {
+    expect(() =>
+      validarClassificacaoContraDisco(classificacaoValida, semOWorker),
+    ).toThrow(/desatualizada/);
+  });
+
+  // Os dois casos abaixo batem com o disco de propósito: a ÚNICA coisa errada
+  // é um grupo do mapa vazio sem o outro — o chunk e o worker só viajam
+  // juntos (o `importarRenderer` do AddressCardMap importa os dois). Um sem o
+  // outro é renomeação de um lado só ou import que deixou de ser dinâmico.
+  it("recusa workerDoMapa VAZIO quando o build tem o chunk do mapa em opcional", () => {
+    expect(() =>
+      validarClassificacaoContraDisco(
+        { ...classificacaoValida, workerDoMapa: [] },
+        semOWorker,
+      ),
+    ).toThrow(/workerDoMapa vazio/);
+  });
+
+  it("recusa opcional VAZIO quando o build tem o worker do mapa (o vice-versa)", () => {
+    expect(() =>
+      validarClassificacaoContraDisco(
+        { ...classificacaoValida, opcional: [] },
+        semOMapa,
+      ),
+    ).toThrow(/opcional vazio/);
   });
 });

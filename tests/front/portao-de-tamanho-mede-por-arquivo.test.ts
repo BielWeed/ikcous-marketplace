@@ -28,6 +28,11 @@
 // `opcional` (250 kB) para chunks SOB DEMANDA (allowlist restrita ao
 // `assets/maplibre-gl-*`, o renderer do mapa vetorial). Os tetos de cliente
 // e painel NÃO mudaram — este teste continua derrubando mudança neles.
+//
+// 13/10/2026 — decisão do dono de 12/10/2026 (onda 2 da PR #712): o worker
+// do MapLibre (asset `.js` que o Vite emite à parte, ~116 kB brotli) ganhou
+// orçamento PRÓPRIO, `workerDoMapa` (130 kB). NENHUM teto existente subiu:
+// 550 cliente, 450 painel, 250 opcional, 100 CSS, 400 leitor zxing.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -48,8 +53,13 @@ function entrada(ancora: string): string {
 }
 
 describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
-  it("as entradas de JS (cliente, painel e opcional) medem por arquivo e sem medida de tempo", () => {
-    for (const ancora of ["cliente.map(", "painel.map(", "opcional.map("]) {
+  it("as entradas de JS (cliente, painel, opcional e worker do mapa) medem por arquivo e sem medida de tempo", () => {
+    for (const ancora of [
+      "cliente.map(",
+      "painel.map(",
+      "opcional.map(",
+      "workerDoMapa.map(",
+    ]) {
       const trechoJs = entrada(ancora);
       expect(trechoJs, ancora).toContain("webpack: false");
       // A medida de tempo roda o bundle em Chrome headless — quebra em runner
@@ -64,14 +74,29 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os que o dono fixou: cliente 550 kB, painel 450 kB, opcional 250 kB", () => {
+  it("os tetos de JS são os que o dono fixou: cliente 550 kB, painel 450 kB, opcional 250 kB, worker do mapa 130 kB, leitor 400 kB", () => {
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. (29/09/2026: o 250 kB do
     // `opcional` é o orçamento novo do chunk de mapa sob demanda — os
-    // números de cliente e painel são os mesmos de 26/09.)
+    // números de cliente e painel são os mesmos de 26/09. 13/10/2026: o
+    // 130 kB do worker é orçamento NOVO; nenhum dos outros subiu.)
     expect(entrada("cliente.map(")).toContain('limit: "550 kB"');
     expect(entrada("painel.map(")).toContain('limit: "450 kB"');
     expect(entrada("opcional.map(")).toContain('limit: "250 kB"');
+    expect(entrada("workerDoMapa.map(")).toContain('limit: "130 kB"');
+    expect(entrada("assets/leitor-zxing-*.js")).toContain('limit: "400 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
+  });
+
+  it("não existe teto além dos seis fixados (um sétimo, mais frouxo, esconderia bytes)", () => {
+    // Contar TODOS os `limit:` do arquivo fecha a porta lateral: mover um
+    // arquivo para uma entrada nova com teto folgado não muda nenhum dos
+    // números acima, mas muda esta lista.
+    const tetos = [...configTexto.matchAll(/limit:\s*"([^"]+)"/g)].map(
+      (achado) => achado[1],
+    );
+    expect([...tetos].sort()).toEqual(
+      ["550 kB", "450 kB", "250 kB", "130 kB", "100 kB", "400 kB"].sort(),
+    );
   });
 });
