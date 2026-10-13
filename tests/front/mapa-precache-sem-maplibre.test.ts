@@ -1,11 +1,35 @@
 /* eslint-disable security/detect-non-literal-fs-filename -- Só a pasta criada por mkdtemp é escrita e removida; nenhum caminho vem de fora do teste. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import type { ConfigEnv, UserConfigFnPromise } from "vite";
 import type { VitePWAOptions } from "vite-plugin-pwa";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { getManifest } from "workbox-build";
+
+// O workbox-build NÃO é dependência declarada do app: vem do vite-plugin-pwa
+// (dependência + peer dele). Carregá-lo pelo PRÓPRIO plugin garante a mesma
+// cópia que o build usa — o plugin faz `import("workbox-build")` a partir de
+// `node_modules/vite-plugin-pwa/dist/`, e um require ancorado na entrada do
+// plugin resolve do mesmo diretório. Um `import` direto daqui pegaria a
+// cópia içada na raiz (não necessariamente a do plugin) e contaria como
+// dependência não listada no knip. O tipo é local, só com o que o teste usa,
+// pelo mesmo motivo: nem uma referência de tipo ao pacote.
+type ResultadoDoManifesto = {
+  manifestEntries?: Array<{ url: string }>;
+};
+type WorkboxBuild = {
+  getManifest(opcoes: {
+    globDirectory: string;
+    globPatterns: string[];
+    globIgnores: string[];
+    maximumFileSizeToCacheInBytes?: number;
+  }): Promise<ResultadoDoManifesto>;
+};
+const requireDoPlugin = createRequire(
+  createRequire(import.meta.url).resolve("vite-plugin-pwa"),
+);
+const { getManifest } = requireDoPlugin("workbox-build") as WorkboxBuild;
 
 // O MAPA SAI DO PRECACHE (correções da revisão da PR #712, frente
 // mapa-precache). O chunk `assets/maplibre-gl-<hash>.js` (1.051.513 B crus,
@@ -23,7 +47,8 @@ import { getManifest } from "workbox-build";
 // `vite.config.ts` de verdade monta as opções do PWA (só o `VitePWA` é
 // trocado por um capturador, e a identidade da loja — que não toca o
 // `injectManifest` — por um plugin vazio), e as opções capturadas passam
-// pelo `getManifest` do workbox-build: é o mesmo `globSync(padrão, { cwd,
+// pelo `getManifest` do workbox-build (a cópia que o plugin carrega, ver o
+// `requireDoPlugin` acima): é o mesmo `globSync(padrão, { cwd,
 // ignore })` que o `injectManifest` do vite-plugin-pwa chama no fim do build
 // (`vite-plugin-pwa/dist/vite-build-*.js` repassa `options.injectManifest`
 // sem mexer no glob). Sem build pesado: a "entrega" é uma pasta temporária
@@ -72,6 +97,11 @@ const NO_PRECACHE = [
   // A lista de endereços do Perfil (que hospeda o cartão do mapa) continua
   // offline: só o RENDERER sai, o cartão segue útil sem ele.
   "assets/AddressList-Dr2Ko67y.js",
+  // O CSS desse chunk carrega os estilos do mapa (import estático do CSS do
+  // maplibre no AddressCardMap) e é pré-carregado também no caminho do
+  // Carrinho/Checkout (lista de dependências do index no dist-test de
+  // 12/10/2026): não tem o nome `maplibre-gl` e tem de continuar no precache.
+  "assets/AddressList-CwBrWzMg.css",
   // O balcão vende offline (C2): tela, leitor e binário seguem no precache.
   "assets/PdvBalcao-CqJgMFS5.js",
   "assets/leitor-zxing-CEBPNyUk.js",
