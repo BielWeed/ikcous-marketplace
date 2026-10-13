@@ -13,9 +13,9 @@
 //   function falha fechado com mensagem de configuração — NUNCA inventa
 //   credencial e NUNCA chama a API sem token.
 //
-// SEGURANÇA: as duas actions exigem admin (mesmo verifyIsAdmin do
-// `calculate-shipping` — anon/customer recebem 403 antes de qualquer leitura
-// de pedido). Toda leitura/escrita no banco usa service role.
+// SEGURANÇA: as duas actions exigem o admin de AGORA (`_shared/admin-atual.ts`
+// — anon/customer e papéis contraditórios recebem 403 antes de qualquer
+// leitura de pedido). Toda leitura/escrita no banco usa service role.
 //
 // DINHEIRO: o checkout da etiqueta usa o SALDO da conta do Melhor Envio do
 // lojista. Proteções embutidas:
@@ -67,6 +67,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { adminAtualDaSessao } from "../_shared/admin-atual.ts"
 import { ehRetiradaNaLoja } from "../_shared/retirada-na-loja.ts"
 import { cpfDoDestinatario, cpfValido, sanitizarDadosPessoaisDoTexto } from "./cpf.ts"
 
@@ -117,34 +118,25 @@ export async function buscarComTempo(
 }
 
 /**
- * Verifica se quem chamou é admin. MESMA cópia do `calculate-shipping`:
- * valida o JWT com o anon key, sobe o papel de `profiles` com service role.
+ * Verifica se quem chamou é admin AGORA. A regra mora em
+ * `_shared/admin-atual.ts` (auditoria L3, 12/10/2026), a MESMA de
+ * `estornar-pagamento` e do `cancelar` da `criar-pagamento`: sessão validada
+ * no Auth e papel 'admin' em `profiles.role` E em `app_metadata.role`. Papéis
+ * contraditórios (rebaixado em uma fonte só) não compram etiqueta com o saldo
+ * da loja nem leem o pedido.
  */
 async function verifyIsAdmin(
     authHeader: string | null,
     supabaseUrl: string,
     serviceRoleKey: string,
 ): Promise<boolean> {
-    if (!authHeader) return false
-    try {
-        const anonKey = readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
-        const userClient = createClient(supabaseUrl, anonKey, {
-            global: { headers: { Authorization: authHeader } },
-        })
-        const { data: { user }, error: userError } = await userClient.auth.getUser()
-        if (userError || !user) return false
-        const systemClient = createClient(supabaseUrl, serviceRoleKey)
-        const { data: profile, error: profileError } = await systemClient
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
-        if (profileError || !profile) return false
-        return profile.role === 'admin'
-    } catch (err) {
-        console.error('[melhor-envio-etiqueta] Falha no check de admin:', err)
-        return false
-    }
+    const adminId = await adminAtualDaSessao(authHeader, {
+        url: supabaseUrl,
+        chavePublica: readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY'),
+        chaveDeServico: serviceRoleKey,
+        rotulo: '[melhor-envio-etiqueta]',
+    })
+    return adminId !== null
 }
 
 /**

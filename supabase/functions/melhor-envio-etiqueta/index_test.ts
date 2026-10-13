@@ -18,10 +18,22 @@ const URL_SUPA_TESTE = 'https://supa-fake.local'
 const ID_ADMIN = 'admin-1111-2222'
 const ANON_DE_TESTE = 'anon-chave-de-teste'
 
-function respostaAdminFalsa(url: string): Response {
+/**
+ * Papel ATUAL nas duas fontes (`_shared/admin-atual.ts`, a mesma regra de
+ * `public.is_admin_atual()`): `app_metadata.role` do usuário que o GET /user
+ * do Auth carrega do banco, e `profiles.role`. O admin de verdade tem
+ * 'admin' nas duas.
+ */
+function respostaDePapeisFalsa(url: string, papelNoAuth: string, papelNoPerfil: string): Response {
     if (url.includes('/auth/v1/user')) {
         return new Response(
-            JSON.stringify({ id: ID_ADMIN, email: 'admin@teste.local', aud: 'authenticated', role: 'authenticated' }),
+            JSON.stringify({
+                id: ID_ADMIN,
+                email: 'admin@teste.local',
+                aud: 'authenticated',
+                role: 'authenticated',
+                app_metadata: { provider: 'email', role: papelNoAuth },
+            }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
     }
@@ -29,7 +41,7 @@ function respostaAdminFalsa(url: string): Response {
         // `.single()` pede o accept vnd.pgrst.object — o SERVIDOR é quem
         // devolve objeto (não array); o fake imita o servidor.
         return new Response(
-            JSON.stringify({ id: ID_ADMIN, role: 'admin' }),
+            JSON.stringify({ id: ID_ADMIN, role: papelNoPerfil }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
     }
@@ -39,8 +51,12 @@ function respostaAdminFalsa(url: string): Response {
     )
 }
 
-const fetchAdminFalso = ((input: any) =>
-    respostaAdminFalsa(String(input instanceof Request ? input.url : input))) as any
+function fetchPapeisFalso(papelNoAuth: string, papelNoPerfil: string): any {
+    return ((input: any) =>
+        respostaDePapeisFalsa(String(input instanceof Request ? input.url : input), papelNoAuth, papelNoPerfil)) as any
+}
+
+const fetchAdminFalso = fetchPapeisFalso('admin', 'admin')
 
 globalThis.fetch = fetchAdminFalso
 const {
@@ -69,8 +85,13 @@ globalThis.fetch = fetchNativo
 
 /** Instala o fetch admin falso SÓ durante a chamada ao handler. */
 async function comAdminFalso(executar: () => Promise<any>): Promise<any> {
+    return await comFetchFalso(fetchAdminFalso, executar)
+}
+
+/** Instala um fetch falso qualquer SÓ durante a chamada ao handler. */
+async function comFetchFalso(fetchFalso: any, executar: () => Promise<any>): Promise<any> {
     const anterior = globalThis.fetch
-    globalThis.fetch = fetchAdminFalso
+    globalThis.fetch = fetchFalso
     try {
         return await executar()
     } finally {
@@ -452,6 +473,46 @@ Deno.test("handler - action desconhecida nomeia as duas válidas e NÃO alcança
     assertEquals(String(corpo.error).includes("apagar_tudo"), true)
     assertEquals(String(corpo.error).includes("gerar_etiqueta"), true)
     assertEquals(String(corpo.error).includes("consultar_rastreio"), true)
+  })
+})
+
+// ── Admin de AGORA nas duas fontes (auditoria L3, 12/10/2026) ──────────────
+// A porta é a de `_shared/admin-atual.ts`: papel 'admin' em `profiles.role` E
+// em `app_metadata.role`. Papéis contraditórios (rebaixado em uma fonte só)
+// recebem o MESMO 403 de quem não é admin — nas duas direções — sem ler
+// pedido e sem uma chamada sequer ao Melhor Envio (que gasta o saldo da loja).
+for (
+  const [rotulo, papelNoAuth, papelNoPerfil] of [
+    ["só o Auth rebaixado (profiles ainda admin)", "customer", "admin"],
+    ["só o profiles rebaixado (Auth ainda admin)", "admin", "customer"],
+  ] as const
+) {
+  Deno.test(`handler - papéis contraditórios, ${rotulo}: 403 antes de ler pedido ou falar com o ME`, async () => {
+    await comEnvAdmin(async () => {
+      const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+      const me = buscarMeFalso()
+      const res = await comFetchFalso(fetchPapeisFalso(papelNoAuth, papelNoPerfil), () =>
+        handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+      assertEquals(res.status, 403)
+      const corpo = await respostaJson(res)
+      assertEquals(
+        corpo.error,
+        "Não autorizado: apenas administradores geram etiquetas e consultam rastreio.",
+      )
+      assertEquals(me.registro.chamadasMe, 0)
+      assertEquals(me.registro.carrinho, 0)
+      assertEquals(supa.registro.reivindicacoes.length, 0)
+      assertEquals(supa.registro.eventos.length, 0)
+    })
+  })
+}
+
+Deno.test("handler - CONTROLE: admin nas duas fontes passa a porta (a action estranha morre no portão dela, 400)", async () => {
+  await comEnvAdmin(async () => {
+    const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+    const res = await comFetchFalso(fetchPapeisFalso("admin", "admin"), () =>
+      handler(requisicaoGerar("apagar_tudo"), { supabase: supa.cliente, buscar: buscarMeFalso().buscar }))
+    assertEquals(res.status, 400)
   })
 })
 
