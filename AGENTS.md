@@ -164,7 +164,14 @@ id; 15 min; 1 envio por pedido a cada 60s — protege a cota ~100/dia do SMTP da
 checkout) · busca de CEP (ViaCEP, com OpenCEP e AwesomeAPI de reserva, em
 `src/lib/provedores-de-cep.ts`) · Melhor Envio e Frenet (frete em `calculate-shipping`; etiqueta
 de ida e código de postagem reverso da devolução em `melhor-envio-etiqueta`) · SMTP da loja (OTP
-e comprovante) · Web Push (VAPID) · wa.me (deep links) · linkrastreio. Sem axios — tudo `fetch`.
+e comprovante) · Web Push (VAPID) · wa.me (deep links) · linkrastreio · **mapa do cartão de
+endereço do Perfil** (`AddressCardMap.tsx`, 12/10/2026; só abre com o cartão expandido e online):
+OpenFreeMap (estilo "positron", tiles, glyphs e sprite, host `tiles.openfreemap.org`) e geocodificação
+pelo Photon/Komoot (`photon.komoot.io`, instância pública sem SLA) — **do navegador do cliente saem
+rua, número, bairro, cidade, UF e CEP (nunca destinatário, complemento, referência nem apelido)** e
+o IP vai aos dois hosts; sem cache de geocode no módulo (não retém endereço após o logout); falha ou
+timeout de 12 s degradam para "Mapa indisponível" sem bloquear a tela. Créditos obrigatórios
+(OpenMapTiles/OpenStreetMap) em linha própria abaixo do mapa. Sem axios — tudo `fetch`.
 
 ### Políticas declaradas pelo dono (Gabriel)
 
@@ -267,14 +274,24 @@ npm run size
 `supabase/functions/`), `test:unit` (Deno, `tests/`) e `test:front` (Vitest,
 `tests/front/`).
 
-**`npm run size` é portão DIVIDIDO** (decisão do dono, 26/09/2026): JS que a cliente pode
-baixar **≤ 550 kB** e JS só do painel **≤ 450 kB** (brotli por arquivo), CSS ≤ 100 kB, leitor
-zxing ≤ 400 kB (`.size-limit.cjs`). Quem classifica cada chunk é o **grafo real do Rollup**,
-nunca o nome do arquivo: o plugin `scripts/portaoDividido.ts` (`generateBundle`, só no build)
-faz a busca a partir das entradas sem atravessar a fronteira (entrada dinâmica que contém
-`AdminArea.tsx` ou tela de `src/views/admin/**`, exceto `AdminLoginView`, que é pública): o
-alcançado é cliente, o resto é painel. Grava `.portao-tamanho/<dist|dist-test>.json`; o
-`.size-limit.cjs` falha fechado se o JSON faltar ou não bater com os `assets/*.js` do disco
+**`npm run size` é portão DIVIDIDO** (decisão do dono, 26/09/2026; mapa vetorial do endereço,
+12/10/2026): JS que a cliente pode baixar **≤ 550 kB** e JS só do painel **≤ 450 kB** (brotli por
+arquivo), CSS ≤ 100 kB, leitor zxing ≤ 400 kB e, desde o mapa do cartão de endereço, DOIS grupos
+opcionais que só se baixam quando um mapa monta: o chunk `maplibre-gl-*` **≤ 250 kB** (`opcional`)
+e o worker do MapLibre **≤ 130 kB** (`workerDoMapa`; orçamento próprio, como o do leitor zxing, para
+o 250 não subir) — seis tetos em `.size-limit.cjs`. Medido em 13/10/2026 (fixture): 495,08 / 436,56 /
+228,07 / 116,32 / 39,93 / 331,65 kB. Quem classifica cada chunk é o **grafo real do Rollup**: o
+plugin `scripts/portaoDividido.ts` (`generateBundle`, só no build) faz a busca a partir das entradas
+sem atravessar a fronteira (entrada dinâmica que contém `AdminArea.tsx` ou tela de
+`src/views/admin/**`, exceto `AdminLoginView`, que é pública): o alcançado é cliente, o resto é
+painel. As duas exceções por nome são estreitas e ancoradas: o chunk `assets/maplibre-gl-*` só
+vai para `opcional` se for alcançado SOMENTE por `import()` dinâmico a partir da cliente (importado
+estaticamente, ou entrada, fica em `cliente` e o 550 reprova alto), e o worker — que o Vite emite
+como *asset*, não como chunk — só é aceito por `^assets/maplibre-gl-worker-<hash>.js$`. Os dois
+saem do precache do service worker (`globIgnores` em `vite.config.ts`; um teste cruza as duas
+listas). Grava `.portao-tamanho/<dist|dist-test>.json` (esquema versão 3); o `.size-limit.cjs`
+falha fechado se o JSON faltar, tiver versão diferente, ou não bater com os `assets/*.js`/`*.mjs`
+do disco, e também se só um dos dois grupos do mapa estiver vazio
 (`scripts/validarPortaoDeTamanho.cjs`) — rode `npm run build` antes. Subir teto ou mexer na
 fronteira é decisão do dono, não ajuste de CI.
 
