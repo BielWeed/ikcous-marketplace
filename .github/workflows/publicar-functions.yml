@@ -202,7 +202,7 @@ jobs:
             echo "::error::segredo SUPABASE_ACCESS_TOKEN_SAVY ausente no repositório"; exit 1
           fi
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: latest
 
