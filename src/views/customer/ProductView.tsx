@@ -21,6 +21,7 @@ import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
 import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
@@ -719,7 +720,7 @@ export const ProductView = React.memo(function ProductView({
       phone = `55${phone}`;
     }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    globalThis.open(url, "_blank");
+    abrirWhatsapp(url);
   };
 
   const nextImage = () => {

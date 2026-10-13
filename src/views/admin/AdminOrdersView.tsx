@@ -49,6 +49,7 @@ import {
 } from "@/hooks/useOrders";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { formatarInteiro } from "@/lib/crm";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
@@ -1436,7 +1437,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const link = linkWhatsappDoCliente(order.customer?.whatsapp);
       if (!link) return;
       const url = `${link}?text=${encodeURIComponent(message)}`;
-      globalThis.open(url, "_blank");
+      abrirWhatsapp(url);
     },
     [isOffline],
   );

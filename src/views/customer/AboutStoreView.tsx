@@ -2,6 +2,7 @@ import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { buildIdentity } from "@/config/buildIdentity";
 import { useStore } from "@/contexts/StoreContext";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { haptic } from "@/utils/haptic";
@@ -106,9 +107,8 @@ export function AboutStoreView() {
     if (phone.length === 10 || phone.length === 11) {
       phone = `55${phone}`;
     }
-    globalThis.open(
+    abrirWhatsapp(
       `https://wa.me/${phone}?text=${encodeURIComponent("Olá! Vim pelo app da loja.")}`,
-      "_blank",
     );
     haptic.light();
   };

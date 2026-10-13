@@ -379,5 +379,8 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     const url = String(open.mock.calls[0]?.[0]);
     // "(34) 99999-9999" → 34999999999 (11 dígitos) → prefixo 55.
     expect(url).toContain("https://wa.me/5534999999999");
+    // A8-d/L12: a aba do WhatsApp não pode herdar `window.opener` do app.
+    expect(open.mock.calls[0]?.[1]).toBe("_blank");
+    expect(open.mock.calls[0]?.[2]).toBe("noopener,noreferrer");
   });
 });
