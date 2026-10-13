@@ -20,7 +20,11 @@ import "@/components/ui/custom/address-card-map.css";
  *   links (mínimo legal legível; diretriz OSMF aceita crédito na
  *   vizinhança da obra). Mapa interativo desligado: nada de zoom/satélite.
  * - maplibre-gl entra por IMPORT DINÂMICO: só é baixado quando um mapa
- *   realmente monta (chunk próprio; o bundle da cliente não cresce).
+ *   realmente monta (chunk próprio; o bundle da cliente não cresce). O
+ *   WORKER do MapLibre (~500 kB, asset à parte) também só é baixado quando
+ *   um mapa monta: a URL empacotada pelo Vite (`?worker&url`) vem por import
+ *   dinâmico no mesmo caminho e entra por `setWorkerUrl` antes do primeiro
+ *   mapa (ver `importarRenderer`).
  * - Falha de rede/estilo/geocode/timeout → mensagem amigável; o cartão
  *   continua útil (endereço + link externo do AddressList).
  * - Privacidade: a consulta de geocode usa SÓ campos geográficos —
@@ -33,6 +37,11 @@ type Location = { lat: number; lng: number };
 const ESTILO_POSITRON = "https://tiles.openfreemap.org/styles/positron";
 const GEOCODE = "https://photon.komoot.io/api/";
 const TIMEOUT_MS = 12_000;
+/** Rótulo pt-BR da região do mapa. O MapLibre dá ao CANVAS (`role="region"`)
+ * o rótulo "Map" em inglês (string `Map.Title` do locale padrão); o `locale`
+ * oficial das opções troca esse texto já na construção — nada de mexer no
+ * DOM do MapLibre depois. */
+const ROTULO_DO_MAPA = "Localização aproximada no mapa";
 
 /** Estilo compartilhado: 1 fetch por sessão, independentemente do nº de cartões.
  *
@@ -100,14 +109,59 @@ function carregarEstilo(sinal: AbortSignal): Promise<unknown> {
   ]);
 }
 
+/** Importa o MapLibre JUNTO com a URL do worker empacotado e já o configura.
+ *
+ * Por que isto existe (revisão da PR #712, 13/10/2026): o MapLibre 6.10
+ * resolve o worker em runtime por `new URL("./maplibre-gl-worker.mjs",
+ * import.meta.url)`, mas o build do Vite NÃO emite esse arquivo (nem o
+ * `maplibre-gl-shared.mjs` que ele importa). No Vercel o rewrite
+ * `/(.*) -> /index.html` entregava HTML no lugar do worker e o mapa nunca
+ * carregava — só o timeout de 12 s rescatava. `?worker&url` faz o Vite
+ * empacotar o worker (shared incluso) num arquivo com HASH em `/assets/`
+ * (o `immutable` do vercel.json vale; nunca nome fixo). `?url` sozinho NÃO
+ * basta: emitiria só o worker, sem o shared. Validado com o Vite 7.3.6 do
+ * repositório; o contrato do fonte está em
+ * tests/front/mapa-worker-empacotado.test.ts.
+ *
+ * Os dois imports são DINÂMICOS e moram no mesmo caminho preguiçoso. O que
+ * NUNCA entra no JS inicial do cliente é o que pesa: o chunk do `maplibre-gl`
+ * e o worker (~500 kB, que o Vite emite como asset à parte, com hash). O
+ * módulo `?worker&url` em si é só a string da URL (dezenas de bytes) e o
+ * `experimentalMinChunkSize` do vite.config.ts pode fundi-lo no chunk de
+ * entrada — custo irrisório, sem arrastar nada do MapLibre. Esta função só
+ * roda pela promessa compartilhada abaixo, então `setWorkerUrl` acontece UMA
+ * vez por sessão e sempre antes do primeiro `new maplibregl.Map`. */
+async function importarRenderer(): Promise<typeof import("maplibre-gl")> {
+  const [maplibregl, { default: urlDoWorker }] = await Promise.all([
+    import("maplibre-gl"),
+    import("maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url"),
+  ]);
+  maplibregl.setWorkerUrl(urlDoWorker);
+  return maplibregl;
+}
+
 /** Renderer compartilhado: 1 import dinâmico por sessão — todos os cartões
  * awaitam a MESMA promessa. Também corre contra o sinal do cartão (revisão
  * 3): um import lento demais perde para o timeout e o cartão degrada em
- * vez de construir um mapa depois do prazo, sem timer para cobri-lo. Uma
- * promessa de import que JÁ resolveu é boa para sempre — não se invalida. */
+ * vez de construir um mapa depois do prazo, sem timer para cobri-lo.
+ *
+ * Uma promessa que JÁ resolveu é boa para sempre — não se invalida. Uma que
+ * REJEITOU (queda de rede no download do chunk do maplibre ou do worker) NÃO
+ * fica gravada: como o cache do estilo, a limpeza confere IDENTIDADE (só
+ * derruba o cache se ele ainda guarda ESTA promessa) e a próxima montagem
+ * importa de novo. Sem isso, um soluço de rede deixava todo cartão
+ * "indisponível" até recarregar a página — e o chunk não vem mais no
+ * precache do service worker. Uma pendência lenta NÃO é invalidada pelo
+ * timeout do cartão: reimportar o mesmo módulo só juntaria a mesma busca. */
 let rendererEmCache: Promise<typeof import("maplibre-gl")> | undefined;
 function carregarRenderer(sinal: AbortSignal) {
-  rendererEmCache ??= import("maplibre-gl");
+  if (!rendererEmCache) {
+    const promessa = importarRenderer();
+    rendererEmCache = promessa;
+    promessa.catch(() => {
+      if (rendererEmCache === promessa) rendererEmCache = undefined;
+    });
+  }
   return Promise.race([
     rendererEmCache,
     new Promise<never>((_, rejeitar) => {
@@ -139,6 +193,11 @@ function queryGeografica(address: Address): string {
     .join(", ");
 }
 
+/** Sem cache de geocode em nível de módulo, DE PROPÓSITO: um `Map` de módulo
+ * guardaria endereço completo + coordenada pela sessão e o logout não o
+ * limparia (o AuthContext só limpa os caches de módulo que conhece, e a
+ * política é limpar os que guardam dado pessoal). Cada montagem reconsulta.
+ * Os caches deste arquivo (estilo e renderer) são públicos: nada do usuário. */
 async function geocode(
   query: string,
   sinal: AbortSignal,
@@ -244,6 +303,8 @@ export function AddressCardMap({ address }: { address: Address }) {
           interactive: false,
           // A atribuição não sobrepõe o mapa: linha própria abaixo (créditos).
           attributionControl: false,
+          // A11y: a região do mapa (canvas) fala português, não "Map".
+          locale: { "Map.Title": ROTULO_DO_MAPA },
         });
         const pino = document.createElement("span");
         pino.className = "address-map__pin";
@@ -290,7 +351,7 @@ export function AddressCardMap({ address }: { address: Address }) {
     <div className="address-card-map" data-fase={fase}>
       <div
         ref={hospedeiro}
-        aria-label="Localização aproximada no mapa"
+        aria-label={ROTULO_DO_MAPA}
         className="address-card-map__canvas"
         hidden={fase !== "mapa"}
       />
