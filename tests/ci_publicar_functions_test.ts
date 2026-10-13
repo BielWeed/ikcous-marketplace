@@ -17,8 +17,11 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  *    Pago, recusa a `send-order-whatsapp` (despublicada em 11/08/2026),
  *    recusa `_shared`, nome inexistente, nome com shell dentro e projeto
  *    desconhecido, e resolve `loja`/`savy`/`almeida`/`sandbox` nos refs certos.
- *    Lojas clientes (`savy`, `almeida`) só admitem as cinco Functions
- *    financeiras e exigem `expected_sha` igual ao SHA do run.
+ *    Lojas clientes (`ikcous-publicada`, `savy`, `almeida`) só admitem as cinco
+ *    Functions financeiras e exigem `expected_sha` igual ao SHA do run.
+ *    Exceção: `ikcous-publicada` e `savy` (e só elas) admitem também seis
+ *    functions NOMEADAS (send-order-confirmation desde 09/10/2026; as outras
+ *    cinco desde 13/10/2026); a `almeida` e o apelido `cobranca` ficam nas cinco.
  *
  * Extraído e não copiado: copiado, o teste passaria enquanto o arquivo
  * apodrece.
@@ -353,11 +356,22 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
     assertEquals(r.codigo, 0, r.stderr + r.stdout);
   });
 
-  await t.step("Savy só admite as cinco Functions financeiras", async () => {
-    const r = await validar("savy", "send-push", "a".repeat(40));
-    assertEquals(r.codigo, 1);
-    assertEquals(r.outputs.nomes, undefined);
-  });
+  // 13/10/2026: a Savy admite também as seis functions NOMEADAS (a
+  // send-order-confirmation e as cinco de baixo risco); o que continua fora é
+  // qualquer outro nome. O teste do canal novo está no fim do arquivo.
+  await t.step(
+    "Savy recusa function fora das financeiras e das seis nomeadas",
+    async () => {
+      const r = await validar(
+        "savy",
+        "outra-function-qualquer",
+        "a".repeat(40),
+      );
+      assertEquals(r.codigo, 1);
+      assertStringIncludes(r.stdout, "Loja cliente (savy) só admite");
+      assertEquals(r.outputs.nomes, undefined);
+    },
+  );
 
   await t.step(
     "recusa a send-order-whatsapp, despublicada em 11/08/2026",
@@ -542,8 +556,8 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
     "IKCOUS publicada recusa extras injecao WhatsApp e nomes vazios",
     async () => {
       for (const pedido of [
-        "send-push",
-        "criar-pagamento,send-push",
+        "outra-function-qualquer",
+        "criar-pagamento,outra-function-qualquer",
         "_shared",
         "send-order-whatsapp",
         "criar-pagamento;echo injected",
@@ -847,14 +861,13 @@ Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy,
     );
 
     await t.step(
-      `${projeto} continua RECUSANDO todas as outras fora das cinco`,
+      `${projeto} continua RECUSANDO todas as outras fora das cinco e das seis nomeadas`,
       async () => {
+        // 13/10/2026: send-otp-email, notify-new-order, send-push,
+        // calculate-shipping e melhor-envio-etiqueta SAÍRAM desta lista (o canal
+        // as admite agora, pelo nome); o teste delas é o do fim do arquivo.
         for (const nome of [
-          "send-otp-email",
-          "notify-new-order",
-          "send-push",
-          "calculate-shipping",
-          "melhor-envio-etiqueta",
+          "outra-function-qualquer",
           "_shared",
           "send-order-whatsapp",
         ]) {
@@ -926,6 +939,208 @@ Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy,
           "--no-verify-jwt",
         ),
       );
+    },
+  );
+});
+
+// 13/10/2026 (decisão do dono): cinco functions de baixo risco passam a ser
+// publicadas pelo canal central, SÓ na IKCOUS e na Savy e SÓ pelo nome:
+// calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e
+// send-push. Antes, qualquer uma delas que mudasse numa release deixava a loja
+// PARADA pelo nome (o portão não imprimia comando). Almeida (loja cliente de
+// teste) e o apelido `cobranca` seguem nas cinco financeiras; a
+// send-order-whatsapp segue proibida em qualquer destino.
+const AS_CINCO_NOMEADAS = [
+  "calculate-shipping",
+  "notify-new-order",
+  "send-otp-email",
+  "melhor-envio-etiqueta",
+  "send-push",
+];
+
+Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, push) sobem na IKCOUS e na Savy, só ali, só pelo nome", async (t) => {
+  const sha = "a".repeat(40);
+
+  for (const projeto of ["ikcous-publicada", "savy"]) {
+    const refEsperada = projeto === "savy" ? REF_SAVY : REF_IKCOUS_PUBLICADA;
+
+    await t.step(
+      `${projeto} admite cada uma das cinco, sozinha, na ref certa`,
+      async () => {
+        for (const nome of AS_CINCO_NOMEADAS) {
+          const r = await validar(projeto, nome, sha);
+          assertEquals(r.codigo, 0, `${nome}: ${r.stdout}${r.stderr}`);
+          assertEquals(r.outputs.nomes, nome);
+          assertEquals(r.outputs.ref, refEsperada);
+          assertEquals(r.outputs.modo, "publicar");
+        }
+      },
+    );
+
+    await t.step(
+      `${projeto} admite as cinco juntas, com as financeiras e a send-order-confirmation, sem duplicar`,
+      async () => {
+        const pedido = [
+          ...AS_CINCO_NOMEADAS,
+          "send-order-confirmation",
+          "criar-pagamento",
+          "send-push", // repetida de propósito
+        ].join(",");
+        const r = await validar(projeto, pedido, sha);
+        assertEquals(r.codigo, 0, r.stdout + r.stderr);
+        assertEquals(
+          r.outputs.nomes,
+          [
+            ...AS_CINCO_NOMEADAS,
+            "send-order-confirmation",
+            "criar-pagamento",
+          ].join(" "),
+        );
+      },
+    );
+
+    await t.step(
+      `${projeto} continua exigindo o SHA exato para cada uma das cinco`,
+      async () => {
+        for (const nome of AS_CINCO_NOMEADAS) {
+          for (const expected of ["", "b".repeat(40), "a".repeat(39)]) {
+            const r = await validar(projeto, nome, expected);
+            assertEquals(r.codigo, 1, `${nome} com SHA "${expected}"`);
+            assertStringIncludes(r.stdout, "exige expected_sha");
+            assertEquals(r.outputs, {});
+          }
+        }
+      },
+    );
+
+    await t.step(
+      `${projeto}: uma function fora da lista ou a send-order-whatsapp no meio das cinco derruba o pedido inteiro`,
+      async () => {
+        for (const intruso of [
+          "outra-function-qualquer",
+          "_shared",
+          "send-order-whatsapp",
+        ]) {
+          const r = await validar(
+            projeto,
+            `${AS_CINCO_NOMEADAS.join(",")},${intruso}`,
+            sha,
+          );
+          assertEquals(r.codigo, 1, `${intruso} no meio das cinco`);
+          assertEquals(r.outputs, {}, `${intruso}: nada pode virar output`);
+        }
+      },
+    );
+  }
+
+  await t.step(
+    "Almeida (loja cliente que NÃO é IKCOUS nem Savy) continua RECUSANDO as cinco, sozinhas ou no meio de um pedido",
+    async () => {
+      for (const nome of AS_CINCO_NOMEADAS) {
+        for (const pedido of [
+          nome,
+          `criar-pagamento,${nome}`,
+          `${nome} criar-pagamento`,
+        ]) {
+          const r = await validar("almeida", pedido, sha);
+          assertEquals(
+            r.codigo,
+            1,
+            `almeida: "${pedido}" deveria ser recusado`,
+          );
+          assertStringIncludes(
+            r.stdout,
+            "Loja cliente (almeida) só admite as cinco Functions financeiras",
+          );
+          assert(!r.stdout.includes("projeto desconhecido"));
+          assertEquals(
+            r.outputs,
+            {},
+            `almeida: "${pedido}" não pode virar output`,
+          );
+        }
+      }
+    },
+  );
+
+  await t.step(
+    "Almeida: as financeiras e o apelido `cobranca` seguem aceitos, e o apelido continua sendo SÓ as cinco financeiras",
+    async () => {
+      for (const projeto of ["ikcous-publicada", "savy", "almeida"]) {
+        const r = await validar(projeto, "cobranca", sha);
+        assertEquals(r.codigo, 0, r.stdout + r.stderr);
+        assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
+        for (const nome of AS_CINCO_NOMEADAS) {
+          assert(
+            !r.outputs.nomes.includes(nome),
+            `${nome} entrou pelo apelido`,
+          );
+        }
+      }
+      const almeida = await validar("almeida", "criar-pagamento", sha);
+      assertEquals(almeida.codigo, 0, almeida.stdout + almeida.stderr);
+    },
+  );
+
+  await t.step(
+    "a send-order-whatsapp segue proibida em TODOS os destinos, mesmo junto das cinco",
+    async () => {
+      for (const projeto of [
+        "ikcous-publicada",
+        "savy",
+        "almeida",
+        "loja",
+        "sandbox",
+      ]) {
+        const r = await validar(projeto, "send-order-whatsapp", sha);
+        assertEquals(r.codigo, 1, projeto);
+        assertStringIncludes(r.stdout, "send-order-whatsapp foi despublicada");
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step(
+    "o modo `listar` segue só na IKCOUS: nas outras lojas cliente `listar` não vira nome nem modo",
+    async () => {
+      const ik = await validar("ikcous-publicada", "listar", sha);
+      assertEquals(ik.codigo, 0, ik.stdout + ik.stderr);
+      assertEquals(ik.outputs.modo, "listar");
+      for (const projeto of ["savy", "almeida"]) {
+        const r = await validar(projeto, "listar", sha);
+        assertEquals(r.codigo, 1, projeto);
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step(
+    "o JSON dos canais lista as cinco nomeadas na IKCOUS e na Savy (e nada além das onze publicáveis)",
+    async () => {
+      const canais = JSON.parse(
+        await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+      );
+      const esperadas = [
+        ...AS_CINCO_DA_COBRANCA.split(" "),
+        "send-order-confirmation",
+        ...AS_CINCO_NOMEADAS,
+      ].sort();
+      assertEquals(
+        Object.keys(canais.canais).sort(),
+        [REF_IKCOUS_PUBLICADA, REF_SAVY].sort(),
+        "só IKCOUS e Savy têm canal",
+      );
+      for (const [ref, canal] of Object.entries(canais.canais)) {
+        assertEquals(
+          [...canal.functionsPublicaveis].sort(),
+          esperadas,
+          `${canal.nome} (${ref}): lista de functionsPublicaveis`,
+        );
+        assert(
+          !canal.functionsPublicaveis.includes("send-order-whatsapp"),
+          `${canal.nome}: send-order-whatsapp não pode estar na lista`,
+        );
+      }
     },
   );
 });

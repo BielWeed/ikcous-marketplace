@@ -40,7 +40,14 @@
 # comprovante do balcão divide `_shared/pedido.ts` e `_shared/comprovante.ts`
 # com as financeiras, então a release trava se esses arquivos mudam e a
 # function que os usa para o e-mail não pode subir. O apelido `cobranca` NÃO a
-# inclui: ela só entra pelo nome. A lista por loja que a release enxerga é
+# inclui: ela só entra pelo nome. EXCEÇÃO (13/10/2026, decisão do dono): mais
+# cinco functions NOMEADAS, também SÓ na ikcous-publicada e na savy:
+# calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e
+# send-push. Antes, uma delas que mudasse numa release deixava a loja PARADA
+# pelo nome (o portão não imprimia comando). Nenhuma outra entra, a almeida
+# segue nas cinco e a send-order-whatsapp continua proibida. O verify_jwt de
+# cada uma é o do supabase/config.toml (o workflow nunca passa flag). A lista
+# por loja que a release enxerga é
 # `functionsPublicaveis` em scripts/frota/canais-de-backend.json (o teste
 # tests/ci_publicar_functions_test.ts exige que as duas listas concordem). As
 # outras lojas clientes (Brand Meliz, Space Loja do Kit) ficam em projetos de
@@ -71,7 +78,7 @@ on:
         # 03/10/2026: o padrão era `loja` (DEK), que a loja principal deixou de usar —
         # quem disparasse sem escolher publicaria no banco errado. O padrão agora é o
         # destino que está no ar, e ele é o mais travado (só as cinco financeiras e
-        # expected_sha): esquecer de escolher vira recusa, nunca deploy no lugar errado.
+        # as seis nomeadas, e expected_sha): esquecer de escolher vira recusa, nunca deploy no lugar errado.
         default: ikcous-publicada
         options:
           - ikcous-publicada
@@ -152,12 +159,12 @@ jobs:
             if [ "$CLIENTE" = "sim" ]; then
               case "$n" in
                 criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
-                send-order-confirmation)
+                send-order-confirmation|calculate-shipping|notify-new-order|send-otp-email|melhor-envio-etiqueta|send-push)
                   case "$PROJETO" in
                     ikcous-publicada|savy) ;;
-                    *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (a send-order-confirmation só sobe na IKCOUS e na Savy)"; exit 1 ;;
+                    *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (as outras seis nomeadas só sobem na IKCOUS e na Savy)"; exit 1 ;;
                   esac ;;
-                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (mais a send-order-confirmation, só na IKCOUS e na Savy)"; exit 1 ;;
+                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (mais as seis nomeadas: send-order-confirmation, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, só na IKCOUS e na Savy)"; exit 1 ;;
               esac
             fi
             if [ ! -f "supabase/functions/$n/index.ts" ]; then
