@@ -1,8 +1,20 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error Módulo JS nativo sem declaração; confronto da tradução dos cabeçalhos.
 import * as hospedagem from "../../scripts/hospedagem.mjs";
 
 const vercel = hospedagem.lerVercel();
+
+// Origens liberadas no `connect-src` do CSP global do vercel.json.
+function origensDoConnectSrc(): string[] {
+  const csp: string =
+    hospedagem.cabecalhosDeFuncao(vercel)["Content-Security-Policy"];
+  const diretiva = csp
+    .split(";")
+    .map((parte) => parte.trim())
+    .find((parte) => parte.startsWith("connect-src "));
+  return diretiva ? diretiva.split(/\s+/).slice(1) : [];
+}
 
 describe("_headers traduzido do vercel.json", () => {
   it("cinco nomes de atualização, assets immutable e o bloco global sem Cache-Control", () => {
@@ -103,9 +115,53 @@ describe("_headers traduzido do vercel.json", () => {
     expect(nove["Cross-Origin-Embedder-Policy"]).toBeUndefined();
   });
 
+  // O mapa do cartão de endereço (AddressCardMap, Perfil) é vetorial e tudo o
+  // que ele pede à rede passa por `fetch`/XHR, ou seja, por `connect-src`: o
+  // PRÓPRIO componente busca o estilo "positron" (OpenFreeMap) e o geocode
+  // (Photon, komoot); o MapLibre, depois, busca tiles, glyphs e sprite. Sem a
+  // origem aqui o mapa "funciona" nos testes (que mockam o fetch) e morre na
+  // loja com a CSP bloqueando. Essa linha do vercel.json já foi a única a
+  // conflitar num merge, e nenhum outro teste a fixava.
+  it("connect-src libera o Photon e o OpenFreeMap do mapa de endereço", () => {
+    expect(origensDoConnectSrc()).toEqual(
+      expect.arrayContaining([
+        "https://photon.komoot.io",
+        "https://tiles.openfreemap.org",
+      ]),
+    );
+  });
+
+  // Amarra a CSP ao CÓDIGO: as duas origens acima estão fixas no teste, então
+  // trocar o host de `ESTILO_POSITRON`/`GEOCODE` no componente deixaria o
+  // teste verde e a loja bloqueada. Aqui a origem sai das constantes reais (o
+  // arquivo é só lido) — mesmo padrão de vercel-headers-cep.test.ts, que
+  // confronta `PROVEDORES_DE_CEP` com o connect-src.
+  it("connect-src cobre a origem de cada URL que o AddressCardMap chama", () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo, relativo a este teste
+    const fonte = readFileSync(
+      new URL(
+        "../../src/components/ui/custom/AddressCardMap.tsx",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const urls = [
+      ...fonte.matchAll(
+        /const (?:ESTILO_POSITRON|GEOCODE) = "(https:\/\/[^"]+)"/g,
+      ),
+    ].map((achado) => achado[1]);
+    expect(urls, "ESTILO_POSITRON e GEOCODE").toHaveLength(2);
+    const conectar = origensDoConnectSrc();
+    for (const url of urls)
+      expect(conectar, url).toContain(new URL(url).origin);
+  });
+
   it("hosts de imagem vêm do img-src do CSP", () => {
-    // tile.openstreetmap.org entrou no img-src com a frente de busca de
-    // endereço (28-29/09/2026, mapa Leaflet no formulário de endereço).
+    // tile.openstreetmap.org está no img-src desde a frente do mapa de
+    // endereço (29/09/2026), mas nada em src/ pede tiles dessa origem hoje:
+    // o AddressCardMap é vetorial (MapLibre + OpenFreeMap, via connect-src) e
+    // não carrega imagem de tile. A asserção fica como está — retirar a
+    // origem do vercel.json é decisão do dono, não efeito colateral de teste.
     expect(hospedagem.hostsDeImagem(vercel)).toEqual([
       "tile.openstreetmap.org",
       "*.supabase.co",
