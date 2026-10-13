@@ -208,6 +208,10 @@ export default async function middleware(request: Request) {
     // host já resolve para o resto da página). A MESMA ficha validada que o
     // documento usa ("uma trava, um lugar") também é a fonte do nome aqui.
     const storeName = ficha.identidade.identity.storeName;
+    // Versão para entrar em HTML: o nome é escrito pelo lojista (mesmo risco
+    // de `name`/`description`). `storeName` cru segue só nos fallbacks que
+    // já passam inteiros por `escaparHtml` (evita escape duplo).
+    const storeNameHtml = escaparHtml(storeName);
     const productId = url.searchParams.get("id");
 
     // `x-ikcous-og` diz QUEM respondeu: sem ele, "o middleware não rodou" e
@@ -293,11 +297,11 @@ export default async function middleware(request: Request) {
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>${name} | ${storeName}</title>
+  <title>${name} | ${storeNameHtml}</title>
   <meta name="description" content="${description}">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | ${storeName}" />
+  <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | ${storeNameHtml}" />
   <meta property="og:description" content="${description}" />
   <meta property="og:type" content="product" />
   <meta property="og:url" content="${escaparHtml(request.url)}" />
@@ -311,7 +315,7 @@ export default async function middleware(request: Request) {
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${name} | ${storeName}" />
+  <meta name="twitter:title" content="${name} | ${storeNameHtml}" />
   <meta name="twitter:description" content="${description}" />
   <meta name="twitter:image" content="${imageUrl}" />
 </head>
