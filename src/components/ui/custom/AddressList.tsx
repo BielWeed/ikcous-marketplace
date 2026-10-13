@@ -11,20 +11,24 @@ interface AddressListProps {
   selectedId?: string;
   selectable?: boolean;
   compact?: boolean;
-  /** Opt-in do Perfil: mapa por cartão nos detalhes expandidos. O ramo
-   * compacto NUNCA monta iframe, e o checkout (selectable) não passa a flag. */
+  /** Opt-in do Perfil: mapa vetorial (AddressCardMap) e link externo para o
+   * Google Maps por cartão nos detalhes expandidos. O ramo compacto NUNCA
+   * monta mapa nem link, e o checkout (selectable) não passa a flag. */
   showMaps?: boolean;
 }
 
-// Query de LOCAL para o Google: rua+número, bairro, cidade, UF, CEP e Brasil.
-// Dados privados — destinatário, complemento, referência e apelido — NUNCA
-// saem para o Google. Sem rua e sem CEP não há como apontar o mapa: devolve
-// null para o cartão nem montar iframe vazio (a query é texto; o Google
-// geocodifica sozinho — nada de coordenada inventada nem precisão prometida).
+// Query de LOCAL para o link externo "Abrir no Google Maps" (o mapa do cartão,
+// AddressCardMap, monta a própria consulta de geocode): rua+número, bairro,
+// cidade, UF, CEP e Brasil. Dados privados — destinatário, complemento,
+// referência e apelido — NUNCA saem para o Google. Sem rua e sem CEP não há
+// como apontar o local: devolve null para o cartão nem montar o mapa nem um
+// link vazio (a query é texto; o Google geocodifica sozinho — nada de
+// coordenada inventada nem precisão prometida).
 //
-// CEP sai da query quando rua, cidade e UF estão completos: em alguns
-// endereços, combinar bairro+CEP leva o embed clássico a uma busca ambígua
-// (POIs da região em vez do pin do endereço). O CEP segue como fallback
+// CEP sai da query quando rua, cidade e UF estão completos. A regra nasceu
+// quando esta query alimentava o embed clássico do Google (já removido), em
+// que combinar bairro+CEP levava a uma busca ambígua (POIs da região em vez
+// do pin do endereço); segue valendo para o link. O CEP segue como fallback
 // nos casos incompletos.
 export function queryMapsDoEndereco(address: Address): string | null {
   // Guarda DIRETA em street ou CEP: um número órfão (rua vazia) não monta
