@@ -25,8 +25,11 @@ const ARQUIVO_DO_LEITOR_ZXING = /^leitor-zxing-.*\.js$/;
 // nunca por nome de arquivo) e grava `${output}` fora da entrega; aqui a
 // leitura é FAIL-CLOSED: falta o arquivo, versão de esquema errada, ou o
 // conjunto de `assets/*.js` do disco (sem o leitor zxing) diferente da união
-// cliente∪painel∪opcional — qualquer um desses aborta `npm run size` em vez
-// de deixar um chunk sem contar em teto nenhum.
+// cliente∪painel∪opcional∪workerDoMapa — qualquer um desses aborta
+// `npm run size` em vez de deixar um chunk sem contar em teto nenhum. O disco
+// lista também `*.mjs` (13/10/2026): é a extensão que um `?url` cru sobre o
+// worker do MapLibre (`maplibre-gl-worker.mjs`) publicaria — JS servido que,
+// lido só como `.js`, não entraria em teto nenhum.
 const classificacaoPath = path.join(
   __dirname,
   ".portao-tamanho",
@@ -47,13 +50,15 @@ const assetsDir = path.join(__dirname, output, "assets");
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- Mesmo caminho fechado acima, só descendo para o subdiretório fixo "assets".
 const arquivosJs = fs
   .readdirSync(assetsDir)
-  .filter((nome) => nome.endsWith(".js") && !ARQUIVO_DO_LEITOR_ZXING.test(nome))
+  .filter(
+    (nome) =>
+      (nome.endsWith(".js") || nome.endsWith(".mjs")) &&
+      !ARQUIVO_DO_LEITOR_ZXING.test(nome),
+  )
   .map((nome) => `assets/${nome}`);
 
-const { cliente, painel, opcional } = validarClassificacaoContraDisco(
-  classificacao,
-  arquivosJs,
-);
+const { cliente, painel, opcional, workerDoMapa } =
+  validarClassificacaoContraDisco(classificacao, arquivosJs);
 
 module.exports = [
   {
@@ -101,13 +106,34 @@ module.exports = [
     // orçamento PRÓPRIO em vez de inflar o teto de `cliente`. Quem entra
     // aqui é a allowlist `CHUNKS_OPCIONAIS` de `scripts/portaoDividido.ts`
     // (regex restrita a `assets/maplibre-gl-*`) — se o chunk for renomeado,
-    // volta para `cliente` e o teto de 550 kB reprova alto (fail-closed).
+    // volta para `cliente` e o teto de 550 kB reprova alto (fail-closed). O
+    // nome não basta (13/10/2026): importado ESTATICAMENTE por qualquer chunk
+    // que a cliente baixa, ele também fica em `cliente`.
     // Medido no fixture de 29/09/2026: 228,80 kB — teto de 250 kB com
     // folga de ~9% para reposição de versão que não mude o contrato;
     // subir além é decisão consciente, como qualquer teto daqui. Nenhum
     // teto existente subiu: cliente 550 e painel 450 continuam os mesmos.
     path: opcional.map((arquivo) => `${output}/${arquivo}`),
     limit: "250 kB",
+    webpack: false,
+    running: false,
+  },
+  {
+    // WORKER DO MAPA (decisão do dono, 12/10/2026): o MapLibre desenha o
+    // mapa num Web Worker que o `?worker&url` do AddressCardMap faz o Vite
+    // empacotar à parte, como ASSET (não chunk) — por isso o grafo do Rollup
+    // não o alcança e ele tem allowlist própria, ancorada e com hash
+    // obrigatório (`ARQUIVO_DO_WORKER_DO_MAPA` de scripts/portaoDividido.ts).
+    // Só baixa quando um mapa monta, junto do chunk de `opcional`; o
+    // validador reprova um dos dois grupos vazio sem o outro. Precedente do
+    // leitor zxing: orçamento PRÓPRIO em vez de inflar o de `opcional`.
+    // Medido no fixture de 13/10/2026: 500.176 B crus, 116,32 kB brotli —
+    // teto de 130 kB, folga de ~12% para reposição de versão do maplibre que
+    // não mude o contrato; subir além é decisão consciente. Nenhum teto
+    // existente subiu (550 cliente, 450 painel, 250 opcional, 100 CSS, 400
+    // leitor).
+    path: workerDoMapa.map((arquivo) => `${output}/${arquivo}`),
+    limit: "130 kB",
     webpack: false,
     running: false,
   },

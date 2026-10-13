@@ -5,13 +5,25 @@
 // nenhum lugar. Fica `.cjs` (não `.ts`) de propósito: `.size-limit.cjs`
 // precisa de um `require()` síncrono, e um `.ts`/`.mjs` exigiria import
 // assíncrono dentro de um arquivo que o size-limit carrega como CommonJS.
+//
+// Esquema versão 3 (13/10/2026): o mesmo `ClassificacaoDoBundle` que
+// `scripts/portaoDividido.ts` grava — a igualdade dos dois tipos é travada
+// por atribuição nos dois sentidos em
+// tests/front/portao-dividido-classificacao.test.ts (cobrada pelo `tsc -b`).
 export interface ClassificacaoDoPortao {
-  readonly versao: 1;
+  readonly versao: 3;
   readonly cliente: readonly string[];
   readonly painel: readonly string[];
+  readonly opcional: readonly string[];
+  readonly workerDoMapa: readonly string[];
 }
 
 export function validarClassificacaoContraDisco(
   classificacao: unknown,
   arquivosEmDisco: readonly string[],
-): { readonly cliente: string[]; readonly painel: string[] };
+): {
+  readonly cliente: string[];
+  readonly painel: string[];
+  readonly opcional: string[];
+  readonly workerDoMapa: string[];
+};
