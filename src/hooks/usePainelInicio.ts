@@ -37,6 +37,8 @@ const ESPERA_DA_ABERTURA_MS = 200;
 
 let retratoEmCache: RetratoDoPainel | null = null;
 let buscaEmVoo: Promise<RetratoDoPainel> | null = null;
+// Recarga FORÇADA pedida com uma busca em voo: roda uma busca depois dela.
+let buscaForcadaSeguinte: Promise<RetratoDoPainel> | null = null;
 
 async function buscarRetrato(): Promise<RetratoDoPainel> {
   const [respostaPainel, respostaAssinatura] = await Promise.all([
@@ -93,8 +95,22 @@ async function buscarRetrato(): Promise<RetratoDoPainel> {
  * compartilham a mesma promessa em voo. A falha de rede vira retrato com
  * erro — nunca uma promessa rejeitada solta.
  */
-function buscarCoalescido(): Promise<RetratoDoPainel> {
-  if (buscaEmVoo) return buscaEmVoo;
+function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
+  if (buscaEmVoo) {
+    if (!forcar) return buscaEmVoo;
+    // A busca em voo pode ter começado ANTES da mudança que motivou a recarga
+    // (pedido novo no tempo real): reaproveitá-la gravaria no cache, como
+    // fresco, um retrato anterior à mudança. Enfileira UMA busca nova para
+    // depois dela; forçadas simultâneas compartilham essa mesma busca.
+    if (!buscaForcadaSeguinte) {
+      const seguinte: Promise<RetratoDoPainel> = buscaEmVoo.then(() => {
+        buscaForcadaSeguinte = null;
+        return buscarCoalescido();
+      });
+      buscaForcadaSeguinte = seguinte;
+    }
+    return buscaForcadaSeguinte;
+  }
   const busca = buscarRetrato()
     .catch((erro: unknown): RetratoDoPainel => {
       console.error("[usePainelInicio] busca falhou:", erro);
@@ -174,7 +190,7 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     }
     setCarregando(true);
     try {
-      const novo = await buscarCoalescido();
+      const novo = await buscarCoalescido(forcar);
       if (montadoRef.current) setRetrato(novo);
     } finally {
       if (montadoRef.current) setCarregando(false);
