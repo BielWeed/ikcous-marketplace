@@ -42,8 +42,8 @@ import { fileURLToPath } from "node:url";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Onde procurar .md. A raiz entra sem recursão; `docs/` entra inteira. */
-const ALVOS = ["docs"];
+/** Onde procurar .md. A raiz entra sem recursão; `docs/` e `supabase/` entram inteiras. */
+const ALVOS = ["docs", "supabase"];
 const IGNORAR = new Set(["node_modules", "dist", ".git", ".vite-pwa"]);
 
 /** `[texto](destino)` — o destino para no primeiro espaço ou parêntese. */
