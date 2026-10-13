@@ -8,12 +8,6 @@
    (incluído o pin, espelhado do padrão visual da frente de endereço para
    manter a mesma identidade quando os dois trabalhos se encontrarem). */
 
-/* Base do hospedeiro do mapa (a tela de fundo antes dos tiles). */
-.address-map {
-  overflow: hidden;
-  background: #fff;
-}
-
 /* Pin: mesma cara do pin da frente de endereço (gota escura com furo),
    ancorado pela PONTA no ponto do geocode.
 
@@ -72,16 +66,31 @@
   min-height: 0;
 }
 
+/* Estado sem mapa ("consultando"/"indisponível"): a mensagem ocupa e centraliza
+   a ALTURA TODA do contêiner (o `.address-card-map` tem 100% dele), em vez de
+   um bloco de ~60 px no topo com ~100 px de vazio branco embaixo. Só existe
+   sem mapa — o estado com mapa (canvas + créditos) não passa por esta regra.
+   Cor: #6f6f78 dá 4,53:1 sobre #f4f4f5 (o #71717a anterior dava 4,40:1,
+   abaixo do AA 4,5:1); é o tom mais próximo do original que passa. */
 .address-card-map__status {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
   margin: 0;
   padding: 24px 12px;
   text-align: center;
   font-size: 11px;
-  color: #71717a;
+  color: #6f6f78;
   background: #f4f4f5;
 }
 
+/* A atribuição exigida (OpenMapTiles / OpenStreetMap contributors) NUNCA pode
+   ficar oculta: sem `nowrap`/`ellipsis`/`overflow: hidden`, o texto QUEBRA
+   linha em tela estreita, mantendo os 9 px. `flex: none` faz a linha crescer
+   com o texto e o canvas (`flex: 1`, `min-height: 0`) ceder a altura. */
 .address-card-map__creditos {
+  flex: none;
   margin: 0;
   padding: 3px 6px;
   font-size: 9px;
@@ -89,9 +98,7 @@
   color: #71717a;
   background: #fafafa;
   border-top: 1px solid #f4f4f5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .address-card-map__creditos a {
