@@ -82,20 +82,25 @@ vi.mock("vite", async (importOriginal) => {
  * Prefixo LITERAL de uma regex ancorada em `^`: os caracteres (ou escapes de
  * pontuação, `\/`, `\.`, `\-`) até o primeiro metacaractere. Um quantificador
  * que pode zerar o último literal (`?`, `*`, `{`) o devolve ao resto. Regex
- * sem `^`, com flag (o `i` casaria maiúscula que o glob não casa) ou com
- * prefixo que não passa de `assets/` reprova: o teste não sabe provar
- * cobertura dela, e "não sei provar" aqui é reprovar.
+ * sem `^`, com flag (o `i` casaria maiúscula que o glob não casa), com
+ * QUALQUER `|` (numa alternância de topo, `^a|^b`, o prefixo cobriria só o
+ * primeiro ramo e o segundo passaria sem prova) ou com prefixo que não passa
+ * de `assets/` reprova: o teste não sabe provar cobertura dela, e "não sei
+ * provar" aqui é reprovar.
  */
 function prefixoLiteral(padrao: RegExp): string {
   // Roda na COLETA (os nomes alimentam o `it.each`): erro aqui derruba o
   // arquivo inteiro, que é o que se quer.
   const exigir = (condicao: boolean, oQue: string) => {
-    if (!condicao)
-      throw new Error(`portão × precache: ${padrao} precisa ser ${oQue}`);
+    if (!condicao) throw new Error(`portão × precache: ${padrao} — ${oQue}`);
   };
-  exigir(padrao.flags === "", "sem flags");
+  exigir(padrao.flags === "", "precisa vir sem flags");
   const fonte = padrao.source;
-  exigir(fonte.startsWith("^"), "ancorada em ^");
+  exigir(fonte.startsWith("^"), "precisa ser ancorada em ^");
+  exigir(
+    !fonte.includes("|"),
+    "alternância | não suportada: use um padrão por regex",
+  );
   let prefixo = "";
   for (let i = 1; i < fonte.length; i += 1) {
     const caractere = fonte.charAt(i);
@@ -114,7 +119,7 @@ function prefixoLiteral(padrao: RegExp): string {
   }
   exigir(
     prefixo.startsWith("assets/") && prefixo.length > "assets/".length,
-    "um prefixo literal além de assets/",
+    "precisa ter um prefixo literal além de assets/",
   );
   return prefixo;
 }

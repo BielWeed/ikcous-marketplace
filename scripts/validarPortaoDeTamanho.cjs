@@ -88,15 +88,17 @@ function validarClassificacaoContraDisco(classificacao, arquivosEmDisco) {
 
   // O `importarRenderer` do AddressCardMap importa o chunk do maplibre e a
   // URL do worker JUNTOS. Um sem o outro é renomeação de um lado só (o
-  // worker deixou de casar com a allowlist e foi para cliente, ou sumiu) ou
-  // o chunk deixou de ser só-dinâmico (foi para cliente/painel).
+  // arquivo deixou de casar com a allowlist dele e foi para `cliente`), um
+  // dos dois sumiu do build, ou o chunk não passou na alcançabilidade de
+  // `scripts/portaoDividido.ts` (ficou em `cliente` ou `painel`). As
+  // mensagens dizem ONDE olhar sem adivinhar qual das causas foi.
   if (opcional.size > 0 && workerDoMapa.size === 0)
     throw new Error(
-      `PORTAO_TAMANHO: workerDoMapa vazio com o chunk do mapa em opcional (${JSON.stringify(classificacao.opcional)}) — o worker do MapLibre foi renomeado ou sumiu do build`,
+      `PORTAO_TAMANHO: workerDoMapa vazio com o chunk do mapa em opcional (${JSON.stringify(classificacao.opcional)}) — o worker do MapLibre sumiu do build ou foi renomeado; renomeado, ele deixa de casar com \`ARQUIVO_DO_WORKER_DO_MAPA\` (scripts/portaoDividido.ts) e é contado em \`cliente\`: procure o \`*worker*\` em cliente no JSON e ajuste a allowlist lá (ancorada, com hash)`,
     );
   if (workerDoMapa.size > 0 && opcional.size === 0)
     throw new Error(
-      `PORTAO_TAMANHO: opcional vazio com o worker do mapa em workerDoMapa (${JSON.stringify(classificacao.workerDoMapa)}) — o chunk do maplibre-gl foi renomeado ou deixou de ser só import() dinâmico`,
+      `PORTAO_TAMANHO: opcional vazio com o worker do mapa em workerDoMapa (${JSON.stringify(classificacao.workerDoMapa)}) — nenhum chunk passou ao mesmo tempo no nome (\`CHUNKS_OPCIONAIS\`, scripts/portaoDividido.ts) e na alcançabilidade (\`soDinamicoNoCliente\`, mesmo arquivo): renomeado, o chunk do maplibre-gl é contado em \`cliente\`; importado ESTATICAMENTE por algum chunk que a cliente alcança (inclusive em ciclo com outro pedaço do próprio mapa), também fica em \`cliente\`; alcançado só atrás do painel, fica em \`painel\`; ou sumiu do build. Procure o \`maplibre-gl-*\` em cliente/painel no JSON`,
     );
 
   return {

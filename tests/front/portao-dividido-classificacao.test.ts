@@ -433,13 +433,92 @@ describe("classificarBundle — `opcional` exige alcançabilidade SÓ por import
     expect(r.cliente).toContain("assets/maplibre-gl-compartilhado-h1.js");
   });
 
-  it("um chunk de ENTRADA com o prefixo fica em cliente (a página o carrega sempre)", () => {
+  it("um chunk de ENTRADA com o prefixo fica em cliente, mesmo pedido também por import() (a página o carrega sempre)", () => {
+    // O `import()` da entrada principal satisfaz as outras condições (a
+    // cliente o alcança, só por dinâmico); o que o segura em `cliente` é ele
+    // ser entrada — sem a guarda `!chunk.isEntry` iria para `opcional`.
     const r = classificarBundle(
-      [chunk({ ...mapa, isEntry: true, isDynamicEntry: false })],
+      [
+        entrada({ dynamicImports: ["assets/maplibre-gl-h1.js"] }),
+        chunk({ ...mapa, isEntry: true }),
+      ],
       [],
     );
     expect(r.opcional).toEqual([]);
-    expect(r.cliente).toEqual(["assets/maplibre-gl-h1.js"]);
+    expect(r.cliente).toEqual([
+      "assets/index-h1.js",
+      "assets/maplibre-gl-h1.js",
+    ]);
+  });
+
+  it("chunk com o prefixo que é FRONTEIRA do painel, pedido por import() da entrada: vai para painel, não para opcional", () => {
+    // Pedido por `dynamicImports` da cliente e nunca por estático — mas a
+    // busca não atravessa fronteira, então a cliente não o alcança (é o
+    // `is_admin` que libera). Sem a guarda `alcancado.has` iria para
+    // `opcional` e sairia do teto do painel.
+    const r = classificarBundle(
+      [
+        entrada({ dynamicImports: ["assets/maplibre-gl-h1.js"] }),
+        chunk({
+          ...mapa,
+          moduleIds: ["/repo/src/views/admin/AdminMapaView.tsx"],
+        }),
+      ],
+      [],
+    );
+    expect(r.opcional).toEqual([]);
+    expect(r.painel).toEqual(["assets/maplibre-gl-h1.js"]);
+  });
+
+  it("ciclo ESTÁTICO entre o mapa e outro pedaço: fica em cliente (conservador)", () => {
+    // O pedaço só é alcançado através do mapa, mas o importa de volta por
+    // `import` estático: a regra não tenta provar que o ciclo inteiro mora
+    // atrás do `import()` — basta um estático a partir de um chunk que a
+    // cliente alcança para o mapa contar em `cliente`.
+    const r = classificarBundle(
+      [
+        entrada({ dynamicImports: ["assets/maplibre-gl-h1.js"] }),
+        chunk({ ...mapa, imports: ["assets/geometria-h1.js"] }),
+        chunk({
+          fileName: "assets/geometria-h1.js",
+          imports: ["assets/maplibre-gl-h1.js"],
+        }),
+      ],
+      [],
+    );
+    expect(r.opcional).toEqual([]);
+    expect(r.cliente).toEqual([
+      "assets/geometria-h1.js",
+      "assets/index-h1.js",
+      "assets/maplibre-gl-h1.js",
+    ]);
+  });
+
+  it("pedido por import() da cliente E importado estaticamente por chunk do PAINEL: opcional (o estático do painel não conta)", () => {
+    // Quem o baixa junto, de forma estática, é só o lojista depois do
+    // `is_admin`; para a cliente ele continua sob demanda. Medido uma vez,
+    // no teto de `opcional` — nunca fora de teto nenhum.
+    const r = classificarBundle(
+      [
+        entrada({
+          dynamicImports: [
+            "assets/maplibre-gl-h1.js",
+            "assets/AdminArea-h1.js",
+          ],
+        }),
+        chunk({
+          fileName: "assets/AdminArea-h1.js",
+          isDynamicEntry: true,
+          moduleIds: ["/repo/src/components/layouts/AdminArea.tsx"],
+          imports: ["assets/maplibre-gl-h1.js"],
+        }),
+        mapa,
+      ],
+      [],
+    );
+    expect(r.opcional).toEqual(["assets/maplibre-gl-h1.js"]);
+    expect(r.painel).toEqual(["assets/AdminArea-h1.js"]);
+    expect(r.cliente).toEqual(["assets/index-h1.js"]);
   });
 
   it("alcançável só atrás da fronteira do painel: vai para painel, não para opcional", () => {
@@ -478,6 +557,9 @@ describe("classificarBundle — worker do mapa: allowlist ANCORADA, só para ass
     "assets/maplibre-gl-worker-h1.mjs",
     // Sufixo extra depois do hash.
     "assets/maplibre-gl-worker-h1.min.js",
+    // `.js` no MEIO do nome: só a âncora `$` da allowlist o recusa (sem ela,
+    // `-h1.js` casaria e um `.mjs` qualquer entraria no teto do worker).
+    "assets/maplibre-gl-worker-h1.js.mjs",
     // Outro worker qualquer.
     "assets/outro-worker-h1.js",
     // Em subpasta: a âncora `^assets/maplibre-gl-worker-` não casa.
@@ -726,7 +808,9 @@ describe("validarClassificacaoContraDisco", () => {
         { ...classificacaoValida, workerDoMapa: [] },
         semOWorker,
       ),
-    ).toThrow(/workerDoMapa vazio/);
+    ).toThrow(
+      /workerDoMapa vazio.*`ARQUIVO_DO_WORKER_DO_MAPA` \(scripts\/portaoDividido\.ts\) e é contado em `cliente`/,
+    );
   });
 
   it("recusa opcional VAZIO quando o build tem o worker do mapa (o vice-versa)", () => {
@@ -735,6 +819,22 @@ describe("validarClassificacaoContraDisco", () => {
         { ...classificacaoValida, opcional: [] },
         semOMapa,
       ),
-    ).toThrow(/opcional vazio/);
+    ).toThrow(
+      /opcional vazio.*`CHUNKS_OPCIONAIS`, scripts\/portaoDividido\.ts.*contado em `cliente`/,
+    );
+    // Não acusa causa que pode não ser a verdadeira: no ciclo estático o
+    // `import()` continua dinâmico, e a mensagem não pode dizer que "deixou
+    // de ser só import() dinâmico".
+    let mensagem = "";
+    try {
+      validarClassificacaoContraDisco(
+        { ...classificacaoValida, opcional: [] },
+        semOMapa,
+      );
+    } catch (erro) {
+      mensagem = (erro as Error).message;
+    }
+    expect(mensagem).toMatch(/ciclo/);
+    expect(mensagem).not.toMatch(/deixou de ser/);
   });
 });

@@ -101,11 +101,16 @@ export const CHUNKS_OPCIONAIS: readonly RegExp[] = [/^assets\/maplibre-gl-/];
 export const ARQUIVO_DO_WORKER_DO_MAPA =
   /^assets\/maplibre-gl-worker-[A-Za-z0-9_-]+\.js$/;
 
-/** O mesmo recorte que `.size-limit.cjs` lê do disco: JS (`.js`/`.mjs`)
- * sob `assets/`. Asset fora disso (CSS, wasm, imagem, `.map`, JS na raiz da
- * saída) não é medido por este portão. Asset JS em SUBPASTA de `assets/`
- * entra aqui (vai para `cliente`) e o disco não o lista — o validador acusa
- * "só na classificação" e reprova, em vez de o arquivo escapar calado. */
+/** Os ASSETS que este portão classifica: JS (`.js`/`.mjs`) sob `assets/`.
+ * Asset fora disso (CSS, wasm, imagem, `.map`, JS na raiz da saída) não é
+ * medido por este portão. Um asset JS que o BUNDLE emita em SUBPASTA de
+ * `assets/` entra aqui (vai para `cliente`), mas o `.size-limit.cjs` só lê o
+ * primeiro nível de `assets/` — o validador acusa "só na classificação" e
+ * reprova. Isso vale só para o que passa pelo bundle: arquivo COPIADO de
+ * `public/` não chega a este plugin. Em `public/assets/*.js` ele aparece no
+ * disco sem classificação e reprova ("só no disco"); em
+ * `public/assets/<subpasta>/*.js` fica fora deste portão, como já ficava
+ * antes desta mudança. */
 const ASSET_JS_DA_ENTREGA = /^assets\/.+\.m?js$/;
 
 /** Forma mínima que a classificação usa — não é `Rollup.OutputChunk` inteiro,
@@ -239,12 +244,19 @@ export function classificarBundle(
  * rota (ou a entrada) de todo visitante e a allowlist por nome o esconderia
  * do teto de 550 kB. Um chunk é "só dinâmico no cliente" quando:
  *   - não é entrada (a página carrega a entrada sempre);
- *   - a cliente o alcança (`alcancado`) e ao menos um chunk dela o pede por
- *     `dynamicImports`;
+ *   - a cliente o alcança (`alcancado`);
  *   - NENHUM chunk que a cliente baixa o tem em `imports` (estático). Basta
- *     um: o estático o carrega junto com quem importa.
+ *     um: o estático o carrega junto com quem importa — inclusive num ciclo
+ *     com outro pedaço do próprio mapa (conservador: conta em `cliente`).
  * Alcançado só atrás da fronteira do painel não é "da cliente": segue a
- * regra geral e vai para `painel`.
+ * regra geral e vai para `painel`. Estático a partir de um chunk do PAINEL
+ * não conta: para a cliente ele segue sob demanda.
+ *
+ * As três juntas já implicam que algum chunk da cliente o pede por
+ * `dynamicImports` (a busca só chega a quem não é entrada por uma aresta, e
+ * a estática está excluída). A conferência de `dinamicoNoCliente` fica mesmo
+ * assim, como guarda DEFENSIVA, redundante por construção: se a busca de
+ * `classificarBundle` mudar um dia, ela ainda exige a aresta dinâmica.
  */
 function soDinamicoNoCliente(
   chunks: readonly ChunkParaClassificar[],
@@ -260,6 +272,7 @@ function soDinamicoNoCliente(
   return (chunk) =>
     !chunk.isEntry &&
     alcancado.has(chunk.fileName) &&
+    // DEFENSIVA (redundante por construção, ver a docstring): não removê-la.
     dinamicoNoCliente.has(chunk.fileName) &&
     !estaticoNoCliente.has(chunk.fileName);
 }
