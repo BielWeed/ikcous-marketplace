@@ -400,7 +400,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     const campoValor = hospedeiro.querySelector(
       "#frete-gratis-acima-de",
     ) as HTMLInputElement;
-    expect(campoValor).toBeDefined();
+    expect(campoValor).not.toBeNull();
     // Semente de R$ 100 (a mesma que a tela antiga usava ao ligar o
     // interruptor) — visível e editável ANTES de salvar, nunca gravada às
     // escondidas.
