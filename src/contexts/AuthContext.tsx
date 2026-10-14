@@ -11,6 +11,10 @@ import {
   enderecoTrazErroDeLink,
 } from "@/lib/erro-no-endereco-do-link";
 import {
+  cancelarInscricaoDaConta,
+  soltarInscricaoDoAparelho,
+} from "@/lib/inscricao-de-push-da-conta";
+import {
   type LoginAudience,
   MENSAGEM_ERRO_LOGIN_GENERICA,
   MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
@@ -158,6 +162,12 @@ function clearLocalUserData() {
   // da correção: pede ao SW que jogue fora o que não é público. Disparar-e-
   // esquecer, nunca lança — o logout não espera o SW nem depende dele.
   pedirAoSwPurgarArquivosPrivados();
+  // A inscrição de push é do APARELHO e está no nome de quem saiu: sem
+  // sessão (outra aba saiu, a sessão venceu) não há como apagar a linha dele
+  // no servidor, mas desinscrever o navegador basta para o push parar de
+  // chegar neste aparelho. O "Sair" feito aqui já cancelou antes (com
+  // servidor); isto cobre o resto. Disparar-e-esquecer, nunca lança.
+  void soltarInscricaoDoAparelho();
   // Recarga do checkout (04/10/2026): o id do pedido em pagamento que a aba
   // guarda para o PIX sobreviver ao F5 (src/lib/pedido-pendente-do-checkout.ts)
   // é da sessão de quem saiu. Mora no `sessionStorage`, não no
@@ -844,6 +854,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // R12 — mesma troca uid→uid: o que a conta anterior abriu por
         // endereço assinado não pode ficar na gaveta do SW para a próxima.
         pedirAoSwPurgarArquivosPrivados();
+        // E a inscrição de push do aparelho era da anterior: a sessão agora é
+        // da nova, que não pode apagar a linha dela — só soltar o navegador.
+        void soltarInscricaoDoAparelho();
       }
 
       // Only set loading screen for explicit critical transitions (login/logout).
@@ -1131,6 +1144,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const logout = useCallback(async () => {
+    // A inscrição de push deste aparelho está no nome de quem sai. Só a
+    // PRÓPRIA conta pode apagar a linha dela (RLS), então isto vem ANTES do
+    // `signOut`, com prazo curto: rede ruim ou erro aqui nunca seguram o Sair.
+    const idDeQuemSai = activeUserIdRef.current;
+    if (idDeQuemSai) {
+      try {
+        await cancelarInscricaoDaConta(idDeQuemSai);
+      } catch {
+        // O módulo não lança; o catch é só o cinto de segurança do Sair.
+      }
+    }
     const { error } = await supabase.auth.signOut();
     if (error) {
       // #122 — `signOut()` devolvendo erro (rede caída, por exemplo) não
