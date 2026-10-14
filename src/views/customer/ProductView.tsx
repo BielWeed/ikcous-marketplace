@@ -258,6 +258,14 @@ export const ProductView = React.memo(function ProductView({
   const isReady = useDeferredRender(220);
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  // A variação com foto própria DESTACA a foto dela, mas não tranca a
+  // galeria: quando a pessoa navega (seta, bolinha, miniatura), `fotoLivre`
+  // liga e a galeria volta a seguir `currentImageIndex`. Trocar de variação
+  // (foto diferente) desliga de novo -- ver o ajuste logo após `variantImage`.
+  const [fotoLivre, setFotoLivre] = useState(false);
+  const [fotoDaVariacaoAnterior, setFotoDaVariacaoAnterior] = useState<
+    string | undefined
+  >(undefined);
   const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
     "idle",
   );
@@ -575,6 +583,29 @@ export const ProductView = React.memo(function ProductView({
     (v) => v?.imageUrl,
   )?.imageUrl;
 
+  // Trocou a foto da variação (inclusive voltando a uma variação já vista):
+  // a nova escolha volta a ser destacada. Ajuste durante a renderização, o
+  // padrão do React para estado derivado de outro valor (sem frame errado).
+  if ((variantImage ?? undefined) !== fotoDaVariacaoAnterior) {
+    setFotoDaVariacaoAnterior(variantImage ?? undefined);
+    setFotoLivre(false);
+  }
+  const fotoDaVariacao = fotoLivre ? undefined : variantImage;
+  // Qual bolinha/miniatura está ativa. -1 = a foto da variação não é uma das
+  // fotos da galeria (nenhuma bolinha acesa; a seta "próxima" vai para a 1ª).
+  const indiceAtivo = fotoDaVariacao
+    ? (product.images ?? []).indexOf(fotoDaVariacao)
+    : currentImageIndex;
+  const fotoAtiva = fotoDaVariacao || product.images?.[currentImageIndex] || "";
+
+  // A quantidade nunca passa do estoque da variação VIVA: 5 num tamanho com
+  // 10, trocar para um com 2, tem que descer para 2 -- sem isso o "+" trava
+  // em 5, a página diz "Adicionado" e o carrinho recusa ("Apenas 2
+  // unidades"). Mesma regra do card (ProductCard). Só desce, nunca sobe.
+  useEffect(() => {
+    setQuantity((atual) => Math.min(atual, Math.max(currentStock, 1)));
+  }, [currentStock]);
+
   const isLowStock = currentStock <= 3 && currentStock > 0;
   const isOutOfStock = currentStock === 0;
   const discount = product.originalPrice
@@ -731,16 +762,21 @@ export const ProductView = React.memo(function ProductView({
     abrirWhatsapp(url);
   };
 
+  const irParaFoto = (indice: number) => {
+    setFotoLivre(true);
+    setCurrentImageIndex(indice);
+  };
+
   const nextImage = () => {
-    if (!product.images?.length) return;
-    setCurrentImageIndex((prev) => (prev + 1) % product.images.length);
+    const total = product.images?.length ?? 0;
+    if (!total) return;
+    irParaFoto((indiceAtivo + 1) % total);
   };
 
   const prevImage = () => {
-    if (!product.images?.length) return;
-    setCurrentImageIndex(
-      (prev) => (prev - 1 + product.images.length) % product.images.length,
-    );
+    const total = product.images?.length ?? 0;
+    if (!total) return;
+    irParaFoto(indiceAtivo < 0 ? total - 1 : (indiceAtivo - 1 + total) % total);
   };
 
   // Schema.org JSON-LD
@@ -838,17 +874,14 @@ export const ProductView = React.memo(function ProductView({
             <div className="relative flex size-full items-center justify-center overflow-hidden">
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.img
-                  key={currentImageIndex}
-                  src={imagemRedimensionada(
-                    variantImage || product.images?.[currentImageIndex] || "",
-                    { width: 960, quality: 80 },
-                  )}
+                  key={indiceAtivo >= 0 ? indiceAtivo : `variacao-${fotoAtiva}`}
+                  src={imagemRedimensionada(fotoAtiva, {
+                    width: 960,
+                    quality: 80,
+                  })}
                   srcSet={
-                    conjuntoDeImagens(
-                      variantImage || product.images?.[currentImageIndex] || "",
-                      [480, 640, 960, 1280],
-                      80,
-                    ) || undefined
+                    conjuntoDeImagens(fotoAtiva, [480, 640, 960, 1280], 80) ||
+                    undefined
                   }
                   // Ocupa a largura toda no celular; a partir do desktop fica limitada pela altura.
                   sizes="(min-width: 1024px) 720px, 100vw"
@@ -856,7 +889,7 @@ export const ProductView = React.memo(function ProductView({
                   onError={(event) =>
                     usarImagemOriginal(
                       event.currentTarget,
-                      variantImage || product.images?.at(currentImageIndex),
+                      fotoAtiva || undefined,
                     )
                   }
                   className="main-product-image h-full w-auto max-w-full object-contain"
@@ -869,8 +902,8 @@ export const ProductView = React.memo(function ProductView({
                   decoding="async"
                   style={
                     (isViewTransitionSupported &&
-                    currentImageIndex === 0 &&
-                    !variantImage
+                    indiceAtivo === 0 &&
+                    !fotoDaVariacao
                       ? { viewTransitionName: "product-image" }
                       : undefined) as React.CSSProperties
                   }
@@ -879,7 +912,7 @@ export const ProductView = React.memo(function ProductView({
             </div>
 
             {/* Navigation Arrows */}
-            {(product.images?.length || 0) > 1 && !variantImage && (
+            {(product.images?.length || 0) > 1 && (
               <div
                 className={cn(
                   "pointer-events-none absolute inset-0 flex items-center justify-between px-4 opacity-100 transition-opacity duration-300 hover-hover:opacity-0 hover-hover:group-hover:opacity-100",
@@ -918,7 +951,7 @@ export const ProductView = React.memo(function ProductView({
             )}
 
             {/* Image Indicators - Glass Pill */}
-            {(product.images?.length || 0) > 1 && !variantImage && (
+            {(product.images?.length || 0) > 1 && (
               <div
                 className={cn(
                   "absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 shadow-2xl backdrop-blur-xl",
@@ -928,14 +961,12 @@ export const ProductView = React.memo(function ProductView({
                 {product.images?.map((_, index) => (
                   <button
                     key={index}
-                    onClick={() => setCurrentImageIndex(index)}
+                    onClick={() => irParaFoto(index)}
                     // Laudo de acessibilidade 03/09, achado 2: as bolinhas eram
                     // "botão, botão, botão" — agora dizem qual foto abrem e qual
                     // é a atual (`aria-current`).
                     aria-label={`Foto ${index + 1} de ${product.images?.length ?? 0}`}
-                    aria-current={
-                      index === currentImageIndex ? "true" : undefined
-                    }
+                    aria-current={index === indiceAtivo ? "true" : undefined}
                     // Laudo 05/09, M4: bolinha de 4px (h-1) era alvo de toque
                     // abaixo do mínimo WCAG de 24px — pseudo-elemento invisível
                     // amplia a área SEM mudar o visual. Laudo Opus 07/09 (C1):
@@ -946,7 +977,7 @@ export const ProductView = React.memo(function ProductView({
                     // (regressão medida no preview do PR #437). Alvo de 24px de
                     // LARGURA exige aumentar o gap — decisão visual do dono.
                     className={`relative h-1 rounded-full transition-all duration-500 after:absolute after:-inset-y-2.5 after:inset-x-[-3px] after:content-[''] ${
-                      index === currentImageIndex
+                      index === indiceAtivo
                         ? "w-6 bg-white"
                         : "w-1.5 bg-white/30 hover:bg-white/50"
                     }`}
@@ -991,7 +1022,7 @@ export const ProductView = React.memo(function ProductView({
             </div>
           </div>
 
-          {computador && (product.images?.length || 0) > 1 && !variantImage && (
+          {computador && (product.images?.length || 0) > 1 && (
             <div
               className="lg:mt-4 lg:flex lg:flex-wrap lg:gap-3"
               role="group"
@@ -1002,13 +1033,11 @@ export const ProductView = React.memo(function ProductView({
                   key={`${foto}-${index}`}
                   type="button"
                   aria-label={`Ver foto ${index + 1} de ${product.images.length}`}
-                  aria-current={
-                    index === currentImageIndex ? "true" : undefined
-                  }
-                  onClick={() => setCurrentImageIndex(index)}
+                  aria-current={index === indiceAtivo ? "true" : undefined}
+                  onClick={() => irParaFoto(index)}
                   className={cn(
                     "lg:size-[72px] lg:overflow-hidden lg:rounded-xl lg:border-2 lg:bg-zinc-50 lg:p-1 lg:transition-colors lg:focus-visible:outline-none lg:focus-visible:ring-2 lg:focus-visible:ring-primary lg:focus-visible:ring-offset-2 lg:shadow-sm",
-                    index === currentImageIndex
+                    index === indiceAtivo
                       ? "lg:border-primary"
                       : "lg:border-zinc-200 lg:hover:border-zinc-400",
                   )}
