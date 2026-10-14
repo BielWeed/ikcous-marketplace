@@ -1359,6 +1359,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // Formulário com id provisório já gravado: um rascunho dele restauraria
       // a variação em dobro.
       if (precisaRecarregar) return;
+      // Salvar em andamento: o formulário ainda não é o que vai ficar (pode
+      // ser trocado pela releitura do banco), então nada dele vira rascunho.
+      if (isSubmitting) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       if (isDirty && draftKey) {
@@ -1375,6 +1378,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     draftChecked,
     userId,
     precisaRecarregar,
+    isSubmitting,
   ]);
 
   const processAndUploadImages = useCallback(
@@ -2141,8 +2145,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // qual, e NÃO sair para a lista como se tudo tivesse dado certo. O
         // formulário passa a ser o que está no banco (recusadas de volta).
         if (naoApagadas.length > 0) {
-          const chaveDoRascunho = chaveDoRascunhoDoProduto(userId, productId);
-          if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
           // A variação NOVA deste salvar já foi inserida e ganhou id de
           // verdade, mas o formulário ainda a guarda com o id provisório
           // (`temp-…`): um segundo Salvar a inseriria de novo (duas linhas no
@@ -2171,6 +2173,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           } else {
             setInitialData(formAposRecusas);
           }
+          // O rascunho só sai DEPOIS da releitura e do formulário já trocado: o
+          // salvamento automático agendado antes não pode regravá-lo, no meio da
+          // espera, com a variação nova ainda como `temp-…` (restaurá-lo
+          // inseriria a variação de novo).
+          const chaveDoRascunho = chaveDoRascunhoDoProduto(userId, productId);
+          if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
           const quais =
             devolvidas.length > 0
               ? devolvidas.map((v) => `${v.name}: ${v.value}`).join(", ")
