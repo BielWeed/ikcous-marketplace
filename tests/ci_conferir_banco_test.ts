@@ -10475,3 +10475,171 @@ Deno.test("23a/23b — o rpc-ci.yml roda as duas provas vivas do lote (comportam
       );
   }
 });
+
+// 24a/24b (14/10/2026) — a PROVA DE OBJETOS do lote da migration 20261221000000 (a media de avaliacoes,
+// get_reviews_metrics, e o voto "util", increment_helpful, fecham para o visitante sem login). A 24a e'
+// a consulta do lote (DEPOIS: as duas FECHADAS para anon, authenticated e service_role sim); a 24b a de
+// ausencia (ANTES: as duas abertas a anon e authenticated). As duas sao de ROL FECHADO (3 e 3 linhas) e so
+// leem o catalogo. Estes testes medem o texto dos .sql contra os ARQUIVOS desta arvore; a decisao de cada
+// consulta num Postgres real fica com tests/banco/avaliacoes-fechadas-ao-visitante-portao-viva.cjs.
+const NOME_24A = "24a-conferir-avaliacoes-fechadas-ao-visitante";
+const NOME_24B = "24b-antes-avaliacoes-abertas-ao-visitante";
+const MIGRACAO_221 = `${MIGRATIONS_DIR}/20261221000000_a_media_de_avaliacoes_e_o_voto_util_fecham_para_o_visitante.sql`;
+
+for (const nome of [NOME_24A, NOME_24B]) {
+  Deno.test(`${nome} — no menu, UM statement so leitura (WITH), rol fechado de 3 itens, so catalogo e nenhuma linha de dado e lida`, async () => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const estrutura = semLiterais(sql);
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    assertStringIncludes(yaml, `- ${nome}\n`);
+    assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+    assert(/^\s*WITH\b/i.test(limpo), "comeca por WITH");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+        estrutura,
+      ),
+      "palavra de escrita fora de comentario/literal",
+    );
+    assert(
+      !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+        estrutura,
+      ),
+      "SQL dinamico (ou leitura de arquivo)",
+    );
+    assert(
+      /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+        limpo,
+      ),
+      "saida item/esperado/vivo/ok com as reprovadas primeiro",
+    );
+    const alvos = [
+      ...estrutura.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+    ].map((m) => m[1].toLowerCase());
+    assert(alvos.length > 0);
+    const permitidos = new Set([
+      "pg_proc",
+      "pg_namespace",
+      "aclexplode",
+      "alvo",
+      "fn",
+      "itens",
+    ]);
+    for (const alvo of alvos)
+      assert(
+        permitidos.has(alvo),
+        `le de "${alvo}", que nao e catalogo nem CTE`,
+      );
+    assert(
+      !/\b(?:FROM|JOIN)\s+(?:public\.|auth\.)?(?:reviews|review_votes|marketplace_orders|users)\b/i.test(
+        estrutura,
+      ),
+      "a consulta leu uma tabela de dados",
+    );
+    // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    assertEquals(rol.length, 3);
+    assertEquals(new Set(rol).size, rol.length);
+    for (const item of rol)
+      assertStringIncludes(limpo, `'${item}'`, `item "${item}" fora do .sql`);
+    assertEquals(
+      [...limpo.matchAll(/SELECT '([^']+)',/g)].length,
+      rol.length,
+      "o .sql tem mais (ou menos) linhas que o rol",
+    );
+  });
+}
+
+Deno.test("24a/24b — o EXECUTE esperado e o que a migration e o rollback deixam: a 24a espera as duas FECHADAS para anon, a 24b ABERTAS; a migration fecha PUBLIC e anon e o rollback abre so anon", async () => {
+  const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_24A}.sql`);
+  const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_24B}.sql`);
+  const fechada = /'PUBLIC=nao anon=nao authenticated=sim service_role=sim'/g;
+  const aberta = /'PUBLIC=nao anon=sim authenticated=sim service_role=sim'/g;
+  assertEquals([...a.matchAll(fechada)].length, 2, "24a: as duas fechadas");
+  assertEquals([...a.matchAll(aberta)].length, 0, "24a: nenhuma aberta");
+  assertEquals([...b.matchAll(aberta)].length, 2, "24b: as duas abertas");
+  assertEquals([...b.matchAll(fechada)].length, 0, "24b: nenhuma fechada");
+  for (const sql of [a, b])
+    for (const f of [
+      "public.get_reviews_metrics(text,integer)",
+      "public.increment_helpful(uuid)",
+    ])
+      assertStringIncludes(sql, `'${f}'`);
+  const m = sqlSemComentarios(await Deno.readTextFile(MIGRACAO_221));
+  const r = sqlSemComentarios(
+    await Deno.readTextFile(rollbackDe(MIGRACAO_221)),
+  );
+  for (const f of [
+    "public.get_reviews_metrics(text, integer)",
+    "public.increment_helpful(uuid)",
+  ]) {
+    assertStringIncludes(
+      m,
+      `REVOKE EXECUTE ON FUNCTION ${f} FROM PUBLIC, anon;`,
+    );
+    assertStringIncludes(m, `GRANT EXECUTE ON FUNCTION ${f} TO authenticated;`);
+    assertStringIncludes(r, `GRANT EXECUTE ON FUNCTION ${f} TO anon;`);
+  }
+});
+
+Deno.test("24a/24b — o rpc-ci.yml roda as duas provas vivas do lote (comportamento e portao) no job bloqueante, depois de aplica, e e' disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const linhas = bloqueante.split("\n");
+  for (const [prova, titulo] of [
+    [
+      "avaliacoes-fechadas-ao-visitante-viva",
+      "      - name: Prova viva das avaliacoes fechadas ao visitante (migration 20261221)",
+    ],
+    [
+      "avaliacoes-fechadas-ao-visitante-portao-viva",
+      "      - name: Prova viva do portao das avaliacoes fechadas ao visitante (consultas 24a e 24b)",
+    ],
+  ]) {
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} nao esta no job bloqueante`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assertEquals(linhas[k - 2], titulo);
+    assert(
+      bloqueante.indexOf(`tests/banco/${prova}.cjs`) >
+        bloqueante.indexOf("id: aplica"),
+    );
+    assert(!yaml.slice(inicioInformacional).includes(`${prova}.cjs`));
+    assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+    assert(
+      (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+      `tests/banco/${prova}.cjs nao existe`,
+    );
+  }
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `nao achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      `scripts/publicacao/consultas/${NOME_24A}.sql`,
+      `scripts/publicacao/consultas/${NOME_24B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});

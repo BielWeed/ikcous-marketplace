@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1537,6 +1537,28 @@ const ROL_DA_23B = [
   "get_orders_by_otp_v2: corpo e o da 20261217000000 (md5)",
   "get_orders_by_otp_v2: EXECUTE aberto para anon e authenticated",
 ];
+/** O rol da 24a (a prova de objetos do lote 20261221000000, a media de avaliacoes e o voto "util" fecham
+ * para o visitante): as 3 linhas que
+ * scripts/publicacao/consultas/24a-conferir-avaliacoes-fechadas-ao-visitante.sql devolve, cada uma UMA
+ * vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o EXECUTE
+ * de get_reviews_metrics e de increment_helpful FECHADO para anon (authenticated e service_role sim, PUBLIC
+ * nao). tests/banco/avaliacoes-fechadas-ao-visitante-portao-viva.cjs prova, num Postgres real, que este
+ * rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_24A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_reviews_metrics: EXECUTE fechado para anon (authenticated e service_role sim)",
+  "increment_helpful: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 24b (a consulta de AUSENCIA do lote das avaliacoes fechadas ao visitante;
+ * `ausenciaConfirmadaPor`): as 3 linhas que
+ * scripts/publicacao/consultas/24b-antes-avaliacoes-abertas-ao-visitante.sql devolve — a base de antes:
+ * as duas funcoes ABERTAS a anon e authenticated (PUBLIC nao). Uma loja que ja tem o corte reprova aqui
+ * de proposito, nas linhas de EXECUTE. */
+const ROL_DA_24B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_reviews_metrics: EXECUTE aberto para anon e authenticated",
+  "increment_helpful: EXECUTE aberto para anon e authenticated",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1569,6 +1591,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "22b-antes-portas-do-banco-estado-vigente": ROL_DA_22B,
   "23a-conferir-consulta-antiga-de-pedido-fechada": ROL_DA_23A,
   "23b-antes-consulta-antiga-de-pedido-aberta": ROL_DA_23B,
+  "24a-conferir-avaliacoes-fechadas-ao-visitante": ROL_DA_24A,
+  "24b-antes-avaliacoes-abertas-ao-visitante": ROL_DA_24B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2139,6 +2163,8 @@ module.exports = {
   ROL_DA_22B,
   ROL_DA_23A,
   ROL_DA_23B,
+  ROL_DA_24A,
+  ROL_DA_24B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
