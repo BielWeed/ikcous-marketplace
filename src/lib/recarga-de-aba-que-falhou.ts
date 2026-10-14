@@ -33,7 +33,7 @@ export const MAX_RECARGAS_DE_ABA_QUE_FALHOU = 2;
 /** Janela da guarda de laço (5 minutos). */
 export const JANELA_RECARGAS_DE_ABA_QUE_FALHOU_MS = 5 * 60 * 1000;
 
-export type ResultadoDoTentarDeNovo = "recarregou" | "sem-rede" | "esgotado";
+export type ResultadoDoTentarDeNovo = "cancelada" | "sem-rede" | "esgotado";
 
 interface EstadoDaGuarda {
   inicio: number;
@@ -71,10 +71,49 @@ export function reservarRecargaDeAbaQueFalhou(
   }
 }
 
+/** Devolve a recarga reservada (a página não saiu — ver o prazo abaixo). */
+export function devolverRecargaDeAbaQueFalhou(): void {
+  try {
+    const cru = sessionStorage.getItem(CHAVE_RECARGAS_DE_ABA_QUE_FALHOU);
+    if (!cru) return;
+    const lido = JSON.parse(cru) as Partial<EstadoDaGuarda> | null;
+    if (
+      !lido ||
+      typeof lido.inicio !== "number" ||
+      typeof lido.count !== "number"
+    ) {
+      return;
+    }
+    sessionStorage.setItem(
+      CHAVE_RECARGAS_DE_ABA_QUE_FALHOU,
+      JSON.stringify({
+        inicio: lido.inicio,
+        count: Math.max(0, lido.count - 1),
+      }),
+    );
+  } catch {
+    // sem storage a guarda já recusa; nada a devolver
+  }
+}
+
+/** Quanto esperar a página sair depois do `reload()`. Se ela continua viva
+ * depois disto, a recarga não aconteceu (no painel, o `beforeunload` de
+ * formulário sujo mostra o aviso do navegador e o lojista pode CANCELAR). */
+export const PRAZO_DA_PAGINA_SAIR_MS = 3500;
+
+/** Resolve só quando a página NÃO saiu: se a recarga acontece, a página some
+ * antes e esta promessa nunca resolve (de propósito). A reserva da guarda
+ * nasce ANTES do `reload()` (check-and-set; loop-safe mesmo que a página
+ * morra na hora) e é devolvida aqui quando a recarga foi cancelada — assim
+ * "cancelar o aviso" não gasta recarga nem deixa o botão preso. */
 export async function tentarDeNovoAbaQueNaoBaixou(): Promise<ResultadoDoTentarDeNovo> {
   if (!(await verificarRedeDeVerdade())) return "sem-rede";
   if (!reservarRecargaDeAbaQueFalhou()) return "esgotado";
   gravaMotivoDeRecarga("recuperacao-erro-modulo");
   window.location.reload();
-  return "recarregou";
+  await new Promise<void>((resolve) =>
+    setTimeout(resolve, PRAZO_DA_PAGINA_SAIR_MS),
+  );
+  devolverRecargaDeAbaQueFalhou();
+  return "cancelada";
 }

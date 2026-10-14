@@ -56,10 +56,16 @@ export class LocalErrorBoundary extends Component<Props, State> {
     if (this.state.verificando) return;
     this.setState({ verificando: true });
     const resultado = await tentarDeNovoAbaQueNaoBaixou();
-    if (resultado === "recarregou") return;
+    // "cancelada": a página NÃO saiu (aviso do navegador recusado) — o botão
+    // volta e a frase não muda. A recarga que deu certo nunca chega aqui.
     this.setState({
       verificando: false,
-      chunkAviso: resultado === "esgotado" ? "esgotado" : "sem-rede",
+      chunkAviso:
+        resultado === "esgotado"
+          ? "esgotado"
+          : resultado === "sem-rede"
+            ? "sem-rede"
+            : "nenhum",
     });
   };
 

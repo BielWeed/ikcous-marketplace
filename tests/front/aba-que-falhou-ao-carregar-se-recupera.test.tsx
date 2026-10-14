@@ -11,14 +11,13 @@
  * essa memoria. Por isso "Tentar de novo" com rede boa RECARREGA - e isso
  * nunca pode gastar o orcamento de `recuperacao-chunk` nem virar laco.
  */
-import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
   CHAVE_RECARGAS_DE_ABA_QUE_FALHOU,
   JANELA_RECARGAS_DE_ABA_QUE_FALHOU_MS,
   MAX_RECARGAS_DE_ABA_QUE_FALHOU,
+  PRAZO_DA_PAGINA_SAIR_MS,
   reservarRecargaDeAbaQueFalhou,
 } from "@/lib/recarga-de-aba-que-falhou";
-import { lazyWithPreload } from "@/utils/lazyWithPreload";
 import { Suspense, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,6 +84,8 @@ let navegador: NavegadorFiel;
 const reloadEspiao = vi.fn();
 
 beforeEach(() => {
+  vi.resetModules();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.stubGlobal("localStorage", criarStorage());
   vi.stubGlobal("sessionStorage", criarStorage());
   navegador = new NavegadorFiel();
@@ -117,6 +118,8 @@ afterEach(() => {
     configurable: true,
     get: () => onLineOriginal,
   });
+  vi.clearAllTimers();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -157,8 +160,19 @@ async function descarregar() {
   });
 }
 
+/** Os modulos do APP, lidos do registro atual: depois de `vi.resetModules()`
+ * vem uma copia nova com a memoria zerada (React fica de fora, e e um so). */
+async function modulosDoApp() {
+  const { LocalErrorBoundary } = await import(
+    "@/components/ui/custom/LocalErrorBoundary"
+  );
+  const { lazyWithPreload } = await import("@/utils/lazyWithPreload");
+  return { LocalErrorBoundary, lazyWithPreload };
+}
+
 /** Uma carga da pagina: modulo novo (estado do lazy zerado) + tela montada. */
 async function montarPagina() {
+  const { LocalErrorBoundary, lazyWithPreload } = await modulosDoApp();
   const Aba = lazyWithPreload(() => navegador.importar("Favoritos-abc.js"));
   await act(async () => {
     raiz.render(
@@ -172,12 +186,15 @@ async function montarPagina() {
   await descarregar();
 }
 
-/** O que o navegador faz depois do `location.reload()`: tudo recomeca, o
- * sessionStorage e o localStorage ficam. */
+/** O que o navegador faz depois do `location.reload()`: a pagina morre (os
+ * timers dela vao junto), a memoria dos modulos zera, e so o sessionStorage
+ * e o localStorage ficam. */
 async function recarregarPagina() {
   await act(async () => {
     raiz.unmount();
   });
+  vi.clearAllTimers();
+  vi.resetModules();
   raiz = createRoot(hospedeiro);
   await montarPagina();
 }
@@ -291,8 +308,59 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
   });
 
+  it("lojista CANCELA o aviso do navegador: o botao volta depois do prazo e a recarga e devolvida", async () => {
+    definirOnLine(true);
+    instalarSondaDeRede(true);
+    await montarPagina();
+
+    // O reload nao descarrega a pagina (beforeunload cancelado no painel).
+    await tocarEmTentarDeNovo();
+    expect(reloadEspiao).toHaveBeenCalledTimes(1);
+    expect(recargasGastas()).toBe(1);
+    expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(true);
+
+    // Antes do prazo nada muda: a pagina ainda pode estar saindo.
+    await act(async () => {
+      vi.advanceTimersByTime(PRAZO_DA_PAGINA_SAIR_MS - 1);
+    });
+    await descarregar();
+    expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(true);
+    expect(recargasGastas()).toBe(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    await descarregar();
+
+    expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
+    expect(recargasGastas()).toBe(0);
+    expect(hospedeiro.textContent).toContain("Toque em Tentar de novo.");
+    expect(hospedeiro.textContent).not.toContain(FRASE_DE_REDE);
+  });
+
+  it("cancelar o aviso varias vezes nunca esgota a guarda nem prende a cliente", async () => {
+    definirOnLine(true);
+    instalarSondaDeRede(true);
+    await montarPagina();
+
+    for (let i = 0; i <= MAX_RECARGAS_DE_ABA_QUE_FALHOU + 1; i++) {
+      await tocarEmTentarDeNovo();
+      await act(async () => {
+        vi.advanceTimersByTime(PRAZO_DA_PAGINA_SAIR_MS);
+      });
+      await descarregar();
+    }
+
+    expect(reloadEspiao).toHaveBeenCalledTimes(
+      MAX_RECARGAS_DE_ABA_QUE_FALHOU + 2,
+    );
+    expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
+    expect(hospedeiro.textContent).not.toContain(FRASE_FECHE_E_ABRA);
+  });
+
   it("falha que NAO e de chunk mantem o comportamento de antes", async () => {
     definirOnLine(true);
+    const { LocalErrorBoundary, lazyWithPreload } = await modulosDoApp();
     const Aba = lazyWithPreload(async () => {
       throw new Error("cannot read properties of undefined");
     });
