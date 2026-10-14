@@ -138,6 +138,23 @@ const PRONTO_PARA_RETIRAR = {
 };
 
 /**
+ * Aviso do quadro da retirada, conforme o ponto do pedido: esperar só vale
+ * ANTES de a loja avisar; depois de entregue, mandar aguardar é contradição.
+ */
+function avisoDaRetirada(status: string): string | null {
+  switch (status) {
+    case "shipping":
+      return "A loja já confirmou: pode retirar.";
+    case "delivered":
+      return "Pedido retirado na loja.";
+    case "cancelled":
+      return null;
+    default:
+      return "Aguarde a confirmação da loja para retirar.";
+  }
+}
+
+/**
  * A linha do tempo de 4 etapas do cartão de status. Mesma guarda de status
  * desconhecido do resto do arquivo (a mesma ideia de
  * `statusConfig[order.status as OrderStatus] || statusConfig.pending`, mais
@@ -870,8 +887,10 @@ export function OrderDetailsView({
                 const isPast = timelineIndex > i;
                 const isCurrent = timelineIndex === i;
                 const isLast = i === TIMELINE_STEPS.length - 1;
+                // Na retirada a etapa se chama "Pronto para retirar" em TODOS
+                // os estados (igual à trilha do painel).
                 const noPronto =
-                  prontoParaRetirar && step.status === "shipping";
+                  order.retiradaNaLoja === true && step.status === "shipping";
                 const StepIcon = noPronto
                   ? PRONTO_PARA_RETIRAR.icon
                   : step.icon;
@@ -1265,11 +1284,11 @@ export function OrderDetailsView({
                   <p className="text-sm font-bold text-zinc-900">
                     Retire em: {order.enderecoDeRetirada}
                   </p>
-                  <p className="text-xs font-medium leading-relaxed text-zinc-500">
-                    {prontoParaRetirar
-                      ? "A loja já confirmou: pode retirar."
-                      : "Aguarde a confirmação da loja para retirar."}
-                  </p>
+                  {avisoDaRetirada(order.status) && (
+                    <p className="text-xs font-medium leading-relaxed text-zinc-500">
+                      {avisoDaRetirada(order.status)}
+                    </p>
+                  )}
                   <p className="pt-1.5 text-xs font-semibold text-zinc-500">
                     Seu endereço
                   </p>

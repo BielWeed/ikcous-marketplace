@@ -241,18 +241,85 @@ describe("retirada na loja — 'Pronto para retirar' no lugar de 'Em Trânsito'"
       expect(texto).not.toContain(PRONTO);
     });
 
-    it("retirada em separação: textos de sempre, com o aviso de espera", async () => {
+    it("retirada em separação: a etapa já se chama 'Pronto para retirar' (igual ao painel), com o aviso de espera", async () => {
       const texto = await telaDaCliente(await pedido("processing", true));
       expect(texto).toContain("Em separação");
       expect(texto).toContain("Aguarde a confirmação da loja para retirar.");
-      expect(texto).not.toContain(PRONTO);
+      // Só a ETAPA futura da linha do tempo; o título e a frase de "pronto"
+      // ficam para quando a loja avisar.
+      expect(texto).toContain(PRONTO);
+      expect(texto).not.toContain("A caminho");
       expect(texto).not.toContain(FRASE_DA_CLIENTE);
     });
 
-    it("retirada entregue: textos de sempre, sem a frase de 'pronto'", async () => {
+    it("retirada entregue: nome da etapa de retirada, e nada de 'Aguarde a confirmação'", async () => {
       const texto = await telaDaCliente(await pedido("delivered", true));
       expect(texto).toContain("Chegou!");
+      expect(texto).toContain(PRONTO);
+      expect(texto).not.toContain("A caminho");
+      expect(texto).not.toContain("Aguarde a confirmação da loja");
+      expect(texto).toContain("Pedido retirado na loja.");
       expect(texto).not.toContain(FRASE_DA_CLIENTE);
+    });
+
+    it("retirada cancelada: sem aviso de espera", async () => {
+      const texto = await telaDaCliente(await pedido("cancelled", true));
+      expect(texto).not.toContain("Aguarde a confirmação da loja");
+    });
+  });
+
+  describe("lista 'Meus Pedidos' da cliente", () => {
+    async function lista(p: Order): Promise<string> {
+      const { OrderList } = await import("@/components/ui/custom/OrderList");
+      await act(async () => {
+        raiz.render(<OrderList orders={[p]} onNavigate={() => {}} />);
+      });
+      return hospedeiro.textContent ?? "";
+    }
+
+    it("retirada pronta: 'Venha retirar na loja' e etapa 'Pronto p/ retirar'; nada de endereço", async () => {
+      const texto = await lista(await pedido("shipping", true));
+      expect(texto).toContain("Venha retirar na loja");
+      expect(texto).toContain("Pronto p/ retirar");
+      expect(texto).not.toContain("A caminho");
+    });
+
+    it("entrega a caminho: textos de sempre (controle)", async () => {
+      const texto = await lista(await pedido("shipping", false));
+      expect(texto).toContain("A caminho do seu endereço");
+      expect(texto).not.toContain("retirar");
+    });
+  });
+
+  describe("cartão do pedido na lista do painel", () => {
+    async function cartao(p: Order): Promise<string> {
+      const { AdminOrderCard } = await import(
+        "@/components/admin/orders/AdminOrderCard"
+      );
+      await act(async () => {
+        raiz.render(
+          <AdminOrderCard
+            order={p}
+            viewMode="compact"
+            onSelect={() => {}}
+            onWhatsApp={() => {}}
+            onRegistrarPagamento={() => {}}
+            registrandoPagamento={false}
+          />,
+        );
+      });
+      return hospedeiro.textContent ?? "";
+    }
+
+    it("retirada pronta: o selo do cartão diz 'Pronto para retirar'", async () => {
+      const texto = await cartao(await pedido("shipping", true));
+      expect(texto).toContain(PRONTO);
+      expect(texto).not.toContain("Em Trânsito");
+    });
+
+    it("entrega a caminho: o selo diz 'Em Trânsito' (controle)", async () => {
+      const texto = await cartao(await pedido("shipping", false));
+      expect(texto).toContain("Em Trânsito");
       expect(texto).not.toContain(PRONTO);
     });
   });
