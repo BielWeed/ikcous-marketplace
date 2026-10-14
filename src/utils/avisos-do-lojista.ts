@@ -1,4 +1,5 @@
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 
 /**
@@ -208,7 +209,7 @@ function maisRecentePrimeiro(a: Aviso, b: Aviso): number {
 }
 
 function formatarReais(valor: number | null): string {
-  return `R$ ${(valor ?? 0).toFixed(2).replace(".", ",")}`;
+  return formatCurrency(valor ?? 0);
 }
 
 export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {

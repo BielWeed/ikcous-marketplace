@@ -415,7 +415,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "produtos-cadastrados",
         label: "Produtos no Catálogo",
-        value: `${totalProducts} itens`,
+        value: `${totalProducts} ${totalProducts === 1 ? "item" : "itens"}`,
         icon: Package,
         accent: "text-purple-500",
         // PAINEL-09: o número é o total FILTRADO (total_count da RPC com

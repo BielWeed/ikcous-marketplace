@@ -589,6 +589,19 @@ describe("useProducts.deleteProducts (lote) — #99 mesma ordem do unitário", (
     expect(apiRef!.products.map((p) => p.id)).toContain("prod-del-2");
   });
 
+  it("lote de UM produto so: o aviso fala no singular ('1 produto removido')", async () => {
+    await montarECarregar();
+
+    let resultado: boolean | undefined;
+    await act(async () => {
+      resultado = await apiRef!.deleteProducts(["prod-del-1"]);
+    });
+
+    expect(resultado).toBe(true);
+    expect(mock.toastSuccess).toHaveBeenCalledWith("1 produto removido");
+    expect(mock.toastSuccess).not.toHaveBeenCalledWith("1 produtos removidos");
+  });
+
   it("lote com sucesso: mídia depois do soft-delete de CADA produto, best-effort", async () => {
     await montarECarregar();
 

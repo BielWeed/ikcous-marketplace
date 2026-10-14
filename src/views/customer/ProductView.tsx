@@ -658,10 +658,18 @@ export const ProductView = React.memo(function ProductView({
     // e é essa URL que falta colar no fim, no caminho do clipboard.
     const temMarcadorDeLink = /\[link\]/i.test(config.shareText);
     const textoDoShare = temMarcador
-      ? config.shareText
-          .replace(/\[nome\]/gi, product.name)
-          .replace(/\[preco\]/gi, reais(product.price))
-          .replace(/\[link\]/gi, globalThis.location.href)
+      ? // Uma passada só, com FUNÇÃO: string no lugar do valor faria "$&"/"$1"
+        // do nome virarem padrão de substituição, e o nome com "[preco]"
+        // seria trocado de novo pela etapa seguinte.
+        config.shareText.replace(
+          /\[(nome|preco|link)\]/gi,
+          (_marcador, qual: string) => {
+            const tipo = qual.toLowerCase();
+            if (tipo === "nome") return product.name;
+            if (tipo === "preco") return reais(product.price);
+            return globalThis.location.href;
+          },
+        )
       : `${config.shareText} ${product.name} por ${reais(product.price)}`;
     const shareData = {
       title: product.name,
