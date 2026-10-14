@@ -17,6 +17,44 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
+    # Atualizações que a triagem de 14/10/2026 MEDIU como quebradoras. Cada linha
+    # tem o motivo; tirar a linha quando o motivo for resolvido. `ignore` vale só
+    # para atualização de VERSÃO: alerta de segurança continua abrindo PR.
+    ignore:
+      # 7.1.x passa a acusar 31 erros de lint novos (regras do React Compiler)
+      # em pedido, devolução e frete; o teto de erros é 0. Corrigir é um PR
+      # próprio com revisão (mexe em lógica), não um bump.
+      - dependency-name: "eslint-plugin-react-hooks"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # A versão 6 exige Vite 8 e o app está no Vite 7 (o build não carrega a
+      # config). Só faz sentido junto de uma migração para o Vite 8.
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
+      # O stylelint 17 pede o `stylelint-config-standard` 40 junto e nenhum job do
+      # CI roda `lint:css`; o ganho é ~zero e o peer fica fora de sincronia.
+      - dependency-name: "stylelint"
+        update-types: ["version-update:semver-major"]
+      # React 19.3 trata `credentialless` como atributo booleano e REMOVE o
+      # `credentialless=""` dos 5 iframes (3-D Secure do cartão e mapas), tirando
+      # o isolamento sem ninguém ver. Subir exige `credentialless={true}` + revisão
+      # de risco alto (cartão). Os tipos e o scheduler sobem junto com o React.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "scheduler"
+      # O Dialog 1.2.0 (puxado por baixo pelo alert-dialog) adia o fechamento do
+      # clique fora para o `click`, e o guardião de `src/components/ui/sheet.tsx`
+      # supõe o fechamento no pointerdown: a folha não fecha. Segurar o Radix em
+      # bloco até esse guardião ser refeito e provado num navegador.
+      - dependency-name: "@radix-ui/*"
+      # Fixado EXATO de propósito: `prepareIdentityImage.ts:174` contorna um
+      # defeito dessa versão e o teste de navegador que a cobre não roda no CI.
+      - dependency-name: "image-dimensions"
     groups:
       dev-dependencies:
         dependency-type: "development"
