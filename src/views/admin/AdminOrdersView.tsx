@@ -17,6 +17,7 @@ import {
   type PaymentStatusKey,
   getPaymentStatusConfig,
   paymentStatusKey,
+  rotuloDoStatus,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
@@ -52,7 +53,10 @@ import { useViewTransition } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { formatarInteiro } from "@/lib/crm";
 import { recorteDaListaDePedidos } from "@/lib/filtro-da-lista-de-pedidos";
-import { mapOrderFromDB } from "@/lib/mappers";
+import {
+  enderecoDeRetiradaDoCustomerData,
+  mapOrderFromDB,
+} from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
@@ -1093,8 +1097,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           revalidacaoSilenciosaRef.current = true;
           setRevalidacaoDaFicha((n) => n + 1);
         }
+        // Retirada na loja: "Em Trânsito" se lê "Pronto para retirar". A linha
+        // do realtime é crua (snake_case): a regra é a MESMA do mapper.
+        const retirada =
+          enderecoDeRetiradaDoCustomerData(payload.new?.customer_data) !== "";
         toast.info(
-          `Pedido #${numeroDoPedido(updatedId)} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
+          `Pedido #${numeroDoPedido(updatedId)} atualizado para ${statusConfig[newStatus] ? rotuloDoStatus(newStatus, retirada) : `Status: ${newStatus}`}`,
         );
       }
 
@@ -1378,7 +1386,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
     try {
       const title = "Status do Pedido Atualizado";
-      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${statusConfig[newStatus].label}`;
+      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${rotuloDoStatus(newStatus, alvo.retiradaNaLoja)}`;
 
       const {
         data: { session },
@@ -1437,8 +1445,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // NUNCA `?.label || newStatus` aqui (como a linha 520 acima): isso
       // botaria o valor cru do banco, em inglês, dentro da mensagem que a
       // lojista manda para a cliente.
-      const statusMsg = statusConfig[order.status] || statusConfig.pending;
-      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
+      const rotuloDoStatusNaMensagem = statusConfig[order.status]
+        ? rotuloDoStatus(order.status, order.retiradaNaLoja)
+        : statusConfig.pending.label;
+      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${rotuloDoStatusNaMensagem}\n\nObrigado por comprar na ${branding.appName}!`;
 
       // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
       // O util decide: sem link, o toque não abre janela nenhuma.

@@ -81,6 +81,13 @@ const statusConfig: Record<
 };
 
 const trailSteps = ["Recebido", "Separação", "A caminho", "Entregue"];
+// Retirada na loja: ninguém leva o pedido, a cliente busca (só texto).
+const trailStepsRetirada = [
+  "Recebido",
+  "Separação",
+  "Pronto p/ retirar",
+  "Entregue",
+];
 
 // `Map.get` em vez de indexar o Record: mesma escolha de
 // CustomerPaymentBadge.tsx, para o lint de injeção de objeto.
@@ -104,17 +111,20 @@ const paymentConfig: Record<PaymentMethod, { label: string; icon: any }> = {
 function OrderStatusTrail({
   status,
   config,
+  retiradaNaLoja,
 }: {
   status: OrderStatus;
   config: (typeof statusConfig)[OrderStatus];
+  retiradaNaLoja?: boolean;
 }) {
+  const passos = retiradaNaLoja ? trailStepsRetirada : trailSteps;
   const currentStep = statusStep.get(status) ?? 0;
   if (currentStep < 0) return null;
 
   return (
     <div className="mt-2.5" data-testid="order-status-trail">
       <div className="flex gap-1">
-        {trailSteps.map((step, idx) => (
+        {passos.map((step, idx) => (
           <span
             key={step}
             className={cn(
@@ -126,7 +136,7 @@ function OrderStatusTrail({
         ))}
       </div>
       <div className="mt-1.5 grid grid-cols-4 text-[9px] font-bold uppercase tracking-wide">
-        {trailSteps.map((step, idx) => (
+        {passos.map((step, idx) => (
           <span
             key={step}
             className={cn(
@@ -251,7 +261,15 @@ export const OrderList = memo(function OrderList({
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       {orders.map((order, idx) => {
-        const status = statusConfig[order.status] || statusConfig.pending;
+        const statusBase = statusConfig[order.status] || statusConfig.pending;
+        const status =
+          order.retiradaNaLoja === true && order.status === "shipping"
+            ? {
+                ...statusBase,
+                label: "Pronto para retirar",
+                desc: "Venha retirar na loja",
+              }
+            : statusBase;
         const payment = paymentConfig[order.paymentMethod] || paymentConfig.pix;
         const PaymentIcon = payment.icon;
         const StatusIcon = status.icon;
@@ -375,7 +393,11 @@ export const OrderList = memo(function OrderList({
                   />
                 </div>
 
-                <OrderStatusTrail status={order.status} config={status} />
+                <OrderStatusTrail
+                  status={order.status}
+                  config={status}
+                  retiradaNaLoja={order.retiradaNaLoja}
+                />
 
                 {/* Rastreio (PEDIDO-060, #105): visível sem abrir o
                     pedido. `trim()` porque o campo do painel é texto

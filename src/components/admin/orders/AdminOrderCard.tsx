@@ -154,7 +154,11 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             estreito o número desce em vez de espremer o selo. */}
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
           <div className="flex items-center gap-1.5">
-            <OrderStatusBadge status={order.status} tamanho="cartao" />
+            <OrderStatusBadge
+              status={order.status}
+              retiradaNaLoja={order.retiradaNaLoja}
+              tamanho="cartao"
+            />
             {/* C4.4: selo de canal na MESMA fileira do status — um selo a
                 mais em coluna esticaria todos os cards vizinhos da fileira.
                 `data-testid` ancora a prova no ELEMENTO, não no texto da
