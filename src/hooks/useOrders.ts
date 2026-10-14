@@ -8,6 +8,7 @@ import {
   migrarFilaLegada,
   separarItensVencidos,
 } from "@/lib/fila-offline-por-usuario";
+import { instanteDentroDoPeriodo } from "@/lib/filtro-da-lista-de-pedidos";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
@@ -1598,9 +1599,15 @@ export function decidirRealtimeInsertAdmin(
       !["cancelled", "delivered"].includes(newOrder.status)) ||
     newOrder.status === filtro;
 
-  const casaPeriodo =
-    (!startDate || newOrder.createdAt >= startDate) &&
-    (!endDate || newOrder.createdAt <= endDate);
+  // Compara INSTANTES, não texto: a tela manda o início/fim do dia de
+  // Brasília ("2026-10-14T23:59:59.999-03:00") e o pedido chega em UTC
+  // ("2026-10-15T02:30:00Z" — 23h30 do dia 14). Como texto o pedido das 23h30
+  // ficava de fora do dia 14 e o das 23h59 do dia 13 entrava nele.
+  const casaPeriodo = instanteDentroDoPeriodo(
+    newOrder.createdAt,
+    startDate,
+    endDate,
+  );
 
   const busca = (searchQuery || "").trim().toLowerCase();
   const casaBusca =
