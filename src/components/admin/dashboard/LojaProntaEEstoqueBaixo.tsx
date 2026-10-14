@@ -3,6 +3,7 @@ import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-ent
 import {
   type ChaveDosSeisPassos,
   type ConfigDosSeisPassos,
+  avisoDaFaixaDeCep,
   contagemDosPassos,
   entradaDosSeisPassos,
   estadoDaEntrega,
@@ -135,6 +136,8 @@ export function LojaProntaEEstoqueBaixo({
   const proximo = proximoPasso(passos);
   const conferindo = passos.some((passo) => passo.estado === "carregando");
   const lojaPronta = feitos === total;
+  // Aviso, não passo: não entra na contagem nem trava "Loja pronta".
+  const avisoDaFaixa = configCarregando ? null : avisoDaFaixaDeCep(config);
 
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -280,6 +283,15 @@ export function LojaProntaEEstoqueBaixo({
               </ul>
             )}
           </>
+        )}
+        {avisoDaFaixa && (
+          <button
+            type="button"
+            onClick={() => onNavigate("admin-shipping")}
+            className="mt-3 min-h-11 w-full rounded-xl border border-amber-400/20 px-3 text-left text-xs text-amber-300 transition-colors hover:bg-white/5"
+          >
+            {avisoDaFaixa}
+          </button>
         )}
       </div>
     </div>
