@@ -348,13 +348,23 @@ function cancelledDescription(
   if (key === "aguardando") {
     return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
   }
+  // 14/10/2026: o cron que vence a reserva de 30 minutos grava
+  // `status='cancelled'` + `payment_status='expirado'` (migration
+  // 20261186000000, `expirar_pedidos_vencidos`). A frase genérica de baixo
+  // ("não seguirá para entrega") não dizia POR QUÊ: quem só demorou para pagar
+  // achava que a loja cancelou. A tela não sabe se a cobrança era PIX ou
+  // cartão (`metodo_online` não chega ao app), então o texto não nomeia o
+  // meio — "pagamento", que vale para os dois.
+  if (key === "expirado") {
+    return "O prazo do pagamento terminou e o pedido foi cancelado. É só comprar de novo.";
+  }
   return statusConfig.cancelled.description;
 }
 
 export function OrderDetailsView({
   orderId,
   onBack,
-  onNavigate: _onNavigate,
+  onNavigate,
   onRetomarPagamento,
 }: OrderDetailsViewProps) {
   const { orders, fetchUserOrders, updateOrderStatus, reenviarComprovante } =
@@ -1022,6 +1032,20 @@ export function OrderDetailsView({
                 {statusDescription}
               </p>
             </div>
+          )}
+
+          {/* Venceu o prazo do pagamento: o caminho para comprar de novo é a
+              vitrine (a mesma porta `home` que as outras telas de fim de
+              compra usam — nenhum fluxo novo). */}
+          {order.status === "cancelled" && chaveDoPagamento === "expirado" && (
+            <button
+              type="button"
+              onClick={() => onNavigate("home")}
+              className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-95"
+            >
+              <Store className="size-4" aria-hidden="true" />
+              Voltar para a loja
+            </button>
           )}
 
           {/* Rastreio (PEDIDO-060, #105).
