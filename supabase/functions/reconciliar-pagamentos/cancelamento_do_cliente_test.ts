@@ -7,8 +7,14 @@
  * cliente_test.ts`) não alcançam: o passo está LIGADO na rotina, usa a reserva
  * de verdade (`avisarAdminUmaVez` com a RPC `reservar_aviso_ao_lojista` —
  * aqui um dublê com a MESMA semântica: a chave nova reserva, 'enviado' não
- * repete, push que não chegou a ninguém libera), e a falha do passo NÃO
- * derruba pagamento nem estorno.
+ * repete, push que não chegou a ninguém libera), e a falha do passo (leitura
+ * do histórico, push que lança) NÃO derruba a CONFIRMAÇÃO DE PAGAMENTO.
+ *
+ * O que este arquivo NÃO prova: a fila de estornos. O dublê de `order_refunds`
+ * daqui devolve sempre vazio. A prova de que o passo não prende nem atrasa os
+ * estornos (push que nunca responde + linha na fila, o estorno sai) mora em
+ * `index_test.ts`, nos dois testes "cancelamento do cliente:", que usam o
+ * dublê completo da fila.
  */
 import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler } from "./index.ts";

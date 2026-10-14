@@ -3392,3 +3392,155 @@ for (const caso of PARCELADOS_COM_JUROS) {
     assertEquals(corpo.confirmados, 1);
   });
 }
+
+// --- O aviso "o cliente cancelou" NAO prende a fila de estornos (14/10/2026) --
+//
+// O passo que avisa o lojista roda ANTES da fila de `order_refunds`. Push
+// service que aceita a conexao e nao responde (o `fetch` do web-push nao tem
+// teto) deixava o handler parado nesse passo: nenhum estorno da loja rodava,
+// inclusive o do proprio pedido cancelado, e a reserva vencia em 2 min e a
+// rodada seguinte pendurava de novo. O passo INTEIRO corre contra um teto
+// (`comTempoLimite`); vencido o teto, a rotina segue direto para os estornos.
+const CLIENTE_DO_CANCELAMENTO = "c1111111-1111-4111-8111-111111111111";
+
+function comCancelamentoDoCliente(base: ReturnType<typeof clienteFalso>, pedido: Record<string, unknown>) {
+  const reservas = new Map<string, boolean>();
+  const historico = [{
+    id: "h1",
+    order_id: pedido.id,
+    old_status: "processing",
+    created_by: CLIENTE_DO_CANCELAMENTO,
+    created_at: new Date(Date.now() - 2 * 60000).toISOString(),
+  }];
+  const pedidoDoAviso = {
+    id: pedido.id,
+    user_id: CLIENTE_DO_CANCELAMENTO,
+    customer_name: "Maria Silva",
+    total: pedido.total,
+    total_amount: null,
+    payment_status: "pago",
+    status: "cancelled",
+    cancelled_after_shipping: false,
+  };
+  // Cadeia que ignora os filtros (eles tem teste proprio no modulo): o que
+  // este teste prende e o TEMPO, nao a selecao.
+  const cadeia = (dados: unknown[]) => {
+    const q = { eq: () => q, not: () => q, gte: () => q, order: () => q, limit: () => q };
+    return Object.assign(q, {
+      then: (res: (v: unknown) => void, rej?: (e: unknown) => void) =>
+        Promise.resolve({ data: dados, error: null }).then(res, rej),
+    });
+  };
+  return {
+    reservas,
+    rpc: async (nome: string, args?: Record<string, unknown>) => {
+      if (nome === "reservar_aviso_ao_lojista") {
+        const chave = String(args?.p_chave);
+        if (reservas.has(chave)) return { data: reservas.get(chave) ? "enviado" : "em_envio", error: null };
+        reservas.set(chave, false);
+        return { data: "reservado", error: null };
+      }
+      if (nome === "confirmar_aviso_ao_lojista") return reservas.set(String(args?.p_chave), true), { data: null, error: null };
+      if (nome === "liberar_aviso_ao_lojista") return reservas.delete(String(args?.p_chave)), { data: null, error: null };
+      return base.rpc(nome, args);
+    },
+    from(tabela: string) {
+      if (tabela === "marketplace_order_history") return { select: () => cadeia(historico) };
+      if (tabela === "profiles") return { select: () => ({ in: () => Promise.resolve({ data: [{ id: CLIENTE_DO_CANCELAMENTO, role: "customer" }], error: null }) }) };
+      if (tabela === "marketplace_orders") {
+        const original = base.from(tabela);
+        return {
+          ...original,
+          select: (colunas: string) =>
+            colunas.includes("user_id")
+              ? { in: () => Promise.resolve({ data: [pedidoDoAviso], error: null }) }
+              : original.select(colunas),
+        };
+      }
+      return base.from(tabela);
+    },
+  };
+}
+
+function cenarioDeCancelamentoComEstorno() {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 50 });
+  const base = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r1", order_id: pedido.id, amount: 50, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 999, status: "approved", amount: 50 } },
+  ]);
+  return { registro, supabase: comCancelamentoDoCliente(base, pedido), mp };
+}
+
+async function rodarSemPrender(args: Parameters<typeof handler>[1]) {
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  const pendurado = new Promise<"PENDURADO">((resolve) => {
+    temporizador = setTimeout(() => resolve("PENDURADO"), 3000);
+  });
+  const e0 = console.error, w0 = console.warn, l0 = console.log;
+  console.error = () => {};
+  console.warn = () => {};
+  console.log = () => {};
+  try {
+    return await Promise.race([handler(requisicaoComSegredo(SEGREDO), args), pendurado]);
+  } finally {
+    clearTimeout(temporizador);
+    console.error = e0;
+    console.warn = w0;
+    console.log = l0;
+  }
+}
+
+Deno.test("cancelamento do cliente: push que NUNCA responde NAO prende a fila de estornos - o estorno do proprio pedido cancelado sai", async () => {
+  const { registro, supabase, mp } = cenarioDeCancelamentoComEstorno();
+
+  const resposta = await rodarSemPrender({
+    supabase,
+    fetchImpl: mp.f,
+    enviarPushContado: () => new Promise(() => {}),
+    tetoDosCancelamentosMs: 50,
+  });
+
+  assertEquals(resposta === "PENDURADO", false, "o handler ficou preso no passo do aviso: a fila de estornos nunca foi lida");
+  const corpo = await resposta.json();
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  // O teto venceu: o passo nao contou nada (o push segue em voo, em segundo plano).
+  assertEquals(corpo.cancelamentos, { candidatos: 0, avisados: 0, ignorados: 0, falhas: 0 });
+});
+
+Deno.test("cancelamento do cliente: push que responde -> o lojista e avisado E o estorno sai na mesma rodada", async () => {
+  const { registro, supabase, mp } = cenarioDeCancelamentoComEstorno();
+  const pushes: Array<{ title: string }> = [];
+
+  const resposta = await rodarSemPrender({
+    supabase,
+    fetchImpl: mp.f,
+    enviarPushContado: ({ aviso }) => {
+      pushes.push(aviso);
+      return Promise.resolve(1);
+    },
+  });
+
+  assertEquals(resposta === "PENDURADO", false);
+  const corpo = await resposta.json();
+  assertEquals(pushes.map((p) => p.title), ["Cliente cancelou o pedido"]);
+  assertEquals(corpo.cancelamentos, { candidatos: 1, avisados: 1, ignorados: 0, falhas: 0 });
+  assertEquals(corpo.estornos.concluidos, 1);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});

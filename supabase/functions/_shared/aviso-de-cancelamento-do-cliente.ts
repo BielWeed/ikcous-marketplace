@@ -53,6 +53,15 @@ export type Aviso = { title: string; body: string; url: string };
 
 /** Quanto tempo depois do cancelamento a rotina ainda tenta avisar. */
 export const JANELA_HORAS = 24;
+/**
+ * Quanto a rotina ESPERA o passo inteiro (leituras + todos os pushes), em ms.
+ * O push service pode aceitar a conexao e nao responder, e o `fetch` do
+ * web-push nao tem teto: sem este limite o passo prenderia a fila de estornos
+ * que vem logo depois. Limite no passo todo, e nao por aviso, para o tempo
+ * total nao crescer com o numero de eventos. Passado o teto o passo segue em
+ * segundo plano (`comTempoLimite`) e a reserva do aviso expira sozinha.
+ */
+export const TETO_DO_PASSO_MS = 10000;
 /** Teto de linhas de histórico lidas por rodada (as mais recentes primeiro). */
 export const LIMITE_POR_RODADA = 100;
 
