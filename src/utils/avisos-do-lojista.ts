@@ -1,3 +1,4 @@
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type { View } from "@/types";
 
 /**
@@ -12,6 +13,7 @@ export const LIMIAR_PADRAO_DE_ESTOQUE = 5;
 
 export type TipoDeAviso =
   | "pedido"
+  | "cancelamento"
   | "devolucao"
   | "pergunta"
   | "avaliacao"
@@ -33,6 +35,114 @@ export interface PedidoPendente {
   total: number | null;
   created_at: string;
 }
+
+/**
+ * Um pedido que o CLIENTE cancelou depois de pagar (14/10/2026). Uma linha por
+ * EVENTO de cancelamento (`id` e o da linha do historico do pedido), nao por
+ * pedido: quem reativou e cancelou de novo gerou outro evento.
+ *
+ * `situacao` e o que o lojista precisa saber sobre o dinheiro, e cada valor
+ * tem a sua frase — nenhuma promete o que o banco nao faz:
+ *   - reembolso_automatico: pago e nao enviado, o banco abriu a devolucao e a
+ *     rotina de 10 minutos a faz sozinha;
+ *   - ja_saiu: o produto ja estava na rua; o reembolso e do lojista, depois
+ *     que o produto voltar;
+ *   - pago_depois: o pagamento entrou DEPOIS do cancelamento.
+ */
+export type SituacaoDoCancelamento =
+  | "reembolso_automatico"
+  | "ja_saiu"
+  | "pago_depois";
+
+export interface CancelamentoDoCliente {
+  id: string;
+  order_id: string;
+  customer_name: string | null;
+  total: number | null;
+  created_at: string;
+  situacao: SituacaoDoCancelamento;
+}
+
+/** Quanto tempo depois do cancelamento o aviso segue na tela (e no push). */
+export const JANELA_DE_CANCELAMENTO_HORAS = 24;
+
+/** O pedido embutido na linha do historico, so com o que a regra le. */
+interface PedidoDoCancelamento {
+  id: string;
+  user_id: string | null;
+  customer_name: string | null;
+  total: number | null;
+  payment_status: string | null;
+  status: string | null;
+  cancelled_after_shipping: boolean | null;
+}
+
+/** A linha de `marketplace_order_history` como a consulta da tela a devolve. */
+export interface LinhaDeCancelamento {
+  id: string;
+  order_id: string;
+  old_status: string | null;
+  created_by: string | null;
+  created_at: string;
+  marketplace_orders: PedidoDoCancelamento | PedidoDoCancelamento[] | null;
+}
+
+// `estornado` entra: a rotina pode ter devolvido o dinheiro antes de a tela
+// abrir, e o cancelamento continua tendo sido do cliente.
+const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado"];
+
+/**
+ * Das linhas de cancelamento do historico, fica so o que o CLIENTE cancelou:
+ * o autor da linha e o proprio dono do pedido, nao e admin (`admins`: os ids
+ * com papel admin entre os autores), nao e re-cancelamento, o pedido segue
+ * cancelado e o pagamento entrou. Mesma regra do push da rotina de 10 minutos.
+ *
+ * Autor ausente de `admins` conta como nao-admin: so admin tem papel para
+ * cancelar pedido de OUTRA pessoa, e o dono so cancela o que e dele.
+ */
+export function selecionarCancelamentosDoCliente(
+  linhas: readonly LinhaDeCancelamento[],
+  admins: ReadonlySet<string>,
+): CancelamentoDoCliente[] {
+  const escolhidos: CancelamentoDoCliente[] = [];
+  for (const linha of linhas) {
+    const bruto = linha.marketplace_orders;
+    const pedido = Array.isArray(bruto) ? bruto[0] : bruto;
+    if (!pedido || !linha.created_by) continue;
+    if (linha.old_status === "cancelled") continue;
+    if (linha.created_by !== pedido.user_id) continue;
+    if (admins.has(linha.created_by)) continue;
+    if (pedido.status !== "cancelled") continue;
+    if (
+      !pedido.payment_status ||
+      !PAGAMENTO_QUE_ENTROU.includes(pedido.payment_status)
+    ) {
+      continue;
+    }
+    const jaSaiu =
+      linha.old_status === "shipping" ||
+      pedido.cancelled_after_shipping === true;
+    escolhidos.push({
+      id: linha.id,
+      order_id: linha.order_id,
+      customer_name: pedido.customer_name,
+      total: pedido.total,
+      created_at: linha.created_at,
+      situacao: jaSaiu
+        ? "ja_saiu"
+        : pedido.payment_status === "pago_apos_expirar"
+          ? "pago_depois"
+          : "reembolso_automatico",
+    });
+  }
+  return escolhidos;
+}
+
+const FRASE_DO_DINHEIRO: Record<SituacaoDoCancelamento, string> = {
+  reembolso_automatico: "pago, o reembolso é automático",
+  ja_saiu: "pago, o produto já saiu: avise o transporte",
+  pago_depois: "pago depois do cancelamento: confira o pedido",
+};
 
 export interface AvaliacaoSemResposta {
   id: string;
@@ -60,6 +170,12 @@ export interface EntradaDeAvisos {
    * `solicitada`). Opcional: ausente = a fonte não entrou nesta rodada.
    */
   devolucoesSolicitadas?: number;
+  /**
+   * Pedidos que o cliente cancelou depois de pagar, nas ultimas 24 h (ja
+   * filtrados por `selecionarCancelamentosDoCliente`). Opcional: ausente = a
+   * fonte nao entrou nesta rodada.
+   */
+  cancelamentosDoCliente?: CancelamentoDoCliente[];
 }
 
 /**
@@ -78,6 +194,9 @@ export function precisaDeReposicao(
 // correndo (CDC art. 26 §2º I — a reclamação suspende o prazo até a resposta).
 const ORDEM_DE_URGENCIA: TipoDeAviso[] = [
   "pedido",
+  // Cancelamento logo depois do pedido: e o que impede o lojista de despachar
+  // produto cujo dinheiro ja voltou.
+  "cancelamento",
   "devolucao",
   "pergunta",
   "avaliacao",
@@ -104,6 +223,23 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       quando: pedido.created_at,
       destino: { view: "admin-orders", id: pedido.id },
       contaNoCracha: true,
+    });
+  }
+
+  for (const cancelamento of entrada.cancelamentosDoCliente ?? []) {
+    const nome = (cancelamento.customer_name ?? "").trim() || "Cliente";
+    avisos.push({
+      id: `cancelamento:${cancelamento.id}`,
+      tipo: "cancelamento",
+      titulo: `${nome} cancelou o pedido #${numeroDoPedido(cancelamento.order_id)}`,
+      detalhe: `${formatarReais(cancelamento.total)} — ${FRASE_DO_DINHEIRO[cancelamento.situacao]}`,
+      quando: cancelamento.created_at,
+      destino: { view: "admin-orders", id: cancelamento.order_id },
+      // NAO conta no cracha, como o estoque: o aviso nao tem "feito" que o
+      // faca sumir (fica ate a janela de 24 h acabar), e bolinha que nao zera
+      // por ato do lojista e bolinha que se para de olhar. Quem chama a
+      // atencao na hora e o push da rotina de 10 minutos.
+      contaNoCracha: false,
     });
   }
 

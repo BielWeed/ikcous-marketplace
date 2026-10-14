@@ -315,3 +315,67 @@ describe("AvisoCard — desenho de botão-linha novo (10/10/2026)", () => {
     expect(texto?.className).not.toMatch(/text-zinc-[567]00/);
   });
 });
+
+// O lojista fica sabendo quando o CLIENTE cancela (14/10/2026): o tipo novo
+// no sino. Antes, o `Record<TipoDeAviso, ...>` da tela nem compilava com ele.
+describe("AdminNotificationsView — cancelamento do cliente", () => {
+  const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
+  const AVISO_DE_CANCELAMENTO: Aviso = {
+    id: "cancelamento:h1",
+    tipo: "cancelamento",
+    titulo: "Maria Silva cancelou o pedido #4F5A6B",
+    detalhe: "R$ 149,90 — pago, o reembolso é automático",
+    quando: "2026-10-14T11:57:00.000Z",
+    destino: { view: "admin-orders", id: PEDIDO },
+    contaNoCracha: false,
+  };
+
+  it("o cancelamento aparece no sino com o rotulo 'Cancelado', o titulo e a frase do dinheiro", async () => {
+    AVISOS = [AVISO_DE_CANCELAMENTO];
+
+    await montar();
+
+    const linhas = todosOsAvisos();
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].getAttribute("data-aviso")).toBe("cancelamento");
+    expect(linhas[0].textContent).toContain("Cancelado");
+    expect(linhas[0].textContent).toContain(
+      "Maria Silva cancelou o pedido #4F5A6B",
+    );
+    expect(linhas[0].textContent).toContain("pago, o reembolso é automático");
+  });
+
+  it("clicar leva ao PEDIDO cancelado, com o id", async () => {
+    AVISOS = [AVISO_DE_CANCELAMENTO];
+
+    await montar();
+    clicarNoAvisoDoTipo("cancelamento");
+
+    expect(onNavigate).toHaveBeenCalledWith("admin-orders", PEDIDO);
+  });
+
+  it("fica no bloco 'De olho' (nao conta no sino), nao em 'Precisa de voce'", async () => {
+    AVISOS = [AVISO_DE_PEDIDO, AVISO_DE_CANCELAMENTO];
+
+    await montar();
+
+    expect(
+      avisosDoBloco("precisa-de-voce").map((no) =>
+        no.getAttribute("data-aviso"),
+      ),
+    ).toEqual(["pedido"]);
+    expect(
+      avisosDoBloco("de-olho").map((no) => no.getAttribute("data-aviso")),
+    ).toEqual(["cancelamento"]);
+  });
+
+  it("fonte de cancelamento fora do ar: o recado cita 'cancelamentos de clientes' e a tela nao diz 'Tudo em dia'", async () => {
+    FONTES_COM_FALHA = ["cancelamento"];
+    AVISOS = [];
+
+    const raizDom = await montar();
+
+    expect(raizDom.textContent).toContain("cancelamentos de clientes");
+    expect(raizDom.textContent).not.toContain("Tudo em dia");
+  });
+});

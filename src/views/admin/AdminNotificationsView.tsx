@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   Star,
   TriangleAlert,
+  XCircle,
 } from "lucide-react";
 import { memo } from "react";
 
@@ -34,6 +35,11 @@ const APARENCIA: Record<
     Icone: ShoppingBag,
     cor: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
     rotulo: "Pedido",
+  },
+  cancelamento: {
+    Icone: XCircle,
+    cor: "border-rose-500/20 bg-rose-500/10 text-rose-400",
+    rotulo: "Cancelado",
   },
   devolucao: {
     Icone: RotateCcw,
@@ -60,6 +66,7 @@ const APARENCIA: Record<
 /** Como cada fonte que caiu e chamada no recado de falha parcial. */
 const NOME_DA_FONTE = new Map<TipoDeAviso, string>([
   ["pedido", "pedidos"],
+  ["cancelamento", "cancelamentos de clientes"],
   ["devolucao", "devoluções"],
   ["pergunta", "perguntas"],
   ["avaliacao", "avaliações"],
