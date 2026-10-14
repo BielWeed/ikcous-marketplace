@@ -441,6 +441,64 @@ Deno.test("lote não perde nem embaralha inscrição", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Urgência e TTL no fio (RFC 8030) — aviso ao lojista × campanha para clientes
+// ---------------------------------------------------------------------------
+
+Deno.test("campanha para clientes (sem opções) segue como sempre: Urgency normal e TTL de 28 dias", async () => {
+  // `send-push` chama `enviarParaInscritos` SEM `opcoesDeEnvio`. Este teste
+  // trava o comportamento da campanha: a urgência alta do aviso ao lojista não
+  // pode vazar para a promoção que vai a milhares de clientes.
+  const service = pushServiceFalso({ "/p/ok": 201 });
+  try {
+    const servidor = await servidorDeAplicacao();
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes: [await inscricaoDeTeste(`${service.base}/p/ok`)],
+      mensagem: "{}",
+    });
+
+    assertEquals(itens[0].ok, true);
+    assertEquals(service.recebidas[0].headers.get("urgency"), "normal");
+    assertEquals(service.recebidas[0].headers.get("ttl"), "2419200");
+  } finally {
+    await service.encerrar();
+  }
+});
+
+Deno.test("opcoesDeEnvio chega ao push service como cabeçalhos Urgency e TTL; 410 continua apagando", async () => {
+  const service = pushServiceFalso({ "/p/ok": 201, "/p/morta": 410 });
+  const apagadas: string[] = [];
+  try {
+    const servidor = await servidorDeAplicacao();
+    const inscricoes = [
+      await inscricaoDeTeste(`${service.base}/p/ok`),
+      await inscricaoDeTeste(`${service.base}/p/morta`),
+    ];
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes,
+      mensagem: "{}",
+      opcoesDeEnvio: { urgency: webpush.Urgency.High, ttl: 3600 },
+      aoDetectarMorta: (endpoint: string) => {
+        apagadas.push(endpoint);
+        return Promise.resolve();
+      },
+    });
+
+    assertEquals(itens.map((i: any) => i.ok), [true, false]);
+    assertEquals(itens[1].status, 410);
+    assertEquals(apagadas, [inscricoes[1].endpoint]);
+    for (const recebida of service.recebidas) {
+      assertEquals(recebida.headers.get("urgency"), "high");
+      assertEquals(recebida.headers.get("ttl"), "3600");
+    }
+    assertEquals(service.recebidas.length, 2);
+  } finally {
+    await service.encerrar();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Paginação e orçamento de tempo (index-133)
 //
 // Sem isto, o broadcast fazia um `select('*')` sem `.limit()` e mandava TODOS

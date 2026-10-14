@@ -168,6 +168,7 @@ import {
   comTempoLimite,
   dispararSemEsperarCliente,
   enviarParaInscritos,
+  OPCOES_DE_ALERTA_SEM_REGISTRO,
   readKey,
   resumir,
 } from "../_shared/webpush.ts";
@@ -1569,6 +1570,8 @@ async function alertarAdminCartaoOrfaoReal(args: {
       inscricoes,
       mensagem: JSON.stringify(aviso),
       rotulo: "criar-pagamento",
+      // Urgência alta (TTL continua o padrão: é o único sinal desta cobrança).
+      opcoesDeEnvio: OPCOES_DE_ALERTA_SEM_REGISTRO,
       aoDetectarMorta: (endpoint: string) =>
         supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),
     });
@@ -4453,4 +4456,6 @@ const emTeste =
 // :124-135 sobre o segundo argumento (ConnInfo) que o serve() passaria.
 if (!emTeste) serve((req) => handler(req));
 
-export { handler };
+// `alertarAdminCartaoOrfaoReal` sai junto só para o teste de urgência do aviso
+// (`alerta-orfao_test.ts`) provar o que vai no fio sem montar o checkout inteiro.
+export { alertarAdminCartaoOrfaoReal, handler };

@@ -316,10 +316,51 @@ export function resumir(itens: any[]) {
 }
 
 /**
+ * URGÊNCIA E VALIDADE DO PUSH (RFC 8030, cabeçalhos `Urgency` e `TTL`).
+ *
+ * `pushTextMessage(mensagem, {})` — o que `enviarParaInscritos` sempre fez —
+ * deixa a biblioteca (`@negrel/webpush@0.3.0`, `subscriber.ts`) assumir
+ * `Urgency: normal` e `TTL: 2419200` (28 dias). Num Android em economia de
+ * bateria (Doze), aviso `normal` pode esperar o aparelho "acordar" — o
+ * lojista via o "Pedido novo" horas depois. `high` manda o serviço de push
+ * (FCM, Mozilla autopush, Apple) entregar na hora: o valor é o do RFC,
+ * aceito por todos, e serviço que não o honra apenas o ignora.
+ *
+ * Dois conjuntos, porque dois tipos de aviso ao lojista pedem coisas
+ * diferentes quando o aparelho está fora do ar:
+ *
+ * - `OPCOES_DE_AVISO_AO_LOJISTA` (urgência alta + TTL de 12 horas): pedido
+ *   novo, pedido pago, cancelamento, contestação. O pedido existe no painel,
+ *   então perder o aviso custa pouco; já um aparelho que ficou desligado
+ *   dias e acorda despejando "Pedido novo" de uma venda que já foi atendida
+ *   atrapalha. 12 h cobre a noite e o dia seguinte; depois disso o painel é a
+ *   fonte.
+ * - `OPCOES_DE_ALERTA_SEM_REGISTRO` (só urgência alta, TTL padrão): cartão
+ *   órfão — cobrança no Mercado Pago sem NENHUMA linha no banco. O push é o
+ *   único sinal que existe, então ele NÃO expira cedo: tarde é melhor que
+ *   nunca.
+ *
+ * A campanha para clientes (`send-push`) não passa nada: continua `normal` /
+ * 28 dias, como sempre.
+ */
+export const OPCOES_DE_ALERTA_SEM_REGISTRO = {
+  urgency: webpush.Urgency.High,
+} as const;
+
+export const OPCOES_DE_AVISO_AO_LOJISTA = {
+  urgency: webpush.Urgency.High,
+  ttl: 12 * 60 * 60,
+} as const;
+
+/**
  * Envia em lotes de 100 e devolve UM item por inscrição, na ordem de entrada.
  *
  * `aoDetectarMorta` é injetado para o teste conseguir observar a remoção sem
  * banco. Em produção é o DELETE em push_subscriptions.
+ *
+ * `opcoesDeEnvio` ({ urgency, ttl, topic }) vai direto para `pushTextMessage`.
+ * Ausente, o envio é byte a byte o de antes (`{}`: urgência normal, TTL de 28
+ * dias) — é o caso da campanha para clientes. Ver `OPCOES_DE_AVISO_AO_LOJISTA`.
  */
 export async function enviarParaInscritos({
   servidor,
@@ -328,6 +369,7 @@ export async function enviarParaInscritos({
   aoDetectarMorta,
   tamanhoDoLote = 100,
   rotulo = "push",
+  opcoesDeEnvio = {},
 }: any) {
   const itens: any[] = [];
 
@@ -346,7 +388,7 @@ export async function enviarParaInscritos({
               endpoint: sub.endpoint,
               keys: { p256dh: sub.p256dh, auth: sub.auth },
             })
-            .pushTextMessage(mensagem, {});
+            .pushTextMessage(mensagem, opcoesDeEnvio);
           return { sub, erro: null };
         } catch (erro) {
           return { sub, erro };
