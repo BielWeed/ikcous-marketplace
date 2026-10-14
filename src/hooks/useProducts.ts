@@ -2004,6 +2004,15 @@ export function useProducts({ autoFetch = true } = {}) {
     [isAdmin, refreshContext, backupStorageFile],
   );
 
+  /**
+   * Apaga as variações UMA POR VEZ: o banco recusa apagar a que já está num
+   * pedido (23503), e num DELETE em lote essa uma seguraria todas as que podiam
+   * sair. A tela é recarregada UMA vez e há UM aviso, no fim.
+   *
+   * Se alguma foi recusada, o erro lançado é o da primeira recusa (com o
+   * `code` do Postgres) e leva `recusadas`: os ids que ficaram no banco. Quem
+   * chama (o formulário) decide o que fazer com elas.
+   */
   const deleteVariants = useCallback(
     async (ids: string[]) => {
       if (!isAdmin) {
@@ -2013,25 +2022,41 @@ export function useProducts({ autoFetch = true } = {}) {
       try {
         const { data: variants } = (await supabase
           .from("product_variants")
-          .select("image_url" as any)
+          .select("id, image_url" as any)
           .in("id", ids)) as any;
 
-        const { error } = await supabase
-          .from("product_variants")
-          .delete()
-          .in("id", ids);
-
-        if (error) throw error;
+        const recusadas: string[] = [];
+        const apagadas: string[] = [];
+        let primeiraRecusa: unknown = null;
+        for (const id of ids) {
+          const { error } = await supabase
+            .from("product_variants")
+            .delete()
+            .eq("id", id);
+          if (error) {
+            if (primeiraRecusa === null) primeiraRecusa = error;
+            recusadas.push(id);
+          } else {
+            apagadas.push(id);
+          }
+        }
 
         if (variants && variants.length > 0) {
           for (const v of variants) {
-            if (v.image_url) {
+            if (v.image_url && apagadas.includes(v.id)) {
               await backupStorageFile(v.image_url);
             }
           }
         }
 
-        await refreshContext();
+        // As que saíram de verdade precisam sumir da tela, mesmo que outra
+        // tenha sido recusada.
+        if (apagadas.length > 0) await refreshContext();
+
+        if (recusadas.length > 0) {
+          throw Object.assign(primeiraRecusa as object, { recusadas });
+        }
+
         toast.success("Variantes removidas");
         return true;
       } catch (err) {

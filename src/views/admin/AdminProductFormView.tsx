@@ -42,7 +42,7 @@ import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { cn } from "@/lib/utils";
-import type { ProductVariant, View } from "@/types";
+import type { Product, ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
   estoqueDoProdutoFoiMexido,
@@ -344,6 +344,39 @@ interface ProductFormFields {
   lengthCm: string;
 }
 
+/**
+ * Os campos do formulário a partir do produto como o banco o devolveu. É o que
+ * a abertura da edição usa — e o que o salvar usa para RELER o banco quando um
+ * salvar termina pela metade (ver `naoApagadas` em `handleSubmit`).
+ */
+function camposDoFormularioDoProduto(product: Product): ProductFormFields {
+  return {
+    name: product.name,
+    description: product.description,
+    price: product.price.toString(),
+    costPrice: product.costPrice?.toString() || "",
+    originalPrice: product.originalPrice?.toString() || "",
+    stock: product.stock.toString(),
+    // Zero é escolha da lojista: só `null`/ausente vira campo vazio.
+    estoqueMinimo:
+      product.estoqueMinimo == null ? "" : String(product.estoqueMinimo),
+    category: product.category,
+    images: product.images,
+    freeShipping: product.freeShipping,
+    isBestseller: product.isBestseller,
+    isActive: product.isActive,
+    metaTitle: product.metaTitle || "",
+    metaDescription: product.metaDescription || "",
+    sku: product.sku || "",
+    codigoBarras: product.codigoBarras || "",
+    variants: product.variants || [],
+    weightKg: product.weightKg?.toString() || "",
+    widthCm: product.widthCm?.toString() || "",
+    heightCm: product.heightCm?.toString() || "",
+    lengthCm: product.lengthCm?.toString() || "",
+  };
+}
+
 // 2147483647 é o maior número que a coluna (inteiro de 32 bits) guarda. O
 // teto continua valendo, mas a tela não mostra esse número (onda J): são
 // duas mensagens, uma para o que não é inteiro e outra para o grande demais.
@@ -514,6 +547,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  // Um salvar terminou pela metade COM variação nova já gravada e a releitura
+  // do banco falhou: o formulário ainda guarda o id provisório (`temp-…`) dela,
+  // e salvar de novo a inseriria outra vez. Só recarregar a tela resolve.
+  const [precisaRecarregar, setPrecisaRecarregar] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
   const [showVariantForm, setShowVariantForm] = useState(false);
   // Grade de combinações: o modal de lote ao lado do unitário.
@@ -825,33 +862,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           return;
         }
         if (product) {
-          const productFields = {
-            name: product.name,
-            description: product.description,
-            price: product.price.toString(),
-            costPrice: product.costPrice?.toString() || "",
-            originalPrice: product.originalPrice?.toString() || "",
-            stock: product.stock.toString(),
-            // Zero é escolha da lojista: só `null`/ausente vira campo vazio.
-            estoqueMinimo:
-              product.estoqueMinimo == null
-                ? ""
-                : String(product.estoqueMinimo),
-            category: product.category,
-            images: product.images,
-            freeShipping: product.freeShipping,
-            isBestseller: product.isBestseller,
-            isActive: product.isActive,
-            metaTitle: product.metaTitle || "",
-            metaDescription: product.metaDescription || "",
-            sku: product.sku || "",
-            codigoBarras: product.codigoBarras || "",
-            variants: product.variants || [],
-            weightKg: product.weightKg?.toString() || "",
-            widthCm: product.widthCm?.toString() || "",
-            heightCm: product.heightCm?.toString() || "",
-            lengthCm: product.lengthCm?.toString() || "",
-          };
+          const productFields = camposDoFormularioDoProduto(product);
           setFormData(productFields);
           setInitialData(productFields);
           setIsPromoActive(!!product.originalPrice);
@@ -1345,6 +1356,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // Produto novo já criado (grade não gravou): o rascunho já foi para a
       // chave de edição dele, e esta chave NÃO pode ser recriada.
       if (!productId && produtoNovoJaCriadoRef.current) return;
+      // Formulário com id provisório já gravado: um rascunho dele restauraria
+      // a variação em dobro.
+      if (precisaRecarregar) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       if (isDirty && draftKey) {
@@ -1353,7 +1367,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [formData, initialData, productId, isLoading, draftChecked, userId]);
+  }, [
+    formData,
+    initialData,
+    productId,
+    isLoading,
+    draftChecked,
+    userId,
+    precisaRecarregar,
+  ]);
 
   const processAndUploadImages = useCallback(
     async (files: File[]) => {
@@ -1850,7 +1872,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // sucesso e a navegação (1,5s) `isSubmitting` já voltou a false mas o
     // botão ainda mostra "Salvo" — sem checar showSuccess aqui, um segundo
     // clique nessa janela reentrava e criava um produto duplicado.
-    if (isSubmitting || showSuccess) return;
+    if (isSubmitting || showSuccess || precisaRecarregar) return;
     if (isOffline) {
       toast.error("Não é possível salvar alterações em modo offline.");
       return;
@@ -2061,18 +2083,22 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // lote só a vendida seguraria as que podiam sair. A recusa não pode
         // impedir o passo 3: o produto já foi gravado e perder aqui o estoque e
         // o preço das outras variações era o salvar pela metade.
-        const naoApagadas: string[] = [];
-        for (const idDaVariacao of deletedVariantIds) {
+        let naoApagadas: string[] = [];
+        if (deletedVariantIds.length > 0) {
           try {
-            await deleteVariants([idDaVariacao]);
+            await deleteVariants(deletedVariantIds);
           } catch (erroAoApagar) {
-            // O hook já avisou o motivo (toast); aqui só guardamos qual ficou.
+            // O hook já avisou o motivo (toast) e diz quais ficaram no banco
+            // (`recusadas`); sem essa lista, nenhuma pode ser dada como apagada.
             console.warn(
               "[AdminProductFormView] Variação não apagada:",
-              idDaVariacao,
               erroAoApagar,
             );
-            naoApagadas.push(idDaVariacao);
+            const recusadas = (erroAoApagar as { recusadas?: unknown })
+              ?.recusadas;
+            naoApagadas = Array.isArray(recusadas)
+              ? recusadas.map(String)
+              : [...deletedVariantIds];
           }
         }
         let formAposRecusas = formData;
@@ -2115,9 +2141,36 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // qual, e NÃO sair para a lista como se tudo tivesse dado certo. O
         // formulário passa a ser o que está no banco (recusadas de volta).
         if (naoApagadas.length > 0) {
-          setInitialData(formAposRecusas);
           const chaveDoRascunho = chaveDoRascunhoDoProduto(userId, productId);
           if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
+          // A variação NOVA deste salvar já foi inserida e ganhou id de
+          // verdade, mas o formulário ainda a guarda com o id provisório
+          // (`temp-…`): um segundo Salvar a inseriria de novo (duas linhas no
+          // banco, o dobro à venda). Por isso o formulário RELÊ o banco.
+          let doBanco: Product | null = null;
+          try {
+            doBanco = await fetchProduct(productId);
+          } catch (erroDaReleitura) {
+            console.warn(
+              "[AdminProductFormView] Não consegui reler o produto:",
+              erroDaReleitura,
+            );
+          }
+          if (doBanco) {
+            const campos = camposDoFormularioDoProduto(doBanco);
+            setFormData(campos);
+            setInitialData(campos);
+            setCurrentProduct(doBanco);
+            setIsPromoActive(!!doBanco.originalPrice);
+          } else if (formData.variants.some((v) => v.id.startsWith("temp-"))) {
+            setPrecisaRecarregar(true);
+            toast.error(
+              "As variações novas já foram gravadas, mas não consegui reler o produto. Recarregue a tela antes de salvar de novo: salvar agora repetiria essas variações.",
+              { duration: 30000 },
+            );
+          } else {
+            setInitialData(formAposRecusas);
+          }
           const quais =
             devolvidas.length > 0
               ? devolvidas.map((v) => `${v.name}: ${v.value}`).join(", ")
@@ -2285,7 +2338,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             !!productId,
           );
   const botaoDeSalvarDesligado =
-    isSubmitting || showSuccess || isOffline || motivoDoBloqueio !== null;
+    isSubmitting ||
+    showSuccess ||
+    precisaRecarregar ||
+    isOffline ||
+    motivoDoBloqueio !== null;
 
   // B3 da 2a revisao: produto pediu para editar mas nao carregou —
   // formulario vazio editavel e armadilha (save destrutivo). Erro na tela.

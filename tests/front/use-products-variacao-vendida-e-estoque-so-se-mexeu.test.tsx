@@ -31,7 +31,9 @@ const mock = vi.hoisted(() => ({
   toastError: vi.fn(),
   fetchProductsContext: vi.fn().mockResolvedValue(undefined),
   ordem: [] as Chamada[],
-  resultadoDelete: { error: null } as { error: any },
+  // id -> erro que o banco devolve ao apagar aquela variação (ausente = apaga).
+  recusadas: new Map<string, any>(),
+  apagadas: [] as string[],
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -74,7 +76,20 @@ vi.mock("@/lib/supabase", () => ({
           return Promise.resolve({ error: null });
         },
         select: () => ({ in: () => Promise.resolve({ data: [] }) }),
-        delete: () => ({ in: () => Promise.resolve(mock.resultadoDelete) }),
+        delete: () => ({
+          // Um DELETE em lote (`in`) é atômico no Postgres: uma recusada segura
+          // o lote inteiro e nenhuma sai.
+          in: (_coluna: string, ids: string[]) => {
+            const erro = ids.map((id) => mock.recusadas.get(id)).find(Boolean);
+            if (!erro) mock.apagadas.push(...ids);
+            return Promise.resolve({ error: erro ?? null });
+          },
+          eq: (_coluna: string, id: string) => {
+            const erro = mock.recusadas.get(id);
+            if (!erro) mock.apagadas.push(id);
+            return Promise.resolve({ error: erro ?? null });
+          },
+        }),
       };
     },
     auth: { refreshSession: vi.fn() },
@@ -172,7 +187,8 @@ describe("useProducts — apagar variação vendida e gravar estoque só do que 
     vi.clearAllMocks();
     mock.fetchProductsContext.mockResolvedValue(undefined);
     mock.ordem.length = 0;
-    mock.resultadoDelete = { error: null };
+    mock.recusadas.clear();
+    mock.apagadas.length = 0;
     apiRef = undefined;
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
@@ -203,7 +219,7 @@ describe("useProducts — apagar variação vendida e gravar estoque só do que 
 
   it("deleteVariants: recusa de variação vendida avisa com a frase de vendas e devolve o erro (quem chama decide o que fazer)", async () => {
     await montar();
-    mock.resultadoDelete = { error: ERRO_VARIACAO_VENDIDA };
+    mock.recusadas = new Map(Object.entries({ "v-1": ERRO_VARIACAO_VENDIDA }));
 
     let erroCapturado: any;
     await act(async () => {
@@ -217,6 +233,65 @@ describe("useProducts — apagar variação vendida e gravar estoque só do que 
     expect(erroCapturado?.code).toBe("23503");
     expect(mock.toastError).toHaveBeenCalledTimes(1);
     expect(mock.toastError.mock.calls[0][0]).toMatch(/já tem vendas/i);
+  });
+
+  it("deleteVariants: lote só com sucesso faz UMA recarga e UM aviso, e apaga todas", async () => {
+    await montar();
+
+    await act(async () => {
+      await apiRef!.deleteVariants(["v-1", "v-2", "v-3"]);
+    });
+
+    expect(mock.apagadas).toEqual(["v-1", "v-2", "v-3"]);
+    expect(mock.fetchProductsContext).toHaveBeenCalledTimes(1);
+    expect(mock.toastSuccess).toHaveBeenCalledTimes(1);
+    expect(mock.toastError).not.toHaveBeenCalled();
+  });
+
+  it("deleteVariants: a vendida não segura as outras — as demais saem, UMA recarga, UM aviso (o de erro), e o erro diz quais ficaram", async () => {
+    await montar();
+    mock.recusadas = new Map(Object.entries({ "v-2": ERRO_VARIACAO_VENDIDA }));
+
+    let erroCapturado: any;
+    await act(async () => {
+      try {
+        await apiRef!.deleteVariants(["v-1", "v-2", "v-3"]);
+      } catch (err) {
+        erroCapturado = err;
+      }
+    });
+
+    expect(mock.apagadas).toEqual(["v-1", "v-3"]);
+    expect(erroCapturado?.recusadas).toEqual(["v-2"]);
+    expect(erroCapturado?.code).toBe("23503");
+    // As que saíram de verdade precisam aparecer na tela: uma recarga só.
+    expect(mock.fetchProductsContext).toHaveBeenCalledTimes(1);
+    expect(mock.toastSuccess).not.toHaveBeenCalled();
+    expect(mock.toastError).toHaveBeenCalledTimes(1);
+    expect(mock.toastError.mock.calls[0][0]).toMatch(/já tem vendas/i);
+  });
+
+  it("deleteVariants: se NENHUMA saiu, não há o que recarregar", async () => {
+    await montar();
+    mock.recusadas = new Map(
+      Object.entries({
+        "v-1": ERRO_VARIACAO_VENDIDA,
+        "v-2": ERRO_VARIACAO_VENDIDA,
+      }),
+    );
+
+    let erroCapturado: any;
+    await act(async () => {
+      try {
+        await apiRef!.deleteVariants(["v-1", "v-2"]);
+      } catch (err) {
+        erroCapturado = err;
+      }
+    });
+
+    expect(erroCapturado?.recusadas).toEqual(["v-1", "v-2"]);
+    expect(mock.fetchProductsContext).not.toHaveBeenCalled();
+    expect(mock.toastError).toHaveBeenCalledTimes(1);
   });
 
   it("upsertVariants: variação existente SEM `stockIncrement` vai SEM a coluna stock_increment (nem null, nem o número velho)", async () => {

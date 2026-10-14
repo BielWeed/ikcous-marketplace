@@ -14,7 +14,8 @@
 //  - a variação recusada VOLTA para a lista (senão a frase "desative-a" não teria
 //    onde ser aplicada) e o formulário não finge sucesso (não sai para a lista);
 //  - a lojista lê QUAL variação ficou e o que fazer (desligar em vez de excluir);
-//  - cada variação é apagada sozinha: a vendida não segura as que podem sair;
+//  - a vendida não segura as que podem sair (o hook apaga uma por vez e diz
+//    quais o banco recusou);
 //  - um novo "Salvar" não tenta apagar de novo a que já foi recusada.
 //
 // Mesmo padrão de admin-product-form-desligar-e-religar-variacao-na-linha.
@@ -277,17 +278,20 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     ]);
     await excluirDaTela("Azul");
     await excluirDaTela("Verde");
-    deleteVariants.mockImplementation(async (ids: string[]) => {
-      if (ids.includes("v2")) throw ERRO_VENDIDA;
-      return true;
+    // O hook apaga uma por vez e devolve quais o banco recusou (`recusadas`).
+    deleteVariants.mockRejectedValueOnce({
+      ...ERRO_VENDIDA,
+      recusadas: ["v2"],
     });
+    // O banco depois do salvar: a Verde saiu, a Azul (vendida) ficou.
+    fetchProduct.mockResolvedValue(
+      produtoDoBanco([variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)]),
+    );
 
     await salvar();
 
-    expect(deleteVariants.mock.calls.map((c) => c[0])).toEqual([
-      ["v2"],
-      ["v3"],
-    ]);
+    expect(deleteVariants).toHaveBeenCalledTimes(1);
+    expect(deleteVariants).toHaveBeenCalledWith(["v2", "v3"]);
     // Só a vendida volta; a Verde foi embora de verdade.
     expect(linhasNaTela().some((l) => l.includes("Azul"))).toBe(true);
     expect(linhasNaTela().some((l) => l.includes("Verde"))).toBe(false);
@@ -336,5 +340,126 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
       undefined,
       true,
     );
+  });
+  // ---- A variação NOVA gravada no mesmo Salvar da recusa --------------------
+  //
+  // A lojista exclui "Azul" (já vendeu) e cria "Verde" no mesmo Salvar. O banco
+  // recusa a Azul, mas a Verde é INSERIDA e ganha id de verdade. Se o formulário
+  // seguir com o id provisório `temp-…`, o Salvar seguinte (ex.: desligar a
+  // Azul) insere a Verde DE NOVO: duas linhas no banco, o dobro à venda. Por
+  // isso, depois da recusa o formulário relê o produto do banco.
+
+  const produtoDoBanco = (variants: unknown[]) => ({
+    id: "p-1",
+    name: "Camiseta",
+    description: "Algodão",
+    price: 50,
+    stock: 10,
+    sold: 3,
+    category: "Geral",
+    images: [],
+    freeShipping: false,
+    isBestseller: false,
+    isActive: true,
+    variants,
+  });
+
+  async function criarVariacaoNova(valor: string, estoque: string) {
+    const novo = [...document.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("+ Novo"),
+    ) as HTMLButtonElement | undefined;
+    if (!novo) throw new Error("O botão + Novo não está na tela.");
+    await act(async () => {
+      novo.click();
+    });
+    await digitarCampo("variant-name", "Cor");
+    await digitarCampo("variant-value", valor);
+    await digitarCampo("variant-stock", estoque);
+    const confirmar = botaoPorTexto("Salvar variação");
+    if (!confirmar)
+      throw new Error("O botão Salvar variação não está na tela.");
+    await act(async () => {
+      confirmar.click();
+    });
+  }
+
+  it("Salvar de novo depois da recusa NÃO insere a variação nova outra vez: o formulário relê o banco e troca o id provisório pelo real", async () => {
+    await montarProduto([variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)]);
+    await excluirDaTela("Azul");
+    await criarVariacaoNova("Verde", "4");
+    deleteVariants.mockRejectedValueOnce(ERRO_VENDIDA);
+    // O que o banco tem depois do primeiro Salvar: a Verde já existe, com id real.
+    fetchProduct.mockResolvedValue(
+      produtoDoBanco([
+        variacao("v1", "Rosa", 3),
+        variacao("v2", "Azul", 2),
+        variacao("v-verde-real", "Verde", 4),
+      ]),
+    );
+
+    await salvar();
+
+    const primeiroLote = upsertVariants.mock.calls[0][1] as Array<{
+      id: string;
+      value: string;
+    }>;
+    expect(primeiroLote.some((v) => v.id.startsWith("temp-"))).toBe(true);
+
+    // A lojista desliga a Azul (a saída que o aviso indicou) e salva de novo.
+    await act(async () => {
+      (
+        document.querySelector(
+          '[aria-label="Desligar variação Azul"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    await salvar();
+
+    expect(upsertVariants).toHaveBeenCalledTimes(2);
+    const segundoLote = upsertVariants.mock.calls[1][1] as Array<{
+      id: string;
+      value: string;
+      active: boolean;
+    }>;
+    // Nenhuma linha com id provisório: nada vai ser inserido de novo.
+    expect(segundoLote.filter((v) => v.id.startsWith("temp-"))).toEqual([]);
+    const verdes = segundoLote.filter((v) => v.value === "Verde");
+    expect(verdes.map((v) => v.id)).toEqual(["v-verde-real"]);
+    expect(segundoLote.find((v) => v.id === "v2")?.active).toBe(false);
+  });
+
+  it("se a releitura do banco falhar com variação nova já gravada, o formulário NÃO deixa salvar de novo e manda recarregar a tela", async () => {
+    await montarProduto([variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)]);
+    await excluirDaTela("Azul");
+    await criarVariacaoNova("Verde", "4");
+    deleteVariants.mockRejectedValueOnce(ERRO_VENDIDA);
+    fetchProduct.mockRejectedValue(new Error("sem rede"));
+
+    await salvar();
+
+    const avisos = toastError.mock.calls.map((c) => String(c[0]));
+    expect(avisos.some((t) => /recarreg/i.test(t))).toBe(true);
+    // O botão Salvar fica desligado: um segundo Salvar repetiria o INSERT.
+    expect(botaoPorTexto("Salvar")?.disabled).toBe(true);
+    await act(async () => {
+      botaoPorTexto("Salvar")?.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(updateProduct).toHaveBeenCalledTimes(1);
+    expect(upsertVariants).toHaveBeenCalledTimes(1);
+  });
+
+  it("releitura falhando SEM variação nova no lote não trava nada (não há o que repetir): Salvar segue liberado", async () => {
+    await montarProduto([variacao("v1", "Rosa", 3), variacao("v2", "Azul", 2)]);
+    await excluirDaTela("Azul");
+    deleteVariants.mockRejectedValueOnce(ERRO_VENDIDA);
+    fetchProduct.mockRejectedValue(new Error("sem rede"));
+
+    await salvar();
+
+    expect(botaoPorTexto("Salvar")?.disabled).toBe(false);
+    expect(linhasNaTela()).toHaveLength(2);
+    await salvar();
+    expect(updateProduct).toHaveBeenCalledTimes(2);
   });
 });
