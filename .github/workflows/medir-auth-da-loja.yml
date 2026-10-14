@@ -1,0 +1,92 @@
+# Mede, SÓ LEITURA, a configuração de e-mail (SMTP) do LOGIN (Supabase Auth) de
+# uma loja cliente: se há remetente próprio, se o cadastro exige confirmação por
+# e-mail, e o limite de envio. Nasceu em 14/10/2026 porque a Savy exige
+# confirmação de cadastro por e-mail (mailer_autoconfirm=false) e, SEM remetente
+# próprio, o Supabase só entrega para membros da equipe do projeto — e então o
+# cadastro de uma cliente nunca confirma. Ninguém abre o painel; o caminho é o
+# token de gestão que conferir-banco-da-loja.yml e publicar-functions.yml já usam.
+#
+# O QUE FAZ: UMA chamada GET à Management API
+# (`/v1/projects/{ref}/config/auth`, operationId v1-get-auth-service-config) e
+# imprime, no log e no resumo do run, SÓ uma lista FECHADA de campos não secretos.
+# A lógica mora em scripts/publicacao/medir-auth-da-loja.cjs (NÃO em `node -e`);
+# o cabeçalho dele diz a fonte da API e cada trava. Nenhuma chamada de escrita
+# existe no script, e o corpo cru da resposta nunca vai para o log.
+#
+# PROJETO: fechado em "ikcous-publicada" | "savy" (nunca um ref de texto livre; o
+# ref é resolvido DENTRO do script por `resolverRef`, o mesmo de conferir-banco).
+#
+# CREDENCIAL: nenhuma nova. ikcous-publicada usa SUPABASE_ACCESS_TOKEN_IKCOUS e
+# savy usa SUPABASE_ACCESS_TOKEN_SAVY — os mesmos de publicar-functions.yml. Cada
+# alvo enxerga SÓ o seu segredo (a expressão `&& … || ''` nunca cai no vizinho),
+# nunca o legado, e 401/403 PARAM sem tentar outro segredo. O segredo só existe
+# no ÚLTIMO passo (o do script); o do `expected_sha` e o checkout não o veem.
+#
+# GATILHO: só `workflow_dispatch`. Nenhum `pull_request_target`, nenhum código de
+# PR roda aqui com o segredo. `expected_sha` é OBRIGATÓRIO (40 hex, igual ao SHA
+# do run) e é conferido no PRIMEIRO passo, antes do checkout e de qualquer rede.
+#
+# USO (gh):
+#   gh workflow run medir-auth-da-loja.yml --repo BielWeed/ikcous-marketplace \
+#     --ref <ramo> -f projeto=savy -f expected_sha=<SHA completo do topo do ramo>
+#   (idem com projeto=ikcous-publicada)
+# O título do run é "medir auth em <projeto>".
+#
+# Testado por tests/ci_medir_auth_da_loja_test.ts.
+
+name: Medir auth da loja
+# Título do run = evidência localizável.
+run-name: "medir auth em ${{ inputs.projeto }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      projeto:
+        description: "Loja a medir: ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita); nunca texto livre"
+        required: true
+        type: choice
+        default: savy
+        options:
+          - ikcous-publicada
+          - savy
+      expected_sha:
+        description: "OBRIGATORIO: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  medir:
+    name: Medir auth em ${{ inputs.projeto }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # PRIMEIRO passo, antes de checkout e de qualquer requisição: expected_sha
+      # completo e igual ao GITHUB_SHA (mesmo padrão e mesma mensagem de
+      # conferir-banco-da-loja.yml e publicar-functions.yml). Não vê segredo.
+      - name: Confere o alvo (expected_sha completo e igual ao do run)
+        env:
+          PROJETO: ${{ inputs.projeto }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+            echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      # Cada alvo enxerga SÓ o seu segredo: segredo vazio dá '', nunca o do
+      # vizinho. É o ÚNICO passo com segredo; o script PARA sem o do próprio alvo.
+      - name: Mede a configuração de e-mail do login (só leitura, lista fechada)
+        env:
+          SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
+          PROJETO: ${{ inputs.projeto }}
+        run: node scripts/publicacao/medir-auth-da-loja.cjs

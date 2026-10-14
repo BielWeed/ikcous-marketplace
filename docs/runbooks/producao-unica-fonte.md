@@ -1039,6 +1039,27 @@ apelido `cobranca` seguem so nas cinco; o passo 6 diz a pre-condicao de publicar
 da principal; nos workflows de banco `loja` aponta para a CAF sem as travas da CAF explicita
 (achado registrado, fora deste escopo).
 
+## E-mail do login (Supabase Auth) por loja — medir sem abrir o painel
+
+`medir-auth-da-loja.yml` faz UMA leitura (GET `/v1/projects/{ref}/config/auth`) da
+configuracao de e-mail do login da loja e imprime, no log e no resumo do run, so uma lista
+fechada de campos nao secretos: `mailer_autoconfirm`, `external_email_enabled`,
+`disable_signup`, `smtp_host`, `smtp_port`, `smtp_admin_email`, `smtp_sender_name`,
+`rate_limit_email_sent`, e `smtp_user`/`smtp_pass` apenas como "preenchido: sim/nao" (nunca o
+valor). Serve para saber se a loja tem remetente proprio: sem ele, o envio padrao do Supabase so
+entrega para a equipe do projeto e o cadastro de uma cliente que exige confirmacao por e-mail
+nunca confirma.
+
+- **Alvos:** `ikcous-publicada` (segredo `SUPABASE_ACCESS_TOKEN_IKCOUS`) e `savy` (segredo
+  `SUPABASE_ACCESS_TOKEN_SAVY`) — os mesmos de `publicar-functions.yml`; nenhum segredo novo.
+  Cada alvo enxerga so o seu; 401/403 param sem tentar outro.
+- **Exige `expected_sha`** completo (40 hex) igual ao SHA do run, como as outras lojas explicitas.
+- **Nao escreve nada:** o script so emite GET, e o corpo cru da resposta nunca vai para o log.
+- **Como rodar** (um por loja):
+  `gh workflow run medir-auth-da-loja.yml --repo BielWeed/ikcous-marketplace --ref <ramo> -f projeto=savy -f expected_sha=<SHA completo do topo>`
+  e o mesmo com `-f projeto=ikcous-publicada`. O titulo do run e "medir auth em <projeto>".
+- Teste: `tests/ci_medir_auth_da_loja_test.ts`.
+
 ## Rollback integral da configuracao do repositorio
 
 - Ignore step: `commandForIgnoringBuildStep = null`.
