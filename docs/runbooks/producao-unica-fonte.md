@@ -999,7 +999,10 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       - **Desfazer (decisao do DONO, nunca automatica):**
         `rollback-manual-20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql` pelo `aplicar-migrations.yml`
         (apaga o gatilho e a funcao; nada a restaurar). Depois dele a `27b` volta a ser POSITIVA e a `27a`
-        NEGATIVA.
+        NEGATIVA. **Ordem:** a funcao do gatilho chama `rls_admin_atual()`, entao a `20261224000000` e desfeita
+        ANTES da `20261197000000` (ordem inversa da aplicacao): o rollback da 97 recusa enquanto qualquer funcao de
+        fora ainda a usa (`B1_BASELINE_DIVERGENT`). As provas `admin-atual-viva` e `pagamentos-rpc-viva`, que
+        desfazem a 97 numa lista fixa, a trazem como mais um passo.
       - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `27a` e a
         `27b` DE NOVO.
       - **Limites:** `tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs` prova o comportamento (a

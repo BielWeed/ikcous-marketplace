@@ -343,6 +343,12 @@ prova(
         [A_MD5, A_LIMPEZA],
       ],
       [
+        // sem a excecao da sessao direta: o rotulo da linha "limpeza" promete essa guarda
+        recriar(CORPO.replace("<> 'none'", "<> 'zzzz'")),
+        funcaoSql("position('<> ''none''' IN prosrc) = 0"),
+        [A_MD5, A_LIMPEZA],
+      ],
+      [
         `ALTER FUNCTION ${FN} STABLE`,
         funcaoSql("provolatile = 's'"),
         [A_ATRIB],

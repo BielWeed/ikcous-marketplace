@@ -16,8 +16,9 @@
 --
 --   * corpo    -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF): o da 20261224000000.
 --   * limpeza  -- 'sim' se o corpo atribui as QUATRO colunas (`NEW.merchant_reply := NULL`, `NEW.merchant_reply_at := NULL`,
---                 `NEW.helpful := 0`, `NEW.created_at := now()`) e so as limpa sob `NOT public.rls_admin_atual()`: leitura
---                 humana do mesmo fato do md5.
+--                 `NEW.helpful := 0`, `NEW.created_at := now()`) e so as limpa quando o papel da sessao nao e' `none`
+--                 (`<> 'none'`, a sessao direta) E sob `NOT public.rls_admin_atual()` (o administrador de agora), nessa
+--                 ordem, antes da primeira atribuicao: leitura humana do mesmo fato do md5.
 --   * atributos -- SECURITY DEFINER + plpgsql + VOLATILE + retorna trigger + proconfig = {search_path=public}.
 --   * EXECUTE  -- PUBLIC e' medido por aclexplode(coalesce(proacl, acldefault('f', dono))), porque has_function_privilege
 --                 nao tem o pseudo-papel PUBLIC; anon, authenticated e service_role por has_function_privilege. Esperado:
@@ -39,7 +40,9 @@ WITH alvo(assinatura) AS (
                    AND position('NEW.merchant_reply_at := NULL;' IN p.prosrc) > 0
                    AND position('NEW.helpful := 0;' IN p.prosrc) > 0
                    AND position('NEW.created_at := now();' IN p.prosrc) > 0
+                   AND position('<> ''none''' IN p.prosrc) > 0
                    AND position('AND NOT public.rls_admin_atual() THEN' IN p.prosrc) > 0
+                   AND position('<> ''none''' IN p.prosrc) < position('AND NOT public.rls_admin_atual() THEN' IN p.prosrc)
                    AND position('AND NOT public.rls_admin_atual() THEN' IN p.prosrc) < position('NEW.merchant_reply := NULL;' IN p.prosrc)
               THEN 'sim' ELSE 'nao' END AS limpeza,
          CASE WHEN p.prosecdef AND l.lanname = 'plpgsql' AND p.provolatile = 'v'
