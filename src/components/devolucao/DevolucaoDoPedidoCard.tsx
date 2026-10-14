@@ -26,6 +26,7 @@ import {
   tituloDoStatusParaCliente,
   tomDoStatus,
 } from "@/lib/devolucao";
+import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { cn } from "@/lib/utils";
 import type { DevolucaoDetalhe, ResumoDevolucao } from "@/types/devolucao";
 import { haptic } from "@/utils/haptic";
@@ -256,20 +257,21 @@ export function DevolucaoDoPedidoCard({
         </div>
       )}
 
-      {atual.codigo_rastreio && atual.status === "em_transito" && (
-        <a
-          href={`https://linkrastreio.com/?codigo=${encodeURIComponent(atual.codigo_rastreio)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 flex min-h-11 items-center gap-2 rounded-2xl border border-zinc-100 px-3 text-sm font-bold text-zinc-800"
-        >
-          <Truck className="size-4 text-zinc-500" />
-          Rastrear devolução
-          <span className="ml-auto font-mono text-xs text-zinc-500">
-            {atual.codigo_rastreio}
-          </span>
-        </a>
-      )}
+      {linkDeRastreio(atual.codigo_rastreio ?? "") &&
+        atual.status === "em_transito" && (
+          <a
+            href={linkDeRastreio(atual.codigo_rastreio ?? "")}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex min-h-11 items-center gap-2 rounded-2xl border border-zinc-100 px-3 text-sm font-bold text-zinc-800"
+          >
+            <Truck className="size-4 text-zinc-500" />
+            Rastrear devolução
+            <span className="ml-auto font-mono text-xs text-zinc-500">
+              {atual.codigo_rastreio}
+            </span>
+          </a>
+        )}
 
       <dl className="mt-4 space-y-1 border-t border-dashed border-zinc-200 pt-3 text-[13px]">
         {atual.itens.map((item) => (

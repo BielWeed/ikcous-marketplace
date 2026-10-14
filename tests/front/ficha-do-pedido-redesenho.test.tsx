@@ -650,6 +650,17 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       ).not.toBeNull();
     });
 
+    it("rastreio: o botão de rastrear leva ao Melhor Rastreio, código sem espaços", async () => {
+      await renderizar(pedidoFake({ trackingCode: "br 123 456 789 br" }));
+
+      const link = porId("envio-lista")?.querySelector(
+        'a[title="Rastrear nos Correios"]',
+      );
+      expect(link?.getAttribute("href")).toBe(
+        "https://www.melhorrastreio.com.br/rastreio/BR123456789BR",
+      );
+    });
+
     it("anotação vazia: linha com 'Adicionar'; tocar abre o campo ali mesmo (mesmo id)", async () => {
       await renderizar(pedidoFake());
 
