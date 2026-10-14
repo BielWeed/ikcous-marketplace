@@ -132,7 +132,7 @@ describe("AccountSettingsView — nome em branco não salva", () => {
     hospedeiro.remove();
   });
 
-  async function montarComPerfilCarregado() {
+  async function montarComPerfilCarregado(nomeCarregado = "Fulano de Tal") {
     const { AccountSettingsView } = await import(
       "@/views/customer/AccountSettingsView"
     );
@@ -141,7 +141,7 @@ describe("AccountSettingsView — nome em branco não salva", () => {
     });
     await esperarAte(() => {
       const nome = document.getElementById("full_name") as HTMLInputElement;
-      return nome.value === "Fulano de Tal";
+      return !nome.disabled && nome.value === nomeCarregado;
     });
   }
 
@@ -160,7 +160,72 @@ describe("AccountSettingsView — nome em branco não salva", () => {
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     const erro = document.getElementById("full_name-erro");
     expect(erro?.textContent).toBe("Informe seu nome");
+    expect(erro?.getAttribute("role")).toBe("alert");
     expect(campo.getAttribute("aria-describedby")).toBe("full_name-erro");
+  });
+
+  it("nome apagado: além da mensagem no campo, aparece o aviso e o foco vai para o nome", async () => {
+    await montarComPerfilCarregado();
+    const { toast } = await import("sonner");
+
+    digitar("full_name", "");
+    expect(document.activeElement).not.toBe(
+      document.getElementById("full_name"),
+    );
+    await salvar();
+
+    expect(toast.error).toHaveBeenCalledWith("Informe seu nome");
+    expect(document.activeElement).toBe(document.getElementById("full_name"));
+  });
+
+  it("nome válido e só o telefone mudou: grava o nome aparado junto com o telefone", async () => {
+    await montarComPerfilCarregado();
+
+    digitar("full_name", "  Fulano de Tal ");
+    digitar("phone", "34999998888");
+    await salvar();
+
+    expect(gravacoes()).toHaveLength(1);
+    expect(gravacoes()[0][1]).toMatchObject({
+      p_full_name: "Fulano de Tal",
+      p_whatsapp: "(34) 99999-8888",
+    });
+  });
+
+  it("perfil antigo com nome vazio que só quer trocar o telefone: não grava, avisa e põe o foco no nome", async () => {
+    rpc.mockImplementation((nome: string) => {
+      if (nome === "get_my_complete_profile") {
+        return Promise.resolve({
+          data: [{ full_name: "", whatsapp: "" }],
+          error: null,
+        });
+      }
+      return Promise.resolve({ error: null });
+    });
+    await montarComPerfilCarregado("");
+    const { toast } = await import("sonner");
+
+    digitar("phone", "34999998888");
+    await salvar();
+
+    expect(gravacoes()).toHaveLength(0);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("Informe seu nome");
+    expect(document.activeElement).toBe(document.getElementById("full_name"));
+    expect(document.getElementById("full_name-erro")?.textContent).toBe(
+      "Informe seu nome",
+    );
+  });
+
+  it("depois do sucesso o campo do nome mostra o valor aparado", async () => {
+    await montarComPerfilCarregado();
+
+    digitar("full_name", "   Maria Souza  ");
+    await salvar();
+
+    expect(gravacoes()).toHaveLength(1);
+    const campo = document.getElementById("full_name") as HTMLInputElement;
+    expect(campo.value).toBe("Maria Souza");
   });
 
   it("nome só com espaços também é recusado", async () => {

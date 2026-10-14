@@ -380,6 +380,13 @@ export function AccountSettingsView() {
     const nomeAparado = profileData.name.trim();
     if (!nomeAparado) {
       setNomeErro(true);
+      // Quem rolou a tela até o botão não vê a mensagem inline: o aviso
+      // visível e o foco no campo levam a pessoa até ela (mesmo padrão do
+      // CPF, que também avisa por toast). Vale para o perfil antigo com
+      // nome vazio que só queria trocar o telefone — continua bloqueado,
+      // mas agora com aviso.
+      toast.error("Informe seu nome");
+      document.getElementById("full_name")?.focus();
       return;
     }
     setNomeErro(false);
@@ -430,6 +437,10 @@ export function AccountSettingsView() {
       );
 
       if (error) throw error;
+
+      // O campo passa a mostrar o que foi gravado (já aparado) — mesmo que o
+      // CPF abaixo falhe, o nome já foi salvo.
+      setProfileData((p) => ({ ...p, name: nomeAparado }));
 
       if (cpfMudou) {
         const resultadoCpf = await gravarCpfDaConta(digitosCpfAtual);
@@ -732,6 +743,7 @@ export function AccountSettingsView() {
                     {nomeErro && (
                       <p
                         id="full_name-erro"
+                        role="alert"
                         className="ml-0.5 text-xs font-bold text-red-600"
                       >
                         Informe seu nome
