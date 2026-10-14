@@ -42,6 +42,72 @@ const banco = {
   chamadas: [] as string[],
 };
 
+type Linha = Record<string, unknown>;
+
+// Leitura de coluna por nome sem índice dinâmico (o eslint de segurança barra `linha[coluna]`).
+const valorDaColuna = (linha: Linha, nome: string): unknown =>
+  new Map(Object.entries(linha)).get(nome);
+
+/** Query builder da lista: filtros `eq`/`neq`, `order` e `limit` sobre `banco.lista`. */
+function consultaDaLista() {
+  const filtros: Array<(linha: Linha) => boolean> = [];
+  let ordem: { coluna: string; ascendente: boolean } | null = null;
+  let limite = Number.POSITIVE_INFINITY;
+  let ehConsultaDeAbertos = false;
+  const cadeia = {
+    eq: (coluna: string, valor: unknown) => {
+      if (coluna === "situacao" && valor === "aberto") {
+        ehConsultaDeAbertos = true;
+      }
+      filtros.push((l) => valorDaColuna(l, coluna) === valor);
+      return cadeia;
+    },
+    neq: (coluna: string, valor: unknown) => {
+      filtros.push((l) => valorDaColuna(l, coluna) !== valor);
+      return cadeia;
+    },
+    order: (coluna: string, opcoes?: { ascending?: boolean }) => {
+      ordem = { coluna, ascendente: opcoes?.ascending !== false };
+      return cadeia;
+    },
+    limit: (n: number) => {
+      limite = n;
+      return cadeia;
+    },
+    // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase — mesmo padrão dos vizinhos deste diretório.
+    then: (
+      resolve: (v: Resposta) => unknown,
+      reject?: (e: unknown) => unknown,
+    ) => {
+      // A releitura conta uma vez por rodada (a consulta dos ABERTOS abre a rodada).
+      if (ehConsultaDeAbertos) banco.leituras += 1;
+      const base =
+        banco.leituras > 1 && banco.listaDepois
+          ? banco.listaDepois
+          : banco.lista;
+      if (base.error || !Array.isArray(base.data)) {
+        return Promise.resolve(base).then(resolve, reject);
+      }
+      let linhas = (base.data as Linha[]).filter((l) =>
+        filtros.every((f) => f(l)),
+      );
+      if (ordem) {
+        const { coluna, ascendente } = ordem;
+        linhas = [...linhas].sort((a, b) => {
+          const va = String(valorDaColuna(a, coluna) ?? "");
+          const vb = String(valorDaColuna(b, coluna) ?? "");
+          return ascendente ? va.localeCompare(vb) : vb.localeCompare(va);
+        });
+      }
+      return Promise.resolve({
+        data: linhas.slice(0, limite),
+        error: null,
+      }).then(resolve, reject);
+    },
+  };
+  return cadeia;
+}
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
@@ -57,17 +123,10 @@ vi.mock("@/lib/supabase", () => ({
         };
       }
       return {
-        select: () => ({
-          order: () => ({
-            limit: async () => {
-              banco.leituras += 1;
-              if (banco.leituras > 1 && banco.listaDepois) {
-                return banco.listaDepois;
-              }
-              return banco.lista;
-            },
-          }),
-        }),
+        // Um "banco" de verdade em miniatura: aplica filtro, ordem e limite às
+        // linhas de `banco.lista`. Sem isso, um teste de "pedido novo some da
+        // lista" passaria mesmo com a consulta errada.
+        select: () => consultaDaLista(),
         update: (linha: Record<string, unknown>) => {
           const filtros: unknown[][] = [];
           banco.chamadas.push("update");
@@ -384,6 +443,60 @@ describe("PrivacidadeDosClientesSection", () => {
     await montar();
     act(() => botao("Ver cliente")?.click());
     expect(onNavigate).toHaveBeenCalledWith("admin-user-detail", "cliente-1");
+  });
+
+  it("com mais de 200 pedidos já respondidos, o pedido ABERTO novo continua na lista", async () => {
+    // O defeito que este teste guarda: uma lista só, do mais antigo ao mais
+    // novo e cortada em 201, empurrava justamente o pedido aberto mais novo
+    // para fora da tela — a loja nunca o via e o prazo corria.
+    const respondidos = Array.from({ length: 250 }, (_, i) => {
+      const dia = String((i % 28) + 1).padStart(2, "0");
+      const mes = String(Math.floor(i / 28) + 1).padStart(2, "0");
+      return pedido({
+        id: `resp-${String(i).padStart(3, "0")}`,
+        user_id: `cli-${i}`,
+        situacao: "atendido",
+        criado_em: `2025-${mes}-${dia}T10:00:00Z`,
+        atendido_em: `2025-${mes}-${dia}T12:00:00Z`,
+      });
+    });
+    const novo = pedido({
+      id: "aberto-novo",
+      user_id: "cliente-novo",
+      criado_em: "2026-10-14T09:00:00Z",
+    });
+    banco.lista = { data: [...respondidos, novo], error: null };
+    await montar();
+
+    expect(corpo()).toContain("Esperando resposta (1)");
+    expect(
+      hospedeiro.querySelector('li[data-pedido-de-privacidade="aberto-novo"]'),
+    ).not.toBeNull();
+    // Só os respondidos têm limite, e a tela diz que cortou.
+    expect(corpo()).toContain("Já respondidos (200)");
+    expect(corpo()).toContain(
+      "Há mais pedidos já respondidos do que cabem aqui",
+    );
+    // Os respondidos vêm do mais novo ao mais antigo: o de data mais recente está lá.
+    expect(
+      hospedeiro.querySelector('li[data-pedido-de-privacidade="resp-249"]'),
+    ).not.toBeNull();
+  });
+
+  it("todos os pedidos abertos aparecem, do mais antigo (mais urgente) ao mais novo", async () => {
+    banco.lista = {
+      data: [
+        pedido({ id: "b", user_id: "u2", criado_em: "2026-10-12T10:00:00Z" }),
+        pedido({ id: "a", user_id: "u1", criado_em: "2026-10-10T10:00:00Z" }),
+        pedido({ id: "c", user_id: "u3", criado_em: "2026-10-13T10:00:00Z" }),
+      ],
+      error: null,
+    };
+    await montar();
+    const ids = [
+      ...hospedeiro.querySelectorAll("li[data-pedido-de-privacidade]"),
+    ].map((li) => li.getAttribute("data-pedido-de-privacidade"));
+    expect(ids).toEqual(["a", "b", "c"]);
   });
 
   it("linha de forma estranha some da lista em vez de derrubar a tela", async () => {

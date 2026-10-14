@@ -181,7 +181,7 @@ export interface EntradaDeAvisos {
   cancelamentosDoCliente?: CancelamentoDoCliente[];
   /**
    * Pedidos de privacidade (exclusão de conta ou correção de e-mail) que a cliente
-   * abriu e a loja ainda não respondeu (20261234000000). A loja tem prazo de 15 dias
+   * abriu e a loja ainda não respondeu (20261238000000). A loja tem prazo de 15 dias
    * para responder (LGPD). Opcional: ausente = a fonte não entrou nesta rodada.
    */
   pedidosDePrivacidadeAbertos?: number;

@@ -1,5 +1,5 @@
 import {
-  COLUNAS_DO_PEDIDO_DE_PRIVACIDADE,
+  COLUNAS_DO_PEDIDO_DA_CLIENTE,
   type FalhaDoPedido,
   type PedidoDePrivacidade,
   type TipoDoPedidoDePrivacidade,
@@ -58,7 +58,7 @@ export function usePedidosDePrivacidade(
       // política um dia afrouxar, a tela da cliente continua só com os dela.
       const { data, error } = await supabase
         .from("pedidos_de_privacidade")
-        .select(COLUNAS_DO_PEDIDO_DE_PRIVACIDADE)
+        .select(COLUNAS_DO_PEDIDO_DA_CLIENTE)
         .eq("user_id", userId)
         .order("criado_em", { ascending: false });
       if (!ativoRef.current || rodada !== rodadaRef.current) return;
@@ -100,7 +100,7 @@ export function usePedidosDePrivacidade(
             tipo,
             email_novo: tipo === "corrigir_email" ? (emailNovo ?? null) : null,
           })
-          .select(COLUNAS_DO_PEDIDO_DE_PRIVACIDADE)
+          .select(COLUNAS_DO_PEDIDO_DA_CLIENTE)
           .single();
         if (error) {
           const falha = classificarFalhaDoPedido(error);

@@ -2,7 +2,7 @@ import { PRAZO_DE_RESPOSTA_EM_DIAS } from "@/config/textos-de-privacidade";
 import type { Database } from "@/types/database.types";
 
 /**
- * Pedidos de privacidade da cliente (migration 20261234000000): "excluir minha
+ * Pedidos de privacidade da cliente (migration 20261238000000): "excluir minha
  * conta" e "corrigir meu e-mail". O app só REGISTRA o pedido; a loja atende à mão
  * (docs/runbooks/atender-pedido-de-privacidade.md) — nada aqui apaga dado.
  */
@@ -18,9 +18,17 @@ export type PedidoDePrivacidade = Omit<
   situacao: SituacaoDoPedidoDePrivacidade;
 };
 
-/** As colunas que a tela lê (nunca `select *`: coluna nova não vaza sozinha). */
+/** As colunas que a tela da LOJA lê (nunca `select *`: coluna nova não vaza sozinha). */
 export const COLUNAS_DO_PEDIDO_DE_PRIVACIDADE =
   "id, user_id, tipo, email_novo, situacao, criado_em, atendido_em, atendido_por, observacao";
+
+/**
+ * As colunas que a tela da CLIENTE lê: só o que ela mostra. `atendido_por` (o
+ * identificador de quem na loja respondeu) não é dela e nunca viaja até o
+ * aparelho dela, mesmo a política de leitura deixando ver a linha inteira.
+ */
+export const COLUNAS_DO_PEDIDO_DA_CLIENTE =
+  "id, user_id, tipo, email_novo, situacao, criado_em, atendido_em, observacao";
 
 const TIPOS = new Set<string>(["excluir_conta", "corrigir_email"]);
 const SITUACOES = new Set<string>(["aberto", "atendido", "recusado"]);

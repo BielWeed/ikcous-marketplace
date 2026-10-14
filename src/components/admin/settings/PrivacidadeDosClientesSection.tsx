@@ -58,8 +58,16 @@ export const PrivacidadeDosClientesSection = memo(
     /** Avisa o pai para BLOQUEAR o fecho da seção enquanto houver nota digitada e não salva. */
     readonly onDirtyMudou?: (dirty: boolean) => void;
   }) {
-    const { carga, pedidos, nomes, cortou, decidindo, recarregar, decidir } =
-      usePedidosDePrivacidadeAdmin();
+    const {
+      carga,
+      pedidos,
+      nomes,
+      cortou,
+      abertosCortou,
+      decidindo,
+      recarregar,
+      decidir,
+    } = usePedidosDePrivacidadeAdmin();
     // Nota (resposta à cliente) de cada pedido ainda aberto, por id.
     const [notas, setNotas] = useState<ReadonlyMap<string, string>>(new Map());
     const [pergunta, setPergunta] = useState<Decisao | null>(null);
@@ -152,6 +160,12 @@ export const PrivacidadeDosClientesSection = memo(
 
         {carga === "pronta" && pedidos.length === 0 && (
           <p className="text-xs text-zinc-400">{TEXTOS_DA_LOJA.vazio}</p>
+        )}
+
+        {abertosCortou && (
+          <p role="alert" className="text-xs font-bold text-amber-300">
+            {TEXTOS_DA_LOJA.abertosCortados}
+          </p>
         )}
 
         {cortou && (
