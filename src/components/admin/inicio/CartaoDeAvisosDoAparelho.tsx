@@ -110,6 +110,12 @@ function CartaoInterno({
   useEffect(() => {
     const conferir = () => {
       if (document.visibilityState === "hidden") return;
+      // No meio de "Ligar": o balão de permissão fecha, o foco volta à janela
+      // e o navegador já diz "granted" ANTES de o hook atualizar o próprio
+      // estado. Reler agora reconstruiria o cartão e jogaria fora o "Avisos
+      // ligados / Mandar teste" que está para aparecer (e a trava de toque
+      // duplo). Quem está ligando já vai atualizar a permissão sozinho.
+      if (emVoo.current.ligar) return;
       if (typeof Notification === "undefined") return;
       if (Notification.permission !== permission) aoReler();
     };

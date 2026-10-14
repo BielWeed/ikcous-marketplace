@@ -634,6 +634,83 @@ describe("CartaoDeAvisosDoAparelho", () => {
       expect(texto()).not.toContain("estão bloqueados");
     });
 
+    it("no MEIO de 'Ligar' (o balão fecha e o foco volta), o cartão não é reconstruído e chega ao teste", async () => {
+      // O navegador já diz "granted" enquanto o hook ainda tem "default": é
+      // exatamente a janela em que a releitura ao voltar o foco apagaria o
+      // "Avisos ligados / Mandar teste" que está para aparecer.
+      vi.stubGlobal("Notification", { permission: "default" });
+      hook.subscribe.mockImplementation(async () => {
+        vi.stubGlobal("Notification", { permission: "granted" });
+        document.dispatchEvent(new Event("visibilitychange"));
+        window.dispatchEvent(new Event("focus"));
+        await Promise.resolve();
+        return inscricaoDeTeste();
+      });
+      await montar();
+
+      await tocar(LIGAR);
+
+      expect(hook.subscribe).toHaveBeenCalledTimes(1);
+      expect(texto()).toContain("Avisos ligados neste aparelho");
+      expect(botao(TESTE)).toBeDefined();
+      expect(botao(LIGAR)).toBeUndefined();
+    });
+
+    it("desmontado, o cartão larga os ouvintes de foco e de visibilidade", async () => {
+      const adicionados: Array<[string, unknown]> = [];
+      const removidos: Array<[string, unknown]> = [];
+      const addDoc = document.addEventListener.bind(document);
+      const addWin = window.addEventListener.bind(window);
+      const remDoc = document.removeEventListener.bind(document);
+      const remWin = window.removeEventListener.bind(window);
+      vi.spyOn(document, "addEventListener").mockImplementation(
+        (tipo: string, fn: any, opcoes?: any) => {
+          adicionados.push([`document:${tipo}`, fn]);
+          addDoc(tipo, fn, opcoes);
+        },
+      );
+      vi.spyOn(window, "addEventListener").mockImplementation(
+        (tipo: string, fn: any, opcoes?: any) => {
+          adicionados.push([`window:${tipo}`, fn]);
+          addWin(tipo, fn, opcoes);
+        },
+      );
+      vi.spyOn(document, "removeEventListener").mockImplementation(
+        (tipo: string, fn: any, opcoes?: any) => {
+          removidos.push([`document:${tipo}`, fn]);
+          remDoc(tipo, fn, opcoes);
+        },
+      );
+      vi.spyOn(window, "removeEventListener").mockImplementation(
+        (tipo: string, fn: any, opcoes?: any) => {
+          removidos.push([`window:${tipo}`, fn]);
+          remWin(tipo, fn, opcoes);
+        },
+      );
+      await montar();
+
+      const doCartao = adicionados.filter(
+        ([quem]) =>
+          quem === "document:visibilitychange" || quem === "window:focus",
+      );
+      expect(doCartao.map(([quem]) => quem).sort()).toEqual([
+        "document:visibilitychange",
+        "window:focus",
+      ]);
+
+      await act(async () => {
+        raiz.unmount();
+      });
+      raiz = createRoot(hospedeiro);
+
+      for (const [quem, fn] of doCartao) {
+        expect(
+          removidos.some(([q, f]) => q === quem && f === fn),
+          `${quem} sem remoção`,
+        ).toBe(true);
+      }
+    });
+
     it("se nada mudou, voltar à tela não apaga o resultado que o cartão mostrava", async () => {
       vi.stubGlobal("Notification", { permission: "default" });
       hook.subscribe.mockRejectedValue(

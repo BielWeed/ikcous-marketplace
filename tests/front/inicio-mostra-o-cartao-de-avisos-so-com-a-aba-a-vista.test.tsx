@@ -102,6 +102,39 @@ describe("Início — cartão de avisos do aparelho", () => {
     expect(document.activeElement).toBe(titulo);
   });
 
+  it("com o título já à vista, o foco não rola a página", async () => {
+    await montar(true);
+    const titulo = hospedeiro.querySelector("h1") as HTMLElement;
+    const focar = vi.spyOn(titulo, "focus");
+    // jsdom não faz layout: caixa de 0 a 0 dentro da janela = título à vista.
+
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>('[data-testid="fechar-o-cartao"]')
+        ?.click();
+    });
+
+    expect(focar).toHaveBeenCalledTimes(1);
+    expect(focar).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  it("com o título fora da tela, o foco deixa o navegador trazê-lo à vista", async () => {
+    await montar(true);
+    const titulo = hospedeiro.querySelector("h1") as HTMLElement;
+    titulo.getBoundingClientRect = () =>
+      ({ top: -300, bottom: -250 }) as DOMRect;
+    const focar = vi.spyOn(titulo, "focus");
+
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>('[data-testid="fechar-o-cartao"]')
+        ?.click();
+    });
+
+    expect(focar).toHaveBeenCalledTimes(1);
+    expect(focar).toHaveBeenCalledWith(undefined);
+  });
+
   it("com o Início montado mas fora de vista, o cartão não existe", async () => {
     await montar(false);
 

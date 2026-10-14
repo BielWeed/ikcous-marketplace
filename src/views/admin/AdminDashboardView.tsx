@@ -156,7 +156,11 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     const titulo = viewRef.current?.querySelector("h1");
     if (titulo instanceof HTMLElement) {
       titulo.tabIndex = -1;
-      titulo.focus();
+      // Título já à vista: o foco não deve rolar a página (um pulo à toa). Fora
+      // da tela, deixa o navegador trazê-lo para onde a pessoa possa ver.
+      const caixa = titulo.getBoundingClientRect();
+      const aVista = caixa.top >= 0 && caixa.bottom <= window.innerHeight;
+      titulo.focus(aVista ? { preventScroll: true } : undefined);
     }
   }, [viewRef]);
 
