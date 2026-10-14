@@ -46,6 +46,7 @@ import {
   Package,
   RotateCcw,
   Star,
+  Store,
   Truck,
   XCircle,
 } from "lucide-react";
@@ -121,6 +122,19 @@ const heroTitleByStatus: Record<OrderStatus, string> = {
   shipping: "Chegando até você",
   delivered: "Chegou!",
   cancelled: "Pedido cancelado",
+};
+
+/**
+ * RETIRADA NA LOJA (14/10/2026): o caminho de status é o mesmo da entrega e o
+ * valor gravado continua `shipping`, mas "A caminho"/"Chegando até você"/
+ * "saiu para entrega" mentiam — a cliente vai BUSCAR. Só o texto muda; a regra
+ * de status fica como está. Pedido de entrega não passa por aqui.
+ */
+const PRONTO_PARA_RETIRAR = {
+  label: "Pronto para retirar",
+  icon: Store,
+  description: "Seu pedido está pronto! Venha retirar na loja.",
+  heroTitle: "Pronto para retirar",
 };
 
 /**
@@ -649,8 +663,11 @@ export function OrderDetailsView({
   // compatibilidade histórica: hoje há 0 pedidos nesse estado, mas o banco
   // continua aceitando o valor, e sem o `|| statusConfig.pending` esta tela
   // fica em branco se um chegar. Mesma guarda de OrderList.tsx:209.
-  const currentStatus =
-    statusConfig[order.status as OrderStatus] || statusConfig.pending;
+  const prontoParaRetirar =
+    order.retiradaNaLoja === true && order.status === "shipping";
+  const currentStatus = prontoParaRetirar
+    ? PRONTO_PARA_RETIRAR
+    : statusConfig[order.status as OrderStatus] || statusConfig.pending;
   const StatusIcon = currentStatus.icon;
   const statusDescription =
     order.status === "pending"
@@ -715,8 +732,10 @@ export function OrderDetailsView({
           <div className="min-w-0">
             <p className="text-xs font-semibold text-zinc-500">Meu pedido</p>
             <h1 className="mt-0.5 text-2xl font-black tracking-tighter text-zinc-900">
-              {heroTitleByStatus[order.status as OrderStatus] ||
-                heroTitleByStatus.pending}
+              {prontoParaRetirar
+                ? PRONTO_PARA_RETIRAR.heroTitle
+                : heroTitleByStatus[order.status as OrderStatus] ||
+                  heroTitleByStatus.pending}
             </h1>
           </div>
           {lojaTemWhatsappAgora && (
@@ -851,7 +870,11 @@ export function OrderDetailsView({
                 const isPast = timelineIndex > i;
                 const isCurrent = timelineIndex === i;
                 const isLast = i === TIMELINE_STEPS.length - 1;
-                const StepIcon = step.icon;
+                const noPronto =
+                  prontoParaRetirar && step.status === "shipping";
+                const StepIcon = noPronto
+                  ? PRONTO_PARA_RETIRAR.icon
+                  : step.icon;
                 return (
                   <div
                     key={step.status}
@@ -902,7 +925,7 @@ export function OrderDetailsView({
                         isPast || isCurrent ? "text-white" : "text-white/40",
                       )}
                     >
-                      {step.label}
+                      {noPronto ? PRONTO_PARA_RETIRAR.label : step.label}
                     </span>
                   </div>
                 );
@@ -1243,7 +1266,9 @@ export function OrderDetailsView({
                     Retire em: {order.enderecoDeRetirada}
                   </p>
                   <p className="text-xs font-medium leading-relaxed text-zinc-500">
-                    Aguarde a confirmação da loja para retirar.
+                    {prontoParaRetirar
+                      ? "A loja já confirmou: pode retirar."
+                      : "Aguarde a confirmação da loja para retirar."}
                   </p>
                   <p className="pt-1.5 text-xs font-semibold text-zinc-500">
                     Seu endereço

@@ -59,6 +59,25 @@ export const statusConfig: Record<
 };
 
 /**
+ * Rótulo do status do ponto de vista de QUEM RECEBE. Numa RETIRADA NA LOJA o
+ * caminho de status é o mesmo da entrega (o valor gravado continua
+ * `shipping`), mas "Em Trânsito" mentia: ninguém está levando nada, a cliente
+ * vai buscar. Só o TEXTO muda — regra de status, estoque e dinheiro ficam
+ * como estão. Pedido de entrega devolve o rótulo de `statusConfig`, idêntico.
+ */
+export const ROTULO_PRONTO_PARA_RETIRAR = "Pronto para retirar";
+
+export function rotuloDoStatus(
+  status: OrderStatus,
+  retiradaNaLoja?: boolean | null,
+): string {
+  if (retiradaNaLoja && status === "shipping") {
+    return ROTULO_PRONTO_PARA_RETIRAR;
+  }
+  return (statusConfig[status || "pending"] || statusConfig.pending).label;
+}
+
+/**
  * "padrao" é o selo de sempre (usado na ficha e nas filas). "cartao" é
  * a escala do card de pedido da lista (AdminOrderCard): mais respiro e um
  * ponto de cor na frente — o selo antigo ficava ilegível ao lado do valor em
@@ -70,12 +89,15 @@ interface OrderStatusBadgeProps {
   status: OrderStatus;
   className?: string;
   tamanho?: TamanhoDoSelo;
+  /** Retirada na loja: `shipping` se lê "Pronto para retirar". */
+  retiradaNaLoja?: boolean | null;
 }
 
 export const OrderStatusBadge = memo(function OrderStatusBadge({
   status,
   className,
   tamanho = "padrao",
+  retiradaNaLoja,
 }: Readonly<OrderStatusBadgeProps>) {
   const cfg = statusConfig[status || "pending"] || statusConfig.pending;
   const cartao = tamanho === "cartao";
@@ -99,7 +121,7 @@ export const OrderStatusBadge = memo(function OrderStatusBadge({
             : "text-[11px] font-black tracking-wider"
         } ${cfg.color}`}
       >
-        {cfg.label}
+        {rotuloDoStatus(status, retiradaNaLoja)}
       </span>
     </div>
   );

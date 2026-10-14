@@ -53,8 +53,9 @@ import { OrderReceipt } from "./OrderReceipt";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
+  ROTULO_PRONTO_PARA_RETIRAR,
   rotuloDoPagamento,
-  statusConfig,
+  rotuloDoStatus,
 } from "./OrderStatusBadge";
 import { podeRegistrarPagamento } from "./podeRegistrarPagamento";
 
@@ -108,12 +109,6 @@ const getNextStatus = (current: OrderStatus): OrderStatus | null => {
   }
   return null;
 };
-
-// `Map` em vez de indexação dinâmica — mesma razão de `statusConfigByKey`
-// em useOrders.ts: `statusConfig[chave]` acende
-// `security/detect-object-injection` no eslint-plugin-security mesmo a
-// chave vindo de uma união fechada.
-const statusConfigByKey = new Map(Object.entries(statusConfig));
 
 // Rótulo do método de pagamento na ficha. T3 (lote B, 12/09): "Rede PIX" e
 // "Rede Crédito" eram vocabulário de operador. Agora a ficha usa o MESMO
@@ -333,7 +328,11 @@ function OrderHeader({ order, avisoDeEspera }: Readonly<OrderHeaderProps>) {
           <span className="text-admin-gold">#{numeroDoPedido(order.id)}</span>
         </h1>
         {statusForaDaTrilha && (
-          <OrderStatusBadge status={order.status} className={seloDaFicha} />
+          <OrderStatusBadge
+            status={order.status}
+            retiradaNaLoja={order.retiradaNaLoja}
+            className={seloDaFicha}
+          />
         )}
       </div>
       <p className="text-sm tabular-nums text-zinc-400">
@@ -375,6 +374,8 @@ interface OrderActionBarProps {
   orderId: string;
   orderStatus: OrderStatus;
   nextStatus: OrderStatus | null;
+  /** Retirada na loja: o avanço para `shipping` se lê "Pronto para retirar". */
+  retiradaNaLoja?: boolean;
   isOffline: boolean;
   isUpdatingStatus: boolean;
   // Dois callbacks, não um: "Avançar" e "Cancelar pedido" são ações
@@ -400,6 +401,7 @@ function OrderActionBar({
   orderId,
   orderStatus,
   nextStatus,
+  retiradaNaLoja,
   isOffline,
   isUpdatingStatus,
   onAdvance,
@@ -457,7 +459,7 @@ function OrderActionBar({
                 <span>Processando</span>
               </>
             ) : (
-              <span className="text-center">{`Avançar → ${statusConfigByKey.get(nextStatus)?.label ?? nextStatus}`}</span>
+              <span className="text-center">{`Avançar → ${rotuloDoStatus(nextStatus, retiradaNaLoja)}`}</span>
             )}
           </Button>
         )}
@@ -468,6 +470,7 @@ function OrderActionBar({
 
 interface OrderStepperPipelineProps {
   orderStatus: OrderStatus;
+  retiradaNaLoja?: boolean;
 }
 
 const statusesStepper: { key: OrderStatus; label: string }[] = [
@@ -482,6 +485,7 @@ const statusesStepper: { key: OrderStatus; label: string }[] = [
 // o pedido já chegou nesta etapa, apagado quando ainda não.
 function OrderStepperPipeline({
   orderStatus,
+  retiradaNaLoja,
 }: Readonly<OrderStepperPipelineProps>) {
   if (orderStatus === "cancelled") return null;
 
@@ -526,7 +530,9 @@ function OrderStepperPipeline({
                 !isActive && !isCompleted && "text-zinc-400",
               )}
             >
-              {step.label}
+              {retiradaNaLoja && step.key === "shipping"
+                ? ROTULO_PRONTO_PARA_RETIRAR
+                : step.label}
             </span>
           </li>
         );
@@ -1699,6 +1705,7 @@ export const OrderDetail = memo(function OrderDetail({
         orderId={order.id}
         orderStatus={order.status}
         nextStatus={nextStatus}
+        retiradaNaLoja={order.retiradaNaLoja}
         isOffline={isOffline}
         isUpdatingStatus={isUpdatingStatus}
         onAdvance={requestStatusChange}
@@ -1712,7 +1719,10 @@ export const OrderDetail = memo(function OrderDetail({
       <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6">
         <OrderHeader order={order} avisoDeEspera={avisoDeEspera} />
 
-        <OrderStepperPipeline orderStatus={order.status} />
+        <OrderStepperPipeline
+          orderStatus={order.status}
+          retiradaNaLoja={order.retiradaNaLoja}
+        />
 
         <OrderFinanceCard
           order={order}
