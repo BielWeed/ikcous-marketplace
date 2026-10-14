@@ -4,6 +4,7 @@ import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { LojaProntaEEstoqueBaixo } from "@/components/admin/dashboard/LojaProntaEEstoqueBaixo";
 import { AtalhosDoInicio } from "@/components/admin/inicio/AtalhosDoInicio";
 import { CartaoDaAssinatura } from "@/components/admin/inicio/CartaoDaAssinatura";
+import { CartaoDeAvisosDoAparelho } from "@/components/admin/inicio/CartaoDeAvisosDoAparelho";
 import { HojeNaLoja } from "@/components/admin/inicio/HojeNaLoja";
 import { NumerosDoMes } from "@/components/admin/inicio/NumerosDoMes";
 import { ParaFazer } from "@/components/admin/inicio/ParaFazer";
@@ -228,6 +229,16 @@ export const AdminDashboardView = memo(function AdminDashboardView({
               Tentar de novo
             </button>
           </div>
+        ) : null}
+
+        {/* Só com o Início à vista: a aba fica montada ao trocar de tela, e o
+            cartão lê o navegador ao montar — assim ele confere de novo (e
+            some sozinho, se ligaram os avisos em outra tela) toda vez que a
+            lojista volta ao Início. */}
+        {ativo ? (
+          <LocalErrorBoundary>
+            <CartaoDeAvisosDoAparelho />
+          </LocalErrorBoundary>
         ) : null}
 
         {/* Celular: uma coluna na ordem de leitura (Hoje → botões → mês →
