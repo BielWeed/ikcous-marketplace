@@ -134,12 +134,12 @@ export function selecionarCancelamentosDoCliente(
       linha.old_status === "shipping" ||
       pedido.cancelled_after_shipping === true;
     // `!payment_status` pega nulo E vazio, os dois "sem cobranca online".
-    const semPagamentoOnline = !pedido.payment_status;
-    if (semPagamentoOnline) {
+    const pagamento = pedido.payment_status;
+    if (!pagamento) {
       // Sem dinheiro para devolver, o aviso so serve a quem ainda ia separar
       // ou enviar: produto que ja saiu tem outro assunto (o transporte).
       if (jaSaiu) continue;
-    } else if (!PAGAMENTO_QUE_ENTROU.includes(pedido.payment_status)) {
+    } else if (!PAGAMENTO_QUE_ENTROU.includes(pagamento)) {
       continue;
     }
     escolhidos.push({
@@ -148,11 +148,11 @@ export function selecionarCancelamentosDoCliente(
       customer_name: pedido.customer_name,
       total: pedido.total,
       created_at: linha.created_at,
-      situacao: semPagamentoOnline
+      situacao: !pagamento
         ? "sem_pagamento_online"
         : jaSaiu
           ? "ja_saiu"
-          : pedido.payment_status === "pago_apos_expirar"
+          : pagamento === "pago_apos_expirar"
             ? "pago_depois"
             : "reembolso_automatico",
     });
