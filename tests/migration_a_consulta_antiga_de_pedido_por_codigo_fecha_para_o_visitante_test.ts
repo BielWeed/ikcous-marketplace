@@ -184,3 +184,28 @@ Deno.test("nenhuma migration FORA do par (e das provas) mexe no EXECUTE da v1 de
     "rollback-manual-20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql",
   ]);
 });
+
+Deno.test("o pre-voo do rollback da 20261217 RECUSA com a v1 fechada e manda rodar o rollback da 20261220 antes (a ordem de desfazer e' trava, nao so texto)", () => {
+  const r217 = ler(
+    "rollback-manual-20261217000000_o_email_da_loja_tem_teto_e_o_codigo_nao_se_queima.sql",
+  );
+  const i = r217.indexOf("DO $preflight_rollback_20261217$");
+  const fim = r217.indexOf("END $preflight_rollback_20261217$;");
+  assert.ok(i >= 0 && fim > i);
+  assert.ok(
+    fim < r217.indexOf("CREATE OR REPLACE FUNCTION"),
+    "pre-voo antes de qualquer escrita",
+  );
+  const p = r217.slice(i, fim);
+  for (const trecho of [
+    "has_function_privilege('anon', 'public.get_orders_by_otp_v1(text,text)', 'EXECUTE')",
+    "has_function_privilege('authenticated', 'public.get_orders_by_otp_v1(text,text)', 'EXECUTE')",
+    "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT:",
+    `rode o rollback-manual-${NOME} ANTES deste.`,
+  ])
+    assert.ok(p.includes(trecho), trecho);
+  // a recusa vem DEPOIS da conferencia dos corpos (v1 ausente cai na mensagem de corpo)
+  assert.ok(
+    p.indexOf("has_function_privilege('anon'") > p.indexOf("END LOOP;"),
+  );
+});

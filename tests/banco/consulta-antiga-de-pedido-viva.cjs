@@ -55,6 +55,22 @@ const ROLLBACK = fs.readFileSync(
   "utf8",
 );
 const emCRLF = (s) => s.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+// A ORDEM DE DESFAZER: o rollback da 20261217 recusa com a 20261220 aplicada.
+const ARQ_217 =
+  "20261217000000_o_email_da_loja_tem_teto_e_o_codigo_nao_se_queima.sql";
+const MIGRATION_217 = fs.readFileSync(path.join(MIGRATIONS, ARQ_217), "utf8");
+const ROLLBACK_217 = fs.readFileSync(
+  path.join(MIGRATIONS, `rollback-manual-${ARQ_217}`),
+  "utf8",
+);
+// md5 dos corpos de ANTES da 20261217 (os que o rollback dela devolve)
+const CORPOS_DE_ANTES_217 = {
+  "public.generate_order_otp_v2(text,text,text)":
+    "8fab5091db4a380bf07592f7dc896856",
+  "public.reivindicar_email_de_confirmacao(uuid)":
+    "45be19bf714f266f8234f11df820b76b",
+  "public.get_orders_by_otp_v1(text,text)": "b472f00d6b36002522b25bf04113a035",
+};
 
 const V1 = "public.get_orders_by_otp_v1(text,text)";
 const V2 = "public.get_orders_by_otp_v2(text,text,text,text)";
@@ -564,6 +580,62 @@ prova(
       assert.match(e.erro, /conferencia 20261220: anon ainda executa/);
       // o apply voltou inteiro: nada do REVOKE ficou (authenticated ainda executa)
       assert.equal(await executa("authenticated"), true);
+    }),
+);
+
+prova(
+  "ORDEM DE DESFAZER: (a) so com a 20261217 o rollback dela funciona como antes; (b) com a 20261220 aplicada ele RECUSA mandando rodar o rollback da 20261220 antes, sem escrever; (c) rollback da 20261220 e depois o da 20261217 funciona, e a 20261217 reaplica",
+  () =>
+    emTransacao(async () => {
+      const corposAtuais = async () =>
+        Object.fromEntries(
+          await Promise.all(
+            Object.keys(CORPOS_DE_ANTES_217).map(async (a) => [
+              a,
+              await md5DoCorpo(a),
+            ]),
+          ),
+        );
+      const corposDepois217 = await corposAtuais();
+      // (a) estado: so a 20261217 (v1 aberta, montado por emTransacao)
+      assert.equal(await executa("anon"), true);
+      assert.equal(await aplicar(ROLLBACK_217), null);
+      assert.deepEqual(await corposAtuais(), CORPOS_DE_ANTES_217);
+      assert.equal(await aplicar(MIGRATION_217), null);
+      assert.deepEqual(await corposAtuais(), corposDepois217);
+
+      // (b) com a 20261220 aplicada o rollback da 20261217 recusa e nada muda
+      assert.equal(await aplicar(MIGRATION), null);
+      const aclFechada = await acl(V1);
+      assert.deepEqual(aclFechada, ACL_DE_DEPOIS);
+      for (const sql of [ROLLBACK_217, emCRLF(ROLLBACK_217)]) {
+        const e = await aplicar(sql);
+        assert.ok(e, "o rollback da 20261217 tinha de recusar");
+        assert.match(e.erro, /B1_BASELINE_DIVERGENT/);
+        assert.match(
+          e.erro,
+          /rode o rollback-manual-20261220000000_a_consulta_antiga_de_pedido_por_codigo_fecha_para_o_visitante\.sql ANTES/,
+        );
+        assert.deepEqual(await corposAtuais(), corposDepois217, "sem escrita");
+        assert.deepEqual(await acl(V1), aclFechada);
+      }
+      // so um dos papeis fechado tambem recusa
+      await C.query("SAVEPOINT meio");
+      await C.query(`GRANT EXECUTE ON FUNCTION ${V1} TO anon`);
+      const meio = await aplicar(ROLLBACK_217);
+      assert.match(meio.erro, /rode o rollback-manual-20261220000000/);
+      await C.query("ROLLBACK TO SAVEPOINT meio");
+
+      // (c) a ordem certa: rollback da 20261220, depois o da 20261217
+      assert.equal(await aplicar(ROLLBACK), null);
+      assert.equal(await aplicar(ROLLBACK_217), null);
+      assert.deepEqual(await corposAtuais(), CORPOS_DE_ANTES_217);
+      assert.deepEqual(await acl(V1), ACL_DE_ANTES);
+      // e para frente: 20261217 e depois 20261220 de novo
+      assert.equal(await aplicar(MIGRATION_217), null);
+      assert.equal(await aplicar(MIGRATION), null);
+      assert.deepEqual(await corposAtuais(), corposDepois217);
+      assert.deepEqual(await acl(V1), ACL_DE_DEPOIS);
     }),
 );
 

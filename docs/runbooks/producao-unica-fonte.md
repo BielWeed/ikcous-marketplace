@@ -772,7 +772,9 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         aberta** (a `21b` espera `anon=sim` nela). **ORDEM: numa loja que ja recebeu o corte do item 20
         (`20261220000000`), o rollback da 20261220 vem SEMPRE ANTES de qualquer rollback ou reaplicacao
         da 20261217** — a conferencia final da 20261217 exige `anon` e `authenticated` com `EXECUTE` na
-        v1 e ABORTA com ela fechada.
+        v1 e ABORTA com ela fechada. O pre-voo do `rollback-manual-20261217000000_*.sql` RECUSA
+        (`B1_BASELINE_DIVERGENT`, "rode o rollback-manual-20261220000000 ... ANTES deste") quando a v1 esta
+        fechada para `anon` ou `authenticated`; com a 20261217 sendo a ultima, nada muda.
       - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a
         `21a` e a `21b` DE NOVO.
       - **Limites:** `tests/banco/teto-de-email-viva.cjs` prova o comportamento (tetos, corrida de duas
