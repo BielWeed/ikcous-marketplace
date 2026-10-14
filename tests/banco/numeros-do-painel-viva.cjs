@@ -179,9 +179,16 @@ function formato(v, prefixo = "") {
   return [prefixo];
 }
 
+// 21h de São Paulo = meia-noite em UTC (o fuso da loja é -03:00 o ano todo).
+const SP_MEIA_NOITE_UTC = 21 * 3600;
+const FOLGA_DA_VIRADA = 300;
+
 /**
- * O relógio de São Paulo precisa estar longe da virada do dia: as vendas de
- * "120 s antes / depois do corte" têm de cair no mesmo dia da base.
+ * O relógio de São Paulo precisa estar longe de DUAS viradas: a do dia de SP
+ * (as vendas de "120 s antes / depois do corte" têm de cair no mesmo dia da
+ * base) e a de 21h de SP, que é a virada do dia em UTC (a venda da noite de
+ * `vendaDaNoite` só discrimina o corte em UTC enquanto o corte de agora
+ * estiver inteiro de um lado dela). Devolve os segundos de SP de agora.
  */
 async function esperarJanelaSegura(c) {
   for (;;) {
@@ -192,14 +199,61 @@ async function esperarJanelaSegura(c) {
         )
       ).rows[0].s,
     );
-    if (s >= 200 && s <= 86400 - 200) return;
-    const espera = s < 200 ? 200 - s : 86400 - s + 200;
+    let espera = 0;
+    let motivo = "";
+    if (s < 200) {
+      espera = 200 - s;
+      motivo = "da virada do dia de SP";
+    } else if (s > 86400 - 200) {
+      espera = 86400 - s + 200;
+      motivo = "da virada do dia de SP";
+    } else if (Math.abs(s - SP_MEIA_NOITE_UTC) < FOLGA_DA_VIRADA) {
+      espera = SP_MEIA_NOITE_UTC + FOLGA_DA_VIRADA - s;
+      motivo = "da meia-noite em UTC (21h de SP)";
+    }
+    if (espera === 0) return s;
     console.log(
-      `    relógio de SP perto da virada do dia: esperando ${Math.ceil(espera)} s`,
+      `    relógio de SP perto ${motivo}: esperando ${Math.ceil(espera)} s`,
     );
     await new Promise((resolve) => setTimeout(resolve, espera * 1000));
   }
 }
+
+/**
+ * A venda que só o corte INTEIRO em UTC (v_hora e pago_em em UTC) trata errado.
+ * Em UTC a hora do dia anda 3 h na frente da de SP: comparar as duas horas em
+ * UTC só difere da comparação em SP quando UMA delas passa da meia-noite de UTC
+ * (21h de SP) e a outra não. Então a venda fica do OUTRO lado dessa virada em
+ * relação ao corte de agora, e do mesmo lado de SP do que o corpo certo decide:
+ *   - antes das 21h de SP (o normal): venda às 23h, DEPOIS do corte de SP, e o
+ *     corpo certo a deixa de fora; o corte em UTC a põe dentro (23h de SP são
+ *     02h em UTC, antes da hora UTC do corte, que é pelo menos 03h);
+ *   - depois das 21h de SP: venda às 20h, ANTES do corte de SP, e o corpo certo
+ *     a põe dentro; o corte em UTC a deixa fora (20h de SP são 23h em UTC,
+ *     depois da hora UTC do corte, que já virou o dia).
+ * `entra` diz o que o corpo certo faz com ela (decidido uma vez por rodada).
+ */
+async function escolherANoite(c) {
+  const s = await esperarJanelaSegura(c);
+  fx.noite =
+    s > SP_MEIA_NOITE_UTC
+      ? { hora: "20:00", entra: true }
+      : { hora: "23:00", entra: false };
+}
+
+/** Venda paga numa hora fixa de SP, `dias` atrás de hoje (o dia de SP, nunca o de UTC). */
+async function vendaDaNoite(c, dias, total) {
+  const r = await c.query(
+    "SELECT (((public.fin__hoje() - $1::int) + $2::time) AT TIME ZONE 'America/Sao_Paulo') AS t",
+    [dias, fx.noite.hora],
+  );
+  return pedido(c, { total, quando: r.rows[0].t });
+}
+
+// Valores da venda da noite: ontem e semana passada, distintos para saber qual vazou.
+const NOITE_ONTEM = 40;
+const NOITE_SEMANA = 70;
+const entra = (v) => (fx.noite.entra ? v : 0);
 
 /** Instante do banco deslocado em segundos e dias (para as vendas de "mesma hora"). */
 async function instante(c, dias, segundos) {
@@ -362,9 +416,9 @@ PROVAS.push({
 // ---- item 2: a mesma hora ----
 
 PROVAS.push({
-  nome: "(2a) Início: semana passada R$ 100 antes da hora de agora e R$ 200 depois; hoje R$ 100 = base 100 (chip 0%), não 300 (-66,7%)",
+  nome: "(2a) Início: semana passada R$ 100 antes da hora de agora e R$ 200 depois; hoje R$ 100 = base 100 (chip 0%), não 300 (-66,7%); a venda da noite (23h de SP) fica de fora, e o corte inteiro em UTC a traria",
   corpo: async (c) => {
-    await esperarJanelaSegura(c);
+    await escolherANoite(c);
     fx.a = await instante(c, 7, -120);
     // semana passada: 100 ANTES do corte, 200 DEPOIS (ainda não tinha acontecido nesta hora)
     await pedido(c, { total: 100, quando: fx.a });
@@ -376,24 +430,27 @@ PROVAS.push({
     await pedido(c, { total: 200, quando: await instante(c, 1, 120) });
     // hoje, há um minuto
     await pedido(c, { total: 100, quando: await instante(c, 0, -60) });
+    // a venda da NOITE (fuso): ontem e na semana passada, do outro lado da virada de UTC
+    await vendaDaNoite(c, 1, NOITE_ONTEM);
+    await vendaDaNoite(c, 7, NOITE_SEMANA);
 
     const r = await inicio(c);
     assert.equal(num(r.hoje.receita), 100, "hoje");
     assert.equal(
       num(r.hoje.receita_semana_passada),
-      100,
-      "a base da semana passada para na mesma hora (antes: 300, o dia inteiro)",
+      100 + entra(NOITE_SEMANA),
+      "a base da semana passada para na mesma hora, no relógio de SP (antes: o dia inteiro; em UTC: a venda da noite entra ou sai errada)",
     );
     assert.equal(
       num(r.hoje.receita) - num(r.hoje.receita_semana_passada),
-      0,
-      "chip 0%",
+      -entra(NOITE_SEMANA),
+      "chip 0% (a venda da noite só pesa quando o corpo certo a põe dentro)",
     );
   },
 });
 
 PROVAS.push({
-  nome: "(2b) CRM 'Hoje': o ontem para na mesma hora (anterior = 100, 1 pedido); 7 dias terminando hoje corta só o ÚLTIMO dia do anterior (100 + 500 do dia -8); período que NÃO termina hoje não corta (nada muda)",
+  nome: "(2b) CRM 'Hoje': o ontem para na mesma hora (anterior = 100, 1 pedido); 7 dias terminando hoje corta só o ÚLTIMO dia do anterior (100 + 500 do dia -8); período que NÃO termina hoje não corta (nada muda); a venda da noite (23h de SP) fica de fora do corte, e o corte inteiro em UTC a traria",
   corpo: async (c) => {
     const hoje = (await c.query("SELECT public.fin__hoje()::text AS d")).rows[0]
       .d;
@@ -405,29 +462,32 @@ PROVAS.push({
     assert.equal(num(k.receita), 100, "hoje");
     assert.equal(
       num(k.receita_anterior),
-      100,
-      "ontem até a mesma hora (antes: 300)",
+      100 + entra(NOITE_ONTEM),
+      "ontem até a mesma hora, no relógio de SP (antes: o dia inteiro)",
     );
-    assert.equal(Number(k.pedidos_anterior), 1);
-    assert.equal(num(k.ticket_medio_anterior), 100);
+    assert.equal(Number(k.pedidos_anterior), fx.noite.entra ? 2 : 1);
+    assert.equal(
+      num(k.ticket_medio_anterior),
+      num((100 + entra(NOITE_ONTEM)) / (fx.noite.entra ? 2 : 1)),
+    );
 
     // 7 dias: [hoje-6, hoje]; anterior [hoje-13, hoje-7] — o último dia (hoje-7) corta; o dia -8 inteiro
     const sete = (await crm(c, await dia(6), hoje)).kpis;
     assert.equal(
       num(sete.receita_anterior),
-      600,
-      "100 (até a hora) + 500 (dia -8, inteiro)",
+      600 + entra(NOITE_SEMANA),
+      "100 (até a hora) + 500 (dia -8, inteiro); a venda da noite do dia -7 só entra se o corpo certo a põe antes do corte",
     );
-    assert.equal(Number(sete.pedidos_anterior), 2);
+    assert.equal(Number(sete.pedidos_anterior), fx.noite.entra ? 3 : 2);
 
     // CONTROLE: [hoje-6, hoje-1] NÃO termina hoje: o anterior [hoje-12, hoje-7] vai inteiro
     const naoHoje = (await crm(c, await dia(6), await dia(1))).kpis;
     assert.equal(
       num(naoHoje.receita_anterior),
-      800,
-      "100 + 200 do dia -7 e 500 do dia -8: sem corte",
+      800 + NOITE_SEMANA,
+      "100 + 200 + a venda da noite do dia -7 e 500 do dia -8: sem corte",
     );
-    assert.equal(Number(naoHoje.pedidos_anterior), 3);
+    assert.equal(Number(naoHoje.pedidos_anterior), 4);
   },
 });
 
@@ -481,7 +541,9 @@ async function mataMutante(c, nome, sqls, prova) {
     passou = true;
   } catch (e) {
     if (e instanceof assert.AssertionError) {
-      console.log(`    mutante morto: ${nome}`);
+      console.log(
+        `    mutante morto: ${nome} (a prova viu ${e.actual}, o certo é ${e.expected})`,
+      );
       return;
     }
     throw e;
@@ -497,6 +559,14 @@ function mutar(stmt, de, para) {
     `o trecho do mutante tem de aparecer 1x (achei ${n}): ${de.slice(0, 50)}`,
   );
   return stmt.replace(de, () => para);
+}
+
+const HORA_SP =
+  "v_hora time := (now() AT TIME ZONE 'America/Sao_Paulo')::time;";
+const HORA_UTC = "v_hora time := (now() AT TIME ZONE 'UTC')::time;";
+/** Corpo com o corte INTEIRO em UTC: o relógio de agora e o da venda no mesmo fuso errado. */
+function emUtcInteiro(stmt, comparacaoSp, comparacaoUtc) {
+  return mutar(mutar(stmt, HORA_SP, HORA_UTC), comparacaoSp, comparacaoUtc);
 }
 
 // as provas do comportamento, reexecutáveis sobre os dados já montados
@@ -519,19 +589,28 @@ const prova1e = async (c) => {
   assert.equal(await taxa(c, D("31"), D("31")), 0.4);
 };
 const prova2a = async (c) => {
-  assert.equal(num((await inicio(c)).hoje.receita_semana_passada), 100);
+  assert.equal(
+    num((await inicio(c)).hoje.receita_semana_passada),
+    100 + entra(NOITE_SEMANA),
+  );
 };
 const prova2b = async (c) => {
   const hoje = (await c.query("SELECT public.fin__hoje()::text AS d")).rows[0]
     .d;
   const k = (await crm(c, hoje, hoje)).kpis;
-  assert.equal(num(k.receita_anterior), 100);
+  assert.equal(num(k.receita_anterior), 100 + entra(NOITE_ONTEM));
   const d6 = (await c.query("SELECT ($1::date - 6)::text AS d", [hoje])).rows[0]
     .d;
   const d1 = (await c.query("SELECT ($1::date - 1)::text AS d", [hoje])).rows[0]
     .d;
-  assert.equal(num((await crm(c, d6, hoje)).kpis.receita_anterior), 600);
-  assert.equal(num((await crm(c, d6, d1)).kpis.receita_anterior), 800);
+  assert.equal(
+    num((await crm(c, d6, hoje)).kpis.receita_anterior),
+    600 + entra(NOITE_SEMANA),
+  );
+  assert.equal(
+    num((await crm(c, d6, d1)).kpis.receita_anterior),
+    800 + NOITE_SEMANA,
+  );
 };
 
 PROVAS.push({
@@ -564,11 +643,15 @@ PROVAS.push({
           ).rows[0].d,
         )
       ).kpis;
-      assert.equal(num(k.receita_anterior), 300, "antes: o ontem INTEIRO");
+      assert.equal(
+        num(k.receita_anterior),
+        300 + NOITE_ONTEM,
+        "antes: o ontem INTEIRO (com a venda da noite)",
+      );
       assert.equal(
         num((await inicio(c)).hoje.receita_semana_passada),
-        300,
-        "antes: o dia inteiro",
+        300 + NOITE_SEMANA,
+        "antes: o dia inteiro (com a venda da noite)",
       );
     });
     // e fora da transação o corpo é o novo
@@ -643,6 +726,18 @@ PROVAS.push({
       "OR (v.pago_em AT TIME ZONE 'UTC')::time <= v_hora)",
       prova2b,
     );
+    await mataMutante(
+      c,
+      "corte INTEIRO em UTC (v_hora e pago_em em UTC: só discrimina a venda da noite, depois das 21h de São Paulo)",
+      [
+        emUtcInteiro(
+          s,
+          "OR (v.pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
+          "OR (v.pago_em AT TIME ZONE 'UTC')::time <= v_hora)",
+        ),
+      ],
+      () => prova2b(c),
+    );
     await m(
       "corte estrito (< em vez de <=, exclui a venda na própria hora)",
       "OR (v.pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
@@ -665,6 +760,18 @@ PROVAS.push({
       c,
       "corte no fuso errado (UTC)",
       [mutar(s, alvo, "AND (pago_em AT TIME ZONE 'UTC')::time <= v_hora)")],
+      () => prova2a(c),
+    );
+    await mataMutante(
+      c,
+      "corte INTEIRO em UTC (v_hora e pago_em em UTC: só discrimina a venda da noite, depois das 21h de São Paulo)",
+      [
+        emUtcInteiro(
+          s,
+          alvo,
+          "AND (pago_em AT TIME ZONE 'UTC')::time <= v_hora)",
+        ),
+      ],
       () => prova2a(c),
     );
     await mataMutante(

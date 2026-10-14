@@ -438,7 +438,9 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   em torno do `now()` REAL do banco (o relógio não é injetado; guarda de virada do dia); formato do JSON, ACL e
   travas de admin intactos, reaplicar 2x = mesmo estado, o rollback devolve o `prosrc` idêntico, o pré-voo recusa sem
   escrever (corpo divergente, ACL aberta) e o segundo rollback também; um mutante por defeito (matar o corte, tirar o limite, voltar o
-  denominador...) fica vermelho. **Não prova** a IKCOUS nem a Savy.
+  denominador...) fica vermelho, inclusive o do corte INTEIRO em UTC (relógio e venda no mesmo fuso errado), que só
+  uma venda da NOITE separa (23h de SP, ontem e na semana passada; depois das 21h de SP a venda vira a das 20h, e a
+  prova espera passar 21h de SP, a meia-noite em UTC). **Não prova** a IKCOUS nem a Savy.
 - **portão dos números do painel (`numeros-do-painel-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
   `30a-conferir-numeros-do-painel-aplicado` (DEPOIS, 9 linhas) e `30b-antes-numeros-do-painel-corpos-vigentes` (ANTES,
   7 linhas; **não mede a ACL**), a "prova de objetos" do lote `20261227000000` + `20261228000000`. Mesmo desenho do
