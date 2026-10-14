@@ -186,8 +186,11 @@ function conferir(banco, linhas) {
   const naLista = new Map(linhas.map((l) => [l.funcao, l]));
   for (const [chave, f] of banco) {
     if (f.executa.length > 0 && !naLista.has(chave)) {
+      const como = f.extensao
+        ? `Vem da extensao ${f.extensao}, instalada em public: instale-a com CREATE EXTENSION IF NOT EXISTS ${f.extensao} WITH SCHEMA extensions; (o schema extensions nao e' porta de ninguem).`
+        : `Feche-a na migration: REVOKE EXECUTE ON FUNCTION ${chave} FROM PUBLIC, anon, authenticated;\n      (PUBLIC, anon e authenticated, os TRES: esquecer um deixa a porta aberta.)`;
       problemas.push(
-        `FUNCAO ABERTA FORA DA LISTA: ${chave}\n      Executam: ${f.executa.join(", ")}.\n      Feche-a na migration: REVOKE EXECUTE ON FUNCTION ${chave} FROM PUBLIC, anon, authenticated;\n      (PUBLIC, anon e authenticated, os TRES: esquecer um deixa a porta aberta.)\n      Se alguem de fora PRECISA dela, acrescente a linha com o porque em tests/banco/portas-do-visitante-permitidas.json no mesmo PR.`,
+        `FUNCAO ABERTA FORA DA LISTA: ${chave}\n      Executam: ${f.executa.join(", ")}.\n      ${como}\n      Se alguem de fora PRECISA dela, acrescente a linha com o porque em tests/banco/portas-do-visitante-permitidas.json no mesmo PR.`,
       );
     }
   }
