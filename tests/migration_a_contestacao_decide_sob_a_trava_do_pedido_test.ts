@@ -478,6 +478,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261230000000 e 20261231000000: a busca de clientes (get_admin_customers_paged acha pelo numero do WhatsApp; crm_clientes ignora acento; comportamento e portao 32a/32b).
     "tests/banco/busca-de-clientes-viva.cjs",
     "tests/banco/busca-de-clientes-portao-viva.cjs",
+    // 20261233000000: o sino do pedido de retirada fala de retirada (corpo da funcao de gatilho com o ramo da retirada; comportamento e portao 34a/34b).
+    "tests/banco/o-sino-do-pedido-de-retirada-viva.cjs",
+    "tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
