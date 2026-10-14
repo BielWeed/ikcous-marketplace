@@ -331,10 +331,16 @@ para isto:
 - **`salvar`** também TESTA a conexão na hora quando alguma credencial mudou (Access Token novo,
   Public Key diferente ou Chave de notificações nova) e só deixa `pagamento_online` ligado se o
   teste dessa credencial passou; carimba `pix_ligado_em` e `pix_ligado_por` (uid do admin) ao
-  ligar. `testar` grava o resultado e reconcilia (liga se tudo passou, desliga se falhou). Com
-  chave de TESTE liga e devolve o aviso "Chave de TESTE: o PIX não vai receber dinheiro de
-  verdade" — chave de sandbox conecta igualzinho à de produção, e quem não for avisado vai
-  achar que vendeu;
+  ligar. `testar` grava o resultado e reconcilia (liga se tudo passou, desliga se falhou). Chave
+  de conta de TESTE conecta igualzinho à de produção, então o teste lê as **marcas da conta** em
+  `GET /users/me` (que NÃO devolve `live_mode`): `tags` com `test_user`, e-mail `@testuser.com`
+  ou token `TEST-`. Com marca de teste a resposta traz `aviso`: sem `MP_SANDBOX_PAYER_EMAIL`
+  (loja de verdade) o texto é "Essas chaves são de TESTE. Suas clientes não vão conseguir
+  pagar..." — em `salvar` (inclusive na primeira gravação), `testar` e retomar —; com
+  `MP_SANDBOX_PAYER_EMAIL` (modo de teste declarado) fica o aviso curto "Chave de TESTE: o PIX não
+  vai receber dinheiro de verdade". **Só avisa:** `pagamento_online` não muda por causa disso. Sem
+  marca nenhuma na resposta (sem `tags`, formato inesperado) não há aviso — a edge nunca afirma o
+  que não leu. O e-mail devolvido pelo Mercado Pago não é guardado nem registrado em log;
 - **`ligar_pix`** virou **retomar**: tira a pausa e reconcilia; faltando qualquer chave ou o
   teste, `409` com o recado do que falta e nada gravado;
 - **`desligar_pix`** virou **pausar** e é sempre permitido (desligar é o lado seguro): apaga
