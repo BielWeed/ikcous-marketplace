@@ -18,8 +18,8 @@ import { type ConfigDaEntrega, statusDaEntrega } from "@/lib/status-da-entrega";
 //
 // As portas de dentro dos grupos são as de PORTAS_DO_PAINEL.ajustes, com o
 // nome de NOMES_DO_PAINEL; o teste confere que nenhuma se perde nem repete.
-// Os acordeões (Formas de pagamento, Mercado Pago, Trocas e devoluções, Minha
-// loja está no ar?) não são portas: continuam sendo montados pela tela dentro
+// Os acordeões (E-mail da loja, Formas de pagamento, Mercado Pago, Trocas e
+// devoluções, Minha loja está no ar?) não são portas: continuam sendo montados pela tela dentro
 // do grupo de cada um. As Transportadoras e as Consultas de frete saíram de
 // Ajustes em 09/10/2026 (H5): moram na tela de Frete, atrás da porta.
 
@@ -51,7 +51,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "minha-loja",
     titulo: NOMES_DO_PAINEL["admin-about-store"],
     ajuda:
-      "Nome, logo, cores, endereço, horário de atendimento e a descrição da loja — tudo editado numa única tela.",
+      "Nome, logo, cores, endereço, horário de atendimento e a descrição da loja — tudo editado numa única tela. Aqui também fica o E-mail da loja: o Gmail que envia os e-mails do pedido, com o passo a passo para cadastrá-lo.",
     portas: [
       {
         tela: "admin-about-store",

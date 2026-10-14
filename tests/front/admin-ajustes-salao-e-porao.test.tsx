@@ -731,7 +731,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // devolução). Transportadoras e Consultas de frete foram para a tela de
     // Frete em 09/10/2026 (H5). O quinto é o termômetro do PIX, no topo de
     // Pagamentos desde H6: a linha está à vista, o diagnóstico dele fechado.
-    expect(cabecalhos.length).toBe(5);
+    // O sexto é o E-mail da loja (14/10/2026), no grupo Minha loja: também
+    // nasce fechado (e só fala com o servidor quando a lojista o abre).
+    expect(cabecalhos.length).toBe(6);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }
@@ -743,6 +745,79 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
       "Ligado e com a chave pública da loja",
     );
     expect(hospedeiro.querySelector("table")).toBeNull();
+  });
+
+  it("E-mail da loja (14/10/2026): mora em Minha loja, nasce fechado e só fala com o servidor quando a lojista o abre", async () => {
+    invokeFrete.mockImplementation((nome: string, opcoes: any) => {
+      if (nome === "credenciais-email") {
+        return Promise.resolve({
+          data: {
+            usuario: null,
+            senha_guardada: false,
+            ultimo_teste: null,
+            origem: "nenhuma",
+            cofre_pronto: true,
+            problema: null,
+            saude: null,
+          },
+          error: null,
+        });
+      }
+      if (opcoes?.body?.action === "ler_configuracao_frete") {
+        return Promise.resolve({ data: respostaFrete(), error: null });
+      }
+      return Promise.resolve({ data: { success: true }, error: null });
+    });
+    const onSetDirty = vi.fn();
+    await renderizar(onSetDirty);
+    const minhaLoja = () =>
+      hospedeiro.querySelector("#grupo-de-ajustes-minha-loja");
+    const chamouEmail = () =>
+      invokeFrete.mock.calls.some(([nome]) => nome === "credenciais-email");
+    expect(minhaLoja()?.textContent).toContain("E-mail da loja");
+    expect(chamouEmail()).toBe(false);
+
+    await act(async () => {
+      cabecalhoDaSecao("E-mail da loja")?.click();
+    });
+    // A primeira importação do módulo lazy pode levar mais que um tick.
+    for (let i = 0; i < 50 && !chamouEmail(); i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    }
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(chamouEmail()).toBe(true);
+    expect(minhaLoja()?.textContent).toContain("Não configurado");
+
+    // Senha digitada e não salva: a seção NÃO fecha por um clique no cabeçalho
+    // e a tela inteira avisa que há pendência (onSetDirty).
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        cabecalhoDaSecao("Já fiz, próximo passo")?.click();
+      });
+    }
+    const campo = document.getElementById(
+      "email-loja-senha",
+    ) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      globalThis.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campo, "abcd");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    expect(minhaLoja()?.textContent).toContain("Salve antes de fechar");
+    await act(async () => {
+      cabecalhoDaSecao("E-mail da loja")?.click();
+    });
+    expect(
+      cabecalhoDaSecao("E-mail da loja")?.getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   it("o estado do frete é o subtítulo do grupo, sem acordeão de Transportadoras (H5)", async () => {

@@ -1,8 +1,10 @@
 # E-mail da loja no painel — publicar, usar e desfazer
 
 > Escrito em 14/10/2026 com a function `credenciais-email`. A tela do painel
-> ("Ajustes > E-mail da loja") vem em outro PR; sem ela, a function sobe
-> sem efeito visível (só responde ao painel).
+> ("Ajustes > Minha loja > E-mail da loja", `EmailDaLojaSection`) veio no PR
+> seguinte ao da function. Sem a function publicada na loja, a tela mostra
+> "Este recurso ainda não está disponível nesta loja" e o resto de Ajustes
+> segue normal; publique a function ANTES do front.
 
 ## O que muda para quem usa
 
@@ -48,7 +50,7 @@ commit e nas duas lojas (IKCOUS e Savy)**: `credenciais-email` (nova),
 
 ## Depois de publicado: o que a lojista faz
 
-Painel > Ajustes > E-mail da loja > seguir o passo a passo (Gmail só da loja,
+Painel > Ajustes > Minha loja > E-mail da loja > seguir o passo a passo (Gmail só da loja,
 verificação em duas etapas, senha de app, colar, **Salvar**, **Enviar e-mail de
 teste**). O Gmail não mostra na Caixa de Entrada o e-mail que a conta manda para
 ela mesma: olhar em **Enviados** (e em Spam).
