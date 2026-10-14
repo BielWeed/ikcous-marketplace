@@ -475,6 +475,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261226000000: a reemissao do reembolso consulta o MP antes de pagar de novo (gate de "nada saiu", adotar so linha incerta, devolucao pelo painel do MP, ator admin atual, ACL; comportamento e portao 29a/29b).
     "tests/banco/reemissao-do-reembolso-viva.cjs",
     "tests/banco/reemissao-do-reembolso-portao-viva.cjs",
+    // 20261230000000 e 20261231000000: a busca de clientes (get_admin_customers_paged acha pelo numero do WhatsApp; crm_clientes ignora acento; comportamento e portao 32a/32b).
+    "tests/banco/busca-de-clientes-viva.cjs",
+    "tests/banco/busca-de-clientes-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

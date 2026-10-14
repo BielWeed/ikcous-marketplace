@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1757,6 +1757,37 @@ const ROL_DA_29B = [
   "pedido__saldo_a_estornar: corpo e o da 20261198000000 (md5)",
   "devolucao__avisar_reembolso: corpo e o da 20261225000000 (md5; o lote 28 aplicado)",
 ];
+/** O rol da 32a (a prova de objetos do lote 20261230000000 + 20261231000000, a busca de clientes: a tela Clientes, o balcao e o
+ * cupom exclusivo acham pelo numero do WhatsApp; a aba Clientes do CRM ignora acento): as 9 linhas que
+ * scripts/publicacao/consultas/32a-conferir-busca-de-clientes-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer
+ * estado do banco (funcao ausente vira `AUSENTE` na propria linha): para cada uma das duas funcoes (get_admin_customers_paged e
+ * crm_clientes), o corpo vivo e o NOVO (md5), ele traz a regra nova, os atributos de sempre e o EXECUTE segue FECHADO ao
+ * visitante.
+ * tests/banco/busca-de-clientes-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_32A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_customers_paged: corpo e o da 20261230000000, com a busca por digitos do WhatsApp (md5)",
+  "get_admin_customers_paged: o corpo traz os digitos do termo e o corte do 55",
+  "get_admin_customers_paged: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, extensions)",
+  "get_admin_customers_paged: EXECUTE fechado para anon (authenticated e service_role sim)",
+  "crm_clientes: corpo e o da 20261231000000, com nome e e-mail sem acento (md5)",
+  "crm_clientes: o corpo ignora o acento do nome",
+  "crm_clientes: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "crm_clientes: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 32b (a consulta de AUSENCIA do lote da busca de clientes; `ausenciaConfirmadaPor`): as 7 linhas que
+ * scripts/publicacao/consultas/32b-antes-busca-de-clientes-corpos-vigentes.sql devolve - a base de antes: as duas funcoes com o
+ * corpo da 20261199000000 (md5), sem a regra nova, com os atributos de sempre. NAO mede a ACL. Uma loja que ja tem uma das duas
+ * reprova aqui de proposito, nas linhas do corpo e do marcador daquela funcao. */
+const ROL_DA_32B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_customers_paged: corpo e o da 20261199000000, sem a busca por digitos (md5)",
+  "get_admin_customers_paged: o corpo ainda NAO calcula os digitos do termo",
+  "get_admin_customers_paged: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, extensions)",
+  "crm_clientes: corpo e o da 20261199000000, sem o acento ignorado (md5)",
+  "crm_clientes: o corpo ainda NAO ignora o acento do nome",
+  "crm_clientes: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1805,6 +1836,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao": ROL_DA_28B,
   "29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes": ROL_DA_29A,
   "29b-antes-reemissao-do-reembolso-base-conhecida": ROL_DA_29B,
+  "32a-conferir-busca-de-clientes-aplicado": ROL_DA_32A,
+  "32b-antes-busca-de-clientes-corpos-vigentes": ROL_DA_32B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2391,6 +2424,8 @@ module.exports = {
   ROL_DA_28B,
   ROL_DA_29A,
   ROL_DA_29B,
+  ROL_DA_32A,
+  ROL_DA_32B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

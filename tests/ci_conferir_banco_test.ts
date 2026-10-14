@@ -2121,8 +2121,14 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
         "o CTE `sucessoras` da 8e tem de ter UMA linha por migration depois da 202 que redefine uma das 61 (a cadeia inteira de cada função)",
       );
       // O pino do que foi medido em 09/10/2026 (20261212 e 20261214) e em 14/10/2026 (20261227 e
-      // 20261228: os números do painel; painel_inicio ganha a segunda sucessora).
+      // 20261228: os números do painel; painel_inicio ganha a segunda sucessora; 20261230 e 20261231: a
+      // busca de clientes, get_admin_customers_paged e crm_clientes ganham a sua).
       assertEquals([...sucessoras8e].sort(porFn), [
+        {
+          fn: "crm_clientes",
+          h: "9c4268178a50729b5f7b256b77882585",
+          versao: "20261231000000",
+        },
         {
           fn: "crm_visao",
           h: "c33073503fccc6caa5f1085265501eae",
@@ -2132,6 +2138,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_analytics_v2",
           h: "0a5f8c75bbeeda3777a6a7326a0e281c",
           versao: "20261214000000",
+        },
+        {
+          fn: "get_admin_customers_paged",
+          h: "d6c092c3e0d8069891af795147d65e9e",
+          versao: "20261230000000",
         },
         {
           fn: "painel_inicio",

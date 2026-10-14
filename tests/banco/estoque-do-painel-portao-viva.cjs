@@ -1135,7 +1135,8 @@ async function main() {
     "os doze sha256 sao distintos",
   );
   // as sucessoras da 99 DO LOTE sao exatamente a 20261212 (painel_inicio) e a 20261214 (analytics); as
-  // posteriores sao a 20261227 (crm_visao) e a 20261228 (que sucede a 12 em painel_inicio)
+  // posteriores sao a 20261227 (crm_visao), a 20261228 (que sucede a 12 em painel_inicio) e a 20261230 e a
+  // 20261231 (a busca de clientes: get_admin_customers_paged e crm_clientes, funcoes de fora destas tres)
   assert.deepEqual(
     SUCESSORAS_DO_LOTE.map((s) => [s.nome, s.assinatura, s.hashDesta]).sort(),
     [F.painel, F.analytics].map((f) => [f.arq, f.sig, f.md5.depois]).sort(),
@@ -1151,6 +1152,14 @@ async function main() {
       [
         "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql",
         "public.painel_inicio()",
+      ],
+      [
+        "20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql",
+        "public.get_admin_customers_paged(text,text,text,integer,integer)",
+      ],
+      [
+        "20261231000000_a_busca_do_crm_ignora_acento.sql",
+        "public.crm_clientes(text,text,integer,integer)",
       ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",

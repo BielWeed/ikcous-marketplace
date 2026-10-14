@@ -1167,6 +1167,52 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         mesmo md5, pre-voo, conferencia, atomicidade, concorrencia, mutantes) num Postgres 17 efemero; nao prova o
         Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo delas.
 
+  32. **Lote de DUAS migrations independentes, de apply normal: `20261230000000` e `20261231000000` (a busca
+      de clientes; DADO DE CLIENTE, nada se abre).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas
+      lojas assinantes (IKCOUS e Savy). Cada uma troca o corpo de UMA funcao SECURITY DEFINER do painel por
+      `CREATE OR REPLACE`, com o corpo da `20261199000000` mais as trocas declaradas, sem tocar dado, assinatura,
+      tipo de retorno, volatilidade, `search_path`, as travas de admin, a ACL nem o formato do JSON:
+      - **`20261230000000` (`get_admin_customers_paged`)**: a busca da tela Clientes, do balcao (escolher o
+        cliente da venda) e do cupom exclusivo comparava texto com texto, e o WhatsApp fica gravado mascarado
+        (`(34) 99999-1234`): quem digitava so os numeros ou o numero colado do WhatsApp (`+55 34 99999-1234`) nao
+        achava ninguem. Agora, com 4 ou mais digitos, o termo tambem compara so digitos (WhatsApp do perfil e
+        telefone da conta); com 12 ou 13 digitos comecando por 55 o 55 sai; termo curto segue so texto.
+      - **`20261231000000` (`crm_clientes`)**: a aba Clientes do CRM comparava o nome e o e-mail com acento
+        (`joao` nao achava `Joao`). Agora compara sem acento nos dois lados (`public.f_unaccent`).
+      - **SIGNIFICADO que muda:** o resultado so CRESCE (letras mais 4 digitos tambem comparam os digitos, a regra
+        da busca de pedidos). O custo ACEITO: `f_unaccent` e mais lento que o `ILIKE` cru (a aba do CRM le a base
+        inteira de clientes de qualquer jeito).
+      - Quem quebra: ninguem (nenhuma assinatura muda). Nenhum front e nenhuma edge function mudam. Duas
+        consultas, so leitura, so catalogo, de ROL FECHADO (9 e 7 linhas, so valem com `rol=ok`):
+        - **`32a-conferir-busca-de-clientes-aplicado`** (a consulta do lote) prova DEPOIS do apply, nas DUAS
+          funcoes, o corpo novo (md5), a regra no corpo, os atributos de sempre e o `EXECUTE` fechado ao visitante.
+        - **`32b-antes-busca-de-clientes-corpos-vigentes`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo da
+          `20261199000000` nas duas, sem a regra nova, com os atributos de sempre. **Nao mede a ACL.** O md5 vem do
+          arquivo da migration, nao de uma loja: **rode a `32b` em CADA loja ANTES do apply** e compare o corpo
+          vivo; corpo diferente e loja que ninguem mediu (a migration tambem recusa, `B1_BASELINE_DIVERGENT`).
+      - **Medir antes (opcional, so leitura, nao e portao):** `32m-medir-busca-de-clientes` conta (so numeros,
+        nenhum dado pessoal) quantos perfis tem WhatsApp mascarado, gravado com +55 ou nome acentuado: o tamanho do
+        que a correcao destrava.
+      - **Caminho, uma loja por vez:** `32a` (sai NEGATIVA) -> `32b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com as duas migrations, em ordem -> o ensaio pede a `32a` DE NOVO, que tem de sair
+        POSITIVA. `32a` POSITIVA com a versao fora do ledger: PARAR (sem backfill). Loja com SO UMA das duas
+        aplicada: PARAR e medir (reprova nas duas consultas).
+      - **A cadeia das sucessoras:** a `8e` (lote 92-202) aceita os dois corpos novos como sucessores do da
+        `20261199000000` e segue POSITIVA depois deste lote: rodar a `8e` DE NOVO depois do apply.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`, **nesta ordem**:
+        `rollback-manual-20261231000000_a_busca_do_crm_ignora_acento.sql` e
+        `rollback-manual-20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql` (cada um recria o corpo
+        da `20261199000000`, mesmo md5, sem tocar a ACL, com pre-voo proprio; rodar o mesmo rollback duas vezes
+        deixa o mesmo estado). Os dois vem ANTES do rollback da `20261199000000`: o da 99 recusa enquanto houver
+        redefinicao posterior no ar. Depois deles a `32b` volta a ser POSITIVA e a `32a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `32a` e
+        a `32b` DE NOVO.
+      - **Limites:** `tests/banco/busca-de-clientes-viva.cjs` prova o comportamento (cada forma de digitar o
+        numero, o corte do 55, termo curto, acento, o resto do JSON identico ao do corpo antigo, rollback, pre-voo
+        que recusa sem escrever, concorrencia, mutantes) e `tests/banco/busca-de-clientes-portao-viva.cjs` prova a
+        decisao das duas consultas, num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel
+        `supabase_read_only_user` de cada loja nem o corpo vivo delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
