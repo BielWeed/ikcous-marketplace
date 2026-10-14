@@ -69,7 +69,14 @@ export type AcaoDeRecusa =
   | "remover_cupom"
   | "entrar_na_conta"
   | "tentar_de_novo"
-  | "conferir_antes";
+  | "conferir_antes"
+  // Só a tela decide (`decidirSaidaDoCheckout`, quem compra SEM CONTA): é o
+  // `conferir_antes` de quem não tem onde conferir. Reenvia a MESMA compra que
+  // ficou sem resposta (mesma chave de idempotência, payload congelado) — o
+  // banco devolve o pedido que já nasceu em vez de criar outro. NUNCA sai de
+  // `classificarRecusaDoPedido`: a regra do cabeçalho deste arquivo continua
+  // valendo para o texto que veio do banco.
+  | "reenviar_mesma_compra";
 
 export interface RecusaDoPedido {
   acao: AcaoDeRecusa;

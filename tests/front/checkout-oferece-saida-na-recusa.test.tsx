@@ -96,3 +96,57 @@ describe("controles — o teste acima precisa poder falhar", () => {
     }
   });
 });
+
+describe("quem compra SEM CONTA — o conferir_antes vira reenvio da mesma compra (14/10/2026)", () => {
+  // A busca de "Ver meus pedidos" exige e-mail e o número do pedido; a
+  // convidada não tem nenhum dos dois.
+  const SEM_CONTA = { semConta: true };
+
+  it("erro sem código: reenviar_mesma_compra, e a frase não manda conferir pedidos", () => {
+    const r = decidirSaidaDoCheckout(new Error("rede caiu"), SEM_CONTA);
+    expect(r.acao).toBe("reenviar_mesma_compra");
+    expect(r.mensagem).toContain("não sai em dobro");
+    expect(r.mensagem).not.toMatch(/confira seus pedidos/i);
+  });
+
+  it("sem resposta em 30 s (PEDIDO_SEM_RESPOSTA): reenviar_mesma_compra", () => {
+    const r = decidirSaidaDoCheckout(
+      { code: "PEDIDO_SEM_RESPOSTA" },
+      SEM_CONTA,
+    );
+    expect(r.acao).toBe("reenviar_mesma_compra");
+  });
+
+  it("COM conta (ou sem informar): nada muda, segue conferir_antes", () => {
+    const erros = [new Error("rede caiu"), { code: "PEDIDO_SEM_RESPOSTA" }];
+    for (const erro of erros) {
+      expect(decidirSaidaDoCheckout(erro).acao).toBe("conferir_antes");
+      expect(decidirSaidaDoCheckout(erro, { semConta: false }).acao).toBe(
+        "conferir_antes",
+      );
+    }
+  });
+
+  it("P0001 COM texto do banco, mesmo desconhecido: o pedido NÃO nasceu, então não vira reenvio", () => {
+    const r = decidirSaidaDoCheckout(
+      { code: "P0001", message: "Recusa que ninguém escreveu ainda." },
+      SEM_CONTA,
+    );
+    expect(r.acao).toBe("conferir_antes");
+  });
+
+  it("recusa conhecida e falha de rede continuam com a ação que já tinham", () => {
+    expect(
+      decidirSaidaDoCheckout(
+        { code: "P0001", message: "Cupom X inválido ou expirado." },
+        SEM_CONTA,
+      ).acao,
+    ).toBe("remover_cupom");
+    expect(
+      decidirSaidaDoCheckout(
+        { code: "", message: "TypeError: Failed to fetch" },
+        SEM_CONTA,
+      ).acao,
+    ).toBe("tentar_de_novo");
+  });
+});

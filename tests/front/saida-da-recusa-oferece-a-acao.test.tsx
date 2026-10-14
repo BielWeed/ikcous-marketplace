@@ -61,6 +61,7 @@ const TODAS_AS_ACOES: AcaoDeRecusa[] = [
   "entrar_na_conta",
   "tentar_de_novo",
   "conferir_antes",
+  "reenviar_mesma_compra",
 ];
 
 describe("SaidaDaRecusa", () => {
@@ -157,6 +158,41 @@ describe("SaidaDaRecusa", () => {
       (b.textContent ?? "").toLowerCase(),
     );
     expect(rotulos.some((r) => r.includes("tentar de novo"))).toBe(false);
+  });
+
+  it("reenviar_mesma_compra (convidada) oferece 'Tentar de novo' e NUNCA 'Ver meus pedidos'", () => {
+    render({
+      acao: "reenviar_mesma_compra",
+      mensagem: "Não deu para confirmar se o seu pedido chegou à loja.",
+    });
+    const rotulos = Array.from(container.querySelectorAll("button")).map((b) =>
+      (b.textContent ?? "").toLowerCase(),
+    );
+    expect(rotulos.some((r) => r.includes("tentar de novo"))).toBe(true);
+    expect(rotulos.some((r) => r.includes("meus pedidos"))).toBe(false);
+    expect(rotulos.some((r) => r.includes("falar com a loja"))).toBe(false);
+  });
+
+  it("'Falar com a loja' só existe quando a tela entrega o canal, e dispara esse canal", () => {
+    let falou = 0;
+    act(() => {
+      root.render(
+        <SaidaDaRecusa
+          recusa={{ acao: "reenviar_mesma_compra", mensagem: "qualquer" }}
+          onAgir={() => {}}
+          onFechar={() => {}}
+          onFalarComALoja={() => {
+            falou += 1;
+          }}
+        />,
+      );
+    });
+    const botao = Array.from(container.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Falar com a loja"),
+    ) as HTMLButtonElement;
+    expect(botao).toBeDefined();
+    act(() => botao.click());
+    expect(falou).toBe(1);
   });
 
   it("controle positivo do caso acima: tentar_de_novo OFERECE o botão de repetir", () => {

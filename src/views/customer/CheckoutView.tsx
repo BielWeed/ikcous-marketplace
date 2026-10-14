@@ -272,7 +272,7 @@ const ORDEM_CAMPOS_FOCO = [
  * cupom aplicado, `remover_cupom` não faz sentido), é aqui que ela entra, e
  * o teste já está montado.
  */
-export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido => {
+const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
   if ((error as { code?: string } | null)?.code === "PEDIDO_SEM_RESPOSTA") {
     return {
       acao: "conferir_antes",
@@ -302,6 +302,65 @@ export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido => {
   }
   return classificarRecusaDoPedido(error);
 };
+
+/**
+ * A frase de quem compra SEM CONTA quando não se sabe se o pedido chegou. É
+ * honesta nos dois sentidos: promete o reenvio da MESMA compra e a garantia de
+ * que ela não sai em dobro — e não manda "conferir seus pedidos", que ela não
+ * tem como fazer.
+ */
+const MENSAGEM_DE_REENVIO_SEM_CONTA =
+  "Não deu para confirmar se o seu pedido chegou à loja. Toque em “Tentar de novo”: reenviamos exatamente a mesma compra e, se ela já tiver chegado, o pedido não sai em dobro.";
+
+/**
+ * `conferir_antes` + quem compra SEM CONTA. A saída antiga ("Ver meus
+ * pedidos") leva a uma busca que exige e-mail e o número do pedido — a
+ * convidada nunca tem nenhum dos dois (o formulário não pede e-mail e o número
+ * nunca chegou), então ela travava no botão e desistia. Reenviar a MESMA
+ * compra é seguro: a chave de idempotência é a mesma e o banco devolve o
+ * pedido que já nasceu (create_marketplace_order_v23/v24, passo 0).
+ *
+ * Fica de fora o P0001 COM texto: aí o banco respondeu e o `RAISE EXCEPTION`
+ * garante que o pedido NÃO nasceu — reenviar o mesmo payload só repetiria a
+ * recusa. Para quem tem conta nada muda (`semConta` falso).
+ */
+export const decidirSaidaDoCheckout = (
+  error: unknown,
+  opcoes: { semConta?: boolean } = {},
+): RecusaDoPedido => {
+  const saida = decidirSaidaDaTela(error);
+  if (!opcoes.semConta || saida.acao !== "conferir_antes") return saida;
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const bancoRespondeu =
+    detalhes.code === "P0001" &&
+    typeof detalhes.message === "string" &&
+    detalhes.message !== "";
+  if (bancoRespondeu) return saida;
+  return {
+    acao: "reenviar_mesma_compra",
+    mensagem: MENSAGEM_DE_REENVIO_SEM_CONTA,
+  };
+};
+
+/**
+ * A compra que ficou SEM RESPOSTA, congelada no instante do envio: o payload
+ * exato que foi ao servidor (com a chave de idempotência dentro) e o que a
+ * tela precisa para fechar a compra se o reenvio der certo. O reenvio usa ESTE
+ * objeto — nunca remonta nada a partir do formulário ou do carrinho, porque
+ * qualquer mudança neles gira outra chave e abre a porta para um SEGUNDO
+ * pedido.
+ */
+interface PedidoCongelado {
+  readonly orderData: Record<string, unknown>;
+  readonly ehOnline: boolean;
+  readonly metodoOnline: MetodoOnline;
+  /** Os itens que vão ao pedido (e voltam ao carrinho se o pagamento falhar). */
+  readonly itens: CartItem[];
+  readonly valor: number;
+  readonly cpfParaRpc: string | undefined;
+  /** O pedido nasceu SEM sessão: só um reenvio sem sessão devolve o mesmo pedido. */
+  readonly semConta: boolean;
+}
 
 /**
  * Prova de que a falha é de REDE — o fetch nunca chegou a existir ou o
@@ -430,6 +489,7 @@ type DestinoDaRecusa =
   | "endereco"
   | "conta"
   | "pedidos"
+  | "reenviar"
   | "so_fechar";
 
 const DESTINO_DA_ACAO: Record<AcaoDeRecusa, DestinoDaRecusa> = {
@@ -455,6 +515,9 @@ const DESTINO_DA_ACAO: Record<AcaoDeRecusa, DestinoDaRecusa> = {
   // abaixo) — entrar ou criar conta.
   entrar_na_conta: "conta",
   conferir_antes: "pedidos",
+  // Quem compra SEM CONTA: reenvia a compra CONGELADA da tentativa sem
+  // resposta (nunca remonta do formulário). Ver `reenviarPedidoCongelado`.
+  reenviar_mesma_compra: "reenviar",
   // 🔴 `tentar_de_novo` NÃO reenvia sozinho. O botão "Finalizar Pedido"
   // continua na tela e é a pessoa que decide apertá-lo de novo. Reenviar por
   // conta própria transformaria um clique em dois pedidos no dia em que a
@@ -1265,6 +1328,9 @@ export function CheckoutView({
   const gerenteDaChaveRef = useRef<ReturnType<
     typeof criarGerenciadorDeChave
   > | null>(null);
+  // A compra da convidada que ficou sem resposta (ver `PedidoCongelado`): só
+  // existe enquanto o painel "Tentar de novo" está na tela.
+  const pedidoCongeladoRef = useRef<PedidoCongelado | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState("");
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
@@ -3040,7 +3106,8 @@ export function CheckoutView({
   // sozinho. Em `tentar_de_novo` o botão continua livre de propósito — ali o
   // reenvio manual É a saída desenhada.
   const aguardandoConferenciaDaRecusa =
-    recusaDoUltimoClique?.acao === "conferir_antes";
+    recusaDoUltimoClique?.acao === "conferir_antes" ||
+    recusaDoUltimoClique?.acao === "reenviar_mesma_compra";
 
   // Fonte ÚNICA da condição de "Finalizar Pedido" apagado. Antes desta
   // constante, o `disabled` do botão e o `cn(...)` que decide a APARÊNCIA
@@ -3091,6 +3158,15 @@ export function CheckoutView({
    * Painel que sobrevive à própria ação vira aviso velho na tela.
    */
   const agirNaRecusa = (acao: AcaoDeRecusa) => {
+    // O reenvio decide sozinho quando o painel some: sem internet ele fica,
+    // para a pessoa tentar de novo quando a rede voltar.
+    if (DESTINO_POR_ACAO.get(acao) === "reenviar") {
+      haptic.light();
+      void reenviarPedidoCongelado().catch((error: unknown) => {
+        console.error("Falha inesperada no reenvio do pedido:", error);
+      });
+      return;
+    }
     setRecusaDoUltimoClique(null);
     haptic.light();
 
@@ -3116,6 +3192,9 @@ export function CheckoutView({
         // `conferir_antes` é o caso em que NÃO se sabe se o pedido nasceu.
         // A única saída segura é olhar os próprios pedidos antes de repetir.
         onNavigate("orders");
+        return;
+      case "reenviar":
+        // Tratado no topo desta função (precisa decidir se o painel some).
         return;
       case "so_fechar":
         return;
@@ -3215,6 +3294,8 @@ export function CheckoutView({
     // isto, o painel da recusa passada ficaria ao lado do spinner da tentativa
     // atual, oferecendo uma ação para um problema que já pode não existir mais.
     setRecusaDoUltimoClique(null);
+    // Uma tentativa nova de "Finalizar" substitui a compra congelada.
+    pedidoCongeladoRef.current = null;
 
     let isFormValid: boolean;
     try {
@@ -3535,6 +3616,26 @@ export function CheckoutView({
       }),
     );
 
+    await enviarPedido({
+      orderData,
+      ehOnline,
+      metodoOnline: metodoOnlineEfetivo,
+      itens: cart,
+      valor: finalTotal,
+      cpfParaRpc,
+      semConta: !user,
+    });
+  };
+
+  /**
+   * Manda o pedido e conduz o que vem depois (sucesso, recusa ou silêncio).
+   * Serve ao clique em "Finalizar" E ao reenvio da compra congelada: os dois
+   * enviam um `PedidoCongelado` — o segundo é o MESMO objeto da primeira
+   * tentativa. Quem chama já tomou a trava (`travaDeEnvioRef`) e ligou
+   * `isSubmitting`; o `finally` abaixo solta os dois.
+   */
+  const enviarPedido = async (pedido: PedidoCongelado) => {
+    const { orderData, ehOnline, cpfParaRpc } = pedido;
     try {
       const order = await aguardarComPrazo(
         createOrder(orderData, { comPagamentoOnline: ehOnline }),
@@ -3547,7 +3648,8 @@ export function CheckoutView({
       // O pedido entrou. A chave cumpriu seu papel: a PRÓXIMA compra — mesmo
       // com carrinho idêntico — tem de nascer com chave nova, não herdar a
       // resposta desta.
-      gerenteDaChaveRef.current.esquecer();
+      gerenteDaChaveRef.current?.esquecer();
+      pedidoCongeladoRef.current = null;
       // O rascunho morre junto (laudo 3108, N7): compra fechada não tem
       // rascunho — vale para sucesso E para aguardando pagamento (o pedido
       // nasceu nos dois; o que segue é pagamento, não digitação).
@@ -3568,11 +3670,11 @@ export function CheckoutView({
         void gravarCpfDaConta(cpfParaRpc);
       }
       setOrderId(order.id);
-      setValorDoPedido(finalTotal);
+      setValorDoPedido(pedido.valor);
       // Snapshot ANTES do onClearCart() da linha seguinte — depois dele
       // `cart` (propCart ?? ctxCart) já está vazio. CHECKOUT-070 (#197)
       // usa isto para devolver os itens se o pagamento online falhar.
-      itensDoPedidoParaRestaurarRef.current = cart;
+      itensDoPedidoParaRestaurarRef.current = pedido.itens;
 
       // 🤖 Automação Solo-Ninja: O disparo agora é 100% via Backend (Edge Function + Webhook)
       onClearCart();
@@ -3588,7 +3690,7 @@ export function CheckoutView({
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
         // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
         // sucesso aqui é a mentira que a tela de hoje conta.
-        setMetodoDoPedido(metodoOnlineEfetivo);
+        setMetodoDoPedido(pedido.metodoOnline);
         setAguardandoPagamento(true);
         return;
       }
@@ -3654,15 +3756,22 @@ export function CheckoutView({
       // tem de dizer a mesma coisa que o painel — "confira se ele já apareceu"
       // num e "tente de novo" no outro, para a mesma falha, é a divergência que
       // recusa-e-toast-nao-divergem.test.ts proíbe entre as regras do banco.
-      const saida = decidirSaidaDoCheckout(error);
+      const saida = decidirSaidaDoCheckout(error, {
+        semConta: pedido.semConta,
+      });
       toast.error(
         `Falha no Pedido: ${
           ehFalhaDeRedeAntesDoEnvio(error) ||
-          error?.code === "PEDIDO_SEM_RESPOSTA"
+          error?.code === "PEDIDO_SEM_RESPOSTA" ||
+          saida.acao === "reenviar_mesma_compra"
             ? saida.mensagem
             : mensagemAmigavelErroPedido(error)
         }`,
       );
+      // Só a compra SEM resposta fica guardada para o reenvio; qualquer outro
+      // desfecho solta o que havia (a recusa nova é a verdade de agora).
+      pedidoCongeladoRef.current =
+        saida.acao === "reenviar_mesma_compra" ? pedido : null;
       // O toast é o AVISO — ele alcança quem não está olhando esta parte da
       // tela. O painel abaixo é a AÇÃO. Os dois convivem de propósito: até
       // 28/08/2026 só existia o toast, ele sumia sozinho e não levava a lugar
@@ -3672,6 +3781,42 @@ export function CheckoutView({
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
     }
+  };
+
+  /**
+   * "Tentar de novo" de quem compra SEM CONTA: reenvia EXATAMENTE a compra que
+   * ficou sem resposta — o `PedidoCongelado` guardado no instante do envio, com
+   * a mesma chave de idempotência. Seguro porque o banco devolve o pedido que
+   * já nasceu para a mesma chave e nenhuma gravação (estoque, cupom) acontece
+   * antes do INSERT do pedido (create_marketplace_order_v23/v24).
+   *
+   * 🔴 Nunca remonta o payload do formulário/carrinho: se a cliente mudou
+   * qualquer coisa desde então, a impressão digital mudaria, a chave giraria e
+   * nasceria um SEGUNDO pedido. É por isso que o "Finalizar" fica travado
+   * enquanto o painel está na tela.
+   */
+  const reenviarPedidoCongelado = async () => {
+    const pedido = pedidoCongeladoRef.current;
+    if (!pedido) return;
+    // Entrou numa conta no meio do caminho: o banco só devolve o pedido da
+    // chave ao MESMO dono (convidada = sem dono). Reenviar o payload de
+    // convidada sob uma sessão criaria um pedido NOVO — então não reenvia; o
+    // painel sai e o "Finalizar" volta, já como cliente com conta.
+    if (user) {
+      pedidoCongeladoRef.current = null;
+      setRecusaDoUltimoClique(null);
+      return;
+    }
+    if (isOffline) {
+      toast.error(
+        "Sem conexão — nada foi enviado. Tente de novo quando a internet voltar.",
+      );
+      return;
+    }
+    if (!travaDeEnvioRef.current.tentarEntrar()) return;
+    setRecusaDoUltimoClique(null);
+    setIsSubmitting(true);
+    await enviarPedido(pedido);
   };
 
   // CHECKOUT-070 (#197): saída para quem teve o pagamento online recusado —
@@ -3824,6 +3969,23 @@ export function CheckoutView({
     "",
   );
   const lojaTemWhatsappNoCheckout = lojaTemWhatsapp(config.whatsappNumber);
+  // Quem compra SEM CONTA e não recebeu resposta do servidor: o mesmo canal
+  // da tela de sucesso, mas SEM prometer um número de pedido que ela nunca
+  // viu — a mensagem pergunta pelo pedido com o nome dela.
+  const falarComALojaSemConfirmacao = () => {
+    if (!lojaTemWhatsappNoCheckout) return;
+    let phone = numeroLimpoDoCheckout;
+    if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
+    const nome = (
+      pedidoCongeladoRef.current?.orderData.customer as
+        | { name?: string }
+        | undefined
+    )?.name;
+    const mensagem = `Olá! Tentei finalizar um pedido pelo app${nome ? ` (em nome de ${nome})` : ""}, mas não recebi a confirmação. Podem me ajudar?`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
+    // "noopener,noreferrer": mesma razão das duas funções de WhatsApp acima.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
+  };
   // C4 (M1): o pedido vem por parâmetro — na retomada do cartão em dúvida o
   // `orderId` ainda não foi ligado (nada monta), e o pedido é o retomado.
   const falarComALojaSobreCartao = (idDoPedido: string) => {
@@ -4332,7 +4494,15 @@ export function CheckoutView({
                 {isCancelandoPedido && (
                   <Loader2 className="size-4 animate-spin" />
                 )}
-                Cancelar pedido e voltar ao carrinho
+                {/*
+                  Só promete "voltar ao carrinho" quando há itens para devolver:
+                  a lista só é preenchida quando o pedido NASCE nesta tela. Na
+                  retomada (Perfil -> "Retomar pagamento", ou recarga) ela está
+                  vazia e o cancelamento levava a um carrinho vazio.
+                */}
+                {itensDoPedidoParaRestaurarRef.current.length > 0
+                  ? "Cancelar pedido e voltar ao carrinho"
+                  : "Cancelar pedido"}
               </Button>
             ) : (
               // Achado 3 da revisão do #197: sem sessão, `update_order_status_atomic`
@@ -6278,8 +6448,9 @@ export function CheckoutView({
                         className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
                       >
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                        Só feche o aviso abaixo se tiver certeza de que o pedido
-                        não foi criado
+                        {recusaDoUltimoClique?.acao === "reenviar_mesma_compra"
+                          ? "Use “Tentar de novo” abaixo. Só feche o aviso se tiver certeza de que o pedido não foi criado"
+                          : "Só feche o aviso abaixo se tiver certeza de que o pedido não foi criado"}
                       </p>
                     )}
                     {recusaDoUltimoClique && (
@@ -6291,6 +6462,13 @@ export function CheckoutView({
                           recusa={recusaDoUltimoClique}
                           onAgir={agirNaRecusa}
                           onFechar={() => setRecusaDoUltimoClique(null)}
+                          onFalarComALoja={
+                            recusaDoUltimoClique.acao ===
+                              "reenviar_mesma_compra" &&
+                            lojaTemWhatsappNoCheckout
+                              ? falarComALojaSemConfirmacao
+                              : undefined
+                          }
                         />
                       </div>
                     )}
