@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1582,6 +1582,30 @@ const ROL_DA_25B = [
   "get_reviews_metrics: o corpo ainda NAO exige is_admin()",
   "get_reviews_metrics: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
 ];
+/** O rol da 26a (a prova de objetos do lote 20261223000000, o voto util so vale em avaliacao que o publico
+ * ve): as 5 linhas que scripts/publicacao/consultas/26a-conferir-voto-util-so-em-avaliacao-publica.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria
+ * linha): o corpo vivo e o NOVO (md5), ele exige avaliacao publicada antes de gravar o voto, os atributos de
+ * sempre e o EXECUTE seguem FECHADOS ao visitante.
+ * tests/banco/voto-util-so-em-avaliacao-publica-portao-viva.cjs prova, num Postgres real, que este rol e
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_26A = [
+  "controle: funcoes de public visiveis a este papel",
+  "increment_helpful: corpo e o da 20261223000000, com a guarda de status (md5)",
+  "increment_helpful: o corpo exige avaliacao publicada antes de gravar o voto",
+  "increment_helpful: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "increment_helpful: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 26b (a consulta de AUSENCIA do lote do voto util; `ausenciaConfirmadaPor`): as 4 linhas que
+ * scripts/publicacao/consultas/26b-antes-voto-util-sem-guarda-de-status.sql devolve — a base de antes: o corpo
+ * e o da 20261050000000 (md5), sem a guarda de status, com os atributos de sempre. NAO mede a ACL (e' da 24a).
+ * Uma loja que ja tem a guarda reprova aqui de proposito, nas linhas do corpo. */
+const ROL_DA_26B = [
+  "controle: funcoes de public visiveis a este papel",
+  "increment_helpful: corpo e o da 20261050000000, sem a guarda de status (md5)",
+  "increment_helpful: o corpo ainda NAO exige avaliacao publicada",
+  "increment_helpful: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1618,6 +1642,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "24b-antes-avaliacoes-abertas-ao-visitante": ROL_DA_24B,
   "25a-conferir-media-de-avaliacoes-so-admin": ROL_DA_25A,
   "25b-antes-media-de-avaliacoes-sem-guarda": ROL_DA_25B,
+  "26a-conferir-voto-util-so-em-avaliacao-publica": ROL_DA_26A,
+  "26b-antes-voto-util-sem-guarda-de-status": ROL_DA_26B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2192,6 +2218,8 @@ module.exports = {
   ROL_DA_24B,
   ROL_DA_25A,
   ROL_DA_25B,
+  ROL_DA_26A,
+  ROL_DA_26B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

@@ -456,6 +456,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261222000000: a media de avaliacoes so responde ao administrador (corpo com is_admin(); comportamento e portao 25a/25b).
     "tests/banco/media-de-avaliacoes-so-admin-viva.cjs",
     "tests/banco/media-de-avaliacoes-so-admin-portao-viva.cjs",
+    // 20261223000000: o voto util so vale em avaliacao que o publico ve (corpo com status = 'publicada'; comportamento e portao 26a/26b).
+    "tests/banco/voto-util-so-em-avaliacao-publica-viva.cjs",
+    "tests/banco/voto-util-so-em-avaliacao-publica-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

@@ -552,7 +552,7 @@
       "tipo": "volatil",
       "secdef": true,
       "situacao": "logado",
-      "porque": "Voto 'util' numa avaliacao: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa (fechada pela migration 20261221000000)."
+      "porque": "Voto 'util' numa avaliacao: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()) e que a avaliacao exista com status publicada (a mesma condicao que o publico usa para ve-la; pendente e id inexistente levantam a mesma excecao, migration 20261223000000); o visitante nao a executa (fechada pela migration 20261221000000)."
     },
     {
       "funcao": "public.informar_envio_devolucao(p_id uuid, p_codigo_rastreio text)",

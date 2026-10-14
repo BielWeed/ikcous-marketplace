@@ -355,7 +355,9 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   apply; a mesma conexão em transação nova é recusada). A lista de portas (L8) diz `logado` para o voto e
   (até a `20261222000000`) `tolerada` (só authenticated, corpo sem guarda de admin) para a média; desde a
   `20261222000000` diz `logado` para as duas. Depois dela esta prova aceita "chegou ao corpo" como a linha
-  (admin) **ou** a exceção da guarda de admin (P0001): o que ela mede é que a ACL não barrou (nada de 42501).
+  (admin) **ou** a exceção da guarda de admin (P0001): o que ela mede é que a ACL não barrou (nada de 42501). O
+  mesmo vale para o voto de um logado numa avaliação que não existe: o no-op silencioso de antes **ou** (desde a
+  `20261223000000`) a exceção P0001 `Avaliação não encontrada.`, nunca 42501.
 - **portão das avaliações fechadas (`avaliacoes-fechadas-ao-visitante-portao-viva.cjs`, via `rodar-isolado.cjs`)**:
   as consultas `24a-conferir-avaliacoes-fechadas-ao-visitante` (DEPOIS, 3 linhas) e
   `24b-antes-avaliacoes-abertas-ao-visitante` (ANTES, 3 linhas), a "prova de objetos" do lote `20261221000000`. Rol
@@ -386,6 +388,24 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   a mais no corpo, guarda tardia, sem guarda, STABLE, SECURITY INVOKER, search_path, EXECUTE por papel e PUBLIC,
   função ausente) reprova só as linhas certas; ACL aberta não reprova a 25b; mutantes do texto das consultas
   ficam vermelhos. **Não prova** a IKCOUS nem a Savy: o corpo vivo de cada loja só o run da 25b (e da 22m) mede.
+- **voto útil só em avaliação pública (`voto-util-so-em-avaliacao-publica-viva.cjs`, via `rodar-isolado.cjs`)**:
+  a migration `20261223000000` (o corpo de `increment_helpful` passa a exigir `reviews.status = 'publicada'`, a
+  condição da vitrine) com os papéis reais num Postgres efêmero. Cada caso parte do estado ANTES (o rollback-manual
+  dela, conferido byte a byte contra o corpo da `20261050000000`): o controle prova o defeito (o logado vota numa
+  avaliação pendente e o contador sobe). Depois: anon = 42501; logado em avaliação PUBLICADA vota (contador +1, uma
+  linha em `review_votes`, o segundo voto do mesmo usuário é no-op sem exceção, outro usuário soma); PENDENTE e id
+  INEXISTENTE = a MESMA exceção `Avaliação não encontrada.` (P0001) e NADA gravado (nem voto, nem contador); o autor
+  na própria pendente é recusado e na própria publicada vota; o CHECK barra `'recusada'` (a recusa é apagar); sem
+  `auth.uid()` vale a exceção de login de antes. Só o corpo dessa função muda (oid, ACL, dados, outras funções
+  intactos), reaplicar 2x e em CRLF = mesmo estado, o rollback devolve o `prosrc` idêntico, o pré-voo recusa sem
+  escrever (corpo desconhecido, atributos, sobrecarga, função ausente, `review_votes` ou `reviews.status`
+  ausentes, dono sem SELECT, ACL aberta ou sem a 20261221), as conferências finais recusam estado ruim, concorrência
+  (chamada em voo não segura o apply).
+- **portão do voto útil (`voto-util-so-em-avaliacao-publica-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `26a-conferir-voto-util-so-em-avaliacao-publica` (DEPOIS, 5 linhas) e
+  `26b-antes-voto-util-sem-guarda-de-status` (ANTES, 4 linhas; **não mede a ACL**, que é da 24a), a "prova de
+  objetos" do lote `20261223000000`. Mesmo desenho do portão 25: rol exato nos dois estados, um negativo por
+  linha, mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

@@ -15,7 +15,8 @@
  *             o "recusou depois" pode ser vacuo); a chamada do visitante CHEGA ao corpo (a media volta
  *             uma linha; o voto e' recusado pelo corpo com P0001 "Acesso negado", nao pelo banco).
  *  DEPOIS     anon recebe 42501 (permissao negada pelo banco, antes do corpo) nas duas; authenticated
- *             chega ao corpo e funciona (a media volta; o voto de um logado sem avaliacao e' no-op;
+ *             chega ao corpo e funciona (a media volta; o voto de um logado numa avaliacao inexistente CHEGA ao corpo: no-op
+ *             silencioso na arvore sem a 20261223 ou a excecao P0001 'Avaliação não encontrada.' com ela, nunca 42501;
  *             sem auth.uid() o corpo recusa com P0001); service_role e o dono seguem executando;
  *             PUBLIC fechado; a ACL fica EXATAMENTE a do rol; so a ACL das duas mudou (nenhuma outra
  *             funcao, nenhuma tabela, nenhum corpo); nenhuma linha de reviews/review_votes mudou.
@@ -132,6 +133,16 @@ const chegouAoCorpo = (r) =>
   r.linha !== undefined ||
   (r.codigo === "P0001" &&
     /Acesso negado: privilégios de administrador necessários/.test(r.erro));
+
+/**
+ * O voto de um LOGADO numa avaliacao que nao existe tambem "chega ao corpo" (nunca 42501): ate a 20261050000000 o
+ * corpo devolvia no-op silencioso (uma linha); desde a 20261223000000 ele levanta P0001 'Avaliação não encontrada.'
+ * (mesma excecao do id pendente). As duas respostas provam o mesmo que esta prova quer: a ACL nao barrou. (O
+ * comportamento da guarda e' de tests/banco/voto-util-so-em-avaliacao-publica-viva.cjs.)
+ */
+const votoChegouAoCorpo = (r) =>
+  r.linha !== undefined ||
+  (r.codigo === "P0001" && /^Avaliação não encontrada.$/.test(r.erro));
 
 /** Aplica um arquivo dentro de um savepoint: devolve null se aplicou ou {erro, codigo}. */
 async function aplicar(sql) {
@@ -283,12 +294,16 @@ prova(
         UUID_QUE_NAO_EXISTE,
       ]);
       assert.equal(semUid.codigo, "P0001", semUid.erro);
-      // ... e com um usuario logado (emulacao de auth) a avaliacao inexistente e' no-op silencioso
+      // ... e com um usuario logado (emulacao de auth) a avaliacao inexistente chega ao corpo (no-op, ou a excecao da 20261223)
       await logar("7e7e2210-0000-4000-8000-0000000000aa");
       const logado = await tentar("authenticated", SQL_VOTO, [
         UUID_QUE_NAO_EXISTE,
       ]);
-      assert.ok(logado.linha, `logado devia passar: ${logado.erro}`);
+      assert.ok(
+        votoChegouAoCorpo(logado),
+        `logado devia chegar ao corpo (linha, ou a excecao da 20261223, nunca 42501): ${logado.codigo} ${logado.erro}`,
+      );
+      assert.notEqual(logado.codigo, "42501");
 
       // service_role segue chamando
       const s = await tentar("service_role", SQL_METRICAS);

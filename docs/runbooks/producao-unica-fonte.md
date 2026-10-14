@@ -931,6 +931,44 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         concorrencia) num Postgres 17 efemero; nao prova o Postgres da Supabase, o papel
         `supabase_read_only_user` de cada loja nem o corpo vivo delas.
 
+  23. **Lote de UMA migration, de apply normal: `20261223000000` (o voto "util" so vale em avaliacao que o
+      publico ve; permissao).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes
+      (IKCOUS e Savy), **depois do item 21** (o pre-voo recusa a loja sem a `20261221000000`). Troca o corpo de
+      `increment_helpful` por `CREATE OR REPLACE` com o MESMO corpo da `20261050000000` (o voto com memoria no
+      servidor) mais uma guarda logo depois da checagem de login: o voto so vale se a avaliacao existe com
+      `status = 'publicada'` (a mesma condicao da vitrine `vw_reviews_public` e da policy
+      `reviews_select_policy`); senao `RAISE EXCEPTION 'Avaliação não encontrada.'`. Antes, qualquer conta
+      LOGADA votava "util" numa avaliacao PENDENTE (o contador subia antes de alguem a ver). Pendente e id
+      inexistente (a avaliacao recusada e APAGADA; nao existe status "recusada") dao a MESMA excecao com a
+      MESMA mensagem: o id inexistente deixa de ser no-op silencioso. O autor com avaliacao pendente tambem
+      e recusado (regressao de UX aceita: toast "Erro ao marcar como util"). Nao toca dado, assinatura, tipo de
+      retorno, SECURITY DEFINER, VOLATILE, `search_path` nem ACL. Nenhuma edge function e nenhum front mudam.
+      Quem quebra: so conta logada que votasse em avaliacao pendente ou inexistente. Duas consultas, so
+      leitura, so catalogo, de ROL FECHADO (5 e 4 linhas, so valem com `rol=ok`):
+      - **`26a-conferir-voto-util-so-em-avaliacao-publica`** (a consulta do lote) prova DEPOIS do apply o corpo
+        novo (md5), a guarda no corpo, os atributos de sempre e o `EXECUTE` fechado ao visitante.
+      - **`26b-antes-voto-util-sem-guarda-de-status`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo da
+        `20261050000000`, sem a guarda, com os atributos de sempre. **Nao mede a ACL** (e da `24a`). O md5 que ela
+        espera vem do arquivo da migration, nao de uma loja: **rode a `26b` (e a `22m`) em CADA loja ANTES do
+        apply** e compare o corpo vivo; corpo diferente e loja que ninguem mediu, e o pre-voo tambem para.
+      - **Caminho, uma loja por vez:** `26a` (sai NEGATIVA) → `26b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com `20261223000000_o_voto_util_so_em_avaliacao_que_o_publico_ve.sql` → o
+        ensaio pede a `26a` DE NOVO, que tem de sair POSITIVA. `26a` POSITIVA com a versao fora do ledger:
+        PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261223000000_o_voto_util_so_em_avaliacao_que_o_publico_ve.sql` pelo
+        `aplicar-migrations.yml` (recria o corpo antigo, mesmo md5, sem tocar a ACL). Depois dele a `26b` volta
+        a ser POSITIVA e a `26a` NEGATIVA. O rollback do 23 vem ANTES do da `20261221`. **NUNCA** rodar o
+        `rollback-manual-20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql` depois do corte: ele faz
+        `GRANT EXECUTE ... TO PUBLIC` nesta funcao e a reabre para todos.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga (a deste
+        lote e a dos lotes 24 e 25): rodar a `24a`, `24b`, `25a`, `25b`, `26a` e `26b` DE NOVO.
+      - **Limites:** `tests/banco/voto-util-so-em-avaliacao-publica-viva.cjs` prova o comportamento (anon
+        recusado com 42501, pendente e inexistente com a mesma excecao e nada gravado, publicada vota, so o
+        corpo dessa funcao muda, rollback com o mesmo md5, pre-voo, conferencia, concorrencia) num Postgres 17
+        efemero; nao prova o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo
+        vivo delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

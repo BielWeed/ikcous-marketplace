@@ -1455,6 +1455,28 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261223000000_o_voto_util_so_em_avaliacao_que_o_publico_ve.sql": [
+    {
+      // O voto útil só vale em avaliação que o público vê (14/10/2026): a guarda nova
+      // (`status = 'publicada'`) TROCA a antiga checagem de inexistente, no mesmo lugar. Sem esta
+      // entrada a migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO
+      // (pg_get_functiondef, comentários incluídos): a mensagem nova aparece UMA vez (a guarda é um
+      // `IF NOT EXISTS ... RAISE`, nunca `PERFORM` + `IF NOT FOUND`, que é o padrão do voto duplicado),
+      // o `ON CONFLICT` e o `IF NOT FOUND THEN` da deduplicação ficam UMA vez cada (a memória do voto não
+      // pode ter mudado), e o acesso negado de login segue UMA vez.
+      funcao: "increment_helpful",
+      esperado: [
+        { texto: "Avaliação não encontrada.", vezes: 1 },
+        {
+          texto:
+            "ON CONFLICT ON CONSTRAINT review_votes_um_voto_por_usuario DO NOTHING",
+          vezes: 1,
+        },
+        { texto: "IF NOT FOUND THEN", vezes: 1 },
+        { texto: "Acesso negado: usuário não autenticado.", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,
