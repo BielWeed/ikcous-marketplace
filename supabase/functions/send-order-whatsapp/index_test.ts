@@ -52,8 +52,8 @@ Deno.test("o resto da mensagem continua igual (nome, resumo, total)", () => {
 // não era pix/card virava "Dinheiro" — um cliente que pagou no cartão de
 // crédito pelo site recebia "Pagamento: Dinheiro".
 const ROTULOS_DO_ONLINE: Array<[string, string]> = [
-  ["credito", "Cartao de credito pelo site"],
-  ["debito", "Cartao de debito pelo site"],
+  ["credito", "Cartão de crédito pelo site"],
+  ["debito", "Cartão de débito pelo site"],
   ["pix", "PIX pelo site"],
 ];
 
@@ -82,7 +82,7 @@ Deno.test("pagamento na entrega mantém o rótulo comum (cartão e dinheiro)", (
   };
   assertStringIncludes(
     montarMensagem({ ...base, paymentMethod: "card" }),
-    "*Pagamento:* Cartao na entrega",
+    "*Pagamento:* Cartão na entrega",
   );
   assertStringIncludes(
     montarMensagem({ ...base, paymentMethod: "cash" }),
@@ -379,7 +379,7 @@ Deno.test("servidor legítimo: a mensagem sai com telefone, nome, total e forma 
   assertStringIncludes(corpo.text, "Olá *Maria do Banco*");
   assertStringIncludes(corpo.text, "*#3884BE*");
   assertStringIncludes(corpo.text, "*Total:* R$ 24,90");
-  assertStringIncludes(corpo.text, "*Pagamento:* Cartao de credito pelo site");
+  assertStringIncludes(corpo.text, "*Pagamento:* Cartão de crédito pelo site");
   assertEquals(corpoEnviado.includes("Vítima"), false);
   assertEquals(corpoEnviado.includes(TELEFONE_DE_OUTRA_PESSOA), false);
 });
