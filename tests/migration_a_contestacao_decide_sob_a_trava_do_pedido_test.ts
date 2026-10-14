@@ -472,6 +472,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261225000000: o reembolso da devolucao so e liberado quando o dinheiro sai (gatilho de aviso pelo estado real; comportamento e portao 28a/28b).
     "tests/banco/reembolso-da-devolucao-viva.cjs",
     "tests/banco/reembolso-da-devolucao-portao-viva.cjs",
+    // 20261226000000: a reemissao do reembolso consulta o MP antes de pagar de novo (gate de "nada saiu", adotar so linha incerta, devolucao pelo painel do MP, ator admin atual, ACL; comportamento e portao 29a/29b).
+    "tests/banco/reemissao-do-reembolso-viva.cjs",
+    "tests/banco/reemissao-do-reembolso-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

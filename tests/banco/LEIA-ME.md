@@ -486,6 +486,30 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   de objetos" do lote `20261225000000`. Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por
   linha (1 byte a mais em cada corpo, STABLE, SECURITY INVOKER, ACL por papel, gatilho desligado/sem WHEN/ausente,
   função ausente). **Não prova** a IKCOUS nem a Savy.
+- **reemissão do reembolso (`reemissao-do-reembolso-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261226000000` (tabela só-servidor `order_refund_diagnostico`, `registrar_diagnostico_do_estorno`,
+  `reemitir_reembolso_da_devolucao` e `admin_devolucao_reembolso_por_fora`) com os papéis reais e o fluxo REAL do
+  painel (`admin_devolucao_concluir`, `concluir_estorno`). Cada cenário reproduz um achado do laudo do crítico de
+  desenho: só cria chave nova quando o MP PROVOU que nada saiu (`recusado`, ou `falhou` com "sem saldo"/"ainda não
+  liberado" repetido, sem carimbo de incerteza); `falhou` legada (sem diagnóstico) e `falhou` incerta nunca ganham
+  chave nova; só adota (conclui a linha) o reembolso que o MP já fez para linha incerta, com as guardas de valor, de
+  id de outra linha, de outra linha pendente do mesmo valor e de passar do total; devolução pelo painel do MP
+  depois da conclusão (linha `sistema`) bloqueia a criação, contestação e linha anterior não; o saldo é o da função
+  única; duplo clique e **duas conexões em corrida** (reemitir × reemitir, reemitir × "por fora") não criam duas
+  linhas e não dão deadlock; o ator é admin ATUAL nas duas fontes (`auth.users` e `profiles`); ACL fechada e o
+  CORPO recusa quem não é servidor mesmo com o EXECUTE aberto; a tabela de diagnóstico não é lida nem escrita por
+  papel de API; "Já devolvi por fora" resolve `falhou`/`recusado` (inclusive pedido cancelado), avisa 1 vez e
+  sinaliza o risco quando a linha é incerta; o diagnóstico incrementa no banco sem perder contagem em duas
+  conexões. Reaplicar 2x e em CRLF = mesmo estado, o rollback apaga só o que a migration criou (e recusa perder
+  diagnóstico sem a declaração do operador), o pré-voo recusa sem escrever, a conferência final recusa estado ruim
+  e os **mutantes** (cada guarda tirada) deixam o cenário NOMEADO vermelho (`MUTANTE_VERBOSE=1` mostra como cada um
+  morreu). **Não prova** o comportamento do Mercado Pago nem a IKCOUS/Savy.
+- **portão da reemissão do reembolso (`reemissao-do-reembolso-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes` (DEPOIS, 9 linhas) e
+  `29b-antes-reemissao-do-reembolso-base-conhecida` (ANTES, 5 linhas; **não mede a ACL**), a "prova de objetos" do
+  lote `20261226000000`. Mesmo desenho do portão 27: rol exato nos dois estados, um negativo por linha (1 byte a
+  mais em cada corpo, STABLE, SECURITY INVOKER, ACL por papel, tabela com policy/grant/sem RLS, objeto ausente ou
+  já presente). **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

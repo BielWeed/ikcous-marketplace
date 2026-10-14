@@ -1642,6 +1642,59 @@ const VERIFICACOES = {
         ],
       },
     ],
+  "20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql":
+    [
+      {
+        // A reemissão do reembolso consulta o MP antes de pagar de novo (14/10/2026). Sem esta entrada a
+        // migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO
+        // (pg_get_functiondef, comentários incluídos); cada um aparece UMA vez.
+        funcao: "reemitir_reembolso_da_devolucao",
+        esperado: [
+          {
+            texto:
+              "FROM public.order_refund_diagnostico WHERE refund_id = v_r.id;",
+            vezes: 1,
+          },
+          { texto: "IF v_sem_post THEN", vezes: 1 },
+          {
+            texto:
+              "PERFORM public.concluir_estorno(v_r.id, v_mp_refund, v_mp_status, NULL);",
+            vezes: 1,
+          },
+          {
+            texto: "v_saldo := public.pedido__saldo_a_estornar(v_o.id);",
+            vezes: 1,
+          },
+        ],
+      },
+      {
+        // O diagnóstico: um UPSERT que incrementa no banco (duas conexões não perdem contagem).
+        funcao: "registrar_diagnostico_do_estorno",
+        esperado: [
+          {
+            texto: "transitorios = d.transitorios + EXCLUDED.transitorios,",
+            vezes: 1,
+          },
+          {
+            texto:
+              "post_incerto_em = COALESCE(d.post_incerto_em, EXCLUDED.post_incerto_em),",
+            vezes: 1,
+          },
+        ],
+      },
+      {
+        // "Já devolvi por fora": função própria do lojista logado; confere o admin ATUAL.
+        funcao: "admin_devolucao_reembolso_por_fora",
+        esperado: [
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          {
+            texto:
+              "PERFORM public.devolucao__avisar_reembolso(p_devolucao_id, 'reembolso_combinado', 'success',",
+            vezes: 1,
+          },
+        ],
+      },
+    ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,
