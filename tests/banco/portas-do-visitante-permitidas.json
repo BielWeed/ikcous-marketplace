@@ -128,7 +128,7 @@
       "tipo": "leitura",
       "secdef": false,
       "situacao": "auxiliar",
-      "porque": "Auxiliar das duas CHECK da identidade da loja (store_config); o app nao a chama; aberta por heranca do PUBLIC."
+      "porque": "Auxiliar chamada por branding_a2_assets_valid (CHECK store_config_branding_assets_a2_check, identidade da loja); o app nao a chama; aberta por heranca do PUBLIC."
     },
     {
       "funcao": "public.branding_a2_logo_valid(assets jsonb, logo text)",
@@ -376,7 +376,7 @@
       "tipo": "leitura",
       "secdef": true,
       "situacao": "auxiliar",
-      "porque": "Regra de forma de pagamento chamada por dentro de create_marketplace_order_v23/v24 e das CHECK de store_config; o app nao a chama; aberta por heranca."
+      "porque": "Regra de forma de pagamento chamada so por dentro de create_marketplace_order_v23/v24 (nenhuma CHECK, indice ou politica a cita); o app nao a chama; aberta por heranca do PUBLIC."
     },
     {
       "funcao": "public.formas_pagamento_sem_duplicata(arr text[])",
