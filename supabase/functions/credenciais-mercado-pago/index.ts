@@ -826,9 +826,9 @@ function lojaDeclarouModoDeTeste(): boolean {
 /**
  * O aviso do ambiente da conta, ou null (função PURA). Só "teste" avisa:
  * "producao" e null (sem sinal) ficam calados — loja boa nunca é alarmada.
- * GANCHO DE PRODUTO: aqui é onde, no futuro, "conta de teste sem modo
- * declarado" poderia virar BLOQUEIO do PIX; essa decisão muda a regra do dono
- * de 30/09 e NÃO foi tomada — por ora só avisa.
+ * Conta de teste SEM modo declarado também BLOQUEIA o PIX (falta
+ * `chave_de_teste` em `faltasParaReceber`, decisão de 14/10 que mudou a regra
+ * "colou, liberou" de 30/09); com modo declarado, só avisa.
  */
 function avisoDoAmbiente(
     ambiente: "producao" | "teste" | null | undefined,
