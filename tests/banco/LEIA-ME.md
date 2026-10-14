@@ -465,6 +465,27 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `31b-antes-endereco-da-compra-so-no-ponteiro` (ANTES, 7 linhas; **não mede a ACL**, que é da 31a), a "prova de
   objetos" do lote `20261229000000`. Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por
   linha, mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
+- **reembolso da devolução só "liberado" com o dinheiro (`reembolso-da-devolucao-viva.cjs`, via
+  `rodar-isolado.cjs`)**: a migration `20261225000000` (o gatilho de aviso da devolução lê o estado REAL do
+  reembolso; um gatilho novo em `order_refunds` avisa "liberado" quando `concluir_estorno` confirma o dinheiro) com
+  os papéis reais e o fluxo REAL do painel (`admin_devolucao_concluir`, `concluir_estorno`) num Postgres efêmero.
+  O controle parte do estado ANTES (o rollback-manual, conferido byte a byte contra o corpo da `20261175000000`) e
+  prova o defeito (a cliente lê "foi liberado" com o reembolso ainda `solicitado`). Depois: concluir com reembolso
+  avisa "em processamento" (nunca "liberado"); o "liberado" nasce só quando a linha vira `concluido`, UMA vez
+  (repetir `concluir_estorno`, a linha que sai e volta a `concluido` e **duas conexões em corrida** não dobram);
+  linha `falhou`/`recusado`/sem linha = "ainda não foi liberado"; reembolso manual = "combinado com a loja"; troca,
+  vale e os outros status seguem iguais; um aviso que falha **nunca desfaz o dinheiro** (`concluir_estorno`
+  conclui e `valor_estornado` soma); a auxiliar interna não é executável por ninguém. Só o corpo do gatilho de
+  aviso muda (nenhuma tabela, ACL ou dado), reaplicar 2x e em CRLF = mesmo estado, o rollback devolve o `prosrc`
+  idêntico, o pré-voo recusa sem escrever, a conferência final recusa estado ruim e os **mutantes** (aviso
+  "liberado" na conclusão, "liberado" com a linha `falhou`, gatilho sem a guarda da virada, auxiliar sem
+  deduplicação, EXECUTE para `authenticated`) deixam a prova vermelha.
+- **portão do reembolso da devolução (`reembolso-da-devolucao-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro` (DEPOIS, 8 linhas) e
+  `28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao` (ANTES, 5 linhas; **não mede a ACL**), a "prova
+  de objetos" do lote `20261225000000`. Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por
+  linha (1 byte a mais em cada corpo, STABLE, SECURITY INVOKER, ACL por papel, gatilho desligado/sem WHEN/ausente,
+  função ausente). **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1697,6 +1697,35 @@ const ROL_DA_31B = [
   "create_marketplace_order_v23: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
   "create_marketplace_order_v24: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
 ];
+/** O rol da 28a (a prova de objetos do lote 20261225000000, o reembolso da devolucao so e' "liberado" quando o
+ * dinheiro sai): as 8 linhas que scripts/publicacao/consultas/28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria
+ * linha): os tres corpos vivos sao os NOVOS (md5), o aviso da conclusao segue o estado real do reembolso, os
+ * atributos de sempre, o EXECUTE fechado e o gatilho novo de order_refunds ligado.
+ * tests/banco/reembolso-da-devolucao-portao-viva.cjs prova, num Postgres real, que este rol e'
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_28A = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_avisa_o_cliente: corpo e o da 20261225000000, com o aviso pelo estado real do reembolso (md5)",
+  "devolucao_avisa_o_cliente: o aviso da conclusao segue o estado real do reembolso",
+  "devolucao__avisar_reembolso: corpo e o da 20261225000000 (md5)",
+  "devolucao_avisa_reembolso_liberado: corpo e o da 20261225000000 (md5)",
+  "as tres funcoes: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "as tres funcoes: EXECUTE fechado (PUBLIC, anon e authenticated nao; a auxiliar nem service_role)",
+  "tr_order_refunds_avisa_reembolso_liberado: ligado so na virada para concluido (AFTER UPDATE OF status, WHEN)",
+];
+/** O rol da 28b (a consulta de AUSENCIA do lote do reembolso da devolucao; `ausenciaConfirmadaPor`): as 5 linhas
+ * que scripts/publicacao/consultas/28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao.sql devolve — a
+ * base de antes: o corpo de devolucao_avisa_o_cliente e' o da 20261175000000 (md5), que avisa "liberado" na
+ * conclusao, com os atributos de sempre, e as duas funcoes novas e o gatilho novo ainda NAO existem. Uma loja
+ * que ja tem a migration reprova aqui de proposito. */
+const ROL_DA_28B = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_avisa_o_cliente: corpo e o da 20261175000000, que avisa liberado na conclusao (md5)",
+  "devolucao_avisa_o_cliente: o aviso da conclusao ainda NAO le o estado real do reembolso",
+  "devolucao_avisa_o_cliente: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "as duas funcoes novas e o gatilho de order_refunds ainda NAO existem",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1741,6 +1770,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "30b-antes-numeros-do-painel-corpos-vigentes": ROL_DA_30B,
   "31a-conferir-endereco-da-compra-fica-no-pedido": ROL_DA_31A,
   "31b-antes-endereco-da-compra-so-no-ponteiro": ROL_DA_31B,
+  "28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro": ROL_DA_28A,
+  "28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao": ROL_DA_28B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2323,6 +2354,8 @@ module.exports = {
   ROL_DA_30B,
   ROL_DA_31A,
   ROL_DA_31B,
+  ROL_DA_28A,
+  ROL_DA_28B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
