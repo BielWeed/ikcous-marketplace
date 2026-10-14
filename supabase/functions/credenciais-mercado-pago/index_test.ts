@@ -1020,8 +1020,12 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C19 — chave de TESTE liga, mas com aviso de que não entra dinheiro de verdade", async () => {
-        const desfazerEnv = prepararEnv();
+    await t.step("C19 — chave de TESTE em loja com MODO DE TESTE declarado liga, mas com aviso de que não entra dinheiro de verdade", async () => {
+        // 14/10/2026: sem o modo declarado a chave de teste NÃO liga mais
+        // (ver A1); o sandbox legítimo (IKCOUS de desenvolvimento) segue igual.
+        const desfazerEnv = prepararEnv({
+            MP_SANDBOX_PAYER_EMAIL: "pagador-de-teste@testuser.com",
+        });
         const { cliente, estado } = supabaseFalso();
         try {
             const mp = buscarMpFalso(200, contaDeTeste());
@@ -2374,10 +2378,15 @@ Deno.test("credenciais-mercado-pago", async (t) => {
     // ══════════════════════════════════════════════════════════════════════
     // CHAVE DE TESTE AVISA A LOJISTA (14/10/2026). O `GET /users/me` não traz
     // `live_mode`; o ambiente sai das MARCAS da conta (`tags`, e-mail, prefixo
-    // do token). Escopo: SÓ AVISAR — `pix_ligado`/`faltando` seguem iguais.
+    // do token). Conta de TESTE + loja que NÃO declarou o modo de teste =
+    // falta nova `chave_de_teste`: o PIX não liga (e desliga se estava ligado
+    // quando alguém testa/salva) e a lojista ouve o porquê. Só o
+    // reconhecimento POSITIVO bloqueia; produção, sem marca e modo declarado
+    // seguem exatamente como antes.
     // ══════════════════════════════════════════════════════════════════════
-    const AVISO_CHAVES_DE_TESTE =
-        'Essas chaves são de TESTE. Suas clientes não vão conseguir pagar. Troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
+    const AVISO_BASE_DE_TESTE =
+        'Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
+    const AVISO_CHAVES_DE_TESTE = `${AVISO_BASE_DE_TESTE} O PIX fica desligado até lá.`;
     const AVISO_SANDBOX_DECLARADO =
         "Chave de TESTE: o PIX não vai receber dinheiro de verdade.";
     const TRES_CHAVES_COM_TOKEN_DE_TESTE = {
@@ -2416,7 +2425,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     }
 
-    await t.step("A1 — salvar as três chaves de uma conta de TESTE sem modo de teste declarado: aviso novo e o PIX liga como hoje", async () => {
+    await t.step("A1 — salvar as três chaves de uma conta de TESTE sem modo de teste declarado: o PIX NÃO liga, `faltando` traz chave_de_teste e o aviso diz o porquê", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
@@ -2425,10 +2434,9 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
             assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
-            // SÓ AVISA: o resto da resposta é o de hoje.
-            assertEquals(corpo.pix_ligado, true);
-            assertEquals(corpo.faltando, []);
-            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.faltando, ["chave_de_teste"]);
+            assertEquals(estado.loja.pagamento_online, false);
             assertEquals(corpo.ultimo_teste.ambiente, "teste");
             assertEquals(JSON.parse(estado.valor!).ultimo_teste.ambiente, "teste");
         } finally {
@@ -2449,15 +2457,16 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
             assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
-            // Igual a hoje: sem a chave de notificações nada liga.
+            // Sem a chave de notificações nada ligaria de qualquer jeito; a
+            // falta nova entra DEPOIS das de antes (ordem fixa).
             assertEquals(corpo.pix_ligado, false);
-            assertEquals(corpo.faltando, ["chave_notificacoes"]);
+            assertEquals(corpo.faltando, ["chave_notificacoes", "chave_de_teste"]);
         } finally {
             desfazerEnv();
         }
     });
 
-    await t.step("A3 — testar com conta de TESTE quando o PIX já estava ligado: o aviso sai e pix_ligado segue como hoje", async () => {
+    await t.step("A3 — testar com conta de TESTE quando o PIX já estava ligado: DESLIGA, com o aviso e a falta", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
@@ -2471,16 +2480,17 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
             assertEquals(corpo.ambiente, "teste");
+            // Um aviso só: a frase "Desliguei..." não repete o que o aviso já diz.
             assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
-            assertEquals(corpo.pix_ligado, true);
-            assertEquals(corpo.faltando, []);
-            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.faltando, ["chave_de_teste"]);
+            assertEquals(estado.loja.pagamento_online, false);
         } finally {
             desfazerEnv();
         }
     });
 
-    await t.step("A4 — testar com conta de TESTE e o PIX ainda desligado: aviso novo, e a ficha liga como hoje", async () => {
+    await t.step("A4 — testar com conta de TESTE e o PIX ainda desligado: aviso, e a ficha CONTINUA desligada", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
@@ -2494,8 +2504,9 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             );
             const corpo = await resposta.json();
             assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
-            assertEquals(corpo.pix_ligado, true);
-            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.faltando, ["chave_de_teste"]);
+            assertEquals(estado.loja.pagamento_online, false);
         } finally {
             desfazerEnv();
         }
@@ -2514,7 +2525,9 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             );
             const corpo = await resposta.json();
             assertEquals(corpo.aviso, AVISO_SANDBOX_DECLARADO);
+            // Comportamento de HOJE: o PIX liga, sem falta nenhuma.
             assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.faltando, []);
         } finally {
             desfazerEnv();
         }
@@ -2529,7 +2542,10 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                 TRES_CHAVES,
                 buscarMpFalso(200, contaDeTeste()).buscar,
             );
-            assertEquals((await resposta.json()).aviso, AVISO_CHAVES_DE_TESTE);
+            const corpo = await resposta.json();
+            assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.faltando, ["chave_de_teste"]);
         } finally {
             desfazerEnv();
         }
@@ -2720,8 +2736,29 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("A10 — ligar_pix (retomar) com a última checagem de uma conta de TESTE traz o aviso novo", async () => {
+    await t.step("A10 — ligar_pix (retomar) com a última checagem de uma conta de TESTE e sem modo declarado: 409 com a falta e NADA gravado", async () => {
         const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, contaDeTeste()).buscar);
+            await chamar(cliente, { acao: "desligar_pix" });
+            const upsertsAntes = estado.upserts.length;
+            estado.updatesLoja.length = 0;
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
+            assertEquals(resposta.status, 409);
+            assertEquals((await resposta.json()).erro, AVISO_CHAVES_DE_TESTE);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.updatesLoja.length, 0);
+            assertEquals(estado.upserts.length, upsertsAntes);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A10b — ligar_pix (retomar) com conta de TESTE em loja com MODO DE TESTE declarado: como hoje (liga, aviso curto)", async () => {
+        const desfazerEnv = prepararEnv({
+            MP_SANDBOX_PAYER_EMAIL: "pagador-de-teste@testuser.com",
+        });
         const { cliente } = supabaseFalso();
         try {
             await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, contaDeTeste()).buscar);
@@ -2730,7 +2767,165 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
             assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.faltando, []);
+            assertEquals(corpo.aviso, AVISO_SANDBOX_DECLARADO);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A12 — faltasParaReceber: só ambiente TESTE + modo explicitamente NÃO declarado vira falta (produção, null e modo declarado nunca)", () => {
+        const completo = (ambiente: "teste" | "producao" | null) => ({
+            public_key: PUBLIC_KEY_FALSA,
+            token_cifrado: "c",
+            token_iv: "i",
+            mascara_token: "••••1",
+            webhook_cifrado: "w",
+            webhook_iv: "v",
+            mascara_webhook: "••••2",
+            ultimo_teste: { quando: "x", conectado: true, mensagem: "ok", ambiente, conta: null },
+            atualizado_em: "x",
+        });
+        const tabela: Array<[string, "teste" | "producao" | null, boolean | undefined, string[]]> = [
+            ["teste + modo NÃO declarado", "teste", false, ["chave_de_teste"]],
+            ["teste + modo declarado", "teste", true, []],
+            ["teste + modo não informado (nunca bloqueia por omissão)", "teste", undefined, []],
+            ["produção + modo NÃO declarado", "producao", false, []],
+            ["produção + modo declarado", "producao", true, []],
+            ["sem marca (null) + modo NÃO declarado", null, false, []],
+            ["sem marca (null) + modo declarado", null, true, []],
+        ];
+        for (const [rotulo, ambiente, modo, esperado] of tabela) {
+            assertEquals(faltasParaReceber(completo(ambiente), modo), esperado, rotulo);
+        }
+        // Teste que NÃO conectou não vira "chave de teste": a falta é `teste`.
+        assertEquals(
+            faltasParaReceber(
+                { ...completo("teste"), ultimo_teste: { quando: "x", conectado: false, mensagem: "x", ambiente: "teste", conta: null } },
+                false,
+            ),
+            ["teste"],
+        );
+        // A falta nova entra DEPOIS das de antes (ordem fixa).
+        assertEquals(
+            faltasParaReceber({ ...completo("teste"), webhook_cifrado: null }, false),
+            ["chave_notificacoes", "chave_de_teste"],
+        );
+        // A pausa segue não sendo falta.
+        assertEquals(
+            faltasParaReceber({ ...completo("producao"), pagamento_pausado: true }, false),
+            [],
+        );
+    });
+
+    await t.step("A13 — `ler` só lê: com `ultimo_teste.ambiente` null gravado nada muda; com `teste` gravado só a lista `faltando` conta a verdade, a ficha não é tocada", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            // Loja ligada com conta SEM marca (ambiente null gravado).
+            await lojaLigada(cliente, {});
+            await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, { id: 1, nickname: "Loja Real" }).buscar);
+            assertEquals(JSON.parse(estado.valor!).ultimo_teste.ambiente, null);
+            const antes = estado.updatesLoja.length;
+            const lido = await (await chamar(cliente, { acao: "ler" })).json();
+            assertEquals(lido.pix_ligado, true);
+            assertEquals(lido.faltando, []);
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(estado.updatesLoja.length, antes);
+        } finally {
+            desfazerEnv();
+        }
+        // Loja ligada no MODO DE TESTE; depois alguém tira o segredo: `ler`
+        // não liga nem desliga nada (só testar/salvar mexem).
+        const desfazerComModo = prepararEnv({ MP_SANDBOX_PAYER_EMAIL: "pagador@testuser.com" });
+        const { cliente: c2, estado: e2 } = supabaseFalso();
+        try {
+            await chamar(c2, TRES_CHAVES, buscarMpFalso(200, contaDeTeste()).buscar);
+            assertEquals(e2.loja.pagamento_online, true);
+        } finally {
+            desfazerComModo();
+        }
+        const desfazerSemModo = prepararEnv();
+        try {
+            const antes = e2.updatesLoja.length;
+            const lido = await (await chamar(c2, { acao: "ler" })).json();
+            assertEquals(lido.pix_ligado, true);
+            assertEquals(lido.faltando, ["chave_de_teste"]);
+            assertEquals(e2.loja.pagamento_online, true);
+            assertEquals(e2.updatesLoja.length, antes);
+        } finally {
+            desfazerSemModo();
+        }
+    });
+
+    await t.step("A14 — trocar a chave por uma de TESTE numa loja ligada, sem modo declarado: o salvar desliga o PIX, com UM aviso só; re-salvar sem trocar nada não mexe", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            assertEquals(estado.loja.pagamento_online, true);
+            const corpo = await (
+                await chamar(
+                    cliente,
+                    { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO_2 },
+                    buscarMpFalso(200, contaDeTeste()).buscar,
+                )
+            ).json();
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.pix_desligado, true);
+            assertEquals(corpo.faltando, ["chave_de_teste"]);
             assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
+            assertEquals(estado.loja.pagamento_online, false);
+            // Re-salvar igual (nada mudou): não testa e não mexe em
+            // `pagamento_online` (a ficha só recebe a Public Key, como sempre).
+            estado.updatesLoja.length = 0;
+            const again = await (
+                await chamar(cliente, { acao: "salvar", public_key: PUBLIC_KEY_FALSA })
+            ).json();
+            assertEquals(again.testou, false);
+            assertEquals(again.faltando, ["chave_de_teste"]);
+            assertEquals(again.pix_ligado, false);
+            assertEquals(estado.updatesLoja.map((u: any) => Object.keys(u)), [["mp_public_key"]]);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A15 — loja SEM forma de pagamento na entrega: testar com chave de TESTE não consegue desligar e NÃO afirma que o PIX está desligado", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso({ falhaSemFormaDePagamento: true });
+        try {
+            await lojaLigada(cliente);
+            assertEquals(estado.loja.pagamento_online, true);
+            const resposta = await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, contaDeTeste()).buscar);
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.faltando, ["chave_de_teste"]);
+            assertEquals(corpo.aviso.includes(AVISO_BASE_DE_TESTE), true);
+            assertEquals(corpo.aviso.includes("não consegui desligar"), true);
+            assertEquals(corpo.aviso.includes("fica desligado"), false);
+            assertEquals(corpo.aviso.includes("O teste de conexão não passou"), false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A16 — salvar chave de TESTE nova em loja sem forma na entrega: 409, nada gravado, e o recado fala da chave de teste", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso({ falhaSemFormaDePagamento: true });
+        try {
+            await lojaLigada(cliente);
+            const registroAntes = estado.valor;
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO_2 },
+                buscarMpFalso(200, contaDeTeste()).buscar,
+            );
+            assertEquals(resposta.status, 409);
+            assertEquals((await resposta.json()).erro.includes("TESTE"), true);
+            assertEquals(estado.valor, registroAntes);
+            assertEquals(estado.loja.pagamento_online, true);
         } finally {
             desfazerEnv();
         }

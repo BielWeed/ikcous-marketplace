@@ -105,7 +105,9 @@
 //     (tokens de produção e de teste hoje nascem APP_USR-). O teste lê as
 //     MARCAS da conta (14/10/2026, `classificarAmbienteDaConta`): `tags` com
 //     "test_user", e-mail `@testuser.com` ou token `TEST-` = conta de TESTE
-//     (aviso para a lojista); `tags` sem marca nenhuma = "producao" só
+//     (aviso para a lojista E, se a loja NÃO declarou o modo de teste
+//     `MP_SANDBOX_PAYER_EMAIL`, a falta `chave_de_teste`: o PIX não liga);
+//     `tags` sem marca nenhuma = "producao" só
 //     como campo interno (é ausência de marca, não prova) — a mensagem e a
 //     tela SÓ falam de ambiente quando é "teste"; SEM marca/`tags` não se
 //     afirma nada e não há aviso. O e-mail devolvido é só lido: nunca vai
@@ -170,7 +172,8 @@ export type Falta =
     | "public_key"
     | "access_token"
     | "chave_notificacoes"
-    | "teste";
+    | "teste"
+    | "chave_de_teste";
 
 /**
  * Lista, em ordem fixa, o que falta para a loja receber pelo app (30/09/2026).
@@ -180,9 +183,19 @@ export type Falta =
  *
  * "Tem chave de notificações" é a definição ÚNICA de quem cobra
  * (`registroTemChaveDeAssinatura`): só a da PRÓPRIA loja conta.
+ *
+ * `chave_de_teste` (14/10/2026): o último teste conectou, a conta é
+ * RECONHECIDAMENTE de teste (`ambiente === "teste"`, sinal positivo) e a loja
+ * NÃO declarou o modo de teste (`MP_SANDBOX_PAYER_EMAIL`, lido FORA daqui e
+ * passado em `modoDeTesteDeclarado`). Com chave de teste e e-mail real o
+ * `criar-pagamento` recusa toda cobrança (502 sem `terminal`): ligar o PIX
+ * assim é a cliente presa em "Tentar de novo". SÓ `=== false` bloqueia —
+ * produção, sem marca (`null`), modo declarado e parâmetro omitido nunca
+ * viram falta (falso positivo derrubaria o PIX de loja boa).
  */
 export function faltasParaReceber(
     registro: RegistroComPix | null | undefined,
+    modoDeTesteDeclarado?: boolean,
 ): Falta[] {
     const faltas: Falta[] = [];
     if (!FORMATO_CREDENCIAL.test(String(registro?.public_key ?? "").trim())) {
@@ -196,6 +209,11 @@ export function faltasParaReceber(
     }
     if (registro?.ultimo_teste?.conectado !== true) {
         faltas.push("teste");
+    } else if (
+        registro.ultimo_teste.ambiente === "teste" &&
+        modoDeTesteDeclarado === false
+    ) {
+        faltas.push("chave_de_teste");
     }
     return faltas;
 }
@@ -412,8 +430,9 @@ function publicKeyNaLoja(
 function respostaLer(
     registro: RegistroComPix | null,
     ficha: FichaDaLoja,
+    modoDeTesteDeclarado: boolean,
 ): RespostaLer {
-    const faltando = faltasParaReceber(registro);
+    const faltando = faltasParaReceber(registro, modoDeTesteDeclarado);
     const pausado = registro?.pagamento_pausado === true;
     const public_key_na_loja = publicKeyNaLoja(registro, ficha);
     if (!registro) {
@@ -615,6 +634,7 @@ const ROTULO_DA_FALTA: ReadonlyMap<Falta, string> = new Map<Falta, string>([
     ["access_token", "o Access Token"],
     ["chave_notificacoes", "a Chave de notificações"],
     ["teste", "o teste de conexão"],
+    ["chave_de_teste", "trocar as chaves de TESTE pelas de PRODUÇÃO"],
 ]);
 
 /**
@@ -637,6 +657,9 @@ function recadoDaFalta(falta: Falta): string {
             // loja sem a chave de assinatura do webhook SALVA PELA PRÓPRIA
             // LOJA; a MP_WEBHOOK_SECRET do ambiente não conta.
             return "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve para voltar a receber pelo app — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
+        case "chave_de_teste":
+            // O mesmo texto do aviso: um recado só, escrito num lugar só.
+            return AVISO_CHAVES_DE_TESTE_SEM_MODO_DE_TESTE;
     }
 }
 
@@ -645,8 +668,11 @@ function recadoDaFalta(falta: Falta): string {
  * lojista não pausou. É a única definição — salvar, testar e retomar chamam
  * esta função.
  */
-function estadoDesejado(registro: RegistroComPix | null) {
-    const faltas = faltasParaReceber(registro);
+function estadoDesejado(
+    registro: RegistroComPix | null,
+    modoDeTesteDeclarado: boolean,
+) {
+    const faltas = faltasParaReceber(registro, modoDeTesteDeclarado);
     const pausado = registro?.pagamento_pausado === true;
     return { faltas, pausado, alvo: faltas.length === 0 && !pausado };
 }
@@ -698,9 +724,10 @@ type Reconciliacao = {
 async function reconciliarFicha(
     supabase: any,
     registro: RegistroComPix,
+    modoDeTesteDeclarado: boolean,
 ): Promise<Reconciliacao> {
     const fichaAntes = await lerFichaDaLoja(supabase);
-    const { alvo } = estadoDesejado(registro);
+    const { alvo } = estadoDesejado(registro, modoDeTesteDeclarado);
     const campos = camposDaFicha(alvo, registro, fichaAntes);
     if (!campos) {
         return {
@@ -775,11 +802,16 @@ const AVISO_CHAVE_DE_TESTE =
 /**
  * Loja que NÃO declarou o modo de teste e colou chave de conta de TESTE: a
  * cliente real chega ao fim da compra e o `criar-pagamento` recusa (e-mail
- * real + chave de teste) — "Tentar de novo" para sempre. O aviso diz isso e o
- * conserto, no idioma da lojista.
+ * real + chave de teste) — "Tentar de novo" para sempre. Por isso o PIX não
+ * liga (falta `chave_de_teste`). O aviso diz o porquê, o conserto e o estado,
+ * no idioma da lojista. É também o recado do 409 de "retomar" (um texto só).
+ * A versão SEM a última frase serve quando não deu para desligar o PIX (a
+ * loja ficaria sem forma de pagamento): aí "fica desligado" seria mentira.
  */
+const AVISO_BASE_CHAVES_DE_TESTE =
+    'Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
 const AVISO_CHAVES_DE_TESTE_SEM_MODO_DE_TESTE =
-    'Essas chaves são de TESTE. Suas clientes não vão conseguir pagar. Troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
+    'Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago). O PIX fica desligado até lá.';
 
 /**
  * A loja DECLAROU o modo de teste? Mesma regra do `criar-pagamento`
@@ -892,7 +924,10 @@ export async function handler(
             ) as RegistroComPix | null;
             const ficha = await lerFichaDaLoja(supabase);
             return json(
-                { ...respostaLer(registro, ficha), modo_de_teste: modoDeTesteDeclarado },
+                {
+                    ...respostaLer(registro, ficha, modoDeTesteDeclarado),
+                    modo_de_teste: modoDeTesteDeclarado,
+                },
                 200,
             );
         }
@@ -1054,7 +1089,10 @@ export async function handler(
             // permanece se o teste DELA passou, e nos dois updates (ligar e
             // desligar) a Public Key vai NO MESMO update. Re-salvar igual
             // deixa o estado como está.
-            const { faltas, alvo } = estadoDesejado(registro);
+            const { faltas, alvo } = estadoDesejado(
+                registro,
+                modoDeTesteDeclarado,
+            );
             const fichaAntes = await lerFichaDaLoja(supabase);
             const mudarPagamento = credencialMudou &&
                 alvo !== fichaAntes.pagamento_online;
@@ -1100,7 +1138,11 @@ export async function handler(
                 // resolver) ANTES de ouvir "ligue uma forma na entrega" — ela
                 // pode só ter colado a chave errada, ou a rede caiu.
                 const testeFalhou = credencialMudou && !ultimoTeste?.conectado;
-                const porQueDesligaria = !testeFalhou
+                const porQueDesligaria = faltas.includes("chave_de_teste")
+                    // O teste passou, mas as chaves novas são de TESTE (loja sem
+                    // modo de teste declarado): o PIX ficaria desligado.
+                    ? "As chaves novas são de TESTE, e com elas o PIX ficaria desligado. Nada foi salvo. "
+                    : !testeFalhou
                     ? ""
                     : testeSemResposta
                     ? "O teste de conexão com as chaves novas não passou porque o Mercado Pago não respondeu; tentar de novo pode resolver. Nada foi salvo. "
@@ -1176,15 +1218,20 @@ export async function handler(
                             ? `Desliguei o pagamento pelo app: o teste de conexão com as chaves novas não passou. ${dica}`
                             : `Salvei as chaves, mas o pagamento pelo app não ligou: o teste de conexão não passou. ${dica}`,
                     );
-                } else if (mudarPagamento && !alvo) {
+                } else if (
+                    mudarPagamento && !alvo && !faltas.includes("chave_de_teste")
+                ) {
+                    // (Chave de TESTE desligou? O aviso logo abaixo já diz —
+                    // e diz o porquê —; repetir aqui seria dois avisos.)
                     avisos.push(
                         `Desliguei o pagamento pelo app: ${motivoDoDesligamento(faltas, false)}.`,
                     );
                 }
                 // Conta de TESTE: sem modo de teste declarado o aviso sai
                 // SEMPRE (inclusive na 1ª gravação, quando nada liga ainda
-                // por falta da chave de notificações); no modo declarado
-                // (sandbox legítimo) segue como era: só quando liga.
+                // por falta da chave de notificações) e é o recado de que o
+                // PIX ficou desligado (falta `chave_de_teste`); no modo
+                // declarado (sandbox legítimo) segue como era: só quando liga.
                 const avisoDeAmbiente = avisoDoAmbiente(
                     ultimoTeste?.ambiente,
                     modoDeTesteDeclarado,
@@ -1195,7 +1242,7 @@ export async function handler(
             }
             return json(
                 {
-                    ...respostaLer(registro, ficha),
+                    ...respostaLer(registro, ficha, modoDeTesteDeclarado),
                     modo_de_teste: modoDeTesteDeclarado,
                     // A tela só fala do teste quando ele RODOU (re-salvar sem
                     // mudar nada não chama o Mercado Pago).
@@ -1263,19 +1310,27 @@ export async function handler(
             await gravarRegistro(supabase, registroAtual);
 
             const avisos: string[] = [];
-            // Conta de TESTE sem modo de teste declarado: o aviso sai SEMPRE
-            // que se testa (mesmo com o PIX já ligado ou sem nada para ligar);
-            // no modo declarado (sandbox legítimo) segue como era: só na hora
-            // em que o PIX liga.
             const avisoDeAmbiente = avisoDoAmbiente(
                 ultimoTeste.ambiente,
                 modoDeTesteDeclarado,
             );
-            if (avisoDeAmbiente && !modoDeTesteDeclarado) {
+            const { faltas, pausado } = estadoDesejado(
+                registroAtual,
+                modoDeTesteDeclarado,
+            );
+            // Conta de TESTE sem modo de teste declarado = falta
+            // `chave_de_teste`: o PIX fica (ou continua) desligado e o aviso
+            // sai SEMPRE que se testa — mesmo com o PIX já desligado. No modo
+            // declarado (sandbox legítimo) segue como era: só quando liga.
+            const chaveDeTeste = faltas.includes("chave_de_teste");
+            const reconciliacao = await reconciliarFicha(
+                supabase,
+                registroAtual,
+                modoDeTesteDeclarado,
+            );
+            if (chaveDeTeste && avisoDeAmbiente && !reconciliacao.recusa) {
                 avisos.push(avisoDeAmbiente);
             }
-            const { faltas, pausado } = estadoDesejado(registroAtual);
-            const reconciliacao = await reconciliarFicha(supabase, registroAtual);
             if (reconciliacao.recusa) {
                 // O teste JÁ está gravado; a recusa da ficha não vira 500 (o
                 // lojista perderia o resultado do teste). A ficha fica como
@@ -1284,14 +1339,29 @@ export async function handler(
                     "[credenciais-mp] ficha da loja recusou a reconciliação depois do teste:",
                     reconciliacao.recusa,
                 );
-                avisos.push(
-                    reconciliacao.recusa === LOJA_SEM_FORMA_DE_PAGAMENTO
-                        ? "O teste de conexão não passou, mas não consegui desligar o pagamento pelo app: a loja ficaria sem nenhuma forma de pagamento. Ligue ao menos uma forma de pagamento na entrega e teste de novo"
-                        : mensagemDeRecusaDaFicha(
-                            reconciliacao.recusa,
-                            "O teste foi feito, mas não consegui atualizar o pagamento pelo app na ficha da loja agora. Toque em Testar conexão para tentar de novo",
-                        ),
-                );
+                if (chaveDeTeste) {
+                    // Não deu para desligar: o aviso NÃO pode dizer que o PIX
+                    // "fica desligado" — só o porquê e o conserto, e o que
+                    // impediu o desligamento.
+                    avisos.push(AVISO_BASE_CHAVES_DE_TESTE);
+                    avisos.push(
+                        reconciliacao.recusa === LOJA_SEM_FORMA_DE_PAGAMENTO
+                            ? "Mas não consegui desligar o pagamento pelo app: a loja ficaria sem nenhuma forma de pagamento. Ligue ao menos uma forma de pagamento na entrega e teste de novo"
+                            : mensagemDeRecusaDaFicha(
+                                reconciliacao.recusa,
+                                "Mas não consegui desligar o pagamento pelo app na ficha da loja agora. Toque em Testar conexão para tentar de novo",
+                            ),
+                    );
+                } else {
+                    avisos.push(
+                        reconciliacao.recusa === LOJA_SEM_FORMA_DE_PAGAMENTO
+                            ? "O teste de conexão não passou, mas não consegui desligar o pagamento pelo app: a loja ficaria sem nenhuma forma de pagamento. Ligue ao menos uma forma de pagamento na entrega e teste de novo"
+                            : mensagemDeRecusaDaFicha(
+                                reconciliacao.recusa,
+                                "O teste foi feito, mas não consegui atualizar o pagamento pelo app na ficha da loja agora. Toque em Testar conexão para tentar de novo",
+                            ),
+                    );
+                }
             } else if (reconciliacao.ligouAgora) {
                 if (avisoDeAmbiente && modoDeTesteDeclarado) {
                     avisos.push(avisoDeAmbiente);
@@ -1302,7 +1372,8 @@ export async function handler(
                     uidAdmin,
                     avisos,
                 );
-            } else if (reconciliacao.desligouAgora) {
+            } else if (reconciliacao.desligouAgora && !chaveDeTeste) {
+                // (Chave de TESTE desligou? O aviso lá em cima já diz.)
                 avisos.push(
                     `Desliguei o pagamento pelo app: ${motivoDoDesligamento(faltas, pausado)}.`,
                 );
@@ -1337,7 +1408,7 @@ export async function handler(
             const registro = await lerRegistroMp(
                 supabase,
             ) as RegistroComPix | null;
-            const faltas = faltasParaReceber(registro);
+            const faltas = faltasParaReceber(registro, modoDeTesteDeclarado);
             if (!registro || faltas.length > 0) {
                 return json({ erro: recadoDaFalta(faltas[0] ?? "teste") }, 409);
             }
@@ -1365,7 +1436,11 @@ export async function handler(
             // Ligar leva a Public Key no MESMO update: a ficha nunca fica
             // meio ligada (aceso sem chave é justamente o beco sem saída do
             // checkout).
-            const reconciliacao = await reconciliarFicha(supabase, registroAtual);
+            const reconciliacao = await reconciliarFicha(
+                supabase,
+                registroAtual,
+                modoDeTesteDeclarado,
+            );
             if (reconciliacao.recusa) {
                 console.error(
                     "[credenciais-mp] ficha da loja recusou ligar o PIX:",
@@ -1476,7 +1551,10 @@ export async function handler(
                 {
                     pix_ligado: false,
                     pausado: registroPausado !== null,
-                    faltando: faltasParaReceber(registroPausado),
+                    faltando: faltasParaReceber(
+                        registroPausado,
+                        modoDeTesteDeclarado,
+                    ),
                 },
                 200,
             );
