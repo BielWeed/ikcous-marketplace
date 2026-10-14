@@ -192,6 +192,16 @@ const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
     erro: p0001("Os cupons estão desativados nesta loja."),
   },
 
+  // A COMPRA QUE DÁ R$ 0,00 NÃO SE PAGA PELO APP (migration 20261236000000):
+  // P0001 com texto, o pedido provadamente não nasceu — o painel e o toast têm
+  // de falar a MESMA frase, e o painel nunca manda "tentar de novo".
+  {
+    rotulo: "14. compra de R$ 0,00 pelo app (cupom que zera, frete zero)",
+    erro: p0001(
+      "Este pedido não tem valor a pagar pelo app. Escolha pagar na retirada ou na entrega, ou fale com a loja.",
+    ),
+  },
+
   // SQLSTATE genérico: aborto de transação dentro do Postgres, sem ser P0001.
   {
     rotulo: "SQLSTATE genérico (deadlock 40P01)",
