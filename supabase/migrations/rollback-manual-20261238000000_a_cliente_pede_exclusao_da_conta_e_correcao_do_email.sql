@@ -1,5 +1,5 @@
 -- ============================================================================
--- Rollback manual — a cliente pede a exclusão da conta e a correção do e-mail (20261234000000)
+-- Rollback manual — a cliente pede a exclusão da conta e a correção do e-mail (20261238000000)
 -- ============================================================================
 -- Desfaz o que a migration criou: o gatilho, a função do gatilho, as três políticas e a tabela
 -- public.pedidos_de_privacidade (com os dois índices). O estado de ANTES é a AUSÊNCIA de tudo isso — a migration
@@ -21,14 +21,14 @@
 -- superior neste arquivo — regra da casa. Rodar duas vezes: a segunda recusa no pré-voo (nada a desfazer).
 -- ============================================================================
 
-DO $preflight_rollback_20261234$
+DO $preflight_rollback_20261238$
 DECLARE
   v_rel regclass := to_regclass('public.pedidos_de_privacidade');
   v_linhas bigint;
   v_politicas text;
 BEGIN
   IF v_rel IS NULL THEN
-    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.pedidos_de_privacidade não existe — a migration 20261234000000 não está aplicada; nada a desfazer.';
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.pedidos_de_privacidade não existe — a migration 20261238000000 não está aplicada; nada a desfazer.';
   END IF;
 
   EXECUTE 'SELECT count(*) FROM public.pedidos_de_privacidade' INTO v_linhas;
@@ -49,7 +49,7 @@ BEGIN
      ) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: o gatilho tr_pedidos_de_privacidade_carimbar não está na tabela — meça antes de desfazer.';
   END IF;
-END $preflight_rollback_20261234$;
+END $preflight_rollback_20261238$;
 
 DROP POLICY pedidos_de_privacidade_admin_update_policy ON public.pedidos_de_privacidade;
 DROP POLICY pedidos_de_privacidade_dono_insert_policy ON public.pedidos_de_privacidade;
@@ -58,12 +58,12 @@ DROP TRIGGER tr_pedidos_de_privacidade_carimbar ON public.pedidos_de_privacidade
 DROP FUNCTION public.pedidos_de_privacidade__carimbar();
 DROP TABLE public.pedidos_de_privacidade;
 
-DO $conferencia_rollback_20261234$
+DO $conferencia_rollback_20261238$
 BEGIN
   IF to_regclass('public.pedidos_de_privacidade') IS NOT NULL
      OR to_regclass('public.uq_pedidos_de_privacidade_um_aberto') IS NOT NULL
      OR to_regclass('public.idx_pedidos_de_privacidade_situacao_criado') IS NOT NULL
      OR to_regprocedure('public.pedidos_de_privacidade__carimbar()') IS NOT NULL THEN
-    RAISE EXCEPTION 'conferencia rollback 20261234: sobrou objeto da migration';
+    RAISE EXCEPTION 'conferencia rollback 20261238: sobrou objeto da migration';
   END IF;
-END $conferencia_rollback_20261234$;
+END $conferencia_rollback_20261238$;

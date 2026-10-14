@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 20261234000000 — a cliente pede a exclusão da conta e a correção do e-mail
+-- Migration 20261238000000 — a cliente pede a exclusão da conta e a correção do e-mail
 -- (dado de cliente + permissão; ADITIVA: cria UMA tabela, UMA função de gatilho e as regras dela; nada existente muda)
 -- ============================================================================
 --
@@ -36,8 +36,11 @@
 --
 -- 4. AVISO À LOJA
 --
--- Nenhuma função, nenhuma edge e nenhum gatilho de aviso novo: o painel conta os pedidos abertos na mesma lista de
--- avisos (o sino) que já lê pedidos, devoluções e perguntas — leitura protegida pela política de SELECT acima.
+-- Nenhuma função, nenhuma edge e nenhum gatilho de aviso novo: o painel conta os pedidos abertos como mais uma
+-- fonte da lista de avisos (a tela de Notificações) e acende a bolinha vermelha do sino, junto de pedidos,
+-- devoluções, perguntas e avaliações — leitura (só a contagem) protegida pela política de SELECT acima. Não há
+-- e-mail, push nem mensagem para a loja: quem não abre o painel não é avisado. O prazo (15 dias) é por isso da
+-- loja olhar o painel, e a seção "Pedidos de privacidade dos clientes" mostra "Responder até" e o prazo vencido.
 --
 -- 5. DADOS EXISTENTES
 --
@@ -53,7 +56,7 @@
 -- 7. ORDEM E ROLLBACK
 --
 -- Depois da 20261197000000 (rls_admin_atual). Independe das demais. ROLLBACK MANUAL:
--- rollback-manual-20261234000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql — RECUSA apagar se
+-- rollback-manual-20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql — RECUSA apagar se
 -- houver QUALQUER pedido registrado (é registro legal: a decisão de apagá-lo é do dono, por fora).
 --
 -- 8. FICHA DE VERIFICAÇÃO (depois de aplicar)
@@ -69,7 +72,7 @@
 -- Sem BEGIN/COMMIT de nível superior (regra da casa): quem abre a transação é o aplicador.
 -- ============================================================================
 
-DO $preflight_20261234$
+DO $preflight_20261238$
 BEGIN
   IF to_regclass('auth.users') IS NULL THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: auth.users não existe.';
@@ -86,7 +89,7 @@ BEGIN
   IF to_regprocedure('public.pedidos_de_privacidade__carimbar()') IS NOT NULL THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.pedidos_de_privacidade__carimbar() já existe — revise antes de aplicar.';
   END IF;
-END $preflight_20261234$;
+END $preflight_20261238$;
 
 CREATE TABLE public.pedidos_de_privacidade (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -124,7 +127,7 @@ CREATE TABLE public.pedidos_de_privacidade (
 );
 
 COMMENT ON TABLE public.pedidos_de_privacidade IS
-  'Pedidos de privacidade da cliente (20261234000000): excluir a conta ou corrigir o e-mail. Registro legal, atendido '
+  'Pedidos de privacidade da cliente (20261238000000): excluir a conta ou corrigir o e-mail. Registro legal, atendido '
   'pela loja à mão (anonimização, nunca apagar sozinho). A cliente insere e lê os próprios; o admin lê todos e '
   'decide; ninguém apaga.';
 COMMENT ON COLUMN public.pedidos_de_privacidade.user_id IS
@@ -214,7 +217,7 @@ CREATE POLICY pedidos_de_privacidade_admin_update_policy
   WITH CHECK ((SELECT public.rls_admin_atual()));
 
 -- CONFERÊNCIA no instante do apply: aborta (e a transação do aplicador desfaz tudo) se o que ficou não é o que se quis.
-DO $conferencia_20261234$
+DO $conferencia_20261238$
 DECLARE
   v_rel regclass := to_regclass('public.pedidos_de_privacidade');
   v_politicas text;
@@ -223,29 +226,29 @@ DECLARE
   v_col text;
 BEGIN
   IF v_rel IS NULL THEN
-    RAISE EXCEPTION 'conferencia 20261234: a tabela não nasceu';
+    RAISE EXCEPTION 'conferencia 20261238: a tabela não nasceu';
   END IF;
   IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = v_rel) THEN
-    RAISE EXCEPTION 'conferencia 20261234: RLS desligada';
+    RAISE EXCEPTION 'conferencia 20261238: RLS desligada';
   END IF;
 
   SELECT string_agg(polname::text || ':' || polcmd::text, ', ' ORDER BY polname) INTO v_politicas
     FROM pg_policy WHERE polrelid = v_rel;
   IF v_politicas IS DISTINCT FROM
      'pedidos_de_privacidade_admin_update_policy:w, pedidos_de_privacidade_dono_insert_policy:a, pedidos_de_privacidade_dono_ou_admin_select_policy:r' THEN
-    RAISE EXCEPTION 'conferencia 20261234: políticas inesperadas (%)', COALESCE(v_politicas, 'nenhuma');
+    RAISE EXCEPTION 'conferencia 20261238: políticas inesperadas (%)', COALESCE(v_politicas, 'nenhuma');
   END IF;
 
   IF has_table_privilege('anon', v_rel, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
      OR has_table_privilege('public', v_rel, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') THEN
-    RAISE EXCEPTION 'conferencia 20261234: anon ou PUBLIC tem acesso à tabela';
+    RAISE EXCEPTION 'conferencia 20261238: anon ou PUBLIC tem acesso à tabela';
   END IF;
   IF has_table_privilege('authenticated', v_rel, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
      OR NOT has_table_privilege('authenticated', v_rel, 'SELECT') THEN
-    RAISE EXCEPTION 'conferencia 20261234: ACL de authenticated não é só SELECT em nível de tabela';
+    RAISE EXCEPTION 'conferencia 20261238: ACL de authenticated não é só SELECT em nível de tabela';
   END IF;
   IF has_table_privilege('service_role', v_rel, 'DELETE, TRUNCATE, REFERENCES, TRIGGER') THEN
-    RAISE EXCEPTION 'conferencia 20261234: service_role consegue apagar';
+    RAISE EXCEPTION 'conferencia 20261238: service_role consegue apagar';
   END IF;
 
   -- Colunas que a cliente pode inserir e que o admin pode atualizar: exatamente as combinadas.
@@ -258,14 +261,14 @@ BEGIN
    WHERE a.attrelid = v_rel AND a.attnum > 0 AND NOT a.attisdropped
      AND has_column_privilege('authenticated', v_rel, a.attnum, 'UPDATE');
   IF v_colunas_insert IS DISTINCT FROM 'email_novo, tipo, user_id' THEN
-    RAISE EXCEPTION 'conferencia 20261234: colunas de INSERT inesperadas (%)', COALESCE(v_colunas_insert, 'nenhuma');
+    RAISE EXCEPTION 'conferencia 20261238: colunas de INSERT inesperadas (%)', COALESCE(v_colunas_insert, 'nenhuma');
   END IF;
   IF v_colunas_update IS DISTINCT FROM 'observacao, situacao' THEN
-    RAISE EXCEPTION 'conferencia 20261234: colunas de UPDATE inesperadas (%)', COALESCE(v_colunas_update, 'nenhuma');
+    RAISE EXCEPTION 'conferencia 20261238: colunas de UPDATE inesperadas (%)', COALESCE(v_colunas_update, 'nenhuma');
   END IF;
   FOREACH v_col IN ARRAY ARRAY['id', 'criado_em', 'atendido_em', 'atendido_por'] LOOP
     IF has_column_privilege('authenticated', v_rel, v_col, 'INSERT, UPDATE') THEN
-      RAISE EXCEPTION 'conferencia 20261234: authenticated escreve em %', v_col;
+      RAISE EXCEPTION 'conferencia 20261238: authenticated escreve em %', v_col;
     END IF;
   END LOOP;
 
@@ -274,16 +277,16 @@ BEGIN
         WHERE i.indrelid = v_rel AND i.indisunique AND i.indpred IS NOT NULL
           AND i.indexrelid = to_regclass('public.uq_pedidos_de_privacidade_um_aberto')
      ) THEN
-    RAISE EXCEPTION 'conferencia 20261234: o índice único parcial de um pedido aberto por tipo não existe';
+    RAISE EXCEPTION 'conferencia 20261238: o índice único parcial de um pedido aberto por tipo não existe';
   END IF;
   IF NOT EXISTS (
        SELECT 1 FROM pg_trigger t
         WHERE t.tgrelid = v_rel AND t.tgname = 'tr_pedidos_de_privacidade_carimbar' AND NOT t.tgisinternal
      ) THEN
-    RAISE EXCEPTION 'conferencia 20261234: o gatilho de carimbo não existe';
+    RAISE EXCEPTION 'conferencia 20261238: o gatilho de carimbo não existe';
   END IF;
   IF has_function_privilege('anon', 'public.pedidos_de_privacidade__carimbar()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.pedidos_de_privacidade__carimbar()', 'EXECUTE') THEN
-    RAISE EXCEPTION 'conferencia 20261234: a função do gatilho está aberta para anon ou authenticated';
+    RAISE EXCEPTION 'conferencia 20261238: a função do gatilho está aberta para anon ou authenticated';
   END IF;
-END $conferencia_20261234$;
+END $conferencia_20261238$;

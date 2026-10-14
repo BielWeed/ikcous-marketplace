@@ -6,7 +6,7 @@
 
 /**
  * PROVA VIVA da migration
- * 20261234000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql
+ * 20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql
  * contra o Postgres EFÊMERO com as migrations aplicadas do zero (rpc-ci).
  *
  * O QUE SE PROVA (a tabela public.pedidos_de_privacidade — dado de cliente):
@@ -44,7 +44,7 @@ const {
 } = require("./efemero.cjs");
 
 const NOME_MIGRATION =
-  "20261234000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql";
+  "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql";
 const DIR = path.join(__dirname, "..", "..", "supabase", "migrations");
 const ler = (nome) => fs.readFileSync(path.join(DIR, nome), "utf8");
 
