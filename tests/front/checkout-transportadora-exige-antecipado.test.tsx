@@ -417,7 +417,13 @@ describe("CheckoutView — transportadora exige pagamento antecipado", () => {
   // transportadora + convidado o certo é FICAR travado (com a saída de
   // entrar na conta ou escolher entrega local).
   it("EXPIRAÇÃO: transportadora + online + sessão que cai estabiliza FORA de 'online', sem alternar em loop", async () => {
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    // O corpo da tela (`CheckoutViewDaConta`), sem a chave por conta do
+    // `CheckoutView`: o que se prova aqui é UMA instância atravessando a
+    // queda de sessão (os dois efeitos não alternam) — o app real recria a
+    // tela pela chave do App.
+    const { CheckoutViewDaConta: CheckoutView } = await import(
+      "@/views/customer/CheckoutView"
+    );
     mockSelectedShippingOption = {
       id: "melhor-envio-CorreiosSedex",
       name: "Sedex",

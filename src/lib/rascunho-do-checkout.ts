@@ -50,12 +50,13 @@ export interface RascunhoDoCheckout {
    */
   contaDoCupom?: string | null;
   /**
-   * De QUEM são o nome e o WhatsApp do rascunho (id da conta; `null` =
-   * convidado digitou). Mesmo desenho de `contaDoCupom`, com UMA diferença
-   * de propósito: rascunho antigo, SEM o campo (`undefined`), NÃO conta como
-   * convidado — dado de cliente nunca passa para outra conta por omissão. O
-   * restore só devolve nome/WhatsApp para a MESMA conta; rascunho de
-   * convidado vale para quem entrar no meio da compra (mesma pessoa).
+   * De QUEM é o rascunho INTEIRO: nome, WhatsApp, CEP, endereço e
+   * observações (id da conta; `null` = convidado digitou). Mesmo desenho de
+   * `contaDoCupom`, com UMA diferença de propósito: rascunho antigo, SEM o
+   * campo (`undefined`), NÃO conta como convidado — dado de cliente nunca
+   * passa para outra conta por omissão. O restore só devolve o rascunho para
+   * a MESMA conta; rascunho de convidado vale para quem entrar no meio da
+   * compra (mesma pessoa). CEP e endereço também são dado pessoal.
    */
   contaDosDados?: string | null;
 }

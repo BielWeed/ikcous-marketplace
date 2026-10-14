@@ -23,7 +23,11 @@ const { conta, createOrder, invoke } = vi.hoisted(() => ({
       id: string;
       user_metadata: Record<string, string>;
     } | null,
-    profile: null as { full_name: string; whatsapp: string } | null,
+    profile: null as {
+      id: string;
+      full_name: string;
+      whatsapp: string;
+    } | null,
     carregando: false,
   },
   createOrder: vi.fn(),
@@ -215,7 +219,11 @@ describe("CheckoutView — o perfil da conta não apaga o que a cliente digitou"
   const rascunhoSalvo = () => JSON.parse(sessao.get(CHAVE) ?? "{}");
 
   it("(i) rascunho com valores + perfil DIFERENTE → vence o rascunho (campo e rascunho regravado)", async () => {
-    conta.profile = { full_name: "Cliente Teste", whatsapp: "34999999999" };
+    conta.profile = {
+      id: "user-1",
+      full_name: "Cliente Teste",
+      whatsapp: "34999999999",
+    };
     sessao.set(
       CHAVE,
       rascunhoCom({ nome: "Maria Presente", whatsapp: "(34) 98888-7777" }),
@@ -234,7 +242,11 @@ describe("CheckoutView — o perfil da conta não apaga o que a cliente digitou"
     expect(valorDe("checkout-name")).toBe("");
     expect(valorDe("checkout-tel")).toBe("");
 
-    conta.profile = { full_name: "Cliente Teste", whatsapp: "34999999999" };
+    conta.profile = {
+      id: "user-1",
+      full_name: "Cliente Teste",
+      whatsapp: "34999999999",
+    };
     await renderizar();
 
     expect(valorDe("checkout-name")).toBe("Cliente Teste");
@@ -254,7 +266,11 @@ describe("CheckoutView — o perfil da conta não apaga o que a cliente digitou"
     expect(valorDe("checkout-name")).toBe("Maria Presente");
     expect(valorDe("checkout-tel")).toBe("(34) 98888-7777");
 
-    conta.profile = { full_name: "Cliente Teste", whatsapp: "34999999999" };
+    conta.profile = {
+      id: "user-1",
+      full_name: "Cliente Teste",
+      whatsapp: "34999999999",
+    };
     await renderizar();
 
     expect(valorDe("checkout-name")).toBe("Maria Presente");
@@ -263,7 +279,11 @@ describe("CheckoutView — o perfil da conta não apaga o que a cliente digitou"
   });
 
   it("(iii-b) a cliente trocou o WhatsApp e o perfil é REEMITIDO igual (novo objeto) → continua o dela", async () => {
-    conta.profile = { full_name: "Cliente Teste", whatsapp: "34999999999" };
+    conta.profile = {
+      id: "user-1",
+      full_name: "Cliente Teste",
+      whatsapp: "34999999999",
+    };
     await renderizar();
     expect(valorDe("checkout-tel")).toBe("(34) 99999-9999");
 
@@ -272,14 +292,18 @@ describe("CheckoutView — o perfil da conta não apaga o que a cliente digitou"
     });
     expect(valorDe("checkout-tel")).toBe("(34) 98888-7777");
 
-    conta.profile = { full_name: "Cliente Teste", whatsapp: "34999999999" };
+    conta.profile = {
+      id: "user-1",
+      full_name: "Cliente Teste",
+      whatsapp: "34999999999",
+    };
     await renderizar();
 
     expect(valorDe("checkout-tel")).toBe("(34) 98888-7777");
   });
 
   it("(iv) conta SEM WhatsApp + rascunho com WhatsApp → mantém o do rascunho", async () => {
-    conta.profile = { full_name: "Cliente Teste", whatsapp: "" };
+    conta.profile = { id: "user-1", full_name: "Cliente Teste", whatsapp: "" };
     sessao.set(
       CHAVE,
       rascunhoCom({ nome: "Cliente Teste", whatsapp: "(34) 98888-7777" }),
@@ -291,7 +315,11 @@ describe("CheckoutView — o perfil da conta não apaga o que a cliente digitou"
   });
 
   it("(v) sem rascunho e sem mexer: o perfil que NÃO mudou continua preenchendo (caminho que já funcionava)", async () => {
-    conta.profile = { full_name: "Cliente Teste", whatsapp: "34999999999" };
+    conta.profile = {
+      id: "user-1",
+      full_name: "Cliente Teste",
+      whatsapp: "34999999999",
+    };
     await renderizar();
 
     expect(valorDe("checkout-name")).toBe("Cliente Teste");
@@ -299,12 +327,20 @@ describe("CheckoutView — o perfil da conta não apaga o que a cliente digitou"
   });
 
   it("(vi) conta trocada com o checkout aberto e campos NÃO mexidos → seguem a conta nova", async () => {
-    conta.profile = { full_name: "Cliente Um", whatsapp: "34999999999" };
+    conta.profile = {
+      id: "user-1",
+      full_name: "Cliente Um",
+      whatsapp: "34999999999",
+    };
     await renderizar();
     expect(valorDe("checkout-name")).toBe("Cliente Um");
 
     conta.user = { id: "user-2", user_metadata: {} };
-    conta.profile = { full_name: "Cliente Dois", whatsapp: "11988887777" };
+    conta.profile = {
+      id: "user-2",
+      full_name: "Cliente Dois",
+      whatsapp: "11988887777",
+    };
     await renderizar();
 
     expect(valorDe("checkout-name")).toBe("Cliente Dois");

@@ -16,7 +16,7 @@ const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 
 type Usuario = { id: string; user_metadata: Record<string, string> } | null;
-type Perfil = { full_name: string; whatsapp: string } | null;
+type Perfil = { id: string; full_name: string; whatsapp: string } | null;
 
 const { conta, createOrder, invoke } = vi.hoisted(() => ({
   conta: {
@@ -24,7 +24,11 @@ const { conta, createOrder, invoke } = vi.hoisted(() => ({
       id: string;
       user_metadata: Record<string, string>;
     } | null,
-    profile: null as { full_name: string; whatsapp: string } | null,
+    profile: null as {
+      id: string;
+      full_name: string;
+      whatsapp: string;
+    } | null,
     carregando: false,
   },
   createOrder: vi.fn(),
@@ -160,8 +164,16 @@ const valorDe = (id: string) =>
 
 const A = { user: { id: "user-1", user_metadata: {} } as Usuario } as const;
 const B = { user: { id: "user-2", user_metadata: {} } as Usuario } as const;
-const PERFIL_A: Perfil = { full_name: "Cliente Um", whatsapp: "34999999999" };
-const PERFIL_B: Perfil = { full_name: "Cliente Dois", whatsapp: "11988887777" };
+const PERFIL_A: Perfil = {
+  id: "user-1",
+  full_name: "Cliente Um",
+  whatsapp: "34999999999",
+};
+const PERFIL_B: Perfil = {
+  id: "user-2",
+  full_name: "Cliente Dois",
+  whatsapp: "11988887777",
+};
 
 describe("CheckoutView — troca de conta não herda nome e WhatsApp da conta anterior", () => {
   let raiz: Root;
