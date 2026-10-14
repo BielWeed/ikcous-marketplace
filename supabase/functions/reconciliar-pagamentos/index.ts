@@ -82,11 +82,18 @@ import {
   TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
-import { readKey } from "../_shared/webpush.ts";
+import { comTempoLimite, readKey } from "../_shared/webpush.ts";
 import {
   avisarAdminUmaVez,
   dispararPushContadoReal,
 } from "../_shared/aviso-ao-lojista.ts";
+// 14/10/2026: o lojista fica sabendo quando o CLIENTE cancela (passo próprio,
+// mais abaixo; o porquê de morar nesta rotina está no cabeçalho do módulo).
+import {
+  avisarCancelamentosDoCliente,
+  type ResumoDosCancelamentos,
+  TETO_DO_PASSO_MS,
+} from "../_shared/aviso-de-cancelamento-do-cliente.ts";
 import {
   reconsultarContestacoesPresas,
   type ResumoDaReconsulta,
@@ -397,6 +404,9 @@ async function handler(
     enviarPushContado?: typeof dispararPushContadoReal;
     // Fixa o seller ID (X-Caller-Id) no teste; ausente: `GET /users/me` do próprio token.
     vendedorId?: string | null;
+    // Teto de espera do passo do aviso de cancelamento (opção da chamada, como
+    // `tetoDoPushMs`): o teste o encurta; em produção vale `TETO_DO_PASSO_MS`.
+    tetoDosCancelamentosMs?: number;
   } = {},
 ): Promise<Response> {
   // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
@@ -868,6 +878,43 @@ async function handler(
     }
   }
 
+  // ─── PASSO NOVO (14/10/2026): avisa o lojista que o CLIENTE cancelou um pedido
+  // pago. ANTES do passo do estorno, de propósito: o estorno automático vira o
+  // pedido para 'estornado' (o módulo aceita os dois, mas assim o texto sai
+  // com o pedido ainda 'pago', como o cliente o deixou). TRY PRÓPRIO, como os
+  // passos vizinhos: leitura do histórico fora do ar, perfil ilegível ou push
+  // que não sobe só registram — nunca mudam pagamento, estorno nem resposta
+  // (a resposta ganha só a contagem `cancelamentos`). Não depende do token do
+  // Mercado Pago: não fala com ele.
+  //
+  // O PASSO INTEIRO corre contra um TETO (`comTempoLimite`, mesmo mecanismo do
+  // push do laço de pagamentos): o `fetch` do web-push não tem timeout, e um
+  // push service que aceita a conexão e não responde prenderia o handler AQUI,
+  // com a fila de estornos (logo abaixo) sem ser lida — de novo a cada rodada,
+  // por até 24 h por evento. Vencido o teto, `cancelamentos` fica no padrão
+  // (o passo segue em segundo plano; a reserva do aviso expira em 2 min) e o
+  // ciclo vai direto aos estornos.
+  let cancelamentos: ResumoDosCancelamentos = { candidatos: 0, avisados: 0, ignorados: 0, falhas: 0 };
+  try {
+    const resumoDoPasso = await comTempoLimite(avisarCancelamentosDoCliente({
+      supabase,
+      avisar: (chave, aviso) =>
+        avisarAdminUmaVez({
+          supabase,
+          enviarPushContado: deps.enviarPushContado ??
+            ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+          chave,
+          aviso,
+          rotulo: "reconciliar-pagamentos",
+        }),
+      rotulo: "reconciliar-pagamentos",
+    }), deps.tetoDosCancelamentosMs ?? TETO_DO_PASSO_MS);
+    if (resumoDoPasso) cancelamentos = resumoDoPasso;
+    else console.warn("reconciliar-pagamentos: aviso de cancelamento do cliente passou do teto; segue para os estornos");
+  } catch (erro) {
+    console.error("reconciliar-pagamentos: aviso de cancelamento do cliente falhou (não fatal)", erro);
+  }
+
   // ─── PASSO NOVO (Task 4, frente "estorno pelo app"): processa a fila de
   // `order_refunds` pendentes — o cron pega tudo que a edge do clique do
   // lojista (T3) ou o cancelamento automático (T1) deixaram para trás. TRY
@@ -1245,6 +1292,7 @@ async function handler(
         falhos: refundsFalhos,
       },
       contestacoes,
+      cancelamentos,
     },
     200,
   );

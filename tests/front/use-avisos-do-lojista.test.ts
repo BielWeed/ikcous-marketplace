@@ -35,6 +35,12 @@ let RESPOSTA_DEVOLUCOES: unknown = {
   error: null,
 };
 let RESPOSTA_AVALIACOES: unknown = { data: [], error: null };
+// Sexta fonte (14/10/2026): cancelamentos do CLIENTE, lidos do historico do
+// pedido (so o administrador le a linha dos outros), mais os papeis dos
+// autores (`profiles`) para excluir o admin.
+let RESPOSTA_CANCELAMENTOS: unknown = { data: [], error: null };
+let RESPOSTA_PERFIS: unknown = { data: [], error: null };
+const FILTROS_DO_HISTORICO: Array<[string, ...unknown[]]> = [];
 
 // `loadProducts` do useProducts engole o erro e devolve `null`. `null` aqui
 // NAO e "zero produtos", e "nao sei" — e o hook tem de tratar como falha.
@@ -66,6 +72,18 @@ function criarBuilder(tabela: string) {
     return builder;
   });
   builder.is = vi.fn(() => builder);
+  const registrar = (nome: string) =>
+    vi.fn((...argumentos: unknown[]) => {
+      if (tabela === "marketplace_order_history") {
+        FILTROS_DO_HISTORICO.push([nome, ...argumentos]);
+      }
+      return builder;
+    });
+  builder.eq = registrar("eq");
+  builder.not = registrar("not");
+  builder.gte = registrar("gte");
+  builder.order = registrar("order");
+  builder.limit = registrar("limit");
   const respostaDosPedidos = () => {
     const resposta = RESPOSTA_PEDIDOS as { data: unknown; error: unknown };
     if (filtrouOPagamento || !Array.isArray(resposta.data)) return resposta;
@@ -77,7 +95,13 @@ function criarBuilder(tabela: string) {
   // biome-ignore lint/suspicious/noThenProperty: dible do query builder thenable do Supabase — mesmo padrao de sino-do-painel-leva-onde-o-alerta-aponta.
   builder.then = (resolve: unknown, reject?: unknown) =>
     Promise.resolve(
-      tabela === "reviews" ? RESPOSTA_AVALIACOES : respostaDosPedidos(),
+      tabela === "reviews"
+        ? RESPOSTA_AVALIACOES
+        : tabela === "marketplace_order_history"
+          ? RESPOSTA_CANCELAMENTOS
+          : tabela === "profiles"
+            ? RESPOSTA_PERFIS
+            : respostaDosPedidos(),
     ).then(resolve as never, reject as never);
   return builder;
 }
@@ -188,6 +212,9 @@ beforeEach(() => {
   CHAMADAS_DE_OR.length = 0;
   PIX_AGUARDANDO_NO_BANCO = [];
   tabelasConsultadas = [];
+  FILTROS_DO_HISTORICO.length = 0;
+  RESPOSTA_CANCELAMENTOS = { data: [], error: null };
+  RESPOSTA_PERFIS = { data: [], error: null };
   RESPOSTA_PEDIDOS = { data: [pedidoDeExemplo()], error: null };
   RESPOSTA_PERGUNTAS = { data: { total_count: 3 }, error: null };
   RESPOSTA_AVALIACOES = { data: [avaliacaoDeExemplo()], error: null };
@@ -290,6 +317,7 @@ describe("useAvisosDoLojista", () => {
     RESPOSTA_AVALIACOES = { data: null, error: { message: "caiu" } };
     RESPOSTA_PRODUTOS = null;
     RESPOSTA_DEVOLUCOES = { data: null, error: { message: "caiu" } };
+    RESPOSTA_CANCELAMENTOS = { data: null, error: { message: "caiu" } };
 
     const { atual } = await montarSonda();
 
@@ -297,7 +325,14 @@ describe("useAvisosDoLojista", () => {
     expect(atual().quantidadeNoCracha).toBe(0);
     expect(atual().carregando).toBe(false);
     expect(new Set(atual().fontesComFalha)).toEqual(
-      new Set(["pedido", "pergunta", "avaliacao", "estoque", "devolucao"]),
+      new Set([
+        "pedido",
+        "pergunta",
+        "avaliacao",
+        "estoque",
+        "devolucao",
+        "cancelamento",
+      ]),
     );
   });
 
@@ -423,5 +458,121 @@ describe("useAvisosDoLojista", () => {
     expect(loadProductsFalso.mock.calls.length).toBeGreaterThan(
       chamadasDeProdutoAntes,
     );
+  });
+});
+
+// O lojista fica sabendo quando o CLIENTE cancela (14/10/2026): a sexta fonte.
+describe("useAvisosDoLojista — cancelamento do cliente", () => {
+  const CLIENTE = "c1111111-1111-4111-8111-111111111111";
+  const ADMIN = "a1111111-1111-4111-8111-111111111111";
+  const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
+
+  function linhaDoHistorico(extra: Record<string, unknown> = {}) {
+    return {
+      id: "h1",
+      order_id: PEDIDO,
+      old_status: "pending",
+      created_by: CLIENTE,
+      created_at: "2026-10-14T11:57:00.000Z",
+      marketplace_orders: {
+        id: PEDIDO,
+        user_id: CLIENTE,
+        customer_name: "Maria Silva",
+        total: 149.9,
+        payment_status: "pago",
+        status: "cancelled",
+        cancelled_after_shipping: false,
+      },
+      ...extra,
+    };
+  }
+
+  it("cliente cancelou pedido pago: o sino ganha o item, que abre AQUELE pedido e nao conta no cracha", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: [linhaDoHistorico()], error: null };
+    RESPOSTA_PERFIS = {
+      data: [{ id: CLIENTE, role: "customer" }],
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "cancelamento") as
+      | (AvisoLido & { destino?: { view: string; id?: string } })
+      | undefined;
+    expect(aviso?.titulo).toBe("Maria Silva cancelou o pedido #4F5A6B");
+    expect(aviso?.destino).toEqual({ view: "admin-orders", id: PEDIDO });
+    expect(aviso?.contaNoCracha).toBe(false);
+    expect(atual().fontesComFalha).toEqual([]);
+    // O cracha segue sendo so o que conta: pedido, pergunta, avaliacao.
+    expect(atual().quantidadeNoCracha).toBe(3);
+  });
+
+  it("a consulta le SO cancelamentos das ultimas 24 h, com autor, e os papeis dos autores", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: [linhaDoHistorico()], error: null };
+    RESPOSTA_PERFIS = {
+      data: [{ id: CLIENTE, role: "customer" }],
+      error: null,
+    };
+    const antes = Date.now();
+
+    await montarSonda();
+
+    expect(FILTROS_DO_HISTORICO).toContainEqual([
+      "eq",
+      "new_status",
+      "cancelled",
+    ]);
+    expect(FILTROS_DO_HISTORICO).toContainEqual([
+      "not",
+      "created_by",
+      "is",
+      null,
+    ]);
+    const gte = FILTROS_DO_HISTORICO.find((f) => f[0] === "gte");
+    expect(gte?.[1]).toBe("created_at");
+    const desde = Date.parse(String(gte?.[2]));
+    // 24 h antes de "agora", com folga de alguns segundos de relogio de teste.
+    expect(Math.abs(antes - 24 * 3600 * 1000 - desde)).toBeLessThan(10_000);
+    expect(tabelasConsultadas).toContain("profiles");
+  });
+
+  it("ADMIN cancelando nao vira item (o papel vem de profiles)", async () => {
+    RESPOSTA_CANCELAMENTOS = {
+      data: [linhaDoHistorico({ created_by: ADMIN })],
+      error: null,
+    };
+    RESPOSTA_PERFIS = { data: [{ id: ADMIN, role: "admin" }], error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("cancelamento");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("papeis ilegiveis: a fonte cai (falha honesta) e NINGUEM entra sem saber quem e admin", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: [linhaDoHistorico()], error: null };
+    RESPOSTA_PERFIS = { data: null, error: { message: "profiles caiu" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["cancelamento"]);
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("cancelamento");
+  });
+
+  it("historico fora do ar: so a fonte de cancelamento cai, as outras seguem", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: null, error: { message: "caiu" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["cancelamento"]);
+    expect(new Set(atual().avisos.map((a) => a.tipo))).toEqual(
+      new Set(["pedido", "pergunta", "avaliacao", "estoque"]),
+    );
+  });
+
+  it("sem cancelamento nenhum a loja nao consulta os papeis", async () => {
+    await montarSonda();
+
+    expect(tabelasConsultadas).not.toContain("profiles");
   });
 });

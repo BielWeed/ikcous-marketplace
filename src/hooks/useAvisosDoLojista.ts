@@ -11,10 +11,14 @@ import type { Product } from "@/types";
 import {
   type AvaliacaoSemResposta,
   type Aviso,
+  type CancelamentoDoCliente,
+  JANELA_DE_CANCELAMENTO_HORAS,
+  type LinhaDeCancelamento,
   type PedidoPendente,
   type ProdutoComEstoque,
   type TipoDeAviso,
   montarAvisos,
+  selecionarCancelamentosDoCliente,
 } from "@/utils/avisos-do-lojista";
 
 /**
@@ -117,6 +121,53 @@ async function buscarAvaliacoesSemResposta(): Promise<AvaliacaoCrua[]> {
   return (data ?? []) as unknown as AvaliacaoCrua[];
 }
 
+// 14/10/2026: o cliente cancelou um pedido que ja tinha pago. A fonte e o
+// HISTORICO do pedido (a `pedido__mudar_status`, ponto unico do cancelamento,
+// grava `created_by` = quem cancelou); o administrador le a linha de todos
+// pela politica de SELECT do historico. O papel dos autores vem de
+// `profiles`: sem ele nao ha como excluir o admin que cancelou, entao a
+// falha dele e falha da FONTE (lanca), nunca "nenhum cancelamento".
+async function buscarCancelamentosDoCliente(): Promise<
+  CancelamentoDoCliente[]
+> {
+  const desde = new Date(
+    Date.now() - JANELA_DE_CANCELAMENTO_HORAS * 3600 * 1000,
+  ).toISOString();
+
+  const { data, error } = await supabase
+    .from("marketplace_order_history")
+    .select(
+      "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping)",
+    )
+    .eq("new_status", "cancelled")
+    .not("created_by", "is", null)
+    .gte("created_at", desde)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+
+  const linhas = (data ?? []) as unknown as LinhaDeCancelamento[];
+  if (linhas.length === 0) return [];
+
+  const autores = [
+    ...new Set(
+      linhas.map((l) => l.created_by).filter((id): id is string => !!id),
+    ),
+  ];
+  const { data: perfis, error: erroPerfis } = await supabase
+    .from("profiles")
+    .select("id, role")
+    .in("id", autores);
+  if (erroPerfis) throw erroPerfis;
+
+  const admins = new Set(
+    ((perfis ?? []) as Array<{ id: string; role: string | null }>)
+      .filter((perfil) => perfil.role === "admin")
+      .map((perfil) => perfil.id),
+  );
+  return selecionarCancelamentosDoCliente(linhas, admins);
+}
+
 interface LeituraDeProdutos {
   produtos: ProdutoComEstoque[];
   /** O catalogo era maior que o teto: esta varredura NAO viu tudo. */
@@ -157,10 +208,11 @@ async function buscarProdutosComEstoqueBaixo(
 }
 
 /**
- * Junta as cinco fontes de aviso do lojista numa lista so (a quinta,
- * devolucao, entrou com o plano 2026-09-26).
+ * Junta as seis fontes de aviso do lojista numa lista so (a quinta,
+ * devolucao, entrou com o plano 2026-09-26; a sexta, cancelamento do cliente,
+ * em 14/10/2026).
  *
- * Falha parcial nao derruba a tela: as cinco consultas correm em
+ * Falha parcial nao derruba a tela: as seis consultas correm em
  * `Promise.allSettled`, e a que cair entra em `fontesComFalha` enquanto as
  * outras seguem. Tela em branco por causa de uma consulta e pior que tela
  * incompleta e honesta.
@@ -185,18 +237,25 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     const rodada = ++rodadaRef.current;
     setCarregando(true);
 
-    const [rPedidos, rPerguntas, rAvaliacoes, rProdutos, rDevolucoes] =
-      await Promise.allSettled([
-        buscarPedidosPendentes(),
-        buscarPerguntasPendentes(),
-        buscarAvaliacoesSemResposta(),
-        buscarProdutosComEstoqueBaixo(
-          loadProducts as unknown as Parameters<
-            typeof buscarProdutosComEstoqueBaixo
-          >[0],
-        ),
-        buscarDevolucoesSolicitadas(),
-      ]);
+    const [
+      rPedidos,
+      rPerguntas,
+      rAvaliacoes,
+      rProdutos,
+      rDevolucoes,
+      rCancelamentos,
+    ] = await Promise.allSettled([
+      buscarPedidosPendentes(),
+      buscarPerguntasPendentes(),
+      buscarAvaliacoesSemResposta(),
+      buscarProdutosComEstoqueBaixo(
+        loadProducts as unknown as Parameters<
+          typeof buscarProdutosComEstoqueBaixo
+        >[0],
+      ),
+      buscarDevolucoesSolicitadas(),
+      buscarCancelamentosDoCliente(),
+    ]);
 
     // Componente desmontado, ou rodada atropelada por outra mais nova: em
     // ambos os casos esta resposta nao tem mais tela para ir.
@@ -214,6 +273,10 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     const devolucoesSolicitadas =
       rDevolucoes.status === "fulfilled" ? rDevolucoes.value : 0;
     if (rDevolucoes.status === "rejected") falhas.push("devolucao");
+
+    const cancelamentosDoCliente =
+      rCancelamentos.status === "fulfilled" ? rCancelamentos.value : [];
+    if (rCancelamentos.status === "rejected") falhas.push("cancelamento");
 
     const avaliacoesCruas =
       rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value : [];
@@ -249,6 +312,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
         avaliacoes,
         produtos,
         devolucoesSolicitadas,
+        cancelamentosDoCliente,
       }),
     );
     setFontesComFalha(falhas);
