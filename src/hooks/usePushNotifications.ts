@@ -519,6 +519,10 @@ export function usePushNotifications() {
     subscription,
     isSupported,
     permission,
+    // Visitante que não entrou na conta: é a MESMA checagem (`!user`) que faz
+    // o subscribe() recusar com a origem "sem_conta". Exposta para o banner
+    // não convidar quem não consegue aceitar.
+    semConta: !user,
     subscribe,
     unsubscribe,
   };

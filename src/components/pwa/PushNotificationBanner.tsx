@@ -18,7 +18,7 @@ export function PushNotificationBanner({
   currentView = "",
   isKeyboardOpen = false,
 }: PushNotificationBannerProps) {
-  const { isSupported, permission, subscription, subscribe } =
+  const { isSupported, permission, subscription, semConta, subscribe } =
     usePushNotifications();
   // Nome da loja em runtime: banco (config.storeName) com fallback no branding do build
   const { config } = useStore();
@@ -45,6 +45,15 @@ export function PushNotificationBanner({
     // Medido em 31/08: o toque no Finalizar era interceptado pelo "Agora
     // Não" do modal. Compra em andamento nunca compete com convite de push.
     if (currentView === "cart" || currentView === "checkout") {
+      setIsVisible(false);
+      return;
+    }
+
+    // 2-ter. NEM na página do produto (caçada 14/10/2026, celular 360px):
+    // a caixa fica a 80px do fundo e cobria preço, quantidade e o botão
+    // ADICIONAR — o toque no botão caía na caixa. Mesma razão do caminho do
+    // dinheiro: compra em andamento não compete com convite de push.
+    if (currentView === "product-detail") {
       setIsVisible(false);
       return;
     }
@@ -106,7 +115,12 @@ export function PushNotificationBanner({
     }
   }, [subscribe]);
 
-  if (!isVisible || isKeyboardOpen) return null;
+  // Quem não entrou na conta não consegue aceitar ("Quero Receber!" só diria
+  // "entre na sua conta primeiro" e a caixa continuaria ali). Fica no
+  // render, e não no efeito, de propósito: o relógio dos 2,5 s não reinicia
+  // quando a sessão termina de carregar, então para quem TEM conta o
+  // convite nasce no mesmo momento de antes.
+  if (!isVisible || isKeyboardOpen || semConta) return null;
 
   return (
     <AnimatePresence>
