@@ -1,9 +1,5 @@
-import {
-  completarSerieDe14Dias,
-  diaEmSaoPaulo,
-  formatarData,
-  formatarMoeda,
-} from "@/lib/crm";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
+import { completarSerieDe14Dias, formatarData, formatarMoeda } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import type { PontoDaSerieDiaria } from "@/types/painel";
 import { type PointerEvent, useState } from "react";
@@ -83,7 +79,8 @@ export function SerieDe14Dias({
       : "centro";
   const pontoMarcado =
     marcado == null ? null : (serieCompleta.at(marcado) ?? null);
-  const diaDeHoje = diaEmSaoPaulo(new Date());
+  // Acompanha o relógio: passou da meia-noite, "Hoje" anda para a coluna nova.
+  const diaDeHoje = useDiaDeSaoPaulo();
 
   const aoMoverPonteiro = (evento: PointerEvent<HTMLDivElement>) => {
     if (serieCompleta.length === 0) return;

@@ -1,12 +1,14 @@
 import { useAuth } from "@/hooks/useAuth";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   lerAssinaturaDaLoja,
   lerPainelInicio,
   mensagemDeErroDoPainel,
 } from "@/lib/crm";
+import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { supabase } from "@/lib/supabase";
 import type { AssinaturaDaLoja, PainelInicio } from "@/types/painel";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Números do Início do painel: `painel_inicio()` + `assinatura_da_loja_ler()`.
@@ -19,6 +21,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * - Tempo real: um canal em `marketplace_orders` enquanto a tela está ativa;
  *   rajada de eventos vira UMA recarga (espera de 1,5 s), e aba escondida só
  *   marca "sujo" — recarrega quando volta a ficar visível.
+ * - O "Hoje" não envelhece: um retrato lido em OUTRO dia de São Paulo nunca é
+ *   fresco (mesmo com menos de 30 s de idade, ao cruzar a meia-noite), voltar
+ *   a ver o app (visível/foco/restaurado da memória) revalida pelo cache, e a
+ *   virada do dia com a tela aberta recarrega sozinha.
  */
 
 interface RetratoDoPainel {
@@ -36,6 +42,23 @@ const ESPERA_DO_TEMPO_REAL_MS = 1500;
 const ESPERA_DA_ABERTURA_MS = 200;
 
 let retratoEmCache: RetratoDoPainel | null = null;
+
+/** O dia de São Paulo (`YYYY-MM-DD`) em que o retrato foi lido. */
+function diaDaLeitura(retrato: RetratoDoPainel): string {
+  return hojeEmSaoPaulo(new Date(retrato.lidoEm));
+}
+
+/**
+ * Fresco = lido há menos de 30 s E no DIA de hoje de São Paulo. Os números do
+ * painel são "de hoje": um retrato de ontem não vale nem com 1 s de idade.
+ */
+function retratoFresco(retrato: RetratoDoPainel | null): boolean {
+  return (
+    retrato !== null &&
+    Date.now() - retrato.lidoEm < FRESCOR_MS &&
+    diaDaLeitura(retrato) === hojeEmSaoPaulo()
+  );
+}
 let buscaEmVoo: Promise<RetratoDoPainel> | null = null;
 // Recarga FORÇADA pedida com uma busca em voo: roda uma busca depois dela.
 let buscaForcadaSeguinte: Promise<RetratoDoPainel> | null = null;
@@ -126,9 +149,15 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
     })
     .then((retrato) => {
       // Falha não apaga o último retrato bom: os números anteriores ficam
-      // na tela, com o aviso de erro por cima.
+      // na tela, com o aviso de erro por cima — mas só os DE HOJE: o "Hoje"
+      // de ontem nunca fica na tela como se fosse o de agora.
+      const anteriorDeHoje =
+        retratoEmCache !== null &&
+        diaDaLeitura(retratoEmCache) === diaDaLeitura(retrato)
+          ? retratoEmCache
+          : null;
       retratoEmCache = {
-        painel: retrato.painel ?? retratoEmCache?.painel ?? null,
+        painel: retrato.painel ?? anteriorDeHoje?.painel ?? null,
         erroPainel: retrato.erroPainel,
         assinatura: retrato.assinaturaLida
           ? retrato.assinatura
@@ -149,7 +178,7 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
 
 /** Aquece o cache no hover da barra — não faz nada se ele ainda está fresco. */
 export function prefetchPainelInicio(): void {
-  if (retratoEmCache && Date.now() - retratoEmCache.lidoEm < FRESCOR_MS) return;
+  if (retratoFresco(retratoEmCache)) return;
   void buscarCoalescido();
 }
 
@@ -180,11 +209,7 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
   }, []);
 
   const carregar = useCallback(async (forcar: boolean) => {
-    if (
-      !forcar &&
-      retratoEmCache &&
-      Date.now() - retratoEmCache.lidoEm < FRESCOR_MS
-    ) {
+    if (!forcar && retratoEmCache && retratoFresco(retratoEmCache)) {
       setRetrato(retratoEmCache);
       return;
     }
@@ -258,13 +283,49 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     };
   }, [active, temSessao, carregar]);
 
+  // Voltou a ver o app (visível, foco ou restaurado da memória): revalida pelo
+  // cache — não busca se o retrato é fresco E de hoje, busca se passou de 30 s
+  // ou se o dia de São Paulo virou. Sem isto, abrir o app de manhã mostrava os
+  // números de ontem como "Hoje" até chegar um pedido novo.
+  useEffect(() => {
+    if (!active || !temSessao) return;
+    const aoVoltar = () => {
+      if (document.visibilityState === "visible") void carregar(false);
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    window.addEventListener("pageshow", aoVoltar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
+      window.removeEventListener("pageshow", aoVoltar);
+    };
+  }, [active, temSessao, carregar]);
+
+  // O dia virou com a tela aberta (meia-noite de São Paulo, sem ninguém
+  // mexer): recarrega sozinha — o retrato de ontem já não é fresco.
+  const dia = useDiaDeSaoPaulo(active && temSessao);
+  const diaVistoRef = useRef(dia);
+  useEffect(() => {
+    if (diaVistoRef.current === dia) return;
+    diaVistoRef.current = dia;
+    if (active && temSessao) void carregar(false);
+  }, [dia, active, temSessao, carregar]);
+
+  // Retrato lido em outro dia nunca aparece como "Hoje": enquanto a recarga
+  // não chega, a tela mostra o esqueleto em vez dos números de ontem.
+  const retratoDeHoje = useMemo(
+    () => (retrato && diaDaLeitura(retrato) === dia ? retrato : null),
+    [retrato, dia],
+  );
+
   return {
-    painel: retrato?.painel ?? null,
+    painel: retratoDeHoje?.painel ?? null,
     assinatura: retrato?.assinatura ?? null,
     assinaturaLida: retrato?.assinaturaLida ?? false,
     // "Carregando" de verdade é não ter número nenhum ainda: com retrato em
     // mãos, a revalidação acontece por baixo sem esqueleto.
-    carregando: carregando || (retrato === null && active && temSessao),
+    carregando: carregando || (retratoDeHoje === null && active && temSessao),
     erro: retrato?.erroPainel ?? null,
     erroAssinatura: retrato?.erroAssinatura ?? null,
     atualizar,
