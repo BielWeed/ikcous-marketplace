@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
+import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
@@ -93,8 +94,10 @@ export const BannerCarousel = memo(function BannerCarousel({
     return () => clearInterval(timer);
   }, [autoPlay, pausado, menosMovimento, emblaApi, interval, banners.length]);
 
-  const handleNavigation = useCallback((link?: string) => {
-    if (!link) return;
+  const handleNavigation = useCallback((linkGravado?: string) => {
+    if (!linkGravado) return;
+    // Banner antigo: `/produtos` (não existe) e categoria com nome cru.
+    const link = destinoDoBanner(linkGravado);
     if (link.startsWith("/") || !link.includes("://")) {
       try {
         const origin =

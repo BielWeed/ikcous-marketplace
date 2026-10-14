@@ -42,6 +42,10 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import {
+  LINK_DA_PAGINA_DA_LOJA,
+  linkDaCategoria,
+} from "@/lib/destino-do-banner";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import {
   gravarModoDoEditor,
@@ -824,8 +828,9 @@ export const AdminBannersView = memo(function AdminBannersView({
   const dynamicRouteSuggestions = useMemo(() => {
     const base = [
       { label: "Sem Redirecionamento", path: "" },
-      { label: "Início", path: "/" },
-      { label: "Produtos", path: "/produtos" },
+      // Sem atalho "Produtos": a loja não tem `/produtos`; a lista de produtos
+      // é a própria Home ("Início").
+      { label: "Início", path: LINK_DA_PAGINA_DA_LOJA },
       { label: "Carrinho", path: "/checkout" },
       { label: "Perfil", path: "/profile" },
     ];
@@ -833,7 +838,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       .filter((c) => c.isActive)
       .map((c) => ({
         label: `Categoria: ${c.name}`,
-        path: `/?category=${c.name}`,
+        path: linkDaCategoria(c.name),
       }));
     return [...base, ...categoryChips];
   }, [categories]);
@@ -4283,7 +4288,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                               ) {
                                 setFormData((prev) => ({
                                   ...prev,
-                                  link: "/produtos",
+                                  link: LINK_DA_PAGINA_DA_LOJA,
                                   productId: "",
                                 }));
                               }
