@@ -241,6 +241,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [adminStatus, setAdminStatus] = useState<AdminStatus>(
     cachedSession?.user ? "unknown" : "not-admin",
   );
+  // Rede lenta não rebaixa quem o servidor já confirmou (14/10/2026): o id de
+  // quem o servidor confirmou como admin NESTA sessão (resposta bem-sucedida
+  // dizendo `true`, nunca texto em cache). Só serve para uma recheca de
+  // FUNDO (SIGNED_IN reanunciado ao voltar ao app, TOKEN_REFRESHED) não
+  // rebaixar por estouro de tempo ou erro de rede/HTTP — só um "não" REAL
+  // rebaixa. Vive só em memória: nunca nasce do `localStorage`. Só
+  // `applyResult` a preenche, e o ramo "manter" nunca PROMOVE ninguém: só
+  // deixa de rebaixar. Esquece-se num "não" real e quando a pessoa ativa
+  // muda (troca de conta, saída).
+  const adminConfirmadoRef = useRef<string | null>(null);
   const isAdmin = adminStatus === "admin";
   // Link de "esqueci a senha" VENCIDO ou já usado: o servidor devolve a pessoa
   // com o erro no endereço (`error_code=otp_expired`, no hash ou na query) e o
@@ -346,8 +356,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setAdminStatus(isAdminResult ? "admin" : "not-admin");
       if (verified) {
         localStorage.setItem(cacheKey, isAdminResult ? "true" : "false");
+        // Só um VEREDITO do servidor (`verified`) confirma — e só ele
+        // rebaixa: um "não" real esquece a confirmação.
+        adminConfirmadoRef.current = isAdminResult ? userId : null;
       }
     };
+
+    // Recheca de FUNDO de quem o servidor já confirmou admin nesta sessão:
+    // estouro de tempo ou erro de rede/HTTP não é "não" — o painel aberto
+    // (cadastro em andamento, foto subindo) não pode ser trocado por "Acesso
+    // restrito" por causa de uma resposta que não chegou. A guarda do
+    // usuário ativo continua valendo (troca de conta no meio da checagem).
+    const jaConfirmadoNestaSessao = () => adminConfirmadoRef.current === userId;
 
     // #123 — a sessão local é texto que o usuário edita no DevTools; o
     // supabase-js não valida a assinatura do JWT no cliente. `app_metadata`
@@ -356,7 +376,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Fast Path 2: Local Cache (Immediate return for confirmed customers, keyed by user ID)
     const cachedAdmin = localStorage.getItem(cacheKey);
-    if (cachedAdmin === "false") {
+    // Quem o servidor já confirmou nesta sessão não toma o atalho: um "false"
+    // no aparelho (de outra aba, de antes) não rebaixa antes de a rede falar.
+    if (cachedAdmin === "false" && !jaConfirmadoNestaSessao()) {
       setAdminStatus("not-admin");
       // Run background check to sync with potential admin status updates without blocking initial load
       networkCheck()
@@ -396,7 +418,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             .eq("id", userId)
             .single();
 
-          return !profileError && profile?.role === "admin";
+          // Erro aqui (401, rede, linha invisível) NÃO é "não é dona": é a
+          // ausência de resposta. Vira não-veredito (rejeita) — antes
+          // devolvia `false` como se o servidor tivesse negado, e isso
+          // rebaixava a dona e gravava "false" no aparelho (o Fast Path 2
+          // lê no próximo abrir). Só uma resposta bem-sucedida decide.
+          if (profileError) {
+            throw new Error("Admin check inconclusive (profiles fallback)");
+          }
+          return profile?.role === "admin";
         })();
 
         // Add a resilient 3-second timeout limit to the network query
@@ -430,6 +460,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       applyResult(result, true);
     } catch (err) {
       console.error("[Auth] Error/Timeout checking admin status:", err);
+      if (jaConfirmadoNestaSessao()) {
+        // Recheca de fundo que não obteve resposta: segue admin, sem tocar
+        // no estado nem no aparelho. Um "sim" atrasado já não muda nada; um
+        // "não" REAL na próxima recheca rebaixa (applyResult acima).
+        return;
+      }
       // Não-veredito (Achado 2): trata como não-admin SÓ nesta carga, sem
       // persistir no localStorage.
       applyResult(false, false);
@@ -782,6 +818,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const previousUserId = activeUserIdRef.current;
       const currentUserId = session?.user?.id || null;
       activeUserIdRef.current = currentUserId;
+      // Outra pessoa (ou ninguém) no lugar: a confirmação de admin era da
+      // anterior. Quem voltar depois entra como primeiro login.
+      if (previousUserId !== currentUserId) adminConfirmadoRef.current = null;
 
       // admin_cache-17 — troca de conta na MESMA aba sem passar por
       // SIGNED_OUT explícito (ex.: sessão expira e outra pessoa loga em
