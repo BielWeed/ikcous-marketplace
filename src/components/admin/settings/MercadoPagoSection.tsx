@@ -25,6 +25,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AVISO_CHAVES_DE_TESTE,
+  AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE,
   PASSOS_DO_GUIA,
   RECADO_DE_SEGURANCA,
   montarPromptParaAgenteMp,
@@ -107,6 +108,11 @@ type ConfiguracaoMp = {
   faltando: string[] | null;
   /** O lojista pausou o pagamento pelo app (vence o automático). */
   pausado: boolean;
+  /**
+   * A loja DECLAROU o modo de teste (a edge leu `MP_SANDBOX_PAYER_EMAIL`).
+   * AUSENTE (edge antiga) vale como NÃO declarou: o aviso forte é o padrão.
+   */
+  modo_de_teste?: boolean;
 };
 
 /** O que a edge devolve em salvar/testar/ligar/desligar — só o estado. */
@@ -565,6 +571,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         mensagem: string;
         ambiente?: "producao" | "teste" | null;
         conta?: string | null;
+        modo_de_teste?: boolean;
       };
       setConfig((antes) => ({
         ...antes,
@@ -578,6 +585,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           ambiente: resultado.ambiente ?? null,
           conta: resultado.conta ?? null,
         },
+        ...(typeof resultado.modo_de_teste === "boolean"
+          ? { modo_de_teste: resultado.modo_de_teste }
+          : {}),
       }));
       // O servidor também RECONCILIOU o pagamento pelo app com o resultado
       // (liga se passou e não está pausado, desliga se falhou): mostra o que
@@ -835,7 +845,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 quando acabou de chegar; reaberta a tela, é este texto que
                 continua avisando — nunca os dois ao mesmo tempo. */}
             {chaveDeTeste && !avisoPix && (
-              <span className="block">{AVISO_CHAVES_DE_TESTE}</span>
+              <span className="block">
+                {config.modo_de_teste === true
+                  ? AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE
+                  : AVISO_CHAVES_DE_TESTE}
+              </span>
             )}
           </span>
         </div>
@@ -1271,7 +1285,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   "desliguei porque o teste não passou"...) vem PRONTO da edge
                   e aparece como veio. */}
           {avisoPix && (
-            <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+            <p
+              role="status"
+              className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300"
+            >
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
               <span>{avisoPix}</span>
             </p>

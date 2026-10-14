@@ -212,6 +212,15 @@ export const PROMPT_PARA_AGENTE_MP = montarPromptParaAgenteMp({
 export const AVISO_CHAVES_DE_TESTE =
   'Essas chaves são de TESTE. Suas clientes não vão conseguir pagar. Troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
 
+/**
+ * O mesmo aviso, para a loja que DECLAROU o modo de teste (`modo_de_teste:
+ * true` na resposta da edge — ex.: a loja de desenvolvimento): chave de teste é
+ * o esperado ali, então não se diz que as clientes não conseguem pagar. Igual
+ * (menos o ponto final) ao aviso curto da edge; um teste confere os dois lados.
+ */
+export const AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE =
+  "Chave de TESTE: o PIX não vai receber dinheiro de verdade.";
+
 /** Recado de segurança exibido embaixo do formulário. */
 export const RECADO_DE_SEGURANCA =
   "Suas chaves ficam guardadas cifradas no servidor do seu app. Ninguém vê a chave secreta inteira — nem aqui na tela, que mostra só o finalzinho para você reconhecer qual colou.";

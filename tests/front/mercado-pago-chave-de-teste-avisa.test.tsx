@@ -11,7 +11,10 @@
 //   T3  resposta sem o campo `ambiente` (edge antiga): verde e sem quebrar;
 //   T4  "Testar conexão" devolvendo conta de teste: resumo vira âmbar e o aviso
 //       do servidor aparece UMA vez só (nada de frase duplicada na tela);
-//   T5  o texto da tela é o MESMO da edge (um guarda contra divergência).
+//   T5  o texto da tela é o MESMO da edge (um guarda contra divergência);
+//   T6  `modo_de_teste` true -> texto curto; false OU ausente -> o forte
+//       (T6b: o campo também vale vindo da resposta do Testar conexão);
+//   T7  o aviso do servidor é anunciado (role="status").
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act } from "react";
@@ -55,7 +58,10 @@ vi.mock("sonner", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 import { MercadoPagoSection } from "@/components/admin/settings/MercadoPagoSection";
-import { AVISO_CHAVES_DE_TESTE } from "@/components/admin/settings/mercado-pago-conteudo";
+import {
+  AVISO_CHAVES_DE_TESTE,
+  AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE,
+} from "@/components/admin/settings/mercado-pago-conteudo";
 
 const FRASE_DO_AVISO = "Suas clientes não vão conseguir pagar";
 
@@ -123,7 +129,7 @@ const CONTA_DE_TESTE = {
 const CONTA_DE_PRODUCAO = {
   quando: new Date().toISOString(),
   conectado: true,
-  mensagem: 'Conectado! Conta "Loja Real" no ambiente de produção.',
+  mensagem: 'Conectado! Conta "Loja Real".',
   ambiente: "producao",
   conta: "Loja Real",
 };
@@ -235,5 +241,79 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
       "utf8",
     );
     expect(edge).toContain(AVISO_CHAVES_DE_TESTE);
+    // O aviso curto na edge termina sem ponto (o ponto entra ao juntar avisos).
+    expect(edge).toContain(AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE.slice(0, -1));
+  });
+
+  it("T6 — com `modo_de_teste: true` o resumo usa o texto CURTO; com `false` OU sem o campo, o forte (nunca cai no curto por padrão)", async () => {
+    const casos: Array<[string, Record<string, unknown>, boolean]> = [
+      ["true", { modo_de_teste: true }, true],
+      ["false", { modo_de_teste: false }, false],
+      ["ausente", {}, false],
+    ];
+    for (const [rotulo, campo, curto] of casos) {
+      cenario.salvo = { ...BASE, ultimo_teste: CONTA_DE_TESTE, ...campo };
+      raiz = await montarSecao();
+
+      const texto = resumoDoTeste().textContent ?? "";
+      expect(texto, rotulo).toContain(CONTA_DE_TESTE.mensagem);
+      if (curto) {
+        expect(texto, rotulo).toContain(AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE);
+        expect(texto, rotulo).not.toContain(FRASE_DO_AVISO);
+      } else {
+        expect(texto, rotulo).toContain(AVISO_CHAVES_DE_TESTE);
+        expect(texto, rotulo).not.toContain(
+          AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE,
+        );
+      }
+      await act(async () => {
+        raiz.unmount();
+      });
+      document.body.innerHTML = "";
+    }
+  });
+
+  it("T6b — `modo_de_teste` que chega na resposta do Testar conexão também vale (e sem aviso do servidor o resumo mostra o curto)", async () => {
+    cenario.salvo = { ...BASE, modo_de_teste: false };
+    raiz = await montarSecao();
+    cenario.respostaTestar = {
+      conectado: true,
+      mensagem: CONTA_DE_TESTE.mensagem,
+      ambiente: "teste",
+      conta: CONTA_DE_TESTE.conta,
+      pix_ligado: true,
+      public_key_na_loja: true,
+      faltando: [],
+      pausado: false,
+      modo_de_teste: true,
+    };
+    await abrirExpansor("Suas chaves");
+    await clique(botaoPorTexto("Testar conexão"));
+
+    const texto = resumoDoTeste().textContent ?? "";
+    expect(texto).toContain(AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE);
+    expect(texto).not.toContain(FRASE_DO_AVISO);
+  });
+
+  it("T7 — o aviso que o servidor manda é anunciado a quem usa leitor de tela (role=status)", async () => {
+    raiz = await montarSecao();
+    cenario.respostaTestar = {
+      conectado: true,
+      mensagem: CONTA_DE_TESTE.mensagem,
+      ambiente: "teste",
+      conta: CONTA_DE_TESTE.conta,
+      pix_ligado: true,
+      public_key_na_loja: true,
+      faltando: [],
+      pausado: false,
+      aviso: AVISO_CHAVES_DE_TESTE,
+    };
+    await abrirExpansor("Suas chaves");
+    await clique(botaoPorTexto("Testar conexão"));
+
+    const avisos = [
+      ...document.body.querySelectorAll('[role="status"]'),
+    ].filter((el) => el.textContent?.includes(FRASE_DO_AVISO));
+    expect(avisos).toHaveLength(1);
   });
 });
