@@ -2,6 +2,12 @@ import {
   type CupomDisponivel,
   lerCuponsDoCheckout,
 } from "@/lib/cupons-do-checkout";
+import {
+  PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -57,9 +63,18 @@ export function useCuponsDoCheckout({ subtotal, userId, ligado }: Parametros) {
   const buscar = useCallback(async (valor: number) => {
     const rodada = ++rodadaRef.current;
     try {
-      const { data, error } = await supabase.rpc("cupons_do_checkout", {
-        p_subtotal: Math.max(Number.isFinite(valor) ? valor : 0, 0),
-      });
+      // Prazo: rede pendurada não pode deixar o esqueleto girando sem botão.
+      // Estourar cai no `catch` e vira "erro" (com "Tentar de novo").
+      const { data, error } = await aguardarComPrazo(
+        // `rpc` devolve um construtor "thenable", não uma Promise.
+        Promise.resolve(
+          supabase.rpc("cupons_do_checkout", {
+            p_subtotal: Math.max(Number.isFinite(valor) ? valor : 0, 0),
+          }),
+        ),
+        PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+        erroDeConsultaSemResposta,
+      );
       if (rodada !== rodadaRef.current) return;
       if (error) {
         if (ehRpcAusente(error as { code?: string; status?: number })) {
@@ -76,11 +91,16 @@ export function useCuponsDoCheckout({ subtotal, userId, ligado }: Parametros) {
       }
       setCupons(lerCuponsDoCheckout(data));
       setSituacao("pronto");
-    } catch {
-      // Lançar (em vez de devolver `error`) é defeito de programação ou
-      // cliente sem Supabase (testes) — a seção fica só com o campo.
+    } catch (erro) {
       if (rodada !== rodadaRef.current) return;
       setCupons((antes) => (antes.length === 0 ? antes : []));
+      // Sem resposta no prazo é falha de REDE: a seção oferece "Tentar de novo".
+      if (ehConsultaSemResposta(erro)) {
+        setSituacao("erro");
+        return;
+      }
+      // Lançar (em vez de devolver `error`) é defeito de programação ou
+      // cliente sem Supabase (testes) — a seção fica só com o campo.
       setSituacao("indisponivel");
     }
   }, []);
