@@ -1,3 +1,4 @@
+import { PRAZO_DE_RESPOSTA_EM_DIAS } from "@/config/textos-de-privacidade";
 import type { Database } from "@/types/database.types";
 
 /**
@@ -125,6 +126,26 @@ export function ultimoPedidoDoTipo(
     if (melhor === null || pedido.criado_em > melhor.criado_em) melhor = pedido;
   }
   return melhor;
+}
+
+const MILISSEGUNDOS_POR_DIA = 24 * 60 * 60 * 1000;
+
+/**
+ * Até quando a loja deve responder: a data do pedido mais o prazo prometido
+ * (`PRAZO_DE_RESPOSTA_EM_DIAS`). Data ilegível = `null` (a tela não inventa prazo).
+ */
+export function prazoFinalDoPedido(criadoEm: string): Date | null {
+  const inicio = new Date(criadoEm);
+  if (Number.isNaN(inicio.getTime())) return null;
+  return new Date(
+    inicio.getTime() + PRAZO_DE_RESPOSTA_EM_DIAS * MILISSEGUNDOS_POR_DIA,
+  );
+}
+
+/** O prazo de resposta já passou? (Só vale para pedido aberto.) */
+export function prazoVencido(criadoEm: string, agora: Date): boolean {
+  const fim = prazoFinalDoPedido(criadoEm);
+  return fim !== null && agora.getTime() > fim.getTime();
 }
 
 /** 14/10/2026, no fuso do aparelho; data ilegível vira texto vazio. */

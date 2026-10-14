@@ -104,6 +104,37 @@ describe("montarAvisos", () => {
     expect(montarAvisos({ ...VAZIO, devolucoesSolicitadas: 0 })).toEqual([]);
   });
 
+  it("pedidos de privacidade abertos viram UM aviso que conta no cracha, abre Ajustes e vem depois da devolucao", () => {
+    const um = montarAvisos({ ...VAZIO, pedidosDePrivacidadeAbertos: 1 });
+    expect(um).toHaveLength(1);
+    expect(um[0].tipo).toBe("privacidade");
+    expect(um[0].titulo).toBe("1 pedido de privacidade esperando resposta");
+    expect(um[0].destino).toEqual({ view: "admin-settings" });
+    expect(um[0].contaNoCracha).toBe(true);
+
+    const varios = montarAvisos({
+      ...VAZIO,
+      perguntasPendentes: 1,
+      devolucoesSolicitadas: 1,
+      pedidosDePrivacidadeAbertos: 3,
+    });
+    expect(varios.map((a) => a.tipo)).toEqual([
+      "devolucao",
+      "privacidade",
+      "pergunta",
+    ]);
+    expect(varios[1].titulo).toBe(
+      "3 pedidos de privacidade esperando resposta",
+    );
+  });
+
+  it("zero pedido de privacidade, ou fonte ausente, nao vira aviso", () => {
+    expect(montarAvisos({ ...VAZIO, pedidosDePrivacidadeAbertos: 0 })).toEqual(
+      [],
+    );
+    expect(montarAvisos(VAZIO)).toEqual([]);
+  });
+
   it("avaliacao sem resposta vira aviso; com resposta nao entra na lista", () => {
     const avisos = montarAvisos({
       ...VAZIO,

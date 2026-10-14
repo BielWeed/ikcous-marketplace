@@ -1,3 +1,4 @@
+import { PRAZO_DE_RESPOSTA_EM_DIAS } from "@/config/textos-de-privacidade";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
@@ -16,6 +17,7 @@ export type TipoDeAviso =
   | "pedido"
   | "cancelamento"
   | "devolucao"
+  | "privacidade"
   | "pergunta"
   | "avaliacao"
   | "estoque";
@@ -177,6 +179,12 @@ export interface EntradaDeAvisos {
    * fonte nao entrou nesta rodada.
    */
   cancelamentosDoCliente?: CancelamentoDoCliente[];
+  /**
+   * Pedidos de privacidade (exclusão de conta ou correção de e-mail) que a cliente
+   * abriu e a loja ainda não respondeu (20261234000000). A loja tem prazo de 15 dias
+   * para responder (LGPD). Opcional: ausente = a fonte não entrou nesta rodada.
+   */
+  pedidosDePrivacidadeAbertos?: number;
 }
 
 /**
@@ -199,6 +207,8 @@ const ORDEM_DE_URGENCIA: TipoDeAviso[] = [
   // produto cujo dinheiro ja voltou.
   "cancelamento",
   "devolucao",
+  // Pedido de privacidade tem prazo legal (15 dias) correndo, como a devolucao.
+  "privacidade",
   "pergunta",
   "avaliacao",
   "estoque",
@@ -256,6 +266,24 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       detalhe: "Clientes pediram para devolver ou trocar produtos",
       quando: "",
       destino: { view: "admin-devolucoes" },
+      contaNoCracha: true,
+    });
+  }
+
+  const privacidade = entrada.pedidosDePrivacidadeAbertos ?? 0;
+  if (privacidade > 0) {
+    const um = privacidade === 1;
+    avisos.push({
+      id: "privacidade:abertos",
+      tipo: "privacidade",
+      titulo: um
+        ? "1 pedido de privacidade esperando resposta"
+        : `${privacidade} pedidos de privacidade esperando resposta`,
+      detalhe: `Exclusão de conta ou correção de e-mail. Abra Ajustes > Minha loja. Prazo: ${PRAZO_DE_RESPOSTA_EM_DIAS} dias`,
+      quando: "",
+      // A lista mora em Ajustes (seção "Pedidos de privacidade dos clientes").
+      destino: { view: "admin-settings" },
+      // Conta no cracha: tem "feito" (marcar o pedido como atendido) e prazo legal.
       contaNoCracha: true,
     });
   }

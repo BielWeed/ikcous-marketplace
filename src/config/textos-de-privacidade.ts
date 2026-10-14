@@ -117,4 +117,17 @@ export const TEXTOS_DA_LOJA = {
     "Este pedido já tinha sido respondido ou você não tem mais permissão. A lista foi atualizada.",
   semBotaoDeApagar:
     "Os pedidos ficam guardados como registro. Não há botão de apagar de propósito.",
+  prazoAte: "Responder até",
+  prazoVencido: "Prazo vencido — responda hoje",
+  listaCortada:
+    "Há mais pedidos do que cabem aqui. Os mais antigos estão guardados no banco.",
+  confirmaAtendidoTitulo: "Marcar como atendido?",
+  confirmaAtendidoTexto:
+    "Confirme só depois de fazer o que o roteiro pede (anonimizar a conta e bloquear a entrada, ou trocar o e-mail). A resposta fica registrada e não dá para mudar depois.",
+  confirmaRecusadoTitulo: "Responder que não pode atender?",
+  confirmaRecusadoTexto:
+    "A cliente vai ver que o pedido não foi atendido e pode ler a sua nota. Escreva o motivo na nota. A resposta fica registrada e não dá para mudar depois.",
+  confirmaAcaoAtendido: "Sim, já atendi",
+  confirmaAcaoRecusado: "Sim, não posso atender",
+  voltar: "Voltar",
 } as const;
