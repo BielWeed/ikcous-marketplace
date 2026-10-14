@@ -1,3 +1,4 @@
+import { cepEhLocal } from "@/lib/cep-local";
 import { lerEnderecoConferido } from "@/lib/endereco-da-loja";
 import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
@@ -60,20 +61,45 @@ export function dicaDaFaixaVazia(cepDaLoja: string | null | undefined): string {
 }
 
 /**
- * Aviso (nunca bloqueio) de entrega local curta demais: faixa vazia E CEP da
- * loja com cara de CEP de rua.
+ * Aviso (nunca bloqueio) de faixa escrita num formato que o servidor não
+ * entende. O campo é texto livre, mas a regra (`is_local_cep`, edge e
+ * `cepEhLocal`) só lê dois CEPs completos separados por vírgula: quem escreve
+ * "38500-000 a 38509-999" via "salvo" e ficava sem entrega local, em silêncio.
  *
- * Heurística: CEP geral de cidade pequena termina em "000" (Monte Carmelo,
- * 38500-000 — um CEP só para a cidade, e os 5 primeiros números bastam). CEP
- * que NÃO termina em "000" é de rua, e a cidade provavelmente tem vários
- * prefixos (Uberlândia, 38400 a 38415): a cliente de outro bairro seria
- * tratada como "de fora". Devolve o texto para a lojista, ou `null`.
+ * O teste é o próprio `cepEhLocal`: se nem o CEP da loja cai na faixa, a faixa
+ * não está sendo entendida (ou ficou velha depois de trocar o endereço). É só
+ * aviso — uma faixa legítima pode deixar o CEP da loja de fora.
+ */
+function avisoDaFaixaNaoEntendida(
+  originCep: string | null | undefined,
+  faixa: string,
+): string | null {
+  if (!cepCompleto(originCep)) return null;
+  const cepDaLoja = (originCep as string).trim();
+  if (cepEhLocal(cepDaLoja, cepDaLoja, faixa)) return null;
+  return "O alcance que você escreveu não está sendo entendido: nem o CEP da sua loja entra. Escreva dois CEPs separados por vírgula, assim: 38500-000, 38509-999";
+}
+
+/**
+ * Aviso (nunca bloqueio) sobre o "Alcance por CEP".
+ *
+ * Faixa PREENCHIDA: avisa se o servidor não a entende (nem o CEP da loja
+ * entra) — ver `avisoDaFaixaNaoEntendida`.
+ *
+ * Faixa VAZIA: avisa entrega local curta demais quando o CEP da loja tem cara
+ * de CEP de rua. Heurística: CEP geral de cidade pequena termina em "000"
+ * (Monte Carmelo, 38500-000 — um CEP só para a cidade, e os 5 primeiros
+ * números bastam). CEP que NÃO termina em "000" é de rua, e a cidade
+ * provavelmente tem vários prefixos (Uberlândia, 38400 a 38415): a cliente de
+ * outro bairro seria tratada como "de fora". Devolve o texto para a lojista,
+ * ou `null`.
  */
 export function avisoDaFaixaDeCep(config: {
   readonly originCep?: string | null;
   readonly localCepRange?: string | null;
 }): string | null {
-  if ((config.localCepRange ?? "").trim() !== "") return null;
+  const faixa = (config.localCepRange ?? "").trim();
+  if (faixa !== "") return avisoDaFaixaNaoEntendida(config.originCep, faixa);
   const prefixo = prefixoDoCepDaLoja(config.originCep);
   if (prefixo === null) return null;
   const cepLimpo = (config.originCep as string).replace(/\D/g, "");
