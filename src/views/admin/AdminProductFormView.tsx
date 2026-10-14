@@ -49,7 +49,7 @@ import {
   serializarRascunhoDoProduto,
   variacoesDoRascunhoComEstoqueDoBanco,
 } from "@/lib/rascunho-do-produto";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
@@ -129,6 +129,13 @@ const MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA =
  * do meio (código colado ou digitado com separador visual). */
 function normalizarCodigoBarras(valor: string): string {
   return valor.trim().replace(/\s+/g, "");
+}
+
+/** O campo "Preço diferente nesta variação" está com um valor, e esse valor é
+ * zero ("0,00", "0.00", "0"). Vazio NÃO conta: vazio é "use o preço do
+ * produto". Olha só os algarismos, sem interpretar vírgula ou ponto. */
+function precoDaVariacaoEhZero(texto: string): boolean {
+  return /\d/.test(texto) && !/[1-9]/.test(texto);
 }
 
 /** Percentual com 1 casa, em pt-BR ("33,3%", nunca "33.3%") — a mesma grafia
@@ -2982,6 +2989,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                           Deixe em branco para usar o preço padrão.
                         </span>
+                        {/* O 0 é gravado como preço próprio e vale no lugar do
+                            preço do produto: a variação sai de graça. Só
+                            avisa; não bloqueia nem muda o valor gravado. */}
+                        {precoDaVariacaoEhZero(
+                          variantFormData.priceOverride,
+                        ) && (
+                          <span
+                            data-testid="aviso-variacao-de-graca"
+                            className="ml-1 mt-1 block text-[11px] font-bold leading-tight text-amber-400"
+                          >
+                            Com R$ 0,00 esta variação será vendida de graça.
+                            Para usar o preço do produto, deixe o campo vazio.
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -5115,10 +5136,12 @@ const VariantItem = React.memo(function VariantItem({
                 {variant.stockIncrement} UND
               </span>
             </span>
-            {variant.priceOverride && (
+            {/* `!= null`, não verdade: o 0 é um preço próprio (brinde) e
+                `{0 && ...}` desenharia só o algarismo solto. */}
+            {variant.priceOverride != null && (
               <span className="flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-emerald-500">
                 <DollarSign className="size-3" />
-                R$ {Number(variant.priceOverride).toFixed(2)}
+                {formatCurrency(Number(variant.priceOverride))}
               </span>
             )}
           </div>

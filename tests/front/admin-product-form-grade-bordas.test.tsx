@@ -365,9 +365,15 @@ describe("AdminProductFormView — bordas da grade", () => {
     });
 
     expect(toastError).not.toHaveBeenCalled();
-    const texto = document.body.textContent ?? "";
-    expect(texto).toContain("R$ 109.90");
-    // Só UMA linha ganhou selo de preço próprio.
-    expect(texto.match(/R\$ \d+\.\d{2}/g)).toHaveLength(1);
+    // Só UMA linha ganhou selo de preço próprio, e é a de R$ 109,90.
+    const selos = [
+      ...document.querySelectorAll('[data-testid="variante-cadastrada"]'),
+    ]
+      .map((el) =>
+        (el.closest(".group")?.textContent ?? "").match(/R\$\s(\d+,\d{2})/),
+      )
+      .filter((achado) => achado !== null)
+      .map((achado) => achado[1]);
+    expect(selos).toEqual(["109,90"]);
   });
 });
