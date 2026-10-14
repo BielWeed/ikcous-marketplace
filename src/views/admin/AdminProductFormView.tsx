@@ -1567,6 +1567,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }));
   }, []);
 
+  // A principal é sempre a primeira. Leva a foto escolhida para a frente e
+  // mantém a ordem das outras. As variações apontam a foto pela URL, então o
+  // vínculo delas não depende da posição.
+  const makeImageCover = useCallback((index: number) => {
+    setFormData((prev) => {
+      if (index <= 0 || index >= prev.images.length) return prev;
+      const images = [...prev.images];
+      const [escolhida] = images.splice(index, 1);
+      return { ...prev, images: [escolhida, ...images] };
+    });
+    toast.success("Essa foto agora é a principal.");
+  }, []);
+
   const atualizarParDeAtributo = (
     indice: number,
     campo: "name" | "value",
@@ -3469,23 +3482,35 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
                             {/* Actions Overlay */}
                             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/35 to-transparent opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100 duration-300">
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => openAdjuster(image, index)}
-                                  className="flex size-11 items-center justify-center rounded-lg bg-emerald-500 text-emerald-950 shadow-lg transition-all hover:scale-110 hover:bg-emerald-400 active:scale-95"
-                                  title="Ajustar e Cortar"
-                                >
-                                  <Scissors className="size-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeImage(index)}
-                                  className="flex size-11 items-center justify-center rounded-lg bg-red-500 text-white shadow-lg transition-all hover:scale-110 hover:bg-red-400 active:scale-95"
-                                  title="Excluir"
-                                >
-                                  <Trash2 className="size-4" />
-                                </button>
+                              <div className="flex flex-col items-center gap-2">
+                                {!isCover && (
+                                  <button
+                                    type="button"
+                                    onClick={() => makeImageCover(index)}
+                                    aria-label={`Tornar principal: foto ${index + 1}`}
+                                    className="flex min-h-11 items-center justify-center rounded-lg bg-white/90 px-3 text-[11px] font-black uppercase tracking-wider text-zinc-950 shadow-lg transition-all hover:scale-105 hover:bg-white active:scale-95"
+                                  >
+                                    Tornar principal
+                                  </button>
+                                )}
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => openAdjuster(image, index)}
+                                    className="flex size-11 items-center justify-center rounded-lg bg-emerald-500 text-emerald-950 shadow-lg transition-all hover:scale-110 hover:bg-emerald-400 active:scale-95"
+                                    title="Ajustar e Cortar"
+                                  >
+                                    <Scissors className="size-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeImage(index)}
+                                    className="flex size-11 items-center justify-center rounded-lg bg-red-500 text-white shadow-lg transition-all hover:scale-110 hover:bg-red-400 active:scale-95"
+                                    title="Excluir"
+                                  >
+                                    <Trash2 className="size-4" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
