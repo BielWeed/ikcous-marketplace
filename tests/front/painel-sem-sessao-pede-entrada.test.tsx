@@ -59,7 +59,10 @@ vi.mock("framer-motion", async () => {
 });
 
 // Mutável de propósito: cada teste escolhe visitante, logada ou admin no ato.
-const { estadoAuth } = vi.hoisted(() => ({
+const { estadoAuth, avisoErro } = vi.hoisted(() => ({
+  // `toast.error` espiado: é o aviso "Acesso restrito" que a logada que não é
+  // admin lê ao ser mandada para a vitrine.
+  avisoErro: vi.fn(),
   estadoAuth: {
     user: null as { id: string } | null,
     isAdmin: false,
@@ -147,7 +150,7 @@ vi.mock("@/components/ui/custom/CartReminder", () => ({
 vi.mock("@/components/ui/sonner", () => ({ Toaster: () => null }));
 vi.mock("sonner", () => ({
   toast: Object.assign(() => {}, {
-    error: () => {},
+    error: avisoErro,
     success: () => {},
     info: () => {},
     warning: () => {},
@@ -311,6 +314,7 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
     estadoAuth.isAdmin = false;
     estadoAuth.adminStatus = "not-admin";
     estadoAuth.loading = false;
+    avisoErro.mockClear();
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubGlobal("localStorage", dubleDeArmazem());
@@ -410,6 +414,29 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
     await assentar();
   };
 
+  // A ordem REAL de um login (AuthContext, SIGNED_IN): primeiro chega o
+  // usuário novo com `loading: true` e o `adminStatus` ainda o "not-admin" da
+  // sessão anterior (passo A); só depois o servidor dá o veredito e a tela de
+  // carregamento sai (passo B). É nessa janela que a guarda de admin tem de
+  // esperar, e é por ela que quem NÃO é admin chega ao mesmo fim.
+  const entrarEmDoisPassos = async (comoAdmin: boolean) => {
+    estadoAuth.user = { id: "pessoa-logada" };
+    estadoAuth.loading = true;
+    estadoAuth.adminStatus = "not-admin";
+    await act(async () => {
+      raiz?.render(<App />);
+    });
+    await assentar();
+
+    estadoAuth.isAdmin = comoAdmin;
+    estadoAuth.adminStatus = comoAdmin ? "admin" : "not-admin";
+    estadoAuth.loading = false;
+    await act(async () => {
+      raiz?.render(<App />);
+    });
+    await assentar();
+  };
+
   const esperarTelaDeEntradaComPedidoGuardado = () => {
     expect(globalThis.location.pathname).toBe("/auth");
     expect(globalThis.history.state?.view).toBe("auth");
@@ -460,7 +487,7 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
     await abrirEm("/admin-orders");
     esperarTelaDeEntradaComPedidoGuardado();
 
-    await entrar(true);
+    await entrarEmDoisPassos(true);
 
     const painel = tela("painel");
     expect(painel).not.toBeNull();
@@ -474,10 +501,63 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
     await abrirEm("/admin-orders");
     esperarTelaDeEntradaComPedidoGuardado();
 
-    await entrar(false);
+    await entrarEmDoisPassos(false);
 
     expect(tela("painel")).toBeNull();
     expect(tela("home")).not.toBeNull();
+    expect(globalThis.history.state?.view).toBe("home");
+    expect(globalThis.location.pathname).not.toContain("admin");
+  });
+
+  // R1 (revisão Opus): o caso MAIS COMUM — refresh token vencido. A página abre
+  // em /admin-orders com a sessão guardada no aparelho (`loading: true`,
+  // `adminStatus: "unknown"`); o servidor derruba a sessão (user vira null,
+  // loading false). O `AdminAccessDenied` (filho) roda ANTES do `syncWithUrl`
+  // (pai) e expulsava para a vitrine com "Acesso restrito" — a transição
+  // terminava por cima do redirecionamento para a entrada.
+  it("(R1) sessão guardada que o servidor derruba: vai para a tela de entrada com o destino guardado, sem 'Acesso restrito'", async () => {
+    estadoAuth.user = { id: "lojista" };
+    estadoAuth.loading = true;
+    estadoAuth.adminStatus = "unknown";
+    await abrirEm("/admin-orders");
+    expect(globalThis.location.pathname).toBe("/admin-orders");
+
+    estadoAuth.user = null;
+    estadoAuth.loading = false;
+    estadoAuth.adminStatus = "not-admin";
+    await act(async () => {
+      raiz?.render(<App />);
+    });
+    await assentar();
+
+    esperarTelaDeEntradaComPedidoGuardado();
+    expect(avisoErro).not.toHaveBeenCalled();
+
+    await entrarEmDoisPassos(true);
+
+    expect(tela("painel")?.getAttribute("data-tela")).toBe("admin-orders");
+    expect(globalThis.location.pathname).toBe("/admin-orders");
+    expect(tela("tela-login")).toBeNull();
+  });
+
+  it("(R1 controle) logada que NÃO é admin: vai para a vitrine COM o aviso 'Acesso restrito' (inalterado)", async () => {
+    estadoAuth.user = { id: "pessoa-logada" };
+    estadoAuth.loading = true;
+    estadoAuth.adminStatus = "unknown";
+    await abrirEm("/admin-orders");
+
+    estadoAuth.loading = false;
+    estadoAuth.adminStatus = "not-admin";
+    await act(async () => {
+      raiz?.render(<App />);
+    });
+    await assentar();
+
+    expect(avisoErro).toHaveBeenCalledWith(
+      "Acesso restrito a administradores.",
+    );
+    expect(tela("painel")).toBeNull();
+    expect(tela("tela-login")).toBeNull();
     expect(globalThis.history.state?.view).toBe("home");
     expect(globalThis.location.pathname).not.toContain("admin");
   });

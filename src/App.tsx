@@ -166,11 +166,20 @@ function AdminAccessDenied({
   // passa por aqui com `adminStatus === "unknown"` (o pai só troca para
   // `<AdminArea>` quando `isAdmin` vira `true`) — expulsar nesse instante
   // era exatamente o piscar que a Parte B veio resolver.
-  const { adminStatus, loading } = useAuth();
+  const { adminStatus, loading, user } = useAuth();
 
   useEffect(() => {
     // If auth is still loading, wait.
     if (loading) return;
+
+    // SEM sessão não há veredito de permissão a dar: quem decide a rota é o
+    // `syncWithUrl` (painel sem conta pede a tela de entrada e guarda o
+    // pedido). Este efeito é de FILHO e roda antes do dele; expulsar aqui
+    // mandava para a vitrine, com "Acesso restrito", a lojista cuja sessão
+    // guardada o servidor acabou de derrubar (refresh token vencido) — e a
+    // transição terminava por cima do redirecionamento para a entrada. Quem
+    // TEM sessão e não é admin continua expulsa, com o aviso, como sempre.
+    if (!user) return;
 
     // Ainda verificando com o servidor — não expulsa, não redireciona.
     if (adminStatus === "unknown") return;
@@ -181,7 +190,7 @@ function AdminAccessDenied({
       toast.error("Acesso restrito a administradores.");
       onNavigate("home");
     }
-  }, [onNavigate, adminStatus, loading]);
+  }, [onNavigate, adminStatus, loading, user]);
 
   return <AdminRouteLoading />;
 }
