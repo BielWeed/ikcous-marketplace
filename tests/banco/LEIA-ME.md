@@ -510,6 +510,24 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   lote `20261226000000`. Mesmo desenho do portão 27: rol exato nos dois estados, um negativo por linha (1 byte a
   mais em cada corpo, STABLE, SECURITY INVOKER, ACL por papel, tabela com policy/grant/sem RLS, objeto ausente ou
   já presente). **Não prova** a IKCOUS nem a Savy.
+- **busca de clientes (`busca-de-clientes-viva.cjs`, via `rodar-isolado.cjs`)**: as migrations `20261230000000`
+  (`get_admin_customers_paged`: a tela Clientes, o balcão e o cupom exclusivo acham pelos DÍGITOS do WhatsApp, com o
+  corte do 55 do +55) e `20261231000000` (`crm_clientes`: a aba Clientes do CRM ignora acento), com os papéis reais num
+  Postgres efêmero. Oito clientes de fixture (WhatsApp mascarado, gravado com 55, fixo, DDD 55, sem WhatsApp, e-mail
+  acentuado, uma compradora). Sete formas de digitar o mesmo número acham a mesma cliente; BORDAS: 3 dígitos não viram
+  busca por dígitos e 4 viram, 12/13 dígitos que começam por 55 perdem o 55 mas DDD 55 (11 dígitos) e 12 dígitos fora do 55
+  não, vazio/só espaço devolve todos, só símbolos não quebra, cliente sem WhatsApp não é achada nem quebra. O JSON (dados,
+  total, estatísticas, ordenação, paginação) é IGUAL ao do corpo antigo nas buscas que o conserto não toca; o corpo
+  ANTIGO (rollback numa transação desfeita) reprova as provas do defeito; comum, admin rebaixado e visitante recusados;
+  ACL, atributos e dono intactos; reaplicar 2x e aplicar-desfazer-aplicar voltam idênticos; o pré-voo recusa sem
+  escrever (corpo divergente, ACL aberta, atributo trocado, coluna ou função ausente) e uma troca interrompida não
+  deixa nada; leitura concorrente nunca vê estado misto; mutantes (cada guarda tirada) ficam vermelhos. **Não prova** a
+  IKCOUS nem a Savy.
+- **portão da busca de clientes (`busca-de-clientes-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `32a-conferir-busca-de-clientes-aplicado` (DEPOIS, 9 linhas) e `32b-antes-busca-de-clientes-corpos-vigentes` (ANTES, 7
+  linhas; **não mede a ACL**, que é da 32a), a "prova de objetos" do lote `20261230000000` + `20261231000000`. Mesmo
+  desenho do portão 26: rol exato nos estados (antes, depois, só uma das duas), um negativo por linha em CADA função, o
+  veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
@@ -519,7 +537,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   desfeita, para provar grants/RLS/view — o admin grava
   `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
 - **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
-  `20261199000000` (20261212, 20261214, 20261227, 20261228) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
   reprova se aparecer uma sucessora que não esteja na lista.
 - **função nova não nasce aberta (`portas-do-visitante-so-as-permitidas-viva.cjs`, via `rodar-isolado.cjs`)**: L8 da
   auditoria de 12/10, sem migration. Com todas as migrations aplicadas, toda função de `public` que anon,

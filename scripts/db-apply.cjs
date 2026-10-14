@@ -1695,6 +1695,60 @@ const VERIFICACOES = {
         ],
       },
     ],
+  "20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql": [
+    {
+      // A busca de clientes acha pelo número do WhatsApp (14/10/2026): o termo ganha os dígitos (com o corte do
+      // 55 do +55) e a busca por dígitos entra como um OR a mais. Sem esta entrada a migration saía PULADA (saída
+      // 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos): a
+      // variável, o cálculo dos dígitos, o corte do 55 e a cláusula nova aparecem UMA vez cada; as duas travas de
+      // admin (is_admin e is_admin_atual, 20261199000000) seguem UMA vez cada.
+      funcao: "get_admin_customers_paged",
+      esperado: [
+        { texto: "v_search_digitos TEXT;", vezes: 1 },
+        {
+          texto:
+            "v_search_digitos := regexp_replace(COALESCE(v_clean_search, ''), '[^0-9]', '', 'g');",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF length(v_search_digitos) IN (12, 13) AND left(v_search_digitos, 2) = '55' THEN",
+          vezes: 1,
+        },
+        { texto: "(length(v_search_digitos) >= 4 AND (", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261231000000_a_busca_do_crm_ignora_acento.sql": [
+    {
+      // A busca do CRM ignora acento (14/10/2026): nome e e-mail passam por f_unaccent nos dois lados. Sem esta
+      // entrada a migration saía PULADA. Os marcadores contam no corpo VIVO (comentários incluídos): cada
+      // comparação sem acento aparece UMA vez; o ramo do número (4 ou mais dígitos) e as duas travas de admin
+      // seguem UMA vez cada.
+      funcao: "crm_clientes",
+      esperado: [
+        {
+          texto:
+            "OR public.f_unaccent(COALESCE(nome_exibido, '')) ILIKE public.f_unaccent('%' || v_busca || '%')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "OR public.f_unaccent(COALESCE(email, '')) ILIKE public.f_unaccent('%' || v_busca || '%')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "OR (v_digitos IS NOT NULL AND length(v_digitos) >= 4 AND COALESCE(whatsapp, '') LIKE '%' || v_digitos || '%'))",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

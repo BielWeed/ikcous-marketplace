@@ -47,6 +47,10 @@ const NOMES = [
   // da 12, e desfazer em ordem inversa devolve cada corpo ao anterior).
   "20261227000000_o_crm_compara_o_que_e_comparavel.sql",
   "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql",
+  // A busca de clientes (14/10/2026): get_admin_customers_paged (por número do WhatsApp) e
+  // crm_clientes (sem acento) sucedem, cada uma, o corpo da 99.
+  "20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql",
+  "20261231000000_a_busca_do_crm_ignora_acento.sql",
 ];
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");
