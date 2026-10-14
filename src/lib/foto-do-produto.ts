@@ -18,13 +18,13 @@ const HOSPEDAGEM_DO_MARCADOR = "placehold.co";
 /** A URL é de marcador de imagem (não é foto que a lojista enviou)? */
 export function ehMarcadorDeFoto(url: unknown): boolean {
   if (typeof url !== "string") return false;
-  const texto = url.trim();
   try {
-    const { hostname } = new URL(texto);
+    // A base só existe para o endereço sem protocolo (`//placehold.co/...`)
+    // ser lido como endereço; caminho relativo cai na base e não casa.
+    const { hostname } = new URL(url.trim(), "https://x.invalid");
     return hostname.toLowerCase() === HOSPEDAGEM_DO_MARCADOR;
   } catch {
-    // Sem protocolo (`//placehold.co/...`) ou texto solto.
-    return /^(?:https?:)?\/\/placehold\.co(?:[/?#:]|$)/i.test(texto);
+    return false;
   }
 }
 

@@ -38,6 +38,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { soFotosReais } from "@/lib/foto-do-produto";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
@@ -573,7 +574,8 @@ export const AdminProductsView = memo(function AdminProductsView({
       // cai no catch de baixo: melhor não duplicar do que duplicar
       // compartilhando arquivo de novo.
       const imagens = await Promise.all(
-        (productToDuplicate.images || []).map((img: string) =>
+        // Sem o marcador "Sem Imagem": produto sem foto duplica sem foto.
+        soFotosReais(productToDuplicate.images).map((img: string) =>
           copiarImagemParaDuplicacao(img),
         ),
       );
