@@ -2586,6 +2586,23 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
+    await t.step("A8b — cada marca sozinha basta: só a etiqueta test_user, ou só o e-mail @testuser.com", async () => {
+        const marcas = [
+            { tags: ["normal", "test_user"], nickname: "Loja", email: "dono@minhaloja.com.br" },
+            { tags: ["normal"], nickname: "Loja", email: "TESTE_1@TESTUSER.COM" },
+        ];
+        for (const marca of marcas) {
+            const desfazerEnv = prepararEnv();
+            const { cliente } = supabaseFalso();
+            try {
+                const resposta = await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, marca).buscar);
+                assertEquals((await resposta.json()).aviso, AVISO_CHAVES_DE_TESTE);
+            } finally {
+                desfazerEnv();
+            }
+        }
+    });
+
     await t.step("A9 — token com prefixo TEST- é de teste mesmo sem marca na resposta", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente } = supabaseFalso();
