@@ -29,15 +29,17 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
 
    **Informe sempre `--project-ref` no comando.** A IKCOUS usa
    `cafkrminfnokvgjqtkle` e a Savy `gnjsrucsmjkajijrakzr`; o `dekxabvqdsuukijblazl`
-   é o projeto antigo, lacrado, e não recebe publicação. O `lofznuxcvezrhxsgjqyg` é o sandbox e não recebe a publicação da
+   é o projeto antigo (nenhuma loja no ar chama as functions dele) e não deve receber
+   publicação. O `lofznuxcvezrhxsgjqyg` é o sandbox e não recebe a publicação da
    loja. Sem o ref explícito, o CLI abre uma escolha interativa na qual confirmar
    o projeto errado pode publicar sem erro.
 
    Desde 17/09/2026 dá para publicar sem CLI na máquina: o workflow
    `publicar-functions` (GitHub → Actions → "Publicar edge functions
    (Supabase)") roda o mesmo comando num runner do GitHub, com o destino
-   escolhido numa lista fechada — `loja` ou `sandbox`, sem cursor no lugar
-   errado. Como disparar e o que ele recusa: §5.3.2.
+   escolhido numa lista fechada — `ikcous-publicada` (IKCOUS), `savy`,
+   `almeida`, `sandbox` ou `loja`, sem cursor no lugar errado. Atenção: `loja`
+   **não é a loja ativa**, é o projeto antigo `dekxabvqdsuukijblazl`. Como disparar e o que ele recusa: §5.3.2.
 
    O `lofznuxcvezrhxsgjqyg` é o **sandbox do MCP** — apesar do nome, não é loja
    de cliente. É para onde os `mcp.json` das IDEs apontam, para o servidor MCP
@@ -90,9 +92,9 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
 
    **O que estava publicado em 11/08/2026** — medido depois da
    despublicação da `send-order-whatsapp`, com
-   `supabase functions list --project-ref cafkrminfnokvgjqtkle` no projeto
-   anterior. Esta tabela é histórica; para conferir a loja ativa, rode
-   `supabase functions list --project-ref cafkrminfnokvgjqtkle`:
+   `supabase functions list --project-ref cafkrminfnokvgjqtkle`, projeto que hoje é
+   a IKCOUS. Esta tabela é histórica (foto de 11/08/2026); para ver o que está
+   publicado hoje, rode o mesmo comando de novo:
 
    | Função | Versão | Atualizada em (UTC) |
    | --- | --- | --- |
@@ -119,8 +121,9 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
      com o painel fechado — continua não exercitado**, porque testá-lo cria
      pedido em produção.
    - **`send-order-whatsapp` foi DESPUBLICADA em 11/08/2026** (#167, rastreada
-     pela #187). O comando e a saída abaixo são registro histórico do projeto
-     anterior; **não execute este comando**:
+     pela #187). O comando e a saída abaixo são registro histórico, já executado em
+     11/08/2026 no `cafkrminfnokvgjqtkle` (a saída `Deleted Function` abaixo é a
+     confirmação); **não execute este comando**:
 
      ```
      supabase functions delete send-order-whatsapp --project-ref cafkrminfnokvgjqtkle --yes
@@ -235,7 +238,7 @@ https://<ref-do-projeto-da-loja>.supabase.co/functions/v1/webhook-mercadopago
 - **IKCOUS:** `https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago`
 - **Savy:** `https://gnjsrucsmjkajijrakzr.supabase.co/functions/v1/webhook-mercadopago`
 
-O `dekxabvqdsuukijblazl` é o projeto antigo (hoje lacrado): **não cadastre aviso nele**. O
+O `dekxabvqdsuukijblazl` é o projeto antigo (nenhuma loja no ar chama as functions dele): **não cadastre aviso nele**. O
 aviso cadastrado no projeto errado não chega à loja certa e o pagamento não confirma sozinho.
 
 **Isto mudou com a migração para a Orders API.** Com `montarCorpoPix` (clássico) o código mandava
