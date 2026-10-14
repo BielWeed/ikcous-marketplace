@@ -317,7 +317,8 @@ export function AdminLayout({
     };
 
     // LIMITACAO CONHECIDA, de proposito: nao ha canal de tempo real para
-    // `reviews` nem `devolucoes`. Essas contagens são lidas na busca
+    // `reviews`, `devolucoes` nem `pedidos_de_privacidade` (os pedidos de
+    // privacidade dos clientes). Essas contagens são lidas na busca
     // inicial e nas revalidacoes de `visibilitychange` — uma pendência que
     // chegue com o painel aberto so acende a bolinha na proxima vez que a
     // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
