@@ -22,16 +22,16 @@
  *   E "Esmeralda" custo NULL, só em pedidos que NÃO contam (cancelado, estornado, aguardando)
  *   dia -3 12h: O1 = A x2 + B x1 (R$ 130), O2 = C x1 + B x2 (R$ 100), O4 = D x1 (R$ 20)
  *   dia -3 13h: pedidos FORA (cancelado pago, pago e estornado, aguardando) com A, B e E
- *   dia -2 22h: O3 = B x1 (R$ 30)  -> pertence ao dia -2 (America/Sao_Paulo), não ao -1 (UTC)
+ *   dia -2 22h: O3 = B x1 (R$ 30) e O5 = A x1 (R$ 45, COM custo)  -> pertencem ao dia -2 (America/Sao_Paulo), não ao -1 (UTC)
  *   dias -1 e 0: sem venda
  *
  * O QUE SE PROVA:
  *   (1) DEPOIS: dia -3 receita 250 e lucro 120 (A 80 + C 40; B e D FORA), custo vendido 20;
- *       dia -2 (22h SP) receita 30 e lucro 0; dia -1 e hoje sem venda (lucro 0, receita 0); o top 5 é
- *       [Anel 80, Colar 40] (sem Brinco, sem Apagado, sem Esmeralda); `productsWithoutCost` = 1
+ *       dia -2 (22h SP) receita 75 e lucro 35 (só o Anel); dia -1 e hoje sem venda (lucro 0, receita 0); o top 5 é
+ *       [Anel 115, Colar 40] (sem Brinco, sem Apagado, sem Esmeralda); `productsWithoutCost` = 1
  *       (só o Brinco: apagado e pedido que não conta ficam de fora).
  *   (2) CONTROLE (o corpo antigo, rollback-manual numa transação desfeita): o lucro do dia -3 era
- *       230, o do dia -2 era 30, o top 5 era [Brinco 120, Anel 80, Colar 40] e `productsWithoutCost`
+ *       230, o do dia -2 era 65, o top 5 era [Brinco 120, Anel 115, Colar 40] e `productsWithoutCost`
  *       não existia; a RECEITA (dia a dia, hoje, mês, executivo) é IDÊNTICA antes e depois; o
  *       produto com custo (A e C) tem a mesma linha do ranking byte a byte; o JSON inteiro, tirado o
  *       que a migration muda, é IGUAL; as chaves novas são só `productsWithoutCost`.
@@ -332,6 +332,15 @@ PROVAS.push({
       total: 30,
       itens: [[P.B, 1, 30]],
     });
+    // O caso de fuso NO LUCRO: outro pedido das 22h de São Paulo, agora com produto COM custo (Anel, a R$ 45):
+    // o lucro dele (45 - 10 = 35) tem de cair no dia -2, não no -1 (UTC).
+    await pedido(c, {
+      ...pago,
+      dia: 2,
+      hora: "22:00",
+      total: 45,
+      itens: [[P.A, 1, 45]],
+    });
     // Os que NÃO contam, no MESMO dia -3 (se contassem, mudariam o dia e o ranking).
     await pedido(c, {
       status: "cancelled",
@@ -377,8 +386,8 @@ async function provaDoCorpoNovo(c) {
   const d2 = await diaDe(c, json, 2);
   assert.deepEqual(
     d2,
-    { receita: 30, pedidos: 1, lucro: 0, custoVendido: 0 },
-    "dia -2 (22h SP): receita 30 no dia certo e lucro 0 (só produto sem custo)",
+    { receita: 75, pedidos: 2, lucro: 35, custoVendido: 10 },
+    "dia -2 (22h SP): receita 75 (Brinco 30 + Anel 45) no dia certo; lucro 35 SÓ do Anel (45 - custo 10), o Brinco fica de fora",
   );
   for (const n of [1, 0]) {
     assert.deepEqual(
@@ -390,10 +399,10 @@ async function provaDoCorpoNovo(c) {
   assert.deepEqual(
     json.topProducts.map((t) => [t.name, num(t.total), t.quantity]),
     [
-      ["Lucro Anel", 80, 2],
+      ["Lucro Anel", 115, 3],
       ["Lucro Colar", 40, 1],
     ],
-    "o ranking de lucro: só produto COM custo (o zero medido conta); sem Brinco, Apagado nem Esmeralda",
+    "o ranking de lucro: só produto COM custo (o zero medido conta); sem Brinco, Apagado nem Esmeralda; o Anel soma o pedido das 22h",
   );
   assert.equal(
     json.productsWithoutCost,
@@ -402,8 +411,8 @@ async function provaDoCorpoNovo(c) {
   );
   assert.equal(
     num(json.executive.totalRevenue),
-    280,
-    "receita total = 250 + 30",
+    325,
+    "receita total = 250 + 75",
   );
   return json;
 }
@@ -444,14 +453,14 @@ PROVAS.push({
     );
     assert.equal(
       antigo.d2.lucro,
-      30,
-      "CONTROLE: o antigo contava o Brinco das 22h como lucro",
+      65,
+      "CONTROLE: o antigo contava o Brinco das 22h como lucro (30 + 35 do Anel)",
     );
     assert.deepEqual(
       json.topProducts.map((t) => [t.name, num(t.total)]),
       [
         ["Lucro Brinco", 120],
-        ["Lucro Anel", 80],
+        ["Lucro Anel", 115],
         ["Lucro Colar", 40],
       ],
       "CONTROLE: o corpo antigo punha o Brinco (sem custo) no topo, empatado com a receita",
@@ -506,6 +515,36 @@ PROVAS.push({
       formato(json).filter((k) => !formato(fx.novo).includes(k)),
       [],
       "nenhuma chave sumiu",
+    );
+
+    // TEXTO CRU (sem JSON.parse): numa loja onde TODO produto tem custo, o texto que o servidor devolve só
+    // difere do antigo pela chave nova no fim. Dentro de uma transação desfeita, o custo vazio vira 5.
+    const cru = (sqls) =>
+      numaTransacao(c, sqls, async () => {
+        await c.query(
+          "UPDATE public.produtos SET custo = 5 WHERE custo IS NULL",
+        );
+        await logar(c, U_ADMIN);
+        const r = await c.query(
+          "SELECT public.get_admin_analytics_v2(30)::text AS t",
+        );
+        return r.rows[0].t;
+      });
+    const textoNovo = await cru([]);
+    const textoAntigo = await cru([ler(`rollback-manual-${NOME_34}`)]);
+    const textoNovoSemCampo = textoNovo.replace(
+      /,\s*"productsWithoutCost"\s*:\s*0/,
+      "",
+    );
+    assert.notEqual(
+      textoNovoSemCampo,
+      textoNovo,
+      "loja só com produto com custo: o campo novo tem de vir com 0",
+    );
+    assert.equal(
+      textoNovoSemCampo,
+      textoAntigo,
+      "loja só com produto com custo: o TEXTO do servidor só difere do antigo pela chave nova",
     );
   },
 });

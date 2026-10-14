@@ -89,6 +89,9 @@ on:
       - "scripts/publicacao/consultas/32a-conferir-busca-de-clientes-aplicado.sql"
       - "scripts/publicacao/consultas/32b-antes-busca-de-clientes-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/32m-medir-busca-de-clientes.sql"
+      - "scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql"
+      - "scripts/publicacao/consultas/34b-antes-sino-da-retirada-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/34m-medir-sino-da-retirada.sql"
       - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
       - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
       - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
@@ -151,6 +154,9 @@ on:
       - "scripts/publicacao/consultas/32a-conferir-busca-de-clientes-aplicado.sql"
       - "scripts/publicacao/consultas/32b-antes-busca-de-clientes-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/32m-medir-busca-de-clientes.sql"
+      - "scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql"
+      - "scripts/publicacao/consultas/34b-antes-sino-da-retirada-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/34m-medir-sino-da-retirada.sql"
       - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
       - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
       - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
@@ -697,6 +703,20 @@ jobs:
       - name: Prova viva do portao do lucro so com custo (consultas 35a e 35b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-so-com-custo-portao-viva.cjs
+      # O sino do pedido de retirada (migration 20261233, dado de cliente; cacada de 14/10/2026): o pedido de RETIRADA na loja
+      # (customer_data->>'shipping_option_id' = 'store-pickup') avisa "Pedido pronto para retirar" e "Pedido retirado" no sino, e
+      # o resto fica byte a byte como era. COMPORTAMENTO com a trigger real: o fluxo de entrega e o de retirada, o cancelamento
+      # nos dois, 19 formas de customer_data que NAO sao retirada, o mesmo status de novo que nao duplica, convidado, UPDATE de
+      # varias linhas, status e dados mudando juntos, o aviso antigo que fica, falha de aviso que nao derruba o pedido, ACL e
+      # atributos intactos, rollback com o mesmo md5, pre-voo que recusa sem escrever, troca interrompida, leitura concorrente,
+      # mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do sino do pedido de retirada (migration 20261233)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-de-retirada-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 34a (DEPOIS, 7 linhas), 34b (ANTES, 6 linhas) e a medicao 34m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do sino do pedido de retirada (consultas 34a e 34b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que

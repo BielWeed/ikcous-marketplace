@@ -1749,6 +1749,31 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261233000000_o_sino_do_pedido_de_retirada_fala_de_retirada.sql": [
+    {
+      // O sino do pedido de retirada fala de retirada (14/10/2026): o pedido de retirada na loja ganha o texto
+      // "pronto para retirar" e "retirado" e o resto fica como era. Sem esta entrada a migration saía PULADA (saída
+      // 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos):
+      // o texto novo, o marcador da retirada e as frases da entrega (a troca SÓ soma o ramo da retirada) aparecem
+      // UMA vez cada, e as duas guardas (convidado e mudança real de status) também.
+      funcao: "notifica_cliente_de_mudanca_de_status",
+      esperado: [
+        { texto: "Pedido pronto para retirar", vezes: 1 },
+        { texto: "Pedido retirado", vezes: 1 },
+        {
+          texto:
+            "COALESCE(NEW.customer_data ->> 'shipping_option_id', '') = 'store-pickup'",
+          vezes: 1,
+        },
+        { texto: "Pedido em preparo", vezes: 1 },
+        { texto: "Pedido a caminho", vezes: 1 },
+        { texto: "Pedido entregue", vezes: 1 },
+        { texto: "Pedido cancelado", vezes: 1 },
+        { texto: "NEW.user_id IS NULL", vezes: 1 },
+        { texto: "OLD.status IS NOT DISTINCT FROM NEW.status", vezes: 1 },
+      ],
+    },
+  ],
   "20261234000000_o_lucro_so_conta_produto_com_custo.sql": [
     {
       // O lucro só conta produto com custo (14/10/2026): o lucro por dia e o top 5 do CRM deixam de tratar custo

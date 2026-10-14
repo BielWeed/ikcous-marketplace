@@ -543,6 +543,23 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `35a-conferir-lucro-so-com-custo-aplicado` (DEPOIS, 6 linhas) e `35b-antes-lucro-so-com-custo-corpo-vigente` (ANTES, 5
   linhas) do lote `20261234000000`. Rol exato nos estados (depois, antes, corpo da 99), um negativo por linha, mutantes
   do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
+  RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`) avisa "Pedido pronto para retirar" e
+  "Pedido retirado" no sino, com a trigger real e os papéis reais num Postgres efêmero; o resto fica byte a byte como era.
+  Fluxo de entrega e de retirada, cancelamento nos dois, 19 formas de `customer_data` que NÃO são retirada (id com espaço,
+  sufixo, caixa, lista, objeto, `null`, só o endereço da loja), o mesmo status de novo (quatro jeitos) sem duplicar,
+  convidado sem aviso, UPDATE de várias linhas (cada uma com o seu texto), status e dados mudando juntos (vale o NEW),
+  falha de aviso que não derruba o pedido, e o aviso que JÁ existia antes da migration, que fica como está. O corpo
+  ANTIGO (rollback numa transação desfeita) reprova a prova da retirada e IGUALA o novo em tudo o que não é retirada;
+  mutantes do corpo ficam vermelhos; ACL, atributos e dono iguais; aplicar 2x = 1x; o pré-voo recusa sem escrever (corpo,
+  ACL, atributo, trigger fora do lugar, coluna, sobrecarga); troca interrompida; leitura concorrente. **Não prova** a
+  IKCOUS nem a Savy.
+- **portão do sino da retirada (`o-sino-do-pedido-de-retirada-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `34a-conferir-sino-da-retirada-aplicado` (DEPOIS, 7 linhas) e `34b-antes-sino-da-retirada-corpo-vigente` (ANTES, 6
+  linhas) e a medição `34m-medir-sino-da-retirada` (rol aberto, só contagens), a "prova de objetos" do lote
+  `20261233000000`. Mesmo desenho do portão 26: rol exato nos estados, um negativo por linha, o veredito do
+  `conferir-banco.cjs` (`rol=ok`), a 34m por diferença contra os pedidos montados. **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

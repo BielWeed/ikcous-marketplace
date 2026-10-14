@@ -297,6 +297,11 @@ function PreviaNoCelular({
   );
 }
 
+// Escondida: nada na vitrine nem no servidor lê `realTimeSalesAlerts`, então a
+// chave prometia "avisos de compras" que a loja nunca mostra. A configuração
+// guardada segue intacta; religar = trocar para `true` quando o recurso existir.
+const MOSTRAR_AVISOS_DE_COMPRAS: boolean = false;
+
 export const AdminPushView = memo(function AdminPushView({
   onNavigate,
   targetUserId,
@@ -1004,16 +1009,18 @@ export const AdminPushView = memo(function AdminPushView({
                       Celulares Cadastrados
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[11px] font-semibold">
-                    <span
-                      className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-admin-gold animate-pulse" : "bg-zinc-600"}`}
-                    />
-                    <span className="text-zinc-400 uppercase tracking-wider text-[11px]">
-                      {config.realTimeSalesAlerts
-                        ? "Avisos de Vendas Ativos"
-                        : "Avisos Desativados"}
-                    </span>
-                  </div>
+                  {MOSTRAR_AVISOS_DE_COMPRAS && (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[11px] font-semibold">
+                      <span
+                        className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-admin-gold animate-pulse" : "bg-zinc-600"}`}
+                      />
+                      <span className="text-zinc-400 uppercase tracking-wider text-[11px]">
+                        {config.realTimeSalesAlerts
+                          ? "Avisos de Vendas Ativos"
+                          : "Avisos Desativados"}
+                      </span>
+                    </div>
+                  )}
                 </>
               }
             >
@@ -1720,115 +1727,123 @@ export const AdminPushView = memo(function AdminPushView({
             não enviado, então fechar o bloco não descarta rascunho nenhum; a
             trava "Salve antes de fechar" continua na seção de escrita,
             onde o rascunho vive. */}
-        <SecaoColapsavel
-          titulo="Ajustes"
-          descricao="Prova social e teste de recebimento"
-          icone={Settings}
-        >
-          <div className="space-y-2.5">
-            {/* Avisos de Compras Recentes — cartão intocado, só mudou de
+        {/* Sem a chave de avisos de compras (escondida), o bloco só existe
+            quando o botão de teste aparece — nunca um "Ajustes" vazio. */}
+        {(MOSTRAR_AVISOS_DE_COMPRAS || (isSupported && !isTestSubscribed)) && (
+          <SecaoColapsavel
+            titulo="Ajustes"
+            descricao={
+              MOSTRAR_AVISOS_DE_COMPRAS
+                ? "Prova social e teste de recebimento"
+                : "Teste de recebimento"
+            }
+            icone={Settings}
+          >
+            <div className="space-y-2.5">
+              {/* Avisos de Compras Recentes — cartão intocado, só mudou de
                 lugar (o conteúdo de dentro, inclusive a expansão de
                 explicação, é o de antes) */}
-            {configLoaded && (
-              <div
-                className={`rounded-xl border p-3.5 transition-all duration-300 ${
-                  config.realTimeSalesAlerts
-                    ? "border-admin-gold/30 bg-admin-gold/5"
-                    : "border-white/10 bg-zinc-900/60"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-all duration-300 ${
-                        config.realTimeSalesAlerts
-                          ? "border-admin-gold/30 bg-admin-gold/10 text-admin-gold"
-                          : "border-white/5 bg-zinc-950 text-zinc-500"
-                      }`}
-                    >
-                      <Sparkles className="size-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label
-                          htmlFor="realtime-sales-alerts-switch"
-                          className="cursor-pointer text-xs font-bold text-white"
-                        >
-                          Avisos de Compras Recentes
-                        </Label>
-                        <span
-                          className={`size-1.5 rounded-full ${
-                            config.realTimeSalesAlerts
-                              ? "bg-admin-gold animate-pulse"
-                              : "bg-zinc-600"
-                          }`}
-                        />
+              {MOSTRAR_AVISOS_DE_COMPRAS && configLoaded && (
+                <div
+                  className={`rounded-xl border p-3.5 transition-all duration-300 ${
+                    config.realTimeSalesAlerts
+                      ? "border-admin-gold/30 bg-admin-gold/5"
+                      : "border-white/10 bg-zinc-900/60"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-all duration-300 ${
+                          config.realTimeSalesAlerts
+                            ? "border-admin-gold/30 bg-admin-gold/10 text-admin-gold"
+                            : "border-white/5 bg-zinc-950 text-zinc-500"
+                        }`}
+                      >
+                        <Sparkles className="size-4" />
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-[11px] text-zinc-400 leading-tight">
-                          Mostra na loja avisos de compras em tempo real.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setIsSocialProofExpanded(!isSocialProofExpanded)
-                          }
-                          className="flex items-center text-[11px] font-bold text-admin-gold hover:text-admin-gold/80 leading-none"
-                        >
-                          {isSocialProofExpanded ? (
-                            <ChevronUp className="size-3" />
-                          ) : (
-                            <ChevronDown className="size-3" />
-                          )}
-                        </button>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Label
+                            htmlFor="realtime-sales-alerts-switch"
+                            className="cursor-pointer text-xs font-bold text-white"
+                          >
+                            Avisos de Compras Recentes
+                          </Label>
+                          <span
+                            className={`size-1.5 rounded-full ${
+                              config.realTimeSalesAlerts
+                                ? "bg-admin-gold animate-pulse"
+                                : "bg-zinc-600"
+                            }`}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-[11px] text-zinc-400 leading-tight">
+                            Mostra na loja avisos de compras em tempo real.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setIsSocialProofExpanded(!isSocialProofExpanded)
+                            }
+                            className="flex items-center text-[11px] font-bold text-admin-gold hover:text-admin-gold/80 leading-none"
+                          >
+                            {isSocialProofExpanded ? (
+                              <ChevronUp className="size-3" />
+                            ) : (
+                              <ChevronDown className="size-3" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
+                    <Switch
+                      id="realtime-sales-alerts-switch"
+                      checked={config.realTimeSalesAlerts}
+                      onCheckedChange={handleToggleRealTimeSalesAlerts}
+                      className="scale-90 data-[state=checked]:bg-admin-gold"
+                      disabled={isOffline || isUpdatingConfig}
+                    />
                   </div>
-                  <Switch
-                    id="realtime-sales-alerts-switch"
-                    checked={config.realTimeSalesAlerts}
-                    onCheckedChange={handleToggleRealTimeSalesAlerts}
-                    className="scale-90 data-[state=checked]:bg-admin-gold"
-                    disabled={isOffline || isUpdatingConfig}
-                  />
+
+                  <AnimatePresence initial={false}>
+                    {isSocialProofExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeInOut" }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[11px] leading-relaxed text-zinc-400 space-y-1">
+                          <p>
+                            Esta opção exibe pequenas notificações discretas na
+                            loja quando alguém faz um pedido, passando mais
+                            segurança e confiança aos novos clientes.
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
+              )}
 
-                <AnimatePresence initial={false}>
-                  {isSocialProofExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2, ease: "easeInOut" }}
-                      className="overflow-hidden"
-                    >
-                      <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[11px] leading-relaxed text-zinc-400 space-y-1">
-                        <p>
-                          Esta opção exibe pequenas notificações discretas na
-                          loja quando alguém faz um pedido, passando mais
-                          segurança e confiança aos novos clientes.
-                        </p>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
-
-            {/* Teste de recebimento — o mesmo botão do cartão métrico, na
+              {/* Teste de recebimento — o mesmo botão do cartão métrico, na
                 mesma condição (`isSupported && !isTestSubscribed`). */}
-            {isSupported && !isTestSubscribed && (
-              <button
-                onClick={handleTestSubscription}
-                disabled={isOffline}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 py-2 text-[11px] font-black uppercase tracking-wider text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
-              >
-                <Zap className="size-3 fill-admin-gold" />
-                Testar Recebimento Neste Aparelho
-              </button>
-            )}
-          </div>
-        </SecaoColapsavel>
+              {isSupported && !isTestSubscribed && (
+                <button
+                  onClick={handleTestSubscription}
+                  disabled={isOffline}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 py-2 text-[11px] font-black uppercase tracking-wider text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+                >
+                  <Zap className="size-3 fill-admin-gold" />
+                  Testar Recebimento Neste Aparelho
+                </button>
+              )}
+            </div>
+          </SecaoColapsavel>
+        )}
       </div>
 
       {/* Modal de Ajuda Limpo */}

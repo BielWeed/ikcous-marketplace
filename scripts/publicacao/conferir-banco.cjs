@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 35a, 35b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1813,6 +1813,32 @@ const ROL_DA_35B = [
   "get_admin_analytics_v2: o corpo ainda NAO conta os produtos sem custo",
   "get_admin_analytics_v2: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
 ];
+/** O rol da 34a (a prova de objetos da migration 20261233000000, o sino do pedido de retirada fala de retirada): as 7 linhas que
+ * scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado do
+ * banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de notifica_cliente_de_mudanca_de_status e o NOVO (md5), ele traz
+ * o texto da retirada e ainda o da entrega, os atributos de sempre, a trigger segue ligada a ele e a ACL e a de hoje.
+ * tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_34A = [
+  "controle: funcoes de public visiveis a este papel",
+  "notifica_cliente_de_mudanca_de_status: corpo e o da 20261233000000, com o texto da retirada (md5)",
+  "notifica_cliente_de_mudanca_de_status: o corpo traz o texto da retirada",
+  "notifica_cliente_de_mudanca_de_status: o corpo ainda traz o texto da entrega",
+  "notifica_cliente_de_mudanca_de_status: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, trigger)",
+  "tr_pedido_avisa_o_cliente: segue ligada a funcao (AFTER UPDATE OF status, por linha)",
+  "notifica_cliente_de_mudanca_de_status: EXECUTE como hoje (aberto por heranca do PUBLIC)",
+];
+/** O rol da 34b (a consulta de AUSENCIA do lote do sino da retirada; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/34b-antes-sino-da-retirada-corpo-vigente.sql devolve - a base de antes: a funcao com o corpo da
+ * 20261026000000 (md5), sem o texto da retirada, com os atributos de sempre, a trigger ligada e a ACL de hoje. Uma loja que ja tem a
+ * migration reprova aqui de proposito, nas linhas do corpo e do marcador. */
+const ROL_DA_34B = [
+  "controle: funcoes de public visiveis a este papel",
+  "notifica_cliente_de_mudanca_de_status: corpo e o da 20261026000000, sem o texto da retirada (md5)",
+  "notifica_cliente_de_mudanca_de_status: o corpo ainda NAO traz o texto da retirada",
+  "notifica_cliente_de_mudanca_de_status: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, trigger)",
+  "tr_pedido_avisa_o_cliente: ligada a funcao (AFTER UPDATE OF status, por linha)",
+  "notifica_cliente_de_mudanca_de_status: EXECUTE como hoje (aberto por heranca do PUBLIC)",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1863,6 +1889,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "29b-antes-reemissao-do-reembolso-base-conhecida": ROL_DA_29B,
   "32a-conferir-busca-de-clientes-aplicado": ROL_DA_32A,
   "32b-antes-busca-de-clientes-corpos-vigentes": ROL_DA_32B,
+  "34a-conferir-sino-da-retirada-aplicado": ROL_DA_34A,
+  "34b-antes-sino-da-retirada-corpo-vigente": ROL_DA_34B,
   "35a-conferir-lucro-so-com-custo-aplicado": ROL_DA_35A,
   "35b-antes-lucro-so-com-custo-corpo-vigente": ROL_DA_35B,
 };
@@ -2453,6 +2481,8 @@ module.exports = {
   ROL_DA_29B,
   ROL_DA_32A,
   ROL_DA_32B,
+  ROL_DA_34A,
+  ROL_DA_34B,
   ROL_DA_35A,
   ROL_DA_35B,
   ROL_FECHADO_POR_CONSULTA,

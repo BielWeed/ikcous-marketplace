@@ -1448,7 +1448,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const rotuloDoStatusNaMensagem = statusConfig[order.status]
         ? rotuloDoStatus(order.status, order.retiradaNaLoja)
         : statusConfig.pending.label;
-      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${rotuloDoStatusNaMensagem}\n\nObrigado por comprar na ${branding.appName}!`;
+      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${rotuloDoStatusNaMensagem}\n\nObrigado por comprar na ${storeNameDaLoja}!`;
 
       // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
       // O util decide: sem link, o toque não abre janela nenhuma.
@@ -1457,7 +1457,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const url = `${link}?text=${encodeURIComponent(message)}`;
       abrirWhatsapp(url);
     },
-    [isOffline],
+    [isOffline, storeNameDaLoja],
   );
 
   // Removed early return loading block to prevent visual layout shifts

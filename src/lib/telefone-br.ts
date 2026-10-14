@@ -10,13 +10,32 @@
  * `colagem: false` é a digitação tecla a tecla: ali o 55 NUNCA é tirado. Quem
  * tem DDD 55 e digita um 12º dígito por engano veria o número virar outro
  * (o "55" lido como país); na digitação o excedente é cortado pela máscara.
+ *
+ * ZERO NA FRENTE: DDD brasileiro nunca começa com 0. O "0" inicial é o
+ * prefixo de tronco ("034 99999-1234") e é descartado na colagem e na
+ * digitação — sem isso a máscara lia "03" como DDD e o número virava outro.
+ * Só na colagem, "0" + 2 dígitos de operadora + DDD + número ("014 34
+ * 99999-1234", sobram 12 ou 13 dígitos) também perde a operadora. "00" é
+ * discagem internacional: só os zeros saem ("0055 34…" cai no 55 do país).
  */
 export function limparTelefoneBrasileiro(
   valor: string | null | undefined,
   opcoes: { colagem?: boolean } = {},
 ): string {
-  const digitos = (valor || "").replace(/\D/g, "");
   const colagem = opcoes.colagem ?? true;
+  let digitos = (valor || "").replace(/\D/g, "");
+  if (digitos.startsWith("0")) {
+    const comOperadora = !digitos.startsWith("00");
+    digitos = digitos.replace(/^0+/, "");
+    if (
+      colagem &&
+      comOperadora &&
+      (digitos.length === 12 || digitos.length === 13) &&
+      !digitos.startsWith("55")
+    ) {
+      digitos = digitos.slice(2);
+    }
+  }
   if (
     colagem &&
     (digitos.length === 12 || digitos.length === 13) &&

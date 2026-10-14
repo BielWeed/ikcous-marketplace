@@ -52,7 +52,9 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 vi.mock("@/hooks/usePushNotifications", () => ({
   usePushNotifications: () => ({
-    isSupported: false,
+    // true: o bloco "Ajustes" só existe quando o botão de teste aparece (a
+    // chave de avisos de compras está escondida).
+    isSupported: true,
     subscribe: vi.fn(),
   }),
 }));
@@ -418,9 +420,13 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     });
 
     expect(ajustes!.getAttribute("aria-expanded")).toBe("true");
+    // A chave de avisos de compras está escondida (não promete o que a loja
+    // não faz — ver admin-push-nao-promete-avisos-de-compras); o que mora no
+    // Ajustes aberto é o botão de teste.
+    expect(texto()).toContain("Testar Recebimento Neste Aparelho");
     expect(
       hospedeiro.querySelector("#realtime-sales-alerts-switch"),
-    ).not.toBeNull();
+    ).toBeNull();
   });
 
   it("histórico sem envios mostra o estado vazio desenhado — com o que vai aparecer lá", async () => {
