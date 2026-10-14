@@ -22,9 +22,7 @@ vi.mock("@/utils/haptic", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 function campo(host: HTMLElement, placeholder: string) {
-  return host.querySelector<HTMLInputElement>(
-    `[placeholder="${placeholder}"]`,
-  );
+  return host.querySelector<HTMLInputElement>(`[placeholder="${placeholder}"]`);
 }
 
 function digitar(host: HTMLElement, placeholder: string, valor: string) {
