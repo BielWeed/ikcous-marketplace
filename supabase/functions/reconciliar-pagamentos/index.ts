@@ -108,6 +108,7 @@ import {
   autorizacaoPeloBanco,
   confirmarPorConsulta,
   consultarTransacaoDaOrder,
+  decidirLinhaTravada,
   executarEstorno,
   type LinhaEstorno,
   type PedidoParaEstorno,
@@ -1179,6 +1180,27 @@ async function handler(
         // sobe é só o retry abaixo, que este ramo nunca alcança. `falhou`
         // fica reservado para veredito NEGATIVO explícito do MP.
         if (tentativasAtuais >= 5) {
+          // Correção da revisão Opus do #855: "tentativas" e "recusas nada saiu"
+          // descasam (a tentativa sobe até quando a consulta cai antes do POST).
+          // Toda linha travada passa por aqui: se o banco a trata como "nada
+          // saiu" (sem carimbo de incerteza, último código na lista fechada),
+          // ela vira `falhou` e ganha as saídas (reemitir/por fora); com
+          // carimbo, segue em consulta.
+          const esgotada = await decidirLinhaTravada(
+            (nome, argumentos) => supabase.rpc(nome, argumentos),
+            linhaAtual,
+          );
+          if (esgotada) {
+            const desfecho = await gravarDesfechoDoEstorno(
+              supabase,
+              String(refund.id),
+              esgotada,
+              tentativasAtuais,
+            );
+            if (desfecho === "falhou") refundsFalhos++;
+            else refundsAdiados++;
+            continue;
+          }
           const { error: erroLimite } = await supabase
             .from("order_refunds")
             .update({

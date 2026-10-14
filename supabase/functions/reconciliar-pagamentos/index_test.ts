@@ -178,6 +178,9 @@ function clienteFalso(opts: {
   // carimbo) e o erro simulado. Default: 1 falha "nada saiu", sem carimbo.
   diagnostico?: { transitorios: number; post_incerto: boolean };
   erroDiagnostico?: unknown;
+  // Simulação de vários ciclos: o diagnóstico COM ESTADO (conta, carimbo e
+  // último código acumulados, como a tabela de verdade).
+  aoRegistrarDiagnostico?: (args: Record<string, unknown>) => Record<string, unknown>;
 }) {
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
@@ -213,6 +216,7 @@ function clienteFalso(opts: {
         opts.registro.chamadasDiagnostico?.push({ args: args ?? {} });
         opts.registro.ordemDeGravacao?.push("diagnostico");
         if (opts.erroDiagnostico) return { data: null, error: opts.erroDiagnostico };
+        if (opts.aoRegistrarDiagnostico) return { data: opts.aoRegistrarDiagnostico(args ?? {}), error: null };
         return { data: opts.diagnostico ?? { transitorios: 1, post_incerto: false }, error: null };
       }
       if (nome === "concluir_estorno") {
@@ -3662,6 +3666,101 @@ Deno.test("C4 (D5) - cron: 'em andamento' (movement_operations_pending) fica em_
 Deno.test("C5 (D4) - cron: linha antiga já no regime 'só consulta' (tentativas 5, sem diagnóstico): continua em consulta, sem POST e SEM falhou — o limite novo não a alcança", async () => {
   const r = await cronComPostRecusado(400, {}, {}, { status: "em_processamento", tentativas: 5 });
   assertEquals(r.corpo.estornos.falhos, 0);
-  assertEquals(r.registro.chamadasDiagnostico.length, 0);
+  // Só a LEITURA do diagnóstico (tudo nulo/falso, nada incrementa nem carimba);
+  // sem código gravado, a linha segue em consulta.
+  assertEquals(r.registro.chamadasDiagnostico.map((c) => c.args), [
+    { p_refund_id: "r1", p_mp_codigo: null, p_post_incerto: false, p_transitorio: false },
+  ]);
   assertEquals(r.registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+});
+
+// ── 14/10/2026 (correção da revisão Opus do #855) — dois contadores, o mesmo teto ──
+// O robô para de POSTar com 5 TENTATIVAS (sobem em todo ciclo, até as que nem
+// chegam ao MP); a linha só virava `falhou` na 5ª RECUSA "nada saiu" (sobe só
+// quando o MP responde). Uma consulta que falha no meio descasa os dois e a
+// linha ficava em_processamento para sempre. Estes testes SIMULAM os ciclos do
+// robô com o estado da linha e do diagnóstico acumulando de verdade.
+
+type CicloDoMp = "sem_saldo" | "consulta_cai" | "post_500";
+
+async function simularCiclos(ciclos: CicloDoMp[]) {
+  const orderId = "20000000-0000-4000-8000-0000000000dd";
+  const pedido = pedidoFrescoPara({ id: orderId, gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01", total: 50 });
+  const linha = { status: "solicitado", tentativas: 0 };
+  const tabela = { transitorios: 0, postIncerto: false, codigo: null as string | null, existe: false };
+  const historico: string[] = [];
+  const corpoOrder = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "processed",
+    transactions: { payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }] },
+  };
+  for (const ciclo of ciclos) {
+    if (linha.status === "falhou") {
+      historico.push("falhou");
+      continue;
+    }
+    const registro = {
+      chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+      chamouCandidatos: false,
+      chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+      atualizacoesOrderRefunds: [] as Array<{ id: string; valores: Record<string, unknown>; statusFiltro: string[] }>,
+    };
+    const supabase = clienteFalso({
+      candidatos: [],
+      registro,
+      refundsPendentes: [{ id: "r1", order_id: orderId, amount: 50, status: linha.status, tentativas: linha.tentativas, mp_refund_id: null }],
+      resolverPedidoFresco: (id) => (id === orderId ? pedido : null),
+      atualizarOrderRefunds: (_id, valores) => {
+        if (typeof valores.tentativas === "number") linha.tentativas = valores.tentativas;
+        if (typeof valores.status === "string") linha.status = valores.status;
+        return { data: [{ id: "r1" }], error: null };
+      },
+      // O que a tabela de diagnóstico faz de verdade: UPSERT com incremento,
+      // carimbo que nunca sai, código que só é trocado por outro não nulo. A
+      // chamada "de leitura" (tudo nulo/falso) devolve o estado sem mexer.
+      aoRegistrarDiagnostico: (args) => {
+        tabela.existe = true;
+        if (typeof args.p_mp_codigo === "string") tabela.codigo = args.p_mp_codigo;
+        if (args.p_post_incerto === true) tabela.postIncerto = true;
+        if (args.p_transitorio === true) tabela.transitorios++;
+        return { transitorios: tabela.transitorios, post_incerto: tabela.postIncerto, mp_codigo: tabela.codigo };
+      },
+    });
+    const rotasGet = ciclo === "consulta_cai"
+      ? [{ metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 500, corpo: {} }]
+      : [{ metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: corpoOrder }];
+    const mp = fetchDubleReconciliacao([
+      ...rotasGet,
+      ciclo === "post_500"
+        ? { metodo: "POST", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund", status: 500, corpo: {} }
+        : { metodo: "POST", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund", status: 428, corpo: { errors: [{ code: "insufficient_money_for_refund" }] } },
+    ]);
+    await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+    historico.push(`${linha.status}/t${linha.tentativas}/r${tabela.transitorios}${tabela.postIncerto ? "/carimbo" : ""}`);
+  }
+  return { linha, historico };
+}
+
+Deno.test("CICLOS-1 - a consulta cai no ciclo 4 e 'sem saldo' nos outros: tentativas (5) passam as recusas (4) e mesmo assim a linha vira falhou — não fica presa em_processamento", async () => {
+  const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "consulta_cai", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
+  // ciclo 5: 5 tentativas e só 4 recusas; no ciclo 6 o robô só consulta — e decide.
+  assertEquals(r.historico[4], "em_processamento/t5/r4");
+  assertEquals(r.linha.status, "falhou");
+  assertEquals(r.historico[5].startsWith("falhou"), true);
+});
+
+Deno.test("CICLOS-2 - sem nenhuma falha no meio o limite continua o de antes: a 5ª recusa vira falhou", async () => {
+  const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
+  assertEquals(r.historico[4].startsWith("falhou"), true);
+});
+
+Deno.test("CICLOS-3 - COM carimbo de incerteza (um POST caiu em 500 no ciclo 4) a linha NUNCA vira falhou: fica em consulta pelos 9 ciclos", async () => {
+  const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "post_500", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
+  assertEquals(r.linha.status, "em_processamento");
+  assertEquals(r.historico.at(-1)?.endsWith("/carimbo"), true);
+});
+
+Deno.test("CICLOS-4 - linha antiga (sem diagnóstico algum, regime 'só consulta' desde antes) continua em consulta: ler o diagnóstico não a transforma em 'nada saiu'", async () => {
+  const r = await simularCiclos(["consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai"]);
+  assertEquals(r.linha.status, "em_processamento");
 });

@@ -7,6 +7,7 @@ import {
 import {
   aplicarDiagnosticoDoPost,
   consultarReembolsoDoPedido,
+  decidirLinhaTravada,
   executarEstorno,
   interpretarResposta,
   LIMITE_DE_FALHAS_TRANSITORIAS,
@@ -397,4 +398,33 @@ Deno.test("D2 - a consulta usa só GET (nunca POST) e manda o token", async () =
   await consultar(f);
   assertEquals(chamadas.map((c) => c.metodo), ["GET"]);
   assert(chamadas[0].url.endsWith(`/v1/orders/${ORDER}`));
+});
+
+// ---------------------------------------------------------------------------
+// Linha TRAVADA (correção da revisão Opus do #855): o ramo "só consulta" do robô
+// decide pelo MESMO critério do banco (`v_sem_post`).
+// ---------------------------------------------------------------------------
+
+Deno.test("linha travada - sem carimbo, sem id do MP e último código 'nada saiu': falhou (lê o diagnóstico SEM incrementar nem carimbar)", async () => {
+  const { rpc, chamadas } = rpcDuble([{ data: { transitorios: 3, post_incerto: false, mp_codigo: "order_payment_not_yet_enabled_for_refund" } }]);
+  const r = await decidirLinhaTravada(rpc, linha({ tentativas: 5 }));
+  assertEquals(r?.tipo, "falhou");
+  assertEquals(chamadas[0].args, { p_refund_id: linha().id, p_mp_codigo: null, p_post_incerto: false, p_transitorio: false });
+});
+
+Deno.test("linha travada - segue em consulta (null) com carimbo, sem diagnóstico, código fora da lista, id do MP ou leitura que falha", async () => {
+  const ok = { transitorios: 3, post_incerto: false, mp_codigo: "insufficient_money_for_refund" };
+  const casos: Array<[string, Parameters<typeof rpcDuble>[0], LinhaEstorno]> = [
+    ["carimbo", [{ data: { ...ok, post_incerto: true } }], linha()],
+    ["legado sem código", [{ data: { transitorios: 0, post_incerto: false, mp_codigo: null } }], linha()],
+    ["código fora da lista", [{ data: { ...ok, mp_codigo: "codigo_novo_do_mp" } }], linha()],
+    ["em andamento não é nada saiu", [{ data: { ...ok, mp_codigo: "refund_in_progress" } }], linha()],
+    ["já tem id do MP", [{ data: ok }], linha({ mp_refund_id: "REF1" })],
+    ["leitura com erro", [{ error: { message: "fora" } }], linha()],
+    ["leitura ilegível", [{ data: { coisa: 1 } }], linha()],
+    ["leitura que lança", ["lanca"], linha()],
+  ];
+  for (const [nome, respostas, l] of casos) {
+    assertEquals(await decidirLinhaTravada(rpcDuble(respostas).rpc, l), null, nome);
+  }
 });

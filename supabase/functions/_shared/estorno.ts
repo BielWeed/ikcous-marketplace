@@ -272,7 +272,7 @@ async function gravarDiagnostico(
   rpc: ChamarRpc,
   refundId: string,
   d: DiagnosticoDoPost,
-): Promise<{ transitorios: number; postIncerto: boolean } | null> {
+): Promise<{ transitorios: number; postIncerto: boolean; mpCodigo: string | null } | null> {
   for (let tentativa = 0; tentativa < 2; tentativa++) {
     try {
       const resposta = await rpc("registrar_diagnostico_do_estorno", {
@@ -286,7 +286,11 @@ async function gravarDiagnostico(
         : null;
       const transitorios = numeroFinito(dados?.transitorios);
       if (!resposta.error && transitorios !== null && typeof dados?.post_incerto === "boolean") {
-        return { transitorios, postIncerto: dados.post_incerto };
+        return {
+          transitorios,
+          postIncerto: dados.post_incerto,
+          mpCodigo: typeof dados.mp_codigo === "string" ? dados.mp_codigo : null,
+        };
       }
       console.error("estorno: registrar_diagnostico_do_estorno falhou ou veio ilegível", resposta.error ?? "forma desconhecida");
     } catch (err) {
@@ -335,6 +339,36 @@ export async function aplicarDiagnosticoDoPost(
     };
   }
   return resultado;
+}
+
+/**
+ * Correção da revisão Opus do #855 (14/10/2026): o robô para de POSTar com
+ * `tentativas >= 5` (a tentativa sobe em TODO ciclo, até no que nem chega ao MP)
+ * e a linha só vira `falhou` na `LIMITE_DE_FALHAS_TRANSITORIAS`-ésima recusa
+ * "nada saiu" (sobe só quando o MP respondeu). Os dois contadores descasam — uma
+ * consulta que falha no meio basta — e a linha ficava `em_processamento` para
+ * sempre, sem saída. Por isso a decisão também vive no ramo "só consulta", por
+ * onde TODA linha travada passa, com o MESMO critério do banco (`v_sem_post`,
+ * migration 20261225000000): sem id do MP, SEM carimbo de incerteza e o último
+ * código gravado na lista fechada "nada saiu" => `falhou`.
+ *
+ * O diagnóstico só é legível pelo servidor através da RPC; chamá-la sem
+ * código, sem carimbo e sem incremento devolve o que a linha tem e não muda
+ * nada que importe (cria a linha de diagnóstico vazia se não havia: sem código,
+ * o banco continua tratando a linha como incerta). Linha sem diagnóstico
+ * (legado), com carimbo, com id do MP ou com outro código segue em consulta.
+ * Falha ao ler: segue em consulta (lado seguro). Nunca lança.
+ */
+export async function decidirLinhaTravada(
+  rpc: ChamarRpc,
+  linha: LinhaEstorno,
+): Promise<ResultadoEstorno | null> {
+  if (typeof linha.mp_refund_id === "string" && linha.mp_refund_id !== "") return null;
+  const lido = await gravarDiagnostico(rpc, linha.id, { mpCodigo: null, postIncerto: false, transitorio: false });
+  if (!lido || lido.postIncerto || lido.mpCodigo === null || !CODIGOS_NADA_SAIU.has(lido.mpCodigo)) {
+    return null;
+  }
+  return { tipo: "falhou", motivo: MOTIVO_NAO_LIBERADA_NO_LIMITE, codigo: lido.mpCodigo };
 }
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
