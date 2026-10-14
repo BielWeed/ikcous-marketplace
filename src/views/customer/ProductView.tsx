@@ -1362,7 +1362,15 @@ export const ProductView = React.memo(function ProductView({
 
               <button
                 onClick={handleAddToCart}
-                disabled={isOutOfStock || cartStatus !== "idle"}
+                // Esgotado é PERMANENTE: `disabled` de verdade. "Adicionando…"/
+                // "Adicionado" é passageiro: `aria-disabled` mantém o botão na
+                // ordem de foco (com `disabled` o foco caía no body e o leitor
+                // de tela ficava mudo). O bloqueio do clique duplo é a guarda
+                // `cartStatus !== "idle"` em `handleAddToCart`.
+                disabled={isOutOfStock}
+                aria-disabled={
+                  !isOutOfStock && cartStatus !== "idle" ? true : undefined
+                }
                 className={cn(
                   "flex-1 h-11 text-white text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
                   // lg:basis-full: no desktop o CTA não divide a linha com
@@ -1381,9 +1389,21 @@ export const ProductView = React.memo(function ProductView({
                 {isOutOfStock ? (
                   "Esgotado"
                 ) : cartStatus === "loading" ? (
-                  <span className="size-4 flex-shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="size-4 flex-shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                    />
+                    <span className="sr-only">Adicionando…</span>
+                  </>
                 ) : cartStatus === "success" ? (
-                  <Check className="size-4 flex-shrink-0 duration-300 animate-in zoom-in" />
+                  <>
+                    <Check
+                      aria-hidden="true"
+                      className="size-4 flex-shrink-0 duration-300 animate-in zoom-in"
+                    />
+                    <span className="sr-only">Adicionado</span>
+                  </>
                 ) : (
                   <>
                     <ShoppingCart className="size-4 flex-shrink-0 xs:size-4.5" />
@@ -1396,6 +1416,17 @@ export const ProductView = React.memo(function ProductView({
                   </>
                 )}
               </button>
+              {/* Região viva SEMPRE montada e invisível (sr-only): fala o
+                  "Adicionado ao carrinho" que o leitor de tela não ouvia
+                  (remover já era falado, pelo toast). Nasce vazia -- leitor
+                  só anuncia mudança em região que já estava na árvore --, e
+                  acompanha o MESMO "Adicionado" (✓) que quem enxerga vê. Fora
+                  do fluxo (sr-only é absoluto): o layout da linha não muda. */}
+              <span role="status" aria-live="polite" className="sr-only">
+                {cartStatus === "success"
+                  ? `Adicionado ao carrinho: ${product.name}`
+                  : ""}
+              </span>
             </div>
           </div>
           <div
@@ -1896,9 +1927,13 @@ export const ProductView = React.memo(function ProductView({
                 {/* Add to Cart button */}
                 <button
                   onClick={handleAddToCart}
-                  disabled={isOutOfStock || cartStatus !== "idle"}
+                  // Mesma regra do CTA principal: só esgotado é `disabled`.
+                  disabled={isOutOfStock}
+                  aria-disabled={
+                    !isOutOfStock && cartStatus !== "idle" ? true : undefined
+                  }
                   className={cn(
-                    "h-9 px-3.5 text-white text-[9px] font-black uppercase tracking-[0.15em] rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[82px] flex-shrink-0 active:scale-95",
+                    "h-9 px-3.5 text-white text-[9px] font-black uppercase tracking-[0.15em] rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[82px] flex-shrink-0 active:scale-95 aria-disabled:active:scale-100",
                     cartStatus === "idle"
                       ? "bg-primary hover:bg-primary/90 shadow-md shadow-black/10"
                       : "bg-primary/80 shadow-none",
@@ -1911,9 +1946,21 @@ export const ProductView = React.memo(function ProductView({
                   {isOutOfStock ? (
                     "Esgotado"
                   ) : cartStatus === "loading" ? (
-                    <span className="size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                      />
+                      <span className="sr-only">Adicionando…</span>
+                    </>
                   ) : cartStatus === "success" ? (
-                    <Check className="size-3.5 text-white duration-300 animate-in zoom-in" />
+                    <>
+                      <Check
+                        aria-hidden="true"
+                        className="size-3.5 text-white duration-300 animate-in zoom-in"
+                      />
+                      <span className="sr-only">Adicionado</span>
+                    </>
                   ) : (
                     <>
                       <ShoppingCart className="size-3" />
