@@ -1,9 +1,12 @@
 # IKCOUS Marketplace — Manual do agente
 
-> **Fonte única de instruções deste repositório (projeto ZCode-only, 02/09/2026 — Missão 05).**
+> **Fonte única de instruções deste repositório — lida pelo Claude Code (via [CLAUDE.md](CLAUDE.md))
+> e pelo Codex (por convenção do `AGENTS.md`). Desde 14/10/2026 a equipe é Claude + Codex; o
+> ZCode/GLM saiu por ordem do dono (era "ZCode-only", Missão 05, 02/09/2026).**
 > O [CLAUDE.md](CLAUDE.md) é só um aviso apontando para cá. Regras GLOBAIS de comportamento
-> (custo zero, travas, paralelismo, revisão por risco) moram em `~/.zcode/AGENTS.md` — este
-> arquivo declara apenas o **terreno daqui**. O conteúdo de ferramentas Cursor/Antigravity
+> (custo zero, travas, paralelismo, revisão por risco) moram em `~/.claude/CLAUDE.md` (Claude) e
+> `~/.codex/AGENTS.md` (Codex) — este arquivo declara apenas o **terreno daqui**. Onde abaixo
+> aparece "ZCode", é histórico: vale o equivalente da ferramenta em uso. O conteúdo de ferramentas Cursor/Antigravity
 > que existia aqui foi removido nessa reescrita; a cópia `.cursorrules`, que ficou
 > DESATUALIZADA, foi removida em 12/09/2026 (decisão do dono).
 
