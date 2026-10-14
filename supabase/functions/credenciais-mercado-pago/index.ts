@@ -100,9 +100,14 @@
 //     viram recados amigáveis, sem ecoar segredo.
 //   * O TESTE DE CONEXÃO roda AQUI DENTRO (GET /users/me do MP, com o
 //     fetchComTempo da casa, injetável para teste): a chave real nunca
-//     chega ao navegador. O live_mode do MP vira "produção"/"teste" no
-//     recado — o prefixo do token NÃO discrimina ambiente (medido na doc
-//     do MP; tokens de produção e teste hoje nascem APP_USR-).
+//     chega ao navegador. O `/users/me` NÃO devolve `live_mode` (medido em
+//     25/09/2026) e o prefixo do token sozinho NÃO discrimina ambiente
+//     (tokens de produção e de teste hoje nascem APP_USR-). O teste lê as
+//     MARCAS da conta (14/10/2026, `classificarAmbienteDaConta`): `tags` com
+//     "test_user", e-mail `@testuser.com` ou token `TEST-` = conta de TESTE
+//     (aviso para a lojista); `tags` sem marca nenhuma = produção; SEM
+//     marca/`tags` não se afirma nada e não há aviso. O e-mail devolvido é só
+//     lido: nunca vai para resposta, registro nem log.
 //   * app_settings é chave/valor (texto JSON) — NENHUMA migration nesta
 //     peça. Public Key NÃO é segredo (é a credencial de frente do MP), e
 //     por isso fica em claro no registro.
@@ -450,6 +455,70 @@ type ResultadoDoTeste = {
     semResposta: boolean;
 };
 
+/** Qual marca da conta provou que ela é de teste (só para o log, nunca o valor). */
+type MarcaDeTeste = "prefixo" | "tag" | "email";
+
+/** O ambiente da conta + qual marca decidiu (null quando o ambiente é null ou "produção"). */
+type AmbienteDaConta = {
+    ambiente: "teste" | "producao" | null;
+    marca: MarcaDeTeste | null;
+};
+
+/** E-mail que o Mercado Pago dá às contas de teste (`@testuser.com`, fim do texto: `.com.br` não conta). */
+const EMAIL_DE_CONTA_DE_TESTE = /@testuser\.com$/i;
+/** Apelido que o Mercado Pago dá às contas de teste: `TESTUSER` + dígitos. */
+const APELIDO_DE_CONTA_DE_TESTE = /^TESTUSER\d+$/i;
+
+/**
+ * Lê as MARCAS da resposta de `GET /users/me` (14/10/2026). O endpoint NÃO
+ * devolve `live_mode` (medido em 25/09/2026); o que ele traz de uma conta de
+ * TESTE: `tags` (lista) com "test_user", e-mail `...@testuser.com` e apelido
+ * `TESTUSER<dígitos>`. Regra, só com SINAL POSITIVO (loja boa nunca é
+ * alarmada por falta de sinal):
+ *   - "teste": o token começa com `TEST-`, OU `tags` é lista e inclui
+ *     "test_user", OU o e-mail termina em `@testuser.com`.
+ *   - "producao": `tags` É lista, nenhuma marca de teste, e o apelido não é
+ *     `TESTUSER<dígitos>`.
+ *   - null: qualquer outro caso (sem `tags`, formato inesperado, resposta que
+ *     nem é objeto) — não se afirma nada.
+ * O e-mail é só LIDO aqui: nunca é guardado, devolvido nem registrado em log.
+ */
+function analisarAmbienteDaConta(
+    dadosDoUsersMe: unknown,
+    token: string,
+): AmbienteDaConta {
+    if (token.startsWith("TEST-")) return { ambiente: "teste", marca: "prefixo" };
+    if (
+        typeof dadosDoUsersMe !== "object" || dadosDoUsersMe === null ||
+        Array.isArray(dadosDoUsersMe)
+    ) {
+        return { ambiente: null, marca: null };
+    }
+    const dados = dadosDoUsersMe as Record<string, unknown>;
+    const tags = Array.isArray(dados.tags) ? dados.tags : null;
+    if (tags?.includes("test_user")) return { ambiente: "teste", marca: "tag" };
+    if (
+        typeof dados.email === "string" &&
+        EMAIL_DE_CONTA_DE_TESTE.test(dados.email.trim())
+    ) {
+        return { ambiente: "teste", marca: "email" };
+    }
+    const apelidoDeTeste = typeof dados.nickname === "string" &&
+        APELIDO_DE_CONTA_DE_TESTE.test(dados.nickname);
+    if (tags !== null && !apelidoDeTeste) {
+        return { ambiente: "producao", marca: null };
+    }
+    return { ambiente: null, marca: null };
+}
+
+/** Só o ambiente (ver `analisarAmbienteDaConta`): "teste" | "producao" | null. */
+export function classificarAmbienteDaConta(
+    dadosDoUsersMe: unknown,
+    token: string,
+): "teste" | "producao" | null {
+    return analisarAmbienteDaConta(dadosDoUsersMe, token).ambiente;
+}
+
 /**
  * GET /users/me do MP com o token em claro (só existe em memória aqui dentro).
  * As mensagens são as do `testar` de sempre — o corpo saiu de lá para o
@@ -472,19 +541,23 @@ async function executarTesteDeConexao(
         if (resposta.status === 200) {
             const dados = await resposta.json().catch(() => ({}));
             conectado = true;
-            ambiente = dados.live_mode === true
-                ? "producao"
-                : dados.live_mode === false
-                ? "teste"
-                : null;
-            conta = typeof dados.nickname === "string" ? dados.nickname : null;
             // `GET /users/me` do MP (medido 25/09/2026) não devolve
             // `live_mode` — o struct oficial do SDK Go do MP para
             // esse endpoint só tem id/nickname/first_name/last_name/
-            // country_id/email/site_id. Com `ambiente` null, a
-            // mensagem NÃO pode afirmar "de teste" nem "de
+            // country_id/email/site_id. O ambiente sai das MARCAS da conta
+            // (`analisarAmbienteDaConta`); sem sinal positivo `ambiente` é
+            // null e a mensagem NÃO pode afirmar "de teste" nem "de
             // produção" — dizia "de teste" até para credencial de
             // PRODUÇÃO.
+            const analise = analisarAmbienteDaConta(dados, token);
+            ambiente = analise.ambiente;
+            conta = typeof dados.nickname === "string" ? dados.nickname : null;
+            // O log diz o ambiente e QUAL marca decidiu — nunca o e-mail.
+            console.log(
+                `[credenciais-mp] ambiente da conta: ${
+                    ambiente ?? "indeterminado"
+                }${analise.marca ? ` (marca: ${analise.marca})` : ""}`,
+            );
             mensagem = conta
                 ? ambiente === null
                     ? `Conectado! Conta "${conta}".`
@@ -683,9 +756,50 @@ async function carimbarLigacao(
     }
 }
 
-/** Chave de sandbox conecta igualzinho à de produção — quem não for avisado vai achar que vendeu. */
+/**
+ * Loja que DECLAROU o modo de teste (`MP_SANDBOX_PAYER_EMAIL`, ex.: a IKCOUS de
+ * desenvolvimento): chave de sandbox é o esperado ali — aviso curto, como
+ * sempre foi. Chave de sandbox conecta igualzinho à de produção — quem não
+ * for avisado vai achar que vendeu.
+ */
 const AVISO_CHAVE_DE_TESTE =
     "Chave de TESTE: o PIX não vai receber dinheiro de verdade";
+
+/**
+ * Loja que NÃO declarou o modo de teste e colou chave de conta de TESTE: a
+ * cliente real chega ao fim da compra e o `criar-pagamento` recusa (e-mail
+ * real + chave de teste) — "Tentar de novo" para sempre. O aviso diz isso e o
+ * conserto, no idioma da lojista.
+ */
+const AVISO_CHAVES_DE_TESTE_SEM_MODO_DE_TESTE =
+    'Essas chaves são de TESTE. Suas clientes não vão conseguir pagar. Troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
+
+/**
+ * A loja DECLAROU o modo de teste? Mesma regra do `criar-pagamento`
+ * (`MP_SANDBOX_PAYER_EMAIL` com `?.trim() || undefined`): ausente, vazia ou só
+ * com espaços = NÃO declarou. Lê o ambiente — por isso fica FORA da função
+ * pura que decide o aviso.
+ */
+function lojaDeclarouModoDeTeste(): boolean {
+    return Boolean(Deno.env.get("MP_SANDBOX_PAYER_EMAIL")?.trim());
+}
+
+/**
+ * O aviso do ambiente da conta, ou null (função PURA). Só "teste" avisa:
+ * "producao" e null (sem sinal) ficam calados — loja boa nunca é alarmada.
+ * GANCHO DE PRODUTO: aqui é onde, no futuro, "conta de teste sem modo
+ * declarado" poderia virar BLOQUEIO do PIX; essa decisão muda a regra do dono
+ * de 30/09 e NÃO foi tomada — por ora só avisa.
+ */
+function avisoDoAmbiente(
+    ambiente: "producao" | "teste" | null | undefined,
+    modoDeTesteDeclarado: boolean,
+): string | null {
+    if (ambiente !== "teste") return null;
+    return modoDeTesteDeclarado
+        ? AVISO_CHAVE_DE_TESTE
+        : AVISO_CHAVES_DE_TESTE_SEM_MODO_DE_TESTE;
+}
 
 /** Junta os avisos numa frase só (cada um terminando em ponto — mp-10). */
 function juntarAvisos(avisos: string[]): { aviso?: string } {
@@ -755,6 +869,9 @@ export async function handler(
     // testes e o resto da casa usam.
     const buscar = deps.buscar ??
         ((url: string, init?: RequestInit) => fetchComTempo(fetch, url, init));
+    // Lida UMA vez por chamada, FORA das funções puras (decide qual aviso sai
+    // quando a conta é de teste).
+    const modoDeTesteDeclarado = lojaDeclarouModoDeTeste();
 
     try {
         // ── ler: o que a tela mostra — só máscaras, último teste e o que falta.
@@ -1052,8 +1169,16 @@ export async function handler(
                         `Desliguei o pagamento pelo app: ${motivoDoDesligamento(faltas, false)}.`,
                     );
                 }
-                if (alvo && ultimoTeste?.ambiente === "teste") {
-                    avisos.push(AVISO_CHAVE_DE_TESTE);
+                // Conta de TESTE: sem modo de teste declarado o aviso sai
+                // SEMPRE (inclusive na 1ª gravação, quando nada liga ainda
+                // por falta da chave de notificações); no modo declarado
+                // (sandbox legítimo) segue como era: só quando liga.
+                const avisoDeAmbiente = avisoDoAmbiente(
+                    ultimoTeste?.ambiente,
+                    modoDeTesteDeclarado,
+                );
+                if (avisoDeAmbiente && (!modoDeTesteDeclarado || alvo)) {
+                    avisos.push(avisoDeAmbiente);
                 }
             }
             return json(
@@ -1125,6 +1250,17 @@ export async function handler(
             await gravarRegistro(supabase, registroAtual);
 
             const avisos: string[] = [];
+            // Conta de TESTE sem modo de teste declarado: o aviso sai SEMPRE
+            // que se testa (mesmo com o PIX já ligado ou sem nada para ligar);
+            // no modo declarado (sandbox legítimo) segue como era: só na hora
+            // em que o PIX liga.
+            const avisoDeAmbiente = avisoDoAmbiente(
+                ultimoTeste.ambiente,
+                modoDeTesteDeclarado,
+            );
+            if (avisoDeAmbiente && !modoDeTesteDeclarado) {
+                avisos.push(avisoDeAmbiente);
+            }
             const { faltas, pausado } = estadoDesejado(registroAtual);
             const reconciliacao = await reconciliarFicha(supabase, registroAtual);
             if (reconciliacao.recusa) {
@@ -1144,8 +1280,8 @@ export async function handler(
                         ),
                 );
             } else if (reconciliacao.ligouAgora) {
-                if (ultimoTeste.ambiente === "teste") {
-                    avisos.push(AVISO_CHAVE_DE_TESTE);
+                if (avisoDeAmbiente && modoDeTesteDeclarado) {
+                    avisos.push(avisoDeAmbiente);
                 }
                 registroAtual = await carimbarLigacao(
                     supabase,
@@ -1233,9 +1369,11 @@ export async function handler(
             }
 
             const avisos: string[] = [];
-            if (registroAtual.ultimo_teste?.ambiente === "teste") {
-                avisos.push(AVISO_CHAVE_DE_TESTE);
-            }
+            const avisoDeAmbiente = avisoDoAmbiente(
+                registroAtual.ultimo_teste?.ambiente,
+                modoDeTesteDeclarado,
+            );
+            if (avisoDeAmbiente) avisos.push(avisoDeAmbiente);
             const agora = new Date().toISOString();
             if (reconciliacao.ligouAgora) {
                 await carimbarLigacao(supabase, registroAtual, uidAdmin, avisos);

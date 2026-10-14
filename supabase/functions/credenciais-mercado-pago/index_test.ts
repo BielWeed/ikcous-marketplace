@@ -66,8 +66,16 @@
 //   C28 mp-10: dois avisos de `ligar_pix` juntos saem com pontuação entre
 //       eles (a mensagem de chave de TESTE não terminava em ponto)
 //   C30 (25/09/2026): `GET /users/me` do MP responde 200 SEM `live_mode` (é
-//       o real: o endpoint não devolve esse campo) -> `ambiente` fica null e
-//       a mensagem NÃO afirma "de teste" nem "de produção"
+//       o real: o endpoint não devolve esse campo) e, sem `tags` nem outra
+//       marca, `ambiente` fica null e a mensagem NÃO afirma "de teste" nem
+//       "de produção"
+//   A1–A11 (14/10/2026): o ambiente sai das MARCAS da conta (`tags`, e-mail,
+//       prefixo `TEST-`), não de `live_mode`. Conta de TESTE sem modo de
+//       teste declarado -> aviso novo ("Essas chaves são de TESTE...") em
+//       salvar (inclusive na 1ª gravação), testar e retomar, sem mudar
+//       `pix_ligado`/`faltando`; com `MP_SANDBOX_PAYER_EMAIL` -> o aviso curto
+//       de sempre; conta REAL ou sem `tags` -> nenhum aviso; o e-mail do
+//       `/users/me` nunca sai em resposta, registro nem log
 //   C31 formas de pagamento por loja (25/09/2026, B2): desligar_pix numa loja
 //       SEM nenhuma forma "na entrega" -> a trigger do invariante recusa
 //       (LOJA_SEM_FORMA_DE_PAGAMENTO) e a edge devolve 409 com recado
@@ -194,7 +202,9 @@ const fetchClienteFalso = ((input: any) => {
 }) as any;
 
 globalThis.fetch = fetchAdminFalso;
-const { handler, faltasParaReceber } = await import("./index.ts");
+const { handler, faltasParaReceber, classificarAmbienteDaConta } = await import(
+    "./index.ts"
+);
 globalThis.fetch = fetchNativo;
 
 async function comFetch(
@@ -217,6 +227,10 @@ function prepararEnv(extra: Record<string, string> = {}): () => void {
         ["SUPABASE_PUBLISHABLE_KEYS", JSON.stringify({ default: "anon-de-teste" })],
         ["SUPABASE_SECRET_KEYS", JSON.stringify({ default: "service-role-de-teste" })],
         ["MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE],
+        // Loja SEM modo de teste declarado, salvo quando o teste pede o
+        // contrário em `extra` — o PC de quem desenvolve pode ter a variável
+        // setada, e o resultado dos testes não pode depender disso.
+        ["MP_SANDBOX_PAYER_EMAIL", ""],
         ...Object.entries(extra),
     ];
     // Pares (nome, valor antigo) de uma vez — sem acesso indexado
@@ -370,6 +384,32 @@ function requisicao(corpo: unknown): Request {
     });
 }
 
+/**
+ * O formato REAL do `GET /users/me` (medido no repro de 14/10/2026): o
+ * endpoint NÃO devolve `live_mode`; quem diz se a conta é de teste são as
+ * `tags` (lista, com "test_user"), o e-mail (`@testuser.com`) e o apelido
+ * (`TESTUSER<dígitos>`). Conta de produção traz `tags` sem "test_user".
+ */
+function contaReal(nickname = "Loja Teste") {
+    return {
+        id: 123456,
+        nickname,
+        email: "dono.da.loja@minhaloja.com.br",
+        tags: ["normal", "credit_card_prepaid"],
+        site_id: "MLB",
+    };
+}
+
+function contaDeTeste(nickname = "TESTUSER1234567890") {
+    return {
+        id: 987654,
+        nickname,
+        email: "test_user_1234567890@testuser.com",
+        tags: ["normal", "test_user"],
+        site_id: "MLB",
+    };
+}
+
 /** Chamada do MP DUBLÊ que anota o header que recebeu. */
 function buscarMpFalso(status: number, corpo: unknown) {
     const anotacoes: Array<{ url: string; bearer: string }> = [];
@@ -500,11 +540,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                     { supabase: cliente },
                 )
             );
-            const { buscar, anotacoes } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-                site_id: "MLB",
-            });
+            const { buscar, anotacoes } = buscarMpFalso(200, contaReal("Loja Teste"));
             const resposta = await comFetch(fetchAdminFalso, () =>
                 handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
             );
@@ -607,7 +643,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                 )
             );
             assertEquals(respostaSalvar.status, 200);
-            const { buscar, anotacoes } = buscarMpFalso(200, { live_mode: false, nickname: "Loja Sandbox" });
+            const { buscar, anotacoes } = buscarMpFalso(200, contaDeTeste());
             const respostaTeste = await comFetch(fetchAdminFalso, () =>
                 handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
             );
@@ -672,13 +708,13 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                     { supabase: cliente },
                 )
             );
-            const { buscar } = buscarMpFalso(200, { live_mode: true, nickname: "Velha" });
+            const { buscar } = buscarMpFalso(200, contaReal("Velha"));
             await comFetch(fetchAdminFalso, () =>
                 handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
             );
             assertEquals(JSON.parse(estado.valor!).ultimo_teste.conta, "Velha");
             // Troca o token: o teste do token novo roda dentro do salvar.
-            const nova = buscarMpFalso(200, { live_mode: true, nickname: "Nova" });
+            const nova = buscarMpFalso(200, contaReal("Nova"));
             await comFetch(fetchAdminFalso, () =>
                 handler(
                     requisicao({
@@ -713,7 +749,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                 chamadasMp.push(url);
                 return Promise.resolve(
                     new Response(
-                        JSON.stringify({ live_mode: true, nickname: "Loja Real" }),
+                        JSON.stringify(contaReal("Loja Real")),
                         { status: 200, headers: { "Content-Type": "application/json" } },
                     ),
                 );
@@ -856,7 +892,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
     // ══════════════════════════════════════════════════════════════════════
     const RECADO_SEM_CHAVE_DE_ASSINATURA =
         "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve para voltar a receber pelo app — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
-    const OK_PRODUCAO = { live_mode: true, nickname: "Loja Teste" };
+    const OK_PRODUCAO = contaReal("Loja Teste");
     const TRES_CHAVES = {
         acao: "salvar",
         public_key: PUBLIC_KEY_FALSA,
@@ -988,7 +1024,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            const mp = buscarMpFalso(200, { live_mode: false, nickname: "Loja Sandbox" });
+            const mp = buscarMpFalso(200, contaDeTeste());
             const resposta = await chamar(cliente, TRES_CHAVES, mp.buscar);
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
@@ -1516,7 +1552,11 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         // verdade" sem ponto) + app_settings fora do ar NA 2ª gravação (gera
         // o segundo, depois de a ficha já ter acendido): os DOIS avisos saem
         // juntos.
-        const desfazerEnv = prepararEnv();
+        // Loja que DECLAROU o modo de teste (sandbox legítimo): segue o
+        // aviso curto de sempre, que termina sem ponto.
+        const desfazerEnv = prepararEnv({
+            MP_SANDBOX_PAYER_EMAIL: "pagador-de-teste@testuser.com",
+        });
         const { cliente, estado } = supabaseFalso();
         try {
             // As 3 chaves salvas com teste que FALHOU (401): ficha apagada.
@@ -1526,7 +1566,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             // carimbo. Só o carimbo (a 2ª) estoura.
             estado.upsertsPermitidos = estado.upserts.length + 1;
 
-            const { buscar } = buscarMpFalso(200, { live_mode: false, nickname: "Loja Sandbox" });
+            const { buscar } = buscarMpFalso(200, contaDeTeste());
             const resposta = await chamar(cliente, { acao: "testar" }, buscar);
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
@@ -2287,13 +2327,15 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C30 — MP responde 200 sem live_mode (endpoint real de /users/me): sem afirmar ambiente", async () => {
+    await t.step("C30 — MP responde 200 sem `tags` (formato mínimo, sem marca nenhuma): sem afirmar ambiente", async () => {
         // Medido em 25/09/2026: `GET /users/me` do Mercado Pago NÃO devolve
         // `live_mode` (o struct oficial do SDK Go do MP só tem id, nickname,
         // first_name, last_name, country_id, email, site_id). Com credencial
         // de PRODUÇÃO a tela mostrava "Conectado! Conta X no ambiente de
-        // teste." — `ambiente` cai em null e a mensagem não pode afirmar
-        // nenhum dos dois ambientes.
+        // teste." — sem marca nenhuma na resposta (nem `tags`, nem e-mail de
+        // teste), `ambiente` cai em null e a mensagem não pode afirmar
+        // nenhum dos dois ambientes. (14/10/2026: o ambiente passou a vir das
+        // marcas da conta — `classificarAmbienteDaConta`; sem marca, igual.)
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
@@ -2328,6 +2370,347 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             desfazerEnv();
         }
     });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // CHAVE DE TESTE AVISA A LOJISTA (14/10/2026). O `GET /users/me` não traz
+    // `live_mode`; o ambiente sai das MARCAS da conta (`tags`, e-mail, prefixo
+    // do token). Escopo: SÓ AVISAR — `pix_ligado`/`faltando` seguem iguais.
+    // ══════════════════════════════════════════════════════════════════════
+    const AVISO_CHAVES_DE_TESTE =
+        'Essas chaves são de TESTE. Suas clientes não vão conseguir pagar. Troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
+    const AVISO_SANDBOX_DECLARADO =
+        "Chave de TESTE: o PIX não vai receber dinheiro de verdade.";
+    const TRES_CHAVES_COM_TOKEN_DE_TESTE = {
+        ...TRES_CHAVES,
+        access_token: "TEST-token-falso-de-teste-5555",
+    };
+
+    /** Roda `executar` guardando tudo que for para o console (para provar o que NÃO vaza). */
+    async function capturandoConsole<T>(
+        executar: () => Promise<T>,
+    ): Promise<{ resultado: T; linhas: string[] }> {
+        const linhas: string[] = [];
+        const originais = {
+            log: console.log,
+            info: console.info,
+            warn: console.warn,
+            error: console.error,
+            debug: console.debug,
+        };
+        const gravar = (...args: unknown[]) => {
+            linhas.push(
+                args
+                    .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+                    .join(" "),
+            );
+        };
+        console.log = gravar;
+        console.info = gravar;
+        console.warn = gravar;
+        console.error = gravar;
+        console.debug = gravar;
+        try {
+            return { resultado: await executar(), linhas };
+        } finally {
+            Object.assign(console, originais);
+        }
+    }
+
+    await t.step("A1 — salvar as três chaves de uma conta de TESTE sem modo de teste declarado: aviso novo e o PIX liga como hoje", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const mp = buscarMpFalso(200, contaDeTeste());
+            const resposta = await chamar(cliente, TRES_CHAVES, mp.buscar);
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
+            // SÓ AVISA: o resto da resposta é o de hoje.
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.faltando, []);
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(corpo.ultimo_teste.ambiente, "teste");
+            assertEquals(JSON.parse(estado.valor!).ultimo_teste.ambiente, "teste");
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A2 — PRIMEIRA gravação de conta de TESTE sem a chave de notificações (nada liga): o aviso aparece mesmo assim", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente } = supabaseFalso();
+        try {
+            const mp = buscarMpFalso(200, contaDeTeste());
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO },
+                mp.buscar,
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
+            // Igual a hoje: sem a chave de notificações nada liga.
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.faltando, ["chave_notificacoes"]);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A3 — testar com conta de TESTE quando o PIX já estava ligado: o aviso sai e pix_ligado segue como hoje", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            assertEquals(estado.loja.pagamento_online, true);
+            const resposta = await chamar(
+                cliente,
+                { acao: "testar" },
+                buscarMpFalso(200, contaDeTeste()).buscar,
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.ambiente, "teste");
+            assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.faltando, []);
+            assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A4 — testar com conta de TESTE e o PIX ainda desligado: aviso novo, e a ficha liga como hoje", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            // As três chaves salvas, com o teste do salvar recusado (401).
+            await chamar(cliente, TRES_CHAVES, buscarMpFalso(401, { message: "x" }).buscar);
+            assertEquals(estado.loja.pagamento_online, false);
+            const resposta = await chamar(
+                cliente,
+                { acao: "testar" },
+                buscarMpFalso(200, contaDeTeste()).buscar,
+            );
+            const corpo = await resposta.json();
+            assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A5 — conta de TESTE com modo de teste DECLARADO (MP_SANDBOX_PAYER_EMAIL): fica o aviso curto de sempre, não o novo", async () => {
+        const desfazerEnv = prepararEnv({
+            MP_SANDBOX_PAYER_EMAIL: "pagador-de-teste@testuser.com",
+        });
+        const { cliente } = supabaseFalso();
+        try {
+            const resposta = await chamar(
+                cliente,
+                TRES_CHAVES,
+                buscarMpFalso(200, contaDeTeste()).buscar,
+            );
+            const corpo = await resposta.json();
+            assertEquals(corpo.aviso, AVISO_SANDBOX_DECLARADO);
+            assertEquals(corpo.pix_ligado, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A6 — variável do modo de teste só com espaços conta como NÃO declarada (mesma regra do criar-pagamento)", async () => {
+        const desfazerEnv = prepararEnv({ MP_SANDBOX_PAYER_EMAIL: "   " });
+        const { cliente } = supabaseFalso();
+        try {
+            const resposta = await chamar(
+                cliente,
+                TRES_CHAVES,
+                buscarMpFalso(200, contaDeTeste()).buscar,
+            );
+            assertEquals((await resposta.json()).aviso, AVISO_CHAVES_DE_TESTE);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A7 — conta REAL (guarda da loja de verdade): nenhum aviso no salvar nem no testar, com ou sem modo declarado", async () => {
+        for (const extra of [
+            {},
+            { MP_SANDBOX_PAYER_EMAIL: "pagador-de-teste@testuser.com" },
+        ]) {
+            const desfazerEnv = prepararEnv(extra);
+            const { cliente } = supabaseFalso();
+            try {
+                const salvar = await chamar(
+                    cliente,
+                    TRES_CHAVES,
+                    buscarMpFalso(200, contaReal()).buscar,
+                );
+                const corpoSalvar = await salvar.json();
+                assertEquals(corpoSalvar.aviso, undefined);
+                assertEquals(corpoSalvar.pix_ligado, true);
+                assertEquals(corpoSalvar.ultimo_teste.ambiente, "producao");
+                const testar = await chamar(
+                    cliente,
+                    { acao: "testar" },
+                    buscarMpFalso(200, contaReal()).buscar,
+                );
+                const corpoTestar = await testar.json();
+                assertEquals(corpoTestar.aviso, undefined);
+                assertEquals(corpoTestar.ambiente, "producao");
+            } finally {
+                desfazerEnv();
+            }
+        }
+    });
+
+    await t.step("A8 — resposta SEM `tags` (formato do C30) nunca alarma: sem aviso, sem erro, PIX liga como hoje", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const resposta = await chamar(
+                cliente,
+                TRES_CHAVES,
+                buscarMpFalso(200, { id: 123456, nickname: "Loja Real", site_id: "MLB" }).buscar,
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.aviso, undefined);
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.ultimo_teste.ambiente, null);
+            assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A9 — token com prefixo TEST- é de teste mesmo sem marca na resposta", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente } = supabaseFalso();
+        try {
+            const { resultado, linhas } = await capturandoConsole(() =>
+                chamar(
+                    cliente,
+                    TRES_CHAVES_COM_TOKEN_DE_TESTE,
+                    buscarMpFalso(200, contaReal()).buscar,
+                )
+            );
+            const corpo = await resultado.json();
+            assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
+            assertEquals(corpo.ultimo_teste.ambiente, "teste");
+            // O log diz o ambiente e QUAL marca disparou.
+            assertEquals(
+                linhas.includes("[credenciais-mp] ambiente da conta: teste (marca: prefixo)"),
+                true,
+            );
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A10 — ligar_pix (retomar) com a última checagem de uma conta de TESTE traz o aviso novo", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente } = supabaseFalso();
+        try {
+            await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, contaDeTeste()).buscar);
+            await chamar(cliente, { acao: "desligar_pix" });
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.aviso, AVISO_CHAVES_DE_TESTE);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("A11 — o e-mail devolvido por /users/me não aparece em resposta, registro gravado nem log; o log diz ambiente e marca", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const conta = contaDeTeste();
+            const { resultado: salvar, linhas: linhasSalvar } = await capturandoConsole(() =>
+                chamar(cliente, TRES_CHAVES, buscarMpFalso(200, conta).buscar)
+            );
+            const corpoSalvar = await salvar.json();
+            const { resultado: testar, linhas: linhasTestar } = await capturandoConsole(() =>
+                chamar(cliente, { acao: "testar" }, buscarMpFalso(200, conta).buscar)
+            );
+            const corpoTestar = await testar.json();
+            for (const texto of [
+                JSON.stringify(corpoSalvar),
+                JSON.stringify(corpoTestar),
+                estado.valor!,
+                ...linhasSalvar,
+                ...linhasTestar,
+            ]) {
+                assertEquals(texto.toLowerCase().includes("testuser.com"), false);
+                assertEquals(texto.includes(conta.email), false);
+            }
+            assertEquals(
+                linhasSalvar.includes("[credenciais-mp] ambiente da conta: teste (marca: tag)"),
+                true,
+            );
+            assertEquals(
+                linhasTestar.includes("[credenciais-mp] ambiente da conta: teste (marca: tag)"),
+                true,
+            );
+            // Conta real: o e-mail dela também não vaza.
+            const real = contaReal();
+            const { resultado, linhas } = await capturandoConsole(() =>
+                chamar(cliente, { acao: "testar" }, buscarMpFalso(200, real).buscar)
+            );
+            const corpoReal = await resultado.json();
+            for (const texto of [JSON.stringify(corpoReal), estado.valor!, ...linhas]) {
+                assertEquals(texto.includes(real.email), false);
+            }
+            assertEquals(
+                linhas.includes("[credenciais-mp] ambiente da conta: producao"),
+                true,
+            );
+        } finally {
+            desfazerEnv();
+        }
+    });
+});
+
+Deno.test("classificarAmbienteDaConta — lê as MARCAS da conta (tags, e-mail, prefixo); sem sinal positivo é null", () => {
+    const APP = "APP_USR-token-falso-de-teste-9999";
+    const casos: Array<[string, unknown, string, "teste" | "producao" | null]> = [
+        // ── "teste": qualquer marca positiva basta ──
+        ["etiqueta test_user", { tags: ["normal", "test_user"], nickname: "Loja", email: "a@b.com" }, APP, "teste"],
+        ["etiqueta test_user sozinha", { tags: ["test_user"] }, APP, "teste"],
+        ["e-mail @testuser.com", { tags: ["normal"], email: "x@testuser.com" }, APP, "teste"],
+        ["e-mail em MAIÚSCULAS", { tags: ["normal"], email: "TEST_USER_1@TESTUSER.COM" }, APP, "teste"],
+        ["e-mail de teste sem tags", { email: "x@testuser.com" }, APP, "teste"],
+        ["e-mail de teste com espaço em volta", { email: "  x@testuser.com " }, APP, "teste"],
+        ["prefixo TEST- com a resposta vazia", {}, "TEST-token-falso-de-teste-9999", "teste"],
+        ["prefixo TEST- mesmo com conta de aparência real", { tags: ["normal"], nickname: "Loja", email: "a@b.com" }, "TEST-token-falso-de-teste-9999", "teste"],
+        ["prefixo TEST- com resposta que nem é objeto", null, "TEST-token-falso-de-teste-9999", "teste"],
+        // ── "producao": tags É lista, sem marca de teste, apelido normal ──
+        ["conta real com tags normais", { tags: ["normal"], nickname: "Loja Real", email: "dono@loja.com.br" }, APP, "producao"],
+        ["conta real com lista de tags vazia", { tags: [], nickname: "Loja Real" }, APP, "producao"],
+        ["@testuser.com.br NÃO é e-mail de teste", { tags: ["normal"], email: "x@testuser.com.br", nickname: "Loja" }, APP, "producao"],
+        // ── null: sem sinal positivo, nunca se afirma nada ──
+        ["sem tags e sem marca", { id: 1, nickname: "Loja Real", site_id: "MLB" }, APP, null],
+        ["tags que não é lista (texto)", { tags: "test_user_nao_e_lista_mas_texto", nickname: "Loja" }, APP, null],
+        ["tags que não é lista (objeto)", { tags: { test_user: true }, nickname: "Loja" }, APP, null],
+        ["tags nula", { tags: null, nickname: "Loja" }, APP, null],
+        ["só o apelido TESTUSER, sem tags", { nickname: "TESTUSER123456", email: "x@gmail.com" }, APP, null],
+        ["apelido TESTUSER com tags normais não prova produção", { tags: ["normal"], nickname: "testuser99" }, APP, null],
+        ["@testuser.com.br sem tags", { email: "x@testuser.com.br" }, APP, null],
+        ["prefixo em minúsculas não vale (case sensitive)", {}, "test-token-falso-de-teste-9999", null],
+        ["resposta nula", null, APP, null],
+        ["resposta de texto", "olá", APP, null],
+        ["resposta em lista", [{ tags: ["test_user"] }], APP, null],
+        ["resposta indefinida", undefined, APP, null],
+        ["e-mail que não é texto", { tags: ["normal"], email: 123 }, APP, "producao"],
+    ];
+    for (const [rotulo, dados, token, esperado] of casos) {
+        assertEquals(classificarAmbienteDaConta(dados, token), esperado, rotulo);
+    }
 });
 
 // ── Admin de AGORA nas duas fontes (auditoria L3, 12/10/2026) ──────────────
