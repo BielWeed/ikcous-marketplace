@@ -2759,7 +2759,7 @@ Deno.test("enviarComprovantePedido devolve { ok: false } SEM lançar (ex.: SMTP 
   // log diria por que o cliente não recebeu o comprovante.
   //
   // SMTP_USER/SMTP_PASSWORD ficam DELETADOS de propósito (não setados): é
-  // o que faz `remetenteConfigurado()` real devolver `false` e
+  // o que faz o `resolverRemetente()` real devolver origem "nenhum" (sem cofre e sem SMTP) e
   // `enviarComprovantePedido` devolver `{ ok: false, motivo: 'sem_remetente' }`
   // SEM tocar rede nenhuma — nem o `supabase` fake precisa implementar nada
   // além do necessário para `confirmar_pagamento`.
@@ -5946,7 +5946,15 @@ Deno.test("MP-W7 — notificação processada do começo ao fim resolve as crede
       transaction_amount: 149.9,
     });
 
-    const resposta = await handler(req, { supabase, fetchImpl });
+    // O e-mail do comprovante entra como dublê: ele resolve o REMETENTE em
+    // app_settings (outra linha, a do e-mail da loja) e este teste conta só as
+    // leituras das credenciais do Mercado Pago.
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl,
+      enviarComprovante: async () => {},
+      enviarAvisoAtrasado: async () => {},
+    });
 
     // O caminho completo: HMAC validado, MP consultado, RPC chamada.
     assertEquals(resposta.status, 200);

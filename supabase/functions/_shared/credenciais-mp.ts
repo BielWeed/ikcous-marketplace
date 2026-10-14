@@ -210,7 +210,7 @@ export function registroTemChaveDeAssinatura<
  * `supabaseKey` é onde o supabase-js v2 guarda a chave passada ao
  * `createClient` — a mesma que vai no header `apikey` de toda requisição.
  */
-function papelDaChaveDoClient(supabase: any): string | null {
+export function papelDaChaveDoClient(supabase: any): string | null {
     const chave: unknown = supabase?.supabaseKey;
     if (typeof chave !== "string" || !chave) return null;
     // Formato novo do Supabase: o prefixo JÁ é a resposta.

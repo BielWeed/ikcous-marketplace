@@ -35,7 +35,8 @@
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { enviarEmail, remetenteConfigurado } from "../_shared/smtp.ts";
+import { resolverRemetente } from "../_shared/email-da-loja.ts";
+import { enviarEmail } from "../_shared/smtp.ts";
 // PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
 // reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
 // chave NOVA (SUPABASE_SECRET_KEYS) e cai para a LEGADA
@@ -100,73 +101,101 @@ const emTeste =
   Deno.mainModule.endsWith("_test.js") ||
   Deno.mainModule.includes("index_test");
 
-if (!emTeste) {
-  serve(async (req: Request) => {
-    if (req.method === "OPTIONS") {
-      return new Response("ok", { headers: corsHeaders });
-    }
+/**
+ * O miolo da funcao, exportado para os testes alcancarem o fluxo inteiro (o
+ * corpo vivia dentro do `serve`, so' coberto pela prova no ar). `deps` e' a
+ * costura de teste; em producao ninguem passa nada.
+ *
+ * O REMETENTE (14/10/2026): o Gmail que a lojista cadastrou no painel ou, na
+ * falta dele, o do ambiente (`_shared/email-da-loja.ts`). Resolvido UMA vez e
+ * ANTES de gravar codigo nenhum — o comentario da falha fechada abaixo continua
+ * valendo. Sem o painel cadastrado, o caminho e' o de sempre: SMTP_USER e
+ * SMTP_PASSWORD do ambiente.
+ */
+export async function handler(
+  req: Request,
+  deps: {
+    supabase?: any;
+    resolverRemetente?: typeof resolverRemetente;
+    enviarEmail?: typeof enviarEmail;
+  } = {},
+): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
-    const corpo = await req.json().catch(() => null);
-    const email = corpo?.email;
-    const whatsapp = corpo?.whatsapp;
-    const orderFragment = corpo?.orderFragment;
-    if (!email || !whatsapp || !orderFragment) {
-      return montarResposta({ ok: false, motivo: "pedido_invalido" });
-    }
+  const corpo = await req.json().catch(() => null);
+  const email = corpo?.email;
+  const whatsapp = corpo?.whatsapp;
+  const orderFragment = corpo?.orderFragment;
+  if (!email || !whatsapp || !orderFragment) {
+    return montarResposta({ ok: false, motivo: "pedido_invalido" });
+  }
 
-    // Falha fechada ANTES de gravar codigo nenhum. Gerar um codigo que nao vai
-    // ser enviado deixaria a pessoa esperando um e-mail que nao existe, e ainda
-    // queimaria a janela de 60 s do freio — ela sairia daqui sem codigo E sem
-    // poder tentar de novo.
-    if (!remetenteConfigurado()) {
-      console.error("send-otp-email: SMTP nao configurado nesta loja");
-      return montarResposta({ ok: false, motivo: "sem_remetente" });
-    }
-
-    const supabase = createClient(
+  const supabase =
+    deps.supabase ??
+    createClient(
       Deno.env.get("SUPABASE_URL"),
       readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
     );
 
-    const { data, error } = await supabase.rpc("generate_order_otp_v2", {
-      p_email: email,
-      p_whatsapp: whatsapp,
-      p_order_fragment: orderFragment,
-    });
+  // Falha fechada ANTES de gravar codigo nenhum. Gerar um codigo que nao vai
+  // ser enviado deixaria a pessoa esperando um e-mail que nao existe, e ainda
+  // queimaria a janela de 60 s do freio — ela sairia daqui sem codigo E sem
+  // poder tentar de novo.
+  const remetente = await (deps.resolverRemetente ?? resolverRemetente)(
+    supabase,
+  );
+  if (remetente.origem === "nenhum") {
+    console.error("send-otp-email: SMTP nao configurado nesta loja");
+    return montarResposta({ ok: false, motivo: "sem_remetente" });
+  }
 
-    if (error) {
-      console.error("send-otp-email: RPC falhou:", error.message);
-      return montarResposta({ ok: false, motivo: "envio_falhou" });
+  const { data, error } = await supabase.rpc("generate_order_otp_v2", {
+    p_email: email,
+    p_whatsapp: whatsapp,
+    p_order_fragment: orderFragment,
+  });
+
+  if (error) {
+    console.error("send-otp-email: RPC falhou:", error.message);
+    return montarResposta({ ok: false, motivo: "envio_falhou" });
+  }
+
+  if (!data?.ok) {
+    if (data?.motivo === "muito_recente") {
+      return montarResposta({
+        ok: false,
+        motivo: "muito_recente",
+        espereSegundos: Number(data.espere_segundos ?? 60),
+      });
     }
+    return montarResposta({ ok: false, motivo: "nao_confere" });
+  }
 
-    if (!data?.ok) {
-      if (data?.motivo === "muito_recente") {
-        return montarResposta({
-          ok: false,
-          motivo: "muito_recente",
-          espereSegundos: Number(data.espere_segundos ?? 60),
-        });
-      }
-      return montarResposta({ ok: false, motivo: "nao_confere" });
-    }
-
-    try {
-      await enviarEmail({
+  try {
+    await (deps.enviarEmail ?? enviarEmail)(
+      {
         para: data.email,
         assunto: "Seu codigo de verificacao",
         html: htmlDoCodigo(data.otp_code),
-      });
-    } catch (e) {
-      // O codigo ja esta gravado e vale 15 minutos. Nao apagamos: se o envio
-      // falhou por intermitencia, uma segunda tentativa depois da janela de
-      // 60 s gera outro codigo, e o antigo expira sozinho.
-      console.error(
-        `send-otp-email: envio falhou para ${mascarar(data.email)}: ${e?.message}`,
-      );
-      return montarResposta({ ok: false, motivo: "envio_falhou" });
-    }
+      },
+      remetente,
+    );
+  } catch (e) {
+    // O codigo ja esta gravado e vale 15 minutos. Nao apagamos: se o envio
+    // falhou por intermitencia, uma segunda tentativa depois da janela de
+    // 60 s gera outro codigo, e o antigo expira sozinho.
+    console.error(
+      `send-otp-email: envio falhou para ${mascarar(data.email)}: ${e?.message}`,
+    );
+    return montarResposta({ ok: false, motivo: "envio_falhou" });
+  }
 
-    console.log(`send-otp-email: enviado para ${mascarar(data.email)}`);
-    return montarResposta({ ok: true });
-  });
+  console.log(`send-otp-email: enviado para ${mascarar(data.email)}`);
+  return montarResposta({ ok: true });
+}
+
+if (!emTeste) {
+  serve((req: Request) => handler(req));
 }

@@ -958,6 +958,12 @@ const AS_CINCO_NOMEADAS = [
   "send-push",
 ];
 
+// 14/10/2026: a credenciais-email (o painel onde a lojista cadastra o Gmail da
+// loja) entra como mais uma NOMEADA, também só na IKCOUS e na Savy e só pelo
+// nome. Fica fora do array acima para os testes das "cinco" não mudarem de
+// sentido; o bloco dela está no fim deste arquivo.
+const CREDENCIAIS_EMAIL = "credenciais-email";
+
 Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, push) sobem na IKCOUS e na Savy, só ali, só pelo nome", async (t) => {
   const sha = "a".repeat(40);
 
@@ -1124,6 +1130,7 @@ Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, p
         ...AS_CINCO_DA_COBRANCA.split(" "),
         "send-order-confirmation",
         ...AS_CINCO_NOMEADAS,
+        CREDENCIAIS_EMAIL,
       ].sort();
       assertEquals(
         Object.keys(canais.canais).sort(),
@@ -1190,4 +1197,84 @@ Deno.test("publicar-functions: o JSON dos canais e o workflow concordam, functio
       if (r.codigo === 0) assertEquals(r.outputs.ref, ref);
     }
   }
+});
+
+Deno.test("publicar-functions: a credenciais-email (e-mail da loja no painel) sobe na IKCOUS e na Savy, só ali, só pelo nome, com SHA exato", async (t) => {
+  const sha = "a".repeat(40);
+
+  for (const projeto of ["ikcous-publicada", "savy"]) {
+    const refEsperada = projeto === "savy" ? REF_SAVY : REF_IKCOUS_PUBLICADA;
+
+    await t.step(
+      `${projeto} admite a credenciais-email, sozinha e no meio de um pedido, sem duplicar`,
+      async () => {
+        const sozinha = await validar(projeto, CREDENCIAIS_EMAIL, sha);
+        assertEquals(sozinha.codigo, 0, sozinha.stdout + sozinha.stderr);
+        assertEquals(sozinha.outputs.nomes, CREDENCIAIS_EMAIL);
+        assertEquals(sozinha.outputs.ref, refEsperada);
+        const junto = await validar(
+          projeto,
+          `${CREDENCIAIS_EMAIL},send-otp-email,${CREDENCIAIS_EMAIL}`,
+          sha,
+        );
+        assertEquals(junto.codigo, 0, junto.stdout + junto.stderr);
+        assertEquals(
+          junto.outputs.nomes,
+          `${CREDENCIAIS_EMAIL} send-otp-email`,
+        );
+      },
+    );
+
+    await t.step(
+      `${projeto} exige o SHA exato para a credenciais-email`,
+      async () => {
+        for (const expected of ["", "b".repeat(40), "a".repeat(39)]) {
+          const r = await validar(projeto, CREDENCIAIS_EMAIL, expected);
+          assertEquals(r.codigo, 1, `SHA "${expected}"`);
+          assertStringIncludes(r.stdout, "exige expected_sha");
+          assertEquals(r.outputs, {});
+        }
+      },
+    );
+  }
+
+  await t.step(
+    "a Almeida RECUSA a credenciais-email (loja de teste, só as cinco financeiras), sozinha ou no meio de um pedido",
+    async () => {
+      for (const pedido of [
+        CREDENCIAIS_EMAIL,
+        `criar-pagamento,${CREDENCIAIS_EMAIL}`,
+      ]) {
+        const r = await validar("almeida", pedido, sha);
+        assertEquals(r.codigo, 1, pedido);
+        assertStringIncludes(
+          r.stdout,
+          "só admite as cinco Functions financeiras",
+        );
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step("o apelido `cobranca` NÃO a inclui", async () => {
+    const r = await validar("savy", "cobranca", sha);
+    assertEquals(r.codigo, 0, r.stdout + r.stderr);
+    assert(!r.outputs.nomes.includes(CREDENCIAIS_EMAIL));
+  });
+
+  await t.step(
+    "no config.toml ela tem verify_jwt = true (nunca --no-verify-jwt: só o admin entra)",
+    async () => {
+      const toml = await Deno.readTextFile(`${RAIZ}/supabase/config.toml`);
+      const bloco =
+        /\[functions\."credenciais-email"\]\s*\n\s*verify_jwt\s*=\s*(true|false)/.exec(
+          toml,
+        );
+      assert(
+        bloco,
+        'falta o bloco [functions."credenciais-email"] no config.toml',
+      );
+      assertEquals(bloco![1], "true");
+    },
+  );
 });
