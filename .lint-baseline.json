@@ -194,11 +194,17 @@
     "10/10/2026 — warnings de eslint de 408 para 407. Medido na catraca local e confirmado",
     "no CI (PR #785, onda L: 'eslint warnings 407 / teto 408 / baixou -1'; CI 15/15 verde no",
     "commit 823b8ce0, job 114171264293). A queda veio do PR: a tela de Banners deixou de ter",
-    "uma classe fora de ordem ao trocar o texto miúdo. Baixado depois do CI verde."
+    "uma classe fora de ordem ao trocar o texto miúdo. Baixado depois do CI verde.",
+    "",
+    "14/10/2026 — warnings de eslint de 407 para 406. Medido no CI, run 38488781232 (topo do",
+    "ramo principal, a89311ec, job 115608760054 'Catraca de lint'): 'eslint warnings 406 /",
+    "teto 407 / baixou -1 — abaixe o teto'. A queda não veio de PR de lint: veio do lote das",
+    "filas offline por usuário (#823). Biome ficou 13/1. Baixado SÓ DEPOIS do CI, como as",
+    "quedas anteriores."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 407
+    "warnings": 406
   },
   "biome": {
     "errors": 13,
