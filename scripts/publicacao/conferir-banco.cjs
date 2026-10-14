@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 31a, 31b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1633,6 +1633,39 @@ const ROL_DA_27B = [
   "rls_admin_atual(): existe e devolve boolean (20261197000000)",
   "tr_avaliacao_nasce_verificada: o gatilho irmao do selo (AFTER INSERT por linha em reviews) esta de pe",
 ];
+/** O rol da 30a (a prova de objetos do lote 20261227000000 + 20261228000000, os numeros do painel: a taxa de
+ * devolucao do CRM fala da mesma turma de vendas e o "Hoje" compara ate a mesma hora): as 9 linhas que
+ * scripts/publicacao/consultas/30a-conferir-numeros-do-painel-aplicado.sql devolve, cada uma UMA vez, as mesmas
+ * em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): para cada uma das duas funcoes
+ * (crm_visao e painel_inicio), o corpo vivo e o NOVO (md5), ele traz o corte na mesma hora, os atributos de
+ * sempre e o EXECUTE segue FECHADO ao visitante.
+ * tests/banco/numeros-do-painel-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_30A = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm_visao: corpo e o da 20261227000000, com a taxa da turma e o corte na mesma hora (md5)",
+  "crm_visao: o corpo traz a turma de vendas e o corte na mesma hora",
+  "crm_visao: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "crm_visao: EXECUTE fechado para anon (authenticated e service_role sim)",
+  "painel_inicio: corpo e o da 20261228000000, com a semana passada cortada na mesma hora (md5)",
+  "painel_inicio: o corpo traz o corte na mesma hora",
+  "painel_inicio: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "painel_inicio: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 30b (a consulta de AUSENCIA do lote dos numeros do painel; `ausenciaConfirmadaPor`): as 7 linhas
+ * que scripts/publicacao/consultas/30b-antes-numeros-do-painel-corpos-vigentes.sql devolve - a base de antes:
+ * crm_visao com o corpo da 20261199000000 e painel_inicio com o da 20261212000000 (md5), sem o corte na mesma
+ * hora, com os atributos de sempre. NAO mede a ACL. Uma loja que ja tem um dos cortes reprova aqui de
+ * proposito, nas linhas do corpo e do marcador daquela funcao. */
+const ROL_DA_30B = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm_visao: corpo e o da 20261199000000, sem o corte na mesma hora (md5)",
+  "crm_visao: o corpo ainda NAO corta o anterior na mesma hora",
+  "crm_visao: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "painel_inicio: corpo e o da 20261212000000, sem o corte na mesma hora (md5)",
+  "painel_inicio: o corpo ainda NAO corta a semana passada na mesma hora",
+  "painel_inicio: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+];
 /** O rol da 31a (a prova de objetos do lote 20261229000000, o endereco da compra fica no pedido): as 9 linhas que
  * scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql devolve, cada uma UMA vez, as
  * mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de create_
@@ -1704,6 +1737,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "26b-antes-voto-util-sem-guarda-de-status": ROL_DA_26B,
   "27a-conferir-avaliacao-nasce-sem-resposta-da-loja": ROL_DA_27A,
   "27b-antes-avaliacao-aceita-resposta-forjada": ROL_DA_27B,
+  "30a-conferir-numeros-do-painel-aplicado": ROL_DA_30A,
+  "30b-antes-numeros-do-painel-corpos-vigentes": ROL_DA_30B,
   "31a-conferir-endereco-da-compra-fica-no-pedido": ROL_DA_31A,
   "31b-antes-endereco-da-compra-so-no-ponteiro": ROL_DA_31B,
 };
@@ -2284,6 +2319,8 @@ module.exports = {
   ROL_DA_26B,
   ROL_DA_27A,
   ROL_DA_27B,
+  ROL_DA_30A,
+  ROL_DA_30B,
   ROL_DA_31A,
   ROL_DA_31B,
   ROL_FECHADO_POR_CONSULTA,

@@ -42,6 +42,11 @@ const NOME_99 = "20261199000000_portas_do_painel_exigem_admin_atual.sql";
 const NOMES = [
   "20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql",
   "20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql",
+  // Os números do painel (14/10/2026): crm_visao sucede o corpo da 99; painel_inicio
+  // sucede o da 20261212 (a CADEIA 99 → 12 → 28: o `hashVigente` da 28 é o `hashDesta`
+  // da 12, e desfazer em ordem inversa devolve cada corpo ao anterior).
+  "20261227000000_o_crm_compara_o_que_e_comparavel.sql",
+  "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql",
 ];
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

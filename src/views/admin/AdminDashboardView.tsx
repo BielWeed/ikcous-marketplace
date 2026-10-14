@@ -310,7 +310,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
             <li>
               <strong className="text-white">Vendas pagas hoje:</strong> quanto
               entrou hoje, quanto veio do app e quanto do balcão, comparado com
-              o mesmo dia da semana passada.
+              o mesmo dia da semana passada até esta mesma hora.
             </li>
             <li>
               <strong className="text-white">Lucro estimado:</strong> o
