@@ -454,8 +454,11 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   outras três chamadas (`crm__vendas`, `crm__pedidos_nao_pagos`, `crm__nunca_comprou`), período que NÃO termina hoje
   com o JSON idêntico ao do corpo antigo, resto do corpo igual byte a byte fora da troca, ACL e travas de admin, rollback
   com o `prosrc` da 27, pré-voo que recusa sem escrever, dois aplicadores ao mesmo tempo e mutantes vermelhos. O
-  relógio não é injetado: tudo é montado em torno do `now()` real, numa transação sempre desfeita. **Não prova** a
-  IKCOUS nem a Savy.
+  relógio é o real e a prova se protege da hora do dia: o dado "do futuro" fica SEMPRE entre agora e a meia-noite de
+  amanhã (o único trecho em que a âncora antiga e a nova diferem), por construção e conferido por `assert`, e o resto
+  é "N dias/horas atrás" (nunca "agora + 2 horas", que a partir das 22h de SP deixava o corpo antigo e os mutantes
+  passarem). `GRADE_RELOGIO='2026-10-14 22:30:00-03'` injeta um relógio fixo (uma `public.now()` que sombreia a do
+  catálogo, dentro de cada transação desfeita) nas provas que dependem da hora. **Não prova** a IKCOUS nem a Savy.
 - **portão da grade do CRM (`a-grade-do-crm-mede-a-recencia-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
   `33a-conferir-grade-do-crm-aplicado` (DEPOIS, 5 linhas) e `33b-antes-grade-do-crm-corpo-vigente` (ANTES, 4 linhas;
   **não mede a ACL**), a "prova de objetos" do lote `20261232000000`. Rol exato (antes, depois, sem a 27, função

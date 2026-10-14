@@ -1178,8 +1178,13 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         corpo igual byte a byte, ACL, travas de admin, rollback, pre-voo que recusa sem escrever, dois aplicadores,
         mutantes) e `tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs` prova a decisao das duas consultas,
         num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem
-        o corpo vivo delas. O relogio do banco nao e injetado: a prova monta os pedidos em torno do `now()` real, numa
-        transacao que sempre e desfeita (o instante e o mesmo nas duas telas).
+        o corpo vivo delas. O relogio do banco e o REAL, e a prova se protege da hora do dia: a diferenca entre a
+        ancora antiga (meia-noite de amanha) e a nova (o menor entre ela e agora) so existe entre agora e essa
+        meia-noite, entao o dado "do futuro" fica SEMPRE no meio desse trecho (por construcao, conferido por
+        assert) e todo o resto e "N dias" ou "N horas" ATRAS de agora; tudo numa transacao que sempre e desfeita
+        (o instante e o mesmo nas duas telas). Para provar em qualquer hora, `GRADE_RELOGIO='2026-10-14 22:30:00-03'`
+        injeta um relogio fixo nas provas que dependem da hora (medido em 13 horarios, 14/14 em todos, mutantes
+        mortos em todos); so no microssegundo exato da meia-noite (de Sao Paulo ou UTC) um mutante e equivalente.
 
   28. **Lote de UMA migration, de apply normal: `20261229000000` (o endereco da compra fica no pedido; dado de
       cliente).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy).

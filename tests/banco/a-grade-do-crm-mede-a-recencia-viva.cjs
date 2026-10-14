@@ -48,6 +48,16 @@
  * para ver o VERMELHO do corpo vigente antes de a migration existir; GRADE_TODAS=1 não para na primeira
  * que falhar.
  *
+ * O RELÓGIO: o banco usa o `now()` REAL, e a diferença entre a âncora antiga (meia-noite de amanhã, SP) e a
+ * nova (o menor entre ela e agora) só existe ENTRE agora e essa meia-noite. Por isso a prova não pode usar
+ * "agora + N horas" fixas (a partir das 22h de SP isso passa da meia-noite e a diferença some): o dado "do
+ * futuro" da (1d) é posto SEMPRE no meio do trecho entre agora e a meia-noite de amanhã, por construção, e a
+ * prova confere (assert) que ele caiu ali. Os demais dados são sempre "N dias" ou "N horas" ATRÁS de agora,
+ * que não dependem da hora do dia (sem horário de verão no Brasil, N dias atrás cai sempre N dias antes no
+ * calendário de SP). Para PROVAR isso em qualquer hora, GRADE_RELOGIO='2026-10-14 22:30:00-03' injeta um
+ * relógio fixo (uma `public.now()` que sombreia a do catálogo, instalada DENTRO de cada transação desfeita
+ * das provas que dependem da hora: (1a) a (1d), (2a), (2b), (3) e (3b)); sem a variável, o relógio é o real.
+ *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/a-grade-do-crm-mede-a-recencia-viva.cjs
  */
 
@@ -157,7 +167,7 @@ async function semearAdmin(c, { comum = false } = {}) {
 
 let contador = 0;
 
-/** Venda PAGA de um cliente sem conta (chave = o WhatsApp). `quando` é um intervalo ('30 days', '-2 hours'). */
+/** Venda PAGA de um cliente sem conta (chave = o WhatsApp). `quando` é um intervalo ATRÁS de agora ('30 days', '1 hour'; negativo = depois de agora). */
 async function venda(c, { nome, quando, total = 100, zap }) {
   contador += 1;
   await c.query(
@@ -349,10 +359,30 @@ const prova1d = async (c) => {
   await venda(c, { nome: "Grade uma hora", quando: "1 hour", total: 60 });
   await pedidoNaoPago(c, { nome: "Pediu uma hora", quando: "1 hour" });
   await perfilSemCompra(c, { nome: "Sem compra uma hora", quando: "1 hour" });
-  // o que tem data DEPOIS de agora (relógio adiantado) NÃO entra: nem na lista, nem na grade
-  await venda(c, { nome: "Grade futuro", quando: "-2 hours", total: 77 });
-  await pedidoNaoPago(c, { nome: "Pediu no futuro", quando: "-2 hours" });
-  await perfilSemCompra(c, { nome: "Sem compra futuro", quando: "-2 hours" });
+  // o que tem data DEPOIS de agora (relógio adiantado) NÃO entra: nem na lista, nem na grade.
+  // A âncora antiga (meia-noite de amanhã, SP) e a nova (o menor entre ela e agora) SÓ diferem entre agora e essa
+  // meia-noite: o futuro vai no MEIO desse trecho, por construção (nunca "agora + 2 horas", que a partir das 22h de
+  // SP passa da meia-noite e deixa o corpo antigo e os mutantes passarem na prova).
+  const futuro = (
+    await c.query(
+      `SELECT ((now() - ((public.fin__hoje() + 1)::timestamp AT TIME ZONE 'America/Sao_Paulo')) / 2)::text AS q`,
+    )
+  ).rows[0].q;
+  const entre = (
+    await c.query(
+      `SELECT now() - $1::interval > now()
+          AND now() - $1::interval < ((public.fin__hoje() + 1)::timestamp AT TIME ZONE 'America/Sao_Paulo') AS ok`,
+      [futuro],
+    )
+  ).rows[0].ok;
+  // Error comum (não AssertionError): uma falha de MONTAGEM nunca pode se passar por "o corpo antigo reprovou"
+  if (!entre)
+    throw new Error(
+      `o dado do futuro (${futuro}) tem de cair entre agora e a meia-noite de amanhã (SP)`,
+    );
+  await venda(c, { nome: "Grade futuro", quando: futuro, total: 77 });
+  await pedidoNaoPago(c, { nome: "Pediu no futuro", quando: futuro });
+  await perfilSemCompra(c, { nome: "Sem compra futuro", quando: futuro });
 
   const l = await lista(c);
   const g = await grade(c, await hoje(c));
@@ -395,19 +425,19 @@ const prova1d = async (c) => {
 
 PROVAS.push({
   nome: "(1a) cada VIRADA (29/30/31, 59/60/61, 119/120/121, 239/240/241 dias): a grade põe o cliente no mesmo segmento da lista",
-  corpo: async (c) => numaTransacao(c, [], () => prova1a(c)),
+  corpo: async (c) => numaTransacaoRelogio(c, [], () => prova1a(c)),
 });
 PROVAS.push({
   nome: "(1b) o CONJUNTO das 12 compras: a grade conta o mesmo que a lista (novos 2, promissores 3, quase dormindo 3, hibernando 4)",
-  corpo: async (c) => numaTransacao(c, [], () => prova1b(c)),
+  corpo: async (c) => numaTransacaoRelogio(c, [], () => prova1b(c)),
 });
 PROVAS.push({
   nome: "(1c) a virada de 240 dias muda a nota no ajudante, mas a grade não a mostra (nota 2 e nota 1 caem no mesmo segmento)",
-  corpo: async (c) => numaTransacao(c, [], () => prova1c(c)),
+  corpo: async (c) => numaTransacaoRelogio(c, [], () => prova1c(c)),
 });
 PROVAS.push({
   nome: "(1d) as OUTRAS três chamadas recebem o mesmo instante: o que tem data depois de agora não entra na grade (venda, pedido não pago, perfil sem compra); o de agora e de uma hora atrás entra",
-  corpo: async (c) => numaTransacao(c, [], () => prova1d(c)),
+  corpo: async (c) => numaTransacaoRelogio(c, [], () => prova1d(c)),
 });
 
 // ---- itens 2 a 5: precisam dos arquivos (a migration, o rollback e a 20261227)
@@ -441,22 +471,87 @@ function montarCorpos() {
   fx.pronto = true;
 }
 
+const RELOGIO = process.env.GRADE_RELOGIO || null;
+assert.ok(
+  RELOGIO === null || /^[0-9 :.-]{19,26}-03$/.test(RELOGIO),
+  "GRADE_RELOGIO tem de ser 'AAAA-MM-DD HH:MM:SS[.ffffff]-03' (hora de São Paulo)",
+);
+
+/**
+ * Relógio INJETADO (só com GRADE_RELOGIO): dentro da transação em curso, cria `public.now()` (o instante fixo) e
+ * põe `public` ANTES de `pg_catalog` no caminho de busca da sessão e de TODA função de `public` que fixa
+ * `search_path=public` (que, sem isso, acha o `now()` do catálogo primeiro). Tudo é DDL transacional: o
+ * ROLLBACK do fim da prova desfaz. Tem de ser chamado DE NOVO depois de qualquer CREATE OR REPLACE do corpo
+ * (o CREATE OR REPLACE troca os atributos da função pelos do texto novo).
+ */
+async function instalarRelogio(c) {
+  if (RELOGIO === null) return;
+  await c.query(
+    `CREATE OR REPLACE FUNCTION public.now() RETURNS timestamptz LANGUAGE sql STABLE
+       AS $f$ SELECT '${RELOGIO}'::timestamptz $f$`,
+  );
+  await c.query(`DO $f$
+    DECLARE r record;
+    BEGIN
+      FOR r IN SELECT p.oid::regprocedure AS sig FROM pg_proc p
+                WHERE p.pronamespace = 'public'::regnamespace AND p.prokind = 'f'
+                  AND 'search_path=public' = ANY(p.proconfig)
+      LOOP
+        EXECUTE format('ALTER FUNCTION %s SET search_path = public, pg_catalog', r.sig);
+      END LOOP;
+    END $f$`);
+  await c.query("SET search_path = public, pg_catalog");
+  // conferência: o relógio injetado vale para o SQL da prova E para as funções do banco (fin__hoje fixa search_path)
+  const r = await c.query(
+    `SELECT now() = $1::timestamptz AS agora,
+            public.fin__hoje() = (($1::timestamptz) AT TIME ZONE 'America/Sao_Paulo')::date AS funcao`,
+    [RELOGIO],
+  );
+  if (!r.rows[0].agora)
+    throw new Error("o relógio injetado não valeu para o SQL da prova");
+  if (!r.rows[0].funcao)
+    throw new Error("o relógio injetado não valeu para as funções do banco");
+}
+
 /** Roda `fn` com os `sqls` aplicados numa transação que SEMPRE é desfeita. */
-async function numaTransacao(c, sqls, fn) {
+async function numaTransacao(c, sqls, fn, comRelogio = false) {
   await c.query("BEGIN");
   try {
     for (const sql of sqls) await c.query(sql);
+    if (comRelogio) await instalarRelogio(c);
     return await fn();
   } finally {
     await c.query("ROLLBACK");
   }
 }
 
+/**
+ * O mesmo, para as provas que DEPENDEM DA HORA (1a a 1d, 2a, 2b, 3 e 3b): com GRADE_RELOGIO instala o relógio
+ * injetado. As provas de porta, formato, ACL, pré-voo e concorrência (4a a 5) não dependem da hora e conferem
+ * os atributos das funções (que o relógio injetado altera), então rodam sempre no relógio real.
+ */
+const numaTransacaoRelogio = (c, sqls, fn) => numaTransacao(c, sqls, fn, true);
+
+/** Desfaz, DENTRO da transação, o `search_path` que `instalarRelogio` pôs nas funções (o pré-voo as confere). */
+async function restaurarSearchPath(c) {
+  if (RELOGIO === null) return;
+  await c.query(`DO $f$
+    DECLARE r record;
+    BEGIN
+      FOR r IN SELECT p.oid::regprocedure AS sig FROM pg_proc p
+                WHERE p.pronamespace = 'public'::regnamespace AND p.prokind = 'f'
+                  AND 'search_path=public, pg_catalog' = ANY(p.proconfig)
+      LOOP
+        EXECUTE format('ALTER FUNCTION %s SET search_path = public', r.sig);
+      END LOOP;
+    END $f$`);
+}
+
 /** A prova `prova` PRECISA falhar com o corpo mutado: senão, o mutante sobreviveu. */
 async function mataMutante(c, nome, sqls, prova) {
   let passou = false;
   try {
-    await numaTransacao(c, sqls, () => prova(c));
+    await numaTransacaoRelogio(c, sqls, () => prova(c));
     passou = true;
   } catch (e) {
     if (e instanceof assert.AssertionError) {
@@ -482,7 +577,7 @@ PROVAS.push({
   nome: "(2a) período que NÃO termina hoje: o JSON é IDÊNTICO ao do corpo antigo; que termina hoje: só `segmentos` e `kpis.receita_em_risco` mudam",
   corpo: async (c) => {
     montarCorpos();
-    await numaTransacao(c, [], async () => {
+    await numaTransacaoRelogio(c, [], async () => {
       await semearAdmin(c);
       await semearViradas(c);
       // vendas em vários dias, um pedido não pago e um perfil sem compra, para o JSON ter de tudo
@@ -504,7 +599,9 @@ PROVAS.push({
         novo[n] = (await grade(c, await dia(n))).bruto;
       novo.longo = (await grade(c, await dia(-3), 400)).bruto;
       // o corpo ANTIGO, no mesmo instante (a mesma transação): o rollback-manual
+      await restaurarSearchPath(c);
       await c.query(fx.rb);
+      await instalarRelogio(c);
       assert.equal((await catalogo(c, CRM)).hash, fx.h.vigente);
       const antigo = {};
       for (const n of [-1, -5, -40, -200, 0])
@@ -541,7 +638,7 @@ PROVAS.push({
   nome: "(2b) período que termina no FUTURO: mede até agora (os segmentos são os do período que termina hoje); no corpo antigo eram deslocados",
   corpo: async (c) => {
     montarCorpos();
-    await numaTransacao(c, [], async () => {
+    await numaTransacaoRelogio(c, [], async () => {
       await semearAdmin(c);
       await semearViradas(c);
       const h = await hoje(c);
@@ -551,7 +648,9 @@ PROVAS.push({
       const hojeSeg = (await grade(c, h)).bruto.segmentos;
       const futuroSeg = (await grade(c, await dia(3))).bruto.segmentos;
       assert.deepEqual(futuroSeg, hojeSeg);
+      await restaurarSearchPath(c);
       await c.query(fx.rb);
+      await instalarRelogio(c);
       const futuroAntigo = (await grade(c, await dia(3))).bruto.segmentos;
       assert.notDeepEqual(
         futuroAntigo,
@@ -566,7 +665,7 @@ PROVAS.push({
   nome: "(3) CONTROLE: o corpo ANTIGO (rollback-manual numa transação desfeita) REPROVA as provas do defeito, pela razão certa (asserção), e mostra o 1 x 2 e o 5 x 4",
   corpo: async (c) => {
     montarCorpos();
-    await numaTransacao(c, [fx.rb], async () => {
+    await numaTransacaoRelogio(c, [fx.rb], async () => {
       assert.equal((await catalogo(c, CRM)).hash, fx.h.vigente);
       for (const [nome, prova] of [
         ["1a (viradas)", prova1a],
@@ -598,7 +697,7 @@ PROVAS.push({
     });
     // fora da transação o corpo é o novo, e as provas passam
     assert.equal((await catalogo(c, CRM)).hash, fx.h.desta);
-    await numaTransacao(c, [], () => prova1b(c));
+    await numaTransacaoRelogio(c, [], () => prova1b(c));
   },
 });
 
@@ -629,9 +728,16 @@ PROVAS.push({
         total: 100,
         zap,
       });
+      // a compra de HOJE fica no MEIO entre a meia-noite de hoje (SP) e agora: sempre depois da meia-noite, por
+      // construção (nunca "agora", que no instante exato da meia-noite cairia no último dia do período de ontem).
+      const meio = (
+        await cc.query(
+          `SELECT ((now() - (public.fin__hoje()::timestamp AT TIME ZONE 'America/Sao_Paulo')) / 2)::text AS q`,
+        )
+      ).rows[0].q;
       await venda(cc, {
         nome: "Grade repetida",
-        quando: "0 seconds",
+        quando: meio,
         total: 300,
         zap,
       });
@@ -725,7 +831,7 @@ PROVAS.push({
       for (const p of provas) await mataMutante(c, nome, [stmt], p);
     // e o corpo novo INTEIRO passa em todas (o controle dos mutantes)
     for (const p of [viradas, prova1b, prova1d, periodoPassado])
-      await numaTransacao(c, [], () => p(c));
+      await numaTransacaoRelogio(c, [], () => p(c));
   },
 });
 
