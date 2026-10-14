@@ -1258,6 +1258,23 @@ const AppContent = () => {
     ],
   );
 
+  // Busca do topo (digitar, Enter, "Ver todos os resultados", sugestão). A
+  // barra aparece em quase toda tela, mas só a Home (e a /search, que é dona
+  // do próprio filtro) mostra a lista filtrada: buscar de outra tela leva a
+  // cliente à Home já com o termo. Isso acontece UMA vez — no primeiro termo
+  // a cliente já está na Home, e os seguintes só atualizam o termo, sem
+  // empurrar uma entrada de histórico por letra. Termo vazio só limpa.
+  const handleSearch = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      const telaAtual = currentViewRef.current;
+      if (query.trim() && telaAtual !== "home" && telaAtual !== "search") {
+        void handleNavigate("home");
+      }
+    },
+    [handleNavigate],
+  );
+
   useCacheWarmer();
   const { isSlow } = useNetworkAdaptive();
   const getFramerMotionDuration = useCallback(() => {
@@ -2174,9 +2191,27 @@ const AppContent = () => {
     saveCurrentScroll,
   ]);
 
-  // Clear search query when navigating to non-search views
+  // A busca é limpa quando a cliente TROCA de tela (sair da Home/da busca para
+  // outra), nunca a cada termo novo. Antes o efeito também olhava
+  // `searchQuery`: fora da Home, todo termo digitado era zerado na hora — o
+  // campo se esvaziava sozinho e nada acontecia. Quem busca fora da Home é
+  // levada à Home pelo `handleSearch`, que é onde a lista filtra.
   useEffect(() => {
-    if (currentView !== "search" && currentView !== "home" && searchQuery) {
+    if (currentView !== "search" && currentView !== "home") {
+      setSearchQuery("");
+    }
+  }, [currentView]);
+
+  // Só espaços fora da Home/da busca não é busca nem leva a lugar nenhum
+  // (`handleSearch` não navega): zera o campo, como sempre foi. Só toca em
+  // termo VAZIO de verdade — termo com letra nunca é apagado por aqui.
+  useEffect(() => {
+    if (
+      currentView !== "search" &&
+      currentView !== "home" &&
+      searchQuery &&
+      !searchQuery.trim()
+    ) {
       setSearchQuery("");
     }
   }, [currentView, searchQuery]);
@@ -3024,7 +3059,7 @@ const AppContent = () => {
               // complemento já digitados.
               hideSearch={["address-form", "checkout"].includes(currentView)}
               searchQuery={searchQuery}
-              onSearch={setSearchQuery}
+              onSearch={handleSearch}
               scrollProgress={scrollProgress}
             />
           </React.Suspense>
