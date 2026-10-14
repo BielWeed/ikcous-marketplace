@@ -186,6 +186,21 @@ function botaoFinalizar() {
   ) as HTMLButtonElement | undefined;
 }
 
+/** O `disabled` do DOM não protege quem chama o handler por outro caminho: o
+ * handler capturado dos props do React (mesmo padrão de
+ * checkout-compacto-e-cpf.test.tsx) prova a trava do SUBMIT. */
+function capturarOnClickFinalizar(botao: HTMLButtonElement): () => void {
+  const chaveProps = Object.keys(botao).find((k) =>
+    k.startsWith("__reactProps$"),
+  );
+  expect(chaveProps, "botão sem props do React (__reactProps$)").toBeDefined();
+  const props = (botao as unknown as Record<string, unknown>)[chaveProps!] as
+    | { onClick?: () => void }
+    | undefined;
+  expect(typeof props?.onClick, "botão sem onClick capturado").toBe("function");
+  return props!.onClick!;
+}
+
 function botaoPorTexto(texto: string) {
   return [...document.body.querySelectorAll("button")].find((b) =>
     b.textContent?.includes(texto),
@@ -396,6 +411,17 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
     // não manda a cliente para um caminho que não existe.
     expect(document.body.textContent).not.toContain("Esta forma de pagamento");
     expect(createOrder).not.toHaveBeenCalled();
+
+    // Quem chama o handler por fora do botão apagado também é barrado, com a
+    // frase da trava (e não a de "escolha pagamento pelo app").
+    const chamarHandlerPorFora = capturarOnClickFinalizar(botaoFinalizar()!);
+    await act(async () => {
+      chamarHandlerPorFora();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError.mock.calls[0][0]).toContain("só recebe pelo app");
 
     // A saída: tirar o cupom. O total volta a ter valor e o app volta.
     await act(async () => {
