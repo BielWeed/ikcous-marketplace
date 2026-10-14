@@ -333,6 +333,59 @@ describe("OrderDetailsView — a tela acompanha o pedido quando ele muda na list
       expect(hospedeiro.textContent).toContain(TEXTO_NAO_PAGUE);
     });
 
+    // A atualização OTIMISTA do hook: muda o status na lista sem mexer em
+    // `updatedAt`. Só o eco REAL do servidor (que grava `updated_at = NOW()`)
+    // avança a data.
+    const otimista: Order = { ...pedidoAguardando, status: "cancelled" };
+
+    it("b2 — a lista emite a otimista e depois uma busca velha com a MESMA data, e o cancelamento dá certo: a tela fica cancelada", async () => {
+      const terminar = await iniciarCancelamento();
+
+      await emitirLista([otimista]);
+      // busca que nasceu antes do cancelamento: pendente, mesma data
+      await emitirLista([{ ...pedidoAguardando }]);
+
+      await terminar(false);
+
+      expect(hospedeiro.textContent).toContain("Pedido cancelado");
+      expect(hospedeiro.textContent).toContain(TEXTO_NAO_PAGUE);
+      const botaoCancelar = Array.from(
+        hospedeiro.querySelectorAll("button"),
+      ).find((b) => b.textContent?.includes("Cancelar Pedido"));
+      expect(botaoCancelar).toBeUndefined();
+    });
+
+    it("b3 — só a otimista foi emitida e o cancelamento FALHA: o estado final NÃO é cancelado", async () => {
+      const terminar = await iniciarCancelamento();
+
+      await emitirLista([otimista]);
+
+      await terminar(true);
+
+      expect(hospedeiro.textContent).not.toContain("Pedido cancelado");
+      expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+      expect(temRetomarPagamento()).toBe(true);
+    });
+
+    it.each([
+      ["ilegível", "lixo"],
+      ["ausente", undefined],
+    ])(
+      "a versão emitida no meio com data %s não é aplicada, mesmo com conteúdo diferente",
+      async (_nome, data) => {
+        const terminar = await iniciarCancelamento();
+
+        await emitirLista([
+          { ...pedidoPago, updatedAt: data as unknown as string },
+        ]);
+
+        await terminar(false);
+
+        expect(hospedeiro.textContent).toContain("Pedido cancelado");
+        expect(hospedeiro.textContent).toContain(TEXTO_NAO_PAGUE);
+      },
+    );
+
     it("a lista emite no meio uma versão MAIS VELHA e o cancelamento falha: não regride a tela", async () => {
       const terminar = await iniciarCancelamento();
       await emitirLista([ecoMaisVelho]);

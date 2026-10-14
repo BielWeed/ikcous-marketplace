@@ -457,9 +457,22 @@ export function OrderDetailsView({
       const emitidoNoMeio =
         emitidoDuranteOCancelamentoRef.current as Order | null;
       emitidoDuranteOCancelamentoRef.current = null;
+      // Aqui a regra é MAIS ESTRITA que a do efeito: só vale versão com
+      // `updatedAt` ESTRITAMENTE mais novo que o da tela. A atualização
+      // otimista do hook (cancelado na lista, mesma data) e uma busca velha
+      // (pendente, mesma data) emitidas no meio têm a data da tela — "mesma
+      // data, conteúdo diferente ganha" (a regra do efeito, que serve ao
+      // cancelamento otimista e ao desfazer dele) faria a busca velha
+      // regredir a tela de "cancelado" para pedido aberto, e a otimista
+      // sozinha mostraria "cancelado" depois de um cancelamento que falhou.
+      // O eco REAL do servidor sempre avança a data
+      // (`update_order_status_atomic` grava `updated_at = NOW()`). Data
+      // ausente ou ilegível dá NaN, e `NaN >` nunca é verdade: não aplica.
       if (emitidoNoMeio) {
         setOrder((prev) =>
-          prev && prev.id === emitidoNoMeio.id
+          prev &&
+          prev.id === emitidoNoMeio.id &&
+          Date.parse(emitidoNoMeio.updatedAt) > Date.parse(prev.updatedAt)
             ? escolherVersaoDoPedido(prev, emitidoNoMeio)
             : prev,
         );
