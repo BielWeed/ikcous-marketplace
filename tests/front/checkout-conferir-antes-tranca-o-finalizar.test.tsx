@@ -259,10 +259,19 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
 
     // Confirma que caiu no caso certo antes de julgar o botão — senão um
     // teste que sempre passa (porque o painel nem apareceu) passaria oco.
+    // Esta cliente é CONVIDADA (useAuth sem usuário): desde 14/10/2026 o
+    // painel dela é o "Tentar de novo" (reenvio da mesma compra), não mais
+    // "Ver meus pedidos" — a busca que ele abre exige e-mail e número do
+    // pedido, que ela não tem. O botão Finalizar continua travado igual.
+    // O caso de quem TEM conta ficou em
+    // checkout-convidada-tenta-de-novo-a-mesma-compra.test.tsx.
     expect(document.querySelector('[role="alert"]')).not.toBeNull();
     expect(
-      document.querySelector('button[data-acao="conferir_antes"]'),
+      document.querySelector('button[data-acao="reenviar_mesma_compra"]'),
     ).not.toBeNull();
+    expect(
+      document.querySelector('button[data-acao="conferir_antes"]'),
+    ).toBeNull();
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
     expect(botaoFinalizar.disabled).toBe(true);
@@ -310,11 +319,12 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
     );
     await preencherEClicarFinalizar();
     expect(createOrder).toHaveBeenCalledTimes(1);
-    expect(document.body.textContent).toContain(
-      "O pedido pode ter sido criado",
-    );
+    // Convidada: a frase honesta é a do reenvio (não manda "conferir seus
+    // pedidos", que ela não tem como fazer) e o botão é "Tentar de novo".
+    expect(document.body.textContent).toContain("não sai em dobro");
+    expect(document.body.textContent).not.toContain("confira seus pedidos");
     expect(
-      document.querySelector('button[data-acao="conferir_antes"]'),
+      document.querySelector('button[data-acao="reenviar_mesma_compra"]'),
     ).not.toBeNull();
     const botao = localizarBotaoFinalizar()!;
     expect(botao.disabled).toBe(true);

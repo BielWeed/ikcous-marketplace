@@ -273,7 +273,16 @@ describe("CheckoutView — o comprador para de ler o erro cru do banco ao fechar
     // para trás quando o irmão deste teste (erro-de-pedido-nao-mostra-
     // texto-cru-do-banco.test.ts:120) já foi corrigido — este arquivo não
     // tinha sido atualizado junto.
-    expect(mensagemMostrada).toContain("Verifique se ele já apareceu");
+    //
+    // 14/10/2026: esta cliente é CONVIDADA (sem conta). "Verifique se ele já
+    // apareceu" a mandava a uma busca que exige e-mail e número do pedido, que
+    // ela não tem. Agora o toast diz o mesmo que o painel — a saída é
+    // "Tentar de novo", que reenvia a MESMA compra sem sair em dobro. Quem tem
+    // conta segue com "Verifique se ele já apareceu" (ver
+    // checkout-convidada-tenta-de-novo-a-mesma-compra.test.tsx).
+    expect(mensagemMostrada).toContain("Tentar de novo");
+    expect(mensagemMostrada).toContain("não sai em dobro");
+    expect(mensagemMostrada).not.toContain("Verifique se ele já apareceu");
     expect(alertSpy).not.toHaveBeenCalled();
   });
 
