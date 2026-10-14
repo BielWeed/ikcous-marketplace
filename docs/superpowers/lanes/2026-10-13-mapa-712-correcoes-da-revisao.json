@@ -1,0 +1,41 @@
+{
+  "plano": "mapa-712-correcoes-da-revisao",
+  "frentes": [
+    {
+      "nome": "mapa-worker",
+      "descricao": "worker do MapLibre empacotado (setWorkerUrl) + testes que nao dependem so do mock",
+      "posse": [
+        "src/components/ui/custom/AddressCardMap.tsx",
+        "tests/front/perfil-enderecos-mapa-por-cartao.test.tsx",
+        "tests/front/mapa-worker-empacotado.test.ts"
+      ]
+    },
+    {
+      "nome": "mapa-precache",
+      "descricao": "chunk do maplibre e worker fora do precache do service worker",
+      "posse": [
+        "vite.config.ts",
+        "tests/front/mapa-precache-sem-maplibre.test.ts"
+      ]
+    },
+    {
+      "nome": "mapa-css",
+      "descricao": "contraste, creditos sem corte e altura do estado vazio do cartao do mapa",
+      "posse": [
+        "src/components/ui/custom/address-card-map.css",
+        "tests/front/mapa-css-contrato.test.ts"
+      ]
+    },
+    {
+      "nome": "mapa-cabecalhos-e-comentarios",
+      "descricao": "teste que trava photon/openfreemap no connect-src e comentarios velhos do AddressList",
+      "posse": [
+        "tests/front/hospedagem-headers.test.ts",
+        "src/components/ui/custom/AddressList.tsx"
+      ]
+    }
+  ],
+  "liberados": {
+    "vite.config.ts": "mapa-precache"
+  }
+}

@@ -53,6 +53,66 @@ const CAMINHO_DAS_TELAS_DO_PAINEL = /\/src\/views\/admin\//;
 const TELA_PUBLICA_DO_LOGIN = /\/AdminLoginView\.tsx$/;
 const ARQUIVO_DO_LEITOR_ZXING = /^assets\/leitor-zxing-/;
 
+/**
+ * ALLOWLIST de CHUNKS OPCIONAIS SOB DEMANDA (decisão do dono Gabriel,
+ * 29/09/2026, em voz): chunks que a cliente só baixa quando um recurso
+ * específico é explicitamente usado — hoje, apenas o renderer de mapa
+ * vetorial (`maplibre-gl`), importado dinamicamente SÓ quando um mapa do
+ * cartão de endereço monta (Perfil › "Ver mais detalhes"). Têm orçamento
+ * PRÓPRIO em `.size-limit.cjs` (250 kB), o mesmo precedente do leitor
+ * zxing (400 kB) — e por isso saem da conta de `cliente`.
+ *
+ * A allowlist é de propósito RESTRITIVA (regex por nome de chunk, só o mapa):
+ * qualquer outro dinâmico continua contando como cliente. É FAIL-CLOSED —
+ * se o Rollup renomear o chunk (a estabilidade do nome vem do
+ * `dynamicImport("maplibre-gl")` de `AddressCardMap.tsx`), ele deixa de
+ * casar aqui, volta para `cliente`, e o teto de 550 kB reprova alto em vez
+ * de deixar bytes sem dono.
+ *
+ * O NOME é condição necessária, não suficiente (achado maior da revisão da
+ * PR #712, 13/10/2026): o chunk só vai para `opcional` se a cliente o alcança
+ * SOMENTE por `import()` dinâmico — ver `soDinamicoNoCliente`. Importado
+ * estaticamente por qualquer chunk que a cliente baixa, ele fica em
+ * `cliente`, com o nome que tiver.
+ *
+ * Exportada (assim como `ARQUIVO_DO_WORKER_DO_MAPA`) só para o teste cruzado com o
+ * precache do SW (`tests/front/portao-e-precache-concordam.test.ts`): o
+ * `globIgnores` do `vite.config.ts` tem de cobrir todo nome que este arquivo
+ * chama de "sob demanda".
+ */
+export const CHUNKS_OPCIONAIS: readonly RegExp[] = [/^assets\/maplibre-gl-/];
+
+/**
+ * ALLOWLIST do WORKER DO MAPA (decisão do dono, 12/10/2026): o MapLibre roda
+ * o render num Web Worker que o `?worker&url` do `AddressCardMap.tsx` faz o
+ * Vite empacotar à parte (~500 kB crus, ~116 kB brotli no build de
+ * 13/10/2026). O Vite o emite como ASSET do Rollup (`emitFile({type:
+ * "asset"})`, no `generateBundle` do plugin de worker), não como chunk: não
+ * tem `imports`/`dynamicImports`/`moduleIds` e por isso não entra no grafo
+ * acima — quem o carrega é o `new Worker(url)` do próprio MapLibre, só
+ * depois que um mapa monta. Grupo PRÓPRIO (`workerDoMapa`, 130 kB em
+ * `.size-limit.cjs`), nunca cliente/painel/opcional.
+ *
+ * Âncora nos dois lados e hash obrigatório (`[name]-[hash].js` do Vite; o
+ * hash é base64url): qualquer outro asset `.js` — inclusive o `.mjs` cru que
+ * um `?url` sozinho emitiria, ou o worker sem hash — conta em `cliente`
+ * (fail-closed: o teto de 550 kB reprova alto).
+ */
+export const ARQUIVO_DO_WORKER_DO_MAPA =
+  /^assets\/maplibre-gl-worker-[A-Za-z0-9_-]+\.js$/;
+
+/** Os ASSETS que este portão classifica: JS (`.js`/`.mjs`) sob `assets/`.
+ * Asset fora disso (CSS, wasm, imagem, `.map`, JS na raiz da saída) não é
+ * medido por este portão. Um asset JS que o BUNDLE emita em SUBPASTA de
+ * `assets/` entra aqui (vai para `cliente`), mas o `.size-limit.cjs` só lê o
+ * primeiro nível de `assets/` — o validador acusa "só na classificação" e
+ * reprova. Isso vale só para o que passa pelo bundle: arquivo COPIADO de
+ * `public/` não chega a este plugin. Em `public/assets/*.js` ele aparece no
+ * disco sem classificação e reprova ("só no disco"); em
+ * `public/assets/<subpasta>/*.js` fica fora deste portão, como já ficava
+ * antes desta mudança. */
+const ASSET_JS_DA_ENTREGA = /^assets\/.+\.m?js$/;
+
 /** Forma mínima que a classificação usa — não é `Rollup.OutputChunk` inteiro,
  * só o que o grafo de alcançabilidade lê. Mantém `classificarBundle` pura e
  * testável com um bundle falso, sem montar um chunk de verdade. */
@@ -66,9 +126,16 @@ export interface ChunkParaClassificar {
 }
 
 export interface ClassificacaoDoBundle {
-  readonly versao: 1;
+  /** Versão 2 (29/09/2026): acrescenta `opcional` — chunks sob demanda com
+   * teto próprio (allowlist `CHUNKS_OPCIONAIS`). Versão 3 (13/10/2026):
+   * acrescenta `workerDoMapa` (allowlist `ARQUIVO_DO_WORKER_DO_MAPA`).
+   * Versões anteriores não têm os grupos novos e são recusadas pelo
+   * validador — fail-closed de ponta a ponta. */
+  readonly versao: 3;
   readonly cliente: readonly string[];
   readonly painel: readonly string[];
+  readonly opcional: readonly string[];
+  readonly workerDoMapa: readonly string[];
 }
 
 function ehModuloDoPainel(moduleId: string): boolean {
@@ -100,10 +167,21 @@ export function ehFronteiraDoPainel(
  * em si também não entra em `cliente` (só é alcançado depois do `is_admin`
  * responder, nenhum visitante o baixa por conta própria). Tudo alcançado vira
  * `cliente`; o resto vira `painel`. `leitor-zxing-*` fica de fora dos dois —
- * tem orçamento próprio em `.size-limit.cjs` (C2.5).
+ * tem orçamento próprio em `.size-limit.cjs` (C2.5). O mesmo vale, desde
+ * 29/09/2026, para os chunks da allowlist `CHUNKS_OPCIONAIS` (só o
+ * `maplibre-gl-*` hoje): saem de `cliente`/`painel` e vão para `opcional`,
+ * com teto próprio — quem decide a allowlist é este arquivo, auditável —
+ * desde que a cliente só os alcance por `import()` dinâmico
+ * (`soDinamicoNoCliente`, 13/10/2026).
+ *
+ * `assets` são os `fileName` dos ASSETS do mesmo output (13/10/2026): só os
+ * JS de `assets/` contam; o worker do mapa vai para `workerDoMapa`, qualquer
+ * outro JS para `cliente`. Obrigatório (sem padrão vazio) para que quem
+ * chama não esqueça os assets calado.
  */
 export function classificarBundle(
   chunks: readonly ChunkParaClassificar[],
+  assets: readonly string[],
   ehFronteira: (
     chunk: Pick<ChunkParaClassificar, "isDynamicEntry" | "moduleIds">,
   ) => boolean = ehFronteiraDoPainel,
@@ -129,21 +207,82 @@ export function classificarBundle(
       if (!alcancado.has(proximo)) fila.push(proximo);
     }
   }
+  const ehSoDinamicoNoCliente = soDinamicoNoCliente(chunks, alcancado);
   const cliente: string[] = [];
   const painel: string[] = [];
+  const opcional: string[] = [];
+  const workerDoMapa: string[] = [];
   for (const chunk of chunks) {
     if (ARQUIVO_DO_LEITOR_ZXING.test(chunk.fileName)) continue;
+    if (
+      CHUNKS_OPCIONAIS.some((padrao) => padrao.test(chunk.fileName)) &&
+      ehSoDinamicoNoCliente(chunk)
+    ) {
+      opcional.push(chunk.fileName);
+      continue;
+    }
     (alcancado.has(chunk.fileName) ? cliente : painel).push(chunk.fileName);
+  }
+  for (const asset of assets) {
+    if (!ASSET_JS_DA_ENTREGA.test(asset)) continue;
+    if (ARQUIVO_DO_LEITOR_ZXING.test(asset)) continue;
+    (ARQUIVO_DO_WORKER_DO_MAPA.test(asset) ? workerDoMapa : cliente).push(
+      asset,
+    );
   }
   cliente.sort();
   painel.sort();
-  return { versao: 1, cliente, painel };
+  opcional.sort();
+  workerDoMapa.sort();
+  return { versao: 3, cliente, painel, opcional, workerDoMapa };
+}
+
+/**
+ * Alcançabilidade do `opcional` (achado maior da revisão da PR #712,
+ * 13/10/2026): só o nome não basta — se o `import()` do `AddressCardMap.tsx`
+ * virasse `import` estático, o chunk do maplibre passaria a viajar com a
+ * rota (ou a entrada) de todo visitante e a allowlist por nome o esconderia
+ * do teto de 550 kB. Um chunk é "só dinâmico no cliente" quando:
+ *   - não é entrada (a página carrega a entrada sempre);
+ *   - a cliente o alcança (`alcancado`);
+ *   - NENHUM chunk que a cliente baixa o tem em `imports` (estático). Basta
+ *     um: o estático o carrega junto com quem importa — inclusive num ciclo
+ *     com outro pedaço do próprio mapa (conservador: conta em `cliente`).
+ * Alcançado só atrás da fronteira do painel não é "da cliente": segue a
+ * regra geral e vai para `painel`. Estático a partir de um chunk do PAINEL
+ * não conta: para a cliente ele segue sob demanda.
+ *
+ * As três juntas já implicam que algum chunk da cliente o pede por
+ * `dynamicImports` (a busca só chega a quem não é entrada por uma aresta, e
+ * a estática está excluída). A conferência de `dinamicoNoCliente` fica mesmo
+ * assim, como guarda DEFENSIVA, redundante por construção: se a busca de
+ * `classificarBundle` mudar um dia, ela ainda exige a aresta dinâmica.
+ */
+function soDinamicoNoCliente(
+  chunks: readonly ChunkParaClassificar[],
+  alcancado: ReadonlySet<string>,
+): (chunk: ChunkParaClassificar) => boolean {
+  const estaticoNoCliente = new Set<string>();
+  const dinamicoNoCliente = new Set<string>();
+  for (const chunk of chunks) {
+    if (!alcancado.has(chunk.fileName)) continue;
+    for (const nome of chunk.imports) estaticoNoCliente.add(nome);
+    for (const nome of chunk.dynamicImports) dinamicoNoCliente.add(nome);
+  }
+  return (chunk) =>
+    !chunk.isEntry &&
+    alcancado.has(chunk.fileName) &&
+    // DEFENSIVA (redundante por construção, ver a docstring): não removê-la.
+    dinamicoNoCliente.has(chunk.fileName) &&
+    !estaticoNoCliente.has(chunk.fileName);
 }
 
 /**
  * Plugin build-only: no `generateBundle`, classifica os chunks JS do output
  * (Rollup já resolveu `imports`/`dynamicImports`/`moduleIds` nesse ponto) e
- * grava o resultado FORA da entrega — nunca em `dist`/`dist-test`, que
+ * os assets JS (o worker do mapa: o plugin de worker do Vite, que é do
+ * núcleo e roda antes dos plugins do usuário, já o emitiu no `generateBundle`
+ * dele) e grava o resultado FORA da entrega — nunca em `dist`/`dist-test`, que
  * `scripts/buildStore.mjs` valida e que é servido em produção. O caminho
  * inclui o nome da saída ("dist" ou "dist-test") porque database e fixture
  * podem rodar em sequência na mesma máquina e não podem compartilhar arquivo.
@@ -161,7 +300,8 @@ export function portaoDividido(opcoes: {
     name: "portao-dividido-tamanho",
     apply: "build",
     async generateBundle(_options, bundle) {
-      const chunks: ChunkParaClassificar[] = Object.values(bundle)
+      const itens = Object.values(bundle);
+      const chunks: ChunkParaClassificar[] = itens
         .filter((item): item is Rollup.OutputChunk => item.type === "chunk")
         .map((chunk) => ({
           fileName: chunk.fileName,
@@ -171,7 +311,10 @@ export function portaoDividido(opcoes: {
           imports: chunk.imports,
           dynamicImports: chunk.dynamicImports,
         }));
-      const classificacao = classificarBundle(chunks);
+      const assets = itens
+        .filter((item): item is Rollup.OutputAsset => item.type === "asset")
+        .map((asset) => asset.fileName);
+      const classificacao = classificarBundle(chunks, assets);
       await fs.mkdir(path.dirname(destino), { recursive: true });
       await fs.writeFile(
         destino,

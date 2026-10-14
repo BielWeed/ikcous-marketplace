@@ -1,0 +1,28 @@
+{
+  "plano": "mapa-712-onda2-portao-e-csp",
+  "frentes": [
+    {
+      "nome": "portao-worker",
+      "descricao": "portao de tamanho: grupo proprio do worker do mapa (<=130 kB), esquema v3, alcancabilidade e teste cruzado com o precache",
+      "posse": [
+        "scripts/portaoDividido.ts",
+        "scripts/validarPortaoDeTamanho.cjs",
+        "scripts/validarPortaoDeTamanho.d.cts",
+        ".size-limit.cjs",
+        "tests/front/portao-dividido-classificacao.test.ts",
+        "tests/front/portao-de-tamanho-mede-por-arquivo.test.ts",
+        "tests/front/portao-e-precache-concordam.test.ts"
+      ]
+    },
+    {
+      "nome": "csp-sem-osm",
+      "descricao": "tira a origem tile.openstreetmap.org (sem consumidor) do img-src e ajusta o teste de cabecalhos",
+      "posse": ["vercel.json", "tests/front/hospedagem-headers.test.ts"]
+    }
+  ],
+  "liberados": {
+    "vercel.json": "csp-sem-osm",
+    "scripts/portaoDividido.ts": "portao-worker",
+    ".size-limit.cjs": "portao-worker"
+  }
+}
