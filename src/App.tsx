@@ -8,7 +8,10 @@ import React, {
 
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { applyThemeColor, branding } from "@/config/branding";
-import { destinoPosLogin } from "@/lib/destinoPosLogin";
+import {
+  destinoPosLogin,
+  painelSemContaPedeEntrada,
+} from "@/lib/destinoPosLogin";
 import {
   CHAVE_MOTIVO_DE_RECARGA,
   atualizacaoTrocouDeBuild,
@@ -976,7 +979,16 @@ const AppContent = () => {
         targetView = "auth";
       }
 
+      // Painel pedido SEM sessão: vai para a tela de entrada (o `requested`
+      // gravado no pushState abaixo faz `handleAuthSuccess` devolvê-la ao
+      // painel) em vez de cair em silêncio na vitrine. É `else if` de
+      // propósito: a guarda de admin logo abaixo usa `view` e mandaria
+      // para a home também quem acabou de ser mandada ao login.
       if (
+        painelSemContaPedeEntrada(view, { authLoading: isAuthL, user: usr })
+      ) {
+        targetView = "auth";
+      } else if (
         view.startsWith("admin") &&
         view !== "admin-login" &&
         !isAuthL &&
@@ -1824,6 +1836,22 @@ const AppContent = () => {
           targetView = "auth";
           if (globalThis.location.pathname !== "/auth") {
             globalThis.history.replaceState({ view: "auth" }, "", "/auth");
+          }
+        }
+
+        // Painel pedido SEM sessão (o toque no aviso de "pedido novo" abre
+        // `/admin-orders` numa janela nova): tela de entrada com o pedido
+        // guardado, não a vitrine. Só olha a AUSÊNCIA de sessão — quem está
+        // logada e não é admin cai na guarda logo abaixo, como sempre caiu.
+        if (painelSemContaPedeEntrada(targetView, { authLoading, user })) {
+          const pedida = targetView;
+          targetView = "auth";
+          if (globalThis.location.pathname !== "/auth") {
+            globalThis.history.replaceState(
+              { view: "auth", requested: pedida },
+              "",
+              "/auth",
+            );
           }
         }
 
