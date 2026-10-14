@@ -18,7 +18,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *   atrás das outras abas).
  * - Tempo real: um canal em `marketplace_orders` enquanto a tela está ativa;
  *   rajada de eventos vira UMA recarga (espera de 1,5 s), e aba escondida só
- *   marca "sujo" — recarrega quando volta a ficar visível.
+ *   marca "sujo" — recarrega quando volta a ficar visível. Sem evento, voltar
+ *   a ficar visível também recarrega se o retrato tem mais de 30 s (o "Hoje"
+ *   de uma tela aberta de um dia para o outro).
  */
 
 interface RetratoDoPainel {
@@ -235,10 +237,18 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     };
 
     const aoMudarVisibilidade = () => {
-      if (document.visibilityState === "visible" && sujoEscondido) {
+      if (document.visibilityState !== "visible") return;
+      if (sujoEscondido) {
+        // Chegou pedido enquanto estava escondida: uma recarga forçada só.
         sujoEscondido = false;
         recarregarJa();
+        return;
       }
+      // Sem evento de pedido, a tela aberta de manhã ainda mostra o "Hoje" de
+      // ontem. Voltar a ficar visível busca de novo se o retrato é velho
+      // (`carregar(false)` respeita o frescor de 30 s e a busca em voo), a
+      // menos que uma recarga por evento já esteja marcada.
+      if (!espera) void carregar(false);
     };
 
     const canal = supabase
