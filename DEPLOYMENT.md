@@ -334,13 +334,18 @@ para isto:
   ligar. `testar` grava o resultado e reconcilia (liga se tudo passou, desliga se falhou). Chave
   de conta de TESTE conecta igualzinho à de produção, então o teste lê as **marcas da conta** em
   `GET /users/me` (que NÃO devolve `live_mode`): `tags` com `test_user`, e-mail `@testuser.com`
-  ou token `TEST-`. Com marca de teste a resposta traz `aviso`: sem `MP_SANDBOX_PAYER_EMAIL`
-  (loja de verdade) o texto é "Essas chaves são de TESTE. Suas clientes não vão conseguir
-  pagar..." — em `salvar` (inclusive na primeira gravação), `testar` e retomar —; com
-  `MP_SANDBOX_PAYER_EMAIL` (modo de teste declarado) fica o aviso curto "Chave de TESTE: o PIX não
-  vai receber dinheiro de verdade". **Só avisa:** `pagamento_online` não muda por causa disso. Sem
-  marca nenhuma na resposta (sem `tags`, formato inesperado) não há aviso — a edge nunca afirma o
-  que não leu. O e-mail devolvido pelo Mercado Pago não é guardado nem registrado em log;
+  ou token `TEST-`. Sem `MP_SANDBOX_PAYER_EMAIL` (loja de verdade) conta de teste vira a falta
+  `chave_de_teste` em `faltando`: o PIX **não liga** — e **desliga** se estava ligado, na hora em
+  que alguém testa ou salva credencial nova —, retomar dá `409` com a falta, e o `aviso` diz
+  "Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO ... O PIX
+  fica desligado até lá." (motivo: com chave de teste e e-mail real o `criar-pagamento` recusa toda
+  cobrança). Com `MP_SANDBOX_PAYER_EMAIL` (modo de teste declarado, ex.: a loja de
+  desenvolvimento) nada muda: o PIX liga e fica o aviso curto "Chave de TESTE: o PIX não vai
+  receber dinheiro de verdade". **Só o reconhecimento positivo bloqueia:** produção, sem marca
+  (sem `tags`, formato inesperado) e modo declarado nunca viram falta, e `ler` nunca liga nem
+  desliga nada. **Antes de publicar:** loja que usa chave de teste de propósito precisa do segredo
+  `MP_SANDBOX_PAYER_EMAIL` no Supabase, senão perde o PIX na próxima vez que alguém testar ou
+  salvar as chaves. O e-mail devolvido pelo Mercado Pago não é guardado nem registrado em log;
 - **`ligar_pix`** virou **retomar**: tira a pausa e reconcilia; faltando qualquer chave ou o
   teste, `409` com o recado do que falta e nada gravado;
 - **`desligar_pix`** virou **pausar** e é sempre permitido (desligar é o lado seguro): apaga
