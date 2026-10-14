@@ -12,11 +12,11 @@ import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
-import { escolherVersaoDoPedido } from "@/lib/versao-do-pedido";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { supabase } from "@/lib/supabase";
 import {
   type LinhaDevolucaoDoCliente,
@@ -25,6 +25,7 @@ import {
   textoDevolucao,
 } from "@/lib/texto-estorno-do-cliente";
 import { cn, formatCurrency } from "@/lib/utils";
+import { escolherVersaoDoPedido } from "@/lib/versao-do-pedido";
 import type {
   Order,
   OrderItem,
@@ -1429,22 +1430,28 @@ export function OrderDetailsView({
           {/* Laudo 0109 (B2): segunda chance do comprovante — ver o
               comentário do handleResendReceipt. Fora do bloco do cancelar
               de propósito: o reenvio faz sentido em QUALQUER estágio do
-              pedido, inclusive entregue ou cancelado. */}
-          <button
-            onClick={handleResendReceipt}
-            disabled={isResendingReceipt}
-            className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100 disabled:opacity-50"
-          >
-            <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
-              {isResendingReceipt ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Mail className="size-4" />
-              )}
-            </span>
-            {isResendingReceipt ? "Reenviando…" : "Reenviar comprovante"}
-            <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
-          </button>
+              pedido, inclusive entregue ou cancelado — MAS só quando o
+              e-mail que a edge mandaria é o comprovante de verdade (ver
+              `podeReenviarComprovante`): com PIX online ainda aguardando,
+              o toque gastava a única vaga de e-mail do pedido com o texto
+              de "aguardando" e o de "pago" nunca mais saía. */}
+          {podeReenviarComprovante(order) && (
+            <button
+              onClick={handleResendReceipt}
+              disabled={isResendingReceipt}
+              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100 disabled:opacity-50"
+            >
+              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+                {isResendingReceipt ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Mail className="size-4" />
+                )}
+              </span>
+              {isResendingReceipt ? "Reenviando…" : "Reenviar comprovante"}
+              <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
+            </button>
+          )}
 
           {/* Devolução ou troca (CDC art. 49 e Decreto 7.962/2013: o cliente
               desiste pelo MESMO canal da compra). A linha só existe quando o
