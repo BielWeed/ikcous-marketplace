@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { tentarDeNovoAbaQueNaoBaixou } from "@/lib/recarga-de-aba-que-falhou";
 import { ehErroDeChunk } from "@/lib/recuperacao-chunk";
 import { RefreshCcw, WifiOff } from "lucide-react";
-import { Component } from "react";
+import { Component, createRef } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 
 interface Props {
@@ -18,7 +18,7 @@ interface State {
   showDetails: boolean;
   /** Chunk: o que a última tentativa provou — a frase só fala de conexão
    * quando a rede de fato está ruim. */
-  chunkAviso: "nenhum" | "sem-rede" | "esgotado";
+  chunkAviso: "nenhum" | "sem-rede" | "esgotado" | "pagina-ficou";
   verificando: boolean;
 }
 
@@ -57,18 +57,24 @@ export class LocalErrorBoundary extends Component<Props, State> {
     this.setState({ verificando: true });
     const resultado = await tentarDeNovoAbaQueNaoBaixou();
     // "pagina-ficou": a página continua viva depois do prazo (aviso do
-    // navegador recusado, ou recarga lenta) — o botão volta e a frase não
-    // muda. A recarga que acontece de fato nunca chega aqui.
-    this.setState({
-      verificando: false,
-      chunkAviso:
-        resultado === "esgotado"
-          ? "esgotado"
-          : resultado === "sem-rede"
-            ? "sem-rede"
-            : "nenhum",
-    });
+    // navegador recusado, ou recarga lenta) — o botão volta, e a frase passa
+    // a dizer "ainda carregando" porque uma recarga pode estar a caminho
+    // (a guarda não muda). A recarga que acontece de fato nunca chega aqui.
+    this.setState({ verificando: false, chunkAviso: resultado });
   };
+
+  /** O aviso de chunk, para levar o foco quando o botão some ("esgotado"):
+   * sem isso o foco do teclado/leitor de tela cairia no vazio. */
+  private readonly avisoRef = createRef<HTMLDivElement>();
+
+  public componentDidUpdate(_props: Props, anterior: State) {
+    if (
+      this.state.chunkAviso === "esgotado" &&
+      anterior.chunkAviso !== "esgotado"
+    ) {
+      this.avisoRef.current?.focus();
+    }
+  }
 
   private handleReset = () => {
     this.setState({
@@ -102,25 +108,35 @@ export class LocalErrorBoundary extends Component<Props, State> {
           chunkAviso === "sem-rede" ||
           (typeof navigator !== "undefined" && navigator.onLine === false);
         const esgotado = chunkAviso === "esgotado";
+        // Cores só por tokens do tema: a loja pode estar em tema claro
+        // (cores fixas de tema escuro davam contraste ~1,5:1 sobre branco).
         return (
           <div
+            ref={this.avisoRef}
+            tabIndex={-1}
             role="alert"
-            className="flex w-full flex-col items-center justify-center gap-4 p-6 text-center"
+            className="flex w-full flex-col items-center justify-center gap-4 p-6 text-center outline-none"
           >
-            <WifiOff className="size-8 text-amber-400" aria-hidden="true" />
-            <p className="max-w-xs text-sm leading-relaxed text-zinc-300">
+            <WifiOff
+              className="size-8 text-amber-600 dark:text-amber-400"
+              aria-hidden="true"
+            />
+            <p className="max-w-xs text-sm leading-relaxed text-foreground">
               Não conseguimos carregar esta tela.{" "}
               {esgotado
-                ? "Feche e abra o app de novo."
+                ? "Feche e abra o app de novo (ou recarregue a página)."
                 : semRede
                   ? "Verifique sua conexão."
-                  : "Toque em Tentar de novo."}
+                  : chunkAviso === "pagina-ficou"
+                    ? "Ainda carregando… se nada mudar, use o botão de novo."
+                    : "Use o botão Tentar de novo."}
             </p>
             {!esgotado && (
               <Button
+                variant="outline"
                 onClick={this.handleTentarDeNovoChunk}
                 disabled={verificando}
-                className="h-12 rounded-full bg-white px-8 font-bold tracking-wide text-black hover:bg-zinc-200"
+                className="h-12 rounded-full px-8 font-bold tracking-wide"
               >
                 <RefreshCcw
                   className={`mr-2 size-4 ${verificando ? "animate-spin" : ""}`}

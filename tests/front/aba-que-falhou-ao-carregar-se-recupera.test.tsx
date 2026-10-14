@@ -31,7 +31,11 @@ const FALHA_DE_CHUNK =
 
 const TELA_NAO_BAIXOU = "Não conseguimos carregar esta tela.";
 const FRASE_DE_REDE = "Verifique sua conexão.";
-const FRASE_FECHE_E_ABRA = "Feche e abra o app de novo.";
+const FRASE_FECHE_E_ABRA =
+  "Feche e abra o app de novo (ou recarregue a página).";
+const FRASE_PRIMEIRA_VEZ = "Use o botão Tentar de novo.";
+const FRASE_AINDA_CARREGANDO =
+  "Ainda carregando… se nada mudar, use o botão de novo.";
 
 const Tela = () => <div>favoritos carregados</div>;
 
@@ -231,11 +235,33 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     await montarPagina();
 
     expect(hospedeiro.textContent).toContain(TELA_NAO_BAIXOU);
-    expect(hospedeiro.textContent).toContain("Toque em Tentar de novo.");
+    expect(hospedeiro.textContent).toContain(FRASE_PRIMEIRA_VEZ);
     expect(hospedeiro.textContent).not.toContain(FRASE_DE_REDE);
     expect(hospedeiro.textContent).not.toContain("Falha Operacional");
     expect(hospedeiro.textContent).not.toContain("bloco de controle");
     expect(botaoPorTexto("Tentar de novo")).toBeDefined();
+  });
+
+  it("o aviso usa so cores do tema (legivel no tema claro): nada de cores fixas de tema escuro", async () => {
+    definirOnLine(true);
+
+    await montarPagina();
+
+    const html = hospedeiro.innerHTML;
+    for (const fixa of [
+      "text-zinc-",
+      "bg-white",
+      "text-black",
+      "hover:bg-zinc",
+    ]) {
+      expect(html).not.toContain(fixa);
+    }
+    const frase = hospedeiro.querySelector("p");
+    expect(frase?.className).toContain("text-foreground");
+    // Botao do estilo padrao do projeto com borda (variante outline).
+    const botao = botaoPorTexto("Tentar de novo");
+    expect(botao?.className).toMatch(/\bborder\b/);
+    expect(botao?.className).toContain("bg-background");
   });
 
   it("rede boa: 'Tentar de novo' RECARREGA a pagina, sem gastar o orcamento de versao, e a aba carrega", async () => {
@@ -308,6 +334,25 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
   });
 
+  it("quando o botao some ('feche e abra'), o foco vai para o proprio aviso", async () => {
+    definirOnLine(true);
+    instalarSondaDeRede(true);
+    await montarPagina();
+    for (let i = 0; i < MAX_RECARGAS_DE_ABA_QUE_FALHOU; i++) {
+      await tocarEmTentarDeNovo();
+      await recarregarPagina();
+    }
+    // O foco estava no botao que a cliente tocou.
+    botaoPorTexto("Tentar de novo")?.focus();
+    expect(document.activeElement?.tagName).toBe("BUTTON");
+
+    await tocarEmTentarDeNovo();
+
+    const aviso = hospedeiro.querySelector('[role="alert"]');
+    expect(aviso).not.toBeNull();
+    expect(document.activeElement).toBe(aviso);
+  });
+
   it("lojista CANCELA o aviso do navegador: o botao volta depois do prazo, mas a recarga continua gasta", async () => {
     definirOnLine(true);
     instalarSondaDeRede(true);
@@ -336,7 +381,10 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     // Custo aceito: o prazo NAO consegue separar "cancelou" de "esta lenta",
     // entao nunca devolve a reserva - cancelar o aviso gasta 1 recarga.
     expect(recargasGastas()).toBe(1);
-    expect(hospedeiro.textContent).toContain("Toque em Tentar de novo.");
+    // Uma recarga pode estar a caminho (3G lento): a frase nao manda "tocar"
+    // como se nada tivesse acontecido, e nao culpa a rede.
+    expect(hospedeiro.textContent).toContain(FRASE_AINDA_CARREGANDO);
+    expect(hospedeiro.textContent).not.toContain(FRASE_PRIMEIRA_VEZ);
     expect(hospedeiro.textContent).not.toContain(FRASE_DE_REDE);
   });
 
