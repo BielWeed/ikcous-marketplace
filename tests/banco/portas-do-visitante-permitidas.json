@@ -511,8 +511,8 @@
       "executa": ["authenticated"],
       "tipo": "volatil",
       "secdef": true,
-      "situacao": "tolerada",
-      "porque": "So o painel de avaliacoes usa; o visitante foi fechado em 14/10/2026 (migration 20261221000000); o corpo ainda nao checa admin (follow-up: exigir is_admin no corpo)."
+      "situacao": "logado",
+      "porque": "Media e contagens das avaliacoes, so o painel do lojista usa: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin() (papel do JWT ou do auth.users, e service_role) e levanta excecao para conta logada comum (migration 20261222000000); o visitante nao a executa (fechada pela 20261221000000)."
     },
     {
       "funcao": "public.get_segmented_push_count(p_segment text, p_min_ltv numeric, p_days_inactive integer)",
