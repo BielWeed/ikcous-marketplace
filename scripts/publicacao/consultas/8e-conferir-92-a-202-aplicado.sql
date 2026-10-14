@@ -22,12 +22,13 @@
 -- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
 -- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
 -- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
--- apply da sucessora. Hoje são três funções (quatro migrations), cada uma POR SI (função independente:
+-- apply da sucessora. Hoje são três funções (cinco migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo);
---   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável).
+--   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável)
+--                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista).
 -- CADEIA (decidido em 14/10/2026, quando `painel_inicio` ganhou a SEGUNDA sucessora): o CTE
 -- `sucessoras` guarda TODOS os corpos intermediários e o final de cada função (várias linhas por
 -- função, uma por migration), nunca só o último — uma loja parada no intermediário (a 12, antes da
@@ -121,6 +122,7 @@ WITH corpos AS (
     ('painel_inicio', 'f11d22d076c59ab54d1beb280954dd15', '20261212000000'),
     ('get_admin_analytics_v2', '0a5f8c75bbeeda3777a6a7326a0e281c', '20261214000000'),
     ('crm_visao', 'c33073503fccc6caa5f1085265501eae', '20261227000000'),
+    ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),
     ('painel_inicio', 'ad5620273997ba9266f240f272bf399b', '20261228000000')
 ), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),

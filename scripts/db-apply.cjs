@@ -1556,6 +1556,34 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql":
+    [
+      {
+        // A grade do CRM mede a recência do mesmo instante da lista (14/10/2026): a âncora do período
+        // (`v_fim_ts`) passa a ser o MENOR entre a meia-noite de amanhã e agora, e as QUATRO chamadas que a
+        // recebem (crm__vendas, crm__clientes_rfm, crm__pedidos_nao_pagos, crm__nunca_comprou) seguem com ela.
+        // Sem esta entrada a migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo
+        // VIVO (pg_get_functiondef, comentários incluídos): a linha nova aparece UMA vez (a antiga, sem o
+        // LEAST, não casa com ela); cada uma das quatro chamadas aparece UMA vez com a âncora (uma a menos é
+        // chamada que voltou a usar outra âncora); a taxa da turma e as duas travas de admin da 20261227000000
+        // e da 20261199000000 sobrevivem à troca.
+        funcao: "crm_visao",
+        esperado: [
+          {
+            texto:
+              "v_fim_ts := LEAST(((p_fim + 1)::timestamp AT TIME ZONE 'America/Sao_Paulo'), now());",
+            vezes: 1,
+          },
+          { texto: "public.crm__vendas(v_fim_ts)", vezes: 1 },
+          { texto: "public.crm__clientes_rfm(v_fim_ts)", vezes: 1 },
+          { texto: "public.crm__pedidos_nao_pagos(v_fim_ts)", vezes: 1 },
+          { texto: "public.crm__nunca_comprou(v_fim_ts)", vezes: 1 },
+          { texto: "ELSE LEAST(t.total,", vezes: 1 },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   "20261229000000_o_endereco_da_compra_fica_no_pedido.sql": [
     {
       // O endereço da compra fica no pedido (14/10/2026): o bloco 6-bis copia o endereço da conta para

@@ -446,6 +446,22 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   7 linhas; **não mede a ACL**), a "prova de objetos" do lote `20261227000000` + `20261228000000`. Mesmo desenho do
   portão 26: rol exato nos estados (antes, depois, só uma das duas), um negativo por linha, mutantes do texto das
   consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
+- **grade do CRM (`a-grade-do-crm-mede-a-recencia-viva.cjs`, via `rodar-isolado.cjs`)**: a migration `20261232000000`
+  (`crm_visao`: a grade de segmentos mede a recência até o MESMO instante da lista, `LEAST(meia-noite de amanhã,
+  now())`), por cima da `20261227000000` (**só pode ser aplicada depois dela**). Cada caso parte do corpo da 27 e
+  reproduz o defeito (grade novos 1 / hibernando 5 contra lista novos 2 / hibernando 4: vermelho no corpo vigente,
+  verde no novo): cada virada (29/30/31, 59/60/61, 119/120/121, 239/240/241 dias), o conjunto de 12 compras, as
+  outras três chamadas (`crm__vendas`, `crm__pedidos_nao_pagos`, `crm__nunca_comprou`), período que NÃO termina hoje
+  com o JSON idêntico ao do corpo antigo, resto do corpo igual byte a byte fora da troca, ACL e travas de admin, rollback
+  com o `prosrc` da 27, pré-voo que recusa sem escrever, dois aplicadores ao mesmo tempo e mutantes vermelhos. O
+  relógio não é injetado: tudo é montado em torno do `now()` real, numa transação sempre desfeita. **Não prova** a
+  IKCOUS nem a Savy.
+- **portão da grade do CRM (`a-grade-do-crm-mede-a-recencia-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `33a-conferir-grade-do-crm-aplicado` (DEPOIS, 5 linhas) e `33b-antes-grade-do-crm-corpo-vigente` (ANTES, 4 linhas;
+  **não mede a ACL**), a "prova de objetos" do lote `20261232000000`. Rol exato (antes, depois, sem a 27, função
+  ausente), um negativo por linha, o veredito do `conferir-banco.cjs`, mutantes do texto das consultas vermelhos; a
+  `33b` com o corpo da 20261199 reprova (ordem errada). A `33m` é medição de rol aberto (só agregado). **Não prova**
+  a IKCOUS nem a Savy.
 - **endereço da compra no pedido (`endereco-no-pedido-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261229000000` (`create_marketplace_order_v23` e `_v24` copiam o endereço da conta para
   `customer_data.address` no instante da compra) pelo caminho real do checkout, nas duas funções. Cada caso parte

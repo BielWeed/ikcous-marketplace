@@ -80,6 +80,9 @@ on:
       - "scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql"
       - "scripts/publicacao/consultas/30a-conferir-numeros-do-painel-aplicado.sql"
       - "scripts/publicacao/consultas/30b-antes-numeros-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/33a-conferir-grade-do-crm-aplicado.sql"
+      - "scripts/publicacao/consultas/33b-antes-grade-do-crm-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/33m-medir-grade-do-crm.sql"
       - "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql"
       - "scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql"
       - "scripts/publicacao/consultas/28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro.sql"
@@ -136,6 +139,9 @@ on:
       - "scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql"
       - "scripts/publicacao/consultas/30a-conferir-numeros-do-painel-aplicado.sql"
       - "scripts/publicacao/consultas/30b-antes-numeros-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/33a-conferir-grade-do-crm-aplicado.sql"
+      - "scripts/publicacao/consultas/33b-antes-grade-do-crm-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/33m-medir-grade-do-crm.sql"
       - "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql"
       - "scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql"
       - "scripts/publicacao/consultas/28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro.sql"
@@ -618,6 +624,21 @@ jobs:
       - name: Prova viva do portao do endereco da compra no pedido (consultas 31a e 31b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/endereco-no-pedido-portao-viva.cjs
+      # A grade do CRM mede a recencia do MESMO instante da lista (migration 20261232, numeros; cacada de 14/10/2026): a grade de
+      # segmentos (crm_visao) media cada cliente ate a meia-noite de amanha e a lista (crm_clientes) ate agora; a ancora passa a
+      # ser o menor entre as duas. COMPORTAMENTO com os papeis reais: cada virada (29/30/31, 59/60/61, 119/120/121, 239/240/241
+      # dias) cai no mesmo segmento nas duas telas, o conjunto de 12 compras bate (novos 2, promissores 3, quase dormindo 3,
+      # hibernando 4), as outras tres chamadas (vendas, pedidos nao pagos, perfis sem compra) recebem o mesmo instante, periodo
+      # que NAO termina hoje com o JSON identico ao do corpo antigo, resto do corpo igual byte a byte, ACL e atributos intactos,
+      # rollback com o md5 da 20261227, pre-voo que recusa sem escrever, dois aplicadores ao mesmo tempo e mutantes.
+      # BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da grade do CRM (migration 20261232)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-grade-do-crm-mede-a-recencia-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 33a (DEPOIS, 5 linhas), 33b (ANTES, 4 linhas) e a medicao 33m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da grade do CRM (consultas 33a e 33b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs
       # Os numeros do painel (migrations 20261227 e 20261228, numeros; ordem do dono de 14/10/2026): a taxa de devolucao
       # do CRM nunca passa de 100% (a turma de vendas pagas do periodo, as estornadas e canceladas dentro) e o "Hoje" do
       # Inicio e o "vs. ontem" do CRM comparam ate a MESMA hora do dia (relogio fixo de Sao Paulo). COMPORTAMENTO com os

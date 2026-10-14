@@ -1135,7 +1135,8 @@ async function main() {
     "os doze sha256 sao distintos",
   );
   // as sucessoras da 99 DO LOTE sao exatamente a 20261212 (painel_inicio) e a 20261214 (analytics); as
-  // posteriores sao a 20261227 (crm_visao) e a 20261228 (que sucede a 12 em painel_inicio)
+  // posteriores sao a 20261227 (crm_visao), a 20261228 (que sucede a 12 em painel_inicio) e a 20261232 (que sucede a
+  // 27 em crm_visao)
   assert.deepEqual(
     SUCESSORAS_DO_LOTE.map((s) => [s.nome, s.assinatura, s.hashDesta]).sort(),
     [F.painel, F.analytics].map((f) => [f.arq, f.sig, f.md5.depois]).sort(),
@@ -1151,6 +1152,10 @@ async function main() {
       [
         "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql",
         "public.painel_inicio()",
+      ],
+      [
+        "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql",
+        "public.crm_visao(date,date)",
       ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",

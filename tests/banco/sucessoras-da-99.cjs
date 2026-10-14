@@ -47,6 +47,9 @@ const NOMES = [
   // da 12, e desfazer em ordem inversa devolve cada corpo ao anterior).
   "20261227000000_o_crm_compara_o_que_e_comparavel.sql",
   "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql",
+  // A grade do CRM (14/10/2026): crm_visao ganha a SEGUNDA sucessora (a CADEIA 99 → 27 → 32: o
+  // `hashVigente` da 32 é o `hashDesta` da 27; desfazer em ordem inversa devolve cada corpo ao anterior).
+  "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql",
 ];
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

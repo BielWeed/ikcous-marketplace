@@ -466,6 +466,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // na mesma hora; comportamento e portao 30a/30b).
     "tests/banco/numeros-do-painel-viva.cjs",
     "tests/banco/numeros-do-painel-portao-viva.cjs",
+    // 20261232000000: a grade do CRM mede a recencia do mesmo instante da lista (so depois da 20261227; comportamento e portao 33a/33b).
+    "tests/banco/a-grade-do-crm-mede-a-recencia-viva.cjs",
+    "tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs",
     // 20261229000000: o endereco da compra fica no pedido (v23 e v24 copiam o endereco da conta; comportamento e portao 31a/31b).
     "tests/banco/endereco-no-pedido-viva.cjs",
     "tests/banco/endereco-no-pedido-portao-viva.cjs",

@@ -7,7 +7,9 @@
  * migrations DEPOIS da 202 redefinem — num Postgres EFÊMERO local, nada de rede,
  * nada de loja:
  *   painel_inicio()                       20261199 → 20261212000000;
- *   get_admin_analytics_v2(integer)       20261199 → 20261214000000.
+ *   get_admin_analytics_v2(integer)       20261199 → 20261214000000;
+ *   crm_visao(date,date)                  20261199 → 20261227000000 → 20261232000000 (a grade do CRM:
+ *                                         a CADEIA do painel_inicio, 99 → 12 → 28, repetida).
  * Sem isso a 8e dava ok=false nessas duas linhas numa loja que recebeu a 12/14 e
  * o backfill do ledger 92-202 ficava bloqueado para sempre (CI run 38000693188,
  * passo "Prova viva do lote 60-66"). Cada função é POR SI: uma loja pode ter só
@@ -97,7 +99,7 @@ const N = CONF.ROL_DA_8E.length;
 const fnDe = (s) =>
   s.assinatura.slice("public.".length, s.assinatura.indexOf("("));
 // A CADEIA de cada função, em ordem de aplicação: painel_inicio = [12, 28] (o `hashVigente` da 28 é
-// o `hashDesta` da 12), get_admin_analytics_v2 = [14], crm_visao = [27]. O representante de cada
+// o `hashDesta` da 12), get_admin_analytics_v2 = [14], crm_visao = [27, 32] (idem). O representante de cada
 // função é o ÚLTIMO elo (o topo da cadeia); o corpo da 99 é o `hashVigente` do PRIMEIRO.
 const CADEIAS = new Map();
 for (const s of SUCESSORAS_DA_99)
@@ -107,14 +109,16 @@ const PAINEL = topo("painel_inicio");
 const PAINEL_12 = CADEIAS.get("painel_inicio")[0];
 const ANALYTICS = topo("get_admin_analytics_v2");
 const CRM = topo("crm_visao");
+const CRM_27 = CADEIAS.get("crm_visao")[0];
 assert.ok(
-  SUCESSORAS_DA_99.length === 4 &&
+  SUCESSORAS_DA_99.length === 5 &&
     CADEIAS.size === 3 &&
     CADEIAS.get("painel_inicio").length === 2 &&
     PAINEL_12.hashDesta === PAINEL.hashVigente &&
     CADEIAS.get("get_admin_analytics_v2").length === 1 &&
-    CADEIAS.get("crm_visao").length === 1,
-  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 (get_admin_analytics_v2) e a 20261227 (crm_visao): reveja a 8e e esta prova",
+    CADEIAS.get("crm_visao").length === 2 &&
+    CRM_27.hashDesta === CRM.hashVigente,
+  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 (get_admin_analytics_v2) e a 20261227 + 20261232 (crm_visao): reveja a 8e e esta prova",
 );
 const FUNCOES = [PAINEL, ANALYTICS, CRM];
 /** O corpo da 99 da função (o `esperado` da 8e), o `hashVigente` do primeiro elo da cadeia. */
@@ -226,7 +230,7 @@ const ESTADO_99 = async (c) => {
   assert.deepEqual(
     desfeitas,
     SUCESSORAS_DA_99.map((s) => s.nome).reverse(),
-    "as quatro sucessoras tinham de estar no ar e sair",
+    "as cinco sucessoras tinham de estar no ar e sair",
   );
   await exigirHashes(c, "estado 99", {
     painel: h99(PAINEL),
@@ -254,36 +258,62 @@ const PAINEL_NA_12 = async (c) => {
     crm: CRM.hashDesta,
   });
 };
-/** SÓ a 14 no ar: o painel volta à 99 (28 e 12 desfeitas) e o CRM também (27). */
+/** O CRM PARADO NA 27 (a 32 desfeita): o intermediário da cadeia segue aceito. */
+const CRM_NA_27 = async (c) => {
+  await ARVORE(c);
+  await desfazerUma(CRM)(c);
+  await exigirHashes(c, "crm na 27", {
+    painel: PAINEL.hashDesta,
+    analytics: ANALYTICS.hashDesta,
+    crm: CRM_27.hashDesta,
+  });
+};
+/** SÓ a 14 no ar: o painel volta à 99 (28 e 12 desfeitas) e o CRM também (32 e 27). */
 const SO_14 = async (c) => {
   await ARVORE(c);
   await desfazerUma(PAINEL)(c);
   await desfazerUma(PAINEL_12)(c);
   await desfazerUma(CRM)(c);
+  await desfazerUma(CRM_27)(c);
   await exigirHashes(c, "só 14", {
     painel: h99(PAINEL),
     analytics: ANALYTICS.hashDesta,
     crm: h99(CRM),
   });
 };
-/** SÓ a 27 no ar (CRM): painel (28 e 12) e analytics (14) voltam à 99. */
+/** SÓ a 27 no ar (CRM, parado na 27): painel (28 e 12) e analytics (14) voltam à 99, e a 32 sai. */
 const SO_27 = async (c) => {
   await ARVORE(c);
   await desfazerUma(PAINEL)(c);
   await desfazerUma(PAINEL_12)(c);
   await desfazerUma(ANALYTICS)(c);
+  await desfazerUma(CRM)(c);
   await exigirHashes(c, "só 27", {
+    painel: h99(PAINEL),
+    analytics: h99(ANALYTICS),
+    crm: CRM_27.hashDesta,
+  });
+};
+/** SÓ as duas do CRM no ar (27 e 32): painel (28 e 12) e analytics (14) voltam à 99. */
+const SO_CRM = async (c) => {
+  await ARVORE(c);
+  await desfazerUma(PAINEL)(c);
+  await desfazerUma(PAINEL_12)(c);
+  await desfazerUma(ANALYTICS)(c);
+  await exigirHashes(c, "só o CRM (27 e 32)", {
     painel: h99(PAINEL),
     analytics: h99(ANALYTICS),
     crm: CRM.hashDesta,
   });
 };
 const ESTADOS = [
-  ["árvore inteira (12, 28, 14 e 27 no ar)", ARVORE],
-  ["estado da 20261199 (as quatro sucessoras desfeitas)", ESTADO_99],
+  ["árvore inteira (12, 28, 14, 27 e 32 no ar)", ARVORE],
+  ["estado da 20261199 (as cinco sucessoras desfeitas)", ESTADO_99],
   ["painel parado na 20261212 (a 20261228 desfeita)", PAINEL_NA_12],
+  ["crm parado na 20261227 (a 20261232 desfeita)", CRM_NA_27],
   ["misto: só a 20261214 (as outras desfeitas)", SO_14],
   ["misto: só a 20261227 (as outras desfeitas)", SO_27],
+  ["misto: só a 20261227 e a 20261232 (as outras desfeitas)", SO_CRM],
 ];
 
 /** CREATE OR REPLACE com o texto de pg_get_functiondef e o corpo transformado
@@ -572,9 +602,9 @@ async function provar() {
     );
   }
   for (const rows of respostas.slice(1))
-    assert.deepEqual(rows, respostas[0], "os cinco estados respondem igual");
+    assert.deepEqual(rows, respostas[0], "os sete estados respondem igual");
   ok(
-    "os cinco estados (árvore, 99, painel na 12, só 14, só 27) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
+    "os sete estados (árvore, 99, painel na 12, crm na 27, só 14, só 27, só 27 e 32) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
   );
 
   // ------------------------------------------------------------- NEGATIVOS
@@ -655,9 +685,21 @@ async function provar() {
     ]);
     const r6 = await noEstado(em(SO_27, ausente(PAINEL)));
     await exigirReprovadas("só 27 + painel ausente", r6.rows, [item(PAINEL)]);
+    const r7 = await noEstado(
+      em(CRM_NA_27, corpoEstranho(CRM.assinatura, aceitosDe(CRM))),
+    );
+    await exigirReprovadas("crm na 27 + crm estranho", r7.rows, [item(CRM)]);
+    const r8 = await noEstado(em(CRM_NA_27, sobrecarga(CRM_27)));
+    await exigirReprovadas("crm na 27 + sobrecarga do crm_visao", r8.rows, [
+      item(CRM),
+    ]);
+    const r9 = await noEstado(em(SO_CRM, ausente(PAINEL)));
+    await exigirReprovadas("só 27 e 32 + painel ausente", r9.rows, [
+      item(PAINEL),
+    ]);
   }
   ok(
-    "negativo — nos estados MISTOS (painel na 12, só 14, só 27) a função ausente, estranha ou sobrecarregada reprova SÓ a linha dela",
+    "negativo — nos estados MISTOS (painel na 12, crm na 27, só 14, só 27, só 27 e 32) a função ausente, estranha ou sobrecarregada reprova SÓ a linha dela",
   );
   // Controle: as outras 58 seguem exatas.
   {
@@ -685,7 +727,7 @@ async function provar() {
     await mutantePositivo(
       `hash da sucessora ${s.nome.slice(0, 14)} de ${fnDe(s)} trocado`,
       [[`('${fnDe(s)}', '${s.hashDesta}', `, `('${fnDe(s)}', '${zero}', `]],
-      s === PAINEL_12 ? PAINEL_NA_12 : ARVORE,
+      s === PAINEL_12 ? PAINEL_NA_12 : s === CRM_27 ? CRM_NA_27 : ARVORE,
     );
   }
   for (const s of FUNCOES)
@@ -700,7 +742,7 @@ async function provar() {
     ARVORE,
   );
   await mutantePositivo(
-    "aceitos removidos (CTE sucessoras sem as quatro)",
+    "aceitos removidos (CTE sucessoras sem as cinco)",
     SUCESSORAS_DA_99.map((s) => [
       `('${fnDe(s)}', '${s.hashDesta}', '${s.nome.slice(0, 14)}')`,
       `('nenhuma_${s.nome.slice(0, 14)}', '${zero}', '${s.nome.slice(0, 14)}')`,
@@ -737,7 +779,7 @@ async function provar() {
     [item(PAINEL)],
   );
   ok(
-    "MUTANTES do texto da 8e: hash de cada elo da cadeia trocado (12, 28, 14 e 27, cada um no estado em que ele é o vivo), hash da 99 trocado (cada função), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
+    "MUTANTES do texto da 8e: hash de cada elo da cadeia trocado (12, 28, 14, 27 e 32, cada um no estado em que ele é o vivo), hash da 99 trocado (cada função), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
   );
 }
 
