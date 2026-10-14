@@ -1,5 +1,9 @@
 import { Input } from "@/components/ui/input";
 import { useProducts } from "@/hooks/useProducts";
+import {
+  palavrasDaBusca,
+  produtoCombinaComBusca,
+} from "@/lib/busca-de-produtos";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -137,16 +141,18 @@ export function SearchBar({
       if (normalizeText(p.category).startsWith(query)) {
         termSet.add(p.category);
       }
-
-      // Tags match
-      (p.tags || []).forEach((t) => {
-        if (normalizeText(t).startsWith(query)) {
-          termSet.add(t);
-        }
-      });
     });
 
-    return Array.from(termSet).slice(0, 4);
+    // Etiquetas (`tags`) NAO sugerem termo: a lista nunca as procurou, entao
+    // a sugestao levaria a "nenhum produto". Pelo mesmo motivo, so fica o
+    // termo que a regra unica da busca acha em algum produto a venda (o termo
+    // vira a busca ao toque; palavra de nome com hifen, por exemplo, perde o
+    // hifen aqui e deixaria de achar o proprio produto).
+    return Array.from(termSet)
+      .filter((termo) =>
+        products.some((p) => p.isActive && produtoCombinaComBusca(p, termo)),
+      )
+      .slice(0, 4);
   }, [products, deferredLocalValue]);
 
   // Matching categories
@@ -164,13 +170,19 @@ export function SearchBar({
     return Array.from(catSet).slice(0, 3);
   }, [products, deferredLocalValue]);
 
-  // Scored Product Search Results
-  const searchResults = useMemo<ScoredProduct[]>(() => {
+  // Produtos que a busca acha, do mais ao menos relevante. QUEM decide se um
+  // produto entra e' `produtoCombinaComBusca` -- a mesma regra da lista da
+  // Home e da tela /search (todas as palavras, plural, nome/categoria/
+  // descricao). A pontuacao aqui so ORDENA; nao decide quem entra.
+  const allResults = useMemo<ScoredProduct[]>(() => {
     const query = normalizeText(deferredLocalValue);
     if (!query) return [];
+    const palavras = palavrasDaBusca(query);
 
-    const scored = products
-      .filter((product) => product.isActive)
+    return products
+      .filter(
+        (product) => product.isActive && produtoCombinaComBusca(product, query),
+      )
       .map((product) => {
         let score = 0;
         const name = normalizeText(product.name);
@@ -178,7 +190,6 @@ export function SearchBar({
         // quebrava a busca inteira aqui. `normalizeText` aguenta nulo.
         const description = normalizeText(product.description);
         const category = normalizeText(product.category);
-        const tags = (product.tags || []).map((t) => normalizeText(t));
 
         // Exact match
         if (name === query) score += 100;
@@ -187,12 +198,10 @@ export function SearchBar({
         // Contains query
         else if (name.includes(query)) score += 50;
 
-        // Word level score
-        const queryWords = query.split(/\s+/).filter(Boolean);
-        for (const word of queryWords) {
-          if (name.includes(word)) score += 20;
-          if (category.includes(word)) score += 15;
-          if (tags.some((t) => t.includes(word))) score += 10;
+        // Word level score (qualquer forma da palavra: "colares" -> "colar")
+        for (const formas of palavras) {
+          if (formas.some((forma) => name.includes(forma))) score += 20;
+          if (formas.some((forma) => category.includes(forma))) score += 15;
         }
 
         // Category match
@@ -204,12 +213,12 @@ export function SearchBar({
 
         return { ...product, score } as ScoredProduct;
       })
-      .filter((p) => p.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 6);
-
-    return scored;
+      .sort((a, b) => b.score - a.score);
   }, [products, deferredLocalValue]);
+
+  // A caixinha mostra no maximo 6, mas o numero do titulo e' o TOTAL: e' ele
+  // que a lista inteira (o "Ver todos os resultados") vai mostrar.
+  const searchResults = useMemo(() => allResults.slice(0, 6), [allResults]);
 
   const showDropdown = isOpen && localValue.trim().length > 0;
 
@@ -357,7 +366,7 @@ export function SearchBar({
                 <div className="flex items-center gap-1.5">
                   <Search className="size-3.5 text-zinc-700" />
                   <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
-                    Produtos ({searchResults.length})
+                    Produtos ({allResults.length})
                   </span>
                 </div>
               </div>
