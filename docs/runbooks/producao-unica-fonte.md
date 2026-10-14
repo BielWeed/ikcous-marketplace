@@ -1213,6 +1213,51 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         decisao das duas consultas, num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel
         `supabase_read_only_user` de cada loja nem o corpo vivo delas.
 
+  34. **Migration de apply normal: `20261233000000` (o sino do pedido de retirada fala de retirada; DADO DE
+      CLIENTE, nada se abre e nada se apaga).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy). Troca por `CREATE OR REPLACE` o corpo de UMA funcao de gatilho,
+      `notifica_cliente_de_mudanca_de_status` (a que acende o sino da cliente a cada mudanca de status do
+      pedido), com o corpo da `20261026000000` mais o ramo da retirada, sem tocar dado, assinatura, tipo de
+      retorno, volatilidade, `search_path`, a trigger `tr_pedido_avisa_o_cliente`, a tabela `notificacoes` nem a
+      ACL:
+      - **O defeito:** no pedido de RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`), quando
+        a lojista marcava "Pronto para retirar" o sino da cliente dizia "Pedido a caminho - saiu para entrega" e
+        depois "Pedido entregue", contra o aviso do painel e a tela do pedido ("Pronto para retirar").
+      - **Agora:** retirada + `shipping` = "Pedido pronto para retirar" / "Seu pedido esta pronto! Venha retirar na
+        loja."; retirada + `delivered` = "Pedido retirado" / "Seu pedido foi retirado na loja. Obrigado por comprar
+        com a gente!". Todo pedido que NAO e retirada, o preparo, o cancelamento, o convidado, o mesmo status de
+        novo e a falha de aviso ficam byte a byte como hoje (provado em
+        `tests/banco/o-sino-do-pedido-de-retirada-viva.cjs`).
+      - **Dado que ja existe:** as notificacoes que ja nasceram com o texto da entrega num pedido de retirada FICAM
+        (historico da cliente; nada e reescrito nem apagado); so as mudancas de status DEPOIS do apply usam o texto
+        novo. Um pedido de retirada que JA esta em `shipping` no instante do apply nao e reavisado.
+      - Quem quebra: ninguem (nenhuma assinatura muda). Nenhum front e nenhuma edge function mudam. Duas
+        consultas, so leitura, so catalogo, de ROL FECHADO (7 e 6 linhas, so valem com `rol=ok`):
+        - **`34a-conferir-sino-da-retirada-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo novo
+          (md5), o texto da retirada E o da entrega no corpo, os atributos de sempre, a trigger ligada e a ACL de hoje.
+        - **`34b-antes-sino-da-retirada-corpo-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo da
+          `20261026000000`, sem o texto da retirada, com os atributos, a trigger e a ACL de hoje. O md5 vem do
+          arquivo da migration, nao de uma loja: **rode a `34b` em CADA loja ANTES do apply** e compare o corpo
+          vivo; corpo diferente e loja que ninguem mediu (a migration tambem recusa, `B1_BASELINE_DIVERGENT`).
+      - **Medir antes (opcional, so leitura, nao e portao):** `34m-medir-sino-da-retirada` conta (so numeros,
+        nenhum dado pessoal) os pedidos de retirada, os com conta, os hoje em `shipping` e `delivered`, se o id e o
+        endereco da loja concordam (esperado 0 de diferenca) e quantos avisos antigos ficam como estao.
+      - **Caminho, uma loja por vez:** `34a` (sai NEGATIVA) -> `34b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `34a` DE NOVO, que tem de sair POSITIVA. `34a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261233000000_o_sino_do_pedido_de_retirada_fala_de_retirada.sql` (recria o corpo da
+        `20261026000000`, mesmo md5, sem tocar a ACL nem a trigger, com pre-voo proprio; rodar duas vezes deixa o
+        mesmo estado; NAO apaga nenhuma notificacao). Depois dele a `34b` volta a ser POSITIVA e a `34a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `34a` e a `34b`
+        DE NOVO.
+      - **Limites:** `tests/banco/o-sino-do-pedido-de-retirada-viva.cjs` prova o comportamento (entrega x retirada,
+        bordas do `customer_data`, idempotencia, convidado, varias linhas, falha de aviso, o aviso antigo que fica,
+        rollback, pre-voo que recusa sem escrever, concorrencia, mutantes) e
+        `tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
+        delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
