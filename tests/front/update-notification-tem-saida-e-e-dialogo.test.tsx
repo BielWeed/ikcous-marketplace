@@ -247,7 +247,7 @@ async function montarGate(adminDirty?: boolean) {
   await act(async () => {
     raiz.render(
       <PWAUpdateManager
-        currentView="home"
+        currentView="admin-dashboard"
         {...(adminDirty === undefined ? {} : { adminDirty })}
       />,
     );

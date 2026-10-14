@@ -4,6 +4,7 @@ import { useUpdateCheck } from "@/hooks/useUpdateCheck";
 import type { View } from "@/types";
 import { memo, useCallback, useEffect, useState } from "react";
 
+import { AvisoDeAtualizacaoDiscreto } from "./AvisoDeAtualizacaoDiscreto";
 import { UpdateNotification } from "./UpdateNotification";
 
 // UpdateNotification-138: o modal era sem saída porque `needRefresh` (o
@@ -69,6 +70,13 @@ const TELAS_DE_COMPRA: ReadonlySet<View> = new Set([
   "order-success",
   "auth",
   "login",
+]);
+
+// A faixa da cliente também não nasce na página do produto: a barra de comprar
+// fica colada em cima da navegação, exatamente onde a faixa mora. Fica armada
+// e aparece na próxima tela segura (o mesmo motivo do convite de push).
+const TELAS_SEM_FAIXA_DA_CLIENTE: ReadonlySet<View> = new Set([
+  "product-detail",
 ]);
 
 // Viveu dentro do App.tsx até 04/09/2026; ganhou arquivo próprio para a
@@ -141,17 +149,37 @@ export const PWAUpdateManager = memo(function PWAUpdateManager({
     setSonecaAte(ate);
   }, []);
 
+  // Quem é o painel: o mesmo critério que o App usa para tudo do lojista
+  // (`currentView.startsWith("admin")`, inclusive a tela de login dele).
+  const ehPainel = currentView.startsWith("admin");
+  const podeAvisar =
+    updateAvailable &&
+    !TELAS_DE_COMPRA.has(currentView) &&
+    !emSoneca &&
+    !adminDirty;
+
+  const aoAtualizar = () => performNuclearPurge(true);
+
+  // Painel do lojista: o cartão de sempre. Cliente: só uma faixa de uma linha.
+  // Os dois ficam montados e só um recebe `show`, para a saída animada do
+  // cartão não ser cortada quando o lojista troca de tela.
   return (
-    <UpdateNotification
-      show={
-        updateAvailable &&
-        !TELAS_DE_COMPRA.has(currentView) &&
-        !emSoneca &&
-        !adminDirty
-      }
-      onUpdate={() => performNuclearPurge(true)}
-      onSnooze={handleSnooze}
-      newVersion={newVersion}
-    />
+    <>
+      <UpdateNotification
+        show={podeAvisar && ehPainel}
+        onUpdate={aoAtualizar}
+        onSnooze={handleSnooze}
+        newVersion={newVersion}
+      />
+      <AvisoDeAtualizacaoDiscreto
+        show={
+          podeAvisar &&
+          !ehPainel &&
+          !TELAS_SEM_FAIXA_DA_CLIENTE.has(currentView)
+        }
+        onUpdate={aoAtualizar}
+        onSnooze={handleSnooze}
+      />
+    </>
   );
 });

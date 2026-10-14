@@ -48,7 +48,11 @@ import type { View } from "@/types";
 // isto, o primeiro render do UpdateNotification morre em ReferenceError.
 (globalThis as Record<string, unknown>).__APP_VERSION__ = "1.0.0-teste";
 
-const TEXTO_DO_AVISO = "Nova Versão Disponível";
+// Desde a faixa discreta, a CLIENTE vê uma linha (TEXTO_DO_AVISO); o cartão
+// "Nova Versão Disponível" ficou só no painel. As telas de compra não podem
+// mostrar NENHUM dos dois.
+const TEXTO_DO_AVISO = "Há uma versão nova do app.";
+const TEXTO_DO_CARTAO = "Nova Versão Disponível";
 
 describe("aviso de atualização não interrompe a compra", () => {
   let container: HTMLDivElement;
@@ -86,18 +90,22 @@ describe("aviso de atualização não interrompe a compra", () => {
   function textoNaTela() {
     return document.body.textContent ?? "";
   }
+  function avisoNaTela() {
+    const texto = textoNaTela();
+    return texto.includes(TEXTO_DO_AVISO) || texto.includes(TEXTO_DO_CARTAO);
+  }
 
   // (a) update disponível DURANTE o checkout: o aviso não nasce.
   it("no CHECKOUT com update disponível, o aviso NÃO aparece", () => {
     montar("checkout");
-    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+    expect(avisoNaTela()).toBe(false);
   });
 
   // (b) a compra termina e a loja chega em tela segura: o aviso que estava
   // armado aparece (a atualização não se perde pelo caminho).
   it("update que chegou no checkout APARECE quando a loja volta pra home", () => {
     montar("checkout");
-    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+    expect(avisoNaTela()).toBe(false);
 
     act(() => {
       root.render(<PWAUpdateManager currentView={"home" as View} />);
@@ -114,12 +122,12 @@ describe("aviso de atualização não interrompe a compra", () => {
   // As outras telas do caminho do dinheiro: mesma proteção.
   it("no CARRINHO com update disponível, o aviso NÃO aparece", () => {
     montar("cart");
-    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+    expect(avisoNaTela()).toBe(false);
   });
 
   it("no ENDEREÇO com update disponível, o aviso NÃO aparece", () => {
     montar("address-form");
-    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+    expect(avisoNaTela()).toBe(false);
   });
 
   // Confirmação do pedido: o pedido só está fechado quando o cliente VÊ essa
@@ -127,7 +135,7 @@ describe("aviso de atualização não interrompe a compra", () => {
   // laudo Claude de 04/09).
   it("na CONFIRMAÇÃO DO PEDIDO (order-success), o aviso armado NÃO aparece", () => {
     montar("order-success");
-    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+    expect(avisoNaTela()).toBe(false);
   });
 
   // Convidado bloqueado no pagamento online vai ao login no meio da compra
@@ -135,12 +143,12 @@ describe("aviso de atualização não interrompe a compra", () => {
   // apaga o formulário — login também é tela protegida.
   it("no LOGIN (auth) no meio da compra, o aviso NÃO aparece", () => {
     montar("auth");
-    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+    expect(avisoNaTela()).toBe(false);
   });
 
   it("no LOGIN (login) no meio da compra, o aviso NÃO aparece", () => {
     montar("login");
-    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+    expect(avisoNaTela()).toBe(false);
   });
 
   // NOTA (tentativa registrada, 04/09): a direção true->false (aviso ABERTO
@@ -163,6 +171,6 @@ describe("aviso de atualização não interrompe a compra", () => {
       performNuclearPurge: vi.fn(),
     });
     montar("home");
-    expect(textoNaTela()).not.toContain(TEXTO_DO_AVISO);
+    expect(avisoNaTela()).toBe(false);
   });
 });
