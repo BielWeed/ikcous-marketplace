@@ -233,6 +233,19 @@ function pendingDescription(
 }
 
 /**
+ * Estado da consulta da devolução de um pedido cancelado e pago: ainda
+ * conferindo (carregando, ou erro com nova tentativa a caminho), não deu para
+ * conferir (desistiu) ou lida (a partir daí valem as frases de sempre).
+ */
+type LeituraDaDevolucao = "conferindo" | "falhou" | "lida";
+
+const PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO =
+  "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
+const TEXTO_CONFERINDO_DEVOLUCAO = "Conferindo sua devolução…";
+const TEXTO_NAO_CONSEGUI_CONFERIR =
+  "Não consegui conferir agora. Tente de novo mais tarde ou fale com a loja.";
+
+/**
  * `cancelled` (esteira) quase sempre significa "não seguirá para entrega",
  * mas há um par real que a produção gera (rastreado no SQL,
  * `20260810000000_confirmar_pagamento_guarda_status.sql`, ~118-120 e
@@ -288,6 +301,7 @@ function pendingDescription(
 function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
   linhasDevolucao: LinhaDevolucaoDoCliente[],
+  leituraDaDevolucao: LeituraDaDevolucao = "lida",
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -312,6 +326,16 @@ function cancelledDescription(
     // convidado por rastreio (a RPC de OTP não carrega
     // `cancelled_after_shipping`), pedido legado sem `paid_at`, cache velho
     // do `localStorage` sem a chave nova, e o automático que desistiu.
+    // 14/10/2026: ANTES de a consulta da devolução voltar, `linhasDevolucao`
+    // é `[]` — e `[]` é exatamente o "sem devolução automática" que manda
+    // "fale com a loja". "Ainda não sei" não pode se passar por "sei que não
+    // há": enquanto a leitura não deu certo, a tela só diz o que já é fato.
+    if (leituraDaDevolucao === "conferindo") {
+      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} ${TEXTO_CONFERINDO_DEVOLUCAO}`;
+    }
+    if (leituraDaDevolucao === "falhou") {
+      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} ${TEXTO_NAO_CONSEGUI_CONFERIR}`;
+    }
     const desfecho = desfechoDaDevolucao(linhasDevolucao);
     if (desfecho === "em_curso") {
       return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
@@ -640,10 +664,16 @@ export function OrderDetailsView({
   const mostrarDevolucao =
     order?.status === "cancelled" &&
     (chaveDoPagamento === "pago" || chaveDoPagamento === "pago_apos_expirar");
-  const { linhas: linhasDevolucao } = useDevolucaoDoPedidoCliente(
-    orderId,
-    mostrarDevolucao,
-  );
+  const {
+    linhas: linhasDevolucao,
+    lido: devolucaoLida,
+    desistiu: devolucaoDesistiu,
+  } = useDevolucaoDoPedidoCliente(orderId, mostrarDevolucao);
+  const leituraDaDevolucao: LeituraDaDevolucao = devolucaoLida
+    ? "lida"
+    : devolucaoDesistiu
+      ? "falhou"
+      : "conferindo";
 
   // Devolução/troca de produto ENTREGUE (plano 2026-09-26, seção
   // "Devoluções") — outro assunto que a devolução de DINHEIRO de pedido
@@ -712,15 +742,23 @@ export function OrderDetailsView({
           order.retiradaNaLoja,
         )
       : order.status === "cancelled"
-        ? cancelledDescription(order.paymentStatus, linhasDevolucao)
+        ? cancelledDescription(
+            order.paymentStatus,
+            linhasDevolucao,
+            leituraDaDevolucao,
+          )
         : currentStatus.description;
-  const textoDaDevolucao = mostrarDevolucao
-    ? textoDevolucao({
-        linhas: linhasDevolucao,
-        cancelledAfterShipping: order.cancelledAfterShipping,
-        returnedToSellerAt: order.returnedToSellerAt,
-      })
-    : null;
+  const textoDaDevolucao = !mostrarDevolucao
+    ? null
+    : leituraDaDevolucao === "conferindo"
+      ? TEXTO_CONFERINDO_DEVOLUCAO
+      : leituraDaDevolucao === "falhou"
+        ? TEXTO_NAO_CONSEGUI_CONFERIR
+        : textoDevolucao({
+            linhas: linhasDevolucao,
+            cancelledAfterShipping: order.cancelledAfterShipping,
+            returnedToSellerAt: order.returnedToSellerAt,
+          });
 
   // Cartão "O que achou da compra?" (redesenho 25/09/2026) — mesma trava de
   // sempre (ADMIN-090, #101): sem `enableReviews`, sem `user`, ou fora de
