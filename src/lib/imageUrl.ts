@@ -72,6 +72,16 @@ export function imagemRedimensionada(
 }
 
 /**
+ * Miniatura da sugestão da busca (quadradinho de 48 px: 120 px de imagem cobre
+ * telas de alta densidade). Fonte ÚNICA do tamanho: a SearchBar a desenha e o
+ * aquecedor de cache (`useCacheWarmer`) a aquece — a string tem de ser a mesma
+ * nos dois, senão o aquecimento deixa de servir a busca.
+ */
+export function miniaturaDaSugestao(url: string | undefined | null): string {
+  return imagemRedimensionada(url, { width: 120, quality: 70 });
+}
+
+/**
  * Monta o `srcSet` para o navegador escolher a densidade certa.
  * Em URL não transformável devolve string vazia — `srcSet=""` é ignorado com
  * segurança e o `src` continua valendo.
