@@ -30,25 +30,128 @@ function pareceEnderecoDeSite(trecho: string): boolean {
   );
 }
 
-/**
- * O link que o painel grava a partir do que a lojista digitou.
- *  - `http(s)://...` e `/pagina` ficam como estão;
- *  - o que PARECE endereço de site (`wa.me/55...`, `instagram.com/loja`,
- *    `www.loja.com`: sem espaço, começa por um domínio) ganha `https://`;
- *  - o resto (`ofertas`, `?category=X`, `#topo`) vira caminho da loja, com
- *    `/` na frente, como sempre foi.
- * Esquema perigoso (`javascript:`, `data:`) NÃO é endereço de site: cai no
- * último caso e a `/` na frente o neutraliza (vira caminho, nunca script).
- */
-export function linkDigitadoParaGravar(digitado: string): string {
-  const link = digitado.trim();
-  if (!link) return "";
-  if (link.startsWith("/") || /^https?:\/\//i.test(link)) return link;
-  const comecoDoEndereco = link.split(/[/?#]/, 1)[0];
-  if (!/\s/.test(link) && pareceEnderecoDeSite(comecoDoEndereco)) {
-    return `https://${link}`;
+/** O que a dona vê quando o link do banner é recusado ao salvar. */
+export const AVISO_DE_LINK_RECUSADO =
+  "Use um endereço que comece com https:// ou um caminho do app como /categoria";
+
+// O navegador descarta tab e quebra de linha em QUALQUER posição do endereço e
+// controles/espaços no começo — "java\tscript:" vale "javascript:". Ler o link
+// do jeito que ele vai ser lido é o que fecha esses disfarces.
+const TAB_E_QUEBRAS = new Set(["\t", "\n", "\r"]);
+
+function comoONavegadorLe(link: string): string {
+  let limpo = "";
+  for (const letra of link) {
+    if (!TAB_E_QUEBRAS.has(letra)) limpo += letra;
   }
-  return `/${link}`;
+  let inicio = 0;
+  while (inicio < limpo.length && limpo.charCodeAt(inicio) <= 0x20) inicio++;
+  return limpo.slice(inicio);
+}
+
+// "meusite.com/x" digitado sem barra sempre foi gravado como "/meusite.com/x"
+// (o painel prefixa a barra). O que tem ":" antes da primeira barra é um
+// esquema (`javascript:`, `tel:`), não um caminho — esse não ganha barra.
+function pareceTerEsquema(lido: string): boolean {
+  const fim = [...lido].findIndex((l) => l === "/" || l === "?" || l === "#");
+  return (fim === -1 ? lido : lido.slice(0, fim)).includes(":");
+}
+
+// Caminho do app: UMA barra no começo. "//x" e "/\x" o navegador trata como
+// OUTRO site, não como caminho.
+function caminhoDoApp(lido: string): string | null {
+  return lido[1] === "/" || lido[1] === "\\" ? null : lido;
+}
+
+/**
+ * A regra que painel e loja dividem — sobre o link já lido como o navegador lê:
+ * caminho do app (ganha a barra do começo se não tiver, como o painel sempre
+ * fez) ou endereço http/https. Qualquer outro esquema, `//outro-site` e
+ * `/\outro-site` voltam `null`.
+ */
+function caminhoOuHttp(lido: string): string | null {
+  if (lido.startsWith("/")) return caminhoDoApp(lido);
+
+  try {
+    const { protocol } = new URL(lido);
+    return protocol === "http:" || protocol === "https:" ? lido : null;
+  } catch {
+    // Não é um endereço com esquema válido: sem ":" antes da primeira barra é
+    // um caminho do app escrito sem a barra do começo.
+    return pareceTerEsquema(lido) ? null : caminhoDoApp(`/${lido}`);
+  }
+}
+
+// Esquemas que o navegador entrega ao discador, ao e-mail ou a outro app SEM
+// rodar código na página. Lista fechada: `javascript:`, `data:`, `vbscript:`,
+// `file:`, `blob:`, `intent:`, `ftp:` e qualquer outro NÃO entram. Decide-se
+// pelo `protocol` que o `new URL()` já normalizou, nunca pelo texto cru.
+const ESQUEMAS_QUE_NAO_RODAM_CODIGO = new Set([
+  "tel:",
+  "mailto:",
+  "sms:",
+  "whatsapp:",
+]);
+
+/**
+ * Só deixa passar o que o banner PODE abrir: um caminho do próprio app, um
+ * endereço http/https ou um dos esquemas `tel:`/`mailto:`/`sms:`/`whatsapp:`.
+ * Link antigo sem barra (`promocoes/natal`, `?category=Bebidas`, `#ofertas`)
+ * é lido como caminho do app, como o painel o gravaria hoje. Qualquer outra
+ * coisa — `javascript:`, `data:`, `vbscript:`, `file:`, `blob:`, `intent:`,
+ * `ftp:`, `//outro-site`, `/\outro-site`, vazio — volta `null` e o banner não
+ * navega. Devolve o link já lido como o navegador lê (sem tab/quebra de linha).
+ */
+export function destinoSeguroDoBanner(
+  link: string | null | undefined,
+): string | null {
+  if (typeof link !== "string") return null;
+  const lido = comoONavegadorLe(link);
+  if (lido === "") return null;
+
+  const doApp = caminhoOuHttp(lido);
+  if (doApp !== null) return doApp;
+
+  try {
+    return ESQUEMAS_QUE_NAO_RODAM_CODIGO.has(new URL(lido).protocol)
+      ? lido
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * O que o painel grava quando a dona digita o link: a MESMA regra de caminho
+ * ou http/https da loja (sem barra no começo, ganha uma) — sem os esquemas
+ * `tel:`/`mailto:`…, que o painel não grava (decisão de produto do dono; a
+ * loja só os preserva em banner já gravado). `""` quando ela deixou o campo
+ * vazio; `null` quando o link deve ser recusado (mostrar
+ * `AVISO_DE_LINK_RECUSADO`).
+ *
+ * Endereço de site digitado sem esquema (`wa.me/55...`, `instagram.com/loja`,
+ * `www.loja.com`: sem espaço, começa por um domínio) ganha `https://` — antes
+ * disso ele virava `/wa.me/55...`, uma página que a loja não tem. Esquema
+ * perigoso nunca é endereço de site: segue para a regra acima e é recusado.
+ */
+export function linkDoBannerParaSalvar(digitado: string | null | undefined) {
+  const lido = comoONavegadorLe((digitado ?? "").trim());
+  if (lido === "") return "";
+  if (
+    !lido.startsWith("/") &&
+    !/\s/.test(lido) &&
+    pareceEnderecoDeSite(lido.split(/[/?#]/, 1)[0])
+  ) {
+    return `https://${lido}`;
+  }
+  return caminhoOuHttp(lido);
+}
+
+/** Aviso ao vivo no campo do painel: `null` quando o link pode ser salvo. */
+export function avisoDoLinkDigitado(digitado: string): string | null {
+  return linkDoBannerParaSalvar(digitado) === null
+    ? AVISO_DE_LINK_RECUSADO
+    : null;
 }
 
 const CATEGORIA_CRUA = /^\/\?category=([\s\S]*)$/;
@@ -66,9 +169,15 @@ function pareceCodificado(trecho: string): boolean {
  *  - `/?category=Cama & Banho` (nome cru) ganha a codificação que faltava.
  *    O texto depois de `category=` é o nome inteiro, salvo trechos
  *    `chave=valor` depois de um "&", que seguem como parâmetros.
- * Qualquer outro link volta intacto.
+ * Qualquer outro link seguro volta intacto. Link que o banner não pode abrir
+ * (ver `destinoSeguroDoBanner`) volta `null`: o banner não navega.
  */
-export function destinoDoBanner(link: string): string {
+export function destinoDoBanner(
+  linkGravado: string | null | undefined,
+): string | null {
+  const link = destinoSeguroDoBanner(linkGravado);
+  if (link === null) return null;
+
   const caminho = link.split(/[?#]/, 1)[0].toLowerCase();
   if (caminho === "/produtos" || caminho === "/produtos/") {
     return LINK_DA_PAGINA_DA_LOJA;

@@ -7,18 +7,22 @@
 // tela vazia. Agora o que PARECE endereço de site ganha `https://`.
 //
 // Duas camadas:
-//   1. `linkDigitadoParaGravar` (função pura): a tabela entrada -> link gravado.
+//   1. `linkDoBannerParaSalvar` (função pura): a tabela entrada -> link gravado.
 //   2. a tela real (AdminBannersView): o que chega ao `addBanner` é o link
 //      corrigido — e o campo não some enquanto a lojista digita.
 //
 // O que NÃO mudou (e a tabela prova): esquema perigoso (`javascript:`,
-// `data:`) continua neutralizado pela `/` na frente, como hoje.
-import { linkDigitadoParaGravar } from "@/lib/destino-do-banner";
+// `data:`), `tel:`/`mailto:` e `//outro-site` continuam RECUSADOS ao salvar
+// (regra da branch link-do-banner-so-http-e-caminho, mesclada aqui).
+import {
+  AVISO_DE_LINK_RECUSADO,
+  linkDoBannerParaSalvar,
+} from "@/lib/destino-do-banner";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-describe("linkDigitadoParaGravar: entrada da lojista -> link gravado", () => {
+describe("linkDoBannerParaSalvar: entrada da lojista -> link gravado", () => {
   it.each([
     // o defeito: endereço de site sem https://
     ["wa.me/5511999999999", "https://wa.me/5511999999999"],
@@ -48,41 +52,41 @@ describe("linkDigitadoParaGravar: entrada da lojista -> link gravado", () => {
     ["product-detail?id=abc", "/product-detail?id=abc"],
     ["?category=Bebidas", "/?category=Bebidas"],
     ["#topo", "/#topo"],
-    // esquema perigoso ou desconhecido: continua NEUTRALIZADO (/ na frente)
-    ["javascript:alert(1)", "/javascript:alert(1)"],
-    ["JavaScript:alert(document.cookie)", "/JavaScript:alert(document.cookie)"],
-    [
-      "data:text/html,<script>alert(1)</script>",
-      "/data:text/html,<script>alert(1)</script>",
-    ],
-    ["vbscript:x", "/vbscript:x"],
-    ["tel:+5511999999999", "/tel:+5511999999999"],
-    ["mailto:loja@loja.com", "/mailto:loja@loja.com"],
-    // disfarce de domínio com esquema perigoso no meio
-    ["javascript:alert('a.com')", "/javascript:alert('a.com')"],
-    ["a.com:javascript:alert(1)", "/a.com:javascript:alert(1)"],
     // espaços: não é endereço de site
     ["minha loja.com", "/minha loja.com"],
     ["wa.me/55 11", "/wa.me/55 11"],
     // vazio
     ["", ""],
     ["   ", ""],
+    // esquema perigoso, tel:/mailto: e `//outro-site`: RECUSADOS (null), pela
+    // regra da branch do link só-http-e-caminho — o https:// automático não
+    // abre brecha
+    ["javascript:alert(1)", null],
+    ["JavaScript:alert(document.cookie)", null],
+    ["data:text/html,<script>alert(1)</script>", null],
+    ["vbscript:x", null],
+    ["tel:+5511999999999", null],
+    ["mailto:loja@loja.com", null],
+    ["java\tscript:alert(1)", null],
+    ["//outro-site.com", null],
+    // disfarce de domínio com esquema perigoso no meio
+    ["javascript:alert('a.com')", null],
+    ["a.com:javascript:alert(1)", null],
+    ["evil.com:alert(1)", null],
   ])("%j -> %j", (digitado, esperado) => {
-    expect(linkDigitadoParaGravar(digitado)).toBe(esperado);
+    expect(linkDoBannerParaSalvar(digitado)).toBe(esperado);
   });
 
-  it("nunca devolve link que comece com esquema perigoso", () => {
+  it("nunca devolve link com esquema perigoso, nem com https:// na frente dele", () => {
     for (const perigoso of [
       "javascript:alert(1)",
       "JAVASCRIPT:alert(1)",
       " javascript:alert(1)",
       "data:text/html,x",
       "vbscript:x",
+      "javascript.com:alert(1)",
     ]) {
-      const gravado = linkDigitadoParaGravar(perigoso).toLowerCase();
-      expect(gravado.startsWith("javascript:")).toBe(false);
-      expect(gravado.startsWith("data:")).toBe(false);
-      expect(gravado.startsWith("vbscript:")).toBe(false);
+      expect(linkDoBannerParaSalvar(perigoso)).toBeNull();
     }
   });
 
@@ -92,11 +96,10 @@ describe("linkDigitadoParaGravar: entrada da lojista -> link gravado", () => {
       "instagram.com/loja",
       "/produto",
       "ofertas",
-      "javascript:alert(1)",
       "https://loja.com",
     ]) {
-      const uma = linkDigitadoParaGravar(entrada);
-      expect(linkDigitadoParaGravar(uma)).toBe(uma);
+      const uma = linkDoBannerParaSalvar(entrada);
+      expect(linkDoBannerParaSalvar(uma)).toBe(uma);
     }
   });
 });
@@ -105,6 +108,8 @@ describe("linkDigitadoParaGravar: entrada da lojista -> link gravado", () => {
 // A tela real. Mesmo padrão de montagem de
 // admin-banners-recorte-salva-o-tipo-real-da-imagem.test.tsx.
 // ---------------------------------------------------------------------------
+
+const h = vi.hoisted(() => ({ toastError: vi.fn() }));
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "lojista-1" } }),
@@ -152,7 +157,7 @@ vi.mock("@/contexts/StoreContext", () => ({
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
-    error: vi.fn(),
+    error: h.toastError,
     info: vi.fn(),
     loading: vi.fn(() => "toast-id"),
   },
@@ -290,14 +295,26 @@ describe("AdminBannersView: o link digitado chega corrigido ao salvar", () => {
     ["wa.me/5511999999999", "https://wa.me/5511999999999"],
     ["instagram.com/loja", "https://instagram.com/loja"],
     ["https://wa.me/5511999999999", "https://wa.me/5511999999999"],
-    ["javascript:alert(1)", "/javascript:alert(1)"],
-    ["data:text/html,<b>x</b>", "/data:text/html,<b>x</b>"],
   ])("digitou %j -> addBanner recebe %j", async (digitado, gravado) => {
     await abrirNoModoLinkCustomizado();
     await digitarLinkESalvar(digitado);
     expect(addBanner).toHaveBeenCalledTimes(1);
     expect(addBanner.mock.calls[0][0].link).toBe(gravado);
   });
+
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,<b>x</b>",
+    "//outro-site.com",
+  ])(
+    "digitou %j -> RECUSADO: nada é salvo e a lojista vê o aviso",
+    async (digitado) => {
+      await abrirNoModoLinkCustomizado();
+      await digitarLinkESalvar(digitado);
+      expect(addBanner).not.toHaveBeenCalled();
+      expect(h.toastError).toHaveBeenCalledWith(AVISO_DE_LINK_RECUSADO);
+    },
+  );
 
   it("endereço de site sem https:// não faz o campo sumir enquanto a lojista digita", async () => {
     await abrirNoModoLinkCustomizado();

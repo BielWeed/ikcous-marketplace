@@ -48,9 +48,11 @@ import {
   problemaDasDatas,
 } from "@/lib/datas-do-banner";
 import {
+  AVISO_DE_LINK_RECUSADO,
   LINK_DA_PAGINA_DA_LOJA,
+  avisoDoLinkDigitado,
   linkDaCategoria,
-  linkDigitadoParaGravar,
+  linkDoBannerParaSalvar,
 } from "@/lib/destino-do-banner";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import {
@@ -1744,9 +1746,16 @@ export const AdminBannersView = memo(function AdminBannersView({
         return;
       }
 
-      // `wa.me/55...` e `instagram.com/loja` (sem https://) ganham o https://
-      // que faltava; esquema perigoso continua neutralizado com a `/`.
-      const sanitizedLink = linkDigitadoParaGravar(formData.link ?? "");
+      // Endereço de site sem https:// (`wa.me/55...`) ganha o https://; sem
+      // barra no começo ganha uma (como sempre foi); `javascript:`, `data:`,
+      // `//outro-site` e afins não passam: a loja abriria o link ao tocar.
+      const sanitizedLink = linkDoBannerParaSalvar(formData.link);
+      if (sanitizedLink === null) {
+        toast.error(AVISO_DE_LINK_RECUSADO);
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        return;
+      }
 
       const dataToSubmit = {
         ...formData,
@@ -4657,15 +4666,16 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 // https:// já aqui: sem isso o painel o
                                 // tratava como "Página da Loja" e o campo
                                 // sumia da tela enquanto a lojista digitava.
-                                const gravado = linkDigitadoParaGravar(val);
+                                const gravado = linkDoBannerParaSalvar(val);
                                 return {
                                   ...prev,
-                                  link: gravado.startsWith("https://")
+                                  link: gravado?.startsWith("https://")
                                     ? gravado
                                     : val,
                                 };
                               })
                             }
+                            validate={avisoDoLinkDigitado}
                             placeholder="Ex: https://wa.me/5511999999999 ou link externo"
                             useShadcn={true}
                             className="h-9 rounded-xl border-white/10 bg-zinc-900/90 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-sky-400 focus:ring-sky-400"
