@@ -15,6 +15,15 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 
+/**
+ * O número do pedido aparece como "#3884BE" no comprovante e no WhatsApp
+ * (src/lib/numero-do-pedido.ts). Quem copia assim não pode ser recusado por
+ * causa do "#" (nem de espaço): tira os dois ANTES de conferir e de enviar —
+ * o servidor continua recebendo só letras e números do ID.
+ */
+const limparFragmentoDoPedido = (valor: string) =>
+  valor.replaceAll(/[#\s]/g, "");
+
 interface OrderSearchProps {
   onNavigate: (view: View) => void;
   title?: string;
@@ -76,7 +85,7 @@ export function OrderSearch({
     // pedido, e o código saía amarrado a nada. O mesmo mínimo de 6 e o mesmo
     // alfabeto de UUID são exigidos no banco — esta checagem é conveniência,
     // não a defesa.
-    const fragmento = orderFragment.trim();
+    const fragmento = limparFragmentoDoPedido(orderFragment);
     if (!/^[0-9a-fA-F-]{6,}$/.test(fragmento)) {
       toast.error(
         "Informe ao menos os 6 últimos caracteres do ID do pedido, que estão no seu comprovante.",
@@ -120,7 +129,7 @@ export function OrderSearch({
         otp.trim(),
         {
           whatsapp: whatsapp.replaceAll(/\D/g, ""),
-          fragmento: orderFragment.trim(),
+          fragmento: limparFragmentoDoPedido(orderFragment),
         },
       );
       if (foundOrders && foundOrders.length > 0) {

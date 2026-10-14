@@ -1732,7 +1732,7 @@ const AppContent = () => {
   }, []);
 
   // Sync view with URL on initial load and back/forward buttons
-  const { isPasswordRecovery } = useAuth();
+  const { isPasswordRecovery, linkDeRecuperacaoVencido } = useAuth();
 
   useEffect(() => {
     if (isPasswordRecovery) {
@@ -1740,6 +1740,20 @@ const AppContent = () => {
       setCurrentView("auth");
     }
   }, [isPasswordRecovery]);
+
+  // Link de "esqueci a senha" vencido/já usado: a pessoa precisa cair na tela
+  // "Recuperar" com o aviso, não na vitrine (o AuthView devolve a flag assim
+  // que mostra o aviso, então isto só dispara uma vez por link).
+  useEffect(() => {
+    if (linkDeRecuperacaoVencido) {
+      // O endereço também vai para /auth: a sincronização com a URL (efeito
+      // logo abaixo) lê o caminho e, fora de /auth, devolveria a vitrine.
+      if (globalThis.location.pathname !== "/auth") {
+        globalThis.history.replaceState({ view: "auth" }, "", "/auth");
+      }
+      setCurrentView("auth");
+    }
+  }, [linkDeRecuperacaoVencido]);
 
   useEffect(() => {
     // `origem` distingue as duas chamadas abaixo: "efeito" (o efeito reage
