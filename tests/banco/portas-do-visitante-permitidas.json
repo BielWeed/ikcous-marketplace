@@ -1,0 +1,830 @@
+{
+  "comentario": [
+    "Portas de funcoes de `public` que alguem de fora executa: o VISITANTE sem login (anon), o LOGADO (authenticated) ou PUBLIC (todo papel, inclusive os futuros). Nas duas lojas reais.",
+    "Derivada da foto 18a (scripts/publicacao/consultas/18a-inventario-de-portas.sql) das duas lojas, de 14/10/2026, depois do corte da v1 do OTP (migration 20261220); as duas fotos sao iguais, campo a campo.",
+    "Lida por tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs. Reprova se: uma funcao NOVA nasce executavel por anon, authenticated ou PUBLIC sem estar aqui; uma funcao daqui muda QUEM executa (abriu mais, ou o visitante/logado deixou de executar: a vitrine quebraria sem aviso); muda o tipo ou o SECURITY DEFINER; a lista repete linha ou aponta funcao que nao existe mais.",
+    "Funcao de EXTENSAO em public tambem conta (CREATE EXTENSION sem WITH SCHEMA cria funcoes abertas em public). Funcoes so do service_role (ou do dono) nao entram: esta e' a unica classe 'fechada'.",
+    "funcao = public.nome(argumentos) como pg_get_function_identity_arguments escreve. executa = quem tem EXECUTE efetivo: PUBLIC (grantee 0 do ACL), anon, authenticated, nesta ordem.",
+    "tipo: volatil | leitura (STABLE/IMMUTABLE) | gatilho (retorna trigger). secdef: roda com os direitos do dono (SECURITY DEFINER).",
+    "situacao: necessaria = o app do visitante ou uma politica de RLS lida por ele depende do EXECUTE; auxiliar = usada por dentro de outra funcao, CHECK, indice ou gatilho, o app nao a chama, aberta por heranca do PUBLIC; tolerada = aberta ao visitante sem ele depender dela (fechar e' migration a parte, com prova propria); logado = so o authenticated executa e o corpo faz a guarda.",
+    "Para ABRIR uma funcao nova: acrescente a linha, com o PORQUE (uma frase), no mesmo PR da migration. Para FECHAR uma daqui: tire a linha (ou acerte `executa`) no mesmo PR."
+  ],
+  "funcoes": [
+    {
+      "funcao": "public.admin_cupom_clientes(p_coupon_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Cupons: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.admin_cupom_definir_clientes(p_coupon_id uuid, p_clientes uuid[])",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Cupons: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.admin_devolucao_concluir(p_id uuid, p_resolucao text, p_itens jsonb, p_valor_reembolso numeric, p_observacao text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.admin_devolucao_decidir(p_id uuid, p_aprovar boolean, p_mensagem text, p_coleta_em timestamp with time zone)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.admin_devolucao_liberar_vinculo_reverso(p_id uuid, p_conferi_no_melhor_envio boolean)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.admin_devolucao_reemitir_reembolso(p_devolucao_id uuid, p_manual boolean)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.admin_devolucao_registrar(p_id uuid, p_evento text, p_codigo text, p_nota text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.admin_devolucao_reprovar(p_id uuid, p_motivo text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.admin_devolucoes_listar(p_status text, p_busca text, p_limite integer, p_offset integer)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.answer_question_atomic(p_question_id uuid, p_answer text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.answer_question_atomic(p_question_id uuid, p_answer text, p_admin_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.anular_venda_presencial(p_order_id uuid, p_motivo text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.assinatura_da_loja_ler()",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Configuracao da loja (painel do lojista): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.branding_a2_assets_valid(assets jsonb)",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Auxiliar do CHECK store_config_branding_assets_a2_check (identidade da loja); o app nao a chama; aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.branding_a2_file_valid(asset jsonb, asset_role text)",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Auxiliar das duas CHECK da identidade da loja (store_config); o app nao a chama; aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.branding_a2_logo_valid(assets jsonb, logo text)",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Auxiliar do CHECK store_config_branding_logo_a2_check (identidade da loja); o app nao a chama; aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.buscar_por_codigo_barras(p_codigo text)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.cancelar_devolucao(p_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucao do pedido pelo cliente logado (ou pelo admin): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.confirmar_retorno_do_produto(p_order_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.create_marketplace_order_v23(p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb, p_destination_cep text, p_shipping_option_id text, p_idempotency_key uuid)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Cria o pedido no checkout, inclusive o do convidado sem login (useOrders); e' a porta de compra da vitrine."
+    },
+    {
+      "funcao": "public.create_marketplace_order_v24(p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb, p_destination_cep text, p_shipping_option_id text, p_idempotency_key uuid)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Cria o pedido no checkout, inclusive o do convidado sem login (useOrders); e' a porta de compra da vitrine."
+    },
+    {
+      "funcao": "public.crm_clientes(p_segmento text, p_busca text, p_limite integer, p_offset integer)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.crm_visao(p_inicio date, p_fim date)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.cupons_do_checkout(p_subtotal numeric)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Lista os cupons que o checkout mostra a quem compra, inclusive o convidado (useCuponsDoCheckout)."
+    },
+    {
+      "funcao": "public.devolucao_detalhe(p_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucao do pedido pelo cliente logado (ou pelo admin): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.devolucao_elegibilidade(p_order_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucao do pedido pelo cliente logado (ou pelo admin): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.devolucoes_do_pedido(p_order_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucao do pedido pelo cliente logado (ou pelo admin): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.f_digitos(text)",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Auxiliar IMMUTABLE do indice de busca de pedidos (migration 20261068000000); o app nao a chama; aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.f_unaccent(text)",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Auxiliar IMMUTABLE dos indices de busca de pedidos (migration 20261068000000); o app nao a chama; aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.fin_caixa_abrir(p_valor_abertura numeric, p_conta_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_caixa_atual()",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_caixa_fechar(p_valor_contado numeric, p_observacao text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_caixa_historico(p_limite integer)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_caixa_movimentar(p_tipo text, p_valor numeric, p_descricao text, p_conta_contrapartida uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_categoria_salvar(p jsonb)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_categorias_listar()",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_conta_salvar(p jsonb)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_contas_listar()",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_dre(p_inicio date, p_fim date)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_extrato(p_inicio date, p_fim date, p_conta_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_lancamento_baixar(p_id uuid, p_data date, p_conta_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_lancamento_cancelar(p_id uuid, p_motivo text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_lancamento_salvar(p jsonb)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_previstos(p_tipo text)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.fin_resumo(p_inicio date, p_fim date)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.forma_de_pagamento_aceita(p_metodo text)",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "auxiliar",
+      "porque": "Regra de forma de pagamento chamada por dentro de create_marketplace_order_v23/v24 e das CHECK de store_config; o app nao a chama; aberta por heranca."
+    },
+    {
+      "funcao": "public.formas_pagamento_sem_duplicata(arr text[])",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Auxiliar da CHECK store_config_formas_pagamento_sem_duplicata_check (migration 20261174000000); o app nao a chama; aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.get_admin_analytics_v2(p_limit_days integer)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_admin_customers_paged(p_search text, p_sort_field text, p_sort_direction text, p_page integer, p_page_size integer)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_admin_orders_cancelados_recentes(p_dias integer, p_page integer, p_page_size integer)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_admin_orders_paged(p_search text, p_status text, p_start_date text, p_end_date text, p_page integer, p_page_size integer, p_payment_status text, p_canal text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_admin_products_paged(p_search text, p_category text, p_status text, p_stock text, p_page integer, p_page_size integer)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_admin_questions_paged(p_search text, p_filter text, p_page integer, p_page_size integer)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_admin_reviews_paged(p_search text, p_rating text, p_page integer, p_page_size integer)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_admin_user_detail(p_user_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_category_analytics(start_date timestamp with time zone, end_date timestamp with time zone)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_coupon_stats()",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Cupons: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_my_complete_profile()",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Conta e carrinho do cliente logado: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_my_cpf()",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Conta e carrinho do cliente logado: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_orders_by_otp_v2(p_email text, p_whatsapp text, p_fragmento text, p_otp text)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Consulta de pedido do convidado por e-mail, WhatsApp e codigo, sem login (OrderSearch, useOrders); o convidado nao tem outro caminho."
+    },
+    {
+      "funcao": "public.get_product_recommendations(p_product_id uuid, p_limit integer)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Produtos relacionados na pagina do produto, vista pelo visitante (useProducts)."
+    },
+    {
+      "funcao": "public.get_retention_rate()",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_reviews_metrics(p_search text, p_rating integer)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "tolerada",
+      "porque": "Media e contagens das avaliacoes, chamada so pelo painel de avaliacoes (useReviews); o visitante nao depende dela. Fechar e' migration a parte."
+    },
+    {
+      "funcao": "public.get_segmented_push_count(p_segment text, p_min_ltv numeric, p_days_inactive integer)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.get_segmented_push_targets(p_segment text, p_min_ltv numeric, p_days_inactive integer)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.handle_produto_atualizado()",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "gatilho",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Funcao de gatilho de produtos (retorna trigger, nao e' chamavel como RPC); aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.handle_variant_atualiza_produto()",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "gatilho",
+      "secdef": true,
+      "situacao": "auxiliar",
+      "porque": "Funcao de gatilho das variacoes (retorna trigger, nao e' chamavel como RPC); aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.increment_helpful(review_id uuid)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "tolerada",
+      "porque": "Voto 'util' numa avaliacao; o corpo recusa quem nao esta logado (auth.uid() nulo), entao o visitante so recebe a recusa. Fechar e' migration a parte."
+    },
+    {
+      "funcao": "public.informar_envio_devolucao(p_id uuid, p_codigo_rastreio text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucao do pedido pelo cliente logado (ou pelo admin): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.is_admin()",
+      "executa": ["anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "As politicas de SELECT de produtos e banners (publicas) chamam is_admin(); a consulta da vitrine roda com o papel do visitante e precisa do EXECUTE."
+    },
+    {
+      "funcao": "public.is_local_cep(p_origin_cep text, p_dest_cep text, p_local_cep_range text)",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Regra de CEP local chamada por dentro de create_marketplace_order_v23/v24; o app usa uma copia no front (cep-local.ts), nao a RPC; aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.limpar_cotacoes_fora_da_janela()",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "gatilho",
+      "secdef": false,
+      "situacao": "auxiliar",
+      "porque": "Funcao de gatilho das cotacoes de frete (retorna trigger, nao e' chamavel como RPC); aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.marca_avaliacao_nasce_verificada()",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "gatilho",
+      "secdef": true,
+      "situacao": "auxiliar",
+      "porque": "Funcao de gatilho de avaliacoes (retorna trigger, nao e' chamavel como RPC); aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.marca_avaliacoes_do_pedido_verificadas()",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "gatilho",
+      "secdef": true,
+      "situacao": "auxiliar",
+      "porque": "Funcao de gatilho de pedidos (retorna trigger, nao e' chamavel como RPC); aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.notifica_cliente_de_mudanca_de_pagamento()",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "gatilho",
+      "secdef": true,
+      "situacao": "auxiliar",
+      "porque": "Funcao de gatilho de pedidos (retorna trigger, nao e' chamavel como RPC); aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.notifica_cliente_de_mudanca_de_status()",
+      "executa": ["PUBLIC", "anon", "authenticated"],
+      "tipo": "gatilho",
+      "secdef": true,
+      "situacao": "auxiliar",
+      "porque": "Funcao de gatilho de pedidos (retorna trigger, nao e' chamavel como RPC); aberta por heranca do PUBLIC."
+    },
+    {
+      "funcao": "public.painel_inicio()",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.perfil_publico_avaliacoes(p_autor uuid)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Perfil publico de quem avaliou, navegavel por qualquer visitante sem login (UserProfileView, migration 20261130000000)."
+    },
+    {
+      "funcao": "public.perfil_publico_perguntas(p_autor uuid)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Perfil publico de quem perguntou, navegavel por qualquer visitante sem login (UserProfileView, migration 20261130000000)."
+    },
+    {
+      "funcao": "public.read_store_identity()",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Configuracao da loja (painel do lojista): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.record_vor_action(p_action_type text, p_input_data jsonb, p_output_data jsonb, p_proof_hash text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.registrar_estorno_manual(p_order_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.registrar_pagamento_recebido(p_order_id uuid, p_recebido boolean)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.registrar_venda_presencial(p_itens jsonb, p_pagamento text, p_cliente_user_id uuid, p_cliente_nome text, p_cliente_whatsapp text, p_desconto numeric, p_observacao text, p_idempotency_key uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.reorder_banners_atomic(p_position text, p_banner_id_1 uuid, p_banner_id_2 uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.reply_review_atomic(p_review_id uuid, p_reply text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.reply_review_atomic(p_review_id uuid, p_reply text, p_admin_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.resolver_loja(p_host text, p_chave text)",
+      "executa": ["anon"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Porteiro da frota: descobre qual loja atende o endereco antes de qualquer login (hospedagem/porteiro.ts); so o anon tem EXECUTE."
+    },
+    {
+      "funcao": "public.rls_admin_atual()",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Configuracao da loja (painel do lojista): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.salvar_config_pagamento_cartao(p_credito boolean, p_debito boolean, p_parcelas_max integer)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.salvar_politica_de_devolucao(p jsonb)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Configuracao da loja (painel do lojista): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.save_store_identity(expected_revision text, expected_identity jsonb, desired_identity jsonb)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Configuracao da loja (painel do lojista): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.set_my_cpf(p_cpf text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Conta e carrinho do cliente logado: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.solicitar_devolucao(p_order_id uuid, p_itens jsonb, p_motivo text, p_detalhe text, p_resolucao text, p_metodo text, p_fotos text[])",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucao do pedido pelo cliente logado (ou pelo admin): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.solicitar_estorno(p_order_id uuid, p_amount numeric, p_motivo text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.swap_banner_order(banner_id_1 uuid, banner_id_2 uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.sync_cart_atomic(p_cart_items jsonb)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Conta e carrinho do cliente logado: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.update_my_profile_secure(p_full_name text, p_whatsapp text, p_avatar_url text, p_cover_url text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Conta e carrinho do cliente logado: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.update_order_status_atomic(p_order_id uuid, p_new_status text, p_notes text, p_silent boolean)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Operacao do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.upsert_store_config(config_json jsonb)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Configuracao da loja (painel do lojista): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.vaga_do_cupom_presa(p_code text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Cupons: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.validate_coupon_secure_v2(p_code text, p_subtotal numeric)",
+      "executa": ["anon", "authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "Valida o cupom digitado no checkout, inclusive do convidado (useCoupons)."
+    }
+  ]
+}

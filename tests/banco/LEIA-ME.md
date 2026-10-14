@@ -355,6 +355,14 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 - **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
   `20261199000000` (20261212, 20261214) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
   reprova se aparecer uma sucessora que não esteja na lista.
+- **função nova não nasce aberta (`portas-do-visitante-so-as-permitidas-viva.cjs`, via `rodar-isolado.cjs`)**: L8 da
+  auditoria de 12/10, sem migration. Com todas as migrations aplicadas, toda função de `public` que anon,
+  authenticated ou PUBLIC executa (função de extensão inclusive) tem de estar em
+  `portas-do-visitante-permitidas.json`, com quem executa, tipo, SECURITY DEFINER e o porquê. Reprova função
+  nova aberta, porta que abriu mais ou fechou (a tela quebraria), tipo ou SECURITY DEFINER que mudou, linha
+  duplicada e linha de função que não existe mais. A lista é a foto das duas lojas reais de 14/10/2026. Para
+  abrir uma função de propósito: a linha entra no mesmo PR da migration. Um autoteste prova que o detector
+  enxerga função sem REVOKE, com REVOKE só de PUBLIC, com `authenticated` esquecido e de extensão.
 
 ## Como rodar
 
