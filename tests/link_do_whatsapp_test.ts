@@ -91,6 +91,7 @@ async function comFetch<T>(
 // `.supabase.co`) — um host qualquer como o antigo `supa-fake.local` falha
 // a validação de ORIGEM antes de qualquer fetch.
 const HOST_LOJA_TESTE = "loja-teste.vercel.app";
+const MARCA_DO_BUILD = "Loja Do Build Principal";
 const ORIGEM_SUPABASE_VALIDA = "https://abcdefghij0123456789.supabase.co";
 
 const ENV_SUPABASE_BASE = {
@@ -202,6 +203,17 @@ function fetchRoboComFicha(
           status: 200,
           headers: { "content-type": "application/json" },
         }),
+      );
+    }
+    // O documento estático do build (`/index.html`): o porteiro o baixa para
+    // servir a página da loja ao robô quando o produto não existe. Traz uma
+    // marca da loja PRINCIPAL do build, que NUNCA pode chegar ao robô.
+    if (url.pathname === "/index.html") {
+      return Promise.resolve(
+        new Response(
+          `<!DOCTYPE html><html lang="pt-BR"><head><title>${MARCA_DO_BUILD}</title><meta property="og:title" content="${MARCA_DO_BUILD}" /><meta property="og:url" content="https://build-principal.exemplo/" /></head><body></body></html>`,
+          { status: 200, headers: { "content-type": "text/html" } },
+        ),
       );
     }
     if (url.pathname === "/rest/v1/vw_produtos_public") {
@@ -440,10 +452,12 @@ Deno.test("middleware: robô + produto existente devolve prévia com foto, nome 
   );
 });
 
-// ── 5. Regressão do defeito original: permission denied -> pass-through, com
-// o header que prova QUE chegou a rodar e caiu no sem-produto.
+// ── 5. Regressão do defeito original: permission denied -> NUNCA vira
+// "produto", e (14/10/2026) também nunca vira o HTML assado do build: o robô
+// recebe o documento da PRÓPRIA loja, com o header que prova QUE chegou a
+// rodar e caiu no sem-produto.
 
-Deno.test("middleware: robô + permission denied (42501) devolve pass-through com sem-produto", async () => {
+Deno.test("middleware: robô + permission denied (42501) devolve o documento da loja com sem-produto, nunca o HTML do build", async () => {
   const urls: string[] = [];
 
   const resp = await comEnvAsync(ENV_SUPABASE_BASE, () =>
@@ -452,11 +466,18 @@ Deno.test("middleware: robô + permission denied (42501) devolve pass-through co
     ),
   );
 
-  assertEquals(resp.headers.get("x-middleware-next"), "1");
+  assertEquals(resp.status, 200);
+  assertEquals(resp.headers.get("x-middleware-next"), null);
   assertEquals(resp.headers.get("x-ikcous-og"), "sem-produto");
   // Item 2 do brief T3c: presente também no sem-produto.
   assertEquals(resp.headers.get("x-ikcous-caderneta"), "ausente");
-  assertEquals(await resp.text(), "");
+  const html = await resp.text();
+  assertStringIncludes(html, "<title>Loja Teste</title>");
+  assertStringIncludes(html, `og:url" content="https://${HOST_LOJA_TESTE}/"`);
+  assert(
+    !html.includes(MARCA_DO_BUILD),
+    "o HTML assado do build nao pode chegar ao robo",
+  );
 });
 
 // ── 6. Navegador comum em /product-detail: DEIXOU de ser pass-through. Com o

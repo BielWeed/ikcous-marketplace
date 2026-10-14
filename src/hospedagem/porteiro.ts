@@ -1120,6 +1120,30 @@ export async function atenderPorteiro(
   if (url.pathname === "/manifest.webmanifest")
     return atenderManifest(ficha, estadoCaderneta);
 
+  return documentoDaLoja(request, ficha, estadoCaderneta, deps);
+}
+
+/**
+ * O documento da loja daquele endereço: baixa o `/index.html` estático do
+ * build, injeta a ficha JÁ VALIDADA (`injetarFichaNoHtml`) e responde. É o
+ * caminho do navegador em `atenderPorteiro` e, desde 14/10/2026, também o do
+ * robô de prévia quando o produto não existe (pausado, apagado, inexistente
+ * ou sem `id`) — o robô recebe a página inicial DA LOJA do endereço, nunca o
+ * HTML assado do build (que é a identidade da loja principal: "a loja de
+ * ninguém" no build compartilhado).
+ *
+ * Falha FECHADA: documento estático fora do ar (não-200) ou rede caindo ao
+ * baixá-lo -> a MESMA 503 de manutenção (`html-indisponivel`); nunca
+ * passthrough para o HTML assado. `extras` acrescenta cabeçalhos de
+ * diagnóstico (ex.: `x-ikcous-og`) sem alterar os do porteiro.
+ */
+export async function documentoDaLoja(
+  request: Request,
+  ficha: FichaDaLoja,
+  estadoCaderneta: EstadoCaderneta,
+  deps: Pick<DependenciasPorteiro, "fetchImpl">,
+  extras: Readonly<Record<string, string>> = {},
+): Promise<Response> {
   const respostaHtml = await deps.fetchImpl(
     new URL("/index.html", request.url),
     {
@@ -1137,6 +1161,7 @@ export async function atenderPorteiro(
       "x-ikcous-caderneta": estadoCaderneta,
       "cache-control": "no-store",
       vary: "host",
+      ...extras,
     },
   });
 }
