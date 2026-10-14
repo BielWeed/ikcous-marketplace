@@ -32,6 +32,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCategories } from "@/hooks/useCategories";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
@@ -41,6 +42,7 @@ import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import { soFotosReais } from "@/lib/foto-do-produto";
+import { mesmaCategoria } from "@/lib/gestao-de-categorias";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
   chaveDoRascunhoDoProduto,
@@ -148,6 +150,14 @@ const LeitorDeCodigo = lazy(() =>
   import("@/components/admin/pdv/LeitorDeCodigo").then((modulo) => ({
     default: modulo.LeitorDeCodigo,
   })),
+);
+
+// A tela "Gerenciar categorias" só é baixada quando a lojista a abre (pelo
+// mesmo motivo do leitor acima): fora dela o formulário não precisa dela.
+const GerenciarCategorias = lazy(() =>
+  import("@/components/admin/categorias/GerenciarCategorias").then(
+    (modulo) => ({ default: modulo.GerenciarCategorias }),
+  ),
 );
 
 // C5.3 — sem câmera (desktop sem webcam, navegador sem suporte) o botão
@@ -581,7 +591,26 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   });
   const [currentProduct, setCurrentProduct] = useState<any>(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  // A lojista renomeou ou apagou a categoria que está escolhida AQUI: o campo
+  // acompanha. O banco já trocou o nome no produto salvo; sem isto, salvar com o
+  // nome velho no campo devolveria o produto à categoria que não existe mais.
+  useAoMudarCategoria((mudanca) => {
+    if (mudanca.tipo === "renomeada") {
+      setFormData((prev) =>
+        mesmaCategoria(prev.category ?? "", mudanca.de)
+          ? { ...prev, category: mudanca.para }
+          : prev,
+      );
+    } else if (mudanca.tipo === "apagada") {
+      setFormData((prev) =>
+        mesmaCategoria(prev.category ?? "", mudanca.nome)
+          ? { ...prev, category: "" }
+          : prev,
+      );
+    }
+  });
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
@@ -2504,6 +2533,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         <div className="absolute bottom-0 left-0 h-[500px] w-[500px] rounded-full bg-blue-500/5 blur-[120px]" />
       </div>
 
+      {gerenciandoCategorias && (
+        <Suspense fallback={null}>
+          <GerenciarCategorias
+            aberta
+            onFechar={() => setGerenciandoCategorias(false)}
+          />
+        </Suspense>
+      )}
+
       {typeof document !== "undefined" &&
         createPortal(
           <AnimatePresence>
@@ -3830,6 +3868,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   onValueChange={async (val) => {
                     if (val === "NEW_CATEGORY") {
                       setShowCategoryForm(true);
+                    } else if (val === "MANAGE_CATEGORIES") {
+                      setGerenciandoCategorias(true);
                     } else {
                       setFormData((prev) => ({ ...prev, category: val }));
                     }
@@ -3858,6 +3898,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     >
                       <span className="flex items-center gap-2">
                         ➕ CRIAR NOVA CATEGORIA
+                      </span>
+                    </SelectItem>
+                    <SelectItem
+                      value="MANAGE_CATEGORIES"
+                      className="cursor-pointer rounded-lg px-4 py-3 font-black text-zinc-300 focus:bg-white/5 focus:text-white"
+                    >
+                      <span className="flex items-center gap-2">
+                        ✏️ RENOMEAR, ESCONDER OU APAGAR
                       </span>
                     </SelectItem>
                   </SelectContent>
