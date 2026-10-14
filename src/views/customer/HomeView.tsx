@@ -11,6 +11,7 @@ import {
   ArrowUp,
   Clock,
   PackageSearch,
+  RotateCw,
   SlidersHorizontal,
   TrendingUp,
 } from "lucide-react";
@@ -75,8 +76,24 @@ export const HomeView = React.memo(function HomeView({
   onSortByChange,
   onHeaderDockChange,
 }: HomeViewProps) {
-  const { config, isLoaded: configLoaded } = useStore();
+  const {
+    config,
+    isLoaded: configLoaded,
+    catalogoErro,
+    fetchProducts,
+  } = useStore();
   const [showSortMenu, setShowSortMenu] = useState(false);
+  // "Tentar de novo" do catálogo: enquanto a consulta roda, o botão avisa e
+  // não aceita toque repetido.
+  const [tentandoCatalogo, setTentandoCatalogo] = useState(false);
+  const tentarCatalogoDeNovo = useCallback(async () => {
+    setTentandoCatalogo(true);
+    try {
+      await fetchProducts();
+    } finally {
+      setTentandoCatalogo(false);
+    }
+  }, [fetchProducts]);
   // Laudo de acessibilidade 05/09 (onda 3, item B5): guarda o botão que abriu
   // o menu de ordenar para devolver o foco a ele quando o Esc fechar.
   const sortButtonRef = React.useRef<HTMLButtonElement>(null);
@@ -685,7 +702,34 @@ export const HomeView = React.memo(function HomeView({
           </div>
         </div>
 
-        {filteredProducts.length === 0 && !isLoading ? (
+        {catalogoErro && products.length === 0 && !isLoading ? (
+          <div
+            role="alert"
+            className="relative z-10 mt-16 rounded-[2.5rem] border border-zinc-100 bg-zinc-50/50 px-4 py-20 text-center"
+          >
+            <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-zinc-100">
+              <PackageSearch className="size-10 text-zinc-300" />
+            </div>
+            <h3 className="mb-2 text-xl font-bold tracking-tight text-zinc-900">
+              Não conseguimos carregar os produtos
+            </h3>
+            <p className="mx-auto mb-6 max-w-[240px] text-sm leading-relaxed text-zinc-500">
+              Confira sua internet e tente de novo.
+            </p>
+            <button
+              type="button"
+              onClick={tentarCatalogoDeNovo}
+              disabled={tentandoCatalogo}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-4 text-sm font-semibold text-zinc-900 underline underline-offset-2 hover:bg-zinc-100 disabled:opacity-60"
+            >
+              <RotateCw
+                aria-hidden="true"
+                className={cn("size-3.5", tentandoCatalogo && "animate-spin")}
+              />
+              {tentandoCatalogo ? "Tentando..." : "Tentar de novo"}
+            </button>
+          </div>
+        ) : filteredProducts.length === 0 && !isLoading ? (
           <div className="relative z-10 mt-16 rounded-[2.5rem] border border-zinc-100 bg-zinc-50/50 px-4 py-20 text-center italic">
             <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-zinc-100">
               <PackageSearch className="size-10 text-zinc-300" />

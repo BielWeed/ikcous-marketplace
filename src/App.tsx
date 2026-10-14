@@ -516,7 +516,11 @@ const AppBadgeSynchronizer = React.memo(function AppBadgeSynchronizer() {
 
 const AppContent = () => {
   const { user, isAdmin, adminStatus, loading: authLoading } = useAuth();
-  const { products, loading: productsLoading } = useProducts();
+  const {
+    products,
+    loading: productsLoading,
+    fetchProducts: recarregarProdutos,
+  } = useProducts();
   const { navigate: startTransition, isSupported: isTransitionSupported } =
     useViewTransition();
 
@@ -2163,6 +2167,17 @@ const AppContent = () => {
     }
   }, [currentView, searchQuery]);
 
+  // Link de produto cuja checagem falhou por REDE (id do produto, ou null).
+  // Falha de rede NÃO é "o produto não existe": o cliente fica no link e vê
+  // "Não conseguimos carregar" com "Tentar de novo", em vez de cair na Home.
+  const [produtoSemRede, setProdutoSemRede] = useState<string | null>(null);
+  const [tentativaDoProduto, setTentativaDoProduto] = useState(0);
+  const tentarProdutoDeNovo = useCallback(() => {
+    setProdutoSemRede(null);
+    void recarregarProdutos?.();
+    setTentativaDoProduto((n) => n + 1);
+  }, [recarregarProdutos]);
+
   // Handle missing product or invalid product detail view
   useEffect(() => {
     let active = true;
@@ -2181,22 +2196,58 @@ const AppContent = () => {
         ? getProductById(products, selectedProductId)
         : null;
       if (!product) {
+        // Só o caso "o produto de fato não existe" manda para a Home.
+        const redirecionarParaHome = () => {
+          if (!active) return;
+          console.warn(
+            "[App] Product detail view requested but product not found on network. Redirecting to home.",
+          );
+          setCurrentView("home");
+          // Sync URL back to home
+          const caminhoDaHome = caminhoDaHomeRef.current();
+          if (
+            globalThis.location.pathname + globalThis.location.search !==
+            caminhoDaHome
+          ) {
+            globalThis.history.replaceState(
+              { view: "home" },
+              "",
+              caminhoDaHome,
+            );
+          }
+        };
         const verifyProduct = async () => {
           try {
             console.log("[App] verifyProduct checking id =", selectedProductId);
-            if (!selectedProductId) throw new Error("No product ID");
+            if (!selectedProductId) {
+              redirecionarParaHome();
+              return;
+            }
             const { data, error } = await supabase
               .from("vw_produtos_public")
               .select("id")
               .eq("id", selectedProductId)
               .single();
             if (error) {
-              console.error("[App] verifyProduct query error:", error);
+              // PGRST116 = `.single()` não achou linha nenhuma: não existe.
+              // 22P02 = o id do link nem é um uuid (link truncado): também
+              // não existe, e vai para a Home como antes.
+              // Qualquer outro erro (rede, servidor) é falha de CARREGAR.
+              const codigoDoErro = (error as { code?: string }).code;
+              if (codigoDoErro === "PGRST116" || codigoDoErro === "22P02") {
+                console.error(
+                  "[App] verifyProduct: produto não existe:",
+                  error,
+                );
+                redirecionarParaHome();
+                return;
+              }
               throw error;
             }
             if (!data) {
               console.error("[App] verifyProduct query returned no data");
-              throw new Error("Product not active or not found");
+              redirecionarParaHome();
+              return;
             }
             // Product exists in database, do not redirect!
             console.log("[App] Product exists on network, avoiding redirect.");
@@ -2205,24 +2256,7 @@ const AppContent = () => {
               "[App] verifyProduct caught error:",
               err?.message || err,
             );
-            if (active) {
-              console.warn(
-                "[App] Product detail view requested but product not found on network. Redirecting to home.",
-              );
-              setCurrentView("home");
-              // Sync URL back to home
-              const caminhoDaHome = caminhoDaHomeRef.current();
-              if (
-                globalThis.location.pathname + globalThis.location.search !==
-                caminhoDaHome
-              ) {
-                globalThis.history.replaceState(
-                  { view: "home" },
-                  "",
-                  caminhoDaHome,
-                );
-              }
-            }
+            if (active) setProdutoSemRede(selectedProductId);
           }
         };
         verifyProduct();
@@ -2231,7 +2265,14 @@ const AppContent = () => {
     return () => {
       active = false;
     };
-  }, [currentView, selectedProductId, products, authLoading, productsLoading]);
+  }, [
+    currentView,
+    selectedProductId,
+    products,
+    authLoading,
+    productsLoading,
+    tentativaDoProduto,
+  ]);
 
   // Unified scroll restoration is handled in the consolidated useLayoutEffect hook above
 
@@ -2313,7 +2354,31 @@ const AppContent = () => {
         const product = selectedProductId
           ? getProductById(products, selectedProductId)
           : null;
-        if (!product) return null;
+        if (!product) {
+          if (produtoSemRede && produtoSemRede === selectedProductId) {
+            return (
+              <div
+                role="alert"
+                className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center"
+              >
+                <h2 className="text-xl font-bold tracking-tight text-zinc-900">
+                  Não conseguimos carregar este produto
+                </h2>
+                <p className="max-w-[260px] text-sm leading-relaxed text-zinc-500">
+                  Confira sua internet e tente de novo.
+                </p>
+                <button
+                  type="button"
+                  onClick={tentarProdutoDeNovo}
+                  className="inline-flex min-h-11 items-center rounded-lg px-4 text-sm font-semibold text-zinc-900 underline underline-offset-2 hover:bg-zinc-100"
+                >
+                  Tentar de novo
+                </button>
+              </div>
+            );
+          }
+          return null;
+        }
         return (
           <PreloadedOrLazy
             component={ProductView}
