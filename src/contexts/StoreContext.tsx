@@ -60,6 +60,16 @@ interface StoreContextType {
   products: Product[];
   loadingProducts: boolean;
   /**
+   * `true` quando a ÚLTIMA consulta do catálogo falhou (rede, servidor) e
+   * nenhuma consulta posterior deu certo. Existe para a vitrine separar "a
+   * rede falhou" de "a loja não tem produto" -- as duas deixavam `products`
+   * vazio e `loadingProducts` falso, e a primeira visita com rede ruim
+   * parecia loja vazia. Campo ACRESCENTADO: quem só lê `products` e
+   * `loadingProducts` segue igual. Consulta que respondeu com lista vazia NÃO
+   * é erro.
+   */
+  catalogoErro: boolean;
+  /**
    * Devolve `true` se a configuração foi mesmo gravada, `false` se não.
    *
    * Era `Promise<void>` e engolia qualquer falha — RLS, sessão expirada, rede —
@@ -310,6 +320,11 @@ function componhaShareText(
   return `Olha que achei na ${storeName}!`;
 }
 
+// Espera (ms) de cada nova tentativa AUTOMÁTICA do catálogo depois de uma
+// falha: crescente e com TETO de 3 -- o tamanho desta lista é o limite, não
+// existe laço. Toque manual em "Tentar de novo" zera a contagem.
+const ESPERAS_DO_CATALOGO_MS: readonly number[] = [2000, 5000, 10000];
+
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -350,6 +365,28 @@ export function StoreProvider({
   const [isLoaded, setIsLoaded] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [catalogoErro, setCatalogoErro] = useState(false);
+  // Novas tentativas automáticas do catálogo (rede ruim na 1ª visita): no
+  // máximo ESPERAS_DO_CATALOGO_MS.length, com espera crescente, e só se ainda
+  // não há nada na tela quando a espera termina -- quem tem cópia salva no
+  // aparelho já vê a loja e segue com o comportamento de sempre (uma consulta
+  // de fundo, sem insistir).
+  const tentativasDoCatalogoRef = useRef(0);
+  const timerDoCatalogoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const consultaDoCatalogoRef = useRef(0);
+  const produtosNaTelaRef = useRef(0);
+  const buscarProdutosRef = useRef<() => Promise<void>>(async () => {});
+  const montadoRef = useRef(true);
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+      if (timerDoCatalogoRef.current) {
+        clearTimeout(timerDoCatalogoRef.current);
+        timerDoCatalogoRef.current = null;
+      }
+    };
+  }, []);
 
   // ── DataVault: Load config from IDB on mount (instant, <5ms) ──
   useEffect(() => {
@@ -771,10 +808,14 @@ export function StoreProvider({
     }
   }, [isAdmin, mapConfig, applyBranding, configIgual]);
 
-  const fetchProducts = useCallback(async () => {
+  const buscarProdutos = useCallback(async () => {
     // Stale-While-Revalidate: IDB data already loaded in mount effect.
     // This function always fetches fresh data from Supabase (background revalidation).
 
+    // Só a consulta MAIS RECENTE pode declarar falha: o efeito de montagem
+    // consulta de novo quando a sessão termina de carregar, e a falha de uma
+    // consulta velha não pode acender o aviso por cima de uma que já deu certo.
+    const minhaConsulta = ++consultaDoCatalogoRef.current;
     try {
       let data: any[] | null = null;
       let error: any = null;
@@ -830,6 +871,14 @@ export function StoreProvider({
         throw new Error("consulta de produtos voltou sem dados e sem erro");
       }
 
+      // Resposta de verdade (lista vazia inclusive): a falha acabou.
+      tentativasDoCatalogoRef.current = 0;
+      if (timerDoCatalogoRef.current) {
+        clearTimeout(timerDoCatalogoRef.current);
+        timerDoCatalogoRef.current = null;
+      }
+      setCatalogoErro(false);
+
       if (data.length > 0) {
         const mapped = (data as any[]).map((item: any) =>
           mapProductFromDB(item),
@@ -859,10 +908,48 @@ export function StoreProvider({
       }
     } catch (err) {
       console.error("[StoreContext] Products fetch error:", err);
+      if (minhaConsulta === consultaDoCatalogoRef.current) {
+        // A vitrine precisa saber que FALHOU -- sem isto, lista vazia + sem
+        // "carregando" é indistinguível de "a loja não tem produto".
+        setCatalogoErro(true);
+        const espera = ESPERAS_DO_CATALOGO_MS[tentativasDoCatalogoRef.current];
+        if (
+          espera !== undefined &&
+          montadoRef.current &&
+          !timerDoCatalogoRef.current
+        ) {
+          tentativasDoCatalogoRef.current += 1;
+          timerDoCatalogoRef.current = setTimeout(() => {
+            timerDoCatalogoRef.current = null;
+            // Cópia salva chegou nesse meio-tempo: não há o que insistir.
+            if (produtosNaTelaRef.current > 0) return;
+            void buscarProdutosRef.current();
+          }, espera);
+        }
+      }
     } finally {
       setLoadingProducts(false);
     }
   }, [isAdmin, loading]);
+
+  useEffect(() => {
+    buscarProdutosRef.current = buscarProdutos;
+  }, [buscarProdutos]);
+  useEffect(() => {
+    produtosNaTelaRef.current = products.length;
+  }, [products]);
+
+  // Porta pública (efeito de montagem, `refresh`, "Tentar de novo" da vitrine,
+  // useProducts): consulta na hora e devolve o fôlego das tentativas
+  // automáticas. As automáticas chamam `buscarProdutos` direto, sem zerar.
+  const fetchProducts = useCallback(async () => {
+    tentativasDoCatalogoRef.current = 0;
+    if (timerDoCatalogoRef.current) {
+      clearTimeout(timerDoCatalogoRef.current);
+      timerDoCatalogoRef.current = null;
+    }
+    await buscarProdutos();
+  }, [buscarProdutos]);
 
   const updateConfig = useCallback(
     async (
@@ -1301,6 +1388,7 @@ export function StoreProvider({
       isLoaded,
       products,
       loadingProducts,
+      catalogoErro,
       updateConfig,
       refresh,
       fetchProducts,
@@ -1311,6 +1399,7 @@ export function StoreProvider({
       isLoaded,
       products,
       loadingProducts,
+      catalogoErro,
       updateConfig,
       refresh,
       fetchProducts,
