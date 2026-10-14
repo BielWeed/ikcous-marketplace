@@ -1637,6 +1637,13 @@ export function decidirRealtimeInsertAdmin(
   return (page ?? 0) === 0 ? "inserir" : "recarregar";
 }
 
+/**
+ * Texto da falha de carregamento dos pedidos do cliente (`ordersLoadError`).
+ * Exportado para a tela e os testes falarem do MESMO literal.
+ */
+export const MENSAGEM_FALHA_AO_CARREGAR_PEDIDOS =
+  "Não conseguimos carregar seus pedidos agora.";
+
 export function useOrders(
   enabled = true,
   isAdmin = false,
@@ -1664,6 +1671,13 @@ export function useOrders(
     return [];
   });
   const [loading, setLoading] = useState(enabled);
+  // Falha de carregamento dos pedidos DO CLIENTE (`fetchUserOrders`), exposta
+  // para a tela não confundir "a consulta falhou" com "você não tem pedido":
+  // o catch devolvia `[]` e um toast que some em segundos, e quem acabou de
+  // pagar um PIX num aparelho sem cache via "Nenhum pedido". `null` = sem
+  // falha pendente. Só uma resposta ok limpa; o aborto (troca de conta, busca
+  // nova por cima) não prova nada sobre o servidor e não mexe aqui.
+  const [ordersLoadError, setOrdersLoadError] = useState<string | null>(null);
   const [totalOrders, setTotalOrders] = useState(() => {
     return isAdmin ? cachedAdminTotalOrders : 0;
   });
@@ -1683,6 +1697,8 @@ export function useOrders(
     // efeito roda pouco (só quando o usuário muda), mas manter as duas
     // escritas com a mesma disciplina evita que a próxima pessoa reintroduza o
     // loop da PEDIDO-040 por este caminho.
+    // Outra conta (ou ninguém): a falha da conta anterior não é desta.
+    setOrdersLoadError(null);
     if (!user?.id) {
       setOrders((atual) => (atual.length === 0 ? atual : []));
       return;
@@ -1763,6 +1779,8 @@ export function useOrders(
           setOrders((atual) =>
             JSON.stringify(atual) === serializado ? atual : mappedOrders,
           );
+          // Resposta ok (inclusive com 0 pedidos): a falha anterior acabou.
+          setOrdersLoadError(null);
           // P-2 (laudo varredura 01/09): o setItem do cache está sob
           // try/catch — localStorage cheio (QuotaExceededError) NÃO é erro
           // de rede nem da leitura: é o armazenamento LOCAL do aparelho
@@ -1787,6 +1805,12 @@ export function useOrders(
           return [];
         }
         console.error("Error fetching user orders:", err);
+        // A falha FICA registrada (o toast some em segundos): a tela decide —
+        // sem pedido em memória mostra "Não conseguimos carregar" com
+        // "Tentar de novo"; com pedidos em memória mantém a lista e avisa
+        // sem alarde. O `orders` não é tocado aqui: lista que já estava na
+        // tela (cache/realtime) nunca é apagada por uma consulta que falhou.
+        setOrdersLoadError(MENSAGEM_FALHA_AO_CARREGAR_PEDIDOS);
         // Laudo #2 (P-9): sem internet, a lista do cache JÁ está na tela —
         // chamar aquilo de "Erro" ensina o cliente a desconfiar quando está
         // tudo bem. Diz o fato: offline, mostrando o que está salvo.
@@ -4190,6 +4214,9 @@ export function useOrders(
     orders,
     loading,
     isLoaded: !loading,
+    // Falha pendente do carregamento dos pedidos do cliente (ver o estado,
+    // acima). Campo ACRESCENTADO: nenhum dos existentes mudou de forma.
+    ordersLoadError,
     totalOrders,
     // Estado da conexão realtime (auditoria de 26/08/2026) — ver o
     // docstring de `EstadoConexaoRealtime`, acima. Quatro valores possíveis:
