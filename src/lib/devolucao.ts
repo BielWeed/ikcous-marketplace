@@ -743,10 +743,17 @@ export function instrucaoParaOCliente(
             ? "Imprima a declaração de conteúdo (botão Etiqueta) e leve o pacote a uma agência dos Correios em até 7 dias, informando o código de postagem abaixo — ele também é o rastreio da devolução. Depois de postar, toque em “Já postei”."
             : "A loja está preparando a declaração de conteúdo (DC-e), obrigatória para postar. Ela aparece aqui como um botão “Etiqueta” assim que ficar pronta — vale a pena esperar antes de ir aos Correios com o código abaixo.";
         }
-        default:
+        default: {
+          // Envio próprio: quem posta de outra cidade precisa saber PARA ONDE.
+          // Sem endereço cadastrado, manda perguntar — nunca inventa um.
+          const endereco = loja.endereco?.trim();
+          const destino = endereco
+            ? `Envie para: ${endereco}.`
+            : "Peça o endereço de envio à loja.";
           return d.tipo === "troca"
-            ? "Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui."
-            : "Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. Guarde o comprovante: a loja reembolsa o frete de volta.";
+            ? `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino}`
+            : `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino} Guarde o comprovante: a loja reembolsa o frete de volta.`;
+        }
       }
     case "em_transito":
       return d.codigo_rastreio

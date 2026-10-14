@@ -98,7 +98,10 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function montar(elegibilidade = ELEGIBILIDADE) {
+async function montar(
+  elegibilidade = ELEGIBILIDADE,
+  enderecoDaLoja: string | null = "Rua A, 10",
+) {
   const { SolicitarDevolucaoSheet } = await import(
     "@/components/devolucao/SolicitarDevolucaoSheet"
   );
@@ -109,7 +112,7 @@ async function montar(elegibilidade = ELEGIBILIDADE) {
         onAbertoMudou={onAbertoMudou}
         elegibilidade={elegibilidade}
         userId="u-1"
-        enderecoDaLoja="Rua A, 10"
+        enderecoDaLoja={enderecoDaLoja}
         horarioDaLoja="Seg a Sex, 9h às 18h"
         solicitar={solicitar}
         enviarFoto={enviarFoto}
@@ -162,6 +165,32 @@ async function escolherFoto(nome = "foto.jpg") {
 }
 
 describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
+  // "Eu mesmo envio": a cliente escolhe o método SEM saber para onde mandar o
+  // pacote. O bloco de endereço (que só "Entregar na loja" tinha) aparece
+  // também aqui.
+  async function ateOPassoDoMetodo(elegibilidade = ELEGIBILIDADE) {
+    await montar(elegibilidade);
+    await clicar(botao("Aumentar Tênis"));
+    await clicar(botao("Continuar"));
+    await clicar(radio("tamanho_pequeno"));
+    await clicar(botao("Continuar"));
+  }
+
+  it("envio próprio: o passo do método mostra para onde mandar o pacote", async () => {
+    await ateOPassoDoMetodo();
+    expect(folha()?.textContent).toContain("Envie para: Rua A, 10");
+  });
+
+  it("envio próprio sem endereço da loja: manda pedir o endereço à loja", async () => {
+    await montar(ELEGIBILIDADE, null);
+    await clicar(botao("Aumentar Tênis"));
+    await clicar(botao("Continuar"));
+    await clicar(radio("tamanho_pequeno"));
+    await clicar(botao("Continuar"));
+    expect(folha()?.textContent).not.toContain("Envie para:");
+    expect(folha()?.textContent).toContain("Peça o endereço de envio à loja");
+  });
+
   it("caminho feliz: item, motivo, resolução e método viram o payload da RPC e o protocolo aparece", async () => {
     await montar();
     expect(folha()?.textContent).toContain("O que vai voltar?");

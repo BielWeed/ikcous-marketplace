@@ -735,6 +735,36 @@ describe("linha do tempo, prazos e instruções", () => {
     expect(texto).toContain("Seg a Sex, 9h às 18h");
   });
 
+  // "Eu mesmo envio": a cliente de outra cidade precisa saber PARA ONDE
+  // mandar o pacote — antes a frase só falava em postar e informar o rastreio.
+  it("envio próprio aprovado diz para onde mandar o pacote (troca e devolução)", () => {
+    for (const tipo of ["arrependimento", "troca"]) {
+      const d = lerDevolucaoDetalhe({
+        ...DETALHE_CRU,
+        status: "aprovada",
+        tipo,
+        metodo_retorno: "envio_proprio",
+      });
+      expect(d).not.toBeNull();
+      if (!d) return;
+      const texto = instrucaoParaOCliente(d, { endereco: "Rua A, 10" });
+      expect(texto).toContain("Envie para: Rua A, 10");
+    }
+  });
+
+  it("envio próprio sem endereço cadastrado manda pedir o endereço à loja, sem inventar", () => {
+    const d = lerDevolucaoDetalhe({
+      ...DETALHE_CRU,
+      status: "aprovada",
+      metodo_retorno: "envio_proprio",
+    });
+    expect(d).not.toBeNull();
+    if (!d) return;
+    const texto = instrucaoParaOCliente(d, { endereco: "  " });
+    expect(texto).not.toContain("Envie para:");
+    expect(texto).toContain("Peça o endereço de envio à loja");
+  });
+
   // Achado A2 (revisão de risco de 26/09/2026): a instrução prometia "(botão
   // Etiqueta)" mesmo quando `etiqueta_url` ainda era nulo — e o botão só
   // existe no card do cliente com `etiqueta_url` preenchido

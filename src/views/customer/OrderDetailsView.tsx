@@ -10,6 +10,8 @@ import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
@@ -48,7 +50,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -1251,14 +1253,16 @@ export function OrderDetailsView({
               <p className="mt-1 text-sm font-bold text-zinc-900">
                 {order.customer.name}
               </p>
+              {/* As mesmas linhas do recibo e da ficha da loja: rua, número e
+                  complemento; bairro, cidade/UF e CEP. A cidade é a do
+                  PEDIDO, nunca a da loja — é o endereço de quem comprou. */}
               <p className="mt-0.5 text-xs font-medium leading-relaxed text-zinc-500">
-                {order.customer.address}, {order.customer.number}
-                <br />
-                {/* Cidade do PEDIDO, nunca da loja — é o endereço de quem
-                    comprou. Sem cidade no pedido, mostra só o bairro, sem
-                    o "•" solto. */}
-                {order.customer.neighborhood}
-                {order.customer.city && ` • ${order.customer.city}`}
+                {linhasDoEndereco(order.customer).map((linha, i) => (
+                  <Fragment key={linha}>
+                    {i > 0 && <br />}
+                    {linha}
+                  </Fragment>
+                ))}
               </p>
             </div>
           </div>
@@ -1270,10 +1274,10 @@ export function OrderDetailsView({
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="text-xs font-semibold text-zinc-500">Pagamento</p>
-              <p className="text-sm font-bold capitalize tracking-tight text-zinc-900">
-                {order.paymentMethod === "card"
-                  ? "Cartão de Crédito"
-                  : order.paymentMethod}
+              {/* O rótulo em português da planilha e da ficha da loja — o
+                  valor cru do banco ("cash", "online") não é texto. */}
+              <p className="text-sm font-bold tracking-tight text-zinc-900">
+                {rotuloDaFormaDoPedido(order)}
               </p>
               <CustomerPaymentBadge
                 paymentStatus={order.paymentStatus}
