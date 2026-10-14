@@ -1689,6 +1689,22 @@ export function useOrders(
   const [connectionStatus, setConnectionStatus] =
     useState<EstadoConexaoRealtime>("conectando");
 
+  // DONO DA LEITURA EM VOO (dado de cliente): `fetchUserOrders` só era
+  // cancelada por leitura nova ou desmonte — não pela troca de conta. Com a
+  // leitura de A no ar, o login de B na mesma instância deixava a resposta
+  // tardia de A gravar a lista (e a falha) de A na tela de B. Duas camadas:
+  // (1) a troca de id cancela a leitura em andamento (pedido ao transporte);
+  // (2) `fetchUserOrders` descarta a resposta cujo usuário capturado ao
+  // iniciar ≠ este (o transporte pode ignorar o cancelamento). Vale só para
+  // a leitura DO CLIENTE; o painel (`loadOrders`) tem o próprio controlador.
+  const userIdAtualRef = useRef<string | null>(user?.id ?? null);
+  useEffect(() => {
+    userIdAtualRef.current = user?.id ?? null;
+    return () => {
+      userOrdersAbortControllerRef.current?.abort();
+    };
+  }, [user?.id]);
+
   // Synchronously load cache on mount or when user changes
   useEffect(() => {
     if (isAdmin) return;
@@ -1759,6 +1775,10 @@ export function useOrders(
 
         const { data, error } = await query;
 
+        // A conta mudou enquanto a leitura corria: a resposta é de OUTRA
+        // pessoa. Nada dela (lista, cache, erro) pode tocar a conta atual.
+        if (userIdAtualRef.current !== (user.id ?? null)) return [];
+
         if (error) throw error;
 
         if (data) {
@@ -1804,6 +1824,8 @@ export function useOrders(
         ) {
           return [];
         }
+        // Falha que chegou depois da troca de conta é da conta ANTERIOR.
+        if (userIdAtualRef.current !== (user.id ?? null)) return [];
         console.error("Error fetching user orders:", err);
         // A falha FICA registrada (o toast some em segundos): a tela decide —
         // sem pedido em memória mostra "Não conseguimos carregar" com
