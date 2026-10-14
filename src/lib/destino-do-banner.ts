@@ -33,33 +33,6 @@ function comoONavegadorLe(link: string): string {
   return limpo.slice(inicio);
 }
 
-/**
- * Só deixa passar o que o banner PODE abrir: um caminho do próprio app
- * (começa com UMA barra) ou um endereço http/https. Qualquer outra coisa —
- * `javascript:`, `data:`, `vbscript:`, `file:`, `blob:`, `//outro-site`,
- * `/\outro-site`, vazio — volta `null` e o banner não navega.
- * Devolve o link já lido como o navegador lê (sem tab/quebra de linha).
- */
-export function destinoSeguroDoBanner(
-  link: string | null | undefined,
-): string | null {
-  if (typeof link !== "string") return null;
-  const lido = comoONavegadorLe(link);
-  if (lido === "") return null;
-
-  if (lido.startsWith("/")) {
-    // "//x" e "/\x" o navegador trata como OUTRO site, não como caminho.
-    return lido[1] === "/" || lido[1] === "\\" ? null : lido;
-  }
-
-  try {
-    const { protocol } = new URL(lido);
-    return protocol === "http:" || protocol === "https:" ? lido : null;
-  } catch {
-    return null;
-  }
-}
-
 // "meusite.com/x" digitado sem barra sempre foi gravado como "/meusite.com/x"
 // (o painel prefixa a barra). O que tem ":" antes da primeira barra é um
 // esquema (`javascript:`, `tel:`), não um caminho — esse não ganha barra.
@@ -68,19 +41,82 @@ function pareceTerEsquema(lido: string): boolean {
   return (fim === -1 ? lido : lido.slice(0, fim)).includes(":");
 }
 
+// Caminho do app: UMA barra no começo. "//x" e "/\x" o navegador trata como
+// OUTRO site, não como caminho.
+function caminhoDoApp(lido: string): string | null {
+  return lido[1] === "/" || lido[1] === "\\" ? null : lido;
+}
+
 /**
- * O que o painel grava quando a dona digita o link: o mesmo conserto de antes
- * (sem barra no começo, ganha uma) e só se o resultado for um destino que o
- * banner pode abrir. `""` quando ela deixou o campo vazio; `null` quando o
- * link deve ser recusado (mostrar `AVISO_DE_LINK_RECUSADO`).
+ * A regra que painel e loja dividem — sobre o link já lido como o navegador lê:
+ * caminho do app (ganha a barra do começo se não tiver, como o painel sempre
+ * fez) ou endereço http/https. Qualquer outro esquema, `//outro-site` e
+ * `/\outro-site` voltam `null`.
+ */
+function caminhoOuHttp(lido: string): string | null {
+  if (lido.startsWith("/")) return caminhoDoApp(lido);
+
+  try {
+    const { protocol } = new URL(lido);
+    return protocol === "http:" || protocol === "https:" ? lido : null;
+  } catch {
+    // Não é um endereço com esquema válido: sem ":" antes da primeira barra é
+    // um caminho do app escrito sem a barra do começo.
+    return pareceTerEsquema(lido) ? null : caminhoDoApp(`/${lido}`);
+  }
+}
+
+// Esquemas que o navegador entrega ao discador, ao e-mail ou a outro app SEM
+// rodar código na página. Lista fechada: `javascript:`, `data:`, `vbscript:`,
+// `file:`, `blob:`, `intent:`, `ftp:` e qualquer outro NÃO entram. Decide-se
+// pelo `protocol` que o `new URL()` já normalizou, nunca pelo texto cru.
+const ESQUEMAS_QUE_NAO_RODAM_CODIGO = new Set([
+  "tel:",
+  "mailto:",
+  "sms:",
+  "whatsapp:",
+]);
+
+/**
+ * Só deixa passar o que o banner PODE abrir: um caminho do próprio app, um
+ * endereço http/https ou um dos esquemas `tel:`/`mailto:`/`sms:`/`whatsapp:`.
+ * Link antigo sem barra (`promocoes/natal`, `?category=Bebidas`, `#ofertas`)
+ * é lido como caminho do app, como o painel o gravaria hoje. Qualquer outra
+ * coisa — `javascript:`, `data:`, `vbscript:`, `file:`, `blob:`, `intent:`,
+ * `ftp:`, `//outro-site`, `/\outro-site`, vazio — volta `null` e o banner não
+ * navega. Devolve o link já lido como o navegador lê (sem tab/quebra de linha).
+ */
+export function destinoSeguroDoBanner(
+  link: string | null | undefined,
+): string | null {
+  if (typeof link !== "string") return null;
+  const lido = comoONavegadorLe(link);
+  if (lido === "") return null;
+
+  const doApp = caminhoOuHttp(lido);
+  if (doApp !== null) return doApp;
+
+  try {
+    return ESQUEMAS_QUE_NAO_RODAM_CODIGO.has(new URL(lido).protocol)
+      ? lido
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * O que o painel grava quando a dona digita o link: a MESMA regra de caminho
+ * ou http/https da loja (sem barra no começo, ganha uma) — sem os esquemas
+ * `tel:`/`mailto:`…, que o painel não grava (decisão de produto do dono; a
+ * loja só os preserva em banner já gravado). `""` quando ela deixou o campo
+ * vazio; `null` quando o link deve ser recusado (mostrar
+ * `AVISO_DE_LINK_RECUSADO`).
  */
 export function linkDoBannerParaSalvar(digitado: string | null | undefined) {
   const lido = comoONavegadorLe((digitado ?? "").trim());
   if (lido === "") return "";
-  const direto = destinoSeguroDoBanner(lido);
-  if (direto !== null) return direto;
-  if (pareceTerEsquema(lido)) return null;
-  return destinoSeguroDoBanner(`/${lido}`);
+  return caminhoOuHttp(lido);
 }
 
 /** Aviso ao vivo no campo do painel: `null` quando o link pode ser salvo. */

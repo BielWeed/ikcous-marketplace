@@ -122,9 +122,8 @@ const PERIGOSOS: Array<[string, unknown]> = [
   ["file:", "file:///etc/passwd"],
   ["blob:", "blob:https://x/y"],
   ["ftp:", "ftp://exemplo.com/arquivo"],
-  ["mailto:", "mailto:a@b.com"],
-  ["tel:", "tel:+5511999999999"],
   ["outro app (intent)", "intent://scan/#Intent;scheme=zxing;end"],
+  ["intent: com o esquema em maiúsculas", "INTENT://scan/#Intent;end"],
   ["// (outro site, mesmo protocolo)", "//evil.com"],
   ["//, depois do tab", "/\t/evil.com"],
   ["//, depois da quebra de linha", "/\n/evil.com"],
@@ -162,13 +161,67 @@ const SEGUROS: Array<[string, string, string]> = [
   ["tab no meio de um caminho vira nada", "/produ\tto/abc", "/produto/abc"],
 ];
 
-describe("destinoSeguroDoBanner: só caminho do app ou http/https", () => {
+// Banner ANTIGO já gravado no banco (salvo antes de o painel acrescentar a
+// barra). No código anterior estes formatos funcionavam: o que não tinha
+// esquema ia para dentro do app, e o que tinha esquema que não roda código
+// (`tel:`, `mailto:`…) o navegador entregava ao discador/e-mail/app. Cada linha:
+// [nome, o que está gravado, o destino que a leitura tem de dar].
+const LEGADOS: Array<[string, string, string]> = [
+  ["sem barra e sem esquema", "promocoes/natal", "/promocoes/natal"],
+  ["só a consulta", "?category=Bebidas", "/?category=Bebidas"],
+  [
+    "detalhe do produto sem barra",
+    "product-detail?id=abc",
+    "/product-detail?id=abc",
+  ],
+  ["só a âncora", "#ofertas", "/#ofertas"],
+  ["sem barra, com tab no meio", "promo\tcoes/natal", "/promocoes/natal"],
+  ["sem barra, com espaços antes", "  promocoes/natal", "/promocoes/natal"],
+  ["telefone", "tel:+5511999999999", "tel:+5511999999999"],
+  ["telefone em maiúsculas", "TEL:+5511999999999", "TEL:+5511999999999"],
+  [
+    "e-mail",
+    "mailto:contato@loja.com?subject=Oi",
+    "mailto:contato@loja.com?subject=Oi",
+  ],
+  ["SMS", "sms:+5511999999999", "sms:+5511999999999"],
+  [
+    "WhatsApp (app)",
+    "whatsapp://send?phone=5511999999999",
+    "whatsapp://send?phone=5511999999999",
+  ],
+];
+
+// O que a loja entrega ao navegador SEM rodar código. O painel não grava
+// estes (decisão de produto fica para o dono), mas a leitura preserva o que
+// já existe.
+const ESQUEMAS_QUE_NAO_RODAM_CODIGO = new Set([
+  "http:",
+  "https:",
+  "tel:",
+  "mailto:",
+  "sms:",
+  "whatsapp:",
+]);
+
+const SO_O_PAINEL_RECUSA: Array<[string, string]> = [
+  ["tel:", "tel:+5511999999999"],
+  ["mailto:", "mailto:a@b.com"],
+  ["sms:", "sms:+5511999999999"],
+  ["whatsapp:", "whatsapp://send?phone=5511999999999"],
+];
+
+describe("destinoSeguroDoBanner: caminho do app, http/https e os poucos esquemas que não rodam código", () => {
   it.each(PERIGOSOS)("recusa %s", (_nome, link) => {
     expect(destinoSeguroDoBanner(link as string | null | undefined)).toBeNull();
   });
 
   it.each(SEGUROS)("aceita %s", (_nome, link, esperado) => {
     expect(destinoSeguroDoBanner(link)).toBe(esperado);
+  });
+
+  it.each(LEGADOS)("banner antigo: %s", (_nome, gravado, esperado) => {
+    expect(destinoSeguroDoBanner(gravado)).toBe(esperado);
   });
 
   it("confere com o new URL() do ambiente: nada aceito sai da loja nem roda código", () => {
@@ -196,6 +249,15 @@ describe("destinoSeguroDoBanner: só caminho do app ou http/https", () => {
       "/?category=Moda%20%231",
       "https://exemplo.com/x",
       "http://exemplo.com",
+      // legados e vizinhos hostis
+      "promocoes/natal",
+      "?category=Bebidas",
+      "#ofertas",
+      "tel:+5511999999999",
+      "mailto:a@b.com",
+      "intent://scan/#Intent;end",
+      "ftp://exemplo.com/x",
+      "java\u0001script:alert(1)",
     ];
     // Também enfia tab/quebra de linha/controle em CADA posição de cada corpo.
     const metidos = ["\t", "\n", "\r", "\u0001"];
@@ -217,9 +279,9 @@ describe("destinoSeguroDoBanner: só caminho do app ou http/https", () => {
       aceitos++;
       const destino = new URL(seguro, LOJA);
       expect(
-        ["http:", "https:"],
+        ESQUEMAS_QUE_NAO_RODAM_CODIGO.has(destino.protocol),
         `aceitou ${JSON.stringify(candidato)}`,
-      ).toContain(destino.protocol);
+      ).toBe(true);
       if (seguro.startsWith("/")) {
         // caminho do app: continua na própria loja
         expect(destino.origin, `aceitou ${JSON.stringify(candidato)}`).toBe(
@@ -241,7 +303,15 @@ describe("destinoDoBanner: usa o destino seguro", () => {
     expect(destinoDoBanner(link)).toBe(esperado);
   });
 
+  it.each(LEGADOS)("banner antigo: %s", (_nome, gravado, esperado) => {
+    expect(destinoDoBanner(gravado)).toBe(esperado);
+  });
+
   it("os conserto de banner antigo seguem valendo", () => {
+    // sem barra e com o nome cru: ganha a barra E a codificação
+    expect(destinoDoBanner("?category=Cama & Banho")).toBe(
+      "/?category=Cama%20%26%20Banho",
+    );
     expect(destinoDoBanner("/produtos")).toBe("/");
     expect(destinoDoBanner("/?category=Cama & Banho")).toBe(
       "/?category=Cama%20%26%20Banho",
@@ -255,6 +325,13 @@ describe("painel: o link que a dona digita só é gravado se o banner puder abri
   )("recusa %s", (_nome, link) => {
     expect(linkDoBannerParaSalvar(link as string)).toBeNull();
     expect(avisoDoLinkDigitado(link as string)).toBe(AVISO_DE_LINK_RECUSADO);
+  });
+
+  // A leitura preserva tel:/mailto:… já gravados, mas o painel segue sem
+  // gravá-los (decisão de produto fica para o dono).
+  it.each(SO_O_PAINEL_RECUSA)("segue recusando %s ao salvar", (_n, link) => {
+    expect(linkDoBannerParaSalvar(link)).toBeNull();
+    expect(avisoDoLinkDigitado(link)).toBe(AVISO_DE_LINK_RECUSADO);
   });
 
   it.each([
@@ -272,6 +349,8 @@ describe("painel: o link que a dona digita só é gravado se o banner puder abri
     // sempre foi assim: sem a barra do começo, o painel a coloca
     ["sem barra no começo", "promocoes/natal", "/promocoes/natal"],
     ["domínio sem esquema", "meusite.com/x", "/meusite.com/x"],
+    ["só a consulta", "?category=Bebidas", "/?category=Bebidas"],
+    ["só a âncora", "#ofertas", "/#ofertas"],
   ])("aceita %s", (_nome, digitado, gravado) => {
     expect(linkDoBannerParaSalvar(digitado)).toBe(gravado);
     expect(avisoDoLinkDigitado(digitado)).toBeNull();
@@ -400,6 +479,36 @@ describe("BannerCarousel: banner de link perigoso aparece, mas não navega", () 
     });
     expect(hrefAtribuidos).toEqual([]);
   });
+
+  // Banner antigo já gravado: o que funcionava antes do conserto continua.
+  it.each(LEGADOS.filter(([, gravado]) => !gravado.includes(":")))(
+    "banner antigo (%s) navega por dentro do app",
+    async (_n, gravado, esperado) => {
+      await montar(gravado);
+      const alvo = hospedeiro.querySelector<HTMLElement>('[role="button"]');
+      expect(alvo).not.toBeNull();
+      await act(async () => {
+        alvo?.click();
+      });
+      expect(pushState).toHaveBeenCalledTimes(1);
+      expect(pushState.mock.calls[0]?.[2]).toBe(esperado);
+      expect(hrefAtribuidos).toEqual([]);
+    },
+  );
+
+  it.each(LEGADOS.filter(([, gravado]) => gravado.includes(":")))(
+    "banner antigo (%s) ainda entrega ao navegador",
+    async (_n, gravado, esperado) => {
+      await montar(gravado);
+      const alvo = hospedeiro.querySelector<HTMLElement>('[role="button"]');
+      expect(alvo).not.toBeNull();
+      await act(async () => {
+        alvo?.click();
+      });
+      expect(hrefAtribuidos).toEqual([esperado]);
+      expect(pushState).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("AdminBannersView: o painel recusa o link perigoso ao salvar", () => {
@@ -499,6 +608,7 @@ describe("AdminBannersView: o painel recusa o link perigoso ao salvar", () => {
     "data:text/html,x",
     "//evil.com",
     "/\\evil.com",
+    "tel:+5511999999999",
   ])("recusa %s: avisa e não grava", async (link) => {
     await digitarOLink(link);
 
