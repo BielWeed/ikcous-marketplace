@@ -25,8 +25,9 @@ function blocoDoIos(css: string): string | null {
   const abre = css.indexOf("{", inicio);
   let nivel = 0;
   for (let i = abre; i < css.length; i++) {
-    if (css[i] === "{") nivel++;
-    if (css[i] === "}") {
+    const letra = css.charAt(i);
+    if (letra === "{") nivel++;
+    if (letra === "}") {
       nivel--;
       if (nivel === 0) return css.slice(abre + 1, i);
     }
