@@ -889,9 +889,47 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         recusado com 42501, authenticated chega ao corpo, so a ACL das duas muda, dados intactos,
         rollback com a mesma ACL, pre-voo, conferencia, atomicidade entre as duas funcoes) num Postgres 17
         efemero; nao prova o Postgres da Supabase nem o papel `supabase_read_only_user` de cada loja.
-      - **Pendencia registrada (nao e desta migration):** o corpo de `get_reviews_metrics` nao checa
-        admin: qualquer conta logada le a media e as contagens de TODAS as avaliacoes (pendentes
-        incluidas). Follow-up: exigir `is_admin()` no corpo.
+      - **Pendencia registrada (nao e desta migration; resolvida pelo item 22):** o corpo de
+        `get_reviews_metrics` nao checava admin: qualquer conta logada lia a media e as contagens de TODAS
+        as avaliacoes (pendentes incluidas). O item 22 (`20261222000000`) exige `is_admin()` no corpo.
+
+  22. **Lote de UMA migration, de apply normal: `20261222000000` (a media de avaliacoes so responde ao
+      administrador; permissao).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy), **depois do item 21** (o pre-voo recusa a loja sem a `20261221000000`).
+      Troca o corpo de `get_reviews_metrics` por `CREATE OR REPLACE` com o MESMO corpo da baseline mais a
+      guarda `IF NOT public.is_admin() THEN RAISE EXCEPTION`, a mesma da irma `get_admin_reviews_paged`:
+      antes, qualquer conta LOGADA lia a media e as contagens de TODAS as avaliacoes (pendentes
+      incluidas); depois, so o admin (JWT com `app_metadata.role = admin`, `auth.users` ou
+      `service_role`). Um admin rebaixado continua lendo ate o JWT vencer (aceito: e media, nao dinheiro).
+      Nao toca dado, assinatura, tipo de retorno, SECURITY DEFINER, VOLATILE, `search_path` nem ACL. Nenhuma
+      edge function e nenhum front mudam (o admin ja usa `get_admin_reviews_paged`; o unico chamador, o ramo
+      nao-admin de `getAllReviews`, so registra o erro no console). Quem quebra: so conta logada que NAO e
+      admin e chamasse a funcao. Duas consultas, so leitura, so catalogo, de ROL FECHADO (5 e 4 linhas, so
+      valem com `rol=ok`):
+      - **`25a-conferir-media-de-avaliacoes-so-admin`** (a consulta do lote) prova DEPOIS do apply o corpo
+        novo (md5), a guarda no corpo, os atributos de sempre e o `EXECUTE` fechado ao visitante.
+      - **`25b-antes-media-de-avaliacoes-sem-guarda`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo da
+        baseline, sem a guarda, com os atributos de sempre. **Nao mede a ACL** (e da `24a`). O md5 que ela
+        espera vem do baseline, nao de uma loja: **rode a `25b` (e a `22m`) em CADA loja ANTES do apply** e
+        compare o corpo vivo; corpo diferente do baseline e loja que ninguem mediu, e o pre-voo tambem para.
+      - **Caminho, uma loja por vez:** `25a` (sai NEGATIVA) → `25b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com
+        `20261222000000_a_media_de_avaliacoes_so_responde_ao_administrador.sql` → o ensaio pede a `25a` DE
+        NOVO, que tem de sair POSITIVA. `25a` POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261222000000_a_media_de_avaliacoes_so_responde_ao_administrador.sql` pelo
+        `aplicar-migrations.yml` (recria o corpo antigo, mesmo md5, sem tocar a ACL). Depois dele a `25b`
+        volta a ser POSITIVA e a `25a` NEGATIVA. Se for preciso desfazer o item 21 tambem, o rollback do 22
+        vem ANTES. **NUNCA** rodar o
+        `rollback-manual-20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql` depois do corte: ele
+        faz `GRANT EXECUTE ... TO PUBLIC` nesta funcao e a reabre para todos.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a
+        `25a` e a `25b` DE NOVO.
+      - **Limites:** `tests/banco/media-de-avaliacoes-so-admin-viva.cjs` prova o comportamento (anon
+        recusado com 42501, nao-admin recusado pela guarda, admin e service_role recebem a mesma linha de
+        antes, so o corpo dessa funcao muda, rollback com o mesmo md5 do baseline, pre-voo, conferencia,
+        concorrencia) num Postgres 17 efemero; nao prova o Postgres da Supabase, o papel
+        `supabase_read_only_user` de cada loja nem o corpo vivo delas.
 
 4. **Promover UM front e conferir a frota.**
 

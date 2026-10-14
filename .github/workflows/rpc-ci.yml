@@ -72,6 +72,8 @@ on:
       - "scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql"
       - "scripts/publicacao/consultas/24a-conferir-avaliacoes-fechadas-ao-visitante.sql"
       - "scripts/publicacao/consultas/24b-antes-avaliacoes-abertas-ao-visitante.sql"
+      - "scripts/publicacao/consultas/25a-conferir-media-de-avaliacoes-so-admin.sql"
+      - "scripts/publicacao/consultas/25b-antes-media-de-avaliacoes-sem-guarda.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -114,6 +116,8 @@ on:
       - "scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql"
       - "scripts/publicacao/consultas/24a-conferir-avaliacoes-fechadas-ao-visitante.sql"
       - "scripts/publicacao/consultas/24b-antes-avaliacoes-abertas-ao-visitante.sql"
+      - "scripts/publicacao/consultas/25a-conferir-media-de-avaliacoes-so-admin.sql"
+      - "scripts/publicacao/consultas/25b-antes-media-de-avaliacoes-sem-guarda.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -540,6 +544,18 @@ jobs:
       - name: Prova viva do portao das avaliacoes fechadas ao visitante (consultas 24a e 24b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacoes-fechadas-ao-visitante-portao-viva.cjs
+      # A media de avaliacoes so responde ao administrador (migration 20261222, permissao; ordem do dono de 14/10/2026).
+      # COMPORTAMENTO com os papeis reais: anon recebe 42501, authenticated NAO-admin recebe a excecao da guarda, admin
+      # (JWT ou auth.users) e service_role recebem a MESMA linha de antes sobre avaliacoes que ja existiam, so o corpo dessa
+      # funcao muda (ACL e dados intactos), rollback com o mesmo md5 do baseline, pre-voo, conferencia, concorrencia.
+      # BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da media de avaliacoes so para o admin (migration 20261222)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/media-de-avaliacoes-so-admin-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 25a (DEPOIS, 5 linhas) e 25b (ANTES, 4 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da media de avaliacoes so-admin (consultas 25a e 25b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/media-de-avaliacoes-so-admin-portao-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que

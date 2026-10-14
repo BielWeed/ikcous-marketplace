@@ -209,7 +209,7 @@ Deno.test("o ALVO de scripts/db-prove-grants-convergem.cjs fecha o anon nas duas
     );
 });
 
-Deno.test("a lista L8 diz o que o banco ficou: increment_helpful 'logado' (so authenticated); get_reviews_metrics 'tolerada' so authenticated, com o follow-up de admin no porque", () => {
+Deno.test("a lista L8 diz o que o banco ficou: increment_helpful 'logado' (so authenticated); get_reviews_metrics tambem 'logado' (so authenticated) desde a 20261222000000, que poe a guarda de admin no corpo", () => {
   const lista = JSON.parse(
     Deno.readTextFileSync(
       new URL("tests/banco/portas-do-visitante-permitidas.json", DIR),
@@ -226,6 +226,9 @@ Deno.test("a lista L8 diz o que o banco ficou: increment_helpful 'logado' (so au
       "public.get_reviews_metrics(p_search text, p_rating integer)",
   );
   assert.deepEqual(metricas.executa, ["authenticated"]);
-  assert.equal(metricas.situacao, "tolerada");
+  // A 20261221000000 deixou "tolerada" (corpo sem guarda de admin, follow-up no porque); a 20261222000000
+  // pos a guarda no corpo e a lista passou a dizer "logado" (prova: media-de-avaliacoes-so-admin-viva.cjs).
+  assert.equal(metricas.situacao, "logado");
   assert.match(metricas.porque, /is_admin/);
+  assert.match(metricas.porque, /20261222000000/);
 });

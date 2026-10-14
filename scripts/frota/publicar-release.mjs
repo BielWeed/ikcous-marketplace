@@ -424,6 +424,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "23b-antes-consulta-antiga-de-pedido-aberta",
   "24a-conferir-avaliacoes-fechadas-ao-visitante",
   "24b-antes-avaliacoes-abertas-ao-visitante",
+  "25a-conferir-media-de-avaliacoes-so-admin",
+  "25b-antes-media-de-avaliacoes-sem-guarda",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

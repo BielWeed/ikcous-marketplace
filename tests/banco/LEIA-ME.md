@@ -353,12 +353,39 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   (por conjunto de aclitem); pré-voo recusa sem escrever e falhando na segunda função a primeira não fica fechada;
   GRANT de outro grantor faz a conferência recusar o apply inteiro; concorrência (transação em voo não segura o
   apply; a mesma conexão em transação nova é recusada). A lista de portas (L8) diz `logado` para o voto e
-  `tolerada` (só authenticated, corpo sem guarda de admin) para a média.
+  (até a `20261222000000`) `tolerada` (só authenticated, corpo sem guarda de admin) para a média; desde a
+  `20261222000000` diz `logado` para as duas. Depois dela esta prova aceita "chegou ao corpo" como a linha
+  (admin) **ou** a exceção da guarda de admin (P0001): o que ela mede é que a ACL não barrou (nada de 42501).
 - **portão das avaliações fechadas (`avaliacoes-fechadas-ao-visitante-portao-viva.cjs`, via `rodar-isolado.cjs`)**:
   as consultas `24a-conferir-avaliacoes-fechadas-ao-visitante` (DEPOIS, 3 linhas) e
   `24b-antes-avaliacoes-abertas-ao-visitante` (ANTES, 3 linhas), a "prova de objetos" do lote `20261221000000`. Rol
   exato nos dois estados; 24a positiva depois do apply e 24b positiva depois do rollback; cada desvio (EXECUTE por
   papel e PUBLIC, função ausente) reprova só a linha da sua função.
+- **a média de avaliações só responde ao administrador (`media-de-avaliacoes-so-admin-viva.cjs`, via
+  `rodar-isolado.cjs`)**: a migration `20261222000000` (permissão, 14/10/2026) troca o corpo de
+  `get_reviews_metrics` por `CREATE OR REPLACE` com o MESMO corpo da baseline mais a guarda
+  `IF NOT public.is_admin()`. Cada caso parte do estado ANTES (o `rollback-manual`, que recria o corpo antigo; o
+  `prosrc` é comparado byte a byte com o da baseline LIDO DO ARQUIVO, as linhas com espaço no fim incluídas): o
+  cliente comum lê a média de TODAS as avaliações (o defeito) e o visitante já é recusado (42501). DEPOIS: anon
+  42501; authenticated NÃO-admin recebe a exceção da guarda (P0001) com JWT de cliente, sem JWT e sem
+  `auth.uid()`, e a sessão `postgres` sem `SET ROLE` (GUC `role` = none) também; admin pelo JWT, admin só pelo
+  `auth.users`, admin rebaixado com JWT ainda válido (consequência aceita, declarada) e service_role recebem a
+  MESMA linha de antes para 11 entradas de filtro, sobre avaliações que já existiam (publicadas, pendentes,
+  verificadas, respondidas, resposta só de espaços); só o corpo dessa função muda (nenhuma outra função, tabela
+  ou ACL; mesmo oid; dados intactos); reaplicar e CRLF idênticos; o rollback devolve o `prosrc` idêntico ao da
+  baseline sem tocar a ACL nem abrir anon; pré-voo recusa sem escrever (corpo desconhecido, STABLE, SECURITY
+  INVOKER, search_path, sobrecarga, função ausente, `is_admin()` ausente ou que o dono não executa, ACL aberta
+  ou sem a 20261221); as conferências finais, rodadas sobre estados ruins, recusam; concorrência (chamada em voo
+  não segura o apply). Mutantes (sem a guarda, guarda por `auth.uid()`, guarda invertida, STABLE) deixam a prova
+  vermelha.
+- **portão da média só-admin (`media-de-avaliacoes-so-admin-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `25a-conferir-media-de-avaliacoes-so-admin` (DEPOIS, 5 linhas: corpo por md5, guarda no corpo,
+  atributos, EXECUTE fechado) e `25b-antes-media-de-avaliacoes-sem-guarda` (ANTES, 4 linhas: o corpo da baseline
+  sem a guarda e os atributos; **não mede a ACL**, que é da 24a), a "prova de objetos" do lote `20261222000000`.
+  Rol exato nos dois estados; 25a positiva depois do apply e 25b positiva depois do rollback; cada desvio (1 byte
+  a mais no corpo, guarda tardia, sem guarda, STABLE, SECURITY INVOKER, search_path, EXECUTE por papel e PUBLIC,
+  função ausente) reprova só as linhas certas; ACL aberta não reprova a 25b; mutantes do texto das consultas
+  ficam vermelhos. **Não prova** a IKCOUS nem a Savy: o corpo vivo de cada loja só o run da 25b (e da 22m) mede.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

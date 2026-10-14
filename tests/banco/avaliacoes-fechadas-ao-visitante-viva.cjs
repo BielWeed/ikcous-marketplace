@@ -121,6 +121,18 @@ async function tentar(papel, sql, params = []) {
   }
 }
 
+/**
+ * "Chegou ao corpo" = o banco NAO recusou antes (nada de 42501). Desde a 20261222000000 o corpo de
+ * get_reviews_metrics tem a guarda de admin: quem nao e' admin chega a ele e recebe a excecao da guarda
+ * (P0001), e quem e' admin recebe a linha. Numa arvore sem a 20261222 o corpo antigo devolve a linha.
+ * As duas respostas provam o mesmo que esta prova quer: a ACL nao barrou. (O comportamento da guarda e'
+ * de tests/banco/media-de-avaliacoes-so-admin-viva.cjs.)
+ */
+const chegouAoCorpo = (r) =>
+  r.linha !== undefined ||
+  (r.codigo === "P0001" &&
+    /Acesso negado: privilégios de administrador necessários/.test(r.erro));
+
 /** Aplica um arquivo dentro de um savepoint: devolve null se aplicou ou {erro, codigo}. */
 async function aplicar(sql) {
   await C.query("SAVEPOINT arquivo");
@@ -223,8 +235,8 @@ prova(
       }
       // o visitante chega ao corpo da media (uma linha com a media) ...
       const m = await tentar("anon", SQL_METRICAS);
-      assert.ok(m.linha, `anon devia chegar ao corpo: ${m.erro}`);
-      assert.equal(Number(m.linha.average_rating) >= 0, true);
+      assert.ok(chegouAoCorpo(m), `anon devia chegar ao corpo: ${m.erro}`);
+      if (m.linha) assert.equal(Number(m.linha.average_rating) >= 0, true);
       // ... e o voto dele e' recusado PELO CORPO (P0001), nao pelo banco (42501)
       const v = await tentar("anon", SQL_VOTO, [UUID_QUE_NAO_EXISTE]);
       assert.equal(v.codigo, "P0001", v.erro);
@@ -256,7 +268,17 @@ prova(
 
       // authenticated: a media volta; sem auth.uid() o CORPO recusa (P0001, nao 42501) ...
       const mm = await tentar("authenticated", SQL_METRICAS);
-      assert.ok(mm.linha, `authenticated devia chegar ao corpo: ${mm.erro}`);
+      assert.ok(
+        chegouAoCorpo(mm),
+        `authenticated devia chegar ao corpo: ${mm.erro}`,
+      );
+      // e o authenticated ADMIN recebe a linha (JWT com app_metadata.role = admin), com ou sem a guarda no corpo
+      await C.query("SELECT set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ app_metadata: { role: "admin" } }),
+      ]);
+      const admin = await tentar("authenticated", SQL_METRICAS);
+      assert.ok(admin.linha, `admin devia ler a media: ${admin.erro}`);
+      await C.query("SELECT set_config('request.jwt.claims', '', true)");
       const semUid = await tentar("authenticated", SQL_VOTO, [
         UUID_QUE_NAO_EXISTE,
       ]);
@@ -347,7 +369,7 @@ prova(
       // o comportamento volta junto: o visitante chega ao corpo de novo
       assert.equal(await aplicar(ROLLBACK), null);
       const m = await tentar("anon", SQL_METRICAS);
-      assert.ok(m.linha, m.erro);
+      assert.ok(chegouAoCorpo(m), m.erro);
     }),
 );
 
@@ -508,8 +530,20 @@ prova(
     try {
       await C.query(ROLLBACK); // estado ANTES, commitado
       await B.query("BEGIN");
-      const antes = await como("anon", SQL_METRICAS, [], B);
-      assert.ok(antes, "a sessao do visitante chama a media ANTES do apply");
+      // a chamada CHEGA ao corpo (linha, ou a excecao da guarda de admin da 20261222000000 quando ela esta na arvore)
+      // (o SAVEPOINT mantem a transacao do visitante EM VOO mesmo quando a guarda levanta a excecao)
+      let antes;
+      await B.query("SAVEPOINT chamada");
+      try {
+        antes = { linha: await como("anon", SQL_METRICAS, [], B) };
+      } catch (e) {
+        await B.query("ROLLBACK TO SAVEPOINT chamada");
+        antes = { codigo: e.code, erro: e.message };
+      }
+      assert.ok(
+        chegouAoCorpo(antes),
+        `a sessao do visitante chama a media ANTES do apply: ${antes.erro}`,
+      );
       // o apply (commit de verdade) nao pode ficar preso atras da transacao do visitante
       await C.query("SET statement_timeout = '8s'");
       await C.query(MIGRATION);

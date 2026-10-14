@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1559,6 +1559,29 @@ const ROL_DA_24B = [
   "get_reviews_metrics: EXECUTE aberto para anon e authenticated",
   "increment_helpful: EXECUTE aberto para anon e authenticated",
 ];
+/** O rol da 25a (a prova de objetos do lote 20261222000000, a media de avaliacoes so responde ao
+ * administrador): as 5 linhas que scripts/publicacao/consultas/25a-conferir-media-de-avaliacoes-so-admin.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria
+ * linha): o corpo vivo e o NOVO (md5), ele exige is_admin() antes de ler as avaliacoes, os atributos de
+ * sempre e o EXECUTE seguem FECHADOS ao visitante. tests/banco/media-de-avaliacoes-so-admin-portao-viva.cjs
+ * prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_25A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_reviews_metrics: corpo e o da 20261222000000, com a guarda de admin (md5)",
+  "get_reviews_metrics: o corpo exige is_admin() antes de ler as avaliacoes",
+  "get_reviews_metrics: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "get_reviews_metrics: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 25b (a consulta de AUSENCIA do lote da media de avaliacoes so-admin; `ausenciaConfirmadaPor`):
+ * as 4 linhas que scripts/publicacao/consultas/25b-antes-media-de-avaliacoes-sem-guarda.sql devolve — a base
+ * de antes: o corpo e o da baseline (md5), sem a guarda, com os atributos de sempre. NAO mede a ACL (e' da 24a).
+ * Uma loja que ja tem a guarda reprova aqui de proposito, nas linhas do corpo. */
+const ROL_DA_25B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_reviews_metrics: corpo e o da baseline, sem a guarda de admin (md5)",
+  "get_reviews_metrics: o corpo ainda NAO exige is_admin()",
+  "get_reviews_metrics: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1593,6 +1616,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "23b-antes-consulta-antiga-de-pedido-aberta": ROL_DA_23B,
   "24a-conferir-avaliacoes-fechadas-ao-visitante": ROL_DA_24A,
   "24b-antes-avaliacoes-abertas-ao-visitante": ROL_DA_24B,
+  "25a-conferir-media-de-avaliacoes-so-admin": ROL_DA_25A,
+  "25b-antes-media-de-avaliacoes-sem-guarda": ROL_DA_25B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2165,6 +2190,8 @@ module.exports = {
   ROL_DA_23B,
   ROL_DA_24A,
   ROL_DA_24B,
+  ROL_DA_25A,
+  ROL_DA_25B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
