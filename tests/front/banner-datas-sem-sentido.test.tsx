@@ -16,6 +16,7 @@ import {
   problemaDasDatas,
 } from "@/lib/datas-do-banner";
 import { act } from "react";
+import { flushSync } from "react-dom";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -455,6 +456,34 @@ describe("AdminBannersView: datas sem sentido", () => {
     // e a foto recém-enviada NÃO foi apagada do Storage
     expect(h.deleteStorageFile).not.toHaveBeenCalled();
     expect(addBanner).not.toHaveBeenCalled();
+  });
+
+  it("Esc de verdade (passa pelo Radix, que já fechou a pergunta e cancelou o evento) não fecha também o formulário", async () => {
+    await abrirConfirmacaoDeFimVencido();
+    // Num navegador real há uma tarefa de microtarefas entre um ouvinte e
+    // outro do mesmo evento, e o React já terminou de fechar a pergunta
+    // quando o ouvinte da janela roda. O jsdom não faz isso sozinho.
+    const terminarDeRenderizar = () => flushSync(() => {});
+    document.addEventListener("keydown", terminarDeRenderizar);
+
+    try {
+      await act(async () => {
+        document.body.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Escape",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        await esperar(50);
+      });
+    } finally {
+      document.removeEventListener("keydown", terminarDeRenderizar);
+    }
+
+    expect(textoDaTela()).not.toContain("Salvar mesmo assim?");
+    expect(botaoComTexto(document.body, "Salvar Alterações")).toBeDefined();
+    expect(h.deleteStorageFile).not.toHaveBeenCalled();
   });
 
   it("um SEGUNDO Esc (pergunta já fechada) continua fechando o formulário", async () => {

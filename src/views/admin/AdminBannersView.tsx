@@ -1211,6 +1211,10 @@ export const AdminBannersView = memo(function AdminBannersView({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // O Radix já tratou este Esc (fechou a pergunta/diálogo e chamou
+        // preventDefault) antes de o ouvinte da janela rodar; sem esta guarda
+        // o mesmo Esc fecharia também o formulário de baixo.
+        if (e.defaultPrevented) return;
         if (confirmarFimVencido) {
           setConfirmarFimVencido(false);
         } else if (isAdjusterOpen) {
