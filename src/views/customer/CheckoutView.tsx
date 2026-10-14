@@ -5140,6 +5140,8 @@ export function CheckoutView({
                       <input
                         id="guest-cep"
                         {...form.register("cep")}
+                        inputMode="numeric"
+                        autoComplete="postal-code"
                         placeholder="00000-000"
                         disabled={isSearchingCep}
                         aria-invalid={
