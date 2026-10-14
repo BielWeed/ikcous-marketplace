@@ -51,6 +51,9 @@ const NOMES = [
   // crm_clientes (sem acento) sucedem, cada uma, o corpo da 99.
   "20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql",
   "20261231000000_a_busca_do_crm_ignora_acento.sql",
+  // A venda repetida do balcão (14/10/2026): registrar_venda_presencial sucede o corpo da 99 (trava consultiva
+  // pela chave de idempotência antes de conferir a chave).
+  "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql",
 ];
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

@@ -481,6 +481,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261233000000: o sino do pedido de retirada fala de retirada (corpo da funcao de gatilho com o ramo da retirada; comportamento e portao 34a/34b).
     "tests/banco/o-sino-do-pedido-de-retirada-viva.cjs",
     "tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs",
+    // 20261235000000: a venda repetida do balcao devolve a venda feita (trava consultiva pela chave de idempotencia; comportamento com 2 conexoes; o portao da release desta migration ainda nao existe).
+    "tests/banco/venda-balcao-mesma-chave-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

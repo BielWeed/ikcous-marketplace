@@ -697,6 +697,15 @@ jobs:
       - name: Prova viva do portao do sino do pedido de retirada (consultas 34a e 34b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs
+      # A venda repetida do balcao devolve a venda feita (migration 20261235, dinheiro + estoque; cacada de 14/10/2026): a chamada de
+      # registrar_venda_presencial com a MESMA chave de idempotencia que chega antes de a primeira commitar espera a primeira (trava
+      # consultiva pela chave) e devolve ja_existia com o MESMO pedido, em vez de "Estoque insuficiente" quando a primeira levou a
+      # ultima unidade. COMPORTAMENTO com 2 conexoes reais: a corrida na ultima unidade, estoque sobrando, chaves diferentes e venda
+      # sem chave que nao se serializam, outro balconista e outro canal (23505), permissao e gate antes da trava, CONTROLE com o corpo
+      # antigo que reproduz o defeito, rollback com o mesmo md5, pre-voo que recusa sem escrever, mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da venda repetida do balcao (migration 20261235)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/venda-balcao-mesma-chave-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que

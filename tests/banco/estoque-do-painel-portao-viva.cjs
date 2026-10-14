@@ -1161,6 +1161,10 @@ async function main() {
         "20261231000000_a_busca_do_crm_ignora_acento.sql",
         "public.crm_clientes(text,text,integer,integer)",
       ],
+      [
+        "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql",
+        "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
