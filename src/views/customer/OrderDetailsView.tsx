@@ -371,8 +371,8 @@ export function OrderDetailsView({
     // continua dependendo de alguém é o caso oposto: pedido JÁ ENVIADO,
     // onde a loja só devolve o dinheiro depois que o PRODUTO físico voltar.
     // `textoConfirmarCancelamento` (texto-estorno-do-cliente.ts) é a fonte
-    // única dos quatro textos possíveis (não pago / pago não enviado / pago
-    // já enviado / pago na entrega).
+    // única dos textos possíveis (não pago / pago não enviado / pago já
+    // enviado / pago na entrega / pago com retirada pronta).
     // `===` e nao `.includes()`: o array seria inferido como `string[]` e
     // aceitaria qualquer coisa, entao um rename futuro de `PaymentStatus`
     // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
@@ -383,11 +383,18 @@ export function OrderDetailsView({
       chavePagamento === "pago" ||
       chavePagamento === "pago_apos_expirar" ||
       chavePagamento === "recebido_na_entrega";
-    const jaFoiEnviado = order.status === "shipping";
+    // Retirada na loja pronta (`shipping` + `retiradaNaLoja`, mesmo critério de
+    // `prontoParaRetirar` mais abaixo e de OrderList): ninguém enviou nada e a
+    // cliente não tem produto para devolver — só o texto muda, a regra de
+    // cancelar é a mesma.
+    const retiradaPronta =
+      order.retiradaNaLoja === true && order.status === "shipping";
+    const jaFoiEnviado = order.status === "shipping" && !retiradaPronta;
     const pagamentoNaEntrega = chavePagamento === "recebido_na_entrega";
     const textoConfirm = textoConfirmarCancelamento({
       pagamentoJaEntrou,
       jaFoiEnviado,
+      retiradaPronta,
       pagamentoNaEntrega,
     });
     const confirmCancel = globalThis.confirm(textoConfirm);
@@ -697,6 +704,7 @@ export function OrderDetailsView({
         linhas: linhasDevolucao,
         cancelledAfterShipping: order.cancelledAfterShipping,
         returnedToSellerAt: order.returnedToSellerAt,
+        retiradaNaLoja: order.retiradaNaLoja === true,
       })
     : null;
 
