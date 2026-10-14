@@ -1,6 +1,17 @@
 import { AdminErrorState } from "@/components/admin/AdminErrorState";
+import { Button } from "@/components/ui/button";
+import {
+  ehErroDeChunk,
+  recuperarSeAVersaoForOMotivo,
+} from "@/lib/recuperacao-chunk";
+import { reiniciarCargasQueFalharam } from "@/utils/lazyWithPreload";
+import { RefreshCcw, WifiOff } from "lucide-react";
 import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
+
+/** Quanto tempo depois do "Tentar de novo" uma falha de chunk ainda conta
+ * como "a tentativa falhou" (3G lento demora a desistir). */
+const JANELA_DO_TENTAR_DE_NOVO_MS = 60000;
 
 interface Props {
   children: ReactNode;
@@ -25,15 +36,34 @@ export class LocalErrorBoundary extends Component<Props, State> {
     return { hasError: true, error, showDetails: false };
   }
 
+  /** Quando a cliente tocou em "Tentar de novo" (0 = não tocou). Um chunk que
+   * falha DENTRO da janela é "falhou de novo"; fora dela é outra falha. */
+  private tentouDeNovoEm = 0;
+
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error(
       "[LocalErrorBoundary] Intercepted render error:",
       error,
       errorInfo,
     );
+    // Segunda falha seguida: se a rede está provada e o arquivo não vem, é
+    // versão nova — entra na escada de sempre. Rede ruim não gasta orçamento.
+    if (
+      ehErroDeChunk(error.message) &&
+      this.tentouDeNovoEm > 0 &&
+      Date.now() - this.tentouDeNovoEm < JANELA_DO_TENTAR_DE_NOVO_MS
+    ) {
+      this.tentouDeNovoEm = 0;
+      void recuperarSeAVersaoForOMotivo();
+    }
   }
 
   private handleReset = () => {
+    if (ehErroDeChunk(this.state.error?.message)) {
+      // Sem isto o React.lazy entrega a MESMA rejeição para sempre.
+      reiniciarCargasQueFalharam();
+      this.tentouDeNovoEm = Date.now();
+    }
     this.setState({ hasError: false, error: null, showDetails: false });
     if (this.props.onReset) {
       this.props.onReset();
@@ -48,6 +78,28 @@ export class LocalErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;
+      }
+
+      if (ehErroDeChunk(this.state.error?.message)) {
+        // Tela que não baixou (rede fraca): frase de cliente, não de painel.
+        return (
+          <div
+            role="alert"
+            className="flex w-full flex-col items-center justify-center gap-4 p-6 text-center"
+          >
+            <WifiOff className="size-8 text-amber-400" aria-hidden="true" />
+            <p className="max-w-xs text-sm leading-relaxed text-zinc-300">
+              Não conseguimos carregar esta tela. Verifique sua conexão.
+            </p>
+            <Button
+              onClick={this.handleReset}
+              className="h-12 rounded-full bg-white px-8 font-bold tracking-wide text-black hover:bg-zinc-200"
+            >
+              <RefreshCcw className="mr-2 size-4" />
+              Tentar de novo
+            </Button>
+          </div>
+        );
       }
 
       return (

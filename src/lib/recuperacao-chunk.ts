@@ -568,6 +568,17 @@ export async function executarRecuperacaoChunk(
   return "purgou";
 }
 
+/** Porta para quem JÁ tentou de novo e falhou (boundary local de aba): chunk
+ * que não baixa com a REDE PROVADA por conteúdo tem a cara de versão nova (a
+ * assinatura é rede boa + arquivo ausente) e entra na escada de sempre. Rede
+ * ruim (3G que caiu, portal cativo, offline) NÃO é versão: sai antes de
+ * `reportarErroChunk`, e o orçamento por versão fica intacto. As regras do
+ * orçamento são as de `reportarErroChunk` — aqui só se decide se vale pedir. */
+export async function recuperarSeAVersaoForOMotivo(): Promise<ResultadoDaRecuperacao> {
+  if (!(await verificarRedeDeVerdade())) return "sem-rede-verificada";
+  return executarRecuperacaoChunk(reportarErroChunk());
+}
+
 // ─── Os canais globais (main.tsx) ────────────────────────────────────────────
 
 /** Registra UMA vez — no main.tsx, chunk inicial, nunca lazy: se o chunk que
