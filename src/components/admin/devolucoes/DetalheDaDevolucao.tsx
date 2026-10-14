@@ -26,6 +26,7 @@ import {
   rotuloStatus,
   textoDoPrazo,
 } from "@/lib/devolucao";
+import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
@@ -345,10 +346,10 @@ export function DetalheDaDevolucao({
                       </a>
                     </Linha>
                   )}
-                  {detalhe.codigo_rastreio && (
+                  {linkDeRastreio(detalhe.codigo_rastreio ?? "") && (
                     <Linha rotulo="Rastreio">
                       <a
-                        href={`https://linkrastreio.com/?codigo=${encodeURIComponent(detalhe.codigo_rastreio)}`}
+                        href={linkDeRastreio(detalhe.codigo_rastreio ?? "")}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-mono text-admin-gold underline-offset-2 hover:underline"

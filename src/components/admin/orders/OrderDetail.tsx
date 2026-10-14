@@ -22,6 +22,7 @@ import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
+import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
@@ -1133,15 +1134,17 @@ function OrderLogisticsCard({
             <Copy className="size-4" />
           )}
         </button>
-        <a
-          href={`https://linkrastreio.com/?codigo=${localTrackingCode}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
-          title="Rastrear nos Correios"
-        >
-          <ExternalLink className="size-4" />
-        </a>
+        {linkDeRastreio(localTrackingCode) && (
+          <a
+            href={linkDeRastreio(localTrackingCode)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
+            title="Rastrear nos Correios"
+          >
+            <ExternalLink className="size-4" />
+          </a>
+        )}
         <button
           onClick={() => setIsEditingTracking(true)}
           disabled={isOffline}

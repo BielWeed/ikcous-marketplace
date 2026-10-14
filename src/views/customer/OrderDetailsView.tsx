@@ -10,6 +10,7 @@ import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
@@ -973,7 +974,7 @@ export function OrderDetailsView({
                 )}
               </button>
               <a
-                href={`https://linkrastreio.com/?codigo=${encodeURIComponent(codigoDeRastreio)}`}
+                href={linkDeRastreio(codigoDeRastreio)}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Rastrear entrega"

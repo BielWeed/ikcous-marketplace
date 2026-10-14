@@ -184,6 +184,20 @@ describe("painel de devoluções — avisos da etiqueta reversa (achado A2)", ()
     expect(botao("Buscar DC-e / conferir código")).toBeFalsy();
   });
 
+  it("código de rastreio da devolução: o link leva ao Melhor Rastreio, sem espaços", async () => {
+    respostas.set(
+      "devolucao_detalhe",
+      detalheDe({ codigo_rastreio: "pp 123 456 789 br" }),
+    );
+    await abrirFicha();
+    const link = Array.from(hospedeiro.querySelectorAll("a")).find((a) =>
+      a.getAttribute("href")?.includes("melhorrastreio.com.br"),
+    );
+    expect(link?.getAttribute("href")).toBe(
+      "https://www.melhorrastreio.com.br/rastreio/PP123456789BR",
+    );
+  });
+
   it("gera o código, a DC-e não vem (dce_pendente): toast de aviso aparece e o botão continua, agora para BUSCAR a DC-e", async () => {
     invoke.mockImplementationOnce(async () => {
       // A releitura seguinte (`carregar()`) já reflete o código gravado —

@@ -323,6 +323,43 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
     ).toBeNull();
   });
 
+  it("devolução em trânsito com código: 'Rastrear devolução' leva ao Melhor Rastreio, sem espaços", async () => {
+    respostas.set(
+      "devolucao_elegibilidade",
+      elegibilidade({
+        pode: false,
+        motivo_bloqueio:
+          "Já existe uma devolução em andamento para este pedido.",
+      }),
+    );
+    respostas.set("devolucoes_do_pedido", [
+      {
+        id: "d-1",
+        protocolo: "DV260926-ABCDE",
+        status: "em_transito",
+        tipo: "arrependimento",
+        resolucao_desejada: "reembolso",
+        metodo_retorno: "etiqueta_reversa",
+        valor_itens: 100,
+        created_at: "2026-09-26T10:00:00Z",
+      },
+    ]);
+    respostas.set("devolucao_detalhe", {
+      ...DETALHE,
+      status: "em_transito",
+      metodo_retorno: "etiqueta_reversa",
+      codigo_rastreio: "pp 123 456 789 br",
+    });
+    await renderizar();
+
+    const link = [...hospedeiro.querySelectorAll("a")].find((a) =>
+      a.textContent?.includes("Rastrear devolução"),
+    );
+    expect(link?.getAttribute("href")).toBe(
+      "https://www.melhorrastreio.com.br/rastreio/PP123456789BR",
+    );
+  });
+
   // Achado 2 (rodada 6c, revisão de risco): `devolucao_detalhe` NÃO é
   // admin-only — o dono da devolução também lê (RLS de `devolucoes` dá
   // SELECT ao dono, e a RPC aceita `v_d.user_id = auth.uid() OR
