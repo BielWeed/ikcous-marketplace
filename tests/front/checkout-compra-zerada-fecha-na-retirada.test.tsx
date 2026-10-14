@@ -250,7 +250,9 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
     await esperar(420);
   };
 
-  const preencherIdentificacao = async () => {
+  // `comCpf`: envio por transportadora exige o CPF de quem recebe; sem ele o
+  // Finalizar fica apagado por OUTRO motivo e o teste não prova a trava nova.
+  const preencherIdentificacao = async (comCpf = false) => {
     await act(async () => {
       digitar("checkout-name", "Cliente Teste");
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -259,6 +261,12 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
       digitar("checkout-tel", "34999999999");
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    if (comCpf) {
+      await act(async () => {
+        digitar("checkout-cpf", "11144477736");
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
   };
 
   const marcado = (texto: string) =>
@@ -408,7 +416,7 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
     mockUseCartOverrides.selectedShippingOption = TRANSPORTADORA;
     semearRascunhoComCupom("CUPOM100");
     await montar();
-    await preencherIdentificacao();
+    await preencherIdentificacao(true);
 
     expect(botaoPorTexto("Pagar agora com PIX")).toBeUndefined();
     expect(botaoPorTexto("Pix na Entrega")).toBeUndefined();
@@ -433,7 +441,7 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
   it("total zero desde o primeiro pintar (produto grátis) + transportadora: o efeito da transportadora NÃO empurra o 'PIX no app' — a tela trava", async () => {
     mockUseCartOverrides.selectedShippingOption = TRANSPORTADORA;
     await montar({ subtotal: 0, total: 0 });
-    await preencherIdentificacao();
+    await preencherIdentificacao(true);
 
     expect(toastInfo).not.toHaveBeenCalled();
     expect(botaoPorTexto("Pagar agora com PIX")).toBeUndefined();
@@ -527,7 +535,8 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
     });
     await esperar(50);
 
-    // Com o total zerado ela mesma troca para dinheiro.
+    // O total zerou (o app saiu) e ela mesma troca para dinheiro.
+    expect(botaoPorTexto("Pagar agora com PIX")).toBeUndefined();
     await act(async () => {
       botaoPorTexto("Dinheiro na Entrega")!.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
