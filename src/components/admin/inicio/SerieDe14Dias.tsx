@@ -63,7 +63,17 @@ function ancoragemDoRotulo(indice: number, total: number): AncoragemDoRotulo {
 export function SerieDe14Dias({
   serie,
   carregando,
-}: Readonly<{ serie: readonly PontoDaSerieDiaria[]; carregando: boolean }>) {
+  falhou = false,
+}: Readonly<{
+  serie: readonly PontoDaSerieDiaria[];
+  carregando: boolean;
+  /**
+   * O carregamento do Início falhou e não há retrato nenhum: sem este aviso,
+   * a série vazia diria "Sem vendas registradas" — uma afirmação sobre a loja
+   * que ninguém conferiu. Série que chegou (mesmo vazia) nunca passa por aqui.
+   */
+  falhou?: boolean;
+}>) {
   const [marcado, setMarcado] = useState<number | null>(null);
   const serieCompleta = completarSerieDe14Dias(serie);
   const total = serieCompleta.reduce((soma, ponto) => soma + ponto.receita, 0);
@@ -122,6 +132,8 @@ export function SerieDe14Dias({
                 {formatarMoeda(total)}
               </strong>
             </>
+          ) : falhou && !carregando ? (
+            "—"
           ) : null}
         </p>
       </div>
@@ -132,8 +144,10 @@ export function SerieDe14Dias({
           aria-hidden="true"
         />
       ) : serieCompleta.length === 0 ? (
-        <p className="mt-4 flex h-24 items-center justify-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-400">
-          Sem vendas registradas nos últimos 14 dias.
+        <p className="mt-4 flex h-24 items-center justify-center rounded-xl border border-dashed border-white/10 px-3 text-center text-xs text-zinc-400">
+          {falhou
+            ? "Não consegui carregar as vendas dos últimos 14 dias."
+            : "Sem vendas registradas nos últimos 14 dias."}
         </p>
       ) : (
         <>

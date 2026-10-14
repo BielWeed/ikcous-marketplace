@@ -268,6 +268,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
               <SerieDe14Dias
                 serie={painel?.serie14d ?? []}
                 carregando={semNumeros}
+                falhou={painel === null && erro !== null}
               />
             </LocalErrorBoundary>
           </div>
