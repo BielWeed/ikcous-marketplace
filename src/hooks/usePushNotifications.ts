@@ -1,8 +1,9 @@
 import { chavePublicaVapid } from "@/config/configuracaoDaLoja";
 import { useAuth } from "@/hooks/useAuth";
+import { dequemEAInscricao } from "@/lib/inscricao-de-push-da-conta";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // `subscribe()` mistura DUAS famílias de erro que não têm nada a ver uma com
@@ -227,6 +228,13 @@ export function usePushNotifications() {
   const [isSupported, setIsSupported] = useState(false);
   const [permission, setPermission] =
     useState<NotificationPermission>("default");
+  const userId = user?.id ?? null;
+  // A inscrição que ESTA instância criou, e para qual conta — a verificação de
+  // dono abaixo não a re-julga (só vale enquanto a conta for a mesma).
+  const inscricaoCriadaAqui = useRef<{
+    endpoint: string;
+    userId: string;
+  } | null>(null);
 
   useEffect(() => {
     // Desmontou no meio da sonda (StrictMode remonta, rota troca): as
@@ -276,7 +284,56 @@ export function usePushNotifications() {
     return () => {
       desmontado = true;
     };
-  }, []);
+    // `userId` na lista: quem entra ou sai da conta muda o que o navegador
+    // tem (o Sair desinscreve o aparelho), então a sonda lê o navegador de
+    // novo em vez de confiar no estado de antes. Sem troca de conta isto roda
+    // uma vez, como sempre rodou.
+  }, [userId]);
+
+  // A inscrição do NAVEGADOR pode ser de OUTRA conta: quem estava logado antes
+  // a gravou no nome dele e o navegador a mantém depois do Sair (celular da
+  // família, aparelho da loja; e todo aparelho que saiu antes do Sair passar
+  // a cancelá-la). Deixada assim, o banner não convida a conta nova (ele some
+  // se há inscrição), o push dirigido a ela dá 0 inscrições, e o da conta
+  // antiga cai neste aparelho. A RLS não deixa a conta nova tomar nem apagar
+  // a linha da antiga — mas ela vê que NÃO tem linha própria com este
+  // endpoint, e então desinscreve o navegador: a inscrição sai do estado, o
+  // convite volta e o toque cria uma inscrição nova, dela (a permissão do
+  // navegador já foi concedida, nada é perguntado de novo).
+  //
+  // Só roda com conta, e nunca sobre a inscrição que ESTA instância acabou de
+  // criar (a de agora é desta conta). Consulta que falha = dono desconhecido =
+  // não se destrói nada.
+  useEffect(() => {
+    if (!userId || !subscription) return;
+    const criada = inscricaoCriadaAqui.current;
+    if (
+      criada &&
+      criada.endpoint === subscription.endpoint &&
+      criada.userId === userId
+    ) {
+      return;
+    }
+
+    let cancelado = false;
+    const verificar = async () => {
+      const dono = await dequemEAInscricao(subscription.endpoint, userId);
+      if (cancelado || dono !== "outra-conta") return;
+      try {
+        await subscription.unsubscribe();
+      } catch (erro) {
+        console.warn(
+          "[push] Não foi possível soltar a inscrição alheia:",
+          erro,
+        );
+      }
+      if (!cancelado) setSubscription(null);
+    };
+    void verificar();
+    return () => {
+      cancelado = true;
+    };
+  }, [userId, subscription]);
 
   const subscribe = useCallback(async () => {
     if (!isSupported) return;
@@ -475,6 +532,10 @@ export function usePushNotifications() {
         throw new PushSubscribeError("banco", error);
       }
 
+      inscricaoCriadaAqui.current = {
+        endpoint: newSubscription.endpoint,
+        userId: user.id,
+      };
       setSubscription(newSubscription);
       toast.success("Inscrição realizada com sucesso!");
       return newSubscription;
