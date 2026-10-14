@@ -5,6 +5,7 @@ import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
 import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
 import { categoriaValidaDaHome } from "@/lib/categoria-valida-da-home";
+import { ordenacaoValida } from "@/lib/ordenacao-da-home";
 import { cn } from "@/lib/utils";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { Product, SortOption, View } from "@/types";
@@ -15,7 +16,6 @@ import {
   PackageSearch,
   RotateCw,
   SlidersHorizontal,
-  TrendingUp,
 } from "lucide-react";
 import React, { useCallback, useState, useMemo } from "react";
 
@@ -74,10 +74,13 @@ export const HomeView = React.memo(function HomeView({
   selectedProductId,
   selectedCategory: categoriaPedida,
   onCategoryChange,
-  sortBy,
+  sortBy: sortByPedido,
   onSortByChange,
   onHeaderDockChange,
 }: HomeViewProps) {
+  // Valor que não é uma ordenação de hoje (ex.: o antigo "sold", de quando
+  // existia "Mais Vendidos") cai em Relevância, em vez de ordenar por nada.
+  const sortBy = ordenacaoValida(sortByPedido);
   const {
     config,
     isLoaded: configLoaded,
@@ -224,8 +227,6 @@ export const HomeView = React.memo(function HomeView({
           return a.price - b.price;
         case "price-desc":
           return b.price - a.price;
-        case "sold":
-          return b.sold - a.sold;
         default:
           return 0;
       }
@@ -295,7 +296,6 @@ export const HomeView = React.memo(function HomeView({
     icon: React.ElementType;
   }[] = [
     { value: "default", label: "Relevância", icon: SlidersHorizontal },
-    { value: "sold", label: "Mais Vendidos", icon: TrendingUp },
     { value: "price-asc", label: "Menor Preço", icon: ArrowDown },
     { value: "price-desc", label: "Maior Preço", icon: ArrowUp },
   ];
