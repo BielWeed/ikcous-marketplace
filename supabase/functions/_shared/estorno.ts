@@ -358,16 +358,33 @@ export async function aplicarDiagnosticoDoPost(
  * o banco continua tratando a linha como incerta). Linha sem diagnóstico
  * (legado), com carimbo, com id do MP ou com outro código segue em consulta.
  * Falha ao ler: segue em consulta (lado seguro). Nunca lança.
+ *
+ * 2ª revisão Opus do #855: a memória do banco não diz o que o MP está fazendo
+ * AGORA (o saldo pode ter entrado e o reembolso desta linha estar em
+ * `processing`, sem carimbo e com a gravação do id perdida). Por isso, passados
+ * os guardas, `consultar` (um GET: `consultarReembolsoDoPedido`) é a palavra
+ * final: SÓ `nao_achou` — 200 legível, nenhum reembolso vivo sem dono — vira
+ * `falhou`. `achou`, `indeterminado` ou consulta que lança: segue em consulta
+ * (o caminho que adota o reembolso concluído é o da própria consulta do robô).
  */
 export async function decidirLinhaTravada(
   rpc: ChamarRpc,
   linha: LinhaEstorno,
+  consultar: () => Promise<ConsultaDoReembolso>,
 ): Promise<ResultadoEstorno | null> {
   if (typeof linha.mp_refund_id === "string" && linha.mp_refund_id !== "") return null;
   const lido = await gravarDiagnostico(rpc, linha.id, { mpCodigo: null, postIncerto: false, transitorio: false });
   if (!lido || lido.postIncerto || lido.mpCodigo === null || !CODIGOS_NADA_SAIU.has(lido.mpCodigo)) {
     return null;
   }
+  let consulta: ConsultaDoReembolso;
+  try {
+    consulta = await consultar();
+  } catch (err) {
+    console.error("estorno: consulta da linha travada lançou", nomeDoErro(err));
+    return null;
+  }
+  if (consulta.resultado !== "nao_achou") return null;
   return { tipo: "falhou", motivo: MOTIVO_NAO_LIBERADA_NO_LIMITE, codigo: lido.mpCodigo };
 }
 

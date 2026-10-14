@@ -107,6 +107,7 @@ import {
   aplicarDiagnosticoDoPost,
   autorizacaoPeloBanco,
   confirmarPorConsulta,
+  consultarReembolsoDoPedido,
   consultarTransacaoDaOrder,
   decidirLinhaTravada,
   executarEstorno,
@@ -1189,6 +1190,16 @@ async function handler(
           const esgotada = await decidirLinhaTravada(
             (nome, argumentos) => supabase.rpc(nome, argumentos),
             linhaAtual,
+            // 2ª revisão Opus: só vira `falhou` se o MP, perguntado AGORA (um
+            // GET), prova que não há reembolso desta linha em curso ou feito.
+            () =>
+              consultarReembolsoDoPedido({
+                buscar: buscarEstorno,
+                token: mpToken,
+                pedido,
+                valor: linhaAtual.amount,
+                idsJaReivindicados,
+              }),
           );
           if (esgotada) {
             const desfecho = await gravarDesfechoDoEstorno(

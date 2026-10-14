@@ -3681,7 +3681,11 @@ Deno.test("C5 (D4) - cron: linha antiga já no regime 'só consulta' (tentativas
 // linha ficava em_processamento para sempre. Estes testes SIMULAM os ciclos do
 // robô com o estado da linha e do diagnóstico acumulando de verdade.
 
-type CicloDoMp = "sem_saldo" | "consulta_cai" | "post_500";
+// `post_201_processando`: entrou saldo, o MP aceita o POST (201, order "refunded")
+// com o reembolso DESTA linha em "processing" — sem carimbo, e a gravação do id
+// do MP nunca chega (o fake não guarda `mp_refund_id`, como numa escrita suave
+// que falhou). `consulta_processando`: o GET mostra esse reembolso em andamento.
+type CicloDoMp = "sem_saldo" | "consulta_cai" | "post_500" | "post_201_processando" | "consulta_processando";
 
 async function simularCiclos(ciclos: CicloDoMp[]) {
   const orderId = "20000000-0000-4000-8000-0000000000dd";
@@ -3726,14 +3730,25 @@ async function simularCiclos(ciclos: CicloDoMp[]) {
         return { transitorios: tabela.transitorios, post_incerto: tabela.postIncerto, mp_codigo: tabela.codigo };
       },
     });
+    const orderComReembolsoEmAndamento = {
+      ...corpoOrder,
+      status: "refunded",
+      transactions: {
+        payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+        refunds: [{ id: "REF-X", amount: "50.00", status: "processing" }],
+      },
+    };
     const rotasGet = ciclo === "consulta_cai"
       ? [{ metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 500, corpo: {} }]
-      : [{ metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: corpoOrder }];
+      : [{ metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: ciclo === "consulta_processando" ? orderComReembolsoEmAndamento : corpoOrder }];
+    const rotaPost = ciclo === "post_500"
+      ? { status: 500, corpo: {} }
+      : ciclo === "post_201_processando"
+      ? { status: 201, corpo: orderComReembolsoEmAndamento }
+      : { status: 428, corpo: { errors: [{ code: "insufficient_money_for_refund" }] } };
     const mp = fetchDubleReconciliacao([
       ...rotasGet,
-      ciclo === "post_500"
-        ? { metodo: "POST", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund", status: 500, corpo: {} }
-        : { metodo: "POST", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund", status: 428, corpo: { errors: [{ code: "insufficient_money_for_refund" }] } },
+      { metodo: "POST", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund", ...rotaPost },
     ]);
     await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
     historico.push(`${linha.status}/t${linha.tentativas}/r${tabela.transitorios}${tabela.postIncerto ? "/carimbo" : ""}`);
@@ -3763,4 +3778,25 @@ Deno.test("CICLOS-3 - COM carimbo de incerteza (um POST caiu em 500 no ciclo 4) 
 Deno.test("CICLOS-4 - linha antiga (sem diagnóstico algum, regime 'só consulta' desde antes) continua em consulta: ler o diagnóstico não a transforma em 'nada saiu'", async () => {
   const r = await simularCiclos(["consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai"]);
   assertEquals(r.linha.status, "em_processamento");
+});
+
+Deno.test("CICLOS-5 - o saldo ENTRA no ciclo 5 (POST 201, reembolso desta linha em 'processing', id do MP não grava) e no ciclo 6 a consulta o vê em andamento: a linha NÃO vira falhou (o dinheiro está saindo) — fica em consulta por todos os ciclos", async () => {
+  const r = await simularCiclos([
+    "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "post_201_processando",
+    "consulta_processando", "consulta_processando", "consulta_processando",
+  ]);
+  assertEquals(r.historico[3], "em_processamento/t4/r4");
+  assertEquals(r.historico[4], "em_processamento/t5/r4");
+  assertEquals(r.linha.status, "em_processamento");
+  assertEquals(r.historico.some((h) => h.startsWith("falhou")), false);
+});
+
+Deno.test("CICLOS-6 - na linha travada, consulta que FALHA (500) continua em consulta; no ciclo seguinte, com o MP legível e sem reembolso, vira falhou", async () => {
+  const r = await simularCiclos([
+    "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "consulta_cai",
+    "consulta_cai", "sem_saldo",
+  ]);
+  assertEquals(r.historico[4], "em_processamento/t5/r4");
+  assertEquals(r.historico[5], "em_processamento/t5/r4");
+  assertEquals(r.historico[6].startsWith("falhou"), true);
 });

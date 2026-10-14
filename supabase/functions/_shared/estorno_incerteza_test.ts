@@ -401,18 +401,44 @@ Deno.test("D2 - a consulta usa só GET (nunca POST) e manda o token", async () =
 });
 
 // ---------------------------------------------------------------------------
-// Linha TRAVADA (correção da revisão Opus do #855): o ramo "só consulta" do robô
-// decide pelo MESMO critério do banco (`v_sem_post`).
+// Linha TRAVADA (correções das revisões Opus do #855): o ramo "só consulta" do
+// robô decide pelo MESMO critério do banco (`v_sem_post`) E só grava `falhou`
+// depois de PERGUNTAR ao MP o que acontece agora (`nao_achou`).
 // ---------------------------------------------------------------------------
 
-Deno.test("linha travada - sem carimbo, sem id do MP e último código 'nada saiu': falhou (lê o diagnóstico SEM incrementar nem carimbar)", async () => {
+const naoAchou = () => Promise.resolve({ resultado: "nao_achou" } as const);
+
+function consultaDuble(r: Awaited<ReturnType<typeof consultarReembolsoDoPedido>> | "lanca") {
+  const registro = { chamadas: 0 };
+  const consultar = () => {
+    registro.chamadas++;
+    return r === "lanca" ? Promise.reject(new Error("rede")) : Promise.resolve(r);
+  };
+  return { consultar, registro };
+}
+
+Deno.test("linha travada - sem carimbo, sem id do MP, último código 'nada saiu' E o MP provou que não existe reembolso: falhou (lê o diagnóstico SEM incrementar nem carimbar)", async () => {
   const { rpc, chamadas } = rpcDuble([{ data: { transitorios: 3, post_incerto: false, mp_codigo: "order_payment_not_yet_enabled_for_refund" } }]);
-  const r = await decidirLinhaTravada(rpc, linha({ tentativas: 5 }));
+  const r = await decidirLinhaTravada(rpc, linha({ tentativas: 5 }), naoAchou);
   assertEquals(r?.tipo, "falhou");
   assertEquals(chamadas[0].args, { p_refund_id: linha().id, p_mp_codigo: null, p_post_incerto: false, p_transitorio: false });
 });
 
-Deno.test("linha travada - segue em consulta (null) com carimbo, sem diagnóstico, código fora da lista, id do MP ou leitura que falha", async () => {
+Deno.test("linha travada - MP diz achou (reembolso em curso ou concluído) ou INDETERMINADO, ou a consulta lança: segue em consulta, nunca falhou", async () => {
+  const ok = { data: { transitorios: 3, post_incerto: false, mp_codigo: "insufficient_money_for_refund" } };
+  const casos = [
+    { resultado: "achou", mp_refund_id: "R1", mp_status: "processed", valor: 50 },
+    { resultado: "indeterminado", motivo: "há reembolso do pedido que não é desta devolução" },
+    "lanca",
+  ] as const;
+  for (const c of casos) {
+    const dub = consultaDuble(c);
+    assertEquals(await decidirLinhaTravada(rpcDuble([ok]).rpc, linha(), dub.consultar), null, JSON.stringify(c));
+    assertEquals(dub.registro.chamadas, 1);
+  }
+});
+
+Deno.test("linha travada - segue em consulta (null) com carimbo, sem diagnóstico, código fora da lista, id do MP ou leitura que falha — e NEM pergunta ao MP", async () => {
   const ok = { transitorios: 3, post_incerto: false, mp_codigo: "insufficient_money_for_refund" };
   const casos: Array<[string, Parameters<typeof rpcDuble>[0], LinhaEstorno]> = [
     ["carimbo", [{ data: { ...ok, post_incerto: true } }], linha()],
@@ -425,6 +451,8 @@ Deno.test("linha travada - segue em consulta (null) com carimbo, sem diagnóstic
     ["leitura que lança", ["lanca"], linha()],
   ];
   for (const [nome, respostas, l] of casos) {
-    assertEquals(await decidirLinhaTravada(rpcDuble(respostas).rpc, l), null, nome);
+    const dub = consultaDuble({ resultado: "nao_achou" });
+    assertEquals(await decidirLinhaTravada(rpcDuble(respostas).rpc, l, dub.consultar), null, nome);
+    assertEquals(dub.registro.chamadas, 0, `${nome}: não devia consultar o MP`);
   }
 });
