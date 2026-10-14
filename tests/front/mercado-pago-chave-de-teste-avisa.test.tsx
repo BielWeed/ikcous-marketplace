@@ -220,6 +220,8 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
   });
 
   it("T5 — o texto da tela é o MESMO que a edge manda (se um mudar, o outro tem que mudar junto)", () => {
+    // Caminho fixo do próprio repositório, nenhuma entrada de usuário.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     const edge = readFileSync(
       join(
         __dirname,
