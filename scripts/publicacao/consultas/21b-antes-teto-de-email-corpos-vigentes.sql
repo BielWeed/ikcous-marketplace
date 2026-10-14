@@ -17,7 +17,10 @@
 -- linha (aplicada assim, a migration abortaria no pre-voo `B1_BASELINE_DIVERGENT` -- aqui a gente
 -- descobre ANTES, por leitura). Uma loja que ja tem a migration reprova aqui de proposito, nas tres
 -- linhas de corpo. Depois do rollback-manual esta consulta volta a ser POSITIVA (a tabela e as
--- funcoes novas que ficam nao entram aqui).
+-- funcoes novas que ficam nao entram aqui) -- SE a v1 estiver aberta: uma loja que ja recebeu a
+-- 20261220000000 (lote 23, a v1 fecha para o visitante) reprova tambem na linha `get_orders_by_otp_v1:
+-- EXECUTE`, de proposito (antes do lote 21 a v1 e' aberta). Por isso o rollback da 20261220 vem SEMPRE
+-- antes de qualquer rollback ou reaplicacao da 20261217.
 --
 --   * corpo   -- o sha256 do corpo vivo e' o do ANTES (LF ou CRLF).
 --   * EXECUTE -- `generate_order_otp_v2` e `reivindicar_email_de_confirmacao`: so service_role (a

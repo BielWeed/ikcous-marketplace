@@ -387,12 +387,12 @@ prova(
       const depois = await retratoDoSchema();
       assert.deepEqual(depois.tabelas, antes.tabelas);
       assert.equal(depois.funcoes.length, antes.funcoes.length);
+      const depoisPorNome = new Map(depois.funcoes.map((f) => [f.f, f]));
       const mudaram = antes.funcoes
-        .filter(
-          (f, i) =>
-            f.acl !== depois.funcoes[i].acl ||
-            f.corpo !== depois.funcoes[i].corpo,
-        )
+        .filter((f) => {
+          const d = depoisPorNome.get(f.f);
+          return !d || f.acl !== d.acl || f.corpo !== d.corpo;
+        })
         .map((f) => f.f);
       assert.deepEqual(mudaram, [V1.replace("public.", "")]);
       const so = antes.funcoes.find(

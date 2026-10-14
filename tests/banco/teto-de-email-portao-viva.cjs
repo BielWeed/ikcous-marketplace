@@ -70,6 +70,17 @@ const ROLLBACK = fs.readFileSync(
   "utf8",
 );
 const emCRLF = (s) => s.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+// A 20261220 (lote 23: a v1 fecha para anon e authenticated) vem DEPOIS desta. O estado "DEPOIS do
+// lote 21" que esta prova mede e' o da loja SEM o corte: o rollback-manual dela (um GRANT,
+// idempotente) e' o primeiro passo de todo estado montado aqui. O estado COM o corte e' o caso proprio.
+const ARQ_220 =
+  "20261220000000_a_consulta_antiga_de_pedido_por_codigo_fecha_para_o_visitante.sql";
+const lerSeExiste = (nome) => {
+  const p = path.join(MIGRATIONS, nome);
+  return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null;
+};
+const MIGRATION_220 = lerSeExiste(ARQ_220);
+const ROLLBACK_220 = lerSeExiste(`rollback-manual-${ARQ_220}`);
 
 // As linhas de corpo das 3 funcoes que o lote TROCA, em cada consulta.
 const CORPOS_TROCADOS_21A = [
@@ -94,6 +105,7 @@ let C;
 async function noEstado(montar, consultas, { comoDono = false } = {}) {
   await C.query("BEGIN");
   try {
+    if (ROLLBACK_220) await C.query(ROLLBACK_220);
     if (montar) await montar(C);
     if (!comoDono) {
       await C.query(`SET LOCAL ROLE ${PAPEL_RO}`);
@@ -234,6 +246,87 @@ prova(
       assert.deepEqual(comoLeitura[A], comoDono[A]);
       assert.deepEqual(comoLeitura[B], comoDono[B]);
     }
+  },
+);
+
+prova(
+  "DEPOIS DO CORTE (20261220, a v1 fecha): a 21a segue POSITIVA e o `vivo` mostra o estado de verdade; a 21b reprova os 3 corpos e a linha EXECUTE da v1",
+  async () => {
+    assert.ok(
+      MIGRATION_220 && ROLLBACK_220,
+      "migration e rollback da 20261220 ausentes",
+    );
+    const s = await noEstado((c) => c.query(MIGRATION_220), [A, B]);
+    confereRol(A, s[A]);
+    confereRol(B, s[B]);
+    assert.deepEqual(reprovadas(s[A]), [], "21a toda ok com a v1 fechada");
+    const v1 = s[A].find((l) => l.item === "get_orders_by_otp_v1: EXECUTE");
+    assert.equal(v1.vivo, "PUBLIC=nao anon=nao authenticated=nao");
+    assert.equal(v1.esperado, "PUBLIC=nao anon=nao authenticated=nao");
+    assert.deepEqual(
+      reprovadas(s[B]),
+      [...CORPOS_TROCADOS_21B, "get_orders_by_otp_v1: EXECUTE"].sort(),
+    );
+    // ida e volta do corte: o mesmo veredito dos dois lados
+    const idaEVolta = await noEstado(
+      async (c) => {
+        await c.query(MIGRATION_220);
+        await c.query(ROLLBACK_220);
+        await c.query(MIGRATION_220);
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(idaEVolta[A]), []);
+    // com o corte, o rollback do lote 21 (rodado ANTES do rollback da 220) e' recusado: a ordem de
+    // desfazer e' a 220 primeiro. A conferencia da 20261217 exige a v1 aberta.
+    await C.query("BEGIN");
+    try {
+      await C.query(MIGRATION_220);
+      await C.query("SAVEPOINT reaplicar");
+      await assert.rejects(C.query(MIGRATION), /conferencia 20261217/);
+      await C.query("ROLLBACK TO SAVEPOINT reaplicar");
+    } finally {
+      await C.query("ROLLBACK");
+    }
+    const veredito = CONF.veredictoDaConsulta({
+      consulta: A,
+      ref: "abcdefghijklmnopqrst",
+      sha: "0".repeat(40),
+      linhas: s[A],
+    });
+    assert.match(veredito, / linhas=14 ok_false=0 ok_nao_booleano=0 rol=ok$/);
+  },
+);
+
+prova(
+  "NEGATIVO 21a (com o corte): a v1 fechada so para um dos papeis, ou aberta a PUBLIC, reprova SO a linha EXECUTE da v1",
+  async () => {
+    const V1 = "public.get_orders_by_otp_v1(text,text)";
+    for (const mutar of [
+      `GRANT EXECUTE ON FUNCTION ${V1} TO authenticated`,
+      `GRANT EXECUTE ON FUNCTION ${V1} TO anon`,
+    ]) {
+      const s = await noEstado(
+        async (c) => {
+          await c.query(MIGRATION_220);
+          await c.query(mutar);
+        },
+        [A],
+      );
+      assert.deepEqual(
+        reprovadas(s[A]),
+        ["get_orders_by_otp_v1: EXECUTE"],
+        mutar,
+      );
+    }
+    const s = await noEstado(
+      async (c) => {
+        await c.query(MIGRATION_220);
+        await c.query(`GRANT EXECUTE ON FUNCTION ${V1} TO PUBLIC`);
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(s[A]), ["get_orders_by_otp_v1: EXECUTE"]);
   },
 );
 
