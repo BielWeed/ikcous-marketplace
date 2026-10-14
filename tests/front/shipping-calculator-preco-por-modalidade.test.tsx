@@ -65,19 +65,28 @@ vi.mock("@/utils/haptic", () => ({
 }));
 
 vi.mock("@/lib/supabase", () => {
-  const consulta = () => {
+  // O catálogo FICA INDISPONÍVEL de propósito: este teste é sobre frete, e o
+  // CartContext relê o catálogo ao abrir o app. Catálogo VAZIO quer dizer
+  // "nenhum produto está à venda" e esvaziaria o carrinho do teste; leitura
+  // que falha deixa o carrinho como está (o que o teste quer).
+  const consulta = (tabela: string) => {
     const resposta = () =>
       Promise.resolve({ data: [] as unknown[], error: null });
+    const semCatalogo = () =>
+      Promise.resolve({
+        data: null,
+        error: { message: "catálogo indisponível neste teste" },
+      });
     const alvo: Record<string, unknown> = {
       select: () => alvo,
       eq: resposta,
-      in: resposta,
+      in: tabela === "vw_produtos_public" ? semCatalogo : resposta,
     };
     return alvo;
   };
   return {
     supabase: {
-      from: () => consulta(),
+      from: (tabela: string) => consulta(tabela),
       rpc: () => Promise.resolve({ error: null }),
       auth: {
         getSession: () =>

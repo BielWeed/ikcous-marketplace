@@ -2,6 +2,12 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import type { OrigemDaEscolhaDoFrete } from "@/lib/auto-selecao-de-frete";
+import {
+  type CatalogoLido,
+  aplicarCatalogoAoCarrinho,
+  avisosDoCarrinho,
+  montarCatalogo,
+} from "@/lib/catalogo-do-carrinho";
 // FRETE V2/V3 (frentes B 03/09 e T3 23/09): o preço FINAL de cada opção
 // (grátis/desconto já aplicados) é a fonte única em estrategias-de-frete.ts
 // -- local calcula aqui (mesmo preset de sempre); nacional só EXIBE o que a
@@ -172,6 +178,45 @@ function removerSeguro(chave: string): void {
   }
 }
 
+/**
+ * Lê o estado ATUAL de produtos (vitrine pública: só devolve o que está à
+ * venda) e variações. `produtos` lança se a leitura do produto falhar; a das
+ * variações NÃO lança (o sync sempre continuou sem elas), mas devolve o erro:
+ * quem aplica o catálogo ao carrinho tem de desistir nesse caso, porque produto
+ * sem variação faria toda linha com variação parecer "sumida".
+ */
+async function lerProdutosEVariacoes(ids: string[]) {
+  const { data: prodData, error: prodError } = await supabase
+    .from("vw_produtos_public")
+    .select("*")
+    .in("id", ids);
+  if (prodError) throw prodError;
+
+  const { data: varData, error: varError } = await supabase
+    .from("product_variants")
+    .select("*")
+    .in("product_id", ids);
+  if (varError) {
+    console.error("[CartContext] Error fetching variants:", varError);
+  }
+  return {
+    produtos: (prodData || []) as Array<Record<string, unknown>>,
+    variantes: (varData || []) as Array<Record<string, unknown>>,
+    variantesFalharam: !!varError,
+  };
+}
+
+/**
+ * O aviso da mudança de preço/estoque fica na tela tempo de ser lido. A frase é
+ * o `id` do aviso: duas leituras em voo ao mesmo tempo (a da abertura e a de um
+ * evento em tempo real) contam a mesma mudança, e a cliente vê UM aviso.
+ */
+function avisarDoCarrinho(frases: string[]) {
+  for (const frase of frases) {
+    toast.warning(frase, { id: frase, duration: 12000 });
+  }
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { config } = useStore();
   const { user, loading: authLoading } = useAuth();
@@ -280,6 +325,36 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     userIdAtualRef.current = userId ?? null;
   }, [userId]);
 
+  // O carrinho que a cliente está VENDO agora, para a releitura do catálogo
+  // comparar o "antes" sem entrar num updater do estado.
+  const cartRef = useRef(cart);
+  useEffect(() => {
+    cartRef.current = cart;
+  }, [cart]);
+
+  // CONVIDADO (sem conta não há `syncFromDB` para reler o catálogo): ao abrir o
+  // app, relê preço, estoque e situação de cada item e deixa o carrinho como o
+  // catálogo está HOJE. Falhou a leitura -> o carrinho fica como estava (nunca
+  // pior que antes). Carrinho vazio -> nenhuma leitura.
+  const renovarPeloCatalogo = useCallback(async () => {
+    const uidDaLeitura = userIdAtualRef.current;
+    const ids = Array.from(new Set(cartRef.current.map((i) => i.product.id)));
+    if (ids.length === 0) return;
+    try {
+      const lido = await lerProdutosEVariacoes(ids);
+      if (lido.variantesFalharam) return;
+      const catalogo = montarCatalogo(ids, lido.produtos, lido.variantes);
+      const avisos = await avisosDoCarrinho(cartRef.current, catalogo);
+      // A conta mudou durante a leitura: o carrinho de agora não é o que foi
+      // perguntado.
+      if (userIdAtualRef.current !== uidDaLeitura) return;
+      setCart((prev) => aplicarCatalogoAoCarrinho(prev, catalogo));
+      avisarDoCarrinho(avisos);
+    } catch (err) {
+      console.error("[CartContext] ❌ Catalog refresh failed:", err);
+    }
+  }, []);
+
   const syncFromDB = useCallback(
     async (force = false) => {
       if (authLoading) {
@@ -294,6 +369,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         syncLocked.current = false;
         isInitialLoad.current = false;
+        void renovarPeloCatalogo();
         return;
       }
 
@@ -320,34 +396,30 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         );
 
         if (dbItems) {
+          // Os itens do banco E os que a cliente já tem aqui: uma leitura só
+          // do catálogo serve para montar o carrinho do banco e para renovar
+          // o carrinho local (o preço do dia em que o item entrou não vale
+          // mais). Mesma consulta de antes, com mais ids.
           const productIds = Array.from(
-            new Set(dbItems.map((item) => item.product_id)),
-          );
+            new Set([
+              ...dbItems.map((item) => item.product_id),
+              ...cartRef.current.map((item) => item.product.id),
+            ]),
+          ).filter((id): id is string => id !== null);
 
           let products: any[] = [];
           let variants: any[] = [];
+          let catalogo: CatalogoLido | null = null;
 
           if (productIds.length > 0) {
-            const { data: prodData, error: prodError } = await supabase
-              .from("vw_produtos_public")
-              .select("*")
-              .in("id", productIds.filter((id) => id !== null) as string[]);
-
-            if (prodError) throw prodError;
-            products = prodData || [];
-
-            const { data: varData, error: varError } = await supabase
-              .from("product_variants")
-              .select("*")
-              .in(
-                "product_id",
-                productIds.filter((id) => id !== null) as string[],
-              );
-
-            if (varError) {
-              console.error("[CartContext] Error fetching variants:", varError);
+            const lido = await lerProdutosEVariacoes(productIds);
+            products = lido.produtos;
+            variants = lido.variantes;
+            // Sem as variações o catálogo está incompleto: não se aplica ao
+            // carrinho (o carrinho do banco segue sendo montado como antes).
+            if (!lido.variantesFalharam) {
+              catalogo = montarCatalogo(productIds, products, variants);
             }
-            variants = varData || [];
           }
 
           const reconstructedCart: CartItem[] = dbItems
@@ -378,16 +450,49 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             })
             .filter((item): item is CartItem => item !== null);
 
+          // O que a cliente VIA antes desta leitura (o carrinho daqui mais o
+          // que só existia no do banco): a base do aviso "o preço mudou".
+          let avisos: string[] = [];
+          if (catalogo) {
+            try {
+              const chavesDeAqui = new Set(
+                cartRef.current.map(
+                  (item) => `${item.product.id}-${item.variantId || ""}`,
+                ),
+              );
+              avisos = await avisosDoCarrinho(
+                [
+                  ...cartRef.current,
+                  ...reconstructedCart.filter(
+                    (item) =>
+                      !chavesDeAqui.has(
+                        `${item.product.id}-${item.variantId || ""}`,
+                      ),
+                  ),
+                ],
+                catalogo,
+              );
+            } catch (err) {
+              console.error("[CartContext] Failed to build cart notices:", err);
+            }
+          }
+
           // A conta saiu/trocou durante a leitura: o carrinho dela não é de
           // quem está agora (o efeito de troca já limpou o estado).
           if (userIdAtualRef.current !== (uidDaLeitura ?? null)) return;
+
+          // Na junção fica o produto NOVO (preço, estoque, situação) com a
+          // quantidade que "quem escreveu por último" definiu. Antes, com o
+          // carimbo igual (o caso normal), ficava a cópia local velha.
+          const comOCatalogo = (itens: CartItem[]) =>
+            catalogo ? aplicarCatalogoAoCarrinho(itens, catalogo) : itens;
 
           setCart((prev) => {
             const prevHash = JSON.stringify(prev);
             const reconHash = JSON.stringify(reconstructedCart);
             if (prevHash === reconHash) {
               // Skip updating state if the lists match exactly to prevent cycles
-              return prev;
+              return comOCatalogo(prev);
             }
 
             // If local cart is empty AND no tombstones exist, adopt remote
@@ -396,10 +501,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               console.log(
                 "[CartContext] ✅ Remote cart adopted (local was empty, no tombstones).",
               );
-              return reconstructedCart.map((item) => ({
-                ...item,
-                lastModifiedAt: item.lastModifiedAt || Date.now(),
-              }));
+              return comOCatalogo(
+                reconstructedCart.map((item) => ({
+                  ...item,
+                  lastModifiedAt: item.lastModifiedAt || Date.now(),
+                })),
+              );
             }
 
             const mergedMap = new Map<string, CartItem>();
@@ -442,8 +549,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             });
 
             const mergedArray = Array.from(mergedMap.values());
-            return mergedArray;
+            return comOCatalogo(mergedArray);
           });
+          avisarDoCarrinho(avisos);
         }
       } catch (err) {
         console.error("[CartContext] ❌ Sync error:", err);
@@ -457,7 +565,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [userId, authLoading],
+    [userId, authLoading, renovarPeloCatalogo],
   );
 
   // Initial Sync from Supabase
@@ -731,6 +839,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           const newCart = [...prev];
           newCart[existingIndex] = {
             ...existing,
+            // O produto que chega é o ATUAL (a cliente acabou de vê-lo na
+            // vitrine). Manter a cópia do dia em que o item entrou prendia o
+            // carrinho no preço velho: somar a quantidade não o corrigia.
+            product,
             quantity: nextQuantity,
             lastModifiedAt: Date.now(),
           };
