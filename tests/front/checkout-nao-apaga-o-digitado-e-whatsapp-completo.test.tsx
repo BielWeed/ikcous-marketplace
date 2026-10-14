@@ -24,6 +24,7 @@ const { conta, createOrder, invoke } = vi.hoisted(() => ({
       user_metadata: Record<string, string>;
     } | null,
     profile: null as { full_name: string; whatsapp: string } | null,
+    carregando: false,
   },
   createOrder: vi.fn(),
   invoke: vi.fn(),
@@ -68,7 +69,7 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: conta.user,
     profile: conta.profile,
-    loading: false,
+    loading: conta.carregando,
   }),
 }));
 vi.mock("@/hooks/useCart", async () => {
@@ -122,7 +123,11 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const CHAVE = "ikcous-rascunho-do-checkout-v1";
 
-function rascunhoCom(parcial: { nome?: string; whatsapp?: string }) {
+function rascunhoCom(parcial: {
+  nome?: string;
+  whatsapp?: string;
+  contaDosDados?: string | null;
+}) {
   return JSON.stringify({
     nome: "",
     whatsapp: "",
@@ -135,6 +140,9 @@ function rascunhoCom(parcial: { nome?: string; whatsapp?: string }) {
     complemento: "",
     notas: "",
     cupom: null,
+    // O rascunho de quem está logada é DELA (a conta de todos os casos de
+    // "mesma conta" deste arquivo); os casos de outra conta passam o dono.
+    contaDosDados: "user-1",
     ...parcial,
   });
 }
@@ -160,6 +168,7 @@ describe("CheckoutView — o perfil da conta não apaga o que a cliente digitou"
   beforeEach(() => {
     conta.user = { id: "user-1", user_metadata: {} };
     conta.profile = null;
+    conta.carregando = false;
     invoke.mockReset();
     invoke.mockResolvedValue({
       data: { options: [], cotacaoIncompleta: false },
@@ -310,6 +319,7 @@ describe("CheckoutView — WhatsApp só vale com celular completo (11 dígitos)"
   beforeEach(() => {
     conta.user = { id: "user-1", user_metadata: {} };
     conta.profile = null;
+    conta.carregando = false;
     invoke.mockReset();
     invoke.mockResolvedValue({
       data: { options: [], cotacaoIncompleta: false },

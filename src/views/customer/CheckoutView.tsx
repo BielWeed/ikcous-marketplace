@@ -79,6 +79,7 @@ import {
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
+  dadosDoRascunhoValemPara,
   lerRascunhoDoCheckout,
   limparRascunhoDoCheckout,
   rascunhoTemConteudo,
@@ -1043,6 +1044,19 @@ export function CheckoutView({
     conta: string | null;
   } | null>(null);
   const hasInitializedRef = useRef(false);
+  // DE QUEM SÃO o nome e o WhatsApp que estão na tela (id da conta; `null` =
+  // convidado; `undefined` = a autenticação ainda não disse quem é — nada é
+  // gravado no rascunho nesse intervalo, para nunca etiquetar dado de uma
+  // conta como de convidado). Mantido pelo efeito "de quem são nome e
+  // WhatsApp", mais abaixo, e semeado pelo init quando a conta já é conhecida.
+  const donoDosDadosRef = useRef<string | null | undefined>(undefined);
+  // Nome/WhatsApp de um rascunho de CONTA que chegou antes de a autenticação
+  // dizer quem entrou: só se aplicam se for a mesma conta.
+  const dadosPendentesDoRascunhoRef = useRef<{
+    nome: string;
+    whatsapp: string;
+    dono: string | null | undefined;
+  } | null>(null);
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
       // O RASCUNHO É LIDO ANTES DE QUALQUER form.reset E ANTES DE ABRIR A
@@ -1061,6 +1075,12 @@ export function CheckoutView({
       // não entra no rascunho) atravessa os resets.
       const cpfJaCarregado = form.getValues("cpf") || "";
       hasInitializedRef.current = true;
+      // Quem é a conta de agora, já na hora de gravar os resets abaixo (o
+      // rascunho regravado leva o dono dos dados).
+      const contaDeAgora = user?.id ?? null;
+      if (donoDosDadosRef.current === undefined && !authLoading) {
+        donoDosDadosRef.current = contaDeAgora;
+      }
       if (!form.formState.isDirty) {
         // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
         // a cobertura decide para onde a loja entrega, nunca onde o cliente
@@ -1082,6 +1102,24 @@ export function CheckoutView({
         // revalidado contra o subtotal atual no efeito logo abaixo; o que
         // deixou de valer não volta mentindo.
         if (rascunho && rascunhoTemConteudo(rascunho)) {
+          // NOME E WHATSAPP SÃO DE UMA PESSOA (dado de cliente): o rascunho
+          // sabe de QUEM são (`contaDosDados`). Só voltam para a mesma conta
+          // (ou, se foi convidado que digitou, para quem entrou no meio da
+          // compra); de outra conta eles são DESCARTADOS e vale o perfil de
+          // quem está aqui. Com a autenticação ainda carregando e dono de
+          // conta, fica pendente até o efeito de conta decidir.
+          const donoDosDados = rascunho.contaDosDados;
+          const adiarDadosPessoais = authLoading && donoDosDados !== null;
+          if (adiarDadosPessoais) {
+            dadosPendentesDoRascunhoRef.current = {
+              nome: rascunho.nome,
+              whatsapp: rascunho.whatsapp,
+              dono: donoDosDados,
+            };
+          }
+          const dadosPessoaisValem =
+            !adiarDadosPessoais &&
+            dadosDoRascunhoValemPara(donoDosDados, contaDeAgora);
           form.reset({
             // CPF NUNCA vem do rascunho (ver o comentário grande em
             // rascunho-do-checkout.ts) — este reset restaura endereço/nome/
@@ -1090,11 +1128,13 @@ export function CheckoutView({
             // rascunho.
             cpf: cpfJaCarregado,
             name:
-              rascunho.nome ||
+              (dadosPessoaisValem ? rascunho.nome : "") ||
               profile?.full_name ||
               user?.user_metadata?.name ||
               "",
-            whatsapp: rascunho.whatsapp || getDefaultWhatsApp(),
+            whatsapp:
+              (dadosPessoaisValem ? rascunho.whatsapp : "") ||
+              getDefaultWhatsApp(),
             cep:
               rascunho.cep ||
               localStorage.getItem("ikcous_last_shipping_cep") ||
@@ -2298,7 +2338,11 @@ export function CheckoutView({
       complement?: string;
     }) => {
       if (!hasInitializedRef.current) return;
+      // Sem saber DE QUEM são nome e WhatsApp (autenticação carregando) não
+      // se grava: o rascunho que já está no armazenamento guarda o dono certo.
+      if (donoDosDadosRef.current === undefined) return;
       const rascunho = {
+        contaDosDados: donoDosDadosRef.current,
         nome: valores.name ?? "",
         whatsapp: valores.whatsapp ?? "",
         cep: valores.cep ?? "",
@@ -2331,7 +2375,9 @@ export function CheckoutView({
   // própria, lendo o formulário atual via getValues. Mesmas duas travas.
   useEffect(() => {
     if (!hasInitializedRef.current) return;
+    if (donoDosDadosRef.current === undefined) return;
     const rascunho = {
+      contaDosDados: donoDosDadosRef.current,
       nome: form.getValues("name") ?? "",
       whatsapp: form.getValues("whatsapp") ?? "",
       cep: form.getValues("cep") ?? "",
@@ -2700,6 +2746,44 @@ export function CheckoutView({
     });
     return () => assinatura.unsubscribe();
   }, [form]);
+  // DE QUEM SÃO NOME E WHATSAPP DA TELA (dado de cliente): quando uma pessoa
+  // sai e OUTRA entra no mesmo celular, a segunda não pode ver o contato da
+  // primeira — o pedido sairia com o contato errado. Este efeito vem ANTES
+  // do efeito do perfil (a ordem de declaração é a ordem de execução no
+  // mesmo commit): primeiro limpa o que era da conta que saiu, depois o
+  // perfil novo preenche o formulário já vazio.
+  // - conta A → outra conta ou ninguém: nome/WhatsApp saem, as marcas "a
+  //   cliente mexeu" zeram e o que estava à espera do rascunho é descartado;
+  // - convidado → conta (mesma pessoa que entrou no meio da compra): o
+  //   digitado fica e passa a ser dela;
+  // - rascunho que esperava a autenticação (`dadosPendentesDoRascunhoRef`)
+  //   só entra se for da mesma conta (ou de convidado).
+  useEffect(() => {
+    if (authLoading) return;
+    const agora = user?.id ?? null;
+    const dono = donoDosDadosRef.current;
+    if (typeof dono === "string" && dono !== agora) {
+      dadosPendentesDoRascunhoRef.current = null;
+      camposMexidosPelaClienteRef.current.clear();
+      perfilVistoRef.current = { name: "", whatsapp: "" };
+      form.setValue("name", "");
+      form.setValue("whatsapp", "");
+    }
+    donoDosDadosRef.current = agora;
+    const pendente = dadosPendentesDoRascunhoRef.current;
+    dadosPendentesDoRascunhoRef.current = null;
+    if (pendente && dadosDoRascunhoValemPara(pendente.dono, agora)) {
+      if (pendente.nome && !camposMexidosPelaClienteRef.current.has("name")) {
+        form.setValue("name", pendente.nome);
+      }
+      if (
+        pendente.whatsapp &&
+        !camposMexidosPelaClienteRef.current.has("whatsapp")
+      ) {
+        form.setValue("whatsapp", pendente.whatsapp);
+      }
+    }
+  }, [authLoading, user, form]);
   useEffect(() => {
     if (profile) {
       const nomeDoPerfil = profile.full_name || "";

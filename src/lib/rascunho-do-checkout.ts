@@ -49,6 +49,31 @@ export interface RascunhoDoCheckout {
    * campo, conta como convidado.
    */
   contaDoCupom?: string | null;
+  /**
+   * De QUEM são o nome e o WhatsApp do rascunho (id da conta; `null` =
+   * convidado digitou). Mesmo desenho de `contaDoCupom`, com UMA diferença
+   * de propósito: rascunho antigo, SEM o campo (`undefined`), NÃO conta como
+   * convidado — dado de cliente nunca passa para outra conta por omissão. O
+   * restore só devolve nome/WhatsApp para a MESMA conta; rascunho de
+   * convidado vale para quem entrar no meio da compra (mesma pessoa).
+   */
+  contaDosDados?: string | null;
+}
+
+/**
+ * Os dados pessoais do rascunho (nome/WhatsApp) valem para quem está agora?
+ * - dono `null` (convidado digitou): vale para convidado e para a conta que
+ *   entrou no meio da compra;
+ * - dono = id de conta: só para a MESMA conta;
+ * - dono ausente (rascunho de antes deste campo): só para convidado.
+ */
+export function dadosDoRascunhoValemPara(
+  dono: string | null | undefined,
+  contaDeAgora: string | null,
+): boolean {
+  if (dono === null) return true;
+  if (dono === undefined) return contaDeAgora === null;
+  return dono === contaDeAgora;
 }
 
 // 🔴 CPF NUNCA ENTRA AQUI (checkout compacto + CPF, 23/09/2026). Regra da
@@ -106,6 +131,14 @@ function higienizar(cru: unknown): RascunhoDoCheckout | null {
       typeof d.contaDoCupom === "string" && d.contaDoCupom !== ""
         ? d.contaDoCupom
         : null,
+    // `null` explícito = convidado; ausente/ilegível = desconhecido
+    // (`undefined`), que NUNCA vale como convidado — ver o tipo.
+    contaDosDados:
+      typeof d.contaDosDados === "string" && d.contaDosDados !== ""
+        ? d.contaDosDados
+        : d.contaDosDados === null
+          ? null
+          : undefined,
   };
 }
 
