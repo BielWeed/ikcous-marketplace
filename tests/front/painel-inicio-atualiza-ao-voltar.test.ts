@@ -14,11 +14,17 @@ const h = vi.hoisted(() => ({
   chamadasPainel: 0,
   aoMudarPedido: null as null | (() => void),
   // Como o banco responde: "ok", "erro" (resposta com error) ou "rejeita" (a rede cai).
-  modo: "ok" as "ok" | "erro" | "rejeita",
+  // "manual": a resposta só sai quando o teste resolve `pendentes[n]`.
+  modo: "ok" as "ok" | "erro" | "rejeita" | "manual",
+  // A leitura da assinatura é independente da do painel.
+  assinatura: "ok" as "ok" | "erro",
+  pendentes: [] as Array<() => void>,
   ultimo: null as null | {
     painel: unknown;
     erro: string | null;
     erroAssinatura: string | null;
+    carregando: boolean;
+    atualizar: () => Promise<void>;
   },
 }));
 
@@ -36,6 +42,14 @@ vi.mock("@/lib/supabase", () => ({
       if (nome === "painel_inicio") {
         h.chamadasPainel += 1;
         if (h.modo === "rejeita") return Promise.reject(new Error("rede caiu"));
+        if (h.modo === "manual") {
+          const leitura = h.chamadasPainel;
+          return new Promise((resolver) => {
+            h.pendentes.push(() =>
+              resolver({ data: { leitura }, error: null }),
+            );
+          });
+        }
         if (h.modo === "erro") {
           return Promise.resolve({
             data: null,
@@ -45,6 +59,12 @@ vi.mock("@/lib/supabase", () => ({
         return Promise.resolve({
           data: { leitura: h.chamadasPainel },
           error: null,
+        });
+      }
+      if (nome === "assinatura_da_loja_ler" && h.assinatura === "erro") {
+        return Promise.resolve({
+          data: null,
+          error: { message: "assinatura fora do ar" },
         });
       }
       return Promise.resolve({ data: null, error: null });
@@ -89,6 +109,8 @@ describe("usePainelInicio — voltar a ficar visível", () => {
         painel: estado.painel,
         erro: estado.erro,
         erroAssinatura: estado.erroAssinatura,
+        carregando: estado.carregando,
+        atualizar: estado.atualizar,
       };
       return null;
     }
@@ -110,6 +132,8 @@ describe("usePainelInicio — voltar a ficar visível", () => {
     h.chamadasPainel = 0;
     h.aoMudarPedido = null;
     h.modo = "ok";
+    h.assinatura = "ok";
+    h.pendentes = [];
     h.ultimo = null;
     // O hook registra a falha no console; o teste provoca falhas de propósito.
     espiaoDoConsole = vi
@@ -291,6 +315,81 @@ describe("usePainelInicio — voltar a ficar visível", () => {
       expect(h.chamadasPainel).toBe(1);
       expect(h.ultimo?.painel).toBeNull();
       expect(h.ultimo?.erro).toContain("erro ao");
+    });
+
+    it("abertura que falhou sem nada em cache: a volta que também falha mostra o erro NOVO (o silêncio é só para quem tem números)", async () => {
+      h.modo = "erro"; // resposta com erro: "...os números da loja"
+      await montar(true);
+      expect(h.ultimo?.painel).toBeNull();
+      expect(h.ultimo?.erro).toContain("os números da loja");
+
+      h.modo = "rejeita"; // a rede cai de vez: "...o Início"
+      definirVisibilidade("hidden");
+      await passar(8 * UMA_HORA_MS);
+      definirVisibilidade("visible");
+      await passar(5000);
+
+      expect(h.chamadasPainel).toBe(2);
+      expect(h.ultimo?.painel).toBeNull();
+      expect(h.ultimo?.erro).toContain("carregar o Início");
+    });
+
+    it("só a assinatura falha (painel veio bom): os números NOVOS aparecem e o erro da assinatura segue como antes", async () => {
+      await montar(true);
+      expect(h.ultimo?.painel).toEqual({ leitura: 1 });
+
+      h.assinatura = "erro";
+      definirVisibilidade("hidden");
+      await passar(8 * UMA_HORA_MS);
+      definirVisibilidade("visible");
+      await passar(5000);
+
+      expect(h.chamadasPainel).toBe(2);
+      expect(h.ultimo?.painel).toEqual({ leitura: 2 });
+      expect(h.ultimo?.erro).toBeNull();
+      expect(h.ultimo?.erroAssinatura).toContain("erro ao");
+    });
+
+    it("controle: o painel falha e a assinatura vai bem — continua silencioso, com o retrato antigo", async () => {
+      await montar(true);
+
+      h.modo = "erro";
+      definirVisibilidade("hidden");
+      await passar(8 * UMA_HORA_MS);
+      definirVisibilidade("visible");
+      await passar(5000);
+
+      expect(h.chamadasPainel).toBe(2);
+      expect(h.ultimo?.painel).toEqual({ leitura: 1 });
+      expect(h.ultimo?.erro).toBeNull();
+      expect(h.ultimo?.erroAssinatura).toBeNull();
+    });
+
+    it("a leitura silenciosa não derruba o 'carregando' de uma atualização manual feita enquanto ela corria", async () => {
+      await montar(true);
+      await passar(UMA_HORA_MS); // retrato velho
+
+      h.modo = "manual";
+      definirVisibilidade("hidden");
+      definirVisibilidade("visible"); // leitura silenciosa nº 1 (fica pendente)
+      await passar(10);
+      expect(h.pendentes).toHaveLength(1);
+      expect(h.ultimo?.carregando).toBe(false); // silenciosa não acende o spinner
+
+      await act(async () => {
+        void h.ultimo?.atualizar(); // a lojista toca em "Sincronizar"
+      });
+      expect(h.ultimo?.carregando).toBe(true);
+
+      // A silenciosa termina primeiro; a manual ainda espera a busca seguinte.
+      await act(async () => h.pendentes[0]());
+      await passar(10);
+      expect(h.pendentes).toHaveLength(2);
+      expect(h.ultimo?.carregando).toBe(true);
+
+      await act(async () => h.pendentes[1]());
+      await passar(10);
+      expect(h.ultimo?.carregando).toBe(false);
     });
   });
 });

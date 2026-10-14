@@ -200,11 +200,9 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     if (!silenciosa) setCarregando(true);
     try {
       const novo = await buscarCoalescido(forcar);
-      if (
-        silenciosa &&
-        anterior?.painel &&
-        (novo.erroPainel !== null || novo.erroAssinatura !== null)
-      ) {
+      // Só o painel decide: com o painel novo bom, ele entra mesmo que a
+      // assinatura tenha falhado (o erro dela segue o caminho de sempre).
+      if (silenciosa && anterior?.painel && novo.erroPainel !== null) {
         if (retratoEmCache === novo) retratoEmCache = anterior;
         return;
       }
