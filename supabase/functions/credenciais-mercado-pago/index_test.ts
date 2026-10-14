@@ -2586,6 +2586,96 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
+    await t.step("N1 — a mensagem só fala de ambiente quando é de TESTE: produção e sem-marca ficam na frase neutra", async () => {
+        const casos: Array<[string, unknown, string, string]> = [
+            ["produção (tags sem marca de teste)", contaReal("Loja Real"), "Loja Real", 'Conectado! Conta "Loja Real".'],
+            ["sem marca nenhuma (null)", { id: 1, nickname: "Loja Real", site_id: "MLB" }, "Loja Real", 'Conectado! Conta "Loja Real".'],
+            ["sem apelido (produção)", { tags: ["normal"] }, "", "Conectado ao Mercado Pago!"],
+            ["conta de TESTE", contaDeTeste("TESTUSER99"), "TESTUSER99", 'Conectado! Conta "TESTUSER99" no ambiente de teste.'],
+        ];
+        for (const [rotulo, conta, , esperada] of casos) {
+            const desfazerEnv = prepararEnv();
+            const { cliente, estado } = supabaseFalso();
+            try {
+                const salvar = await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, conta).buscar);
+                assertEquals((await salvar.json()).ultimo_teste.mensagem, esperada, `salvar: ${rotulo}`);
+                const testar = await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, conta).buscar);
+                const corpo = await testar.json();
+                assertEquals(corpo.mensagem, esperada, `testar: ${rotulo}`);
+                assertEquals(JSON.parse(estado.valor!).ultimo_teste.mensagem, esperada, `gravado: ${rotulo}`);
+            } finally {
+                desfazerEnv();
+            }
+        }
+        // O campo interno segue dizendo "producao" (só a FRASE ficou neutra).
+        const desfazerEnv = prepararEnv();
+        const { cliente } = supabaseFalso();
+        try {
+            const r = await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, contaReal()).buscar);
+            assertEquals((await r.json()).ultimo_teste.ambiente, "producao");
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("N2 — `modo_de_teste` vem em ler, salvar e testar (true só com MP_SANDBOX_PAYER_EMAIL preenchida)", async () => {
+        for (
+            const [rotulo, extra, esperado] of [
+                ["sem a variável", {}, false],
+                ["variável vazia", { MP_SANDBOX_PAYER_EMAIL: "" }, false],
+                ["variável só com espaços", { MP_SANDBOX_PAYER_EMAIL: "   " }, false],
+                ["variável preenchida", { MP_SANDBOX_PAYER_EMAIL: "pagador@testuser.com" }, true],
+            ] as const
+        ) {
+            const desfazerEnv = prepararEnv(extra);
+            const { cliente } = supabaseFalso();
+            try {
+                // `ler` numa loja SEM registro nenhum (caminho curto de respostaLer).
+                const lerVazio = await (await chamar(cliente, { acao: "ler" })).json();
+                assertEquals(lerVazio.modo_de_teste, esperado, `ler sem registro: ${rotulo}`);
+                const salvar = await (await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, contaReal()).buscar)).json();
+                assertEquals(salvar.modo_de_teste, esperado, `salvar: ${rotulo}`);
+                const lerComRegistro = await (await chamar(cliente, { acao: "ler" })).json();
+                assertEquals(lerComRegistro.modo_de_teste, esperado, `ler: ${rotulo}`);
+                const testar = await (await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, contaReal()).buscar)).json();
+                assertEquals(testar.modo_de_teste, esperado, `testar: ${rotulo}`);
+            } finally {
+                desfazerEnv();
+            }
+        }
+    });
+
+    await t.step("N3 — `modo_de_teste` não mexe em NENHUM outro campo: com e sem a variável, o resto da resposta é o mesmo", async () => {
+        const campos = [
+            "configurado", "public_key", "mascara_token", "mascara_webhook",
+            "pix_ligado", "public_key_na_loja", "faltando", "pausado", "testou",
+        ];
+        const rodar = async (extra: Record<string, string>) => {
+            const desfazerEnv = prepararEnv(extra);
+            const { cliente, estado } = supabaseFalso();
+            try {
+                const conta = contaReal();
+                const vistos: unknown[] = [];
+                // Sem chave de notificações (nada liga) e depois com as três (liga).
+                const parcial = await (await chamar(cliente, { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO }, buscarMpFalso(200, conta).buscar)).json();
+                const completo = await (await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, conta).buscar)).json();
+                const testar = await (await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, conta).buscar)).json();
+                const lido = await (await chamar(cliente, { acao: "ler" })).json();
+                for (const corpo of [parcial, completo, testar, lido]) {
+                    vistos.push(Object.fromEntries(campos.map((c) => [c, corpo[c]])));
+                    vistos.push(corpo.aviso);
+                }
+                vistos.push(estado.loja.pagamento_online);
+                return vistos;
+            } finally {
+                desfazerEnv();
+            }
+        };
+        const semVariavel = await rodar({});
+        const comVariavel = await rodar({ MP_SANDBOX_PAYER_EMAIL: "pagador@testuser.com" });
+        assertEquals(comVariavel, semVariavel);
+    });
+
     await t.step("A8b — cada marca sozinha basta: só a etiqueta test_user, ou só o e-mail @testuser.com", async () => {
         const marcas = [
             { tags: ["normal", "test_user"], nickname: "Loja", email: "dono@minhaloja.com.br" },

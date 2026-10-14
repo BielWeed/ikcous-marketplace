@@ -105,9 +105,11 @@
 //     (tokens de produção e de teste hoje nascem APP_USR-). O teste lê as
 //     MARCAS da conta (14/10/2026, `classificarAmbienteDaConta`): `tags` com
 //     "test_user", e-mail `@testuser.com` ou token `TEST-` = conta de TESTE
-//     (aviso para a lojista); `tags` sem marca nenhuma = produção; SEM
-//     marca/`tags` não se afirma nada e não há aviso. O e-mail devolvido é só
-//     lido: nunca vai para resposta, registro nem log.
+//     (aviso para a lojista); `tags` sem marca nenhuma = "producao" só
+//     como campo interno (é ausência de marca, não prova) — a mensagem e a
+//     tela SÓ falam de ambiente quando é "teste"; SEM marca/`tags` não se
+//     afirma nada e não há aviso. O e-mail devolvido é só lido: nunca vai
+//     para resposta, registro nem log.
 //   * app_settings é chave/valor (texto JSON) — NENHUMA migration nesta
 //     peça. Public Key NÃO é segredo (é a credencial de frente do MP), e
 //     por isso fica em claro no registro.
@@ -558,10 +560,15 @@ async function executarTesteDeConexao(
                     ambiente ?? "indeterminado"
                 }${analise.marca ? ` (marca: ${analise.marca})` : ""}`,
             );
+            // Só "teste" fala de ambiente: é a única afirmação com sinal
+            // POSITIVO. "producao" é só a AUSÊNCIA de marca de teste — conta
+            // de teste sem a etiqueta `test_user` passaria por produção, e
+            // "no ambiente de produção" (e o quadro verde da tela) seria
+            // mentira. A frase neutra é a da base, a mesma do ambiente null.
             mensagem = conta
-                ? ambiente === null
-                    ? `Conectado! Conta "${conta}".`
-                    : `Conectado! Conta "${conta}" no ambiente ${ambiente === "producao" ? "de produção" : "de teste"}.`
+                ? ambiente === "teste"
+                    ? `Conectado! Conta "${conta}" no ambiente de teste.`
+                    : `Conectado! Conta "${conta}".`
                 : "Conectado ao Mercado Pago!";
         } else if (resposta.status === 401 || resposta.status === 403) {
             mensagem =
@@ -870,7 +877,9 @@ export async function handler(
     const buscar = deps.buscar ??
         ((url: string, init?: RequestInit) => fetchComTempo(fetch, url, init));
     // Lida UMA vez por chamada, FORA das funções puras (decide qual aviso sai
-    // quando a conta é de teste).
+    // quando a conta é de teste). Também viaja na resposta de `ler`, `salvar`
+    // e `testar` como `modo_de_teste` (campo aditivo): a tela, depois de
+    // reaberta, precisa saber qual das duas frases dizer.
     const modoDeTesteDeclarado = lojaDeclarouModoDeTeste();
 
     try {
@@ -882,7 +891,10 @@ export async function handler(
                 supabase,
             ) as RegistroComPix | null;
             const ficha = await lerFichaDaLoja(supabase);
-            return json(respostaLer(registro, ficha), 200);
+            return json(
+                { ...respostaLer(registro, ficha), modo_de_teste: modoDeTesteDeclarado },
+                200,
+            );
         }
 
         // ── salvar: valida, testa NA HORA se a credencial mudou, cifra e grava;
@@ -1184,6 +1196,7 @@ export async function handler(
             return json(
                 {
                     ...respostaLer(registro, ficha),
+                    modo_de_teste: modoDeTesteDeclarado,
                     // A tela só fala do teste quando ele RODOU (re-salvar sem
                     // mudar nada não chama o Mercado Pago).
                     testou: credencialMudou,
@@ -1308,6 +1321,7 @@ export async function handler(
                     ),
                     faltando: faltas,
                     pausado,
+                    modo_de_teste: modoDeTesteDeclarado,
                     ...juntarAvisos(avisos),
                 },
                 200,
