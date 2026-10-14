@@ -344,6 +344,21 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `23b-antes-consulta-antiga-de-pedido-aberta` (ANTES, 5 linhas), a "prova de objetos" do lote `20261220000000`. Rol
   exato nos dois estados; 23a positiva depois do apply e 23b positiva depois do rollback; cada desvio (EXECUTE por
   papel e PUBLIC, corpo, função ausente) reprova só a sua linha; a 21a segue positiva depois do corte.
+- **avaliações fechadas ao visitante (`avaliacoes-fechadas-ao-visitante-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261221000000` (menor privilégio, 14/10/2026) tira o `EXECUTE` de PUBLIC e `anon` em
+  `get_reviews_metrics` e `increment_helpful` e mantém o de `authenticated`. Cada caso parte do estado ANTES (o
+  `rollback-manual`, um `GRANT` a anon): o visitante CHEGA ao corpo (controle); DEPOIS anon recebe 42501 nas duas,
+  authenticated chega ao corpo, service_role e o dono seguem, só a ACL das duas muda (nenhuma outra função, tabela
+  ou corpo), nenhuma linha de avaliação ou voto muda; reaplicar e CRLF idênticos; o rollback devolve a ACL de antes
+  (por conjunto de aclitem); pré-voo recusa sem escrever e falhando na segunda função a primeira não fica fechada;
+  GRANT de outro grantor faz a conferência recusar o apply inteiro; concorrência (transação em voo não segura o
+  apply; a mesma conexão em transação nova é recusada). A lista de portas (L8) diz `logado` para o voto e
+  `tolerada` (só authenticated, corpo sem guarda de admin) para a média.
+- **portão das avaliações fechadas (`avaliacoes-fechadas-ao-visitante-portao-viva.cjs`, via `rodar-isolado.cjs`)**:
+  as consultas `24a-conferir-avaliacoes-fechadas-ao-visitante` (DEPOIS, 3 linhas) e
+  `24b-antes-avaliacoes-abertas-ao-visitante` (ANTES, 3 linhas), a "prova de objetos" do lote `20261221000000`. Rol
+  exato nos dois estados; 24a positiva depois do apply e 24b positiva depois do rollback; cada desvio (EXECUTE por
+  papel e PUBLIC, função ausente) reprova só a linha da sua função.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

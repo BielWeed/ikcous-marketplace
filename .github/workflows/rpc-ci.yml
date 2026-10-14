@@ -70,6 +70,8 @@ on:
       - "scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql"
       - "scripts/publicacao/consultas/23a-conferir-consulta-antiga-de-pedido-fechada.sql"
       - "scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql"
+      - "scripts/publicacao/consultas/24a-conferir-avaliacoes-fechadas-ao-visitante.sql"
+      - "scripts/publicacao/consultas/24b-antes-avaliacoes-abertas-ao-visitante.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -110,6 +112,8 @@ on:
       - "scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql"
       - "scripts/publicacao/consultas/23a-conferir-consulta-antiga-de-pedido-fechada.sql"
       - "scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql"
+      - "scripts/publicacao/consultas/24a-conferir-avaliacoes-fechadas-ao-visitante.sql"
+      - "scripts/publicacao/consultas/24b-antes-avaliacoes-abertas-ao-visitante.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -525,6 +529,17 @@ jobs:
       - name: Prova viva do portao da consulta antiga de pedido (consultas 23a e 23b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-antiga-de-pedido-portao-viva.cjs
+      # A media de avaliacoes e o voto "util" fecham para o visitante (migration 20261221, menor privilegio, ordem do dono de
+      # 14/10/2026). COMPORTAMENTO com os papeis reais: anon recebe 42501 nas duas, authenticated chega ao corpo, so a ACL das
+      # duas muda, dados intactos, rollback identico, pre-voo, conferencia, atomicidade entre as duas, concorrencia.
+      # BLOQUEANTE. CLONE proprio.
+      - name: Prova viva das avaliacoes fechadas ao visitante (migration 20261221)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacoes-fechadas-ao-visitante-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 24a (DEPOIS) e 24b (ANTES), 3 linhas cada. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao das avaliacoes fechadas ao visitante (consultas 24a e 24b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacoes-fechadas-ao-visitante-portao-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que

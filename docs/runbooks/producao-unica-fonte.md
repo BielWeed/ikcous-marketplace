@@ -860,6 +860,39 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         Postgres da Supabase nem o papel `supabase_read_only_user` de cada loja, e o `service_role` com
         `EXECUTE` na v1 de cada loja so a `23b` mede.
 
+  21. **Lote de UMA migration, de apply normal: `20261221000000` (a media de avaliacoes e o voto "util"
+      fecham para o visitante sem login; menor privilegio).** Sem `backfillLedger` e sem `nuncaAplicar`;
+      valem as duas lojas assinantes (IKCOUS e Savy). Tira o `EXECUTE` de `get_reviews_metrics` e de
+      `increment_helpful` de PUBLIC e `anon` e mantem o de `authenticated`. So muda a ACL de duas
+      funcoes: nenhum DROP, nenhum corpo novo, nenhuma linha de dado; aditiva. Nenhuma edge function e
+      nenhum front mudam. Quem quebra: so quem chamasse as duas SEM login (ninguem, pelo levantamento de
+      14/10/2026). Duas consultas, so leitura, so catalogo, de ROL FECHADO (3 e 3 linhas, so valem com
+      `rol=ok`):
+      - **`24a-conferir-avaliacoes-fechadas-ao-visitante`** (a consulta do lote) prova DEPOIS do apply o
+        `EXECUTE` das duas fechado para `anon` (`authenticated` e `service_role` sim, PUBLIC nao).
+      - **`24b-antes-avaliacoes-abertas-ao-visitante`** (`ausenciaConfirmadaPor`) prova o ANTES: as duas
+        abertas a `anon` e `authenticated`.
+      - **Caminho, uma loja por vez:** `24a` (sai NEGATIVA) → `24b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com
+        `20261221000000_a_media_de_avaliacoes_e_o_voto_util_fecham_para_o_visitante.sql` → o ensaio pede
+        a `24a` DE NOVO, que tem de sair POSITIVA. `24a` POSITIVA com a versao fora do ledger: PARAR (sem
+        backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261221000000_a_media_de_avaliacoes_e_o_voto_util_fecham_para_o_visitante.sql`
+        pelo `aplicar-migrations.yml` (um `GRANT` a `anon` por funcao). Depois dele a `24b` volta a ser
+        POSITIVA e a `24a` NEGATIVA. **NUNCA** rodar o
+        `rollback-manual-20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql` depois do corte: ele
+        faz `GRANT EXECUTE ... TO PUBLIC` nas duas funcoes e as reabre para todos.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a
+        `24a` e a `24b` DE NOVO.
+      - **Limites:** `tests/banco/avaliacoes-fechadas-ao-visitante-viva.cjs` prova o comportamento (anon
+        recusado com 42501, authenticated chega ao corpo, so a ACL das duas muda, dados intactos,
+        rollback com a mesma ACL, pre-voo, conferencia, atomicidade entre as duas funcoes) num Postgres 17
+        efemero; nao prova o Postgres da Supabase nem o papel `supabase_read_only_user` de cada loja.
+      - **Pendencia registrada (nao e desta migration):** o corpo de `get_reviews_metrics` nao checa
+        admin: qualquer conta logada le a media e as contagens de TODAS as avaliacoes (pendentes
+        incluidas). Follow-up: exigir `is_admin()` no corpo.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

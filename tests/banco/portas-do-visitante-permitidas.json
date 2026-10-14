@@ -6,7 +6,7 @@
     "Funcao de EXTENSAO em public tambem conta (CREATE EXTENSION sem WITH SCHEMA cria funcoes abertas em public). Funcoes so do service_role (ou do dono) nao entram: esta e' a unica classe 'fechada'.",
     "funcao = public.nome(argumentos) como pg_get_function_identity_arguments escreve. executa = quem tem EXECUTE efetivo: PUBLIC (grantee 0 do ACL), anon, authenticated, nesta ordem.",
     "tipo: volatil | leitura (STABLE/IMMUTABLE) | gatilho (retorna trigger). secdef: roda com os direitos do dono (SECURITY DEFINER).",
-    "situacao: necessaria = o app do visitante ou uma politica de RLS lida por ele depende do EXECUTE; auxiliar = usada por dentro de outra funcao, CHECK, indice ou gatilho, o app nao a chama, aberta por heranca do PUBLIC; tolerada = aberta ao visitante sem ele depender dela (fechar e' migration a parte, com prova propria); logado = so o authenticated executa e o corpo faz a guarda.",
+    "situacao: necessaria = o app do visitante ou uma politica de RLS lida por ele depende do EXECUTE; auxiliar = usada por dentro de outra funcao, CHECK, indice ou gatilho, o app nao a chama, aberta por heranca do PUBLIC; tolerada = aberta sem que o corpo faca a guarda que o nome da porta sugere: ao visitante sem ele depender dela (fechar e' migration a parte, com prova propria) ou, ja fechada ao visitante, ao logado comum com o corpo sem checar admin (follow-up registrado no porque); logado = so o authenticated executa e o corpo faz a guarda.",
     "Para ABRIR uma funcao nova: acrescente a linha, com o PORQUE (uma frase), no mesmo PR da migration. Para FECHAR uma daqui: tire a linha (ou acerte `executa`) no mesmo PR."
   ],
   "funcoes": [
@@ -508,11 +508,11 @@
     },
     {
       "funcao": "public.get_reviews_metrics(p_search text, p_rating integer)",
-      "executa": ["anon", "authenticated"],
+      "executa": ["authenticated"],
       "tipo": "volatil",
       "secdef": true,
       "situacao": "tolerada",
-      "porque": "Media e contagens das avaliacoes, chamada so pelo painel de avaliacoes (useReviews); o visitante nao depende dela. Fechar e' migration a parte."
+      "porque": "So o painel de avaliacoes usa; o visitante foi fechado em 14/10/2026 (migration 20261221000000); o corpo ainda nao checa admin (follow-up: exigir is_admin no corpo)."
     },
     {
       "funcao": "public.get_segmented_push_count(p_segment text, p_min_ltv numeric, p_days_inactive integer)",
@@ -548,11 +548,11 @@
     },
     {
       "funcao": "public.increment_helpful(review_id uuid)",
-      "executa": ["anon", "authenticated"],
+      "executa": ["authenticated"],
       "tipo": "volatil",
       "secdef": true,
-      "situacao": "tolerada",
-      "porque": "Voto 'util' numa avaliacao; o corpo recusa quem nao esta logado (auth.uid() nulo), entao o visitante so recebe a recusa. Fechar e' migration a parte."
+      "situacao": "logado",
+      "porque": "Voto 'util' numa avaliacao: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa (fechada pela migration 20261221000000)."
     },
     {
       "funcao": "public.informar_envio_devolucao(p_id uuid, p_codigo_rastreio text)",
