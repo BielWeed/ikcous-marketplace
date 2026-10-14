@@ -1595,6 +1595,53 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261225000000_o_reembolso_da_devolucao_so_e_liberado_quando_o_dinheiro_sai.sql":
+    [
+      {
+        // O reembolso da devolução só é "liberado" quando o dinheiro sai (14/10/2026): o aviso da
+        // conclusão passa a ler o estado REAL do reembolso. Sem esta entrada a migration saía PULADA
+        // (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef,
+        // comentários incluídos); cada um aparece UMA vez.
+        funcao: "devolucao_avisa_o_cliente",
+        esperado: [
+          {
+            texto:
+              "SELECT r.status INTO v_estado FROM public.order_refunds r WHERE r.id = NEW.refund_id;",
+            vezes: 1,
+          },
+          { texto: "v_evento := 'reembolso_em_processamento';", vezes: 1 },
+          { texto: "v_evento := 'reembolso_nao_liberado';", vezes: 1 },
+          {
+            texto:
+              "PERFORM public.devolucao__avisar_reembolso(NEW.id, v_evento, v_tipo, v_titulo, v_msg);",
+            vezes: 1,
+          },
+        ],
+      },
+      {
+        // A auxiliar interna: um aviso por devolução e por tipo (trava + conferência em notificacoes).
+        funcao: "devolucao__avisar_reembolso",
+        esperado: [
+          { texto: "pg_advisory_xact_lock(", vezes: 1 },
+          { texto: "AND n.dados ->> 'evento' = p_evento", vezes: 1 },
+        ],
+      },
+      {
+        // O "liberado" nasce só na virada para 'concluido' (gatilho em order_refunds).
+        funcao: "devolucao_avisa_reembolso_liberado",
+        esperado: [
+          {
+            texto:
+              "IF NEW.status IS DISTINCT FROM 'concluido' OR OLD.status IS NOT DISTINCT FROM NEW.status THEN",
+            vezes: 1,
+          },
+          {
+            texto: "'reembolso_liberado', 'success', 'Reembolso liberado',",
+            vezes: 1,
+          },
+        ],
+      },
+    ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

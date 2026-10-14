@@ -82,6 +82,8 @@ on:
       - "scripts/publicacao/consultas/30b-antes-numeros-do-painel-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql"
       - "scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql"
+      - "scripts/publicacao/consultas/28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro.sql"
+      - "scripts/publicacao/consultas/28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -134,6 +136,8 @@ on:
       - "scripts/publicacao/consultas/30b-antes-numeros-do-painel-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql"
       - "scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql"
+      - "scripts/publicacao/consultas/28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro.sql"
+      - "scripts/publicacao/consultas/28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -623,6 +627,19 @@ jobs:
       - name: Prova viva do portao dos numeros do painel (consultas 30a e 30b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/numeros-do-painel-portao-viva.cjs
+      # O reembolso da devolucao so e' "liberado" quando o dinheiro sai (migration 20261225, dinheiro; decisao do dono de
+      # 14/10/2026). COMPORTAMENTO com os papeis reais e o fluxo REAL do painel (admin_devolucao_concluir, concluir_estorno):
+      # concluir com reembolso avisa "em processamento", nunca "liberado"; o "liberado" nasce so quando concluir_estorno
+      # confirma o dinheiro, UMA vez (inclusive com duas conexoes em corrida); linha falhou/recusado/sem linha = "ainda nao
+      # foi liberado"; um aviso que falha nunca desfaz o dinheiro; a auxiliar interna nao e' executavel por ninguem; so o
+      # corpo do gatilho de aviso muda, rollback com o mesmo md5, pre-voo, conferencia e mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do reembolso da devolucao so liberado com o dinheiro (migration 20261225)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-da-devolucao-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 28a (DEPOIS, 8 linhas) e 28b (ANTES, 5 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do reembolso da devolucao (consultas 28a e 28b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-da-devolucao-portao-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que

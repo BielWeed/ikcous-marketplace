@@ -469,6 +469,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261229000000: o endereco da compra fica no pedido (v23 e v24 copiam o endereco da conta; comportamento e portao 31a/31b).
     "tests/banco/endereco-no-pedido-viva.cjs",
     "tests/banco/endereco-no-pedido-portao-viva.cjs",
+    // 20261225000000: o reembolso da devolucao so e liberado quando o dinheiro sai (gatilho de aviso pelo estado real; comportamento e portao 28a/28b).
+    "tests/banco/reembolso-da-devolucao-viva.cjs",
+    "tests/banco/reembolso-da-devolucao-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

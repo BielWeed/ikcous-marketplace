@@ -1009,6 +1009,43 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         forjada entra limpa, a normal e o selo seguem, admin/servico/sessao direta gravam como vieram, mutantes,
         pre-voo, conferencia, rollback, concorrencia e a `27m` rodada de verdade) num Postgres 17 efemero; nao
         prova o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o estado vivo delas.
+  25. **Lote de UMA migration, de apply normal: `20261225000000` (o reembolso da devolucao so e "liberado" quando
+      o dinheiro sai; dinheiro).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes
+      (IKCOUS e Savy). Redefine `devolucao_avisa_o_cliente` (gatilho de aviso da devolucao, `CREATE OR REPLACE`,
+      mesma ACL) para o aviso da conclusao dizer o estado REAL do reembolso, e cria a auxiliar interna
+      `devolucao__avisar_reembolso` (um aviso por devolucao e por tipo; nem `service_role` a executa) e o gatilho
+      `tr_order_refunds_avisa_reembolso_liberado` (em `order_refunds`, so na virada para `concluido`), que avisa
+      "liberado" quando `concluir_estorno` confirma o dinheiro. Antes, a cliente lia "o reembolso foi liberado" no
+      instante da conclusao, antes do Mercado Pago pagar, e se o MP recusasse de vez ela seguia esperando; depois:
+      "em processamento" (linha `solicitado`/`em_processamento`), "ainda nao foi liberado" (`falhou`, `recusado` ou
+      sem linha), "combinado com a loja" (reembolso manual) e "liberado" so quando o dinheiro sai, UMA vez. Nao
+      toca dado, tabela, coluna nem assinatura existente; nenhuma edge function e nenhum front mudam. Quem
+      quebra: ninguem. Duas consultas, so leitura, so catalogo, de ROL FECHADO (8 e 5 linhas, so valem com
+      `rol=ok`):
+      - **`28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro`** (a consulta do lote) prova DEPOIS do
+        apply os tres corpos (md5), o aviso pelo estado real, os atributos de sempre, o `EXECUTE` fechado e o
+        gatilho novo ligado.
+      - **`28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao`** (`ausenciaConfirmadaPor`) prova o
+        ANTES: o corpo da `20261175000000` (que avisa "liberado" na conclusao), os atributos de sempre e as duas
+        funcoes e o gatilho novos ainda ausentes. O md5 que ela espera vem do arquivo da migration, nao de uma
+        loja: **rode a `28b` (e a `22m`) em CADA loja ANTES do apply** e compare o corpo vivo; corpo diferente e
+        loja que ninguem mediu, e o pre-voo tambem para.
+      - **Caminho, uma loja por vez:** `28a` (sai NEGATIVA) → `28b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com `20261225000000_o_reembolso_da_devolucao_so_e_liberado_quando_o_dinheiro_sai.sql` → o ensaio pede a `28a` DE NOVO, que tem de sair POSITIVA. `28a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261225000000_o_reembolso_da_devolucao_so_e_liberado_quando_o_dinheiro_sai.sql` pelo
+        `aplicar-migrations.yml` (recria o corpo antigo, mesmo md5, apaga o gatilho e as duas funcoes novas; nao
+        toca tabela nem dado). Depois dele a `28b` volta a ser POSITIVA e a `28a` NEGATIVA, e a cliente volta a ler
+        "liberado" na conclusao.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga (a deste lote e a
+        dos lotes 24, 25 e 26): rodar a `24a`, `24b`, `25a`, `25b`, `26a`, `26b`, `28a` e `28b` DE NOVO.
+      - **Limites:** `tests/banco/reembolso-da-devolucao-viva.cjs` prova o comportamento (aviso por estado real,
+        "liberado" uma vez so mesmo com duas conexoes em corrida, aviso que falha nao desfaz o dinheiro, auxiliar
+        fechada, so o corpo do gatilho de aviso muda, rollback com o mesmo md5, pre-voo, conferencia e mutantes)
+        num Postgres 17 efemero; nao prova o Postgres da Supabase nem o corpo vivo de cada loja. Avisos
+        "liberado" ja enviados para devolucoes cujo reembolso falhou ficam como estao (a cliente ja leu): a lista
+        das afetadas esta no cabecalho da migration.
 
   27. **Lote de DUAS migrations independentes, de apply normal: `20261227000000` e `20261228000000` (os
       numeros do painel; numeros, sem permissao nova).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as
