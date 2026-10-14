@@ -462,6 +462,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261224000000: a avaliacao nasce sem a resposta da loja (gatilho BEFORE INSERT; comportamento e portao 27a/27b).
     "tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs",
     "tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs",
+    // 20261229000000: o endereco da compra fica no pedido (v23 e v24 copiam o endereco da conta; comportamento e portao 31a/31b).
+    "tests/banco/endereco-no-pedido-viva.cjs",
+    "tests/banco/endereco-no-pedido-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

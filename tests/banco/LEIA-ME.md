@@ -427,6 +427,25 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `27b-antes-avaliacao-aceita-resposta-forjada` (ANTES, 6 linhas), a "prova de objetos" do lote `20261224000000`.
   Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por linha, o veredito do
   `conferir-banco.cjs` (`rol=ok`), mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
+- **endereço da compra no pedido (`endereco-no-pedido-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261229000000` (`create_marketplace_order_v23` e `_v24` copiam o endereço da conta para
+  `customer_data.address` no instante da compra) pelo caminho real do checkout, nas duas funções. Cada caso parte
+  do estado ANTES (o rollback-manual dela, conferido byte a byte contra os corpos da `20261174000000`): o
+  controle prova o defeito (pedido sem endereço dentro de `customer_data`; editar o endereço da conta muda o que
+  o pedido mostra; apagar o esvazia). Depois: a cópia (8 chaves, sem chave nula) com e sem CPF; editar e apagar
+  depois não mexem no pedido; endereço de OUTRO usuário recusado antes de escrever; a convidada nunca dispara a
+  cópia (nem com o id do endereço de outra pessoa); a retirada segue sem endereço e sem erro; o endereço
+  digitado não é trocado; a retentativa devolve o mesmo pedido; o MESMO roteiro (com cupom) grava linhas, itens,
+  estoque e uso do cupom idênticos antes e depois; o pedido antigo fica intacto (sem backfill); só o corpo das
+  duas funções muda (oid, ACL, dados e outras funções intactos); sete mutantes ficam vermelhos (um é equivalente,
+  declarado); reaplicar 2x e CRLF = mesmo estado, rollback com o mesmo `prosrc` e a mesma ACL, pré-voo recusa sem
+  escrever, conferência recusa estado ruim, as duas trocas caem juntas, e o checkout não trava numa edição em voo
+  do endereço da conta.
+- **portão do endereço da compra (`endereco-no-pedido-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `31a-conferir-endereco-da-compra-fica-no-pedido` (DEPOIS, 9 linhas) e
+  `31b-antes-endereco-da-compra-so-no-ponteiro` (ANTES, 7 linhas; **não mede a ACL**, que é da 31a), a "prova de
+  objetos" do lote `20261229000000`. Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por
+  linha, mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

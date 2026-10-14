@@ -1495,6 +1495,45 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261229000000_o_endereco_da_compra_fica_no_pedido.sql": [
+    {
+      // O endereço da compra fica no pedido (14/10/2026): o bloco 6-bis copia o endereço da conta para
+      // `customer_data.address` no instante da compra (só quem tem conta, só com `p_address_id`, só sem
+      // endereço digitado, nunca na retirada). Sem esta entrada a migration saía PULADA (saída 2: "ninguém
+      // verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos): o
+      // `IF` do bloco com as quatro condições (a convidada e a retirada ficam de fora, o digitado não é
+      // trocado) e a leitura com o filtro de DONO. As duas funções (v23, na entrega; v24, online) levam o
+      // mesmo bloco; a que falta é a que o checkout ainda chama sem a cópia.
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto:
+            "IF v_address_data_sem_cpf IS NULL\n       AND v_user_id IS NOT NULL\n       AND p_address_id IS NOT NULL\n       AND p_shipping_option_id IS DISTINCT FROM 'store-pickup' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "FROM public.user_addresses ua\n         WHERE ua.id = p_address_id AND ua.user_id = v_user_id;",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "IF v_address_data_sem_cpf IS NULL\n       AND v_user_id IS NOT NULL\n       AND p_address_id IS NOT NULL\n       AND p_shipping_option_id IS DISTINCT FROM 'store-pickup' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "FROM public.user_addresses ua\n         WHERE ua.id = p_address_id AND ua.user_id = v_user_id;",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

@@ -78,6 +78,8 @@ on:
       - "scripts/publicacao/consultas/26b-antes-voto-util-sem-guarda-de-status.sql"
       - "scripts/publicacao/consultas/27a-conferir-avaliacao-nasce-sem-resposta-da-loja.sql"
       - "scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql"
+      - "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql"
+      - "scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -126,6 +128,8 @@ on:
       - "scripts/publicacao/consultas/26b-antes-voto-util-sem-guarda-de-status.sql"
       - "scripts/publicacao/consultas/27a-conferir-avaliacao-nasce-sem-resposta-da-loja.sql"
       - "scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql"
+      - "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql"
+      - "scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -588,6 +592,20 @@ jobs:
       - name: Prova viva do portao da avaliacao que nasce sem a resposta da loja (consultas 27a e 27b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs
+      # O endereco da compra fica no pedido (migration 20261229, dado de cliente; cacada de 14/10/2026).
+      # COMPORTAMENTO pelo caminho real do checkout, nas DUAS funcoes (v23 na entrega, v24 online): quem tem conta
+      # grava a copia do endereco no pedido (8 chaves, sem chave nula), editar ou apagar o endereco depois nao mexe no
+      # pedido, endereco de OUTRO usuario recusado antes de escrever, a convidada nunca dispara a copia, a retirada
+      # na loja segue sem endereco, o digitado nao e trocado, dinheiro/estoque/cupom identicos ao antes, pedido antigo
+      # intacto (sem backfill), so o corpo das duas funcoes muda (ACL e dados intactos), rollback com o mesmo md5,
+      # pre-voo, conferencia, trocas atomicas, concorrencia e mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do endereco da compra no pedido (migration 20261229)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/endereco-no-pedido-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 31a (DEPOIS, 9 linhas) e 31b (ANTES, 7 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do endereco da compra no pedido (consultas 31a e 31b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/endereco-no-pedido-portao-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que

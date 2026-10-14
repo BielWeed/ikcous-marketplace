@@ -1010,6 +1010,41 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         pre-voo, conferencia, rollback, concorrencia e a `27m` rodada de verdade) num Postgres 17 efemero; nao
         prova o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o estado vivo delas.
 
+  28. **Lote de UMA migration, de apply normal: `20261229000000` (o endereco da compra fica no pedido; dado de
+      cliente).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy).
+      Troca o corpo de `create_marketplace_order_v23` (compra na entrega) e de `create_marketplace_order_v24`
+      (compra online) por `CREATE OR REPLACE` com o MESMO corpo vivo da `20261174000000` mais um bloco entre a
+      trava de preco e o INSERT do pedido: quem tem conta, com `p_address_id`, sem endereco digitado e fora da
+      retirada na loja, tem o endereco da conta COPIADO para `customer_data.address` no instante da compra (as
+      mesmas chaves da convidada mais `reference`, sem chave nula). Antes, o pedido guardava so o ponteiro:
+      editar o endereco no perfil mudava o pedido ja entregue e apagar o endereco o esvaziava. Dinheiro, estoque,
+      cupom, frete e idempotencia nao mudam; assinatura, retorno, SECURITY DEFINER, VOLATILE, `search_path` e ACL
+      tambem nao. **SEM backfill** (decisao do dono): os pedidos que ja existem continuam sem copia. Nenhuma edge
+      function e nenhum front mudam; **a edge `melhor-envio-etiqueta` ainda le o endereco ATUAL da conta** e deve
+      passar a ler a copia (proximo passo, separado). Duas consultas, so leitura, so catalogo, de ROL FECHADO (9 e
+      7 linhas, so valem com `rol=ok`):
+      - **`31a-conferir-endereco-da-compra-fica-no-pedido`** (a consulta do lote) prova DEPOIS do apply, por
+        objeto, o corpo das duas funcoes (md5), a copia no corpo antes do INSERT do pedido, os atributos de sempre
+        e o `EXECUTE` de sempre (PUBLIC nao; anon, authenticated e service_role sim).
+      - **`31b-antes-endereco-da-compra-so-no-ponteiro`** (`ausenciaConfirmadaPor`) prova o ANTES: os dois
+        corpos da `20261174000000`, sem a copia, com os atributos de sempre. **Nao mede a ACL** (e da `31a`). O
+        md5 que ela espera vem do arquivo da migration, nao de uma loja: **rode a `31b` (e a `22m`) em CADA loja
+        ANTES do apply** e compare o corpo vivo; corpo diferente e loja que ninguem mediu, e o pre-voo tambem para.
+      - **Caminho, uma loja por vez:** `31a` (sai NEGATIVA) → `31b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com `20261229000000_o_endereco_da_compra_fica_no_pedido.sql` → o ensaio pede a
+        `31a` DE NOVO, que tem de sair POSITIVA. `31a` POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261229000000_o_endereco_da_compra_fica_no_pedido.sql` pelo `aplicar-migrations.yml`
+        (recria os dois corpos antigos, mesmo md5, sem tocar a ACL e sem reescrever os pedidos que ja ganharam a
+        copia). Depois dele a `31b` volta a ser POSITIVA e a `31a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a `31a`
+        e a `31b` DE NOVO (e as dos lotes anteriores que o merge tocar).
+      - **Limites:** `tests/banco/endereco-no-pedido-viva.cjs` prova o comportamento (pelo caminho real do
+        checkout, nas duas funcoes: copia, editar e apagar depois, endereco de outro usuario recusado, convidada,
+        retirada, digitado, dinheiro e estoque identicos, pedido antigo intacto, so o corpo muda, rollback com o
+        mesmo md5, pre-voo, conferencia, atomicidade, concorrencia, mutantes) num Postgres 17 efemero; nao prova o
+        Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
