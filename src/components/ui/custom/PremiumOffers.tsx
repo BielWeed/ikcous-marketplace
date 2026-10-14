@@ -338,8 +338,8 @@ function HeroOfferCard({
       {/* Clean Premium Tag Header (Does NOT overlap image) */}
       <div className="relative z-10 flex w-full items-center justify-center border-b border-zinc-100/50 pb-3">
         <div className="flex select-none items-center rounded-full border border-zinc-200/30 bg-zinc-100/80 p-0.5 text-[10px] font-black uppercase tracking-wider shadow-sm transition-transform duration-300 group-hover:scale-[1.02]">
-          <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-0.5 text-white shadow-[0_2px_4px_rgba(24,24,27,0.1)]">
-            <Flame className="size-3 animate-pulse fill-white text-white" />
+          <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-0.5 text-primary-foreground shadow-[0_2px_4px_rgba(24,24,27,0.1)]">
+            <Flame className="size-3 animate-pulse fill-primary-foreground text-primary-foreground" />
             Super Oferta
           </span>
           {discount > 0 && (
@@ -522,7 +522,7 @@ function HeroOfferCard({
                   ? "bg-zinc-100 text-zinc-400 border-zinc-200/50 cursor-not-allowed shadow-none"
                   : cartStatus === "success"
                     ? "bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700"
-                    : "bg-primary hover:opacity-90 text-white border-primary shadow-black/10",
+                    : "bg-primary hover:opacity-90 text-primary-foreground border-primary shadow-black/10",
               )}
             >
               {cartStatus === "loading" && (

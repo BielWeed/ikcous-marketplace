@@ -133,11 +133,11 @@ export function ReviewForm({
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-12 w-full rounded-2xl bg-primary text-[11px] font-bold uppercase tracking-widest text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
+            className="h-12 w-full rounded-2xl bg-primary text-[11px] font-bold uppercase tracking-widest text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
           >
             {isSubmitting ? (
               <div className="flex items-center justify-center gap-2">
-                <div className="size-3.5 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
                 <span>Publicando...</span>
               </div>
             ) : (

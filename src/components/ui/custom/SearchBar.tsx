@@ -352,7 +352,7 @@ export function SearchBar({
                       key={cat}
                       type="button"
                       onClick={() => handleSuggestionClick(cat)}
-                      className="shadow-2xs flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-white active:scale-95"
+                      className="shadow-2xs flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
                     >
                       <Tag className="size-3" />
                       <span>{cat}</span>

@@ -780,7 +780,7 @@ export function CartView({
                               <button
                                 type="button"
                                 onClick={cadastrarEndereco}
-                                className="select-none rounded-xl bg-primary px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white hover:bg-primary/90"
+                                className="select-none rounded-xl bg-primary px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-primary-foreground hover:bg-primary/90"
                               >
                                 Cadastrar endereço
                               </button>
@@ -931,7 +931,7 @@ export function CartView({
                         <div className="relative z-10">
                           {/* Header */}
                           <div className="mb-6 flex items-center gap-3">
-                            <div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-white shadow-md">
+                            <div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
                               <Sparkles className="size-5" />
                             </div>
                             <div>
@@ -1122,13 +1122,13 @@ export function CartView({
                         haptic.medium();
                         onNavigate("checkout");
                       }}
-                      className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl bg-primary px-6 text-white shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-[0.98]"
+                      className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl bg-primary px-6 text-primary-foreground shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-[0.98]"
                     >
                       <span className="relative z-10 text-[11px] font-black uppercase tracking-widest">
                         Finalizar Compra
                       </span>
                       <div className="relative z-10 flex size-8 items-center justify-center rounded-xl bg-white/10 transition-colors group-hover:bg-white/20">
-                        <ArrowRight className="size-4 text-white transition-transform group-hover:translate-x-0.5" />
+                        <ArrowRight className="size-4 text-primary-foreground transition-transform group-hover:translate-x-0.5" />
                       </div>
                       <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
                     </button>

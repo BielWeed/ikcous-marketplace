@@ -194,7 +194,7 @@ const CompactVariantDropdown = React.memo(function CompactVariantDropdown({
                   className={cn(
                     "w-full text-left px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-between gap-2 select-none",
                     isSelected
-                      ? "bg-primary text-white font-extrabold shadow-sm"
+                      ? "bg-primary text-primary-foreground font-extrabold shadow-sm"
                       : "text-zinc-700 hover:bg-zinc-50 hover:text-primary",
                   )}
                 >
@@ -203,14 +203,16 @@ const CompactVariantDropdown = React.memo(function CompactVariantDropdown({
                     <span
                       className={cn(
                         "text-[8px] font-semibold opacity-60",
-                        isSelected ? "text-white/60" : "text-zinc-400",
+                        isSelected
+                          ? "text-primary-foreground/60"
+                          : "text-zinc-400",
                       )}
                     >
                       ({variantStock > 0 ? `${variantStock} un.` : "Esgotado"})
                     </span>
                   </div>
                   {isSelected && (
-                    <Check className="size-2.5 flex-shrink-0 text-white duration-200 animate-in zoom-in-50" />
+                    <Check className="size-2.5 flex-shrink-0 text-primary-foreground duration-200 animate-in zoom-in-50" />
                   )}
                 </button>
               );
@@ -1276,7 +1278,7 @@ export const ProductView = React.memo(function ProductView({
                                 className={cn(
                                   "px-3 py-1.5 text-xs font-bold rounded-xl border transition-all duration-300 active:scale-95 flex items-center gap-1.5 select-none",
                                   isSelected
-                                    ? "border-primary bg-primary text-white shadow-md shadow-black/10"
+                                    ? "border-primary bg-primary text-primary-foreground shadow-md shadow-black/10"
                                     : "border-zinc-200 bg-zinc-50/50 text-zinc-500 hover:border-zinc-300 hover:text-primary hover:bg-zinc-50",
                                 )}
                               >
@@ -1389,7 +1391,7 @@ export const ProductView = React.memo(function ProductView({
                   !isOutOfStock && cartStatus !== "idle" ? true : undefined
                 }
                 className={cn(
-                  "flex-1 h-11 text-white text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
+                  "flex-1 h-11 text-primary-foreground text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
                   // lg:basis-full: no desktop o CTA não divide a linha com
                   // nada -- largura inteira do cartão, rótulo nunca cortado
                   // (a jornada C12 a 1280 exige "Adicionar ao Carrinho" visível).
@@ -1397,8 +1399,10 @@ export const ProductView = React.memo(function ProductView({
                   cartStatus === "idle"
                     ? "bg-primary hover:bg-primary/90 shadow-lg shadow-black/10 active:scale-[0.98]"
                     : "bg-primary/80 shadow-none",
+                  // "Adicionado" pinta de verde (não é a cor da loja): o texto
+                  // sobre o verde é branco, não o da cor da loja.
                   cartStatus === "success" &&
-                    "bg-emerald-600 shadow-emerald-200",
+                    "bg-emerald-600 text-white shadow-emerald-200",
                   isOutOfStock &&
                     "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
                 )}
@@ -1409,7 +1413,7 @@ export const ProductView = React.memo(function ProductView({
                   <>
                     <span
                       aria-hidden="true"
-                      className="size-4 flex-shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                      className="size-4 flex-shrink-0 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
                     />
                     <span className="sr-only">Adicionando…</span>
                   </>
@@ -1950,12 +1954,12 @@ export const ProductView = React.memo(function ProductView({
                     !isOutOfStock && cartStatus !== "idle" ? true : undefined
                   }
                   className={cn(
-                    "h-9 px-3.5 text-white text-[9px] font-black uppercase tracking-[0.15em] rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[82px] flex-shrink-0 active:scale-95 aria-disabled:active:scale-100",
+                    "h-9 px-3.5 text-primary-foreground text-[9px] font-black uppercase tracking-[0.15em] rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[82px] flex-shrink-0 active:scale-95 aria-disabled:active:scale-100",
                     cartStatus === "idle"
                       ? "bg-primary hover:bg-primary/90 shadow-md shadow-black/10"
                       : "bg-primary/80 shadow-none",
                     cartStatus === "success" &&
-                      "bg-emerald-600 shadow-emerald-200/30",
+                      "bg-emerald-600 text-white shadow-emerald-200/30",
                     isOutOfStock &&
                       "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
                   )}
@@ -1966,7 +1970,7 @@ export const ProductView = React.memo(function ProductView({
                     <>
                       <span
                         aria-hidden="true"
-                        className="size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                        className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
                       />
                       <span className="sr-only">Adicionando…</span>
                     </>

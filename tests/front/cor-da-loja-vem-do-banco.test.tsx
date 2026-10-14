@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "@/App";
 import { applyBranding, branding, hexToTailwindHsl } from "@/config/branding";
+import { textoSobreACorDaLoja } from "@/config/cor-da-loja";
 import { StoreProvider } from "@/contexts/StoreContext";
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -300,6 +301,7 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", criarStorageFake());
   vi.stubGlobal("sessionStorage", criarStorageFake());
   document.documentElement.style.removeProperty("--primary");
+  document.documentElement.style.removeProperty("--primary-foreground");
   // Simula o index.html (dono de outro agente): meta theme-color fixo em
   // preto até alguém da aplicação atualizá-lo em runtime.
   let meta = metaThemeColor();
@@ -343,6 +345,13 @@ describe("StoreContext — a cor da loja vem do banco (contrato: build semeia, b
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
       hexToTailwindHsl(COR_DO_BANCO),
     );
+    // O texto sobre a cor acompanha a cor que veio do banco (contraste WCAG).
+    // O branco sobre #059669 dá só ~3,8:1 (< 4,5:1), então o tema entrega o
+    // texto escuro — o literal fixa o valor, a função fixa que é ela quem manda.
+    expect(textoSobreACorDaLoja(COR_DO_BANCO)).toBe("240 5.9% 10%");
+    expect(
+      document.documentElement.style.getPropertyValue("--primary-foreground"),
+    ).toBe("240 5.9% 10%");
   });
 
   it("(c) a semente do build sobrevive ao mount enquanto o banco não responde", async () => {

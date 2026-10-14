@@ -242,7 +242,7 @@ export const SearchView = React.memo(function SearchView({
           <div className="no-scrollbar flex items-center gap-2 overflow-x-auto pb-1">
             <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
               <SheetTrigger asChild>
-                <button className="flex items-center gap-2 whitespace-nowrap rounded-full bg-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-95">
+                <button className="flex items-center gap-2 whitespace-nowrap rounded-full bg-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-primary-foreground shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-95">
                   <SlidersHorizontal className="size-3" />
                   Filtros {activeFiltersCount > 0 && `(${activeFiltersCount})`}
                 </button>
@@ -279,7 +279,7 @@ export const SearchView = React.memo(function SearchView({
                           onClick={() => setCategory(catName)}
                           className={`rounded-2xl border px-5 py-2.5 text-[11px] font-bold transition-all ${
                             category === catName
-                              ? "scale-105 border-primary bg-primary text-white shadow-lg shadow-black/10"
+                              ? "scale-105 border-primary bg-primary text-primary-foreground shadow-lg shadow-black/10"
                               : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
                           }`}
                         >
@@ -305,7 +305,7 @@ export const SearchView = React.memo(function SearchView({
                           onClick={() => setSort(option.value as any)}
                           className={`rounded-2xl border px-4 py-3 text-[11px] font-bold transition-all ${
                             sort === option.value
-                              ? "border-primary bg-primary text-white"
+                              ? "border-primary bg-primary text-primary-foreground"
                               : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
                           }`}
                         >
@@ -317,7 +317,7 @@ export const SearchView = React.memo(function SearchView({
 
                   <Button
                     onClick={() => setIsFilterOpen(false)}
-                    className="h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-white shadow-2xl shadow-black/10 transition-all hover:bg-primary/90"
+                    className="h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-primary-foreground shadow-2xl shadow-black/10 transition-all hover:bg-primary/90"
                   >
                     Aplicar Filtros
                   </Button>
@@ -333,7 +333,7 @@ export const SearchView = React.memo(function SearchView({
                 onClick={() => setCategory(catName)}
                 className={`whitespace-nowrap rounded-full border px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
                   category === catName
-                    ? "border-primary bg-primary text-white"
+                    ? "border-primary bg-primary text-primary-foreground"
                     : "border-zinc-100 bg-zinc-50 text-zinc-500 hover:border-primary hover:text-primary"
                 }`}
               >

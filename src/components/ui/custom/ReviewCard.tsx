@@ -166,7 +166,7 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
           disabled={hasMarkedHelpful}
           className={`flex w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
             hasMarkedHelpful
-              ? "border-primary bg-primary text-white shadow-sm"
+              ? "border-primary bg-primary text-primary-foreground shadow-sm"
               : "border-secondary/20 bg-secondary/10 text-primary hover:bg-secondary/20 active:scale-95"
           }`}
         >
