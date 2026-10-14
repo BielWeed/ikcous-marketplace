@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { normalizarCodigoDoCupom } from "@/lib/codigo-do-cupom";
+import { codigoDoCupomParaSalvar } from "@/lib/codigo-do-cupom";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -226,7 +226,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
       return;
     }
 
-    const cleanCode = normalizarCodigoDoCupom(formData.code);
+    const cleanCode = codigoDoCupomParaSalvar(formData.code, initialData.code);
     if (!cleanCode) {
       toast.error("O código do cupom é obrigatório.");
       return;
@@ -493,7 +493,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                   onFlush={(val) =>
                     setFormData((prev) => ({
                       ...prev,
-                      code: normalizarCodigoDoCupom(val),
+                      code: codigoDoCupomParaSalvar(val, initialData.code),
                     }))
                   }
                   placeholder="EX: VERAO10"

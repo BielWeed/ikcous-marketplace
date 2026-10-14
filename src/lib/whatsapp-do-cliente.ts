@@ -1,5 +1,3 @@
-import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
-
 /**
  * Link de WhatsApp do cliente do pedido — ou `null` quando o número não
  * abre conversa nenhuma (laudo 0109, A-7).
@@ -13,7 +11,7 @@ import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 export function linkWhatsappDoCliente(
   telefone: string | null | undefined,
 ): string | null {
-  const digitos = limparTelefoneBrasileiro(telefone);
+  const digitos = (telefone || "").replace(/\D/g, "");
   if (digitos.length < 10) return null;
   if (digitos.length <= 11) return `https://wa.me/55${digitos}`;
   return `https://wa.me/${digitos}`;

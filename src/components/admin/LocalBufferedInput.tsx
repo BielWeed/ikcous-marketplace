@@ -1,6 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
+import { digitosDoTelefoneDoCampo } from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
@@ -19,8 +19,8 @@ interface LocalBufferedInputProps
   readonly mask?: "phone" | "currency";
 }
 
-const formatPhone = (val: string) => {
-  const clean = limparTelefoneBrasileiro(val);
+const formatPhone = (val: string, anterior?: string) => {
+  const clean = digitosDoTelefoneDoCampo(val, anterior);
   if (clean.length === 0) return "";
   if (clean.length <= 2) return `(${clean}`;
   if (clean.length <= 6) return `(${clean.slice(0, 2)}) ${clean.slice(2)}`;
@@ -120,7 +120,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     let rawVal = val;
 
     if (mask === "phone") {
-      val = formatPhone(val);
+      val = formatPhone(val, localVal.toString());
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
       val = formatCurrency(val);

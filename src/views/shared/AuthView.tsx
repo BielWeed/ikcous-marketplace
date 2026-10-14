@@ -5,7 +5,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
 import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
-import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
+import { mascaraTelefoneDoCadastro } from "@/lib/telefone-br";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
 import {
@@ -147,21 +147,8 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const [reenviandoConfirmacao, setReenviandoConfirmacao] = useState(false);
   const reenvioConfirmacaoEmCurso = useRef(false);
 
-  const formatPhone = (value: string) => {
-    const numbers = limparTelefoneBrasileiro(value);
-    if (numbers.length <= 11) {
-      let formatted = numbers;
-      if (numbers.length > 2)
-        formatted = `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
-      if (numbers.length > 7)
-        formatted = `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
-      return formatted;
-    }
-    return value.slice(0, 15);
-  };
-
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPhone(formatPhone(e.target.value));
+    setPhone(mascaraTelefoneDoCadastro(e.target.value, phone));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
