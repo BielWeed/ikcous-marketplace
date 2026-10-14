@@ -3,7 +3,8 @@ import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
 import { useStore } from "@/contexts/StoreContext";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
-import { cn, normalizeText } from "@/lib/utils";
+import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
+import { cn } from "@/lib/utils";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { Product, SortOption, View } from "@/types";
 import {
@@ -196,15 +197,10 @@ export const HomeView = React.memo(function HomeView({
 
     // Filter by search query
     if (searchQuery.trim()) {
-      // Os DOIS lados normalizados (BUSCA-010, #20). `description` pode vir
-      // nula do banco; `normalizeText` aguenta.
-      const query = normalizeText(searchQuery);
-      result = result.filter(
-        (p) =>
-          normalizeText(p.name).includes(query) ||
-          normalizeText(p.description).includes(query) ||
-          normalizeText(p.category).includes(query),
-      );
+      // Palavra por palavra, em qualquer ordem, ignorando acento e plural
+      // simples (`produtoCombinaComBusca`): "bolsa preta" acha "Bolsa Grande
+      // Preta". `description` pode vir nula do banco; a regra aguenta.
+      result = result.filter((p) => produtoCombinaComBusca(p, searchQuery));
     }
 
     // Sort with availability (in-stock first) prioritization, preserving sort order
