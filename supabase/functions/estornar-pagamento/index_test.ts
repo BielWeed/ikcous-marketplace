@@ -221,6 +221,15 @@ function clienteSupaFalso(opts: {
     // pergunta do executor ao banco antes do POST). Default: autorizado com o
     // MESMO pedido desta fixture (o banco não mudou nada no meio).
     autorizacao?: any
+    // 14/10/2026: a resposta de registrar_diagnostico_do_estorno (o que a
+    // linha tem DEPOIS de gravar: contador e carimbo) e o erro simulado.
+    diagnostico?: any
+    diagnosticoErro?: any
+    // Reemissão (acao 'reemitir'): a devolução lida e a resposta da RPC
+    // reemitir_reembolso_da_devolucao.
+    devolucao?: any
+    reemissao?: any
+    reemissaoErro?: any
     // R1 (20261196000000): devolve a linha só com as colunas que o SELECT da
     // edge pediu — tirar uma coluna do SELECT tira o campo da linha, como no
     // PostgREST de verdade.
@@ -243,6 +252,11 @@ function clienteSupaFalso(opts: {
         // Fora de `rpcs` de propósito: os testes antigos contam em `rpcs` só
         // a concluir_estorno.
         autorizacoes: [] as any[],
+        diagnosticos: [] as any[],
+        reemissoes: [] as any[],
+        leiturasDevolucao: 0,
+        // A ordem em que o diagnóstico e o desfecho terminal foram gravados.
+        ordem: [] as string[],
     }
     let chamadasDeMarca = 0
     let chamadasDeFim = 0
@@ -255,6 +269,18 @@ function clienteSupaFalso(opts: {
                     data: opts.autorizacao ?? { decisao: "autorizado", pedido: opts.pedido },
                     error: null,
                 })
+            }
+            if (nome === "registrar_diagnostico_do_estorno") {
+                registro.diagnosticos.push(args)
+                registro.ordem.push("diagnostico")
+                return promessa({
+                    data: opts.diagnosticoErro ? null : (opts.diagnostico ?? { transitorios: 1, post_incerto: false, mp_codigo: null }),
+                    error: opts.diagnosticoErro ?? null,
+                })
+            }
+            if (nome === "reemitir_reembolso_da_devolucao") {
+                registro.reemissoes.push(args)
+                return promessa({ data: opts.reemissaoErro ? null : (opts.reemissao ?? null), error: opts.reemissaoErro ?? null })
             }
             registro.rpcs.push({ nome, args })
             return promessa({ data: opts.rpcResultado ?? { concluido: true }, error: opts.rpcErro ?? null })
@@ -325,6 +351,10 @@ function clienteSupaFalso(opts: {
                 error: null,
             })
         }
+        if (no.tabela === "devolucoes") {
+            registro.leiturasDevolucao++
+            return promessa({ data: opts.devolucao ?? null, error: null })
+        }
         if (no.tabela === "marketplace_orders") {
             registro.leiturasPedido++
             return promessa({ data: opts.pedido ?? null, error: null })
@@ -373,6 +403,7 @@ function clienteSupaFalso(opts: {
         }
         if (no.acao === "update" && (no.valores?.status === "falhou" || no.valores?.status === "recusado")) {
             registro.finais.push({ valores: no.valores, filtros: [...no.filtros] })
+            registro.ordem.push("final")
             const linhas = opts.finais?.at(chamadasDeFim) ?? 1
             chamadasDeFim++
             const resposta = Array.from({ length: linhas }, () => ({ id: REFUND_ID }))
@@ -1429,4 +1460,179 @@ Deno.test("R1-E2 - o recusado perdeu a corrida para um POST autorizado no meio (
         registro.finais[0].filtros.some((f: any) => f.metodo === "is" && f.coluna === "post_autorizado_em"),
         true,
     )
+})
+
+// ── 14/10/2026 — reembolso da devolução, parte TypeScript ───────────────────
+// D4/D5/D6: o diagnóstico do POST (código do MP + carimbo de incerteza) é
+// gravado ANTES do desfecho; o limite de falhas "nada saiu"; nada interno em
+// `ultimo_erro`. Usa o executor REAL com o MP dublado (a edge carrega o módulo).
+
+function fetchMpComResposta(status: number, corpo: unknown) {
+    const registro = { chamadas: 0 }
+    const buscar = ((_input: any, _init?: any) => {
+        registro.chamadas++
+        return Promise.resolve(
+            new Response(typeof corpo === "string" ? corpo : JSON.stringify(corpo), {
+                status,
+                headers: { "Content-Type": "application/json" },
+            }),
+        )
+    }) as any
+    return { buscar, registro }
+}
+
+async function executarComMp(opts: Parameters<typeof clienteSupaFalso>[0], status: number, corpo: unknown) {
+    const { cliente, registro } = clienteSupaFalso({ linha: LINHA_SOLICITADA, pedido: PEDIDO_PAGO, ...opts })
+    const mp = fetchMpComResposta(status, corpo)
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    return { resposta, registro, mp }
+}
+
+Deno.test("G1 (M6) - 428 'sem saldo' em errors[]: 202, diagnóstico 'nada saiu' gravado, linha SEGUE em_processamento e ultimo_erro NÃO revela saldo nem código", async () => {
+    const { resposta, registro } = await executarComMp({ diagnostico: { transitorios: 1, post_incerto: false } }, 428, {
+        errors: [{ code: "insufficient_money_for_refund", message: "saldo insuficiente na conta" }],
+    })
+    assertEquals(resposta.status, 202)
+    assertEquals(registro.diagnosticos, [
+        { p_refund_id: REFUND_ID, p_mp_codigo: "insufficient_money_for_refund", p_post_incerto: false, p_transitorio: true },
+    ])
+    assertEquals(registro.finais.length, 0)
+    const comErro = registro.atualizacoes.find((u: any) => typeof u.valores?.ultimo_erro === "string")
+    assertEquals(Boolean(comErro), true)
+    assertEquals(/saldo|insufficient|conta/i.test(comErro.valores.ultimo_erro), false)
+})
+
+Deno.test("G2 (D4) - a 5ª falha 'nada saiu' SEM carimbo vira falhou, e só DEPOIS de gravar o diagnóstico; ultimo_erro neutro", async () => {
+    const { resposta, registro } = await executarComMp({ diagnostico: { transitorios: 5, post_incerto: false } }, 428, {
+        errors: [{ code: "insufficient_money_for_refund" }],
+    })
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "falhou")
+    assertEquals(registro.ordem, ["diagnostico", "final"])
+    assertEquals(registro.finais[0].valores.status, "falhou")
+    assertEquals(/saldo|insufficient|conta/i.test(registro.finais[0].valores.ultimo_erro), false)
+})
+
+Deno.test("G3 (D4) - mesma 5ª falha, mas COM carimbo de incerteza gravado antes: NUNCA vira falhou (fica em consulta)", async () => {
+    const { resposta, registro } = await executarComMp({ diagnostico: { transitorios: 5, post_incerto: true } }, 428, {
+        errors: [{ code: "insufficient_money_for_refund" }],
+    })
+    assertEquals(resposta.status, 202)
+    assertEquals(registro.finais.length, 0)
+})
+
+Deno.test("G4 (D6) - código DESCONHECIDO: falhou, mas o diagnóstico foi gravado ANTES, com o carimbo de incerteza e o código do MP (nunca 'nada saiu')", async () => {
+    const { resposta, registro } = await executarComMp({}, 400, { errors: [{ code: "codigo_novo_do_mp" }] })
+    assertEquals(resposta.status, 200)
+    assertEquals(registro.diagnosticos, [
+        { p_refund_id: REFUND_ID, p_mp_codigo: "codigo_novo_do_mp", p_post_incerto: true, p_transitorio: false },
+    ])
+    assertEquals(registro.ordem, ["diagnostico", "final"])
+    // o código do MP NÃO vai para a coluna que a cliente lê
+    assertEquals(JSON.stringify(registro.finais[0].valores).includes("codigo_novo_do_mp"), false)
+})
+
+Deno.test("G5 (D4) - se o diagnóstico NÃO grava, a linha NÃO vira falhou: 202 e nenhum desfecho terminal", async () => {
+    const { resposta, registro } = await executarComMp({ diagnosticoErro: { message: "banco fora" } }, 400, {
+        errors: [{ code: "codigo_novo_do_mp" }],
+    })
+    assertEquals(resposta.status, 202)
+    assertEquals(registro.finais.length, 0)
+})
+
+Deno.test("G6 (D5) - 'em andamento' (refund_in_progress): 202, carimbo gravado, a linha NUNCA vira falhou", async () => {
+    const { resposta, registro } = await executarComMp({}, 409, { errors: [{ code: "refund_in_progress" }] })
+    assertEquals(resposta.status, 202)
+    assertEquals(registro.diagnosticos[0].p_post_incerto, true)
+    assertEquals(registro.diagnosticos[0].p_transitorio, false)
+    assertEquals(registro.finais.length, 0)
+})
+
+// ── acao 'reemitir' ─────────────────────────────────────────────────────────
+
+const DEVOLUCAO_ID = "d0000000-0000-4000-8000-000000000001"
+const ESPERADA_ID = "e0000000-0000-4000-8000-000000000002"
+const PEDIDO_ORDER_REEMISSAO = { ...PEDIDO_PAGO, gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01", status: "delivered" }
+const ORDER_SEM_REEMBOLSO = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "processed",
+    transactions: { payments: [{ id: "PAY1", status: "processed" }] },
+}
+
+function reemissao(corpo: any = { acao: "reemitir", devolucao_id: DEVOLUCAO_ID, refund_esperado: ESPERADA_ID }, authorization: string | undefined = AUTH_ADMIN) {
+    return requisicao(corpo, authorization)
+}
+
+Deno.test("RE1 - reemitir SEM credencial do MP: 500 ANTES de ler a devolução e ANTES de qualquer RPC (nenhuma linha nasce)", async () => {
+    const { cliente, registro } = clienteSupaFalso({ devolucao: { id: DEVOLUCAO_ID, order_id: PEDIDO_PAGO.id }, linha: LINHA_SOLICITADA, pedido: PEDIDO_ORDER_REEMISSAO })
+    const mp = fetchMpComResposta(200, ORDER_SEM_REEMBOLSO)
+    const resposta = await comEnv({ MP_ACCESS_TOKEN: "" }, () =>
+        comFetch(fetchAdminFalso, () => handler(reemissao(), { supabase: cliente, buscar: mp.buscar })),
+    )
+    assertEquals(resposta.status, 500)
+    assertEquals(registro.reemissoes.length, 0)
+    assertEquals(registro.leiturasDevolucao, 0)
+    assertEquals(mp.registro.chamadas, 0)
+})
+
+Deno.test("RE2 - reemitir por quem NÃO é admin atual: 401, nada lido, nada chamado", async () => {
+    const { cliente, registro } = clienteSupaFalso({ devolucao: { id: DEVOLUCAO_ID, order_id: PEDIDO_PAGO.id } })
+    const mp = fetchMpComResposta(200, ORDER_SEM_REEMBOLSO)
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchClienteFalso, () => handler(reemissao(), { supabase: cliente, buscar: mp.buscar })),
+    )
+    assertEquals(resposta.status, 401)
+    assertEquals(registro.reemissoes.length, 0)
+    assertEquals(registro.leiturasDevolucao, 0)
+    assertEquals(mp.registro.chamadas, 0)
+})
+
+Deno.test("RE3 - uuids inválidos: 400 antes da porta de admin", async () => {
+    const { cliente, registro } = clienteSupaFalso({})
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () => handler(reemissao({ acao: "reemitir", devolucao_id: "x", refund_esperado: ESPERADA_ID }), { supabase: cliente })),
+    )
+    assertEquals(resposta.status, 400)
+    assertEquals(registro.reemissoes.length, 0)
+})
+
+Deno.test("RE4 - fluxo: admin autenticado é o p_ator, a consulta ao MP é GET, e o banco decide ('reemitido')", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        devolucao: { id: DEVOLUCAO_ID, order_id: PEDIDO_PAGO.id },
+        linha: { ...LINHA_SOLICITADA, id: ESPERADA_ID },
+        pedido: PEDIDO_ORDER_REEMISSAO,
+        reemissao: { resultado: "reemitido", detalhe: "tentativa_nova", refund_id: "novo" },
+    })
+    const mp = fetchMpComResposta(200, ORDER_SEM_REEMBOLSO)
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () => handler(reemissao(), { supabase: cliente, buscar: mp.buscar })),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).resultado, "reemitido")
+    assertEquals(registro.reemissoes, [{
+        p_devolucao_id: DEVOLUCAO_ID,
+        p_ator: ID_ADMIN,
+        p_refund_esperado: ESPERADA_ID,
+        p_consulta: { resultado: "nao_achou" },
+    }])
+    assertEquals(mp.registro.chamadas, 1)
+})
+
+Deno.test("RE5 (M1) - o MP responde 500 à consulta: 200 indeterminado, o banco NÃO é chamado", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        devolucao: { id: DEVOLUCAO_ID, order_id: PEDIDO_PAGO.id },
+        linha: { ...LINHA_SOLICITADA, id: ESPERADA_ID },
+        pedido: PEDIDO_ORDER_REEMISSAO,
+    })
+    const mp = fetchMpComResposta(500, {})
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () => handler(reemissao(), { supabase: cliente, buscar: mp.buscar })),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).resultado, "indeterminado")
+    assertEquals(registro.reemissoes.length, 0)
 })

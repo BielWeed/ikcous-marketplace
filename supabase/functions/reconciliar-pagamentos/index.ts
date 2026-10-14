@@ -104,9 +104,12 @@ import { STATUS_DA_CONTESTACAO } from "../_shared/contestacao.ts";
 // fecha a porta quando não dá para decidir com segurança, é este módulo.
 import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import {
+  aplicarDiagnosticoDoPost,
   autorizacaoPeloBanco,
   confirmarPorConsulta,
+  consultarReembolsoDoPedido,
   consultarTransacaoDaOrder,
+  decidirLinhaTravada,
   executarEstorno,
   type LinhaEstorno,
   type PedidoParaEstorno,
@@ -156,9 +159,18 @@ const TEXTO_FALHA_AO_REGISTRAR_CONCLUSAO =
 async function gravarDesfechoDoEstorno(
   supabase: ReturnType<typeof createClient>,
   refundId: string,
-  resultado: ResultadoEstorno,
+  resultadoDoExecutor: ResultadoEstorno,
   tentativasAtuais: number,
 ): Promise<"concluido" | "adiado" | "falhou"> {
+  // 14/10/2026 (D4/D5/D6): o diagnóstico do POST (código do MP + carimbo de
+  // incerteza) é gravado ANTES de qualquer desfecho — se não grava, a linha não
+  // vira `falhou`; na 5ª falha "nada saiu" SEM carimbo ela vira `falhou`; com
+  // carimbo, nunca. Uma decisão, dois chamadores (a edge do clique usa a mesma).
+  const resultado = await aplicarDiagnosticoDoPost(
+    (nome, argumentos) => supabase.rpc(nome, argumentos),
+    refundId,
+    resultadoDoExecutor,
+  );
   if (resultado.tipo === "concluido") {
     const { error } = await supabase.rpc("concluir_estorno", {
       p_refund_id: refundId,
@@ -1169,6 +1181,37 @@ async function handler(
         // sobe é só o retry abaixo, que este ramo nunca alcança. `falhou`
         // fica reservado para veredito NEGATIVO explícito do MP.
         if (tentativasAtuais >= 5) {
+          // Correção da revisão Opus do #855: "tentativas" e "recusas nada saiu"
+          // descasam (a tentativa sobe até quando a consulta cai antes do POST).
+          // Toda linha travada passa por aqui: se o banco a trata como "nada
+          // saiu" (sem carimbo de incerteza, último código na lista fechada),
+          // ela vira `falhou` e ganha as saídas (reemitir/por fora); com
+          // carimbo, segue em consulta.
+          const esgotada = await decidirLinhaTravada(
+            (nome, argumentos) => supabase.rpc(nome, argumentos),
+            linhaAtual,
+            // 2ª revisão Opus: só vira `falhou` se o MP, perguntado AGORA (um
+            // GET), prova que não há reembolso desta linha em curso ou feito.
+            () =>
+              consultarReembolsoDoPedido({
+                buscar: buscarEstorno,
+                token: mpToken,
+                pedido,
+                valor: linhaAtual.amount,
+                idsJaReivindicados,
+              }),
+          );
+          if (esgotada) {
+            const desfecho = await gravarDesfechoDoEstorno(
+              supabase,
+              String(refund.id),
+              esgotada,
+              tentativasAtuais,
+            );
+            if (desfecho === "falhou") refundsFalhos++;
+            else refundsAdiados++;
+            continue;
+          }
           const { error: erroLimite } = await supabase
             .from("order_refunds")
             .update({

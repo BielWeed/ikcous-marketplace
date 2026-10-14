@@ -118,6 +118,10 @@ function clienteFalso(opts: {
     chamouCandidatos: boolean;
     chamadasConcluirEstorno?: Array<{ args: Record<string, unknown> }>;
     chamadasAutorizarPost?: Array<{ args: Record<string, unknown> }>;
+    // 14/10/2026: registrar_diagnostico_do_estorno (o porquê do POST) e a
+    // ordem em que ele e o desfecho terminal foram gravados.
+    chamadasDiagnostico?: Array<{ args: Record<string, unknown> }>;
+    ordemDeGravacao?: string[];
     atualizacoesOrderRefunds?: Array<
       {
         id: string;
@@ -170,6 +174,13 @@ function clienteFalso(opts: {
   // pedido fresco ATUAL da linha (`resolverPedidoFresco`) — o banco relê o
   // mesmo estado que o handler leu, no instante da pergunta.
   autorizarPost?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
+  // 14/10/2026: o que a linha tem DEPOIS de gravar o diagnóstico (contador e
+  // carimbo) e o erro simulado. Default: 1 falha "nada saiu", sem carimbo.
+  diagnostico?: { transitorios: number; post_incerto: boolean };
+  erroDiagnostico?: unknown;
+  // Simulação de vários ciclos: o diagnóstico COM ESTADO (conta, carimbo e
+  // último código acumulados, como a tabela de verdade).
+  aoRegistrarDiagnostico?: (args: Record<string, unknown>) => Record<string, unknown>;
 }) {
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
@@ -200,6 +211,13 @@ function clienteFalso(opts: {
         const pedido = refund ? opts.resolverPedidoFresco?.(String(refund.order_id)) : null;
         if (!pedido) throw new Error("autorizar_post_do_estorno sem pedido conhecido neste teste");
         return { data: { decisao: "autorizado", pedido }, error: null };
+      }
+      if (nome === "registrar_diagnostico_do_estorno") {
+        opts.registro.chamadasDiagnostico?.push({ args: args ?? {} });
+        opts.registro.ordemDeGravacao?.push("diagnostico");
+        if (opts.erroDiagnostico) return { data: null, error: opts.erroDiagnostico };
+        if (opts.aoRegistrarDiagnostico) return { data: opts.aoRegistrarDiagnostico(args ?? {}), error: null };
+        return { data: opts.diagnostico ?? { transitorios: 1, post_incerto: false }, error: null };
       }
       if (nome === "concluir_estorno") {
         opts.registro.chamadasConcluirEstorno?.push({ args: args ?? {} });
@@ -348,6 +366,9 @@ function clienteFalso(opts: {
                 return {
                   in(_coluna2: string, statusFiltro: string[]) {
                     const executar = async (filtroIs?: [string, unknown]) => {
+                      if (valores.status === "falhou" || valores.status === "recusado") {
+                        opts.registro.ordemDeGravacao?.push("final");
+                      }
                       opts.registro.atualizacoesOrderRefunds?.push(
                         filtroIs ? { id, valores, statusFiltro, filtroIs } : { id, valores, statusFiltro },
                       );
@@ -3551,4 +3572,231 @@ Deno.test("cancelamento do cliente: push que responde -> o lojista e avisado E o
   assertEquals(corpo.cancelamentos, { candidatos: 1, avisados: 1, ignorados: 0, falhas: 0 });
   assertEquals(corpo.estornos.concluidos, 1);
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});
+
+// ── 14/10/2026 — reembolso da devolução, parte TypeScript (D4/D5/D6) ────────
+// O cron grava o diagnóstico do POST ANTES de qualquer `falhou`, aplica o limite
+// de falhas "nada saiu" e nunca põe motivo interno em `ultimo_erro`.
+
+async function cronComPostRecusado(
+  status: number,
+  corpo: unknown,
+  extras: Partial<Parameters<typeof clienteFalso>[0]> = {},
+  linha: Record<string, unknown> = {},
+) {
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    chamadasDiagnostico: [] as Array<{ args: Record<string, unknown> }>,
+    ordemDeGravacao: [] as string[],
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 50 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "r1", order_id: pedido.id, amount: 50, status: "solicitado", tentativas: 0, mp_refund_id: null, ...linha },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    ...extras,
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status, corpo },
+  ]);
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  return { corpo: await resposta.json(), registro };
+}
+
+Deno.test("C1 (M6/D4) - cron: 428 'sem saldo' (errors[]): diagnóstico gravado, linha adiada (NÃO falhou), ultimo_erro neutro", async () => {
+  const { corpo, registro } = await cronComPostRecusado(428, { errors: [{ code: "insufficient_money_for_refund", message: "saldo" }] }, {
+    diagnostico: { transitorios: 2, post_incerto: false },
+  });
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasDiagnostico.map((c) => c.args), [
+    { p_refund_id: "r1", p_mp_codigo: "insufficient_money_for_refund", p_post_incerto: false, p_transitorio: true },
+  ]);
+  assertEquals(registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+  const erro = registro.atualizacoesOrderRefunds.find((a) => typeof a.valores.ultimo_erro === "string");
+  assertEquals(/saldo|insufficient|conta/i.test(String(erro?.valores.ultimo_erro)), false);
+});
+
+Deno.test("C2 (D4) - cron: a 5ª falha 'nada saiu' sem carimbo vira falhou, DEPOIS de gravar o diagnóstico; com carimbo nunca", async () => {
+  const quinta = await cronComPostRecusado(428, { errors: [{ code: "insufficient_money_for_refund" }] }, {
+    diagnostico: { transitorios: 5, post_incerto: false },
+  });
+  assertEquals(quinta.corpo.estornos, { vistos: 1, concluidos: 0, adiados: 0, falhos: 1 });
+  assertEquals(quinta.registro.ordemDeGravacao, ["diagnostico", "final"]);
+  const terminal = quinta.registro.atualizacoesOrderRefunds.find((a) => a.valores.status === "falhou");
+  assertEquals(terminal?.statusFiltro, ["em_processamento"]);
+  assertEquals(/saldo|insufficient|conta/i.test(String(terminal?.valores.ultimo_erro)), false);
+
+  const comCarimbo = await cronComPostRecusado(428, { errors: [{ code: "insufficient_money_for_refund" }] }, {
+    diagnostico: { transitorios: 9, post_incerto: true },
+  });
+  assertEquals(comCarimbo.corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(comCarimbo.registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+});
+
+Deno.test("C3 (D6) - cron: código DESCONHECIDO: falhou, mas só depois do diagnóstico com carimbo; se o diagnóstico não grava, NÃO falhou", async () => {
+  const ok = await cronComPostRecusado(400, { errors: [{ code: "codigo_novo_do_mp" }] });
+  assertEquals(ok.registro.chamadasDiagnostico.map((c) => c.args), [
+    { p_refund_id: "r1", p_mp_codigo: "codigo_novo_do_mp", p_post_incerto: true, p_transitorio: false },
+  ]);
+  assertEquals(ok.registro.ordemDeGravacao, ["diagnostico", "final"]);
+  assertEquals(JSON.stringify(ok.registro.atualizacoesOrderRefunds).includes("codigo_novo_do_mp"), false);
+
+  const semDiagnostico = await cronComPostRecusado(400, { errors: [{ code: "codigo_novo_do_mp" }] }, {
+    erroDiagnostico: { message: "banco fora" },
+  });
+  assertEquals(semDiagnostico.corpo.estornos.falhos, 0);
+  assertEquals(semDiagnostico.registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+});
+
+Deno.test("C4 (D5) - cron: 'em andamento' (movement_operations_pending) fica em_processamento com carimbo e NUNCA vira falhou", async () => {
+  const r = await cronComPostRecusado(409, { errors: [{ code: "movement_operations_pending" }] });
+  assertEquals(r.corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(r.registro.chamadasDiagnostico[0].args.p_post_incerto, true);
+  assertEquals(r.registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+});
+
+Deno.test("C5 (D4) - cron: linha antiga já no regime 'só consulta' (tentativas 5, sem diagnóstico): continua em consulta, sem POST e SEM falhou — o limite novo não a alcança", async () => {
+  const r = await cronComPostRecusado(400, {}, {}, { status: "em_processamento", tentativas: 5 });
+  assertEquals(r.corpo.estornos.falhos, 0);
+  // Só a LEITURA do diagnóstico (tudo nulo/falso, nada incrementa nem carimba);
+  // sem código gravado, a linha segue em consulta.
+  assertEquals(r.registro.chamadasDiagnostico.map((c) => c.args), [
+    { p_refund_id: "r1", p_mp_codigo: null, p_post_incerto: false, p_transitorio: false },
+  ]);
+  assertEquals(r.registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou"), false);
+});
+
+// ── 14/10/2026 (correção da revisão Opus do #855) — dois contadores, o mesmo teto ──
+// O robô para de POSTar com 5 TENTATIVAS (sobem em todo ciclo, até as que nem
+// chegam ao MP); a linha só virava `falhou` na 5ª RECUSA "nada saiu" (sobe só
+// quando o MP responde). Uma consulta que falha no meio descasa os dois e a
+// linha ficava em_processamento para sempre. Estes testes SIMULAM os ciclos do
+// robô com o estado da linha e do diagnóstico acumulando de verdade.
+
+// `post_201_processando`: entrou saldo, o MP aceita o POST (201, order "refunded")
+// com o reembolso DESTA linha em "processing" — sem carimbo, e a gravação do id
+// do MP nunca chega (o fake não guarda `mp_refund_id`, como numa escrita suave
+// que falhou). `consulta_processando`: o GET mostra esse reembolso em andamento.
+type CicloDoMp = "sem_saldo" | "consulta_cai" | "post_500" | "post_201_processando" | "consulta_processando";
+
+async function simularCiclos(ciclos: CicloDoMp[]) {
+  const orderId = "20000000-0000-4000-8000-0000000000dd";
+  const pedido = pedidoFrescoPara({ id: orderId, gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01", total: 50 });
+  const linha = { status: "solicitado", tentativas: 0 };
+  const tabela = { transitorios: 0, postIncerto: false, codigo: null as string | null, existe: false };
+  const historico: string[] = [];
+  const corpoOrder = {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "processed",
+    transactions: { payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }] },
+  };
+  for (const ciclo of ciclos) {
+    if (linha.status === "falhou") {
+      historico.push("falhou");
+      continue;
+    }
+    const registro = {
+      chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+      chamouCandidatos: false,
+      chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+      atualizacoesOrderRefunds: [] as Array<{ id: string; valores: Record<string, unknown>; statusFiltro: string[] }>,
+    };
+    const supabase = clienteFalso({
+      candidatos: [],
+      registro,
+      refundsPendentes: [{ id: "r1", order_id: orderId, amount: 50, status: linha.status, tentativas: linha.tentativas, mp_refund_id: null }],
+      resolverPedidoFresco: (id) => (id === orderId ? pedido : null),
+      atualizarOrderRefunds: (_id, valores) => {
+        if (typeof valores.tentativas === "number") linha.tentativas = valores.tentativas;
+        if (typeof valores.status === "string") linha.status = valores.status;
+        return { data: [{ id: "r1" }], error: null };
+      },
+      // O que a tabela de diagnóstico faz de verdade: UPSERT com incremento,
+      // carimbo que nunca sai, código que só é trocado por outro não nulo. A
+      // chamada "de leitura" (tudo nulo/falso) devolve o estado sem mexer.
+      aoRegistrarDiagnostico: (args) => {
+        tabela.existe = true;
+        if (typeof args.p_mp_codigo === "string") tabela.codigo = args.p_mp_codigo;
+        if (args.p_post_incerto === true) tabela.postIncerto = true;
+        if (args.p_transitorio === true) tabela.transitorios++;
+        return { transitorios: tabela.transitorios, post_incerto: tabela.postIncerto, mp_codigo: tabela.codigo };
+      },
+    });
+    const orderComReembolsoEmAndamento = {
+      ...corpoOrder,
+      status: "refunded",
+      transactions: {
+        payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }],
+        refunds: [{ id: "REF-X", amount: "50.00", status: "processing" }],
+      },
+    };
+    const rotasGet = ciclo === "consulta_cai"
+      ? [{ metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 500, corpo: {} }]
+      : [{ metodo: "GET", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01", status: 200, corpo: ciclo === "consulta_processando" ? orderComReembolsoEmAndamento : corpoOrder }];
+    const rotaPost = ciclo === "post_500"
+      ? { status: 500, corpo: {} }
+      : ciclo === "post_201_processando"
+      ? { status: 201, corpo: orderComReembolsoEmAndamento }
+      : { status: 428, corpo: { errors: [{ code: "insufficient_money_for_refund" }] } };
+    const mp = fetchDubleReconciliacao([
+      ...rotasGet,
+      { metodo: "POST", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund", ...rotaPost },
+    ]);
+    await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+    historico.push(`${linha.status}/t${linha.tentativas}/r${tabela.transitorios}${tabela.postIncerto ? "/carimbo" : ""}`);
+  }
+  return { linha, historico };
+}
+
+Deno.test("CICLOS-1 - a consulta cai no ciclo 4 e 'sem saldo' nos outros: tentativas (5) passam as recusas (4) e mesmo assim a linha vira falhou — não fica presa em_processamento", async () => {
+  const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "consulta_cai", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
+  // ciclo 5: 5 tentativas e só 4 recusas; no ciclo 6 o robô só consulta — e decide.
+  assertEquals(r.historico[4], "em_processamento/t5/r4");
+  assertEquals(r.linha.status, "falhou");
+  assertEquals(r.historico[5].startsWith("falhou"), true);
+});
+
+Deno.test("CICLOS-2 - sem nenhuma falha no meio o limite continua o de antes: a 5ª recusa vira falhou", async () => {
+  const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
+  assertEquals(r.historico[4].startsWith("falhou"), true);
+});
+
+Deno.test("CICLOS-3 - COM carimbo de incerteza (um POST caiu em 500 no ciclo 4) a linha NUNCA vira falhou: fica em consulta pelos 9 ciclos", async () => {
+  const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "post_500", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
+  assertEquals(r.linha.status, "em_processamento");
+  assertEquals(r.historico.at(-1)?.endsWith("/carimbo"), true);
+});
+
+Deno.test("CICLOS-4 - linha antiga (sem diagnóstico algum, regime 'só consulta' desde antes) continua em consulta: ler o diagnóstico não a transforma em 'nada saiu'", async () => {
+  const r = await simularCiclos(["consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai", "consulta_cai"]);
+  assertEquals(r.linha.status, "em_processamento");
+});
+
+Deno.test("CICLOS-5 - o saldo ENTRA no ciclo 5 (POST 201, reembolso desta linha em 'processing', id do MP não grava) e no ciclo 6 a consulta o vê em andamento: a linha NÃO vira falhou (o dinheiro está saindo) — fica em consulta por todos os ciclos", async () => {
+  const r = await simularCiclos([
+    "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "post_201_processando",
+    "consulta_processando", "consulta_processando", "consulta_processando",
+  ]);
+  assertEquals(r.historico[3], "em_processamento/t4/r4");
+  assertEquals(r.historico[4], "em_processamento/t5/r4");
+  assertEquals(r.linha.status, "em_processamento");
+  assertEquals(r.historico.some((h) => h.startsWith("falhou")), false);
+});
+
+Deno.test("CICLOS-6 - na linha travada, consulta que FALHA (500) continua em consulta; no ciclo seguinte, com o MP legível e sem reembolso, vira falhou", async () => {
+  const r = await simularCiclos([
+    "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "consulta_cai",
+    "consulta_cai", "sem_saldo",
+  ]);
+  assertEquals(r.historico[4], "em_processamento/t5/r4");
+  assertEquals(r.historico[5], "em_processamento/t5/r4");
+  assertEquals(r.historico[6].startsWith("falhou"), true);
 });
