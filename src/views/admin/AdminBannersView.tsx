@@ -52,7 +52,7 @@ import {
   lerModoDoEditor,
   modoAoAbrirOBanner,
 } from "@/lib/modo-do-editor-de-banner";
-import { cn, normalizeText } from "@/lib/utils";
+import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
@@ -1044,8 +1044,15 @@ export const AdminBannersView = memo(function AdminBannersView({
       titleSuggestions.push(`FRETE GRÁTIS: ${selectedProduct.name}`);
     }
 
+    // Texto que vai para a vitrine: dinheiro com vírgula e espaço comum depois
+    // do "R$" (o Intl usa um espaço inquebrável, que não queremos gravado).
+    // O caractere dentro da regex abaixo é o espaço inquebrável (U+00A0) de
+    // propósito: é exatamente ele que o Intl coloca depois do "R$".
+    const dinheiro = (valor: number) =>
+      // eslint-disable-next-line no-irregular-whitespace
+      formatCurrency(Number(valor)).replace(/ /g, " ");
     const subtitleSuggestions = [
-      `Por apenas R$ ${Number(selectedProduct.price).toFixed(2)}`,
+      `Por apenas ${dinheiro(selectedProduct.price)}`,
       "Confira essa oferta especial na nossa loja!",
     ];
     if (
@@ -1053,9 +1060,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       selectedProduct.originalPrice > selectedProduct.price
     ) {
       subtitleSuggestions.push(
-        `De R$ ${Number(selectedProduct.originalPrice).toFixed(2)} por R$ ${Number(
+        `De ${dinheiro(selectedProduct.originalPrice)} por ${dinheiro(
           selectedProduct.price,
-        ).toFixed(2)}`,
+        )}`,
       );
     }
     if (selectedProduct.freeShipping) {
@@ -4471,8 +4478,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     {selectedProduct.name}
                                   </h4>
                                   <p className="mt-0.5 font-mono text-[11px] font-black leading-none text-amber-500">
-                                    R${" "}
-                                    {Number(selectedProduct.price).toFixed(2)}
+                                    {formatCurrency(
+                                      Number(selectedProduct.price),
+                                    )}
                                   </p>
                                 </div>
                               </div>
@@ -4557,7 +4565,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     </div>
                                     <div className="flex shrink-0 items-center gap-1.5">
                                       <span className="font-mono text-[11px] font-black text-amber-500">
-                                        R$ {Number(p.price).toFixed(2)}
+                                        {formatCurrency(Number(p.price))}
                                       </span>
                                       <span className="rounded border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-400 transition-colors group-hover:text-white">
                                         Vincular
