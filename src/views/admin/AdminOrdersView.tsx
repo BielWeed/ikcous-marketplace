@@ -51,6 +51,7 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { formatarInteiro } from "@/lib/crm";
+import { recorteDaListaDePedidos } from "@/lib/filtro-da-lista-de-pedidos";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
@@ -758,13 +759,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
   const loadAllData = useCallback(
     (pageToFetch: number, silent = false) => {
+      // Mesmo recorte da planilha (exportarCsv): a data vira início/fim do
+      // DIA DE BRASÍLIA (o banco roda em UTC e lia "14/10" como 21h de 13/10)
+      // e a busca perde o "#" que o app mostra antes do número do pedido.
+      const recorte = recorteDaListaDePedidos({ searchQuery, dateRange });
       loadOrders(
         pageToFetch,
         itemsPerPage,
         filter,
-        searchQuery,
-        dateRange.start || undefined,
-        dateRange.end || undefined,
+        recorte.searchQuery,
+        recorte.startDate,
+        recorte.endDate,
         silent,
         // Achado 10 do laudo (29/08): o filtro de pagamento filtra NO BANCO
         // (migration 20261028000000) — a lista inteira e o total da
@@ -1121,11 +1126,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     exportacaoCsvEmCursoRef.current = true;
     setGerandoCsv(true);
     try {
+      // O MESMO recorte da lista (loadAllData): a planilha não pode exportar
+      // um período ou uma busca diferente do que está na tela.
+      const recorte = recorteDaListaDePedidos({ searchQuery, dateRange });
       const pedidosDoFiltro = await buscarPedidosDoFiltroParaExportar({
         statusFilter: filter,
-        searchQuery,
-        startDate: dateRange.start || undefined,
-        endDate: dateRange.end || undefined,
+        searchQuery: recorte.searchQuery,
+        startDate: recorte.startDate,
+        endDate: recorte.endDate,
         paymentStatus: paymentFilter,
         // C4.4: sem isto, o CSV exportaria um filtro diferente do que está
         // na tela quando o chip "Balcão" está ligado.
