@@ -790,6 +790,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                   cidade={config?.storeCity}
                   uf={config?.storeState}
                   semOrigem={!config?.originCep}
+                  cepDaLoja={config?.originCep}
                   desabilitado={isOffline}
                   retirada={formData.retiradaNaLoja}
                   onRetirada={(retiradaNaLoja) =>

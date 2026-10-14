@@ -38,6 +38,49 @@ export function estadoDaEntrega(
   return cepCompleto(config.originCep) ? "feito" : "pendente";
 }
 
+/**
+ * Os 5 primeiros números do CEP da loja, ou `null` sem CEP completo.
+ *
+ * É a regra REAL da "faixa de CEP" vazia: o servidor (`is_local_cep` no banco,
+ * edge calculate-shipping e `cepEhLocal` na tela) só compara os 5 primeiros
+ * números do CEP da cliente com os do CEP da loja. Nunca foi "a cidade inteira".
+ */
+export function prefixoDoCepDaLoja(
+  cep: string | null | undefined,
+): string | null {
+  return cepCompleto(cep) ? (cep as string).trim().slice(0, 5) : null;
+}
+
+/** A dica do campo "Alcance por CEP" quando a faixa está vazia. */
+export function dicaDaFaixaVazia(cepDaLoja: string | null | undefined): string {
+  const prefixo = prefixoDoCepDaLoja(cepDaLoja);
+  return prefixo
+    ? `Vazio = só CEPs que começam com ${prefixo}`
+    : "Vazio = só CEPs que começam com os mesmos 5 números do CEP da loja";
+}
+
+/**
+ * Aviso (nunca bloqueio) de entrega local curta demais: faixa vazia E CEP da
+ * loja com cara de CEP de rua.
+ *
+ * Heurística: CEP geral de cidade pequena termina em "000" (Monte Carmelo,
+ * 38500-000 — um CEP só para a cidade, e os 5 primeiros números bastam). CEP
+ * que NÃO termina em "000" é de rua, e a cidade provavelmente tem vários
+ * prefixos (Uberlândia, 38400 a 38415): a cliente de outro bairro seria
+ * tratada como "de fora". Devolve o texto para a lojista, ou `null`.
+ */
+export function avisoDaFaixaDeCep(config: {
+  readonly originCep?: string | null;
+  readonly localCepRange?: string | null;
+}): string | null {
+  if ((config.localCepRange ?? "").trim() !== "") return null;
+  const prefixo = prefixoDoCepDaLoja(config.originCep);
+  if (prefixo === null) return null;
+  const cepLimpo = (config.originCep as string).replace(/\D/g, "");
+  if (cepLimpo.endsWith("000")) return null;
+  return `Sua entrega local só vale para CEPs que começam com ${prefixo}. Se sua cidade tem vários CEPs, preencha a faixa de CEP`;
+}
+
 // ── Os SEIS passos do painel simples (spec §8) ──────────────────────────────
 //
 // O horário de atendimento é opcional e fica FORA da contagem.
@@ -68,6 +111,8 @@ export interface ConfigDosSeisPassos {
   readonly originCep?: string | null;
   readonly storeAddress?: string | null;
   readonly whatsappNumber?: string | null;
+  /** Só o aviso da faixa de CEP (`avisoDaFaixaDeCep`) lê; não conta passo. */
+  readonly localCepRange?: string | null;
 }
 
 /** Os fatos que NÃO vêm da config. */

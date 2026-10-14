@@ -4,6 +4,7 @@ import {
   Linha,
   PontoEstado,
 } from "@/components/admin/shipping/primitivas-direcao-d";
+import { avisoDaFaixaDeCep, dicaDaFaixaVazia } from "@/lib/loja-pronta";
 import type { View } from "@/types";
 import { memo, useState } from "react";
 
@@ -29,8 +30,9 @@ import { memo, useState } from "react";
  *
  * Semântica do valor (vem da edge, repetida sem inventar): CEP do cliente
  * dentro da faixa → opção "Entrega Local" custa `localDeliveryFee`
- * (R$ 0 = entrega de graça na cidade). Faixa vazia = a cidade inteira,
- * pelo CEP da loja como origem.
+ * (R$ 0 = entrega de graça na cidade). Faixa vazia = só CEPs que começam
+ * com os 5 primeiros números do CEP da loja (NÃO a cidade inteira: em
+ * cidade com CEP por rua isso deixa bairros de fora — ver `avisoDaFaixaDeCep`).
  *
  * RETIRADA NA LOJA (release 1.5.3): a segunda chave de verdade da seção —
  * "Permitir retirada na loja" grava a chave `store-pickup` em
@@ -53,6 +55,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   cidade,
   uf,
   semOrigem,
+  cepDaLoja,
   desabilitado,
   retirada = false,
   onRetirada,
@@ -70,6 +73,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   readonly uf?: string | null;
   /** A loja ainda não definiu o CEP de origem — a entrega está parada. */
   readonly semOrigem?: boolean;
+  /** CEP de origem da loja — a dica da faixa vazia cita os 5 primeiros números. */
+  readonly cepDaLoja?: string | null;
   readonly desabilitado?: boolean;
   /** Retirada na loja ligada no formulário (chave `store-pickup`). */
   readonly retirada?: boolean;
@@ -89,6 +94,10 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   const temEndereco = (enderecoDaLoja ?? "").trim() !== "";
   const onde =
     cidade && uf ? `${cidade}/${uf}` : cidade ? cidade : "sua cidade";
+  const avisoDaFaixa = avisoDaFaixaDeCep({
+    originCep: cepDaLoja,
+    localCepRange: faixa,
+  });
 
   return (
     <section
@@ -158,7 +167,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
 
       <Linha
         nome="Alcance por CEP"
-        dica={`Quais CEPs contam como "cidade" (vazio = ${onde} inteira, pelo CEP da loja). CEP fora da faixa não recebe a entrega local — vê o frete nacional.`}
+        dica={`Quais CEPs contam como "cidade" (${dicaDaFaixaVazia(cepDaLoja)}). CEP fora da faixa não recebe a entrega local — vê o frete nacional.`}
       >
         <input
           id="local-cep-range"
@@ -170,6 +179,11 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           className="h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
         />
       </Linha>
+      {avisoDaFaixa && (
+        <p role="note" className="mt-2 text-xs text-amber-300">
+          {avisoDaFaixa}
+        </p>
+      )}
 
       {onRetirada && (
         <>
