@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
@@ -19,7 +20,7 @@ interface LocalBufferedInputProps
 }
 
 const formatPhone = (val: string) => {
-  const clean = val.replace(/\D/g, "");
+  const clean = limparTelefoneBrasileiro(val);
   if (clean.length === 0) return "";
   if (clean.length <= 2) return `(${clean}`;
   if (clean.length <= 6) return `(${clean.slice(0, 2)}) ${clean.slice(2)}`;

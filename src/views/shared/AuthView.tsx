@@ -5,6 +5,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
 import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
 import {
@@ -147,7 +148,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const reenvioConfirmacaoEmCurso = useRef(false);
 
   const formatPhone = (value: string) => {
-    const numbers = value.replace(/\D/g, "");
+    const numbers = limparTelefoneBrasileiro(value);
     if (numbers.length <= 11) {
       let formatted = numbers;
       if (numbers.length > 2)

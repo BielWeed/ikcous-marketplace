@@ -92,6 +92,7 @@ import {
 } from "@/lib/recusaDoPedido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { cn } from "@/lib/utils";
 import type {
@@ -836,7 +837,7 @@ export function CheckoutView({
   } = useAddresses();
 
   const formatWhatsApp = (value: string) => {
-    const numbers = value.replaceAll(/\D/g, "");
+    const numbers = limparTelefoneBrasileiro(value);
 
     if (numbers.length <= 2) return numbers;
     if (numbers.length <= 7)
@@ -5150,7 +5151,6 @@ export function CheckoutView({
                         }
                         ref={field.ref}
                         placeholder="(00) 00000-0000"
-                        maxLength={15}
                         aria-invalid={
                           form.formState.errors.whatsapp ? true : undefined
                         }
