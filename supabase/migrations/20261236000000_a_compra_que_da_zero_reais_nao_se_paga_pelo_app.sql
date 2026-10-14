@@ -20,11 +20,15 @@
 -- (passo 6) e o bloco "6-bis" (a cópia do endereço), ainda ANTES do INSERT do pedido (passo 7), da baixa
 -- do estoque (passo 8) e do uso do cupom (passo 9):
 --
---     IF p_payment_method = 'online' AND v_calculated_total <= 0 THEN
+--     IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0 THEN
 --         RAISE EXCEPTION 'Este pedido não tem valor a pagar pelo app. Escolha pagar na retirada ou na entrega, ou fale com a loja.'
 --             USING DETAIL = format('pedido_sem_valor_a_pagar_pelo_app: ...');
 --     END IF;
 --
+-- * O total é arredondado em 2 casas ANTES de comparar porque o pedido grava `numeric(10,2)`: cupom
+--   percentual ou fixo e `price_override` não têm limite de casas, e um total entre R$ 0,00 e meio centavo
+--   (R$ 100 com cupom de 99,997 por cento; R$ 0,30 com cupom de 99 por cento) passaria por `<= 0`, nasceria
+--   gravado como 0.00 e cairia no mesmo beco. Total de R$ 0,01 em diante segue nascendo, como sempre.
 -- * O total é o CALCULADO pelo servidor (subtotal + frete - desconto, com o piso em zero): nunca o que o
 --   cliente mandou em `p_total_amount`. Como o bloco vem DEPOIS da trava do passo 6, um total divergente
 --   continua recebendo a recusa de sempre ("Os valores do pedido mudaram"); a nova só responde a quem
@@ -87,7 +91,7 @@ DECLARE
   v_oid oid;
   v_hash text;
   v_antigo constant text := 'b1ee9337105f442511c13a75977911b7';
-  v_novo constant text := 'dc20132859f7dcc5c435f5daea2d31a2';
+  v_novo constant text := '6002fc8db6c1d402bc704f018a0c2621';
   v_public boolean;
 BEGIN
   v_oid := to_regprocedure(format('public.%s(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', v_nome));
@@ -1015,7 +1019,7 @@ BEGIN
     -- o app chama nesse caso). Texto SEM prefixo de código (padrão de
     -- recusaDoPedido.ts: casado por regex sobre `message`); o identificador
     -- estável da recusa vai no DETAIL.
-    IF p_payment_method = 'online' AND v_calculated_total <= 0 THEN
+    IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0 THEN
         RAISE EXCEPTION 'Este pedido não tem valor a pagar pelo app. Escolha pagar na retirada ou na entrega, ou fale com a loja.'
             USING DETAIL = format('pedido_sem_valor_a_pagar_pelo_app: subtotal %s + frete %s - desconto %s = total %s.',
                 v_calculated_subtotal, v_shipping_validated, v_discount_amount, v_calculated_total);
@@ -1174,7 +1178,7 @@ DECLARE
   v_nome constant text := 'create_marketplace_order_v24';
   v_oid oid;
   v_hash text;
-  v_esperado constant text := 'dc20132859f7dcc5c435f5daea2d31a2';
+  v_esperado constant text := '6002fc8db6c1d402bc704f018a0c2621';
 BEGIN
   v_oid := to_regprocedure(format('public.%s(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', v_nome));
   IF v_oid IS NULL THEN

@@ -104,7 +104,7 @@ const ANTIGA_174 = funcaoDe(VIVA_174, V24);
 const NOVA = funcaoDe(MIGRATION, V24);
 const ROLL = funcaoDe(ROLLBACK, V24);
 const H_ANTIGO = "b1ee9337105f442511c13a75977911b7";
-const H_NOVO = "dc20132859f7dcc5c435f5daea2d31a2";
+const H_NOVO = "6002fc8db6c1d402bc704f018a0c2621";
 assert.equal(md5(ANTIGA.corpo), H_ANTIGO, "o corpo da 20261229 mudou");
 // MODO MUTANTE DE ARQUIVO (PROVA_ARQUIVO_MUTADO=1): quem edita o ARQUIVO da migration para sabotar o corpo roda
 // so a prova de COMPORTAMENTO (a que fica vermelha pelo que o corpo faz), sem as travas de hash e de bytes que
@@ -159,6 +159,8 @@ const U = {
   admin: "7e7e2360-0000-4000-8000-0000000000a1",
 };
 const PROD = "7e7e2360-0000-4000-8000-0000000000f0";
+/** Produto de R$ 0,30, para o caso "cupom de 99% num pedido de centavos". */
+const PROD_BARATO = "7e7e2360-0000-4000-8000-0000000000f1";
 const DIGITADO = {
   cep: "38500-120",
   street: "Rua Digitada",
@@ -280,13 +282,14 @@ async function pedir({
   cupom = null,
   chave = crypto.randomUUID(),
   cep = CEP_LOCAL,
+  produto = PROD,
   total,
 }) {
   return tentar(
     papel,
     SQL_PEDIDO(rpc),
     [
-      JSON.stringify([{ product_id: PROD, variant_id: null, quantity: 1 }]),
+      JSON.stringify([{ product_id: produto, variant_id: null, quantity: 1 }]),
       total,
       0,
       metodo,
@@ -367,12 +370,20 @@ async function semear() {
     "INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo, frete_gratis) VALUES ($1, 'Camiseta Azul 36', 100, 1000, true, 40, false)",
     [PROD],
   );
+  await C.query(
+    "INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo, frete_gratis) VALUES ($1, 'Balinha 36', 0.30, 1000, true, 0.1, false)",
+    [PROD_BARATO],
+  );
   for (const [codigo, tipo, valor, limite] of [
     ["ZEROUNICO", "fixed", 100, 1], // zera a compra; uso unico
     ["ZEROPCT", "percentage", 100, 100], // 100%
     ["PARCIAL", "fixed", 10, 100], // R$ 90
     ["QUASE", "fixed", 99.99, 100], // R$ 0,01
     ["QUASE04", "fixed", 99.96, 100], // R$ 0,04
+    ["MEIOCENT", "fixed", 99.995, 100], // R$ 0,005 -> arredonda para R$ 0,01 (nasce)
+    ["SUBPCT", "percentage", 99.997, 1], // R$ 100 -> R$ 0,003 (uso unico)
+    ["SUBFIXO", "fixed", 99.997, 1], // R$ 100 -> R$ 0,003 (uso unico)
+    ["PCT99", "percentage", 99, 1], // R$ 0,30 -> R$ 0,003 (uso unico)
   ])
     await C.query(
       `INSERT INTO public.coupons (code, type, value, active, usage_count, usage_limit)
@@ -485,6 +496,12 @@ const CHECKS = {
         0.04,
         "QUASE04",
       ],
+      [
+        "meio centavo (R$ 0,005) arredonda para R$ 0,01 e nasce gravado 0.01",
+        { cupom: "MEIOCENT", total: 0.01 },
+        0.01,
+        "MEIOCENT",
+      ],
     ];
     for (const [rotulo, extra, esperado, cupom] of casos) {
       const antes = await foto(cupom ?? "ZEROUNICO");
@@ -550,6 +567,46 @@ const CHECKS = {
       f.push(
         `cupomUnicoNaoGasto: segundo uso devia bater no limite: ${outra.erro}`,
       );
+    return f;
+  },
+  /**
+   * (f) o total que SOBRA menos de meio centavo (cupom percentual ou fixo sem limite de casas) e' gravado como
+   * 0.00 (`numeric(10,2)`): e' o mesmo pedido de R$ 0,00 e leva a mesma recusa, sem reservar nem gastar nada.
+   */
+  async subCentavoPeloApp() {
+    const f = [];
+    const casos = [
+      ["R$ 100 com cupom de 99,997%", { cupom: "SUBPCT" }, "SUBPCT"],
+      ["R$ 100 com cupom fixo de R$ 99,997", { cupom: "SUBFIXO" }, "SUBFIXO"],
+      [
+        "R$ 0,30 com cupom de 99%",
+        { cupom: "PCT99", produto: PROD_BARATO },
+        "PCT99",
+      ],
+    ];
+    for (const [rotulo, extra, cupom] of casos) {
+      const antes = await foto(cupom);
+      const r = await pedir({ total: 0, ...extra });
+      if (r.linhas) {
+        const o = await lerPedido(r.linhas[0].id);
+        f.push(
+          `subCentavoPeloApp(${rotulo}): o pedido NASCEU gravado ${o.total} (aguardando, com reserva)`,
+        );
+        continue;
+      }
+      if (r.erro !== FRASE)
+        f.push(`subCentavoPeloApp(${rotulo}): mensagem inesperada: ${r.erro}`);
+      if (!String(r.detalhe).startsWith(`${IDENTIFICADOR}:`))
+        f.push(
+          `subCentavoPeloApp(${rotulo}): DETAIL sem o identificador: ${r.detalhe}`,
+        );
+      const depois = await foto(cupom);
+      for (const campo of Object.keys(antes))
+        if (depois[campo] !== antes[campo])
+          f.push(
+            `subCentavoPeloApp(${rotulo}): ${campo} foi de ${antes[campo]} para ${depois[campo]}`,
+          );
+    }
     return f;
   },
   /** (e) total divergente recebe a recusa de sempre: a trava do preco adulterado vem ANTES da nova. */
@@ -622,7 +679,7 @@ prova(
 // ---------------------------------------------------------------------------
 
 prova(
-  "DEPOIS: zero + app recusa (frase, identificador, nada reservado nem gasto; a sonda de ordem nao anda); zero + retirada/entrega nasce como hoje; positivo + app nasce como hoje (inclusive R$ 0,01 e o total do servidor R$ 0,04); o cupom de uso unico nao e' gasto na recusa; total divergente recebe a recusa de sempre",
+  "DEPOIS: zero + app recusa (frase, identificador, nada reservado nem gasto; a sonda de ordem nao anda), inclusive o total que sobra menos de meio centavo (R$ 100 com cupom de 99,997%, R$ 100 com cupom fixo de 99,997, R$ 0,30 com cupom de 99%);zero + retirada/entrega nasce como hoje; positivo + app nasce como hoje (inclusive R$ 0,01 e o total do servidor R$ 0,04); o cupom de uso unico nao e' gasto na recusa; total divergente recebe a recusa de sempre",
   async () => {
     const falhas = await todasAsVerificacoes(instalarNova);
     assert.deepEqual(falhas, [], falhas.join("\n"));
@@ -791,7 +848,8 @@ prova(
 // MUTANTES
 // ---------------------------------------------------------------------------
 
-const COND = "IF p_payment_method = 'online' AND v_calculated_total <= 0 THEN";
+const COND =
+  "IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0 THEN";
 if (!MUTADO) assert.equal(NOVA.corpo.split(COND).length - 1, 1);
 const TROCAS = {
   "sem a recusa (o corpo antigo)": null,
@@ -805,11 +863,18 @@ const TROCAS = {
       );
     },
   "a recusa vale tambem para pagar na retirada/entrega (sem a checagem do meio)":
-    (c) => c.replace(COND, "IF v_calculated_total <= 0 THEN"),
+    (c) => c.replace(COND, "IF round(v_calculated_total, 2) <= 0 THEN"),
   "o limite sobe para R$ 0,01 (recusa a borda)": (c) =>
     c.replace(
       COND,
-      "IF p_payment_method = 'online' AND v_calculated_total <= 0.01 THEN",
+      "IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0.01 THEN",
+    ),
+  "compara sem arredondar (v_calculated_total <= 0): o sub-centavo passa": (
+    c,
+  ) =>
+    c.replace(
+      COND,
+      "IF p_payment_method = 'online' AND v_calculated_total <= 0 THEN",
     ),
   "decide pelo total que o CLIENTE mandou, nao pelo calculado": (c) =>
     c.replace(
@@ -819,7 +884,7 @@ const TROCAS = {
   "so recusa quem tem conta (a convidada passa)": (c) =>
     c.replace(
       COND,
-      "IF p_payment_method = 'online' AND v_user_id IS NOT NULL AND v_calculated_total <= 0 THEN",
+      "IF p_payment_method = 'online' AND v_user_id IS NOT NULL AND round(v_calculated_total, 2) <= 0 THEN",
     ),
 };
 const NOMES_ESPERADOS_VERMELHOS = {
@@ -829,6 +894,9 @@ const NOMES_ESPERADOS_VERMELHOS = {
   "a recusa vale tambem para pagar na retirada/entrega (sem a checagem do meio)":
     ["zeroNaEntrega"],
   "o limite sobe para R$ 0,01 (recusa a borda)": ["positivoPeloApp"],
+  "compara sem arredondar (v_calculated_total <= 0): o sub-centavo passa": [
+    "subCentavoPeloApp",
+  ],
   "decide pelo total que o CLIENTE mandou, nao pelo calculado": [
     "positivoPeloApp",
   ],

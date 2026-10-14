@@ -29,7 +29,7 @@ DECLARE
   v_oid oid;
   v_hash text;
   v_antigo constant text := 'b1ee9337105f442511c13a75977911b7';
-  v_novo constant text := 'dc20132859f7dcc5c435f5daea2d31a2';
+  v_novo constant text := '6002fc8db6c1d402bc704f018a0c2621';
 BEGIN
   v_oid := to_regprocedure(format('public.%s(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', v_nome));
   IF v_oid IS NULL THEN

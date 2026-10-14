@@ -1785,7 +1785,7 @@ const VERIFICACOES = {
       esperado: [
         {
           texto:
-            "IF p_payment_method = 'online' AND v_calculated_total <= 0 THEN",
+            "IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0 THEN",
           vezes: 1,
         },
         { texto: "pedido_sem_valor_a_pagar_pelo_app: subtotal", vezes: 1 },
