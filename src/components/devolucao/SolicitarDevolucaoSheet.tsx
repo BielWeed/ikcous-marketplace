@@ -607,6 +607,16 @@ function FluxoDaDevolucao({
                     setErro(null);
                   }}
                 >
+                  {m === "envio_proprio" && (
+                    <span className="mt-2 flex gap-2 rounded-xl bg-zinc-50 p-2.5 text-xs text-zinc-600">
+                      <MapPin className="mt-0.5 size-3.5 shrink-0" />
+                      <span>
+                        {enderecoParaEntregar
+                          ? `Envie para: ${enderecoParaEntregar}`
+                          : "Peça o endereço de envio à loja."}
+                      </span>
+                    </span>
+                  )}
                   {m === "entrega_na_loja" &&
                     (enderecoParaEntregar || horarioDaLoja) && (
                       <span className="mt-2 flex gap-2 rounded-xl bg-zinc-50 p-2.5 text-xs text-zinc-600">

@@ -323,6 +323,38 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
     ).toBeNull();
   });
 
+  it("envio próprio aprovado: o cartão diz para onde mandar o pacote", async () => {
+    respostas.set(
+      "devolucao_elegibilidade",
+      elegibilidade({
+        pode: false,
+        motivo_bloqueio:
+          "Já existe uma devolução em andamento para este pedido.",
+      }),
+    );
+    respostas.set("devolucoes_do_pedido", [
+      {
+        id: "d-1",
+        protocolo: "DV260926-ABCDE",
+        status: "aprovada",
+        tipo: "arrependimento",
+        resolucao_desejada: "reembolso",
+        metodo_retorno: "envio_proprio",
+        valor_itens: 100,
+        created_at: "2026-09-26T10:00:00Z",
+      },
+    ]);
+    respostas.set("devolucao_detalhe", {
+      ...DETALHE,
+      modalidade: "nacional",
+      metodo_retorno: "envio_proprio",
+    });
+    await renderizar();
+
+    const cartao = hospedeiro.querySelector('[data-testid="cartao-devolucao"]');
+    expect(cartao?.textContent).toContain("Envie para: Rua A, 10");
+  });
+
   it("devolução em trânsito com código: 'Rastrear devolução' leva ao Melhor Rastreio, sem espaços", async () => {
     respostas.set(
       "devolucao_elegibilidade",

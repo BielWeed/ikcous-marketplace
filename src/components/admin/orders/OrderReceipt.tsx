@@ -1,4 +1,5 @@
 import { branding } from "@/config/branding";
+import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type { Order } from "@/types";
 import { memo } from "react";
@@ -33,38 +34,6 @@ function reais(valor: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-}
-
-/**
- * O endereço no papel, com as MESMAS linhas da ficha na tela
- * (OrderDetail.tsx, bloco "Endereço de entrega"): rua, número e complemento;
- * depois bairro, cidade/UF, CEP e referência. O motoboy lê o papel, não a
- * tela — sem o "bloco B, apto 302" e a referência ele toca a campainha errada.
- *
- * Campo vazio não deixa rastro: sem linha em branco, sem vírgula solta, sem
- * rótulo ("CEP:", "Ref:") sem valor.
- */
-function linhasDoEndereco(cliente: Order["customer"]): string[] {
-  const texto = (valor: string | null | undefined) => (valor ?? "").trim();
-  const ruaENumero = [texto(cliente.address), texto(cliente.number)]
-    .filter(Boolean)
-    .join(", ");
-  const cidade = texto(cliente.city);
-  const estado = texto(cliente.state);
-  const cep = texto(cliente.cep);
-  const referencia = texto(cliente.reference);
-  const primeira = [ruaENumero, texto(cliente.complement)]
-    .filter(Boolean)
-    .join(" - ");
-  const segunda = [
-    texto(cliente.neighborhood),
-    cidade && (estado ? `${cidade}/${estado}` : cidade),
-    cep && `CEP: ${cep}`,
-    referencia && `Ref: ${referencia}`,
-  ]
-    .filter(Boolean)
-    .join(" • ");
-  return [primeira, segunda].filter(Boolean);
 }
 
 export const OrderReceipt = memo(function OrderReceipt({
