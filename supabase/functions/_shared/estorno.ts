@@ -88,7 +88,7 @@ export type ResultadoEstorno =
 
 /**
  * O que o POST de refund de UMA linha deixou para o diagnóstico (tabela
- * `order_refund_diagnostico`, só servidor — migration 20261225000000). Só existe
+ * `order_refund_diagnostico`, só servidor — migration 20261226000000). Só existe
  * quando um POST SAIU; guarda recusada, autorização indisponível e consulta não
  * têm diagnóstico (nada foi enviado para ficar incerto).
  *
@@ -262,7 +262,7 @@ export function autorizacaoPeloBanco(
 
 /**
  * Grava o diagnóstico do POST ANTES de a linha ser tocada (RPC
- * `registrar_diagnostico_do_estorno`, 20261225000000: UPSERT atômico, só
+ * `registrar_diagnostico_do_estorno`, 20261226000000: UPSERT atômico, só
  * servidor) e devolve o que a linha tem AGORA (contador de falhas "nada saiu" e
  * carimbo de incerteza acumulados). Uma nova tentativa se a primeira falhar.
  * Resposta que não tem a forma esperada conta como gravação que falhou — nunca
@@ -349,7 +349,7 @@ export async function aplicarDiagnosticoDoPost(
  * consulta que falha no meio basta — e a linha ficava `em_processamento` para
  * sempre, sem saída. Por isso a decisão também vive no ramo "só consulta", por
  * onde TODA linha travada passa, com o MESMO critério do banco (`v_sem_post`,
- * migration 20261225000000): sem id do MP, SEM carimbo de incerteza e o último
+ * migration 20261226000000): sem id do MP, SEM carimbo de incerteza e o último
  * código gravado na lista fechada "nada saiu" => `falhou`.
  *
  * O diagnóstico só é legível pelo servidor através da RPC; chamá-la sem
@@ -560,7 +560,7 @@ function acharCodigo(corpo: unknown): string | null {
 /**
  * Códigos do MP que PROVAM que nada saiu: o MP recusou o refund por falta de
  * saldo na conta ou porque o pagamento ainda não foi liberado. LISTA FECHADA — a
- * migration 20261225000000 só aceita estes dois como prova de "sem POST"
+ * migration 20261226000000 só aceita estes dois como prova de "sem POST"
  * (`v_sem_post`); qualquer outro código, e todo código desconhecido, é INCERTO.
  * Os nomes vêm do contrato do banco: não constam da documentação pública do MP
  * (medido em 14/10/2026) e nunca foram vistos na API real. Se o MP usar outro

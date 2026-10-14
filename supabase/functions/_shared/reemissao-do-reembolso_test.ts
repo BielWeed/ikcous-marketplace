@@ -4,7 +4,7 @@ import { reemitirReembolsoDaDevolucao } from "./reemissao-do-reembolso.ts";
 /**
  * A reemissão do reembolso da devolução, do lado do servidor (14/10/2026): o
  * Mercado Pago é consultado ANTES de o banco decidir criar × adotar × parar
- * (`reemitir_reembolso_da_devolucao`, migration 20261225000000). Aqui o banco e o
+ * (`reemitir_reembolso_da_devolucao`, migration 20261226000000). Aqui o banco e o
  * MP são dublês; o que se prova é a ORDEM e o que passa de um ao outro:
  *   * consulta indeterminada (M1 GET 500, M2 rede) NÃO chega ao banco;
  *   * o ator é o admin autenticado; a linha esperada vai junto;

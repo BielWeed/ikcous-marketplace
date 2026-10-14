@@ -2,7 +2,7 @@
  * A reemissão do reembolso de uma devolução, do lado do servidor (14/10/2026).
  *
  * O banco decide criar × adotar × parar (`reemitir_reembolso_da_devolucao`,
- * migration 20261225000000, só `service_role`, com o ator admin ATUAL). O que
+ * migration 20261226000000, só `service_role`, com o ator admin ATUAL). O que
  * ele não consegue é perguntar ao Mercado Pago — e a pergunta TEM de vir antes:
  * recriar a linha sem saber se o dinheiro já saiu paga a cliente duas vezes.
  *
