@@ -1019,9 +1019,13 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       mesmas chaves da convidada mais `reference`, sem chave nula). Antes, o pedido guardava so o ponteiro:
       editar o endereco no perfil mudava o pedido ja entregue e apagar o endereco o esvaziava. Dinheiro, estoque,
       cupom, frete e idempotencia nao mudam; assinatura, retorno, SECURITY DEFINER, VOLATILE, `search_path` e ACL
-      tambem nao. **SEM backfill** (decisao do dono): os pedidos que ja existem continuam sem copia. Nenhuma edge
-      function e nenhum front mudam; **a edge `melhor-envio-etiqueta` ainda le o endereco ATUAL da conta** e deve
-      passar a ler a copia (proximo passo, separado). Duas consultas, so leitura, so catalogo, de ROL FECHADO (9 e
+      tambem nao. **SEM backfill** (decisao do dono): os pedidos que ja existem continuam sem copia. O mapper do
+      front, a edge `melhor-envio-etiqueta` e o antifraude **ja preferem a copia** ao endereco vivo e nao mudam. O
+      **comprovante por e-mail** (`_shared/comprovante.ts`) nao preferia (lia a linha da conta e, apagada ela,
+      mostrava `[object Object]`) e **passa a preferir neste PR**: publicar as edges que importam
+      `comprovante.ts` (`send-order-confirmation` direto; `webhook-mercadopago`, `reconciliar-pagamentos` e
+      `criar-pagamento` por `efeitos-do-pagamento.ts`) **ANTES** de aplicar a migration (o comprovante novo
+      funciona com o banco antigo; o banco novo com o comprovante antigo mostra lixo). Duas consultas, so leitura, so catalogo, de ROL FECHADO (9 e
       7 linhas, so valem com `rol=ok`):
       - **`31a-conferir-endereco-da-compra-fica-no-pedido`** (a consulta do lote) prova DEPOIS do apply, por
         objeto, o corpo das duas funcoes (md5), a copia no corpo antes do INSERT do pedido, os atributos de sempre

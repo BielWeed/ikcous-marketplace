@@ -358,6 +358,55 @@ function retiradaDoPedido(
   return { endereco };
 }
 
+// As chaves que fazem de um objeto uma COPIA de endereco que serve: as mesmas
+// que `montarEndereco` le. Objeto sem nenhuma delas (`{}`, lixo) nao e' copia.
+const CHAVES_DA_COPIA_DO_ENDERECO = [
+  "street",
+  "number",
+  "neighborhood",
+  "city",
+  "state",
+  "cep",
+];
+
+/**
+ * DE ONDE vem o endereco do e-mail (migration 20261229000000: o endereco da
+ * compra fica no pedido). Em ordem:
+ *
+ *  1. `customer_data.address` quando e' OBJETO com endereco — a COPIA gravada na
+ *     hora da compra (e a do convidado). E' o que a cliente comprou: editar ou
+ *     apagar o endereco da conta depois nao a muda. Mapper do front, etiqueta e
+ *     antifraude ja a preferem.
+ *  2. A linha atual de `user_addresses` (`linhaDaConta`) — pedido ANTIGO de quem
+ *     tem conta, anterior a copia (a migration nao fez backfill).
+ *  3. A raiz de `customer_data` — o formato antigo (`address` texto, `number`,
+ *     `destination_cep`...). So entram valores simples: objeto, lista e booleano
+ *     NUNCA viram texto (era o "[object Object] · 38500100").
+ */
+export function fonteDoEnderecoDoComprovante(
+  customerData: Record<string, unknown> | null | undefined,
+  linhaDaConta: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  const raiz = new Map(Object.entries(customerData ?? {}));
+  const copia = raiz.get("address");
+  if (copia !== null && typeof copia === "object" && !Array.isArray(copia)) {
+    const campos = new Map(Object.entries(copia));
+    const serve = CHAVES_DA_COPIA_DO_ENDERECO.some((chave) => {
+      const valor = campos.get(chave);
+      return (
+        (typeof valor === "string" && valor.trim() !== "") ||
+        typeof valor === "number"
+      );
+    });
+    if (serve) return copia as Record<string, unknown>;
+  }
+  if (linhaDaConta) return linhaDaConta;
+  const simples = [...raiz].filter(
+    ([, valor]) => typeof valor === "string" || typeof valor === "number",
+  );
+  return simples.length > 0 ? Object.fromEntries(simples) : null;
+}
+
 export type DesfechoComprovante =
   | { ok: true }
   | {
@@ -470,18 +519,23 @@ export async function enviarComprovantePedido(args: {
     return variacao ? { ...item, variacao } : item;
   });
 
-  // Endereco: a linha de `user_addresses` quando ha conta e endereco salvo;
-  // senao o que a pessoa digitou no checkout, que mora no proprio pedido.
-  let fonteDoEndereco: Record<string, unknown> | null =
-    (pedido.customer_data as Record<string, unknown> | null) ?? null;
+  // Endereco: a COPIA gravada no pedido na hora da compra (`customer_data.
+  // address`); so se o pedido nao a tem (pedido antigo, anterior a migration
+  // 20261229000000) a linha ATUAL de `user_addresses`; por ultimo o formato
+  // antigo da raiz de `customer_data`. Ver `fonteDoEnderecoDoComprovante`.
+  let linhaDaConta: Record<string, unknown> | null = null;
   if (pedido.address_id) {
     const { data: endereco } = await supabase
       .from("user_addresses")
       .select("street, number, complement, neighborhood, city, state, cep")
       .eq("id", String(pedido.address_id))
       .maybeSingle();
-    if (endereco) fonteDoEndereco = endereco;
+    linhaDaConta = endereco ?? null;
   }
+  const fonteDoEndereco = fonteDoEnderecoDoComprovante(
+    (pedido.customer_data as Record<string, unknown> | null) ?? null,
+    linhaDaConta,
+  );
 
   const { data: config } = await supabase
     .from("store_config")

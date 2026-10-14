@@ -311,7 +311,7 @@ Deno.test("o rollback tem pre-voo (corpo conhecido, atributos, ACL) e conferenci
   assert.ok(!/\b(GRANT|REVOKE)\b/.test(removerRuido(rollback)));
 });
 
-Deno.test("o cabecalho declara o que o dono precisa saber: sem backfill (decisao do dono), a ordem, o rollback e a edge melhor-envio-etiqueta como proximo passo separado", () => {
+Deno.test("o cabecalho declara o que o dono precisa saber: sem backfill (decisao do dono), a ordem, o rollback e quem JA le a copia (etiqueta e antifraude) e quem passa a ler neste PR (comprovante)", () => {
   for (const trecho of [
     "SEM backfill",
     "rollback-manual-20261229000000",
@@ -322,6 +322,33 @@ Deno.test("o cabecalho declara o que o dono precisa saber: sem backfill (decisao
     "tests/banco/endereco-no-pedido-viva.cjs",
   ])
     assert.ok(migration.includes(trecho), trecho);
+  // O que o cabecalho afirma sobre os LEITORES da copia e' conferido no codigo deles
+  // (texto ao contrario ja saiu uma vez: dizia que a etiqueta lia a conta e o comprovante a copia).
+  assert.ok(migration.includes("A ETIQUETA NÃO PRECISA MUDAR"));
+  assert.ok(!migration.includes("lê o endereço ATUAL da"));
+  assert.ok(migration.includes("fonteDoEnderecoDoComprovante"));
+  assert.ok(migration.includes("send-order-confirmation"));
+  const funcoes = new URL("supabase/functions/", DIR);
+  const etiqueta = Deno.readTextFileSync(
+    new URL("melhor-envio-etiqueta/index.ts", funcoes),
+  );
+  assert.ok(
+    /const fonte = cd\.addressData \|\| \(typeof cd\.address === 'object'/.test(
+      etiqueta,
+    ),
+    "a etiqueta prefere customer_data.address (objeto)",
+  );
+  const antifraude = Deno.readTextFileSync(
+    new URL("_shared/dados-antifraude.ts", funcoes),
+  );
+  assert.ok(antifraude.includes("enderecoDaOrder(customerData?.address)"));
+  const comprovante = Deno.readTextFileSync(
+    new URL("_shared/comprovante.ts", funcoes),
+  );
+  assert.ok(
+    comprovante.includes("export function fonteDoEnderecoDoComprovante"),
+  );
+  assert.ok(comprovante.includes("= fonteDoEnderecoDoComprovante("));
   for (const trecho of [
     "COM ELE VOLTA O DEFEITO",
     "FICAM com a cópia",

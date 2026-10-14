@@ -49,9 +49,12 @@
 -- novo perderia uma linha que o endereço vivo mostrava). Chave sem valor não entra
 -- (`jsonb_strip_nulls`), como na convidada, que nunca manda chave nula. Não copia o nome do
 -- cartão de endereço (`name`) nem `recipient_name`: nenhuma tela nem função lê isso do pedido. Quem
--- lê a cópia, todos já preferindo-a ao endereço vivo: o mapper do front (`mappers.ts`), o
--- antifraude (`_shared/dados-antifraude.ts`, que lê as mesmas sete chaves) e o comprovante por e-mail
--- (`_shared/comprovante.ts`, que passa a ter o endereço mesmo depois de a cliente apagar o dela).
+-- lê a cópia: o mapper do front (`mappers.ts`), a etiqueta (`melhor-envio-etiqueta`,
+-- `extrairEnderecoDoPedido`) e o antifraude (`_shared/dados-antifraude.ts`, que lê as mesmas sete
+-- chaves) JÁ a preferem ao endereço vivo. O comprovante por e-mail (`_shared/comprovante.ts`) NÃO
+-- preferia: lia a linha atual da conta e, apagada ela, tropeçava no objeto da cópia — passa a
+-- preferi-la no mesmo PR desta migration (`fonteDoEnderecoDoComprovante`), e precisa da publicação da
+-- edge `send-order-confirmation` (e das que importam `comprovante.ts`) para valer.
 --
 -- 4. QUANDO A CÓPIA É GRAVADA — E QUANDO NÃO É
 --
@@ -104,9 +107,10 @@
 -- funções com os corpos da 20261174000000 (mesmo md5), sem tocar a ACL; os pedidos criados com a
 -- cópia ficam com ela (o rollback não reescreve dado). Com o rollback volta o defeito.
 --
--- FORA DO ESCOPO (registrado, NÃO mexido aqui): a edge `melhor-envio-etiqueta` lê o endereço ATUAL da
--- conta (não o do pedido); depois desta migration ela deve passar a ler a cópia de
--- `customer_data.address` para o pedido e a etiqueta não divergirem — é o próximo passo, separado.
+-- A ETIQUETA NÃO PRECISA MUDAR: a edge `melhor-envio-etiqueta` já lê `customer_data.address` (objeto)
+-- antes da conta (`extrairEnderecoDoPedido`) — com esta migration o pedido de quem tem conta passa a
+-- ter esse objeto, então a etiqueta e o pedido deixam de divergir sozinhos, sem tocar a edge. O
+-- fallback para o endereço atual da conta só atende o pedido ANTIGO (sem cópia, sem backfill).
 --
 -- PROVA VIVA: tests/banco/endereco-no-pedido-viva.cjs (comportamento pelo caminho real do checkout, os
 -- dois RPCs, convidada, retirada, endereço de outra pessoa, dinheiro/estoque/cupom idênticos, pedido
