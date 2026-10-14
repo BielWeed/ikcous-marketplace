@@ -201,6 +201,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="lojista-1"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
         />,
@@ -319,6 +320,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="lojista-1"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
         />,
@@ -351,7 +353,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     });
 
     expect(addProduct).toHaveBeenCalledTimes(1);
-    expect(armazem.has("ikcous_product_form_draft")).toBe(false);
+    expect(armazem.has("ikcous_product_form_draft:lojista-1")).toBe(false);
 
     // Avança além de 1s: o timer de auto-save agendado ANTES do clique
     // dispara agora.
@@ -363,7 +365,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     // instante do clique (isso já acontecia antes do conserto), mas que
     // ela continua ausente depois que o timer pendente tinha a chance de
     // regravá-la.
-    expect(armazem.has("ikcous_product_form_draft")).toBe(false);
+    expect(armazem.has("ikcous_product_form_draft:lojista-1")).toBe(false);
   });
 });
 
@@ -371,7 +373,8 @@ describe("AdminProductFormView — #98 auto-save apaga rascunho ao abrir para ed
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let armazem: Map<string, string>;
-  const draftKey = "ikcous_product_form_draft_edit_prod-edit-1";
+  // L10: o rascunho é do usuário (`:<uid>`).
+  const draftKey = "ikcous_product_form_draft_edit_prod-edit-1:lojista-1";
   const rascunhoDivergente = {
     name: "Produto Editado (rascunho não salvo)",
   };
@@ -447,6 +450,7 @@ describe("AdminProductFormView — #98 auto-save apaga rascunho ao abrir para ed
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="lojista-1"
           productId="prod-edit-1"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
@@ -579,5 +583,137 @@ describe("AdminProductFormView — #98 auto-save apaga rascunho ao abrir para ed
     // Aqui a remoção É esperada — não é o auto-save fazendo isso sozinho, é
     // a decisão explícita do usuário.
     expect(armazem.has(draftKey)).toBe(false);
+  });
+  describe("rascunho por usuário (L10)", () => {
+    const chaveDeA = "ikcous_product_form_draft_edit_prod-edit-1:admin-a";
+
+    async function abrirComo(userId: string | undefined) {
+      const { AdminProductFormView } = await import(
+        "@/views/admin/AdminProductFormView"
+      );
+      await act(async () => {
+        raiz.render(
+          <AdminProductFormView
+            productId="prod-edit-1"
+            userId={userId}
+            onNavigate={onNavigate}
+            onSetDirty={onSetDirty}
+          />,
+        );
+      });
+      await act(async () => {
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+    }
+
+    it("o rascunho de OUTRO usuário não é oferecido nem apagado", async () => {
+      armazem.delete(draftKey);
+      const deA = JSON.stringify({ name: "Do admin A" });
+      armazem.set(chaveDeA, deA);
+
+      await abrirComo("admin-b");
+
+      expect(toastInfo).not.toHaveBeenCalledWith(
+        "Rascunho não salvo encontrado para este produto",
+        expect.anything(),
+      );
+      expect(armazem.get(chaveDeA)).toBe(deA);
+    });
+
+    it("a chave ANTIGA (sem :<uid>) nunca é lida", async () => {
+      armazem.delete(draftKey);
+      armazem.set(
+        "ikcous_product_form_draft_edit_prod-edit-1",
+        JSON.stringify({ name: "Chave antiga" }),
+      );
+
+      await abrirComo("lojista-1");
+
+      expect(toastInfo).not.toHaveBeenCalledWith(
+        "Rascunho não salvo encontrado para este produto",
+        expect.anything(),
+      );
+    });
+
+    it("digitar grava só na chave do usuário", async () => {
+      vi.useFakeTimers();
+      armazem.delete(draftKey);
+      const deA = JSON.stringify({ name: "Do admin A" });
+      armazem.set(chaveDeA, deA);
+      const { AdminProductFormView } = await import(
+        "@/views/admin/AdminProductFormView"
+      );
+      await act(async () => {
+        raiz.render(
+          <AdminProductFormView
+            productId="prod-edit-1"
+            userId="admin-b"
+            onNavigate={onNavigate}
+            onSetDirty={onSetDirty}
+          />,
+        );
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        digitarInput("product-name", "Editado pelo B");
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+
+      expect(
+        JSON.parse(
+          armazem.get("ikcous_product_form_draft_edit_prod-edit-1:admin-b") ??
+            "{}",
+        ).name,
+      ).toBe("Editado pelo B");
+      expect(armazem.get(chaveDeA)).toBe(deA);
+      expect(armazem.has("ikcous_product_form_draft_edit_prod-edit-1")).toBe(
+        false,
+      );
+    });
+
+    it("SEM uid: não lê nem grava rascunho nenhum", async () => {
+      vi.useFakeTimers();
+      const { AdminProductFormView } = await import(
+        "@/views/admin/AdminProductFormView"
+      );
+      await act(async () => {
+        raiz.render(
+          <AdminProductFormView
+            productId="prod-edit-1"
+            onNavigate={onNavigate}
+            onSetDirty={onSetDirty}
+          />,
+        );
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        digitarInput("product-name", "Sem sessão");
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+
+      expect(toastInfo).not.toHaveBeenCalledWith(
+        "Rascunho não salvo encontrado para este produto",
+        expect.anything(),
+      );
+      // o rascunho do beforeEach (de lojista-1) segue intacto e nada novo foi gravado
+      expect([...armazem.keys()]).toEqual([draftKey]);
+      expect(armazem.get(draftKey)).toBe(JSON.stringify(rascunhoDivergente));
+    });
   });
 });

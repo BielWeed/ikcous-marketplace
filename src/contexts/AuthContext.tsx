@@ -117,6 +117,24 @@ let initPromise: Promise<any> | null = null;
 // remover) — igual ao que o código já fazia para `ikcous_is_admin_`: um
 // dispositivo compartilhado acumula cache de vários usuários, não só do que
 // acabou de sair.
+// L10 (12/10/2026) — os pedidos que o comprador achou por e-mail + código
+// (`sessionStorage`, gravados em OrderSearch.tsx): dado dele, e a próxima
+// pessoa na MESMA aba os via — `OrderDetailsView` lê essa chave até para quem
+// está logado. Limpa no logout E ao entrar numa conta (o visitante sem conta
+// nunca faz logout). Protegido: modo privado ou política do navegador podem
+// lançar, e nem o logout nem o login podem parar aqui.
+//
+// NÃO resolve visitante → visitante (duas pessoas na mesma aba sem nenhuma
+// conta no meio): isso pede validade do registro e é outro achado.
+function esquecerRastreioDeConvidado() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem("guest_tracked_orders");
+  } catch {
+    // sessionStorage indisponível: nada a apagar que se possa alcançar.
+  }
+}
+
 function clearLocalUserData() {
   // admin_cache-17 — os quatro caches de admin (customers/coupons/reviews/
   // questions) são variáveis de módulo em src/utils/admin_cache.ts, fora do
@@ -138,7 +156,18 @@ function clearLocalUserData() {
   // `localStorage` varrido abaixo; o próprio módulo protege o acesso (nunca
   // lança), por isso fica antes do `return` sem `window`.
   esquecerTodosOsPedidosPendentesDoCheckout();
+  esquecerRastreioDeConvidado();
   if (typeof window === "undefined") return;
+  // L10 — as FILAS offline (`orders_`/`products_offline_updates_queue:<uid>`)
+  // e os RASCUNHOS do admin (`admin_banner_form_draft:<uid>`,
+  // `admin_pdv_venda_draft:<uid>`, `ikcous_product_form_draft…:<uid>`) são
+  // por usuário e ficam de propósito: são escrita pendente legítima e
+  // trabalho em curso do dono, que os reencontra ao voltar. O que se apaga
+  // aqui são só os rascunhos de ANTES desse desenho — chave sem `:<uid>`,
+  // que nenhum código lê mais: o do PDV pode levar nome e WhatsApp de cliente.
+  localStorage.removeItem("admin_pdv_venda_draft");
+  localStorage.removeItem("admin_banner_form_draft");
+  localStorage.removeItem("ikcous_product_form_draft");
   localStorage.removeItem("marketplace_cart_v1");
   localStorage.removeItem("ikcous_recently_viewed");
   localStorage.removeItem("ikcous_is_admin");
@@ -155,7 +184,10 @@ function clearLocalUserData() {
       key?.startsWith("ikcous_is_admin_") ||
       key?.startsWith("ikcous_orders_cache_") ||
       key?.startsWith("ikcous_addresses_cache_") ||
-      key?.startsWith("ikcous_shipping_cache_")
+      key?.startsWith("ikcous_shipping_cache_") ||
+      // L10 — rascunho de edição de produto de ANTES do desenho por usuário
+      // (`…_edit_<id>`, sem `:<uid>`; o id é um UUID, nunca tem `:`).
+      (key?.startsWith("ikcous_product_form_draft_edit_") && !key.includes(":"))
     ) {
       localStorage.removeItem(key);
     }
@@ -718,6 +750,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // seguida no mesmo tablet de balcão) também precisa zerar os caches de
       // admin; sem isto, o caso coberto por `clearLocalUserData()` no
       // SIGNED_OUT (abaixo) não pegaria essa troca direta uid→uid.
+      // L10 — entrar numa conta (visitante → conta, ou troca direta A → B
+      // sem SIGNED_OUT) esquece o rastreio de convidado da aba. Só quando o
+      // usuário MUDA: o SIGNED_IN que o navegador reemite ao voltar à aba,
+      // com o mesmo usuário, não pode apagar a consulta em andamento.
+      if (
+        event === "SIGNED_IN" &&
+        currentUserId &&
+        previousUserId !== currentUserId
+      ) {
+        esquecerRastreioDeConvidado();
+      }
+
       if (previousUserId && currentUserId && previousUserId !== currentUserId) {
         limparCachesDeAdmin();
         // R12 — mesma troca uid→uid: o que a conta anterior abriu por

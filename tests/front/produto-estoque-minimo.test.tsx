@@ -215,6 +215,7 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           productId={productId}
           onNavigate={vi.fn()}
           onSetDirty={vi.fn()}
@@ -439,7 +440,7 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
   describe("e. o rascunho leva o campo junto", () => {
     it("rascunho de produto novo com estoqueMinimo 9: o campo volta com 9", async () => {
       armazem.set(
-        "ikcous_product_form_draft",
+        "ikcous_product_form_draft:u-teste",
         JSON.stringify({
           name: "Produto Teste",
           description: "Descrição de teste",
@@ -465,14 +466,14 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       });
 
       const rascunho = JSON.parse(
-        armazem.get("ikcous_product_form_draft") ?? "{}",
+        armazem.get("ikcous_product_form_draft:u-teste") ?? "{}",
       );
       expect(rascunho.estoqueMinimo).toBe("4");
     });
 
     it("rascunho de edição com estoqueMinimo diferente do banco: aparece o aviso e 'Restaurar' aplica o campo", async () => {
       armazem.set(
-        "ikcous_product_form_draft_edit_prod-1",
+        "ikcous_product_form_draft_edit_prod-1:u-teste",
         JSON.stringify({ ...produtoDoBanco, estoqueMinimo: "12" }),
       );
       await montar("prod-1");
@@ -499,7 +500,7 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
 
     it("'Descartar' o rascunho novo esvazia o campo", async () => {
       armazem.set(
-        "ikcous_product_form_draft",
+        "ikcous_product_form_draft:u-teste",
         JSON.stringify({ name: "Produto Teste", estoqueMinimo: "9" }),
       );
       await montar();

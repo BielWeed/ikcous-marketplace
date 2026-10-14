@@ -52,6 +52,11 @@ const umBanner = (extra: Partial<BannerDaLista> = {}): BannerDaLista => ({
 });
 
 const lista = vi.hoisted(() => ({ banners: [] as unknown[] }));
+// L10: o rascunho do formulário é do usuário (`admin_banner_form_draft:<uid>`).
+const sessao = vi.hoisted(() => ({ uid: "lojista-1" as string | null }));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: sessao.uid ? { id: sessao.uid } : null }),
+}));
 
 vi.mock("@/hooks/useBanners", () => ({
   useBanners: () => ({
@@ -78,7 +83,12 @@ vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { primaryColor: "#FFBF00" } }),
 }));
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), loading: vi.fn(() => "t") },
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    loading: vi.fn(() => "t"),
+  },
 }));
 
 class ObserverStub {
@@ -211,6 +221,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
 
   beforeEach(() => {
     vi.clearAllMocks();
+    sessao.uid = "lojista-1";
     lista.banners = [umBanner({ title: "Campanha Ativa" })];
     stubarDom();
     hospedeiro = document.createElement("div");
@@ -391,7 +402,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     const a = armazenamento();
     a.mapa.set(CHAVE_DO_MODO_DO_EDITOR, "simple");
     a.mapa.set(
-      "admin_banner_form_draft",
+      "admin_banner_form_draft:lojista-1",
       JSON.stringify({
         formData: { title: "Rascunho com título", link: "" },
         savedAt: new Date().toISOString(),
@@ -415,7 +426,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     const a = armazenamento();
     a.mapa.set(CHAVE_DO_MODO_DO_EDITOR, "simple");
     a.mapa.set(
-      "admin_banner_form_draft",
+      "admin_banner_form_draft:lojista-1",
       JSON.stringify({
         formData: { title: "", link: "/promo" },
         savedAt: new Date().toISOString(),
@@ -429,5 +440,63 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     await aguardarATroca();
 
     expect(emModoSimples()).toBe(true);
+  });
+  describe("rascunho do formulário — uma chave por usuário (L10)", () => {
+    const rascunho = (titulo: string) =>
+      JSON.stringify({
+        formData: { title: titulo, link: "" },
+        savedAt: new Date().toISOString(),
+      });
+
+    it("o rascunho de OUTRO usuário não é oferecido nem apagado", async () => {
+      const a = armazenamento();
+      const deA = rascunho("Do admin A");
+      a.mapa.set("admin_banner_form_draft:admin-a", deA);
+      vi.stubGlobal("localStorage", a.api);
+      sessao.uid = "admin-b";
+      await montar();
+      await abrirNovo();
+
+      expect(botao("Recuperar")).toBeUndefined();
+      expect(a.mapa.get("admin_banner_form_draft:admin-a")).toBe(deA);
+    });
+
+    it("o rascunho do PRÓPRIO usuário é oferecido, e descartar apaga só o dele", async () => {
+      const a = armazenamento();
+      const deA = rascunho("Do admin A");
+      a.mapa.set("admin_banner_form_draft:admin-a", deA);
+      a.mapa.set("admin_banner_form_draft:admin-b", rascunho("Do admin B"));
+      vi.stubGlobal("localStorage", a.api);
+      sessao.uid = "admin-b";
+      await montar();
+      await abrirNovo();
+
+      expect(botao("Recuperar")).toBeDefined();
+      await clicar(botao("Descartar"));
+
+      expect(a.mapa.has("admin_banner_form_draft:admin-b")).toBe(false);
+      expect(a.mapa.get("admin_banner_form_draft:admin-a")).toBe(deA);
+    });
+
+    it("a chave ANTIGA (sem :<uid>) nunca é lida", async () => {
+      const a = armazenamento();
+      a.mapa.set("admin_banner_form_draft", rascunho("Chave antiga"));
+      vi.stubGlobal("localStorage", a.api);
+      await montar();
+      await abrirNovo();
+
+      expect(botao("Recuperar")).toBeUndefined();
+    });
+
+    it("sem uid: nenhum rascunho é oferecido", async () => {
+      const a = armazenamento();
+      a.mapa.set("admin_banner_form_draft:admin-a", rascunho("Do admin A"));
+      vi.stubGlobal("localStorage", a.api);
+      sessao.uid = null;
+      await montar();
+      await abrirNovo();
+
+      expect(botao("Recuperar")).toBeUndefined();
+    });
   });
 });

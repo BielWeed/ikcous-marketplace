@@ -50,6 +50,11 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
+// L10: o rascunho do caixa é do usuário (`admin_pdv_venda_draft:<uid>`).
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "lojista-1" }, isAdmin: true }),
+}));
+
 // O mesmo dublê pedido pela tarefa C3.2 e reaproveitado por C3.3: um botão
 // "bipar" que chama `aoLer` com o código que o teste armou — nenhum destes
 // casos precisa de câmera.
@@ -345,7 +350,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     expect(typeof params.p_idempotency_key).toBe("string");
 
     expect(hospedeiro.textContent).toContain("Compra na loja");
-    expect(localStorage.getItem("admin_pdv_venda_draft")).toBeNull();
+    expect(localStorage.getItem("admin_pdv_venda_draft:lojista-1")).toBeNull();
 
     expect(invokeMock).toHaveBeenCalledWith("send-order-confirmation", {
       body: { orderId: "11111111-1111-1111-1111-111111111111" },
@@ -446,7 +451,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     // fechamento enquanto a etapa não é "recibo" (AdminPdvView.tsx).
     expect(hospedeiro.textContent).toContain("Camiseta Lisa");
 
-    const bruto = localStorage.getItem("admin_pdv_venda_draft");
+    const bruto = localStorage.getItem("admin_pdv_venda_draft:lojista-1");
     expect(bruto).toBeTruthy();
     const rascunho = JSON.parse(bruto as string);
     expect(rascunho.itens).toHaveLength(1);
@@ -632,7 +637,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     expect(botaoRegistrar.disabled).toBe(true);
 
     const chaveQueimada = JSON.parse(
-      localStorage.getItem("admin_pdv_venda_draft") as string,
+      localStorage.getItem("admin_pdv_venda_draft:lojista-1") as string,
     ).chaveDeIdempotencia as string;
 
     const botaoNovaVenda = localizarBotaoPorTexto(

@@ -246,6 +246,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           productId={productId}
           onNavigate={vi.fn()}
           onSetDirty={vi.fn()}
@@ -404,7 +405,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
   describe("b. erro em seção fechada abre e foca", () => {
     function guardarRascunho(campos: Record<string, unknown>) {
       armazem.set(
-        "ikcous_product_form_draft",
+        "ikcous_product_form_draft:u-teste",
         JSON.stringify({
           name: "Produto Teste",
           description: "Descrição de teste",
@@ -540,7 +541,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
 
     it("produto novo com RASCUNHO que tem variação: 'Variações' abre quando o rascunho é aplicado", async () => {
       armazem.set(
-        "ikcous_product_form_draft",
+        "ikcous_product_form_draft:u-teste",
         JSON.stringify({
           name: "Produto Teste",
           description: "Descrição de teste",
@@ -561,7 +562,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
 
     it("produto novo com rascunho SEM variação: 'Variações' fechada", async () => {
       armazem.set(
-        "ikcous_product_form_draft",
+        "ikcous_product_form_draft:u-teste",
         JSON.stringify({ name: "Produto Teste", variants: [] }),
       );
       await montar();
@@ -574,7 +575,7 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
 
     it("'Restaurar' o rascunho de um produto salvo sem variações, com variação no rascunho, abre 'Variações'", async () => {
       armazem.set(
-        "ikcous_product_form_draft_edit_prod-1",
+        "ikcous_product_form_draft_edit_prod-1:u-teste",
         JSON.stringify({ ...produtoDoBanco, variants: [variacao] }),
       );
       await montar("prod-1");

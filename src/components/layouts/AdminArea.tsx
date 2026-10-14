@@ -268,6 +268,9 @@ interface AdminAreaProps {
   readonly handleAdminUserDetailBack: () => void;
   readonly backOverride: (() => void) | null;
   readonly isTransitionSupported: boolean;
+  /** L10 — uid de quem está no painel: os rascunhos de formulário (produto)
+   *  são por usuário. Ausente = a tela não lê nem grava rascunho. */
+  readonly userId?: string;
 }
 
 export function AdminArea({
@@ -279,6 +282,7 @@ export function AdminArea({
   handleAdminUserDetailBack,
   backOverride,
   isTransitionSupported,
+  userId,
 }: AdminAreaProps) {
   const isMainTab = [
     "admin-dashboard",
@@ -562,6 +566,7 @@ export function AdminArea({
                             productId: selectedProductId || undefined,
                             onNavigate: onNavigate,
                             onSetDirty: setIsAdminDirty,
+                            userId,
                           }}
                         />
                       </LocalErrorBoundary>

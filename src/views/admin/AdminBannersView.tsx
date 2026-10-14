@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
+import { useAuth } from "@/hooks/useAuth";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
 import { useCoupons } from "@/hooks/useCoupons";
@@ -41,6 +42,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import {
   gravarModoDoEditor,
   lerModoDoEditor,
@@ -684,6 +686,13 @@ export const AdminBannersView = memo(function AdminBannersView({
     refreshBanners,
   } = useBanners(true);
   const { products } = useProducts();
+  // L10 — o rascunho do formulário é do USUÁRIO (`admin_banner_form_draft:<uid>`):
+  // cada admin só lê, grava e apaga o dele. Sem uid não há chave, e a tela
+  // não lê nem grava rascunho (nunca cai numa chave compartilhada).
+  const { user } = useAuth();
+  const chaveDoRascunho = user?.id
+    ? chaveDoUsuario("admin_banner_form_draft", user.id)
+    : null;
   useCoupons(true);
   const { categories } = useCategories();
 
@@ -1327,8 +1336,8 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   // Check for drafts when dialog opens
   useEffect(() => {
-    if (isDialogOpen) {
-      const savedDraft = localStorage.getItem("admin_banner_form_draft");
+    if (isDialogOpen && chaveDoRascunho) {
+      const savedDraft = localStorage.getItem(chaveDoRascunho);
       if (savedDraft) {
         try {
           const parsed = JSON.parse(savedDraft);
@@ -1347,11 +1356,11 @@ export const AdminBannersView = memo(function AdminBannersView({
     } else {
       setDraftToRecover(null);
     }
-  }, [isDialogOpen, editingBanner]);
+  }, [isDialogOpen, editingBanner, chaveDoRascunho]);
 
   // Debounced auto-save effect
   useEffect(() => {
-    if (!isDialogOpen || isSavedRef.current) return;
+    if (!isDialogOpen || isSavedRef.current || !chaveDoRascunho) return;
 
     const defaultPosition =
       editingBanner?.position ||
@@ -1375,14 +1384,18 @@ export const AdminBannersView = memo(function AdminBannersView({
         editingBannerId: editingBanner?.id || undefined,
         savedAt: new Date().toISOString(),
       };
-      localStorage.setItem(
-        "admin_banner_form_draft",
-        JSON.stringify(draftData),
-      );
+      localStorage.setItem(chaveDoRascunho, JSON.stringify(draftData));
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [formData, isDialogOpen, editingBanner, banners, selectedTab]);
+  }, [
+    formData,
+    isDialogOpen,
+    editingBanner,
+    banners,
+    selectedTab,
+    chaveDoRascunho,
+  ]);
 
   // O toque no alternador troca o modo E o lembra neste aparelho. Abrir o
   // editor nunca grava: só a escolha do lojista vira preferência.
@@ -1497,15 +1510,14 @@ export const AdminBannersView = memo(function AdminBannersView({
           // O rascunho pode apontar para a URL recém-apagada — limpa o
           // campo para a recuperação não restaurar uma imagem morta.
           try {
-            const bruto = localStorage.getItem("admin_banner_form_draft");
-            if (bruto) {
+            const bruto = chaveDoRascunho
+              ? localStorage.getItem(chaveDoRascunho)
+              : null;
+            if (chaveDoRascunho && bruto) {
               const rascunho = JSON.parse(bruto);
               if (rascunho?.formData?.imageUrl === formData.imageUrl) {
                 rascunho.formData.imageUrl = "";
-                localStorage.setItem(
-                  "admin_banner_form_draft",
-                  JSON.stringify(rascunho),
-                );
+                localStorage.setItem(chaveDoRascunho, JSON.stringify(rascunho));
               }
             }
           } catch {
@@ -1730,7 +1742,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         await addBanner(dataToSubmit as Required<Omit<Banner, "id">>);
       }
       isSavedRef.current = true;
-      localStorage.removeItem("admin_banner_form_draft");
+      if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Erro ao salvar banner:", error);
@@ -2623,7 +2635,8 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <button
                     type="button"
                     onClick={() => {
-                      localStorage.removeItem("admin_banner_form_draft");
+                      if (chaveDoRascunho)
+                        localStorage.removeItem(chaveDoRascunho);
                       setDraftToRecover(null);
                       toast.info("Rascunho descartado.");
                     }}

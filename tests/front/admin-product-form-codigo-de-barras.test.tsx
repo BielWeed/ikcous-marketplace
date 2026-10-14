@@ -277,6 +277,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
         />,
@@ -292,6 +293,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           productId="prod-edit-1"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
@@ -508,7 +510,7 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
       await vi.advanceTimersByTimeAsync(1100);
     });
 
-    const gravado = armazem.get("ikcous_product_form_draft");
+    const gravado = armazem.get("ikcous_product_form_draft:u-teste");
     expect(gravado).toBeDefined();
     expect(JSON.parse(gravado!).codigoBarras).toBe("7891234567890");
 
@@ -617,6 +619,7 @@ describe("AdminProductFormView — C5.2 ressalva da revisão: salvar espera a ch
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}
         />,
@@ -759,6 +762,7 @@ describe("AdminProductFormView — C5.2 ressalva da revisão: erro da variação
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          userId="u-teste"
           productId="prod-edit-1"
           onNavigate={onNavigate}
           onSetDirty={onSetDirty}

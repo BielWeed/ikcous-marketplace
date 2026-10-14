@@ -59,7 +59,8 @@ import {
 // address-form-cep-race.test.tsx.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const CHAVE_DO_RASCUNHO = "admin_pdv_venda_draft";
+// L10: o rascunho é do usuário (`:<uid>`) — estes testes são do `lojista-1`.
+const CHAVE_DO_RASCUNHO = "admin_pdv_venda_draft:lojista-1";
 
 function criarArmazenamentoEmMemoria() {
   const mapa = new Map<string, string>();
@@ -121,6 +122,7 @@ describe("useVendaPresencial — o rascunho do caixa não pode reviver uma venda
         <Sonda
           opcoes={{
             armazenamento,
+            userId: "lojista-1",
             gerarChave: () => "chave-fixa",
             atrasoDeGravacaoMs: 50,
           }}
@@ -201,6 +203,7 @@ describe("useVendaPresencial — o rascunho do caixa não pode reviver uma venda
         <Sonda
           opcoes={{
             armazenamento,
+            userId: "lojista-1",
             gerarChave: () => "K1",
             atrasoDeGravacaoMs: 50,
           }}
@@ -232,6 +235,7 @@ describe("useVendaPresencial — o rascunho do caixa não pode reviver uma venda
         <Sonda
           opcoes={{
             armazenamento,
+            userId: "lojista-1",
             gerarChave: () => "K2",
             atrasoDeGravacaoMs: 50,
           }}
@@ -282,6 +286,7 @@ describe("useVendaPresencial — o rascunho do caixa não pode reviver uma venda
         <Sonda
           opcoes={{
             armazenamento,
+            userId: "lojista-1",
             gerarChave: () => "K-NOVA",
             atrasoDeGravacaoMs: 300,
           }}
@@ -322,6 +327,7 @@ describe("useVendaPresencial — o rascunho do caixa não pode reviver uma venda
         <Sonda
           opcoes={{
             armazenamento,
+            userId: "lojista-1",
             gerarChave: () => "K-NOVA-2",
             atrasoDeGravacaoMs: 300,
           }}

@@ -40,7 +40,7 @@ const mock = vi.hoisted(() => ({
 const RESULTADO_PADRAO = { data: {}, error: null };
 
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ isAdmin: true }),
+  useAuth: () => ({ user: { id: "lojista-1" }, isAdmin: true }),
 }));
 
 vi.mock("@/contexts/StoreContext", () => ({

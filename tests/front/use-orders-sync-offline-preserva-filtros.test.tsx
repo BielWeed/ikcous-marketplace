@@ -33,6 +33,12 @@ function builderDaReleitura() {
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    // L10: a sessão é conferida antes de cada envio.
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "lojista-1" } } },
+      }),
+    },
     functions: { invoke: vi.fn() },
     rpc,
     from: vi.fn(() => builderDaReleitura()),
@@ -67,7 +73,7 @@ vi.mock("@/hooks/useAnalytics", () => ({ clearAnalyticsCache: () => {} }));
 // dos outros testes de componente deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const chave = "orders_offline_updates_queue";
+const chave = "orders_offline_updates_queue:lojista-1";
 const itemDaFila = {
   orderId: "pedido-A",
   status: "processing",
@@ -134,6 +140,9 @@ async function montarSondaAdmin(): Promise<{
 describe("useOrders-2867 — sincronizar a fila offline preserva filtros e página do painel", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // L10: itens com mais de 72 h não são enviados — o relógio dos testes
+    // fica perto dos `timestamp` pequenos das fixtures.
+    vi.setSystemTime(1_000);
     rpc.mockReset();
     instalarRpc();
     armazem = new Map();

@@ -21,6 +21,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const auth = vi.hoisted(() => ({ id: "cliente-1" }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    // L10: a sessão é conferida antes de cada envio.
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: auth.id } } },
+      }),
+    },
     functions: { invoke: vi.fn() },
     rpc: vi.fn(() => Promise.resolve({ data: null, error: null })),
     from: () => ({
@@ -54,14 +60,17 @@ vi.mock("@/hooks/useAnalytics", () => ({ clearAnalyticsCache: () => {} }));
 // dos outros testes de componente deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const CHAVE_DA_FILA = "orders_offline_updates_queue";
+// L10: a fila é por usuário (`:<uid>`); a contagem olha o prefixo.
+const CHAVE_DA_FILA = "orders_offline_updates_queue:";
 
 let host: HTMLDivElement;
 let raiz: Root;
 let getItem: ReturnType<typeof vi.fn>;
 
 function leituraDaFila(): number {
-  return getItem.mock.calls.filter(([chave]) => chave === CHAVE_DA_FILA).length;
+  return getItem.mock.calls.filter(([chave]) =>
+    String(chave).startsWith(CHAVE_DA_FILA),
+  ).length;
 }
 
 // A MESMA função de componente nas duas renderizações: trocar a função
@@ -91,6 +100,9 @@ describe("useOrders: troca de user?.id com o timer da fila offline pendente", ()
     auth.id = "cliente-1";
     montagens = 0;
     vi.useFakeTimers();
+    // L10: itens com mais de 72 h não são enviados — o relógio dos testes
+    // fica perto dos `timestamp` pequenos das fixtures.
+    vi.setSystemTime(1_000);
     getItem = vi.fn(() => null);
     vi.stubGlobal("localStorage", {
       getItem,

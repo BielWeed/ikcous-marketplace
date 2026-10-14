@@ -221,7 +221,11 @@ describe("AdminProductFormView — foto e grade não prendem a lojista em silên
     );
     await act(async () => {
       raiz.render(
-        <AdminProductFormView onNavigate={onNavigate} onSetDirty={vi.fn()} />,
+        <AdminProductFormView
+          userId="u-teste"
+          onNavigate={onNavigate}
+          onSetDirty={vi.fn()}
+        />,
       );
     });
     await act(async () => {
@@ -400,8 +404,8 @@ describe("AdminProductFormView — foto e grade não prendem a lojista em silên
           "Este SKU já está em outra variação da loja. Cada variação precisa de um SKU diferente.",
       },
     };
-    const CHAVE_NOVO = "ikcous_product_form_draft";
-    const CHAVE_EDICAO = "ikcous_product_form_draft_edit_p-1";
+    const CHAVE_NOVO = "ikcous_product_form_draft:u-teste";
+    const CHAVE_EDICAO = "ikcous_product_form_draft_edit_p-1:u-teste";
 
     async function publicarComGradeFalha() {
       mocks.addProduct.mockResolvedValueOnce({ id: "p-1", ...grade });
@@ -484,7 +488,11 @@ describe("AdminProductFormView — foto e grade não prendem a lojista em silên
       );
       await act(async () => {
         raiz.render(
-          <AdminProductFormView onNavigate={onNavigate} onSetDirty={vi.fn()} />,
+          <AdminProductFormView
+            userId="u-teste"
+            onNavigate={onNavigate}
+            onSetDirty={vi.fn()}
+          />,
         );
         await new Promise((r) => setTimeout(r, 1300));
       });
@@ -538,6 +546,7 @@ describe("AdminProductFormView — foto e grade não prendem a lojista em silên
       await act(async () => {
         raiz.render(
           <AdminProductFormView
+            userId="u-teste"
             productId="p-1"
             onNavigate={onNavigate}
             onSetDirty={vi.fn()}
@@ -587,6 +596,7 @@ describe("AdminProductFormView — foto e grade não prendem a lojista em silên
       await act(async () => {
         raiz.render(
           <AdminProductFormView
+            userId="u-teste"
             productId="p-1"
             onNavigate={onNavigate}
             onSetDirty={vi.fn()}

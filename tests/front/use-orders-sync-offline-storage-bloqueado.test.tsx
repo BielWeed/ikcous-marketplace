@@ -46,6 +46,12 @@ function builderDaReleitura() {
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    // L10: a sessão é conferida antes de cada envio.
+    auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: "lojista-1" } } },
+      }),
+    },
     functions: { invoke: vi.fn() },
     rpc,
     from: vi.fn(() => builderDaReleitura()),
@@ -80,7 +86,7 @@ vi.mock("@/hooks/useAnalytics", () => ({ clearAnalyticsCache: () => {} }));
 // dos outros testes de componente deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const CHAVE_DA_FILA = "orders_offline_updates_queue";
+const CHAVE_DA_FILA = "orders_offline_updates_queue:lojista-1";
 const ID_DO_TOAST = "toast-id";
 const itemA = { orderId: "pedido-A", status: "processing", silent: false };
 const itemB = { orderId: "pedido-B", status: "processing", silent: false };
@@ -224,6 +230,9 @@ function nenhumToastDaSincronizacao() {
 describe("useOrders — sincronização offline com armazenamento indisponível", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // L10: itens com mais de 72 h não são enviados — o relógio dos testes
+    // fica perto dos `timestamp` pequenos das fixtures.
+    vi.setSystemTime(1_000);
     rpc.mockReset();
     instalarRpc();
     armazem = new Map();

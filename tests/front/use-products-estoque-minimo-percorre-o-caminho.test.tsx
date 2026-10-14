@@ -34,10 +34,10 @@ const mock = vi.hoisted(() => ({
 }));
 
 const RESULTADO_PADRAO = { data: {}, error: null };
-const FILA = "products_offline_updates_queue";
+const FILA = "products_offline_updates_queue:lojista-1";
 
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ isAdmin: true }),
+  useAuth: () => ({ user: { id: "lojista-1" }, isAdmin: true }),
 }));
 
 vi.mock("@/contexts/StoreContext", () => ({
@@ -87,7 +87,12 @@ vi.mock("@/lib/supabase", () => ({
       update: (payload: any) => encadear(registrar(tabela, "update", payload)),
       upsert: (payload: any) => encadear(registrar(tabela, "upsert", payload)),
     }),
-    auth: { refreshSession: vi.fn() },
+    auth: {
+      refreshSession: vi.fn(),
+      getSession: async () => ({
+        data: { session: { user: { id: "lojista-1" } } },
+      }),
+    },
   },
 }));
 
@@ -211,7 +216,11 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       localStorage.setItem(
         FILA,
         JSON.stringify([
-          { id: "prod-1", updates: { estoqueMinimo: 7 }, timestamp: 1 },
+          {
+            id: "prod-1",
+            updates: { estoqueMinimo: 7 },
+            timestamp: Date.now(),
+          },
         ]),
       );
       await sincronizar();
@@ -223,7 +232,11 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       localStorage.setItem(
         FILA,
         JSON.stringify([
-          { id: "prod-1", updates: { estoqueMinimo: 0 }, timestamp: 1 },
+          {
+            id: "prod-1",
+            updates: { estoqueMinimo: 0 },
+            timestamp: Date.now(),
+          },
         ]),
       );
       await sincronizar();
@@ -235,7 +248,11 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       localStorage.setItem(
         FILA,
         JSON.stringify([
-          { id: "prod-1", updates: { estoqueMinimo: null }, timestamp: 1 },
+          {
+            id: "prod-1",
+            updates: { estoqueMinimo: null },
+            timestamp: Date.now(),
+          },
         ]),
       );
       await sincronizar();
@@ -247,7 +264,11 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       localStorage.setItem(
         FILA,
         JSON.stringify([
-          { id: "prod-1", updates: { name: "Só o nome" }, timestamp: 1 },
+          {
+            id: "prod-1",
+            updates: { name: "Só o nome" },
+            timestamp: Date.now(),
+          },
         ]),
       );
       await sincronizar();
