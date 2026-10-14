@@ -255,6 +255,103 @@ describe("ProductView — galeria e quantidade acompanham a variação", () => {
       expect(fotoPrincipalMostra(hospedeiro, "so-da-cor-azul.jpg")).toBe(true);
     });
 
+    describe("qual bolinha e qual miniatura acendem", () => {
+      const FOTO_D = "https://exemplo.test/fotos/foto-d.jpg";
+      const FOTO_FORA = "https://exemplo.test/fotos/fora-da-galeria.jpg";
+
+      // Verde tem a foto C (a 3ª da galeria); Azul tem uma foto que NÃO está
+      // entre as fotos do produto; Preta não tem foto.
+      const produtoComQuatroFotos = () =>
+        umProduto({
+          images: [FOTO_A, FOTO_B, FOTO_C, FOTO_D],
+          variants: [
+            variacaoDeCor("v-verde", "Verde", FOTO_C),
+            variacaoDeCor("v-azul", "Azul", FOTO_FORA),
+            variacaoDeCor("v-preta", "Preta"),
+          ],
+        });
+
+      const acesos = (prefixo: string) =>
+        [...hospedeiro.querySelectorAll(`button[aria-label^="${prefixo}"]`)]
+          .filter((b) => b.getAttribute("aria-current") === "true")
+          .map((b) => b.getAttribute("aria-label"));
+
+      it("foto da variação que ESTÁ na galeria: a bolinha dela acende e a foto aparece", async () => {
+        await montar(produtoComQuatroFotos());
+
+        await tocar(botaoDaOpcao(hospedeiro, "Verde"));
+
+        expect(fotoPrincipalMostra(hospedeiro, "foto-c.jpg")).toBe(true);
+        expect(acesos("Foto ")).toEqual(["Foto 3 de 4"]);
+      });
+
+      it("navegar a partir da foto da variação segue a ordem da galeria", async () => {
+        await montar(produtoComQuatroFotos());
+        await tocar(botaoDaOpcao(hospedeiro, "Verde"));
+
+        await tocar(botaoPorRotulo(hospedeiro, "Próxima foto"));
+        expect(acesos("Foto ")).toEqual(["Foto 4 de 4"]);
+
+        await tocar(botaoPorRotulo(hospedeiro, "Foto anterior"));
+        await tocar(botaoPorRotulo(hospedeiro, "Foto anterior"));
+        expect(acesos("Foto ")).toEqual(["Foto 2 de 4"]);
+        expect(fotoPrincipalMostra(hospedeiro, "foto-b.jpg")).toBe(true);
+      });
+
+      it("foto da variação FORA da galeria: nenhuma bolinha acende, 'Próxima' vai para a 1ª e 'Anterior' para a última", async () => {
+        await montar(produtoComQuatroFotos());
+
+        await tocar(botaoDaOpcao(hospedeiro, "Azul"));
+        expect(fotoPrincipalMostra(hospedeiro, "fora-da-galeria.jpg")).toBe(
+          true,
+        );
+        expect(acesos("Foto ")).toEqual([]);
+
+        await tocar(botaoPorRotulo(hospedeiro, "Próxima foto"));
+        expect(acesos("Foto ")).toEqual(["Foto 1 de 4"]);
+
+        // Volta a destacar a foto da Azul (passando por outra variação) e usa
+        // "Anterior": sem foto ativa na galeria, vai para a ÚLTIMA.
+        await tocar(botaoDaOpcao(hospedeiro, "Verde"));
+        await tocar(botaoDaOpcao(hospedeiro, "Azul"));
+        expect(fotoPrincipalMostra(hospedeiro, "fora-da-galeria.jpg")).toBe(
+          true,
+        );
+        await tocar(botaoPorRotulo(hospedeiro, "Foto anterior"));
+        expect(acesos("Foto ")).toEqual(["Foto 4 de 4"]);
+      });
+
+      it("ida e volta entre variações destaca sempre a foto da variação escolhida", async () => {
+        await montar(produtoComQuatroFotos());
+        await tocar(botaoDaOpcao(hospedeiro, "Verde"));
+        await tocar(botaoPorRotulo(hospedeiro, "Foto 1 de 4"));
+        expect(fotoPrincipalMostra(hospedeiro, "foto-a.jpg")).toBe(true);
+
+        await tocar(botaoDaOpcao(hospedeiro, "Azul"));
+        expect(fotoPrincipalMostra(hospedeiro, "fora-da-galeria.jpg")).toBe(
+          true,
+        );
+
+        await tocar(botaoDaOpcao(hospedeiro, "Verde"));
+        expect(acesos("Foto ")).toEqual(["Foto 3 de 4"]);
+      });
+
+      it("no computador, a miniatura da foto da variação é a ativa", async () => {
+        vi.stubGlobal("matchMedia", (consulta: string) => ({
+          matches: consulta === "(min-width: 1024px)",
+          addEventListener() {},
+          removeEventListener() {},
+          addListener() {},
+          removeListener() {},
+        }));
+        await montar(produtoComQuatroFotos());
+
+        await tocar(botaoDaOpcao(hospedeiro, "Verde"));
+
+        expect(acesos("Ver foto")).toEqual(["Ver foto 3 de 4"]);
+      });
+    });
+
     it("produto com uma foto só continua sem setas nem bolinhas", async () => {
       await montar(
         umProduto({
