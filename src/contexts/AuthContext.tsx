@@ -1,4 +1,5 @@
 import { pedirAoSwPurgarArquivosPrivados } from "@/lib/arquivo-publico-do-storage";
+import { esquecerAdiamentoDosAvisos } from "@/lib/avisos-do-aparelho";
 import { cpfValido } from "@/lib/cpf";
 import { gravarCpfDaConta } from "@/lib/cpf-da-conta";
 import {
@@ -168,6 +169,11 @@ function clearLocalUserData() {
   // chegar neste aparelho. O "Sair" feito aqui já cancelou antes (com
   // servidor); isto cobre o resto. Disparar-e-esquecer, nunca lança.
   void soltarInscricaoDoAparelho();
+  // O "Agora não" do cartão de avisos do Início é do APARELHO no nome de quem
+  // o tocou. Aparelho descadastrado + adiamento vivo = o alarme que existe
+  // para pegar exatamente este caso (Sair e Entrar) ficaria calado por até 7
+  // dias. Nunca lança.
+  esquecerAdiamentoDosAvisos();
   // Recarga do checkout (04/10/2026): o id do pedido em pagamento que a aba
   // guarda para o PIX sobreviver ao F5 (src/lib/pedido-pendente-do-checkout.ts)
   // é da sessão de quem saiu. Mora no `sessionStorage`, não no
@@ -857,6 +863,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // E a inscrição de push do aparelho era da anterior: a sessão agora é
         // da nova, que não pode apagar a linha dela — só soltar o navegador.
         void soltarInscricaoDoAparelho();
+        // E o "Agora não" do cartão de avisos era da conta anterior.
+        esquecerAdiamentoDosAvisos();
       }
 
       // Only set loading screen for explicit critical transitions (login/logout).

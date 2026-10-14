@@ -11,6 +11,7 @@ import {
   PRAZO_DO_ADIAMENTO_DOS_AVISOS_MS,
   adiamentoEstaValendo,
   adiarOsAvisos,
+  esquecerAdiamentoDosAvisos,
   lerAdiamentoDosAvisos,
   passosParaLiberarOsAvisos,
   situacaoDosAvisos,
@@ -63,9 +64,9 @@ describe("situacaoDosAvisos", () => {
       "ligar",
     ],
     [
-      "iPhone instalado mas antigo demais para aviso",
+      "iPhone instalado mas antigo demais para aviso: o caminho é atualizar o iOS",
       { ehApple: true, instalado: true, isSupported: false },
-      "sem-suporte",
+      "ios-antigo",
     ],
     [
       "Android instalado sem inscrição: liga",
@@ -109,6 +110,20 @@ describe("passos escritos para quem não é do ramo", () => {
     expect(apple.join(" ")).toContain("Loja X");
     expect(new Set([aba[0], android[0], apple[0]]).size).toBe(3);
   });
+
+  it("o último passo manda VOLTAR e ligar — não promete que o cartão some sozinho", () => {
+    for (const onde of [
+      { instalado: false, ehApple: false },
+      { instalado: true, ehApple: false },
+      { instalado: true, ehApple: true },
+    ]) {
+      const passos = passosParaLiberarOsAvisos(onde, "Loja X");
+      const ultimo = passos.at(-1) ?? "";
+      expect(ultimo).toContain("volte aqui");
+      expect(ultimo).toContain("Ligar avisos neste aparelho");
+      expect(passos.join(" ")).not.toContain("some sozinho");
+    }
+  });
 });
 
 describe("o adiamento (Agora não)", () => {
@@ -133,6 +148,18 @@ describe("o adiamento (Agora não)", () => {
     localStorage.setItem(CHAVE_DO_ADIAMENTO_DOS_AVISOS, "talvez");
     expect(lerAdiamentoDosAvisos()).toBeNull();
     expect(adiamentoEstaValendo(null, 5)).toBe(false);
+  });
+
+  it("esquecer o adiamento apaga a chave, e sem armazenamento não lança", () => {
+    adiarOsAvisos(1_000);
+    esquecerAdiamentoDosAvisos();
+    expect(lerAdiamentoDosAvisos()).toBeNull();
+    expect(localStorage.getItem(CHAVE_DO_ADIAMENTO_DOS_AVISOS)).toBeNull();
+
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("bloqueado");
+    });
+    expect(() => esquecerAdiamentoDosAvisos()).not.toThrow();
   });
 
   it("armazenamento bloqueado não lança", () => {

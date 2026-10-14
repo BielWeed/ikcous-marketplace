@@ -48,6 +48,8 @@ export type SituacaoDosAvisos =
   | "ligados"
   /** iPhone/iPad fora do app instalado: o iOS só entrega aviso a app instalado. */
   | "instalar-no-ios"
+  /** iPhone/iPad com o app instalado, mas com iOS velho demais para aviso. */
+  | "ios-antigo"
   /** Este navegador não tem como receber aviso. */
   | "sem-suporte"
   /** A pessoa escolheu Bloquear: só se resolve nas configurações. */
@@ -72,7 +74,10 @@ export function situacaoDosAvisos(e: EntradaDaSituacao): SituacaoDosAvisos {
   // O iOS só deixa um app instalado receber aviso — e fora dele o Safari nem
   // oferece o botão. Vale antes do "sem suporte": é ele que explica o caminho.
   if (e.ehApple && !e.instalado) return "instalar-no-ios";
-  if (!e.isSupported) return "sem-suporte";
+  // Já instalado e mesmo assim sem push: o aparelho é que não sabe (o aviso
+  // de app instalado chegou ao iOS/iPadOS 16.4) — o conserto é atualizar o
+  // sistema, não trocar de navegador.
+  if (!e.isSupported) return e.ehApple ? "ios-antigo" : "sem-suporte";
   if (e.permission === "denied") return "bloqueado";
   return "ligar";
 }
@@ -96,7 +101,7 @@ export function passosParaLiberarOsAvisos(
   nomeDoApp: string,
 ): string[] {
   const voltar =
-    "Feche e abra o painel de novo — o cartão some sozinho quando os avisos voltarem.";
+    "Depois de liberar, volte aqui e toque em Ligar avisos neste aparelho.";
   if (onde.instalado && onde.ehApple) {
     return [
       "Abra os Ajustes do aparelho.",
@@ -143,6 +148,20 @@ export function adiarOsAvisos(agora: number): number {
     // Sem armazenamento o cartão some só nesta visita.
   }
   return ate;
+}
+
+/**
+ * Zera o "Agora não". Chamado onde o app descadastra o aparelho da conta (o
+ * Sair, o fim de sessão vindo de fora e a troca direta de conta): sem isso o
+ * alarme "este aparelho não recebe aviso" ficaria calado depois de Sair e
+ * Entrar, que é justamente o caso que ele existe para pegar. Nunca lança.
+ */
+export function esquecerAdiamentoDosAvisos(): void {
+  try {
+    localStorage.removeItem(CHAVE_DO_ADIAMENTO_DOS_AVISOS);
+  } catch {
+    // Sem armazenamento (ou sem `window`) não há adiamento a esquecer.
+  }
 }
 
 export function adiamentoEstaValendo(

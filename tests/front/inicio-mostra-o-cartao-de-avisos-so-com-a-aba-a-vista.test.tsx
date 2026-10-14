@@ -11,7 +11,13 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/admin/inicio/CartaoDeAvisosDoAparelho", () => ({
-  CartaoDeAvisosDoAparelho: () => <div data-testid="cartao-de-avisos" />,
+  CartaoDeAvisosDoAparelho: ({ aoFechar }: { aoFechar?: () => void }) => (
+    <div data-testid="cartao-de-avisos">
+      <button type="button" data-testid="fechar-o-cartao" onClick={aoFechar}>
+        fechar
+      </button>
+    </div>
+  ),
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -77,6 +83,23 @@ describe("Início — cartão de avisos do aparelho", () => {
     expect(
       hospedeiro.querySelector('[data-testid="cartao-de-avisos"]'),
     ).not.toBeNull();
+  });
+
+  it("ao fechar o cartão, o foco vai para o título do Início (não se perde no corpo da página)", async () => {
+    await montar(true);
+    const fechar = hospedeiro.querySelector<HTMLButtonElement>(
+      '[data-testid="fechar-o-cartao"]',
+    );
+    fechar?.focus();
+    expect(document.activeElement).toBe(fechar);
+
+    await act(async () => {
+      fechar?.click();
+    });
+
+    const titulo = hospedeiro.querySelector("h1");
+    expect(titulo).not.toBeNull();
+    expect(document.activeElement).toBe(titulo);
   });
 
   it("com o Início montado mas fora de vista, o cartão não existe", async () => {

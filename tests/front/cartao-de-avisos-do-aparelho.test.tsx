@@ -124,12 +124,12 @@ describe("CartaoDeAvisosDoAparelho", () => {
     }
   });
 
-  async function montar() {
+  async function montar(props: { aoFechar?: () => void } = {}) {
     const { CartaoDeAvisosDoAparelho } = await import(
       "@/components/admin/inicio/CartaoDeAvisosDoAparelho"
     );
     await act(async () => {
-      raiz.render(<CartaoDeAvisosDoAparelho />);
+      raiz.render(<CartaoDeAvisosDoAparelho {...props} />);
     });
     return CartaoDeAvisosDoAparelho;
   }
@@ -393,8 +393,14 @@ describe("CartaoDeAvisosDoAparelho", () => {
       expect(document.activeElement).toBe(botao(TESTE));
     });
 
-    it("se o hook recusar, o cartão continua, com o resultado dito", async () => {
-      hook.subscribe.mockRejectedValue(new Error("recusou"));
+    it("se o hook recusar com a frase traduzida, o cartão a deixa FIXA na tela", async () => {
+      // É o erro que o hook lança: `.message` já é a instrução em português
+      // (aqui, o caso do Android com as notificações do app desligadas).
+      const frase =
+        "O aparelho está bloqueando as notificações deste app. Abra as configurações do aparelho → Apps → Loja de Teste → Notificações, ative e toque de novo.";
+      hook.subscribe.mockRejectedValue(
+        Object.assign(new Error(frase), { name: "PushSubscribeError" }),
+      );
       await montar();
 
       await tocar(LIGAR);
@@ -402,7 +408,21 @@ describe("CartaoDeAvisosDoAparelho", () => {
       expect(regiao()).not.toBeNull();
       expect(botao(LIGAR)).toBeDefined();
       const alerta = hospedeiro.querySelector('[role="alert"]');
+      expect(alerta?.textContent).toBe(frase);
+      expect(texto()).not.toContain("Veja a mensagem que apareceu");
+    });
+
+    it("erro que não é do hook (texto cru) NÃO chega à tela: vale a frase genérica", async () => {
+      hook.subscribe.mockRejectedValue(
+        new Error("AbortError: Registration failed - permission denied"),
+      );
+      await montar();
+
+      await tocar(LIGAR);
+
+      const alerta = hospedeiro.querySelector('[role="alert"]');
       expect(alerta?.textContent).toContain("Os avisos não foram ligados");
+      expect(texto()).not.toContain("AbortError");
     });
 
     it("hook que não inscreve (devolve nada) também não vira 'ligado'", async () => {
@@ -454,6 +474,8 @@ describe("CartaoDeAvisosDoAparelho", () => {
         },
       ]);
       expect(opcoes.body.title).toContain("Loja de Teste");
+      // A mesma tela que o aviso real de pedido novo abre (notify-new-order).
+      expect(opcoes.body.url).toBe("/admin-orders");
       const status = hospedeiro.querySelector('[role="status"]');
       expect(status?.textContent).toContain("Aviso de teste enviado");
       expect(status?.textContent).toContain("Se não aparecer");
@@ -524,6 +546,112 @@ describe("CartaoDeAvisosDoAparelho", () => {
       await tocar("Pronto");
 
       expect(regiao()).toBeNull();
+    });
+
+    it("'Pronto' entrega o foco à tela, uma vez", async () => {
+      const aoFechar = vi.fn();
+      hook.subscribe.mockResolvedValue(inscricaoDeTeste());
+      await montar({ aoFechar });
+      await tocar(LIGAR);
+      expect(aoFechar).not.toHaveBeenCalled();
+
+      await tocar("Pronto");
+
+      expect(aoFechar).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("o foco não se perde ao fechar", () => {
+    it("'Agora não' entrega o foco à tela, uma vez (e não antes de tocar)", async () => {
+      const aoFechar = vi.fn();
+      await montar({ aoFechar });
+      expect(aoFechar).not.toHaveBeenCalled();
+
+      await tocar(AGORA_NAO);
+
+      expect(aoFechar).toHaveBeenCalledTimes(1);
+      expect(regiao()).toBeNull();
+    });
+  });
+
+  describe("Sair e Entrar: o adiamento não cala o alarme", () => {
+    it("adiou, o app esqueceu o adiamento ao descadastrar o aparelho (Sair), e o cartão volta", async () => {
+      const { esquecerAdiamentoDosAvisos } = await import(
+        "@/lib/avisos-do-aparelho"
+      );
+      const Cartao = await montar();
+      await tocar(AGORA_NAO);
+      expect(regiao()).toBeNull();
+
+      // O mesmo gesto que `clearLocalUserData` (AuthContext) faz no Sair.
+      esquecerAdiamentoDosAvisos();
+      await remontar(Cartao);
+
+      expect(regiao()).not.toBeNull();
+    });
+  });
+
+  describe("textos que dependem do aparelho", () => {
+    it("iPhone com app instalado mas sem push: manda ATUALIZAR o iOS, não trocar de navegador", async () => {
+      aparelhoSemAviso({ isSupported: false });
+      definirNavegador({ userAgent: USER_AGENT_IPHONE });
+      instaladoNaTela(true);
+      await montar();
+
+      expect(texto()).toContain("Atualize o iOS");
+      expect(texto()).toContain("16.4");
+      expect(texto()).not.toContain("Chrome");
+      expect(botao(LIGAR)).toBeUndefined();
+    });
+
+    it("os passos de 'bloqueado' mandam voltar e tocar em Ligar — o cartão não promete sumir", async () => {
+      aparelhoSemAviso({ permission: "denied" });
+      await montar();
+
+      const passos = Array.from(hospedeiro.querySelectorAll("ol li")).map(
+        (li) => li.textContent ?? "",
+      );
+      expect(passos.at(-1)).toContain("toque em Ligar avisos neste aparelho");
+      expect(texto()).not.toContain("some sozinho");
+    });
+  });
+
+  describe("voltar das configurações do aparelho", () => {
+    it("se a permissão do navegador mudou enquanto a pessoa estava fora, o cartão lê tudo de novo e oferece Ligar", async () => {
+      aparelhoSemAviso({ permission: "denied" });
+      vi.stubGlobal("Notification", { permission: "denied" });
+      await montar();
+      expect(botao(LIGAR)).toBeUndefined();
+
+      // A pessoa liberou nas configurações e voltou ao app.
+      vi.stubGlobal("Notification", { permission: "default" });
+      aparelhoSemAviso({ permission: "default" });
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      expect(botao(LIGAR)).toBeDefined();
+      expect(texto()).not.toContain("estão bloqueados");
+    });
+
+    it("se nada mudou, voltar à tela não apaga o resultado que o cartão mostrava", async () => {
+      vi.stubGlobal("Notification", { permission: "default" });
+      hook.subscribe.mockRejectedValue(
+        Object.assign(new Error("Toque de novo e escolha Permitir."), {
+          name: "PushSubscribeError",
+        }),
+      );
+      await montar();
+      await tocar(LIGAR);
+      expect(hospedeiro.querySelector('[role="alert"]')).not.toBeNull();
+
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+        "Toque de novo e escolha Permitir.",
+      );
     });
   });
 });

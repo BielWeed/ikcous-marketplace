@@ -15,7 +15,7 @@ import {
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
 import { BellOff, BellRing } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type EstadoDoTeste = "ocioso" | "enviando" | "enviado" | "falhou" | "sem-rede";
 
@@ -47,7 +47,26 @@ function ListaDePassos({ passos }: Readonly<{ passos: readonly string[] }>) {
  * quando o servidor de avisos confirmou que aceitou, e mesmo assim manda
  * conferir no aparelho.
  */
-export function CartaoDeAvisosDoAparelho() {
+export function CartaoDeAvisosDoAparelho({
+  aoFechar,
+}: Readonly<{
+  /** Chamado quando o cartão se fecha ("Agora não", "Pronto"): a tela leva o
+   * foco para um lugar vivo, em vez de o teclado/leitor de tela o perder. */
+  aoFechar?: () => void;
+}>) {
+  // A sonda do hook lê a permissão UMA vez, ao montar. Quem sai para liberar
+  // os avisos nas configurações do aparelho e volta encontraria o cartão ainda
+  // dizendo "bloqueado": o cartão interno avisa quando o navegador já diz outra
+  // coisa, e aqui ele é montado de novo (lê tudo outra vez).
+  const [leitura, setLeitura] = useState(0);
+  const reler = useCallback(() => setLeitura((n) => n + 1), []);
+  return <CartaoInterno key={leitura} aoFechar={aoFechar} aoReler={reler} />;
+}
+
+function CartaoInterno({
+  aoFechar,
+  aoReler,
+}: Readonly<{ aoFechar?: () => void; aoReler: () => void }>) {
   const { isAdmin } = useAuth();
   const {
     isSupported,
@@ -86,6 +105,22 @@ export function CartaoDeAvisosDoAparelho() {
     if (inscricaoNova) botaoDeTesteRef.current?.focus();
   }, [inscricaoNova]);
 
+  // Voltou à tela (ou à janela) e a permissão do navegador já não é a que a
+  // sonda leu: refaz a leitura inteira.
+  useEffect(() => {
+    const conferir = () => {
+      if (document.visibilityState === "hidden") return;
+      if (typeof Notification === "undefined") return;
+      if (Notification.permission !== permission) aoReler();
+    };
+    document.addEventListener("visibilitychange", conferir);
+    window.addEventListener("focus", conferir);
+    return () => {
+      document.removeEventListener("visibilitychange", conferir);
+      window.removeEventListener("focus", conferir);
+    };
+  }, [permission, aoReler]);
+
   if (!isAdmin || semConta || encerrado) return null;
 
   const ligar = async () => {
@@ -104,10 +139,20 @@ export function CartaoDeAvisosDoAparelho() {
       } else {
         setErroDeLigar("Não foi possível ligar os avisos agora.");
       }
-    } catch {
-      // O hook já mostrou a causa em aviso na tela; aqui fica o resultado.
+    } catch (erro) {
+      // O hook também mostra a causa em aviso passageiro (2,5 a 8 s); aqui ela
+      // fica FIXA, porque é a instrução de como resolver (ex.: ligar as
+      // notificações do app nas configurações do celular). A frase do hook já
+      // vem traduzida em `.message`; só ela é repetida — o texto cru de um
+      // erro qualquer (DOMException, Postgrest) nunca chega à tela.
+      const traduzida =
+        erro instanceof Error &&
+        erro.name === "PushSubscribeError" &&
+        erro.message.trim() !== "";
       setErroDeLigar(
-        "Os avisos não foram ligados. Veja a mensagem que apareceu e tente de novo.",
+        traduzida
+          ? (erro as Error).message
+          : "Os avisos não foram ligados. Tente de novo em instantes.",
       );
     } finally {
       emVoo.current.ligar = false;
@@ -130,7 +175,9 @@ export function CartaoDeAvisosDoAparelho() {
         body: {
           title: `Aviso de teste — ${nomeDoApp}`,
           body: "Se você está lendo isto, o aviso de pedido novo chega neste aparelho.",
-          url: "/",
+          // A mesma tela que o aviso real de pedido novo abre
+          // (`notify-new-order`, `montarAviso`).
+          url: "/admin-orders",
           tokens: [
             { endpoint, keys: { p256dh: keys?.p256dh, auth: keys?.auth } },
           ],
@@ -194,7 +241,10 @@ export function CartaoDeAvisosDoAparelho() {
           </button>
           <button
             type="button"
-            onClick={() => setEncerrado(true)}
+            onClick={() => {
+              setEncerrado(true);
+              aoFechar?.();
+            }}
             className={BOTAO_SECUNDARIO}
           >
             Pronto
@@ -237,7 +287,10 @@ export function CartaoDeAvisosDoAparelho() {
   const agoraNao = (
     <button
       type="button"
-      onClick={() => setAdiadoAte(adiarOsAvisos(Date.now()))}
+      onClick={() => {
+        setAdiadoAte(adiarOsAvisos(Date.now()));
+        aoFechar?.();
+      }}
       className={BOTAO_SECUNDARIO}
     >
       Agora não
@@ -256,6 +309,22 @@ export function CartaoDeAvisosDoAparelho() {
           no iPad o aviso só chega com o app instalado na Tela de Início:
         </p>
         <ListaDePassos passos={PASSOS_PARA_INSTALAR_NO_IOS} />
+        <div className="mt-3 flex flex-wrap gap-2">{agoraNao}</div>
+      </>,
+    );
+  }
+
+  if (situacao === "ios-antigo") {
+    return regiao(
+      titulo,
+      icone,
+      <>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-200">
+          Sem isso, a loja só vê o pedido quando você abre o painel. O sistema
+          deste iPhone ou iPad é antigo demais para receber avisos. Atualize o
+          iOS (ou iPadOS) para a versão 16.4 ou mais nova, em Ajustes → Geral →
+          Atualização de Software, e abra o app de novo.
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">{agoraNao}</div>
       </>,
     );

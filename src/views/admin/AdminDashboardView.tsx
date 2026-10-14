@@ -27,7 +27,7 @@ import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { AlertCircle, HelpCircle, RefreshCw } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AdminDashboardViewProps {
@@ -150,6 +150,16 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     estavaOfflineRef.current = isOffline;
   }, [isOffline, ativo, atualizar]);
 
+  // O cartão de avisos se fecha com o foco do teclado dentro dele: o foco vai
+  // para o título do Início, e não para o corpo da página.
+  const focarNoTitulo = useCallback(() => {
+    const titulo = viewRef.current?.querySelector("h1");
+    if (titulo instanceof HTMLElement) {
+      titulo.tabIndex = -1;
+      titulo.focus();
+    }
+  }, [viewRef]);
+
   const semNumeros = carregando && !painel;
 
   return (
@@ -237,7 +247,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
             lojista volta ao Início. */}
         {ativo ? (
           <LocalErrorBoundary>
-            <CartaoDeAvisosDoAparelho />
+            <CartaoDeAvisosDoAparelho aoFechar={focarNoTitulo} />
           </LocalErrorBoundary>
         ) : null}
 
