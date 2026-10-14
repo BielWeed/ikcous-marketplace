@@ -322,7 +322,10 @@ export const ProductCard = memo(function ProductCard({
       return;
     }
 
-    if (hasActiveVariant) {
+    // `variantsUnavailable`: a leitura das variações falhou (faixa de
+    // recomendações) — não se sabe se a peça tem tamanho/cor, então ela
+    // também só abre a página, onde a escolha é obrigatória.
+    if (hasActiveVariant || product.variantsUnavailable) {
       onClick(product.id);
       return;
     }
@@ -728,11 +731,13 @@ export const ProductCard = memo(function ProductCard({
                 ? "Esgotado"
                 : hasActiveVariant
                   ? "Escolher opções"
-                  : cartStatus === "idle"
-                    ? "Carrinho"
-                    : cartStatus === "loading"
-                      ? "Salvando..."
-                      : "Salvo!"}
+                  : product.variantsUnavailable
+                    ? "Ver produto"
+                    : cartStatus === "idle"
+                      ? "Carrinho"
+                      : cartStatus === "loading"
+                        ? "Salvando..."
+                        : "Salvo!"}
             </span>
           </button>
         </div>

@@ -145,3 +145,88 @@ describe("avisosDoCarrinho", () => {
     expect(frases[0]).toContain("esgotou");
   });
 });
+
+// "Você também pode gostar" levava peça com tamanho/cor ao carrinho SEM
+// escolha (14/10/2026). O servidor recusa essa linha no pagamento ("Escolha
+// uma variação para o produto X") e o carrinho não tem como escolher
+// tamanho — então a linha sai do carrinho COM o aviso, antes de a cliente
+// preencher o checkout. Mesma regra do servidor: só vale quando o produto tem
+// variação ATIVA; produto sem variação (ou com todas desativadas) segue.
+describe("linha SEM variação de produto que TEM variação ativa", () => {
+  const duas = () => [variacao("P"), variacao("M")];
+
+  it("aplicar: a linha sem tamanho sai; o vizinho sem variação fica", () => {
+    const itens = [
+      item(linha(), 1), // cópia velha: sem variações, sem variantId
+      item(linha({ id: "b", nome: "Bolsa" }), 1),
+    ];
+    const catalogo = montarCatalogo(
+      ["a", "b"],
+      [linha(), linha({ id: "b", nome: "Bolsa" })],
+      duas(),
+    );
+    const r = aplicarCatalogoAoCarrinho(itens, catalogo, 5000);
+    expect(r.map((i) => i.product.id)).toEqual(["b"]);
+  });
+
+  it("aplicar: a linha COM a variação escolhida fica (linha legítima)", () => {
+    const itens = [item(linha(), 1, { variantId: "P" }, duas())];
+    const catalogo = montarCatalogo(["a"], [linha()], duas());
+    expect(aplicarCatalogoAoCarrinho(itens, catalogo, 5000)).toBe(itens);
+  });
+
+  it("aplicar: variações TODAS desativadas = produto vendável pelo base; a linha fica", () => {
+    const itens = [item(linha(), 1)];
+    const catalogo = montarCatalogo(
+      ["a"],
+      [linha()],
+      [variacao("P", { active: false })],
+    );
+    const r = aplicarCatalogoAoCarrinho(itens, catalogo, 5000);
+    expect(r.map((i) => [i.product.id, i.quantity])).toEqual([["a", 1]]);
+  });
+
+  it("aplicar: produto que não foi consultado fica como está", () => {
+    const itens = [item(linha(), 1)];
+    const catalogo = montarCatalogo(["z"], [linha({ id: "z" })], []);
+    expect(aplicarCatalogoAoCarrinho(itens, catalogo, 5000)).toBe(itens);
+  });
+
+  it("avisos: diz que falta escolher tamanho/cor e que a linha saiu — sem 'não está mais à venda' nem 'preço mudou'", async () => {
+    const itens = [item(linha({ nome: "Vestido Midi" }), 1)];
+    const catalogo = montarCatalogo(
+      ["a"],
+      [linha({ nome: "Vestido Midi", preco_venda: 12 })],
+      duas(),
+    );
+    const frases = await avisosDoCarrinho(itens, catalogo);
+    expect(frases).toHaveLength(1);
+    expect(frases[0]).toContain('"Vestido Midi"');
+    expect(frases[0]).toContain("tamanho");
+    expect(frases[0]).toContain("saiu do seu carrinho");
+    expect(frases[0]).not.toContain("não está mais à venda");
+    expect(frases[0]).not.toContain("mudou de");
+  });
+
+  it("avisos: linha com a variação escolhida, produto sem variação e variações todas desativadas NÃO geram aviso", async () => {
+    const comEscolha = item(linha(), 1, { variantId: "P" }, duas());
+    const catalogoComVariacao = montarCatalogo(["a"], [linha()], duas());
+    expect(await avisosDoCarrinho([comEscolha], catalogoComVariacao)).toEqual(
+      [],
+    );
+
+    const semVariacao = item(linha({ id: "b" }), 1);
+    const catalogoSem = montarCatalogo(["b"], [linha({ id: "b" })], []);
+    expect(await avisosDoCarrinho([semVariacao], catalogoSem)).toEqual([]);
+
+    const todasDesativadas = item(linha(), 1);
+    const catalogoInativo = montarCatalogo(
+      ["a"],
+      [linha()],
+      [variacao("P", { active: false })],
+    );
+    expect(await avisosDoCarrinho([todasDesativadas], catalogoInativo)).toEqual(
+      [],
+    );
+  });
+});

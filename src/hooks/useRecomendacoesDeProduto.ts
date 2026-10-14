@@ -3,7 +3,11 @@ import { useEffect, useRef, useState } from "react";
 
 // ─── Cache SWR das recomendações (migrado do ProductView) ───────────────────
 
-const RECS_CACHE_KEY_PREFIX = "ikcous_recs_cache_";
+// v2 (14/10/2026): as cópias gravadas antes disto vieram da função do banco
+// SEM as variações — peça com tamanho/cor aparecia como "sem variação" e ia ao
+// carrinho sem escolha. Prefixo novo = nenhuma cópia antiga é servida (as
+// chaves velhas ficam órfãs no aparelho, sem ninguém que as leia).
+const RECS_CACHE_KEY_PREFIX = "ikcous_recs_v2_cache_";
 const memoryRecsCache = new Map<string, Product[]>();
 
 const getRecsCache = (productId: string): Product[] | null => {
@@ -124,7 +128,11 @@ export function useRecomendacoesDeProduto(
       const recs = await buscarRef.current(productId);
       if (!isMounted) return;
       setRecomendacoes(recs);
-      updateRecsCache(productId, recs);
+      // Resposta com a leitura das variações falha é a do momento, não vale
+      // como cópia: a próxima visita busca de novo.
+      if (!recs.some((p) => p.variantsUnavailable)) {
+        updateRecsCache(productId, recs);
+      }
       setCarregando(false);
       setConsultado(true);
     };
