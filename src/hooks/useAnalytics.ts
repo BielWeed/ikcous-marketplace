@@ -118,6 +118,11 @@ export interface DashboardStats {
    * que este campo existe para consertar — foi o que quase aconteceu aqui.
    * Mesma ressalva de `deliveredTotal` acima. */
   paidOnCancelled?: number;
+  /** Produtos vendidos que ficaram FORA do lucro e do Top 5 "mais lucrativos"
+   * por não terem custo cadastrado (migration 20261234). Opcional: a tela
+   * sobe antes da migration, e a função antiga não devolve o campo. Leia
+   * sempre por `produtosSemCusto()`, que trata ausente/inválido como 0. */
+  productsWithoutCost?: number;
 }
 
 // Memory cache for SWR pattern
