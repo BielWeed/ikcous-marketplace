@@ -5085,7 +5085,7 @@ export function CheckoutView({
               <div>
                 <label
                   htmlFor="checkout-name"
-                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-500"
                 >
                   Nome Completo
                 </label>
@@ -5120,7 +5120,7 @@ export function CheckoutView({
               <div>
                 <label
                   htmlFor="checkout-tel"
-                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-500"
                 >
                   WhatsApp para Contato
                 </label>
@@ -5182,7 +5182,7 @@ export function CheckoutView({
               <div className="border-t border-zinc-100/50 pt-4">
                 <label
                   htmlFor="checkout-cpf"
-                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-500"
                 >
                   CPF do Destinatário
                 </label>
@@ -6151,7 +6151,7 @@ export function CheckoutView({
                           abria o resumo agora mora no gatilho do topo
                           (`GatilhoDoResumoDoPedido`, portado para o Header). */}
                       <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                           <span>Subtotal</span>
                           <span>
                             R$ {subtotal.toFixed(2).replace(".", ",")}
@@ -6289,7 +6289,7 @@ export function CheckoutView({
                       // padrão da casa (SaidaDaRecusa.tsx:82).
                       <p
                         role="alert"
-                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
                       >
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                         {semFreteSelecionado &&
@@ -6318,7 +6318,7 @@ export function CheckoutView({
                         // avisos acima: role="alert" fala na hora.
                         <p
                           role="alert"
-                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
                         >
                           <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                           Pagamento pelo app indisponível — escolha um meio de
@@ -6349,7 +6349,7 @@ export function CheckoutView({
                         // desistir sem saber por quê).
                         <p
                           role="alert"
-                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
                         >
                           <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                           Esta forma de pagamento não está disponível — escolha
@@ -6369,7 +6369,7 @@ export function CheckoutView({
                       // rede) e o texto seria confuso lado a lado.
                       <p
                         role="alert"
-                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
                       >
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                         Sem conexão — nada foi enviado. Aguarde a internet
@@ -6439,7 +6439,7 @@ export function CheckoutView({
                       // certeza.
                       <p
                         data-testid="aviso-como-destravar-finalizar"
-                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-700"
                       >
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                         {recusaDoUltimoClique?.acao === "reenviar_mesma_compra"

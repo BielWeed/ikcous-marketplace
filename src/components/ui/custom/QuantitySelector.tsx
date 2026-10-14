@@ -14,7 +14,13 @@ export function QuantitySelector({
   onChange,
   size = "md",
 }: QuantitySelectorProps) {
-  const buttonSize = size === "sm" ? "w-7 h-7" : "w-8 h-8 xs:w-9 xs:h-9";
+  // sm: botao visual de 28px; o `before` invisivel de -inset-2 leva a area de
+  // toque a 44px (8px por lado). Cabe sem sobrepor o vizinho: o numero entre
+  // os dois botoes tem 32px (h-7 w-8), e cada area invade 8px dele.
+  const buttonSize =
+    size === "sm"
+      ? "w-7 h-7 relative before:absolute before:-inset-2 before:content-['']"
+      : "w-8 h-8 xs:w-9 xs:h-9";
   const iconSize = size === "sm" ? "w-3 h-3" : "w-3.5 h-3.5 xs:w-4 xs:h-4";
 
   const handleDecrease = () => {

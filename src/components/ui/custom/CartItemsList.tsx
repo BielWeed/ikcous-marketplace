@@ -106,7 +106,7 @@ const CartItemCard = memo(function CartItemCard({
                   haptic.medium();
                   onRemove(item.product.id, item.variantId);
                 }}
-                className="-mr-1 flex size-7 flex-shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-all duration-300 hover:bg-red-50/50 hover:text-red-500 active:scale-90"
+                className="relative -mr-1 flex size-7 flex-shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-all duration-300 before:absolute before:-inset-2 before:content-[''] hover:bg-red-50/50 hover:text-red-500 active:scale-90"
                 aria-label="Remover item"
               >
                 <Trash2 className="size-3.5" />

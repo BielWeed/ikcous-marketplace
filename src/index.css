@@ -468,6 +468,15 @@ body.admin-mode :focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  /* As transicoes de visao do navegador (troca de tela) nao sao `*`: vivem em
+     pseudo-elementos proprios e continuavam em 90-380 ms. Sem animacao, a
+     troca e instantanea. */
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }
 
 @layer utilities {
