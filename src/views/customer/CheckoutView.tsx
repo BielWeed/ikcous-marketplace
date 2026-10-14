@@ -92,7 +92,11 @@ import {
 } from "@/lib/recusaDoPedido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
-import { mascaraWhatsappBr } from "@/lib/telefone-br";
+import {
+  celularBrasileiroCompleto,
+  mascaraWhatsappBr,
+  mensagemDeWhatsappIncompleto,
+} from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { cn } from "@/lib/utils";
 import type {
@@ -859,7 +863,7 @@ export function CheckoutView({
     return z
       .object({
         name: z.string().min(1, "Nome é obrigatório"),
-        whatsapp: z.string().min(14, "WhatsApp inválido"),
+        whatsapp: z.string(),
         cep: z.string().optional(),
         street: z.string().optional(),
         number: z.string().optional(),
@@ -870,6 +874,17 @@ export function CheckoutView({
         cpf: z.string().optional(),
       })
       .superRefine((data, ctx) => {
+        // WHATSAPP = CELULAR COMPLETO (DDD + 9 + 8), contado em DÍGITOS pela
+        // MESMA função que o resumo/botão usam (`faltaWhatsapp`): a régua
+        // antiga media o texto formatado (`min(14)`), e 10 dígitos já enchem
+        // 14 caracteres na máscara — o Finalizar abria com número inexistente.
+        if (!celularBrasileiroCompleto(data.whatsapp)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: mensagemDeWhatsappIncompleto(data.whatsapp),
+            path: ["whatsapp"],
+          });
+        }
         // CPF só é exigido com transportadora (ver o comentário grande de
         // `exigeCpfDoDestinatario`, acima) — `cpfValido` já cobre "vazio",
         // "menos de 11 dígitos" e "dígito verificador errado" na MESMA
@@ -2049,7 +2064,7 @@ export function CheckoutView({
   const cidadeAtual = form.watch("city");
   const estadoAtual = form.watch("state");
   const faltaNome = !nomeAtual?.trim();
-  const faltaWhatsapp = (whatsappAtual?.length ?? 0) < 14;
+  const faltaWhatsapp = !celularBrasileiroCompleto(whatsappAtual);
   const enderecoConvidadoCompleto =
     soDigitos(cepDigitadoNoFormulario ?? "").length === 8 &&
     !!ruaAtual?.trim() &&
@@ -2660,14 +2675,61 @@ export function CheckoutView({
     user,
   ]);
 
+  // O PERFIL SÓ PREENCHE O QUE A CLIENTE NÃO MEXEU. Antes, este efeito
+  // sobrescrevia nome e WhatsApp com os dados da conta a CADA mudança de
+  // `profile` (inclusive o mesmo perfil reemitido) e logo depois de o rascunho
+  // da sessão ser restaurado: ela trocava o WhatsApp, voltava ao carrinho,
+  // reabria o checkout, e o campo voltava com o do cadastro (ou vazio, se a
+  // conta não tem WhatsApp). Agora o campo só recebe o valor da conta quando
+  // (a) a cliente nunca digitou nele nesta montagem e (b) está vazio ou ainda
+  // guarda exatamente o que a conta anterior/o carregamento anterior pôs ali
+  // — o perfil que chega tarde continua preenchendo formulário vazio, e a
+  // troca de conta com o formulário intocado continua seguindo a conta nova.
+  const perfilVistoRef = useRef({
+    name: profile?.full_name || user?.user_metadata?.name || "",
+    whatsapp: getDefaultWhatsApp(),
+  });
+  const camposMexidosPelaClienteRef = useRef(new Set<"name" | "whatsapp">());
+  useEffect(() => {
+    // `type === "change"` é a digitação da pessoa (register/Controller);
+    // `setValue` e `reset` do próprio código chegam sem `type`.
+    const assinatura = form.watch((_valores, { name, type }) => {
+      if (type === "change" && (name === "name" || name === "whatsapp")) {
+        camposMexidosPelaClienteRef.current.add(name);
+      }
+    });
+    return () => assinatura.unsubscribe();
+  }, [form]);
   useEffect(() => {
     if (profile) {
-      form.setValue("name", profile.full_name || "", { shouldValidate: true });
-      form.setValue(
+      const nomeDoPerfil = profile.full_name || "";
+      const whatsappDoPerfil = profile.whatsapp
+        ? formatWhatsApp(profile.whatsapp)
+        : "";
+      const seguirOPerfil = (
+        campo: "name" | "whatsapp",
+        novo: string,
+        anterior: string,
+      ) => {
+        const atual = form.getValues(campo) ?? "";
+        const aindaEhDoPerfil = atual === "" || atual === anterior;
+        if (
+          !camposMexidosPelaClienteRef.current.has(campo) &&
+          aindaEhDoPerfil
+        ) {
+          form.setValue(campo, novo, { shouldValidate: true });
+        }
+      };
+      seguirOPerfil("name", nomeDoPerfil, perfilVistoRef.current.name);
+      seguirOPerfil(
         "whatsapp",
-        profile.whatsapp ? formatWhatsApp(profile.whatsapp) : "",
-        { shouldValidate: true },
+        whatsappDoPerfil,
+        perfilVistoRef.current.whatsapp,
       );
+      perfilVistoRef.current = {
+        name: nomeDoPerfil,
+        whatsapp: whatsappDoPerfil,
+      };
       form.trigger();
     } else if (user) {
       form.trigger();

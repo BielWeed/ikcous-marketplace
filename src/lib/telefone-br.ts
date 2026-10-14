@@ -85,6 +85,30 @@ export function mascaraWhatsappBr(novo: string, anterior?: string): string {
 }
 
 /**
+ * O WhatsApp do checkout é um CELULAR COMPLETO: DDD + 9 + 8 dígitos (11).
+ * Conta DÍGITOS, nunca caracteres do texto formatado — com 10 dígitos a
+ * máscara já chega a 14 caracteres ("(34) 98887-777"), e a régua antiga
+ * (`length >= 14`) liberava o Finalizar com um número que não existe.
+ * Aceita o texto da máscara, o número cru e o colado com +55.
+ */
+export function celularBrasileiroCompleto(
+  valor: string | null | undefined,
+): boolean {
+  const digitos = limparTelefoneBrasileiro(valor);
+  return digitos.length === 11 && digitos[2] === "9";
+}
+
+/** Texto do erro do campo WhatsApp do checkout quando o celular não está completo. */
+export function mensagemDeWhatsappIncompleto(
+  valor: string | null | undefined,
+): string {
+  const quantidade = limparTelefoneBrasileiro(valor).length;
+  return quantidade === 10
+    ? "Confira o WhatsApp: faltou um número (DDD + 9 + 8 dígitos)"
+    : "Confira o WhatsApp: precisa de DDD + 9 + 8 dígitos";
+}
+
+/**
  * Máscara do telefone do cadastro. Até 11 dígitos formata; acima disso
  * (número estrangeiro ou excedente da digitação) mantém o texto, cortado em
  * 15 caracteres, como sempre foi.
