@@ -258,6 +258,7 @@ export function VisaoGeralDoCrm({
               stats={stats}
               loading={carregandoClassico}
               active={active}
+              onNavigate={onNavigate}
               className="lg:col-span-3"
             />
           </LocalErrorBoundary>

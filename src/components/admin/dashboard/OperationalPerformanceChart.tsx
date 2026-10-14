@@ -3,7 +3,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
+import type { View } from "@/types";
 import { desdeOPrimeiroDiaDeMovimento } from "@/utils/desde-o-primeiro-dia-de-movimento";
+import {
+  avisoProdutosSemCusto,
+  produtosSemCusto,
+} from "@/utils/produtos-sem-custo";
 import { Activity, BarChart3 } from "lucide-react";
 import { memo, useEffect, useMemo, useState, useTransition } from "react";
 import {
@@ -23,6 +28,9 @@ interface OperationalPerformanceChartProps {
   loading: boolean;
   className?: string;
   active?: boolean;
+  /** Atalho "Cadastrar custo" do aviso de produtos sem custo. Sem ele, o
+   * aviso aparece sem o botão. */
+  onNavigate?: (view: View) => void;
 }
 
 export const OperationalPerformanceChart = memo(
@@ -31,7 +39,9 @@ export const OperationalPerformanceChart = memo(
     loading,
     className,
     active = true,
+    onNavigate,
   }: OperationalPerformanceChartProps) {
+    const semCusto = produtosSemCusto(stats);
     const _isMobile = useMediaQuery("(max-width: 1023px)");
     const [mounted, setMounted] = useState(false);
     useEffect(() => {
@@ -309,6 +319,26 @@ export const OperationalPerformanceChart = memo(
               </>
             )}
           </div>
+        )}
+
+        {/* O lucro só soma produto COM custo cadastrado (migration 20261234):
+            quem ficou de fora é dito aqui, perto do "Lucro Acumulado". */}
+        {!loading && stats && chartMode === "roi" && semCusto > 0 && (
+          <p className="relative z-10 px-2 text-[11px] leading-relaxed text-zinc-400 sm:px-0">
+            {avisoProdutosSemCusto(semCusto)}
+            {onNavigate && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => onNavigate("admin-products")}
+                  className="font-semibold text-admin-gold underline-offset-2 hover:underline"
+                >
+                  Cadastrar custo
+                </button>
+              </>
+            )}
+          </p>
         )}
 
         <div
