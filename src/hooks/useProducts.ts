@@ -429,6 +429,21 @@ const INDICE_SKU_DA_VARIACAO = /product_variants_sku_key|Key \(sku\)=/;
 const MSG_SKU_REPETIDO_NO_BANCO =
   "Este SKU já está em outra variação da loja. Cada variação precisa de um SKU diferente.";
 
+/**
+ * Apagar variação que já está num pedido: `marketplace_order_items.variant_id`
+ * tem chave estrangeira para `product_variants` SEM regra de exclusão
+ * (baseline do schema), então o Postgres recusa com 23503. Citar o nome da
+ * constraint E a frase da tabela pelo mesmo motivo dos índices acima: se o
+ * Postgres só devolver um dos dois, o outro ainda pega. O 23503 de OUTRA
+ * chave (ex.: gravar variação de produto que não existe) não casa com
+ * nenhum dos dois e segue para o genérico.
+ */
+const CHAVE_DA_VARIACAO_VENDIDA =
+  /marketplace_order_items_variant_id_fkey|update or delete on table "product_variants"/;
+
+const MSG_VARIACAO_JA_VENDIDA =
+  "Esta variação já tem vendas e não pode ser excluída. Desligue-a (botão de ligar/desligar na linha da variação) em vez de excluir: ela some da loja e o histórico dos pedidos fica guardado.";
+
 const MSG_SESSAO_OU_PERMISSAO =
   "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.";
 
@@ -453,7 +468,8 @@ class RecusaDoCadastroDeProduto extends Error {
  *
  * Só entra aqui causa que a lojista consegue resolver sozinha e cujo sinal é
  * inequívoco: o texto do TruthGate, o 23505 de dois índices únicos
- * (código de barras, SKU da variação), sessão vencida/sem permissão
+ * (código de barras, SKU da variação), o 23503 de variação que já tem
+ * vendas, sessão vencida/sem permissão
  * (42501 = RLS ou grant recusado, PGRST301/303 = JWT inválido) e a falha do
  * `fetch` sem resposta do servidor.
  */
@@ -486,6 +502,13 @@ function traduzirRecusaConhecida(error: unknown): string | null {
     INDICE_SKU_DA_VARIACAO.test(`${textoOriginal} ${textoDetalhe}`)
   ) {
     return MSG_SKU_REPETIDO_NO_BANCO;
+  }
+
+  if (
+    detalhes.code === "23503" &&
+    CHAVE_DA_VARIACAO_VENDIDA.test(`${textoOriginal} ${textoDetalhe}`)
+  ) {
+    return MSG_VARIACAO_JA_VENDIDA;
   }
 
   if (
@@ -1981,6 +2004,15 @@ export function useProducts({ autoFetch = true } = {}) {
     [isAdmin, refreshContext, backupStorageFile],
   );
 
+  /**
+   * Apaga as variações UMA POR VEZ: o banco recusa apagar a que já está num
+   * pedido (23503), e num DELETE em lote essa uma seguraria todas as que podiam
+   * sair. A tela é recarregada UMA vez e há UM aviso, no fim.
+   *
+   * Se alguma foi recusada, o erro lançado é o da primeira recusa (com o
+   * `code` do Postgres) e leva `recusadas`: os ids que ficaram no banco. Quem
+   * chama (o formulário) decide o que fazer com elas.
+   */
   const deleteVariants = useCallback(
     async (ids: string[]) => {
       if (!isAdmin) {
@@ -1990,25 +2022,41 @@ export function useProducts({ autoFetch = true } = {}) {
       try {
         const { data: variants } = (await supabase
           .from("product_variants")
-          .select("image_url" as any)
+          .select("id, image_url" as any)
           .in("id", ids)) as any;
 
-        const { error } = await supabase
-          .from("product_variants")
-          .delete()
-          .in("id", ids);
-
-        if (error) throw error;
+        const recusadas: string[] = [];
+        const apagadas: string[] = [];
+        let primeiraRecusa: unknown = null;
+        for (const id of ids) {
+          const { error } = await supabase
+            .from("product_variants")
+            .delete()
+            .eq("id", id);
+          if (error) {
+            if (primeiraRecusa === null) primeiraRecusa = error;
+            recusadas.push(id);
+          } else {
+            apagadas.push(id);
+          }
+        }
 
         if (variants && variants.length > 0) {
           for (const v of variants) {
-            if (v.image_url) {
+            if (v.image_url && apagadas.includes(v.id)) {
               await backupStorageFile(v.image_url);
             }
           }
         }
 
-        await refreshContext();
+        // As que saíram de verdade precisam sumir da tela, mesmo que outra
+        // tenha sido recusada.
+        if (apagadas.length > 0) await refreshContext();
+
+        if (recusadas.length > 0) {
+          throw Object.assign(primeiraRecusa as object, { recusadas });
+        }
+
         toast.success("Variantes removidas");
         return true;
       } catch (err) {
@@ -2052,7 +2100,8 @@ export function useProducts({ autoFetch = true } = {}) {
             // abaixo: `codigoBarras` é texto (como o sku), não número — não
             // existe "zero legítimo" a proteger, então vazio vira NULL direto.
             codigo_barras: v.codigoBarras || null,
-            stock_increment: v.stockIncrement,
+            // `stock_increment` NÃO entra aqui: ver o `if` logo depois do
+            // objeto. Estoque é dinheiro e só vai quando veio informado.
             // `?? null` (laudo 0109, A1): `undefined` some na serialização do
             // supabase-js, o UPDATE da variante existente saía SEM a coluna e
             // o override antigo sobrevivia — a tela dizia "Variantes salvas"
@@ -2063,6 +2112,14 @@ export function useProducts({ autoFetch = true } = {}) {
             active: v.active,
             image_url: v.imageUrl || null,
           };
+          // O formulário omite `stockIncrement` da variação cujo número a
+          // lojista NÃO mexeu (o que a tela leu ao abrir pode já estar velho:
+          // uma venda desconta o estoque no banco). Sem a chave, o UPDATE não
+          // leva a coluna e o número que o banco tem hoje sobrevive — nunca
+          // `null` (zeraria) nem o valor da tela (desfaria a venda).
+          if (v.stockIncrement !== undefined) {
+            item.stock_increment = v.stockIncrement;
+          }
           if (v.id && !v.id.startsWith("temp-")) {
             item.id = v.id;
           }
@@ -2079,7 +2136,16 @@ export function useProducts({ autoFetch = true } = {}) {
         // `uuid_generate_v4()`) e UPSERT com `onConflict: "id"` só para quem
         // já tem — cada linha só carrega as colunas que faz sentido carregar.
         const variantesNovas = dbVariants.filter((item) => !item.id);
-        const variantesExistentes = dbVariants.filter((item) => item.id);
+        // As existentes ainda se dividem: o postgrest-js monta `columns` com a
+        // UNIÃO das chaves do lote (mesma razão da separação acima), então uma
+        // linha sem `stock_increment` num lote em que outra tem a mandaria como
+        // NULL. Quem leva o estoque e quem não leva vão em requisições próprias.
+        const variantesExistentes = dbVariants.filter(
+          (item) => item.id && "stock_increment" in item,
+        );
+        const variantesExistentesSemEstoque = dbVariants.filter(
+          (item) => item.id && !("stock_increment" in item),
+        );
 
         // Ordem importa (revisão de useProducts-1591): as duas requisições não
         // são uma transação. A fase IDEMPOTENTE (upsert por id das que já
@@ -2091,6 +2157,13 @@ export function useProducts({ autoFetch = true } = {}) {
           const { error } = await supabase
             .from("product_variants")
             .upsert(variantesExistentes, { onConflict: "id" });
+          if (error) throw error;
+        }
+
+        if (variantesExistentesSemEstoque.length > 0) {
+          const { error } = await supabase
+            .from("product_variants")
+            .upsert(variantesExistentesSemEstoque, { onConflict: "id" });
           if (error) throw error;
         }
 

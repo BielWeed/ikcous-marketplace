@@ -507,12 +507,15 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
 
     const existente = lote.find((v) => v.value === "Branca / PP");
     // A linha que JÁ existia não mudou: mesmo id, mesmo SKU, mesmo estoque.
+    // "Mesmo estoque" = a lojista não mexeu nele, então o número NÃO viaja
+    // (o banco guarda o dele; mandar o que a tela leu ao abrir desfaria uma
+    // venda feita no meio tempo).
     expect(existente).toMatchObject({
       id: "v1",
       sku: "BLU-BRC-PP",
-      stockIncrement: 3,
       active: true,
     });
+    expect(existente).not.toHaveProperty("stockIncrement");
 
     const nova = lote.find((v) => v.value === "Amarela / P");
     expect(nova).toMatchObject({

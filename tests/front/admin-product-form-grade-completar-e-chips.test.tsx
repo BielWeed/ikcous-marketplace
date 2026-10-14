@@ -309,18 +309,24 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
       Record<string, unknown>
     >;
     expect(lote).toHaveLength(3);
+    // As que já existiam e a lojista não mexeu no estoque seguem SEM o número
+    // (o banco guarda o dele); ver admin-product-form-salvar-nao-devolve-estoque-velho.
     expect(lote.find((v) => v.value === "Branca / PP")).toMatchObject({
       id: "v1",
       sku: "BLU-BRC-PP",
-      stockIncrement: 3,
       active: true,
     });
+    expect(lote.find((v) => v.value === "Branca / PP")).not.toHaveProperty(
+      "stockIncrement",
+    );
     expect(lote.find((v) => v.value === "Branca / P")).toMatchObject({
       id: "v2",
       sku: "BLU-BRC-P",
-      stockIncrement: 10,
       active: true,
     });
+    expect(lote.find((v) => v.value === "Branca / P")).not.toHaveProperty(
+      "stockIncrement",
+    );
     expect(lote.find((v) => v.value === "Branca / GG")).toMatchObject({
       stockIncrement: 0,
       sku: undefined,
