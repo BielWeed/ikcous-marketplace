@@ -2646,10 +2646,6 @@ Deno.test("credenciais-mercado-pago", async (t) => {
     });
 
     await t.step("N3 — `modo_de_teste` não mexe em NENHUM outro campo: com e sem a variável, o resto da resposta é o mesmo", async () => {
-        const campos = [
-            "configurado", "public_key", "mascara_token", "mascara_webhook",
-            "pix_ligado", "public_key_na_loja", "faltando", "pausado", "testou",
-        ];
         const rodar = async (extra: Record<string, string>) => {
             const desfazerEnv = prepararEnv(extra);
             const { cliente, estado } = supabaseFalso();
@@ -2662,8 +2658,15 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                 const testar = await (await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, conta).buscar)).json();
                 const lido = await (await chamar(cliente, { acao: "ler" })).json();
                 for (const corpo of [parcial, completo, testar, lido]) {
-                    vistos.push(Object.fromEntries(campos.map((c) => [c, corpo[c]])));
-                    vistos.push(corpo.aviso);
+                    // Tudo, MENOS o campo novo e o que muda a cada chamada (horas).
+                    const {
+                        modo_de_teste: _modoDeTeste,
+                        atualizado_em: _atualizadoEm,
+                        ultimo_teste: _ultimoTeste,
+                        quando: _quando,
+                        ...resto
+                    } = corpo;
+                    vistos.push(resto);
                 }
                 vistos.push(estado.loja.pagamento_online);
                 return vistos;
