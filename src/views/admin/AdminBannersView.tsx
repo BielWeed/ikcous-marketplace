@@ -1206,11 +1206,14 @@ export const AdminBannersView = memo(function AdminBannersView({
   // banner (abre a partir de dentro dele, via openAdjuster), então é o
   // overlay mais no topo e precisa ser checado ANTES de isDialogOpen — senão
   // o Esc fecha o formulário inteiro (e apaga o upload) enquanto só o
-  // recorte deveria fechar.
+  // recorte deveria fechar. Mesma razão para a pergunta "Este banner já
+  // terminou...": ela abre POR CIMA do formulário, e o Esc fecha só ela.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (isAdjusterOpen) {
+        if (confirmarFimVencido) {
+          setConfirmarFimVencido(false);
+        } else if (isAdjusterOpen) {
           setIsAdjusterOpen(false);
         } else if (isDialogOpen) {
           handleOpenChange(false);
@@ -1221,7 +1224,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isDialogOpen, showHelpModal, isAdjusterOpen]);
+  }, [isDialogOpen, showHelpModal, isAdjusterOpen, confirmarFimVencido]);
 
   // Reset modal and adjuster states when active is false to prevent focus traps and scroll lock
   useEffect(() => {
@@ -1700,6 +1703,11 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleSubmit = async () => {
+    // A confirmação "Salvar mesmo assim" vale para ESTA chamada só: lida e
+    // zerada antes de qualquer retorno antecipado (offline, salvando...),
+    // senão sobraria `true` e pularia a pergunta no próximo banner vencido.
+    const jaConfirmouFimVencido = fimVencidoConfirmadoRef.current;
+    fimVencidoConfirmadoRef.current = false;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description:
@@ -1721,8 +1729,6 @@ export const AdminBannersView = memo(function AdminBannersView({
       // bloqueia; fim que já passou (banner que nunca vai aparecer) pergunta.
       // Banner que já estava vencido e continua com a mesma data de fim não
       // pergunta de novo (a lojista não mexeu nas datas).
-      const jaConfirmouFimVencido = fimVencidoConfirmadoRef.current;
-      fimVencidoConfirmadoRef.current = false;
       const problemaDeData = problemaDasDatas(
         formData.startDate,
         formData.endDate,

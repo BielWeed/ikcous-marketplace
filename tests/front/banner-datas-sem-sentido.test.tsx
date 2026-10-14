@@ -103,6 +103,8 @@ describe("fimDoBannerEmTexto", () => {
 const h = vi.hoisted(() => ({
   banners: [] as Record<string, unknown>[],
   toastError: vi.fn(),
+  deleteStorageFile: vi.fn(),
+  offline: false,
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -122,7 +124,7 @@ vi.mock("@/hooks/useBanners", () => ({
     addBanner,
     updateBanner,
     deleteBanner: vi.fn(),
-    deleteStorageFile: vi.fn().mockResolvedValue(undefined),
+    deleteStorageFile: h.deleteStorageFile,
     reorderBanners: vi.fn(),
     refreshBanners: vi.fn(),
   }),
@@ -134,7 +136,9 @@ vi.mock("@/hooks/useCoupons", () => ({ useCoupons: () => ({}) }));
 vi.mock("@/hooks/useCategories", () => ({
   useCategories: () => ({ categories: [] }),
 }));
-vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+vi.mock("@/hooks/useOnlineStatus", () => ({
+  useOnlineStatus: () => h.offline,
+}));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { primaryColor: "#FFBF00" } }),
 }));
@@ -187,6 +191,8 @@ describe("AdminBannersView: datas sem sentido", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    h.offline = false;
+    h.deleteStorageFile.mockResolvedValue(undefined);
     // O botão "Novo Banner" só aparece com a lista populada.
     h.banners = [
       {
@@ -422,5 +428,79 @@ describe("AdminBannersView: datas sem sentido", () => {
 
     expect(textoDaTela()).not.toContain("Salvar mesmo assim?");
     expect(updateBanner).toHaveBeenCalledTimes(1);
+  });
+
+  async function abrirConfirmacaoDeFimVencido() {
+    await abrirBannerNovoNoPasso3();
+    await ligarProgramacao();
+    const agora = Date.now();
+    await escolherDatas(new Date(agora - 5 * dia), new Date(agora - 2 * dia));
+    await salvar();
+    expect(textoDaTela()).toContain("Salvar mesmo assim?");
+  }
+
+  it("Esc com a pergunta 'já terminou' aberta fecha SÓ a pergunta: o formulário e a foto ficam", async () => {
+    await abrirConfirmacaoDeFimVencido();
+
+    await act(async () => {
+      globalThis.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+      await esperar(50);
+    });
+
+    expect(textoDaTela()).not.toContain("Salvar mesmo assim?");
+    // o formulário continua aberto, com o que a lojista já fez
+    expect(botaoComTexto(document.body, "Salvar Alterações")).toBeDefined();
+    // e a foto recém-enviada NÃO foi apagada do Storage
+    expect(h.deleteStorageFile).not.toHaveBeenCalled();
+    expect(addBanner).not.toHaveBeenCalled();
+  });
+
+  it("um SEGUNDO Esc (pergunta já fechada) continua fechando o formulário", async () => {
+    await abrirConfirmacaoDeFimVencido();
+    const apertarEsc = () =>
+      act(async () => {
+        globalThis.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+        await esperar(50);
+      });
+    await apertarEsc();
+    await apertarEsc();
+    expect(botaoComTexto(document.body, "Salvar Alterações")).toBeUndefined();
+  });
+
+  it("a confirmação não 'sobra': se 'Salvar mesmo assim' não salvou (ficou offline), a próxima vez pergunta de novo", async () => {
+    await abrirConfirmacaoDeFimVencido();
+    const { AdminBannersView } = await import("@/views/admin/AdminBannersView");
+    const renderizar = () =>
+      act(async () => {
+        // função nova a cada chamada: força o re-render do componente memo
+        raiz.render(
+          <AdminBannersView
+            onNavigate={(...a: Parameters<typeof onNavigate>) =>
+              onNavigate(...a)
+            }
+            active={true}
+          />,
+        );
+      });
+
+    // a internet cai com a pergunta aberta; "Salvar mesmo assim" não salva
+    h.offline = true;
+    await renderizar();
+    await act(async () => {
+      botaoComTexto(document.body, "Salvar mesmo assim")?.click();
+      await esperar(50);
+    });
+    expect(addBanner).not.toHaveBeenCalled();
+
+    // volta a internet; salvar de novo tem de PERGUNTAR outra vez
+    h.offline = false;
+    await renderizar();
+    await salvar();
+    expect(textoDaTela()).toContain("Salvar mesmo assim?");
+    expect(addBanner).not.toHaveBeenCalled();
   });
 });
