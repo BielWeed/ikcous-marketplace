@@ -679,7 +679,16 @@ export const ProductView = React.memo(function ProductView({
 
     if (navigator.share) {
       try {
-        await navigator.share(shareData);
+        // O menu de compartilhar do celular (WhatsApp no Android, por
+        // exemplo) costuma juntar `text` e `url` numa mensagem só. Quando o
+        // modelo da lojista já trouxe [link], a URL está dentro do texto —
+        // mandá-la também no campo `url` a repetiria. Sem [link], o texto
+        // não tem URL e ela segue no campo `url`, uma vez só.
+        await navigator.share(
+          temMarcadorDeLink
+            ? { title: shareData.title, text: shareData.text }
+            : shareData,
+        );
       } catch {
         console.log("Share cancelled");
       }
