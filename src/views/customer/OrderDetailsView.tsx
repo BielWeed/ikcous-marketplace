@@ -11,6 +11,7 @@ import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import { fundirPedidoDoHook } from "@/lib/fundir-pedido-do-hook";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
@@ -529,6 +530,18 @@ export function OrderDetailsView({
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+
+  // Ao vivo: o realtime atualiza a lista do hook (`orders`), mas esta tela
+  // guarda a SUA cópia do pedido (`order`) e só a trocava em `loadOrder` e no
+  // cancelamento — o PIX confirmava e o "Retomar pagamento" ficava na tela.
+  // Quando a cópia do hook é mais nova, funde sobre a da tela sem perder o que
+  // só o `loadOrder` traz (ver `fundirPedidoDoHook`). Sem cópia mais nova, o
+  // `setOrder` devolve a MESMA referência e nada renderiza de novo.
+  useEffect(() => {
+    const doHook = orders.find((o) => o.id === orderId);
+    if (!doHook) return;
+    setOrder((atual) => (atual ? fundirPedidoDoHook(atual, doHook) : atual));
+  }, [orders, orderId]);
 
   // Outro pedido na tela = outras avaliações: o conjunto do anterior não pode
   // aparecer como "Avaliado" no novo. Reseta pelo ID (e não pelo objeto), senão
