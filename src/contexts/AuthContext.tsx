@@ -7,6 +7,10 @@ import {
   salvarPendente,
 } from "@/lib/cpf-pendente-do-cadastro";
 import {
+  enderecoSemOErroDoLink,
+  enderecoTrazErroDeLink,
+} from "@/lib/erro-no-endereco-do-link";
+import {
   type LoginAudience,
   MENSAGEM_ERRO_LOGIN_GENERICA,
   MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
@@ -90,6 +94,10 @@ interface AuthContextType {
   }) => Promise<boolean>;
   isPasswordRecovery: boolean;
   setIsPasswordRecovery: (value: boolean) => void;
+  /** O link de "esqueci a senha" voltou com erro (vencido ou já usado). */
+  linkDeRecuperacaoVencido: boolean;
+  /** A tela que mostrou o aviso avisa que já usou (a flag volta a falso). */
+  limparLinkDeRecuperacaoVencido: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType>(
@@ -234,8 +242,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     cachedSession?.user ? "unknown" : "not-admin",
   );
   const isAdmin = adminStatus === "admin";
+  // Link de "esqueci a senha" VENCIDO ou já usado: o servidor devolve a pessoa
+  // com o erro no endereço (`error_code=otp_expired`, no hash ou na query) e o
+  // `?type=recovery` continua lá. Com `error_code` o app NÃO entra em modo
+  // nova senha (sem sessão a troca nunca funciona e a pessoa só lia "Não foi
+  // possível atualizar sua senha"): a tela "Recuperar" abre com o aviso. Sem
+  // `error_code` o caminho que funciona é idêntico ao de antes.
+  const [linkDeRecuperacaoVencido, setLinkDeRecuperacaoVencido] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      enderecoTrazErroDeLink(window.location.search, window.location.hash),
+  );
+  const limparLinkDeRecuperacaoVencido = useCallback(
+    () => setLinkDeRecuperacaoVencido(false),
+    [],
+  );
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
     if (typeof window !== "undefined") {
+      if (enderecoTrazErroDeLink(window.location.search, window.location.hash))
+        return false;
       const params = new URLSearchParams(window.location.search);
       return (
         params.get("type") === "recovery" ||
@@ -266,6 +291,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       );
     }
   }, [isPasswordRecovery]);
+
+  // O erro do link é lido uma vez (acima); aqui ele sai do endereço, para um
+  // F5 não repetir o aviso nem reabrir a tela por causa de um link já tratado.
+  useEffect(() => {
+    if (linkDeRecuperacaoVencido && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      window.history.replaceState(
+        {},
+        document.title,
+        enderecoSemOErroDoLink(url),
+      );
+    }
+  }, [linkDeRecuperacaoVencido]);
 
   // #121 — precisa existir ANTES de `checkAdmin`: é a guarda que decide, na
   // resolução de uma verificação, se o usuário que a disparou ainda é o
@@ -1123,7 +1161,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         toast.error(message);
         return false;
       }
-      toast.success("E-mail de confirmação reenviado!");
+      // O servidor responde SUCESSO sem mandar e-mail quando o endereço já
+      // está confirmado (conta existente), então "reenviado!" era afirmação
+      // falsa para quem já tem conta. Condicional, e sem revelar se tem conta
+      // (a #120 fechou esse vazamento) — vale para qualquer endereço.
+      toast.success(
+        "Se este e-mail ainda aguarda confirmação, reenviamos o link. Se você já tem conta, entre ou use 'Esqueceu?'.",
+      );
       return true;
     },
     [],
@@ -1334,6 +1378,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       fetchProfile,
       isPasswordRecovery,
       setIsPasswordRecovery,
+      linkDeRecuperacaoVencido,
+      limparLinkDeRecuperacaoVencido,
     }),
     [
       session,
@@ -1353,6 +1399,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       fetchProfile,
       isPasswordRecovery,
       setIsPasswordRecovery,
+      linkDeRecuperacaoVencido,
+      limparLinkDeRecuperacaoVencido,
     ],
   );
 
