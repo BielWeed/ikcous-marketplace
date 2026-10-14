@@ -560,9 +560,13 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   os mesmos valores, o login **não é apagado** (fica bloqueado, com e-mail sem identidade), a vizinha e o registro do
   pedido de privacidade ficam intactos; uma varredura independente não acha mais nome/e-mail/telefone/CPF e a "busca de
   sobras" do roteiro acha só a resposta da loja que cita o nome; as travas (pedido ou devolução em andamento, foto no
-  Storage, sem pedido aberto) recusam sem mudar nada. O esquema `auth` é **emulado** por esta prova (colunas e tabelas
-  que o roteiro toca); o que só um Supabase real prova está marcado `[CONFERIR EM LOJA DE TESTE]` no roteiro. **Não
-  prova** a IKCOUS nem a Savy.
+  Storage, sem pedido aberto) recusam sem mudar nada. Do login do Supabase o roteiro também limpa a troca pendente de
+  e-mail/telefone e os códigos de `auth.users`, apaga as linhas dela de `auth.one_time_tokens` e `auth.mfa_factors` e
+  deixa o `auth.audit_log_entries` sem IP e sem dado pessoal (a linha fica); do pedido só passa a lista de permitidos
+  (forma de entrega, endereço da loja, canal), provada com chave de endereço de nome inesperado. A prova (g) tira UM
+  passo por vez (7 mutantes + o do IP) e a varredura tem de achar dado dela. O esquema `auth` é **emulado** por esta
+  prova (colunas e tabelas que o roteiro toca, com os tipos do GoTrue); o que só um Supabase real prova está marcado
+  `[CONFERIR EM LOJA DE TESTE]` no roteiro. **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

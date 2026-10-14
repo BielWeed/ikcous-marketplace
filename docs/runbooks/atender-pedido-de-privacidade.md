@@ -84,6 +84,12 @@ UNION ALL SELECT 'nome', p.full_name FROM public.profiles p, alvo WHERE p.id = a
 UNION ALL SELECT 'whatsapp', p.whatsapp FROM public.profiles p, alvo WHERE p.id = alvo.id
 UNION ALL SELECT 'cpf', p.cpf FROM public.profiles p, alvo WHERE p.id = alvo.id
 UNION ALL SELECT 'endereços', count(*)::text FROM public.user_addresses a, alvo WHERE a.user_id = alvo.id
+UNION ALL SELECT 'endereço: rua', a.street FROM public.user_addresses a, alvo WHERE a.user_id = alvo.id
+UNION ALL SELECT 'endereço: complemento', a.complement FROM public.user_addresses a, alvo WHERE a.user_id = alvo.id AND nullif(btrim(a.complement), '') IS NOT NULL
+UNION ALL SELECT 'endereço: bairro', a.neighborhood FROM public.user_addresses a, alvo WHERE a.user_id = alvo.id
+UNION ALL SELECT 'endereço: CEP', a.cep FROM public.user_addresses a, alvo WHERE a.user_id = alvo.id
+UNION ALL SELECT 'troca de e-mail pendente', nullif(u.email_change, '') FROM auth.users u, alvo WHERE u.id = alvo.id
+UNION ALL SELECT 'troca de telefone pendente', nullif(u.phone_change, '') FROM auth.users u, alvo WHERE u.id = alvo.id
 UNION ALL SELECT 'favoritos', count(*)::text FROM public.favorites f, alvo WHERE f.user_id = alvo.id
 UNION ALL SELECT 'itens no carrinho', count(*)::text FROM public.cart_items c, alvo WHERE c.user_id = alvo.id
 UNION ALL SELECT 'avisos no app', count(*)::text FROM public.notificacoes n, alvo WHERE n.usuario_id = alvo.id
@@ -98,8 +104,9 @@ UNION ALL SELECT 'fotos de devolução guardadas', count(*)::text FROM storage.o
   WHERE s.bucket_id = 'devolucoes' AND split_part(s.name, '/', 1) = alvo.id::text;
 ```
 
-**Anote** o e-mail de entrada, o nome, o whatsapp e o CPF que aparecerem: o
-passo 6 precisa deles (depois do passo 4 eles deixam de existir no banco).
+**Anote** o e-mail de entrada, o nome, o whatsapp, o CPF e o **endereço** (rua,
+complemento, bairro e CEP) que aparecerem: o passo 6 precisa deles (depois do
+passo 4 eles deixam de existir no banco).
 
 Mostre o resultado ao dono. Se houver **pedido ou devolução em andamento**, pare:
 anonimizar o endereço de um pedido que ainda não foi entregue estraga a entrega.
@@ -127,14 +134,21 @@ nem pedido nenhum**:
 
 - perfil: nome vira "Cliente removido"; telefone, CPF e fotos de perfil somem;
 - login: o e-mail vira `excluido+<id>@invalid.local` (um endereço que não existe),
-  os dados de cadastro (nome, telefone, CPF) são esvaziados, a conta é
+  os dados de cadastro (nome, telefone, CPF) são esvaziados, o pedido pendente de
+  troca de e-mail ou telefone e os códigos em andamento são esvaziados, a conta é
   **bloqueada** e as sessões abertas são encerradas; ligações com Google/outros
   são desfeitas;
+- registro do login (esquema `auth` do Supabase): os códigos de troca e
+  recuperação e as verificações em duas etapas (com telefone) são **apagados**;
+  o registro de atividade (`audit_log_entries`) **fica, linha por linha, mas sem o
+  IP** e sem e-mail, telefone ou nome — só sobram a ação, o tipo e a data;
 - apaga endereços, favoritos, carrinho, avisos do app, avisos de celular
   (push) e códigos de verificação (`otp_verifications`);
-- pedidos: o nome vira "Cliente removido"; telefone, e-mail, CPF e **todo o
-  endereço** saem do pedido; o texto livre das observações é substituído por um
-  aviso. **Ficam** valores, itens, datas, forma de pagamento, frete e rastreio;
+- pedidos: o nome vira "Cliente removido"; do retrato do pedido **só passa** a
+  forma de entrega, o endereço da loja (retirada) e o canal de venda — telefone,
+  e-mail, CPF e **todo o endereço**, com o nome de campo que tiver, saem; o texto
+  livre das observações é substituído por um aviso. **Ficam** valores, itens,
+  datas, forma de pagamento, frete e rastreio;
 - devoluções: somem o texto que a cliente escreveu e a lista de fotos (o valor,
   o motivo e os estados ficam);
 - eventos de navegação (`analytics_events`): perdem o vínculo com a cliente.
@@ -220,14 +234,18 @@ BEGIN
   v_rel := v_rel || format(E'eventos de navegação desvinculados: %s\n', v_n);
 
   -- Pedidos: ficam (valores, itens, datas, pagamento, frete, rastreio); saem os dados pessoais.
+  -- No retrato do pedido (customer_data) só PASSA o que está na lista de permitidos:
+  -- forma de entrega, endereço da LOJA (retirada) e canal de venda. Qualquer outra
+  -- chave, mesmo de nome que ninguém previu, sai junto.
   UPDATE public.marketplace_orders
      SET customer_name = 'Cliente removido',
          customer_phone = NULL,
-         customer_data = customer_data
-           - 'whatsapp' - 'phone' - 'name' - 'email' - 'cpf'
-           - 'address' - 'addressData' - 'address_text' - 'address_id'
-           - 'street' - 'number' - 'complement' - 'neighborhood' - 'city' - 'state'
-           - 'cep' - 'reference' - 'destination_cep',
+         customer_data = CASE WHEN jsonb_typeof(customer_data) = 'object'
+           THEN coalesce((SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(customer_data) AS e
+                           WHERE e.key IN ('shipping_option_id', 'pickup_address', 'canal')),
+                         '{}'::jsonb)
+           ELSE '{}'::jsonb END,
          notes = CASE WHEN nullif(btrim(notes), '') IS NULL THEN notes
                       ELSE '[texto removido a pedido da cliente]' END,
          observation = CASE WHEN nullif(btrim(observation), '') IS NULL THEN observation
@@ -242,10 +260,19 @@ BEGIN
   v_rel := v_rel || format(E'devoluções limpas de texto e fotos: %s\n', v_n);
 
   -- Login: NUNCA apagar. E-mail sem identidade, cadastro esvaziado, conta bloqueada, sessões encerradas.
+  -- Também esvazia o pedido pendente de troca de e-mail/telefone e os códigos em andamento.
   UPDATE auth.users
      SET email = v_novo_email,
          phone = NULL,
          raw_user_meta_data = jsonb_build_object('anonimizado', true),
+         email_change = '',
+         phone_change = '',
+         confirmation_token = '',
+         recovery_token = '',
+         email_change_token_new = '',
+         email_change_token_current = '',
+         phone_change_token = '',
+         reauthentication_token = '',
          banned_until = timestamptz '2999-12-31 00:00:00+00',
          updated_at = now()
    WHERE id = v_id;
@@ -263,6 +290,47 @@ BEGIN
   DELETE FROM auth.sessions WHERE user_id = v_id;
   GET DIAGNOSTICS v_n = ROW_COUNT;
   v_rel := v_rel || format(E'sessões abertas encerradas: %s\n', v_n);
+  DELETE FROM auth.one_time_tokens WHERE user_id = v_id;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  v_rel := v_rel || format(E'códigos de troca/recuperação do login apagados: %s\n', v_n);
+  DELETE FROM auth.mfa_factors WHERE user_id = v_id;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  v_rel := v_rel || format(E'verificações em duas etapas (com telefone) apagadas: %s\n', v_n);
+
+  -- Registro de atividade do login (auth.audit_log_entries): a LINHA fica (ação, tipo, data,
+  -- identificador), mas sem o IP e sem nada pessoal (e-mail, telefone, nome). Só PASSA o que
+  -- está na lista de permitidos. (a) o que a própria cliente fez:
+  UPDATE auth.audit_log_entries a
+     SET ip_address = '',
+         payload = (
+           coalesce((SELECT jsonb_object_agg(e.key, e.value)
+                       FROM jsonb_each(a.payload::jsonb) AS e
+                      WHERE e.key IN ('actor_id', 'actor_via_sso', 'action', 'log_type')),
+                    '{}'::jsonb)
+           || CASE WHEN jsonb_typeof(a.payload::jsonb -> 'traits') = 'object'
+                   THEN jsonb_build_object('traits',
+                          coalesce((SELECT jsonb_object_agg(t.key, t.value)
+                                      FROM jsonb_each(a.payload::jsonb -> 'traits') AS t
+                                     WHERE t.key IN ('user_id', 'provider', 'factor_id', 'factor_type')),
+                                   '{}'::jsonb))
+                   ELSE '{}'::jsonb END
+         )::json
+   WHERE a.payload ->> 'actor_id' = v_id::text;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  v_rel := v_rel || format(E'registro de atividade dela, sem IP e sem dados pessoais: %s\n', v_n);
+  -- (b) o que um administrador fez no cadastro dela: o IP e o nome dele ficam, saem o
+  -- e-mail e o telefone DELA que o registro guardou.
+  UPDATE auth.audit_log_entries a
+     SET payload = jsonb_set(a.payload::jsonb, '{traits}',
+           coalesce((SELECT jsonb_object_agg(t.key, t.value)
+                       FROM jsonb_each(a.payload::jsonb -> 'traits') AS t
+                      WHERE t.key IN ('user_id', 'provider', 'factor_id', 'factor_type')),
+                    '{}'::jsonb))::json
+   WHERE jsonb_typeof(a.payload::jsonb -> 'traits') = 'object'
+     AND a.payload::jsonb -> 'traits' ->> 'user_id' = v_id::text
+     AND coalesce(a.payload ->> 'actor_id', '') <> v_id::text;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  v_rel := v_rel || format(E'registro de atividade de administrador sobre ela, sem e-mail/telefone dela: %s\n', v_n);
 
   IF NOT v_confirmar THEN
     RAISE EXCEPTION '%', E'ENSAIO (nada foi gravado). Isto é o que mudaria:\n' || v_rel
@@ -279,13 +347,23 @@ $anonimizar$;
   ser recusado; e um celular já logado deve perder a sessão (no máximo em 1 hora);
 - os nomes das colunas do esquema `auth` na versão do Supabase da loja
   (`banned_until`, `raw_user_meta_data`, `identities.provider_id`,
-  `identities.identity_data`, `sessions`). O ensaio local usa uma cópia
-  emulada delas. Se o Supabase recusar alguma coluna, o bloco para inteiro e
-  nada muda: avise quem programa;
+  `identities.identity_data`, `sessions`, as colunas de troca e de código de
+  `users` — `email_change`, `phone_change`, `*_token*` —, `one_time_tokens`,
+  `mfa_factors` e `audit_log_entries.payload` / `ip_address`). O ensaio local usa
+  uma cópia emulada delas (o `payload` do registro de atividade como `json`, como o
+  GoTrue cria). Se o Supabase recusar alguma coluna, o bloco para inteiro e nada
+  muda: avise quem programa;
+- se o papel do SQL Editor tem **permissão de escrever** em `auth.audit_log_entries`,
+  `auth.one_time_tokens` e `auth.mfa_factors` (em algumas versões só o papel interno
+  do login escreve ali: o bloco para inteiro com "permission denied" e nada muda);
 - se algum gatilho do Supabase (fora das migrations do projeto) reage a mudança
   no `auth.users`;
-- se `customer_data` de pedidos **antigos** tem chaves que não estão na lista
-  acima (o passo 6 acha o que sobrou).
+- se o passo 6, rodado de novo depois, não lista nenhuma tabela `auth.`.
+
+Ficam de fora, de propósito (não são dado pessoal legível, mas diga ao dono):
+`auth.refresh_tokens` e `auth.flow_state` (códigos técnicos de acesso, sem nome
+nem e-mail; o ensaio não os cobre). O acesso já está bloqueado pela conta banida;
+se o dono quiser limpar também, é um passo novo a pedir a quem programa.
 
 ## Passo 5 — Marcar o pedido no painel
 
@@ -305,52 +383,71 @@ deixe `''`):
 
 ```sql
 -- BLOCO: sobras
-CREATE OR REPLACE FUNCTION pg_temp.sobras(p_nome text, p_email text, p_fone text, p_cpf text)
+CREATE OR REPLACE FUNCTION pg_temp.sobras(
+  p_nome text, p_email text, p_fone text, p_cpf text,
+  p_endereco text[], p_cep text)
 RETURNS TABLE (tabela text, coluna text, linhas bigint)
 LANGUAGE plpgsql AS $sobras$
 DECLARE
   r record;
+  e text;
   v_texto text[] := ARRAY[]::text[];
   v_fone text := right(regexp_replace(coalesce(p_fone, ''), '\D', '', 'g'), 10);
   v_cpf text := regexp_replace(coalesce(p_cpf, ''), '\D', '', 'g');
+  v_cep text := regexp_replace(coalesce(p_cep, ''), '\D', '', 'g');
   v_n bigint;
 BEGIN
   IF length(btrim(coalesce(p_nome, ''))) >= 5 THEN v_texto := v_texto || ('%' || btrim(p_nome) || '%'); END IF;
   IF position('@' IN coalesce(p_email, '')) > 0 THEN v_texto := v_texto || ('%' || btrim(p_email) || '%'); END IF;
+  -- Endereço: rua, complemento e bairro (cada um com pelo menos 5 letras, senão casaria com tudo).
+  FOREACH e IN ARRAY coalesce(p_endereco, ARRAY[]::text[]) LOOP
+    IF length(btrim(coalesce(e, ''))) >= 5 THEN v_texto := v_texto || ('%' || btrim(e) || '%'); END IF;
+  END LOOP;
   IF length(v_fone) < 10 THEN v_fone := NULL; END IF;
   IF length(v_cpf) <> 11 THEN v_cpf := NULL; END IF;
+  IF length(v_cep) <> 8 THEN v_cep := NULL; END IF;
   FOR r IN
-    SELECT c.table_name::text AS t, c.column_name::text AS col
+    SELECT c.table_schema::text AS s, c.table_name::text AS t, c.column_name::text AS col
       FROM information_schema.columns c
       JOIN information_schema.tables x
         ON x.table_schema = c.table_schema AND x.table_name = c.table_name
-     WHERE c.table_schema = 'public' AND x.table_type = 'BASE TABLE'
+     WHERE c.table_schema IN ('public', 'auth') AND x.table_type = 'BASE TABLE'
        AND c.data_type IN ('text', 'character varying', 'jsonb', 'json', 'ARRAY')
        AND c.table_name <> 'pedidos_de_privacidade'
   LOOP
     EXECUTE format(
-      $q$SELECT count(*) FROM public.%1$I
-          WHERE %2$I::text ILIKE ANY ($1)
-             OR ($2 IS NOT NULL AND regexp_replace(%2$I::text, '\D', '', 'g') LIKE '%%' || $2 || '%%')
-             OR ($3 IS NOT NULL AND regexp_replace(%2$I::text, '\D', '', 'g') LIKE '%%' || $3 || '%%')$q$,
-      r.t, r.col) INTO v_n USING v_texto, v_fone, v_cpf;
+      $q$SELECT count(*) FROM %1$I.%2$I
+          WHERE %3$I::text ILIKE ANY ($1)
+             OR ($2 IS NOT NULL AND regexp_replace(%3$I::text, '\D', '', 'g') LIKE '%%' || $2 || '%%')
+             OR ($3 IS NOT NULL AND regexp_replace(%3$I::text, '\D', '', 'g') LIKE '%%' || $3 || '%%')
+             OR ($4 IS NOT NULL AND regexp_replace(%3$I::text, '\D', '', 'g') LIKE '%%' || $4 || '%%')$q$,
+      r.s, r.t, r.col) INTO v_n USING v_texto, v_fone, v_cpf, v_cep;
     IF v_n > 0 THEN
-      tabela := r.t; coluna := r.col; linhas := v_n;
+      tabela := CASE WHEN r.s = 'public' THEN r.t ELSE r.s || '.' || r.t END;
+      coluna := r.col; linhas := v_n;
       RETURN NEXT;
     END IF;
   END LOOP;
 END
 $sobras$;
 
-SELECT * FROM pg_temp.sobras('NOME COMPLETO ANTIGO', 'email.antigo@exemplo.com', '(11) 91234-5678', '123.456.789-09');
+SELECT * FROM pg_temp.sobras('NOME COMPLETO ANTIGO', 'email.antigo@exemplo.com', '(11) 91234-5678', '123.456.789-09',
+                             ARRAY['RUA ANTIGA', 'COMPLEMENTO ANTIGO', 'BAIRRO ANTIGO'], '01001-000');
 ```
 
 Resultado vazio = não sobrou nada. Se listar algo, abra aquela tabela, olhe as
-linhas e troque o trecho à mão por "[removido]". Linhas de `reviews`
+linhas e troque o trecho à mão por "[removido]". Os dois últimos valores são o
+**endereço** que você anotou no passo 2 (rua, complemento e bairro, na lista
+entre colchetes, e o CEP): esvazie o que não tiver (`ARRAY[]::text[]` e `''`).
+Tabelas que começam por `auth.` são do login (registro de atividade, códigos de
+troca, verificação em duas etapas): se aparecer alguma depois do passo 4, **pare
+e avise quem programa** — o passo 4 devia ter limpado. Linhas de `reviews`
 (`merchant_reply`), `answers` e `devolucao_eventos` são os suspeitos de sempre:
 são textos que a **loja** escreveu e podem citar o nome dela. Os números de
-telefone e CPF casam por dígitos, então um código de barras parecido pode
-aparecer: confira antes de mexer.
+telefone, CPF e CEP casam por dígitos, então um código de barras parecido pode
+aparecer: confira antes de mexer. O endereço **da loja** (retirada) fica no
+pedido de propósito: se a cliente morava no mesmo bairro da loja, o bairro
+aparece em `marketplace_orders.customer_data` e é esperado — confira.
 
 O que **fica de propósito**: a linha do pedido de privacidade (a tabela
 `pedidos_de_privacidade`, que guarda o e-mail novo quando o pedido era de
