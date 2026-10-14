@@ -9,8 +9,12 @@
  * Fatos medidos na doc pública do Mercado Pago em 14/09/2026 (pesquisa da
  * peça): o lojista precisa de DUAS credenciais da conta dele — Public Key e
  * Access Token de produção, criadas em developers.mercadopago.com com a
- * conta normal dele (sem aprovação de pessoa). O ambiente real (produção ×
- * teste) vem da resposta da API (`live_mode`), NÃO do prefixo da chave.
+ * conta normal dele (sem aprovação de pessoa). O ambiente (produção × teste)
+ * NÃO vem do prefixo `APP_USR-` (os dois nascem assim) nem de `live_mode` (o
+ * `/users/me` não devolve esse campo): o teste de conexão lê as MARCAS da
+ * conta — `tags` com "test_user", e-mail `@testuser.com` ou token `TEST-`
+ * (corrigido em 14/10/2026). Com marca de teste a tela avisa; sem marca
+ * nenhuma a tela não afirma nada e não avisa.
  * O assistente de IA do app do Mercado Pago existe e se chama "Mago"
  * (antes "Assistente Pessoal") — o NOME varia conforme a versão do app, e
  * o CAMINHO exato dentro do app varia também, então o guia não promete
@@ -197,6 +201,16 @@ Essas chaves são SECRETAS. Eu só vou usá-las no painel do Mercado Pago e dent
 export const PROMPT_PARA_AGENTE_MP = montarPromptParaAgenteMp({
   urlDeNotificacoes: null,
 });
+
+/**
+ * Aviso de chave de conta de TESTE (14/10/2026). É o MESMO texto que a edge
+ * `credenciais-mercado-pago` manda em `aviso` quando a conta é de teste e a loja
+ * não declarou modo de teste — repetido aqui para o resumo do topo da seção
+ * continuar avisando depois que a tela é reaberta (o `aviso` da edge só chega na
+ * resposta do salvar/testar). Há um teste que confere os dois lados.
+ */
+export const AVISO_CHAVES_DE_TESTE =
+  'Essas chaves são de TESTE. Suas clientes não vão conseguir pagar. Troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
 
 /** Recado de segurança exibido embaixo do formulário. */
 export const RECADO_DE_SEGURANCA =

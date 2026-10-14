@@ -24,6 +24,7 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  AVISO_CHAVES_DE_TESTE,
   PASSOS_DO_GUIA,
   RECADO_DE_SEGURANCA,
   montarPromptParaAgenteMp,
@@ -683,6 +684,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   };
 
   const teste = config.ultimo_teste;
+  // Conta de TESTE (chave que não recebe dinheiro de verdade): vem do `ambiente`
+  // que o servidor apurou. Resposta antiga, sem o campo, não conta como teste.
+  const chaveDeTeste = teste?.conectado === true && teste.ambiente === "teste";
 
   // O ESTADO do recebimento pelo app, lido do que o SERVIDOR devolveu:
   // ligado na ficha manda (é o que o cliente vê); depois a pausa; depois o que
@@ -810,18 +814,30 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         </div>
       ) : teste ? (
         <div
-          className={`flex items-center gap-2 rounded-lg border p-2.5 text-xs ${
-            teste.conectado
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              : "border-red-500/30 bg-red-500/10 text-red-300"
+          data-resumo-do-teste=""
+          className={`flex gap-2 rounded-lg border p-2.5 text-xs ${
+            !teste.conectado
+              ? "items-center border-red-500/30 bg-red-500/10 text-red-300"
+              : chaveDeTeste
+                ? "items-start border-amber-500/30 bg-amber-500/10 text-amber-300"
+                : "items-center border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
           }`}
         >
-          {teste.conectado ? (
+          {teste.conectado && !chaveDeTeste ? (
             <CheckCircle2 className="size-4 shrink-0" />
           ) : (
             <AlertCircle className="size-4 shrink-0" />
           )}
-          <span>{teste.mensagem}</span>
+          <span className="space-y-1">
+            <span className="block">{teste.mensagem}</span>
+            {/* Conta de TESTE: o resumo não pinta verde nem fica calado. O
+                aviso do servidor (`avisoPix`, logo abaixo) já diz isto
+                quando acabou de chegar; reaberta a tela, é este texto que
+                continua avisando — nunca os dois ao mesmo tempo. */}
+            {chaveDeTeste && !avisoPix && (
+              <span className="block">{AVISO_CHAVES_DE_TESTE}</span>
+            )}
+          </span>
         </div>
       ) : (
         <p className="flex items-center gap-2 text-xs text-zinc-400">
