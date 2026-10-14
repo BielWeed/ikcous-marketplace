@@ -440,12 +440,7 @@ describe("OrderTimeline — retirada pronta não é 'Em rota'", () => {
     await act(async () => {
       raiz.render(<OrderTimeline status="shipping" />);
     });
-    expect(etapas()).toEqual([
-      "Recebido",
-      "Preparando",
-      "Em rota",
-      "Entregue",
-    ]);
+    expect(etapas()).toEqual(["Recebido", "Preparando", "Em rota", "Entregue"]);
     await act(async () => {
       raiz.render(<OrderTimeline status="shipping" retiradaNaLoja={false} />);
     });

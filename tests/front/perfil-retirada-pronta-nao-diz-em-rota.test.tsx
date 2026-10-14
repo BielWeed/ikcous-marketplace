@@ -24,10 +24,7 @@ function builderDoFetch() {
   builder.abortSignal = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) =>
-    Promise.resolve({ data: estado.linhas, error: null }).then(
-      resolve,
-      reject,
-    );
+    Promise.resolve({ data: estado.linhas, error: null }).then(resolve, reject);
   return builder;
 }
 
