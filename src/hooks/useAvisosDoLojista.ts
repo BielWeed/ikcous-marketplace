@@ -121,7 +121,8 @@ async function buscarAvaliacoesSemResposta(): Promise<AvaliacaoCrua[]> {
   return (data ?? []) as unknown as AvaliacaoCrua[];
 }
 
-// 14/10/2026: o cliente cancelou um pedido que ja tinha pago. A fonte e o
+// 14/10/2026: o cliente cancelou um pedido que ja tinha pago, ou um pedido a
+// pagar na entrega/retirada que a loja ainda nao enviou. A fonte e o
 // HISTORICO do pedido (a `pedido__mudar_status`, ponto unico do cancelamento,
 // grava `created_by` = quem cancelou); o administrador le a linha de todos
 // pela politica de SELECT do historico. O papel dos autores vem de
