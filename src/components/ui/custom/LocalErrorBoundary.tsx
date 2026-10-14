@@ -1,17 +1,10 @@
 import { AdminErrorState } from "@/components/admin/AdminErrorState";
 import { Button } from "@/components/ui/button";
-import {
-  ehErroDeChunk,
-  recuperarSeAVersaoForOMotivo,
-} from "@/lib/recuperacao-chunk";
-import { reiniciarCargasQueFalharam } from "@/utils/lazyWithPreload";
+import { tentarDeNovoAbaQueNaoBaixou } from "@/lib/recarga-de-aba-que-falhou";
+import { ehErroDeChunk } from "@/lib/recuperacao-chunk";
 import { RefreshCcw, WifiOff } from "lucide-react";
 import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
-
-/** Quanto tempo depois do "Tentar de novo" uma falha de chunk ainda conta
- * como "a tentativa falhou" (3G lento demora a desistir). */
-const JANELA_DO_TENTAR_DE_NOVO_MS = 60000;
 
 interface Props {
   children: ReactNode;
@@ -23,6 +16,10 @@ interface State {
   hasError: boolean;
   error: Error | null;
   showDetails: boolean;
+  /** Chunk: o que a última tentativa provou — a frase só fala de conexão
+   * quando a rede de fato está ruim. */
+  chunkAviso: "nenhum" | "sem-rede" | "esgotado";
+  verificando: boolean;
 }
 
 export class LocalErrorBoundary extends Component<Props, State> {
@@ -30,15 +27,19 @@ export class LocalErrorBoundary extends Component<Props, State> {
     hasError: false,
     error: null,
     showDetails: false,
+    chunkAviso: "nenhum",
+    verificando: false,
   };
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error, showDetails: false };
+    return {
+      hasError: true,
+      error,
+      showDetails: false,
+      chunkAviso: "nenhum",
+      verificando: false,
+    };
   }
-
-  /** Quando a cliente tocou em "Tentar de novo" (0 = não tocou). Um chunk que
-   * falha DENTRO da janela é "falhou de novo"; fora dela é outra falha. */
-  private tentouDeNovoEm = 0;
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error(
@@ -46,25 +47,30 @@ export class LocalErrorBoundary extends Component<Props, State> {
       error,
       errorInfo,
     );
-    // Segunda falha seguida: se a rede está provada e o arquivo não vem, é
-    // versão nova — entra na escada de sempre. Rede ruim não gasta orçamento.
-    if (
-      ehErroDeChunk(error.message) &&
-      this.tentouDeNovoEm > 0 &&
-      Date.now() - this.tentouDeNovoEm < JANELA_DO_TENTAR_DE_NOVO_MS
-    ) {
-      this.tentouDeNovoEm = 0;
-      void recuperarSeAVersaoForOMotivo();
-    }
   }
 
+  /** Tela que não baixou: o navegador memoriza a falha do import, então
+   * "tentar de novo" é RECARREGAR (com rede provada e guarda de laço) — ver
+   * `recarga-de-aba-que-falhou`. Rede ruim: não recarrega, só avisa. */
+  private readonly handleTentarDeNovoChunk = async () => {
+    if (this.state.verificando) return;
+    this.setState({ verificando: true });
+    const resultado = await tentarDeNovoAbaQueNaoBaixou();
+    if (resultado === "recarregou") return;
+    this.setState({
+      verificando: false,
+      chunkAviso: resultado === "esgotado" ? "esgotado" : "sem-rede",
+    });
+  };
+
   private handleReset = () => {
-    if (ehErroDeChunk(this.state.error?.message)) {
-      // Sem isto o React.lazy entrega a MESMA rejeição para sempre.
-      reiniciarCargasQueFalharam();
-      this.tentouDeNovoEm = Date.now();
-    }
-    this.setState({ hasError: false, error: null, showDetails: false });
+    this.setState({
+      hasError: false,
+      error: null,
+      showDetails: false,
+      chunkAviso: "nenhum",
+      verificando: false,
+    });
     if (this.props.onReset) {
       this.props.onReset();
     }
@@ -81,7 +87,14 @@ export class LocalErrorBoundary extends Component<Props, State> {
       }
 
       if (ehErroDeChunk(this.state.error?.message)) {
-        // Tela que não baixou (rede fraca): frase de cliente, não de painel.
+        // Tela que não baixou: frase de cliente, não de painel. Só fala de
+        // conexão quando a rede está de fato ruim; sem recargas sobrando,
+        // pede para fechar e abrir o app (sem prometer rede).
+        const { chunkAviso, verificando } = this.state;
+        const semRede =
+          chunkAviso === "sem-rede" ||
+          (typeof navigator !== "undefined" && navigator.onLine === false);
+        const esgotado = chunkAviso === "esgotado";
         return (
           <div
             role="alert"
@@ -89,15 +102,25 @@ export class LocalErrorBoundary extends Component<Props, State> {
           >
             <WifiOff className="size-8 text-amber-400" aria-hidden="true" />
             <p className="max-w-xs text-sm leading-relaxed text-zinc-300">
-              Não conseguimos carregar esta tela. Verifique sua conexão.
+              Não conseguimos carregar esta tela.{" "}
+              {esgotado
+                ? "Feche e abra o app de novo."
+                : semRede
+                  ? "Verifique sua conexão."
+                  : "Toque em Tentar de novo."}
             </p>
-            <Button
-              onClick={this.handleReset}
-              className="h-12 rounded-full bg-white px-8 font-bold tracking-wide text-black hover:bg-zinc-200"
-            >
-              <RefreshCcw className="mr-2 size-4" />
-              Tentar de novo
-            </Button>
+            {!esgotado && (
+              <Button
+                onClick={this.handleTentarDeNovoChunk}
+                disabled={verificando}
+                className="h-12 rounded-full bg-white px-8 font-bold tracking-wide text-black hover:bg-zinc-200"
+              >
+                <RefreshCcw
+                  className={`mr-2 size-4 ${verificando ? "animate-spin" : ""}`}
+                />
+                Tentar de novo
+              </Button>
+            )}
           </div>
         );
       }
