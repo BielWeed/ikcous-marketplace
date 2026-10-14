@@ -35,6 +35,7 @@ import { useCoupons } from "@/hooks/useCoupons";
 import { useCuponsDoCheckout } from "@/hooks/useCuponsDoCheckout";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
+import { useIrAoCarrinhoRelido } from "@/hooks/useIrAoCarrinhoRelido";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   ErroCancelamentoNaoConcluido,
@@ -739,6 +740,7 @@ export function CheckoutView({
     freteIndefinido: ctxFreteIndefinido,
     freteGratis,
   } = useCart();
+  const irAoCarrinhoRelido = useIrAoCarrinhoRelido();
 
   const cart = propCart ?? ctxCart;
   const subtotal = propSubtotal ?? ctxSubtotal;
@@ -3165,6 +3167,13 @@ export function CheckoutView({
 
     switch (DESTINO_POR_ACAO.get(acao)) {
       case "carrinho":
+        // Preço mudou / estoque caiu: o carrinho só ajuda se reler o catálogo
+        // ANTES de a cliente chegar lá (com teto, nunca a prende). As demais
+        // saídas do carrinho (frete, variação, remover) não dependem disso.
+        if (acao === "reconferir_carrinho" || acao === "ajustar_estoque") {
+          irAoCarrinhoRelido(() => onNavigate("cart"));
+          return;
+        }
         onNavigate("cart");
         return;
       case "cupom":
