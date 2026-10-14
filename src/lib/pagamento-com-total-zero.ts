@@ -119,8 +119,8 @@ export function textoDoPedidoSemValor(args: {
     return "Este pedido não tem valor a pagar, mas esta loja só recebe pelo app — e o app não cobra pedido sem valor.";
   }
   return args.ehRetirada
-    ? "Este pedido não tem valor a pagar. Você fecha o pedido sem cobrança pelo app e combina o acerto na retirada."
-    : "Este pedido não tem valor a pagar. Você fecha o pedido sem cobrança pelo app e combina o acerto na entrega.";
+    ? "Este pedido não tem valor a pagar. Você retira o pedido na loja e não paga nada."
+    : "Este pedido não tem valor a pagar. Você recebe o pedido e não paga nada.";
 }
 
 /** Saída que a tela oferece quando o Finalizar trava com total zero. */

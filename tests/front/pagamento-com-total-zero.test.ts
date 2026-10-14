@@ -255,10 +255,14 @@ describe("textos do pedido sem valor", () => {
     }
     expect(
       textoDoPedidoSemValor({ decisao: semTrava, ehRetirada: true }),
-    ).toContain("na retirada");
+    ).toContain("Você retira o pedido na loja e não paga nada");
     expect(
       textoDoPedidoSemValor({ decisao: semTrava, ehRetirada: false }),
-    ).toContain("na entrega");
+    ).toContain("Você recebe o pedido e não paga nada");
+    // Pedido sem valor não "combina acerto" de nada: a frase não se contradiz.
+    expect(
+      textoDoPedidoSemValor({ decisao: semTrava, ehRetirada: true }),
+    ).not.toContain("acerto");
   });
 
   it("a saída de quem trava aponta o caminho certo, e só fala de cupom quando há cupom", () => {

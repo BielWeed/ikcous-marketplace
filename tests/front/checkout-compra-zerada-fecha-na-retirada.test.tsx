@@ -70,9 +70,24 @@ vi.mock("@/lib/flags", () => ({
   lerFlagPagamentoOnline: (v: string | undefined) => v === "true",
 }));
 
-vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
-  ShippingCalculator: () => null,
+// A calculadora é neutra, exceto por UMA coisa que o teste controla: o status
+// da cotação que ela reporta ("cotando" = o frete ainda está sendo calculado).
+const { mockFrete } = vi.hoisted(() => ({
+  mockFrete: { status: null as string | null },
 }));
+vi.mock("@/components/ui/custom/ShippingCalculator", async () => {
+  const { useEffect } = await import("react");
+  function CalculadoraDeTeste(props: {
+    onStatusChange?: (status: string) => void;
+  }) {
+    const { onStatusChange } = props;
+    useEffect(() => {
+      if (mockFrete.status) onStatusChange?.(mockFrete.status);
+    }, [onStatusChange]);
+    return null;
+  }
+  return { ShippingCalculator: CalculadoraDeTeste };
+});
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: mockConfig, isLoaded: true }),
@@ -105,9 +120,12 @@ vi.mock("@/hooks/useAddresses", () => ({
 }));
 
 // Referência ESTÁVEL de `user` (ver checkout-economia-do-frete-na-barra).
-const mockUser = { id: "user-1" };
+const USUARIA = { id: "user-1" };
+const { mockAuth } = vi.hoisted(() => ({
+  mockAuth: { user: null as { id: string } | null },
+}));
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: mockUser, profile: null, loading: false }),
+  useAuth: () => ({ user: mockAuth.user, profile: null, loading: false }),
 }));
 
 vi.mock("@/hooks/useCart", async () => {
@@ -309,6 +327,8 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
     mockConfig.enableCoupons = true;
     mockConfig.formasPagamentoEntrega = ["pix", "card", "cash"];
     mockUseCartOverrides.selectedShippingOption = LOCAL;
+    mockAuth.user = USUARIA;
+    mockFrete.status = null;
     flagPagamentoOnline = true;
     globalThis.sessionStorage.clear();
     const armazem = new Map<string, string>();
@@ -355,7 +375,10 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
       document.querySelector('[data-testid="checkout-pedido-sem-valor"]')
         ?.textContent,
     ).toContain(SEM_VALOR);
-    expect(document.body.textContent).toContain("na entrega");
+    expect(
+      document.querySelector('[data-testid="checkout-pedido-sem-valor"]')
+        ?.textContent,
+    ).toContain("Você recebe o pedido e não paga nada");
 
     await preencherIdentificacao();
     expect(botaoFinalizar()!.disabled).toBe(false);
@@ -381,7 +404,7 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
     expect(
       document.querySelector('[data-testid="checkout-pedido-sem-valor"]')
         ?.textContent,
-    ).toContain("na retirada");
+    ).toContain("Você retira o pedido na loja e não paga nada");
   });
 
   it("a loja só aceita dinheiro na entrega: marca 'Dinheiro na Entrega' em vez do Pix", async () => {
@@ -459,6 +482,19 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
       document.querySelector('[data-testid="checkout-total-zero-trava"]')
         ?.textContent,
     ).toContain("retirada na loja");
+
+    // O envio chamado por FORA do botão apagado (transportadora + total zero,
+    // com "online" ainda marcado) é barrado pela guarda do total zero — o
+    // pedido não nasce e a frase é a da trava, não a de "escolha o PIX".
+    const chamarHandlerPorFora = capturarOnClickFinalizar(botaoFinalizar()!);
+    await act(async () => {
+      chamarHandlerPorFora();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError.mock.calls[0][0]).toContain("não tem valor a pagar");
+    expect(toastError.mock.calls[0][0]).toContain("transportadora");
 
     await act(async () => {
       botaoPorTexto("Escolher outro frete")!.click();
@@ -581,5 +617,65 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
 
     expect(marcado("Dinheiro na Entrega")).toBe("true");
     expect(marcado("Pagar agora com PIX")).toBe("false");
+  });
+
+  it("frete ainda 'a calcular' + cupom de 100%: NÃO diz 'sem valor a pagar' e o app continua na tela", async () => {
+    // A calculadora reporta "cotando": o Total da tela é "a calcular", então a
+    // decisão do total zero não fala (um total que ainda vai mudar nunca vira
+    // "este pedido não tem valor").
+    mockFrete.status = "cotando";
+    semearRascunhoComCupom("CUPOM100");
+    await montar();
+
+    expect(mockValidateCoupon).toHaveBeenCalledWith("CUPOM100", 80);
+    expect(document.body.textContent).toContain("Calculando o frete");
+    expect(document.body.textContent).not.toContain(SEM_VALOR);
+    expect(
+      document.querySelector('[data-testid="checkout-pedido-sem-valor"]'),
+    ).toBeNull();
+    expect(botaoPorTexto("Pagar agora com PIX")).toBeDefined();
+    expect(document.body.textContent).toContain("No app");
+  });
+
+  it("cliente SEM conta em loja que só recebe pelo app: com o total zero não há aviso de login; ao tirar o cupom, o aviso 'entre na sua conta' volta", async () => {
+    mockAuth.user = null;
+    mockConfig.formasPagamentoEntrega = [];
+    await montar();
+
+    // Sem cupom, o aviso de sempre da loja só-app para quem não tem conta.
+    const AVISO_DE_LOGIN =
+      "Para comprar nesta loja, entre na sua conta — o pagamento é feito pelo app";
+    expect(document.body.textContent).toContain(AVISO_DE_LOGIN);
+
+    // Aplica o cupom que zera a compra pelo campo da tela.
+    await act(async () => {
+      digitar("coupon-code-input", "CUPOM100");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      botaoPorTexto("Aplicar")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await esperar(50);
+
+    // Com o total zero, entrar na conta não adiantaria: a tela mostra a trava
+    // (loja só-app) e esconde o aviso de login.
+    expect(document.body.textContent).not.toContain(AVISO_DE_LOGIN);
+    expect(
+      document.querySelector('[data-testid="checkout-total-zero-trava"]'),
+    ).not.toBeNull();
+
+    // Tirar o cupom devolve o aviso de login.
+    await act(async () => {
+      botaoPorTexto("Tirar o cupom")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await esperar(50);
+
+    expect(document.body.textContent).toContain(AVISO_DE_LOGIN);
+    expect(
+      document.querySelector('[data-testid="checkout-total-zero-trava"]'),
+    ).toBeNull();
+    expect(document.body.textContent).not.toContain(SEM_VALOR);
   });
 });
