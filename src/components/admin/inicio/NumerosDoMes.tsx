@@ -20,8 +20,8 @@ import {
 
 /**
  * Os quatro números do mês no Início (grade 2×2 no celular, 4 lado a lado
- * no computador) + a linha de apoio "a pagar em 7 dias", que leva ao
- * Financeiro. "Contas vencidas" mora só no "Para fazer" (um número, um lugar).
+ * no computador) + a linha de apoio "a pagar (vencidas + próximos 7 dias)",
+ * que leva ao Financeiro. "Contas vencidas" mora só no "Para fazer" (um número, um lugar).
  */
 export function NumerosDoMes({
   painel,
@@ -77,7 +77,9 @@ export function NumerosDoMes({
           rodape={
             <ChipDeVariacao
               pct={variacaoPercentual(mes?.receita, mes?.receitaMesAnterior)}
-              comparacao="vs. mês anterior"
+              // O banco (`painel_inicio`) compara do dia 1 até o MESMO dia do
+              // mês passado, não com o mês inteiro: a frase diz o que ele faz.
+              comparacao="vs. os mesmos dias do mês anterior"
             />
           }
         />
@@ -107,7 +109,8 @@ export function NumerosDoMes({
         />
         <TileDeKpi
           superficie="admin-glass"
-          rotulo="A receber em 7 dias"
+          // `painel_inicio` soma `venc <= hoje + 7`: entra também o que já venceu.
+          rotulo="A receber (vencidas + próximos 7 dias)"
           icone={ArrowDownToLine}
           corDoIcone="text-violet-400"
           carregando={esqueleto}
@@ -129,7 +132,7 @@ export function NumerosDoMes({
           <ArrowUpFromLine className="size-5 text-admin-gold" />
         </span>
         <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm font-bold text-zinc-300">
-          A pagar em 7 dias{" "}
+          A pagar (vencidas + próximos 7 dias){" "}
           <strong className="font-black tabular-nums text-white">
             {esqueleto ? "…" : formatarMoeda(painel?.aPagar7d)}
           </strong>
