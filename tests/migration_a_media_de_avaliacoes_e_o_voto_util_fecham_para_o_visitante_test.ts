@@ -184,8 +184,10 @@ Deno.test("nenhuma migration FORA do par mexe no EXECUTE das duas funcoes depois
   const m1090 = removerRuido(
     ler("20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql"),
   );
-  for (const f of ["get_reviews_metrics", "increment_helpful"])
-    assert.doesNotMatch(m1090, new RegExp(`GRANT[^;]*${f}`, "i"));
+  assert.doesNotMatch(
+    m1090,
+    /GRANT[^;]*(get_reviews_metrics|increment_helpful)/i,
+  );
 });
 
 Deno.test("o ALVO de scripts/db-prove-grants-convergem.cjs fecha o anon nas duas (e mantem authenticated)", () => {
