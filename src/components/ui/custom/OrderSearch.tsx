@@ -307,6 +307,8 @@ export function OrderSearch({
                   <div className="space-y-3">
                     <input
                       type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
                       required
                       maxLength={6}
                       placeholder="DIGITE O CÓDIGO DE 6 DÍGITOS"
