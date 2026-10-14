@@ -68,7 +68,12 @@ const SQL_FUNCOES = `
                    FROM aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
                   WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE') AS publico,
          has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
-         has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated
+         has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated,
+         (SELECT e.extname
+            FROM pg_depend d JOIN pg_extension e ON e.oid = d.refobjid
+           WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid
+             AND d.refclassid = 'pg_extension'::regclass AND d.deptype = 'e'
+           LIMIT 1) AS extensao
     FROM pg_proc p
    WHERE p.pronamespace = 'public'::regnamespace`;
 
@@ -76,6 +81,7 @@ const normalizar = (s) => String(s).replace(/\s+/g, " ").trim();
 const ordenar = (xs) => [...xs].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
 let C;
+let EXT_INICIAL;
 const PROVAS = [];
 const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
 
@@ -88,6 +94,7 @@ async function funcoesDoBanco() {
       {
         tipo: l.tipo,
         secdef: l.secdef,
+        extensao: l.extensao,
         executa: [
           l.publico ? "PUBLIC" : null,
           l.anon ? "anon" : null,
@@ -264,9 +271,19 @@ prova(
       await C.query(
         "REVOKE ALL ON FUNCTION public.l8_fechada() FROM PUBLIC, anon, authenticated",
       );
-      // funcao de EXTENSAO em public: o filtro da 18a (que ignora extensao) a esconderia
-      await C.query("DROP EXTENSION IF EXISTS fuzzystrmatch");
-      await C.query("CREATE EXTENSION fuzzystrmatch WITH SCHEMA public");
+      // funcao de EXTENSAO em public: o filtro da 18a (que ignora extensao) a esconderia. Nao se mexe em
+      // extensao de verdade (DROP/CREATE EXTENSION quebraria se uma migration futura dependesse dela): a
+      // funcao e' criada aqui e ANEXADA a uma extensao ja instalada, o que grava o pg_depend de tipo 'e'.
+      await criar("l8_de_extensao");
+      const ext = (
+        await C.query(
+          "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql' ORDER BY extname LIMIT 1",
+        )
+      ).rows[0]?.extname;
+      assert.ok(ext, "o provisionador instala alguma extensao de contrib");
+      await C.query(
+        `ALTER EXTENSION "${ext}" ADD FUNCTION public.l8_de_extensao()`,
+      );
       const banco = await funcoesDoBanco();
       const quem = (n) => banco.get(`public.${n}()`)?.executa;
       assert.deepEqual(
@@ -289,9 +306,14 @@ prova(
         [],
         "a funcao fechada de verdade nao pode aparecer",
       );
-      const lev = banco.get("public.levenshtein(text, text)");
+      const deExt = banco.get("public.l8_de_extensao()");
+      assert.equal(
+        deExt?.extensao,
+        ext,
+        "controle: o banco enxerga a funcao como de extensao (o que o filtro da 18a esconde)",
+      );
       assert.ok(
-        lev && lev.executa.length > 0,
+        deExt.executa.length > 0,
         "a funcao da extensao em public tem de aparecer como aberta",
       );
       // e o conferidor acusa cada uma pelo NOME
@@ -306,9 +328,31 @@ prova(
           msg.includes(`FORA DA LISTA: public.${n}()`),
           `o conferidor tem de acusar ${n}`,
         );
-      assert.match(msg, /FORA DA LISTA: public\.levenshtein\(text, text\)/);
+      assert.ok(
+        msg.includes("FORA DA LISTA: public.l8_de_extensao()"),
+        "o conferidor tem de acusar a funcao de extensao",
+      );
       assert.doesNotMatch(msg, /l8_fechada/);
     }),
+);
+
+const SQL_EXTENSOES = `
+  SELECT (SELECT string_agg(extname || ':' || extversion || ':' || extnamespace::regnamespace::text, ',' ORDER BY extname)
+            FROM pg_extension) AS extensoes,
+         (SELECT count(*) FROM pg_depend
+           WHERE classid = 'pg_proc'::regclass AND deptype = 'e') AS funcoes_de_extensao,
+         (SELECT count(*) FROM pg_proc WHERE proname LIKE 'l8\\_%') AS restos`;
+
+prova(
+  "AUTOTESTE: nada de extensao foi criado ou removido, e nenhuma funcao do autoteste ficou para tras",
+  async () => {
+    const depois = (await C.query(SQL_EXTENSOES)).rows[0];
+    assert.deepEqual(
+      { ...depois, restos: Number(depois.restos) },
+      { ...EXT_INICIAL, restos: 0 },
+      "o autoteste desfez tudo (as extensoes e as funcoes de extensao sao as do inicio)",
+    );
+  },
 );
 
 // ---------------------------------------------------------------------------
@@ -354,6 +398,9 @@ async function main() {
   const url = lerDatabaseUrlEfemera();
   C = new Client({ connectionString: url });
   await C.connect();
+  const inicial = (await C.query(SQL_EXTENSOES)).rows[0];
+  EXT_INICIAL = { ...inicial, restos: 0 };
+  assert.equal(Number(inicial.restos), 0, "o banco ja tem funcao l8_ de resto");
   const falhas = [];
   try {
     for (const { nome, corpo } of PROVAS) {
