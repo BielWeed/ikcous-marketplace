@@ -7,8 +7,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  estoqueDoProdutoFoiMexido,
   estoqueDoProdutoPelasVariacoes,
   formComVariacoes,
+  variacoesSoComEstoqueMexido,
 } from "@/utils/estoque-das-variacoes";
 
 const ligada = (estoque: number) => ({ active: true, stockIncrement: estoque });
@@ -119,5 +121,109 @@ describe("formComVariacoes", () => {
     const depois = formComVariacoes(anterior, [desligada(5), desligada(2)]);
     expect(depois.stock).toBe("12");
     expect(depois.variants).toHaveLength(2);
+  });
+});
+
+// Salvar só devolve o estoque quando a lojista mexeu nele: o número que a tela
+// leu ao abrir fica velho quando uma venda o desconta no banco.
+const v = (id: string, estoque: number, active = true) => ({
+  id,
+  active,
+  stockIncrement: estoque,
+});
+
+describe("estoqueDoProdutoFoiMexido", () => {
+  it("sem variação: vale o texto do campo (igual = não mexeu; diferente = mexeu; zero é mexer)", () => {
+    const inicial = { stock: "5", variants: [] };
+    expect(
+      estoqueDoProdutoFoiMexido({ stock: "5", variants: [] }, inicial),
+    ).toBe(false);
+    expect(
+      estoqueDoProdutoFoiMexido({ stock: "20", variants: [] }, inicial),
+    ).toBe(true);
+    expect(
+      estoqueDoProdutoFoiMexido({ stock: "0", variants: [] }, inicial),
+    ).toBe(true);
+  });
+
+  it("com variação ligada: o texto do campo (a soma que a tela fez) não acusa nada; só as variações acusam", () => {
+    const inicial = { stock: "7", variants: [v("a", 3), v("b", 2)] };
+    // A tela mostrou a soma (5) e o banco guardava 7: ninguém tocou em nada.
+    expect(
+      estoqueDoProdutoFoiMexido(
+        { stock: "5", variants: [v("a", 3), v("b", 2)] },
+        inicial,
+      ),
+    ).toBe(false);
+    expect(
+      estoqueDoProdutoFoiMexido(
+        { stock: "12", variants: [v("a", 10), v("b", 2)] },
+        inicial,
+      ),
+    ).toBe(true);
+  });
+
+  it("desligar, religar ou apagar uma variação ligada é mexer; acrescentar uma DESLIGADA não", () => {
+    const inicial = { stock: "5", variants: [v("a", 3), v("b", 2)] };
+    expect(
+      estoqueDoProdutoFoiMexido(
+        { stock: "2", variants: [v("a", 3, false), v("b", 2)] },
+        inicial,
+      ),
+    ).toBe(true);
+    expect(
+      estoqueDoProdutoFoiMexido({ stock: "2", variants: [v("b", 2)] }, inicial),
+    ).toBe(true);
+    expect(
+      estoqueDoProdutoFoiMexido(
+        { stock: "5", variants: [v("a", 3), v("b", 2), v("n", 9, false)] },
+        inicial,
+      ),
+    ).toBe(false);
+  });
+
+  it("apagar TODAS as variações: o campo volta a ser da lojista e o número dela vai", () => {
+    const inicial = { stock: "5", variants: [v("a", 3), v("b", 2)] };
+    expect(
+      estoqueDoProdutoFoiMexido({ stock: "5", variants: [] }, inicial),
+    ).toBe(true);
+  });
+
+  it("produto que já abriu sem nenhuma variação ligada: o campo é da lojista", () => {
+    const inicial = { stock: "4", variants: [v("a", 3, false)] };
+    expect(
+      estoqueDoProdutoFoiMexido(
+        { stock: "4", variants: [v("a", 3, false)] },
+        inicial,
+      ),
+    ).toBe(false);
+    expect(
+      estoqueDoProdutoFoiMexido(
+        { stock: "9", variants: [v("a", 3, false)] },
+        inicial,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("variacoesSoComEstoqueMexido", () => {
+  it("a existente sem mexida perde a chave; a mexida, a nova (temp-) e a que não estava na abertura levam o número", () => {
+    const iniciais = [v("a", 3), v("b", 2)];
+    const atuais = [v("a", 3), v("b", 8), v("temp-1", 4), v("c", 6)];
+
+    const saida = variacoesSoComEstoqueMexido(atuais, iniciais);
+
+    expect(saida[0]).not.toHaveProperty("stockIncrement");
+    expect(saida[0]).toMatchObject({ id: "a", active: true });
+    expect(saida[1]).toMatchObject({ id: "b", stockIncrement: 8 });
+    expect(saida[2]).toMatchObject({ id: "temp-1", stockIncrement: 4 });
+    expect(saida[3]).toMatchObject({ id: "c", stockIncrement: 6 });
+  });
+
+  it("não altera a lista de entrada e aceita lista vazia", () => {
+    const atuais = [v("a", 3)];
+    variacoesSoComEstoqueMexido(atuais, [v("a", 3)]);
+    expect(atuais[0]).toHaveProperty("stockIncrement", 3);
+    expect(variacoesSoComEstoqueMexido([], [])).toEqual([]);
   });
 });

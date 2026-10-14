@@ -44,7 +44,11 @@ import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
-import { formComVariacoes } from "@/utils/estoque-das-variacoes";
+import {
+  estoqueDoProdutoFoiMexido,
+  formComVariacoes,
+  variacoesSoComEstoqueMexido,
+} from "@/utils/estoque-das-variacoes";
 import {
   chaveDaIdentidade,
   recadoDoTetoDeVariacoes,
@@ -1993,7 +1997,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         isPromoActive && pOriginal !== undefined
           ? Math.max(0, pOriginal)
           : null,
-      stock: Math.max(0, pStock),
+      // `stock` e `sold` NÃO estão aqui: o número que a tela leu ao abrir fica
+      // velho quando uma venda o desconta no banco, e mandá-lo de volta
+      // devolvia a peça vendida à prateleira. Na edição o estoque só vai se a
+      // lojista mexeu (ver `estoqueDoProdutoFoiMexido`) e o vendido nunca vai;
+      // no produto novo os dois vão no `addProduct`, abaixo.
       // Vazio = `null` (volta ao padrão, 5); número inteiro >= 0 vai como está.
       // Texto inválido já bloqueou o salvar acima, então aqui nunca é NaN.
       estoqueMinimo: lerEstoqueMinimo(formData.estoqueMinimo).valor,
@@ -2007,7 +2015,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       sku: sanitizedSku || null,
       codigoBarras: sanitizedCodigoBarras || null,
       variants: formData.variants,
-      sold: productId ? currentProduct?.sold || 0 : 0,
       /*
         As dimensões são a ÚNICA exceção à regra do bloco acima, e de propósito:
         com entrega local a tela nem mostra esses campos, então `undefined` aqui
@@ -2040,17 +2047,59 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
     try {
       if (productId) {
-        // 1. Atualizar produto principal
-        await updateProduct(productId, productData);
+        // 1. Atualizar produto principal. O estoque só vai se a lojista mexeu
+        // nele (ou nas variações que o compõem); senão fica o do banco.
+        await updateProduct(productId, {
+          ...productData,
+          ...(estoqueDoProdutoFoiMexido(formData, initialData)
+            ? { stock: Math.max(0, pStock) }
+            : {}),
+        });
 
-        // 2. Deletar variantes que foram excluídas localmente
+        // 2. Deletar variantes que foram excluídas localmente — UMA por vez: o
+        // banco recusa apagar variação que já está num pedido (23503), e num
+        // lote só a vendida seguraria as que podiam sair. A recusa não pode
+        // impedir o passo 3: o produto já foi gravado e perder aqui o estoque e
+        // o preço das outras variações era o salvar pela metade.
+        const naoApagadas: string[] = [];
+        for (const idDaVariacao of deletedVariantIds) {
+          try {
+            await deleteVariants([idDaVariacao]);
+          } catch (erroAoApagar) {
+            // O hook já avisou o motivo (toast); aqui só guardamos qual ficou.
+            console.warn(
+              "[AdminProductFormView] Variação não apagada:",
+              idDaVariacao,
+              erroAoApagar,
+            );
+            naoApagadas.push(idDaVariacao);
+          }
+        }
+        let formAposRecusas = formData;
         if (deletedVariantIds.length > 0) {
-          await deleteVariants(deletedVariantIds);
+          // As apagadas de verdade saem da fila; as recusadas voltam para a
+          // lista (para a lojista poder DESLIGAR a variação) e também saem dela.
+          setDeletedVariantIds([]);
+        }
+        const devolvidas = initialData.variants.filter((v) =>
+          naoApagadas.includes(v.id),
+        );
+        if (devolvidas.length > 0) {
+          formAposRecusas = formComVariacoes(formData, [
+            ...formData.variants,
+            ...devolvidas,
+          ]);
+          setFormData(formAposRecusas);
         }
 
-        // 3. Salvar variantes restantes em lote
+        // 3. Salvar variantes restantes em lote. O estoque de cada uma só vai
+        // se a lojista mexeu naquele número (as devolvidas acima não entram: o
+        // banco continua com elas como estavam).
         if (formData.variants.length > 0) {
-          const variantsWithSanitizedSku = formData.variants.map((v) => ({
+          const variantsWithSanitizedSku = variacoesSoComEstoqueMexido(
+            formData.variants,
+            initialData.variants,
+          ).map((v) => ({
             ...v,
             sku: v.sku
               ? v.sku.trim().toUpperCase().replace(/\s+/g, "-")
@@ -2060,6 +2109,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               : undefined,
           }));
           await upsertVariants(productId, variantsWithSanitizedSku);
+        }
+
+        // O resto foi salvo, mas alguma variação não pôde ser excluída: dizer
+        // qual, e NÃO sair para a lista como se tudo tivesse dado certo. O
+        // formulário passa a ser o que está no banco (recusadas de volta).
+        if (naoApagadas.length > 0) {
+          setInitialData(formAposRecusas);
+          const chaveDoRascunho = chaveDoRascunhoDoProduto(userId, productId);
+          if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
+          const quais =
+            devolvidas.length > 0
+              ? devolvidas.map((v) => `${v.name}: ${v.value}`).join(", ")
+              : "uma variação";
+          toast.error(
+            `O produto e as outras variações foram salvos, mas não consegui excluir ${quais}. Se ela já tem vendas, desligue-a no botão de ligar/desligar da linha em vez de excluir.`,
+            { duration: 15000 },
+          );
+          setIsSubmitting(false);
+          return;
         }
       } else {
         // Este formulário já criou o produto e a ida para a edição não
@@ -2083,6 +2151,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         }));
         const criado = await addProduct({
           ...productData,
+          stock: Math.max(0, pStock),
+          sold: 0,
           variants: variantsWithSanitizedSku,
         });
 

@@ -76,3 +76,76 @@ export function formComVariacoes<
     stock: estoque ?? anterior.stock,
   };
 }
+
+/**
+ * O que o formulário de EDIÇÃO manda ao salvar, para o estoque só ir quando a
+ * lojista mexeu nele.
+ *
+ * Estoque é dinheiro e o número que a tela leu ao abrir fica velho no instante
+ * em que uma venda o desconta no banco. Mandar esse número de volta num salvar
+ * em que ela só trocou o preço devolvia a peça vendida à prateleira (e a
+ * reserva que vence depois a devolvia DE NOVO). A regra é a mesma que a tela já
+ * tinha com peso e medidas: campo que ela não tocou não viaja.
+ *
+ * Sempre contra o que a tela LEU ao abrir (`inicial`), nunca contra o banco.
+ */
+
+/** O bastante para comparar uma variação com a que a tela leu ao abrir. */
+export interface VariacaoComIdParaEstoque extends VariacaoParaEstoque {
+  id: string;
+}
+
+/** As variações ligadas e o estoque de cada uma, numa chave comparável. */
+function composicaoDasLigadas(variants: VariacaoComIdParaEstoque[]): string {
+  return variants
+    .filter((v) => v.active)
+    .map((v) => `${v.id}:${v.stockIncrement || 0}`)
+    .sort()
+    .join("|");
+}
+
+/**
+ * A lojista mexeu no estoque do PRODUTO?
+ *
+ * Com variação ligada (antes ou agora) o número do produto é a SOMA delas, que
+ * a tela calcula sozinha e trava o campo: mexer é mudar QUAIS variações estão
+ * ligadas ou o estoque de alguma. Comparar o texto do campo aí acusaria "mexeu"
+ * sempre que o produto guardado no banco divergir da soma — sem ninguém ter
+ * tocado em nada. Sem variação ligada, o campo é dela e vale o texto.
+ */
+export function estoqueDoProdutoFoiMexido(
+  atual: { stock: string; variants: VariacaoComIdParaEstoque[] },
+  inicial: { stock: string; variants: VariacaoComIdParaEstoque[] },
+): boolean {
+  const temLigadaAgora = atual.variants.some((v) => v.active);
+  const tinhaLigada = inicial.variants.some((v) => v.active);
+  if (temLigadaAgora || tinhaLigada) {
+    return (
+      composicaoDasLigadas(atual.variants) !==
+      composicaoDasLigadas(inicial.variants)
+    );
+  }
+  return atual.stock !== inicial.stock;
+}
+
+/**
+ * As variações a gravar: a que já existe no banco e cujo estoque a lojista NÃO
+ * mexeu perde a chave `stockIncrement` (o hook então não manda a coluna). A
+ * nova (id `temp-`, sem linha no banco) leva sempre o número digitado; a que
+ * não estava na lista de abertura também.
+ */
+export function variacoesSoComEstoqueMexido<V extends VariacaoComIdParaEstoque>(
+  atuais: V[],
+  iniciais: VariacaoComIdParaEstoque[],
+): Array<V | Omit<V, "stockIncrement">> {
+  const estoqueDeAbertura = new Map(
+    iniciais.map((v) => [v.id, v.stockIncrement]),
+  );
+  return atuais.map((v) => {
+    if (v.id.startsWith("temp-") || !estoqueDeAbertura.has(v.id)) return v;
+    if (estoqueDeAbertura.get(v.id) !== v.stockIncrement) return v;
+    return Object.fromEntries(
+      Object.entries(v).filter(([chave]) => chave !== "stockIncrement"),
+    ) as Omit<V, "stockIncrement">;
+  });
+}
