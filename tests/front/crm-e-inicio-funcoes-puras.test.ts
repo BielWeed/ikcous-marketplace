@@ -5,8 +5,11 @@
 // e o link de WhatsApp com texto pronto por segmento RFM.
 import {
   FAIXAS_DE_SEGMENTOS_DO_CRM,
+  PERIODOS_DO_CRM,
   SEGMENTOS_DO_CRM,
+  comparacaoDoPeriodo,
   completarSerieDe14Dias,
+  diasDoIntervalo,
   faixaApareceNaGrade,
   formatarData,
   formatarMoeda,
@@ -572,6 +575,68 @@ describe("intervaloDoPeriodo — datas no fuso de São Paulo", () => {
     expect(intervaloDoPeriodo("mes", new Date("2026-03-01T01:00:00Z"))).toEqual(
       { inicio: "2026-02-01", fim: "2026-02-28" },
     );
+  });
+});
+
+describe("comparacaoDoPeriodo — o texto diz contra o que o banco compara", () => {
+  // O banco (crm_visao) compara SEMPRE com os mesmos N dias logo antes do intervalo; "Mês" e "Ano" diziam
+  // "mês anterior" e "ano anterior", que não é o que ele faz.
+  const agora = new Date("2026-09-26T02:00:00Z"); // 25/09 em São Paulo
+
+  it("conta os dias do intervalo, primeiro e último inclusive", () => {
+    expect(diasDoIntervalo({ inicio: "2026-09-25", fim: "2026-09-25" })).toBe(
+      1,
+    );
+    expect(diasDoIntervalo(intervaloDoPeriodo("7d", agora))).toBe(7);
+    expect(diasDoIntervalo(intervaloDoPeriodo("mes", agora))).toBe(25);
+    expect(diasDoIntervalo(intervaloDoPeriodo("ano", agora))).toBe(268);
+    // virada de ano e ano bissexto: 29/02/2028 é o dia 60 do ano
+    expect(diasDoIntervalo({ inicio: "2028-01-01", fim: "2028-02-29" })).toBe(
+      60,
+    );
+  });
+
+  it("Mês e Ano dizem 'vs. os N dias antes', com o N do intervalo escolhido", () => {
+    expect(comparacaoDoPeriodo("mes", intervaloDoPeriodo("mes", agora))).toBe(
+      "vs. os 25 dias antes",
+    );
+    expect(comparacaoDoPeriodo("ano", intervaloDoPeriodo("ano", agora))).toBe(
+      "vs. os 268 dias antes",
+    );
+  });
+
+  it("BORDA: no dia 1 o 'Mês' tem um dia só e o texto vai no singular", () => {
+    const dia1 = new Date("2026-10-01T15:00:00Z");
+    expect(comparacaoDoPeriodo("mes", intervaloDoPeriodo("mes", dia1))).toBe(
+      "vs. o dia antes",
+    );
+  });
+
+  it("os outros períodos seguem como eram; 'Hoje' diz que o ontem vai só até esta hora", () => {
+    expect(comparacaoDoPeriodo("hoje", intervaloDoPeriodo("hoje", agora))).toBe(
+      "vs. ontem, até esta hora",
+    );
+    for (const [periodo, texto] of [
+      ["7d", "vs. 7 dias antes"],
+      ["30d", "vs. 30 dias antes"],
+      ["90d", "vs. 90 dias antes"],
+    ] as const)
+      expect(
+        comparacaoDoPeriodo(periodo, intervaloDoPeriodo(periodo, agora)),
+      ).toBe(texto);
+  });
+
+  it("nenhum período diz 'mês anterior' nem 'ano anterior' (o banco não compara com isso)", () => {
+    for (const { id } of PERIODOS_DO_CRM) {
+      const texto = comparacaoDoPeriodo(id, intervaloDoPeriodo(id, agora));
+      expect(texto).not.toMatch(/m[eê]s anterior|ano anterior/i);
+      // e o N que o texto diz é o que o intervalo tem, quando ele diz um N
+      const n = /os (\d+) dias antes/.exec(texto);
+      if (n)
+        expect(Number(n[1])).toBe(
+          diasDoIntervalo(intervaloDoPeriodo(id, agora)),
+        );
+    }
   });
 });
 

@@ -135,7 +135,7 @@ export function HojeNaLoja({
                   hoje?.receita,
                   hoje?.receitaSemanaPassada,
                 )}
-                comparacao="vs. mesmo dia da semana passada"
+                comparacao="vs. mesmo dia da semana passada, até esta hora"
               />
               <span className="text-xs text-zinc-400">
                 <strong className="font-bold tabular-nums text-white">

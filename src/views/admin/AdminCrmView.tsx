@@ -16,6 +16,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import {
   PERIODOS_DO_CRM,
+  comparacaoDoPeriodo,
   formatarIntervaloCurto,
   intervaloDoPeriodo,
 } from "@/lib/crm";
@@ -85,9 +86,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
   const abasRef = useRef(new Map<AbaDoCrm, HTMLButtonElement>());
 
   const intervalo = useMemo(() => intervaloDoPeriodo(periodo), [periodo]);
-  const comparacao =
-    PERIODOS_DO_CRM.find((p) => p.id === periodo)?.comparacao ??
-    "vs. período anterior";
+  const comparacao = comparacaoDoPeriodo(periodo, intervalo);
 
   const {
     visao,
