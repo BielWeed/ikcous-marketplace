@@ -74,8 +74,9 @@ export async function dispararPushContadoReal(args: {
       inscricoes,
       mensagem: JSON.stringify(aviso),
       rotulo,
-      // Urgência alta + TTL de 12 h: o lojista tem de ver já, mesmo com o
-      // aparelho em economia de bateria. Ver `OPCOES_DE_AVISO_AO_LOJISTA`.
+      // Urgência alta: o lojista tem de ver já, mesmo com o aparelho em
+      // economia de bateria. SEM TTL curto, de propósito — ver o comentário
+      // de `OPCOES_DE_AVISO_AO_LOJISTA`.
       opcoesDeEnvio: OPCOES_DE_AVISO_AO_LOJISTA,
       aoDetectarMorta: (endpoint: string) =>
         supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),

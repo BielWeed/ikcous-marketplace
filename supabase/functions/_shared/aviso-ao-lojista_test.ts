@@ -7,9 +7,13 @@
  * biblioteca assume `Urgency: normal` e `TTL: 2419200` (28 dias) quando as
  * opções vêm vazias. Num Android em economia de bateria (Doze), aviso normal
  * pode ficar parado até o aparelho "acordar" — o lojista via o pedido novo
- * horas depois. Com `high` o serviço de push (FCM, Mozilla, Apple) entrega na
- * hora, e o TTL curto impede que um aparelho desligado receba, dias depois, um
- * "Pedido novo" que já foi atendido.
+ * horas depois. Com `high` o serviço de push pede entrega na hora.
+ *
+ * O TTL NÃO é encurtado, de propósito: vários avisos que passam por aqui são
+ * o único sinal do caso (cartão duplicado, estorno sem registro, devolução,
+ * contestação), e `avisarAdminUmaVez` os dá por entregues no 201 — com TTL
+ * curto, um aparelho desligado os perderia para sempre. Os testes cravam o
+ * padrão da biblioteca (28 dias = 2419200 s) no fio.
  *
  * Aqui nada é falso entre o código e o fio: VAPID real, inscrição real, e o
  * push service é um servidor HTTP local que guarda os cabeçalhos recebidos.
@@ -19,8 +23,8 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { dispararPushContadoReal } from "./aviso-ao-lojista.ts";
 import { inscricaoDeTeste, parVapidDeTeste, pushServiceFalso } from "./webpush_fixtures.ts";
 
-/** 12 horas, em segundos — o TTL combinado para aviso ao lojista. */
-const DOZE_HORAS = 12 * 60 * 60;
+/** 28 dias em segundos — o TTL padrão da biblioteca, que o aviso NÃO sobrescreve. */
+const TTL_PADRAO_DA_BIBLIOTECA = "2419200";
 
 function supabaseFalso(inscricoes: unknown[], apagadas: string[]) {
   return {
@@ -65,7 +69,7 @@ for (const [rotulo, aviso] of [
   ["pedido novo", { title: "Pedido novo", body: "#ABC123 · R$ 50,00 · Maria", url: "/admin-orders" }],
   ["pedido pago", { title: "Pedido pago", body: "#ABC123 · R$ 50,00", url: "/admin-orders" }],
 ] as const) {
-  Deno.test(`aviso de ${rotulo} sai com Urgency: high e TTL de 12 horas`, async () => {
+  Deno.test(`aviso de ${rotulo} sai com Urgency: high e o TTL padrão (sem encurtar)`, async () => {
     const service = pushServiceFalso({ "/p/ok": 201 });
     try {
       await comVapidDeTeste(async () => {
@@ -79,7 +83,7 @@ for (const [rotulo, aviso] of [
         assertEquals(service.recebidas.length, 1);
         const cabecalhos = service.recebidas[0].headers;
         assertEquals(cabecalhos.get("urgency"), "high");
-        assertEquals(cabecalhos.get("ttl"), String(DOZE_HORAS));
+        assertEquals(cabecalhos.get("ttl"), TTL_PADRAO_DA_BIBLIOTECA);
       });
     } finally {
       await service.encerrar();

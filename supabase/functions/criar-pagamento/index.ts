@@ -168,7 +168,7 @@ import {
   comTempoLimite,
   dispararSemEsperarCliente,
   enviarParaInscritos,
-  OPCOES_DE_ALERTA_SEM_REGISTRO,
+  OPCOES_DE_AVISO_AO_LOJISTA,
   readKey,
   resumir,
 } from "../_shared/webpush.ts";
@@ -1571,7 +1571,7 @@ async function alertarAdminCartaoOrfaoReal(args: {
       mensagem: JSON.stringify(aviso),
       rotulo: "criar-pagamento",
       // Urgência alta (TTL continua o padrão: é o único sinal desta cobrança).
-      opcoesDeEnvio: OPCOES_DE_ALERTA_SEM_REGISTRO,
+      opcoesDeEnvio: OPCOES_DE_AVISO_AO_LOJISTA,
       aoDetectarMorta: (endpoint: string) =>
         supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),
     });

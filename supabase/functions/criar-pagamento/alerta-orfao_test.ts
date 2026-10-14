@@ -7,7 +7,8 @@
  *
  * O TTL NÃO muda aqui (continua o padrão da biblioteca, 28 dias): perder esse
  * aviso por aparelho desligado é pior que recebê-lo tarde, porque nada mais o
- * repete. Só a urgência sobe.
+ * repete. Só a urgência sobe — a mesma regra de todo aviso ao lojista
+ * (`OPCOES_DE_AVISO_AO_LOJISTA`).
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { inscricaoDeTeste, parVapidDeTeste, pushServiceFalso } from "../_shared/webpush_fixtures.ts";

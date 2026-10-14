@@ -322,34 +322,26 @@ export function resumir(itens: any[]) {
  * deixa a biblioteca (`@negrel/webpush@0.3.0`, `subscriber.ts`) assumir
  * `Urgency: normal` e `TTL: 2419200` (28 dias). Num Android em economia de
  * bateria (Doze), aviso `normal` pode esperar o aparelho "acordar" — o
- * lojista via o "Pedido novo" horas depois. `high` manda o serviço de push
- * (FCM, Mozilla autopush, Apple) entregar na hora: o valor é o do RFC,
- * aceito por todos, e serviço que não o honra apenas o ignora.
+ * lojista via o "Pedido novo" horas depois. `high` (valor definido no RFC
+ * 8030 §5.3) pede ao serviço de push que entregue sem esperar.
  *
- * Dois conjuntos, porque dois tipos de aviso ao lojista pedem coisas
- * diferentes quando o aparelho está fora do ar:
- *
- * - `OPCOES_DE_AVISO_AO_LOJISTA` (urgência alta + TTL de 12 horas): pedido
- *   novo, pedido pago, cancelamento, contestação. O pedido existe no painel,
- *   então perder o aviso custa pouco; já um aparelho que ficou desligado
- *   dias e acorda despejando "Pedido novo" de uma venda que já foi atendida
- *   atrapalha. 12 h cobre a noite e o dia seguinte; depois disso o painel é a
- *   fonte.
- * - `OPCOES_DE_ALERTA_SEM_REGISTRO` (só urgência alta, TTL padrão): cartão
- *   órfão — cobrança no Mercado Pago sem NENHUMA linha no banco. O push é o
- *   único sinal que existe, então ele NÃO expira cedo: tarde é melhor que
- *   nunca.
+ * `OPCOES_DE_AVISO_AO_LOJISTA` vale para TODO aviso ao lojista — pedido novo,
+ * pedido pago, cancelamento, contestação, cobrança de cartão duplicada,
+ * estorno sem registro, devolução para conferir, cartão órfão. Só a urgência
+ * sobe; o TTL fica no padrão da biblioteca (28 dias), de propósito: vários
+ * desses avisos são o ÚNICO sinal do caso (cartão duplicado, estorno sem
+ * registro, devolução, contestação e cartão órfão não existem no painel de
+ * pedidos, só no console/no extrato do Mercado Pago), e `avisarAdminUmaVez`
+ * dá o aviso por entregue assim que o push service responde 201. Um TTL curto
+ * faria um aparelho desligado perder esse sinal para sempre, em troca de
+ * evitar um "Pedido novo" velho — o defeito aqui era ATRASO, e a urgência o
+ * resolve.
  *
  * A campanha para clientes (`send-push`) não passa nada: continua `normal` /
  * 28 dias, como sempre.
  */
-export const OPCOES_DE_ALERTA_SEM_REGISTRO = {
-  urgency: webpush.Urgency.High,
-} as const;
-
 export const OPCOES_DE_AVISO_AO_LOJISTA = {
   urgency: webpush.Urgency.High,
-  ttl: 12 * 60 * 60,
 } as const;
 
 /**
