@@ -525,6 +525,16 @@ jobs:
       - name: Prova viva do portao da consulta antiga de pedido (consultas 23a e 23b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-antiga-de-pedido-portao-viva.cjs
+      # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
+      # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
+      # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que
+      # bate com as duas lojas reais), se uma da lista mudou QUEM executa, o tipo ou o SECURITY DEFINER, se a lista
+      # repete linha ou aponta funcao que nao existe mais. Um autoteste prova que o detector enxerga a funcao sem
+      # REVOKE, a com REVOKE so de PUBLIC, a que deixou o authenticated aberto e a de extensao. So le o catalogo.
+      # O job reprova (nao e check obrigatorio do ruleset). CLONE proprio.
+      - name: Prova viva de que funcao nova nao nasce aberta (lista de portas de funcao permitidas)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs
       # Onda I do painel simples (20261212 a 20261214): o estoque baixo e uma regua so (Inicio, lista, analytics),
       # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (sem migration) e o estoque
       # minimo e editavel so pelo admin. Cada prova clona o banco.
