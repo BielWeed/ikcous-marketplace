@@ -4,6 +4,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
 import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
+import { categoriaValidaDaHome } from "@/lib/categoria-valida-da-home";
 import { cn } from "@/lib/utils";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { Product, SortOption, View } from "@/types";
@@ -71,7 +72,7 @@ export const HomeView = React.memo(function HomeView({
   isLoading = false,
   scrollProgress = 0,
   selectedProductId,
-  selectedCategory,
+  selectedCategory: categoriaPedida,
   onCategoryChange,
   sortBy,
   onSortByChange,
@@ -108,6 +109,13 @@ export const HomeView = React.memo(function HomeView({
     }
   }, [showSortMenu]);
   const { categories, isLoading: isLoadingCategories } = useCategories();
+  // O endereço pode pedir uma categoria que a loja não tem (link velho de
+  // banner): nesse caso a vitrine mostra "Todas" em vez de ficar vazia.
+  const selectedCategory = categoriaValidaDaHome(
+    categoriaPedida,
+    categories,
+    isLoadingCategories,
+  );
   const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
   const sentinelRef = React.useRef<HTMLDivElement>(null);
   // Memória da última visita (desenho da frente cls-ressalva1-0409): lida
