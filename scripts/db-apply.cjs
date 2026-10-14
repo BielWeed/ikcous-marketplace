@@ -1477,6 +1477,24 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql": [
+    {
+      // A avaliação nasce sem a resposta da loja (14/10/2026): a função de gatilho NOVA limpa as quatro colunas que só
+      // o servidor define. Sem esta entrada a migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores
+      // contam no corpo VIVO (pg_get_functiondef, comentários incluídos): cada limpeza aparece UMA vez (uma a
+      // menos é coluna que voltou a passar forjada; uma a mais, corpo divergente do desenhado) e a exceção do
+      // administrador (`AND NOT public.rls_admin_atual()`) também UMA vez — sem ela o servidor perderia o que grava.
+      // O gatilho em si (BEFORE INSERT, por linha, ligado) é conferido pelo bloco DO da própria migration.
+      funcao: "avaliacao_nasce_sem_a_resposta_da_loja",
+      esperado: [
+        { texto: "NEW.merchant_reply := NULL;", vezes: 1 },
+        { texto: "NEW.merchant_reply_at := NULL;", vezes: 1 },
+        { texto: "NEW.helpful := 0;", vezes: 1 },
+        { texto: "NEW.created_at := now();", vezes: 1 },
+        { texto: "AND NOT public.rls_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

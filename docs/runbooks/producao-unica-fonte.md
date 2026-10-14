@@ -969,6 +969,44 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         efemero; nao prova o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo
         vivo delas.
 
+  24. **Lote de UMA migration, de apply normal: `20261224000000` (a avaliacao nasce sem a resposta da loja;
+      permissao e dado publico).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes
+      (IKCOUS e Savy); exige a `20261197000000` (`rls_admin_atual`) e a `20261030000000` (o gatilho do selo) ja
+      no banco (o pre-voo recusa sem elas). **CRIA** (nada existente muda) a funcao
+      `avaliacao_nasce_sem_a_resposta_da_loja()` e o gatilho `tr_avaliacao_nasce_sem_a_resposta_da_loja`
+      (BEFORE INSERT, por linha, em `public.reviews`), que **limpa** `merchant_reply`, `merchant_reply_at`,
+      `helpful` (0) e `created_at` (agora) quando quem grava e cliente. Antes, qualquer cliente LOGADA gravava, pela
+      API, a propria avaliacao ja com a "Resposta Oficial da Loja", 9999 uteis e data de 2030; se a loja aprovasse,
+      o texto falso ficava PUBLICO. O gatilho nao recusa nada (a avaliacao entra, sem o forjado) e deixa gravar
+      como veio: o administrador de agora (`rls_admin_atual()`), `service_role`/`postgres` e a sessao direta no
+      banco (o `role` da sessao e `none`). A funcao nasce FECHADA (a lista L8 nao ganha entrada).
+      `reply_review_atomic` (UPDATE) nao passa pelo gatilho. Nenhuma edge function e nenhum front mudam.
+      **O apply NAO limpa o que ja foi forjado:** meca com a `27m-medir-avaliacao-forjada` (so leitura, rol
+      aberto, nao e portao) nas duas lojas ANTES e DEPOIS; limpar o achado e decisao do dono, com a lista na mao.
+      Duas consultas, so leitura, so catalogo, de ROL FECHADO (6 e 6 linhas, so valem com `rol=ok`):
+      - **`27a-conferir-avaliacao-nasce-sem-resposta-da-loja`** (a consulta do lote) prova DEPOIS do apply o corpo
+        (md5), a limpeza das quatro colunas so fora do administrador, os atributos de sempre, o `EXECUTE` fechado
+        e o gatilho (BEFORE INSERT por linha, ligado, sem WHEN).
+      - **`27b-antes-avaliacao-aceita-resposta-forjada`** (`ausenciaConfirmadaPor`) prova o ANTES: a funcao e o
+        gatilho AUSENTES, e as quatro colunas, `rls_admin_atual()` e o gatilho irmao `tr_avaliacao_nasce_verificada`
+        de pe.
+      - **Caminho, uma loja por vez:** `27a` (sai NEGATIVA) -> `27b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com `20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql` -> o ensaio pede
+        a `27a` DE NOVO, que tem de sair POSITIVA. `27a` POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Trava:** o `CREATE TRIGGER` pega `SHARE ROW EXCLUSIVE` em `reviews`: espera uma gravacao de avaliacao em
+        voo terminar (e a que chega durante a espera fica na fila e sai limpa). Rodar fora de horario de pico nao e
+        exigido; uma avaliacao em voo no instante do apply nasce antes do gatilho e NAO e limpa.
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql` pelo `aplicar-migrations.yml`
+        (apaga o gatilho e a funcao; nada a restaurar). Depois dele a `27b` volta a ser POSITIVA e a `27a`
+        NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `27a` e a
+        `27b` DE NOVO.
+      - **Limites:** `tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs` prova o comportamento (a
+        forjada entra limpa, a normal e o selo seguem, admin/servico/sessao direta gravam como vieram, mutantes,
+        pre-voo, conferencia, rollback, concorrencia e a `27m` rodada de verdade) num Postgres 17 efemero; nao
+        prova o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o estado vivo delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

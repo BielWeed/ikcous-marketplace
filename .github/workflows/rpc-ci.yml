@@ -76,6 +76,8 @@ on:
       - "scripts/publicacao/consultas/25b-antes-media-de-avaliacoes-sem-guarda.sql"
       - "scripts/publicacao/consultas/26a-conferir-voto-util-so-em-avaliacao-publica.sql"
       - "scripts/publicacao/consultas/26b-antes-voto-util-sem-guarda-de-status.sql"
+      - "scripts/publicacao/consultas/27a-conferir-avaliacao-nasce-sem-resposta-da-loja.sql"
+      - "scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -122,6 +124,8 @@ on:
       - "scripts/publicacao/consultas/25b-antes-media-de-avaliacoes-sem-guarda.sql"
       - "scripts/publicacao/consultas/26a-conferir-voto-util-so-em-avaliacao-publica.sql"
       - "scripts/publicacao/consultas/26b-antes-voto-util-sem-guarda-de-status.sql"
+      - "scripts/publicacao/consultas/27a-conferir-avaliacao-nasce-sem-resposta-da-loja.sql"
+      - "scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -572,6 +576,18 @@ jobs:
       - name: Prova viva do portao do voto util so em avaliacao publica (consultas 26a e 26b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/voto-util-so-em-avaliacao-publica-portao-viva.cjs
+      # A avaliacao nasce sem a resposta da loja (migration 20261224, permissao / dado publico; achado da cacada Opus de
+      # 14/10/2026). Gatilho BEFORE INSERT em reviews: a cliente que forja merchant_reply, merchant_reply_at, helpful e
+      # created_at pela API entra LIMPA; admin (rls_admin_atual), service_role, postgres e a sessao direta gravam como
+      # vierem; a normal do app, o selo pela compra e reply_review_atomic seguem; mutantes, pre-voo, conferencia,
+      # rollback, concorrencia e a consulta de leitura 27m (conta o que ja foi forjado). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da avaliacao que nasce sem a resposta da loja (migration 20261224)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 27a (DEPOIS, 6 linhas) e 27b (ANTES, 6 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da avaliacao que nasce sem a resposta da loja (consultas 27a e 27b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que

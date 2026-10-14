@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1606,6 +1606,33 @@ const ROL_DA_26B = [
   "increment_helpful: o corpo ainda NAO exige avaliacao publicada",
   "increment_helpful: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
 ];
+/** O rol da 27a (a prova de objetos do lote 20261224000000, a avaliacao nasce sem a resposta da loja): as 6 linhas que
+ * scripts/publicacao/consultas/27a-conferir-avaliacao-nasce-sem-resposta-da-loja.sql devolve, cada uma UMA vez, as mesmas
+ * em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): a funcao do gatilho tem o corpo da
+ * migration (md5) e limpa as quatro colunas so fora do administrador, tem os atributos de sempre e esta FECHADA a
+ * PUBLIC/anon/authenticated/service_role; e o gatilho existe (BEFORE INSERT por linha em public.reviews, ligado).
+ * tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs prova, num Postgres real, que este rol e
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_27A = [
+  "controle: funcoes de public visiveis a este papel",
+  "avaliacao_nasce_sem_a_resposta_da_loja: corpo e o da 20261224000000 (md5)",
+  "avaliacao_nasce_sem_a_resposta_da_loja: o corpo limpa as quatro colunas, so fora do administrador e da sessao direta",
+  "avaliacao_nasce_sem_a_resposta_da_loja: atributos de sempre (SECURITY DEFINER, VOLATILE, retorna trigger, search_path=public)",
+  "avaliacao_nasce_sem_a_resposta_da_loja: EXECUTE fechado a PUBLIC, anon, authenticated e service_role",
+  "tr_avaliacao_nasce_sem_a_resposta_da_loja: BEFORE INSERT por linha em public.reviews, ligado, sem WHEN, chamando a funcao",
+];
+/** O rol da 27b (a consulta de AUSENCIA do lote da avaliacao sem resposta; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/27b-antes-avaliacao-aceita-resposta-forjada.sql devolve — a base de antes: a funcao e o
+ * gatilho ainda nao existem e as pecas de que o apply depende (as quatro colunas, rls_admin_atual, o gatilho irmao do
+ * selo) estao de pe. Uma loja que ja tem a funcao ou o gatilho reprova aqui de proposito. */
+const ROL_DA_27B = [
+  "controle: funcoes de public visiveis a este papel",
+  "avaliacao_nasce_sem_a_resposta_da_loja: a funcao ainda NAO existe",
+  "tr_avaliacao_nasce_sem_a_resposta_da_loja: o gatilho ainda NAO existe",
+  "reviews: as quatro colunas que o gatilho reescreve, com os tipos de sempre",
+  "rls_admin_atual(): existe e devolve boolean (20261197000000)",
+  "tr_avaliacao_nasce_verificada: o gatilho irmao do selo (AFTER INSERT por linha em reviews) esta de pe",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1644,6 +1671,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "25b-antes-media-de-avaliacoes-sem-guarda": ROL_DA_25B,
   "26a-conferir-voto-util-so-em-avaliacao-publica": ROL_DA_26A,
   "26b-antes-voto-util-sem-guarda-de-status": ROL_DA_26B,
+  "27a-conferir-avaliacao-nasce-sem-resposta-da-loja": ROL_DA_27A,
+  "27b-antes-avaliacao-aceita-resposta-forjada": ROL_DA_27B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2220,6 +2249,8 @@ module.exports = {
   ROL_DA_25B,
   ROL_DA_26A,
   ROL_DA_26B,
+  ROL_DA_27A,
+  ROL_DA_27B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
