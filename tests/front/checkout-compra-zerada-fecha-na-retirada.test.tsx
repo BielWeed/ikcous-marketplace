@@ -263,7 +263,7 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
     });
     if (comCpf) {
       await act(async () => {
-        digitar("checkout-cpf", "11144477736");
+        digitar("checkout-cpf", "11144477735");
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
     }
@@ -421,6 +421,10 @@ describe("CheckoutView — compra que fecha em R$ 0,00", () => {
     expect(botaoPorTexto("Pagar agora com PIX")).toBeUndefined();
     expect(botaoPorTexto("Pix na Entrega")).toBeUndefined();
     expect(botaoFinalizar()!.disabled).toBe(true);
+    // O CPF está preenchido e correto: o botão não fica apagado por ele.
+    expect(
+      document.querySelector('[data-testid="checkout-resumo-falta-cpf"]'),
+    ).toBeNull();
     expect(
       document.querySelector('[data-testid="checkout-pedido-sem-valor"]')
         ?.textContent,
