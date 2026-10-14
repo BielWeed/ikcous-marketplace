@@ -33,6 +33,13 @@ export interface Product {
   reviewCount?: number;
   tags?: string[];
   variants?: ProductVariant[];
+  /**
+   * `true` quando a leitura das variações FALHOU ao montar este produto (faixa
+   * de recomendações): `variants` vazio aí quer dizer "não sei", não "não
+   * tem". O card não adiciona ao carrinho — abre a página do produto, onde a
+   * escolha é obrigatória. Ausente = a lista de variações é confiável.
+   */
+  variantsUnavailable?: boolean;
   metaTitle?: string;
   metaDescription?: string;
   /** `null` = limpar o codigo; `undefined` = nao mexer. Ver [ADMIN-050, #96]. */

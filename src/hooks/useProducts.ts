@@ -1729,10 +1729,51 @@ export function useProducts({ autoFetch = true } = {}) {
 
         if (error) throw error;
 
-        // Map database results to application model and sort by availability
-        const mapped = data
-          ? (data as any[]).map((item: any) => mapProductFromDB(item))
-          : [];
+        // `get_product_recommendations` devolve `SETOF produtos`: SEM as
+        // variações. Sem elas o card não vê tamanho/cor, não trava, e a peça
+        // ia ao carrinho sem escolha (o servidor só recusava no pagamento).
+        // Mesma busca de `loadProducts` (uma consulta para os ids da faixa).
+        const linhas = (data ?? []) as any[];
+        let variantes: any[] | null = [];
+        if (linhas.length > 0) {
+          try {
+            const { data: lidas, error: varError } = await supabase
+              .from("product_variants")
+              .select("*")
+              .in(
+                "product_id",
+                linhas.map((l: any) => l.id),
+              );
+            if (varError) {
+              console.error(
+                "[useProducts] Error fetching recommendation variants:",
+                varError,
+              );
+            }
+            // Sem resposta não se sabe se há variação: nunca vira "não tem".
+            variantes = varError ? null : (lidas ?? null);
+          } catch (varErr) {
+            console.error(
+              "[useProducts] Recommendation variants request failed:",
+              varErr,
+            );
+            variantes = null;
+          }
+        }
+
+        // Falhou a leitura -> FALHA FECHADO: o produto sai marcado e o card
+        // abre a página do produto em vez de adicionar.
+        const mapped = linhas.map((item: any): Product => {
+          const produto = mapProductFromDB({
+            ...item,
+            product_variants: (variantes ?? []).filter(
+              (v: any) => v.product_id === item.id,
+            ),
+          });
+          return variantes === null
+            ? { ...produto, variantsUnavailable: true }
+            : produto;
+        });
         return mapped.sort((a, b) => {
           const aAvailable = a.stock > 0 ? 1 : 0;
           const bAvailable = b.stock > 0 ? 1 : 0;

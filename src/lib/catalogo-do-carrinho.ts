@@ -58,19 +58,34 @@ export function montarCatalogo(
 }
 
 /**
+ * Linha SEM variação de um produto que TEM variação ativa: o servidor a recusa
+ * no pagamento ("Escolha uma variação para o produto X") e o carrinho não
+ * tem onde escolher tamanho/cor. Mesma regra do servidor: variação ATIVA —
+ * produto cujas variações foram todas desativadas segue vendável pelo base.
+ */
+function faltaEscolherVariacao(
+  produto: Product,
+  variantId: string | undefined,
+): boolean {
+  return !variantId && (produto.variants?.some((v) => v.active) ?? false);
+}
+
+/**
  * Quantas unidades a cliente pode levar desta LINHA do carrinho, segundo o
  * produto atual — ou `null` quando a linha não pode mais ser vendida.
  *
  * Linha com variação: vale o estoque DA VARIAÇÃO, e variação que sumiu ou foi
  * desativada não vende (o servidor exige `v.active = true`). Linha sem
  * variação: o estoque do produto, como `addToCart` e `updateQuantity` já
- * contam.
+ * contam — salvo se o produto TEM variação ativa (ver `faltaEscolherVariacao`).
  */
 function unidadesDisponiveis(
   produto: Product,
   variantId: string | undefined,
 ): number | null {
-  if (!variantId) return produto.stock;
+  if (!variantId) {
+    return faltaEscolherVariacao(produto, variantId) ? null : produto.stock;
+  }
   const variacao = produto.variants?.find((v) => v.id === variantId);
   if (!variacao || variacao.active === false) return null;
   return variacao.stockIncrement;
@@ -157,6 +172,16 @@ export async function avisosDoCarrinho(
     const disponivel = atual
       ? unidadesDisponiveis(atual, item.variantId)
       : null;
+
+    // Linha sem tamanho/cor de produto que exige escolha: a frase é PRÓPRIA
+    // (não é "saiu do catálogo" nem "o preço mudou") e a linha sai em
+    // `aplicarCatalogoAoCarrinho`.
+    if (atual && faltaEscolherVariacao(atual, item.variantId)) {
+      frases.push(
+        `"${atual.name}" precisa de tamanho ou cor, que não foram escolhidos. Ele saiu do seu carrinho: abra o produto, escolha as opções e adicione de novo.`,
+      );
+      continue;
+    }
 
     const variacaoAntes = item.variantId
       ? item.product.variants?.find((v) => v.id === item.variantId)
