@@ -427,6 +427,23 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `27b-antes-avaliacao-aceita-resposta-forjada` (ANTES, 6 linhas), a "prova de objetos" do lote `20261224000000`.
   Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por linha, o veredito do
   `conferir-banco.cjs` (`rol=ok`), mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
+- **números do painel (`numeros-do-painel-viva.cjs`, via `rodar-isolado.cjs`)**: as migrations `20261227000000`
+  (`crm_visao`: a taxa de devolução fala da MESMA turma de vendas e o "vs. ontem" corta o anterior na mesma hora) e
+  `20261228000000` (`painel_inicio`: a semana passada do "Hoje" corta na mesma hora), com os papéis reais num Postgres
+  efêmero. Cada caso parte do estado ANTES (os rollbacks-manuais, conferidos byte a byte contra os corpos de antes): o
+  controle prova o defeito (taxa acima de 100%, chip -66,7% de manhã). Depois: parcial R$ 30 de R$ 100 = 15%, mais
+  R$ 70 do mesmo pedido = 50%, 3 vendas com 2 devolvidas = 66,7%, pago-cancela-estorna = 100% de 1 pedido, balcão
+  anulado, devolução manual, devolução de venda de OUTRO período fora, sem venda = 0 (nunca divide por zero); o corte
+  na mesma hora de hoje (R$ 100 às 04h e R$ 200 às 18h na semana passada, R$ 100 às 05h hoje, às 06h07 = 0%) montado
+  em torno do `now()` REAL do banco (o relógio não é injetado; guarda de virada do dia); formato do JSON, ACL e
+  travas de admin intactos, reaplicar 2x = mesmo estado, o rollback devolve o `prosrc` idêntico, o pré-voo recusa sem
+  escrever (corpo divergente, ACL aberta) e o segundo rollback também; um mutante por defeito (matar o corte, tirar o limite, voltar o
+  denominador...) fica vermelho. **Não prova** a IKCOUS nem a Savy.
+- **portão dos números do painel (`numeros-do-painel-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `30a-conferir-numeros-do-painel-aplicado` (DEPOIS, 9 linhas) e `30b-antes-numeros-do-painel-corpos-vigentes` (ANTES,
+  7 linhas; **não mede a ACL**), a "prova de objetos" do lote `20261227000000` + `20261228000000`. Mesmo desenho do
+  portão 26: rol exato nos estados (antes, depois, só uma das duas), um negativo por linha, mutantes do texto das
+  consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
 - **endereço da compra no pedido (`endereco-no-pedido-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261229000000` (`create_marketplace_order_v23` e `_v24` copiam o endereço da conta para
   `customer_data.address` no instante da compra) pelo caminho real do checkout, nas duas funções. Cada caso parte
@@ -455,7 +472,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   desfeita, para provar grants/RLS/view — o admin grava
   `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
 - **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
-  `20261199000000` (20261212, 20261214) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  `20261199000000` (20261212, 20261214, 20261227, 20261228) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
   reprova se aparecer uma sucessora que não esteja na lista.
 - **função nova não nasce aberta (`portas-do-visitante-so-as-permitidas-viva.cjs`, via `rodar-isolado.cjs`)**: L8 da
   auditoria de 12/10, sem migration. Com todas as migrations aplicadas, toda função de `public` que anon,

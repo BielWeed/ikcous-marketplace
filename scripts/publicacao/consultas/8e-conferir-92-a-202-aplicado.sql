@@ -22,24 +22,28 @@
 -- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
 -- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
 -- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
--- apply da sucessora. Hoje são duas, cada uma POR SI (função independente:
+-- apply da sucessora. Hoje são três funções (quatro migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
---   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja);
---   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo).
--- ATENÇÃO (cadeia futura): cada função tem UMA sucessora no CTE, a da ÚLTIMA migration que a
--- redefine; uma terceira definição troca o hash e uma loja parada no intermediário passa a dar
--- NEGATIVA (falha fechada). Quem escrever a próxima sucessora decide se mantém o intermediário.
--- Para essas duas a linha "corpo final <fn>" aceita o md5 da 20261199 (o do
--- `final`, que é o `esperado`) OU o md5 da sucessora DA PRÓPRIA função (CTE
+--   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
+--                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
+--   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo);
+--   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável).
+-- CADEIA (decidido em 14/10/2026, quando `painel_inicio` ganhou a SEGUNDA sucessora): o CTE
+-- `sucessoras` guarda TODOS os corpos intermediários e o final de cada função (várias linhas por
+-- função, uma por migration), nunca só o último — uma loja parada no intermediário (a 12, antes da
+-- 28) continua POSITIVA, e o backfill 92-202 dela não fica bloqueado. A próxima migration que
+-- redefinir uma das 61 ACRESCENTA a sua linha (sem trocar as anteriores) e atualiza o teste.
+-- Para essas funções a linha "corpo final <fn>" aceita o md5 da 20261199 (o do
+-- `final`, que é o `esperado`) OU o md5 de QUALQUER sucessora DA PRÓPRIA função (CTE
 -- `sucessoras`); aceito, o `vivo` mostra o `esperado`. O rollback-manual de cada
--- sucessora devolve o corpo da 99, que segue aceito. Nada mais foi afrouxado:
+-- sucessora devolve o corpo da anterior na cadeia (o da 99 para a primeira), que segue aceito. Nada mais foi afrouxado:
 -- corpo estranho (vivo = o md5 dele), função AUSENTE e sobrecarga múltipla
--- (vivo = os md5 separados por vírgula) reprovam igual, e as outras 59 seguem
+-- (vivo = os md5 separados por vírgula) reprovam igual, e as outras 58 seguem
 -- exatas. tests/ci_conferir_banco_test.ts confere os hashes aceitos contra os
 -- arquivos (sucessoras = as migrations depois da 202 que redefinem uma das 61,
 -- com o md5 do corpo; o preflight delas e o rollback-manual citam os dois) e
 -- tests/banco/portao-8e-aceita-sucessoras-viva.cjs roda esta consulta no PG
--- real nos estados 99, só 12, só 14 e árvore inteira, com os negativos.
+-- real nos estados 99, painel parado na 12, só uma sucessora e árvore inteira, com os negativos.
 --
 -- Não confere ACL (GRANT/REVOKE) nem a política inteira — isso é o que o
 -- pós-voo de cada migration já afirma dentro da transação; aqui é só "o objeto
@@ -115,7 +119,9 @@ WITH corpos AS (
     ('upsert_store_config', '9c56a9c6953e1d774a1ee97d5d8a7e16')
 ), sucessoras(fn, h, versao) AS (VALUES
     ('painel_inicio', 'f11d22d076c59ab54d1beb280954dd15', '20261212000000'),
-    ('get_admin_analytics_v2', '0a5f8c75bbeeda3777a6a7326a0e281c', '20261214000000')
+    ('get_admin_analytics_v2', '0a5f8c75bbeeda3777a6a7326a0e281c', '20261214000000'),
+    ('crm_visao', 'c33073503fccc6caa5f1085265501eae', '20261227000000'),
+    ('painel_inicio', 'ad5620273997ba9266f240f272bf399b', '20261228000000')
 ), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),

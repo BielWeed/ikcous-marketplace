@@ -45,6 +45,10 @@
 -- migration que redefinir uma dessas tres funcoes atualiza a 17a (e decide o que fazer com a
 -- loja parada no corpo deste lote), como o item 14 do runbook e o aviso do CTE `sucessoras` da 8e
 -- -- senao, depois do apply dela, esta consulta fica NEGATIVA e o portao PARA (falha fechada).
+-- JA DECIDIDO PARA `painel_inicio` (14/10/2026): a 20261228000000 (o Inicio compara ate a mesma
+-- hora) o redefine depois deste lote. A linha `painel_inicio: corpo e o da 20261212000000` aceita
+-- o corpo da 12 OU o da 28 (o rol e os rotulos do rol nao mudam): uma loja que ja recebeu a 28 nao
+-- deixa o portao vermelho no lote 17. As outras duas funcoes seguem exatas.
 --
 -- sha256 = encode(sha256(convert_to(prosrc, 'UTF8')), 'hex'). Cada hash aparece aqui uma vez em
 -- LF e uma em CRLF; tests/ci_conferir_banco_test.ts os recalcula dos ARQUIVOS das migrations
@@ -162,8 +166,12 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'painel_inicio: corpo e o da 20261212000000 (sha256)',
          '5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db',
+         -- 4 hashes aceitos: o corpo da 20261212000000 (LF e CRLF) OU o da SUCESSORA dele, a
+         -- 20261228000000 (o Inicio compara ate a mesma hora; LF e CRLF). O `vivo` mostra o esperado.
          COALESCE((SELECT CASE WHEN f.h IN ('5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db',
-                                            '77cc91fbe8e03fbd89ee163046101804abf6dbf7fc1c2b4bc9ee5a1d97df64cf')
+                                            '77cc91fbe8e03fbd89ee163046101804abf6dbf7fc1c2b4bc9ee5a1d97df64cf',
+                                            '31ba1c96a0af9c647b722ddec813e3f0105bee88bad64fed58d2b905335d12c8',
+                                            'abf5c502e224295621fc273adee5c588e913ecfec644a9cda65328f346d1ab8b')
                                THEN '5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'painel_inicio'), 'AUSENTE')

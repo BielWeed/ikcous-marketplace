@@ -462,6 +462,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261224000000: a avaliacao nasce sem a resposta da loja (gatilho BEFORE INSERT; comportamento e portao 27a/27b).
     "tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs",
     "tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs",
+    // 20261227000000 e 20261228000000: os numeros do painel (a taxa de devolucao da mesma turma de vendas e o corte
+    // na mesma hora; comportamento e portao 30a/30b).
+    "tests/banco/numeros-do-painel-viva.cjs",
+    "tests/banco/numeros-do-painel-portao-viva.cjs",
     // 20261229000000: o endereco da compra fica no pedido (v23 e v24 copiam o endereco da conta; comportamento e portao 31a/31b).
     "tests/banco/endereco-no-pedido-viva.cjs",
     "tests/banco/endereco-no-pedido-portao-viva.cjs",

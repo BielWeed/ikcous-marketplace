@@ -244,6 +244,19 @@ const FUNCOES = [
   };
 });
 const F = Object.fromEntries(FUNCOES.map((f) => [f.chave, f]));
+// As sucessoras da 99 que SÃO deste lote (a 12 e a 14) e as POSTERIORES a ele (14/10/2026): a
+// 20261227 (crm_visao, fora das três funções) e a 20261228, que SUCEDE a 12 em painel_inicio. O molde
+// desta prova é o estado do lote 17 (a 12 no ar): as posteriores saem do clone antes de tudo, e a 28
+// volta por cima num caso próprio (a 17a a aceita ao lado da 12).
+const SUCESSORAS_DO_LOTE = SUCESSORAS_DA_99.filter((s) =>
+  [F.painel.arq, F.analytics.arq].includes(s.nome),
+);
+const POSTERIORES = SUCESSORAS_DA_99.filter(
+  (s) => !SUCESSORAS_DO_LOTE.includes(s),
+);
+const POSTERIOR_DO_PAINEL = POSTERIORES.find(
+  (s) => s.assinatura === F.painel.sig,
+);
 const CHAVES = FUNCOES.map((f) => f.chave);
 const CONTROLE = "controle: funcoes de public visiveis a este papel";
 const COLUNAS = "produtos e product_variants: colunas que os corpos novos leem";
@@ -368,8 +381,8 @@ const ANTES = async (c) => {
   const desfeitas = await desfazerSucessorasDa99(c);
   assert.deepEqual(
     desfeitas,
-    SUCESSORAS_DA_99.map((s) => s.nome).reverse(),
-    "as duas sucessoras da 99 tinham de estar no ar e sair",
+    SUCESSORAS_DO_LOTE.map((s) => s.nome).reverse(),
+    "as duas sucessoras da 99 DESTE lote tinham de estar no ar e sair",
   );
   await desfazer(F.produtos)(c);
   await exigirCorpos(c, "antes", TODOS("antes"));
@@ -1121,15 +1134,50 @@ async function main() {
     12,
     "os doze sha256 sao distintos",
   );
-  // as sucessoras da 99 sao exatamente a 20261212 (painel_inicio) e a 20261214 (analytics)
+  // as sucessoras da 99 DO LOTE sao exatamente a 20261212 (painel_inicio) e a 20261214 (analytics); as
+  // posteriores sao a 20261227 (crm_visao) e a 20261228 (que sucede a 12 em painel_inicio)
   assert.deepEqual(
-    SUCESSORAS_DA_99.map((s) => [s.nome, s.assinatura, s.hashDesta]).sort(),
+    SUCESSORAS_DO_LOTE.map((s) => [s.nome, s.assinatura, s.hashDesta]).sort(),
     [F.painel, F.analytics].map((f) => [f.arq, f.sig, f.md5.depois]).sort(),
-    "as sucessoras da 99 deixaram de ser a 20261212 e a 20261214: reveja esta prova",
+    "as sucessoras da 99 deste lote deixaram de ser a 20261212 e a 20261214: reveja esta prova",
+  );
+  assert.deepEqual(
+    POSTERIORES.map((s) => [s.nome, s.assinatura]).sort(),
+    [
+      [
+        "20261227000000_o_crm_compara_o_que_e_comparavel.sql",
+        "public.crm_visao(date,date)",
+      ],
+      [
+        "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql",
+        "public.painel_inicio()",
+      ],
+    ],
+    "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
+  );
+  assert.equal(
+    POSTERIOR_DO_PAINEL.hashVigente,
+    F.painel.md5.depois,
+    "a sucessora do painel parte do corpo da 12",
   );
   ok(
     "precondicao: 17a, 17b e 8e sao de ROL FECHADO no portao e no contrato unico; os rols batem com as linhas por funcao; os seis sha256 da 17a (DEPOIS) e os seis da 17b (ANTES), LF e CRLF, sao os dos ARQUIVOS; o md5 de cada corpo e' o par (vigente, desta) do pre-voo; cada rollback-manual devolve o corpo de antes byte a byte",
   );
+
+  // O molde (clone do rodar-isolado) traz a arvore INTEIRA: as posteriores ao lote 17 saem dele, na
+  // ordem inversa, cada uma pelo rollback-manual (com preflight proprio). O clone e' descartavel.
+  await usar(MOLDE, async (c) => {
+    for (const s of [...POSTERIORES].reverse()) {
+      const vivo = (await c.query(`SELECT ${MD5_VIVO(s.assinatura)} AS h`))
+        .rows[0].h;
+      if (vivo === s.hashDesta) await c.query(lerLF(s.rollback));
+      assert.equal(
+        (await c.query(`SELECT ${MD5_VIVO(s.assinatura)} AS h`)).rows[0].h,
+        s.hashVigente,
+        `${s.rollback}: o molde nao voltou ao corpo anterior`,
+      );
+    }
+  });
 
   // Os papeis sao do CLUSTER; a prova os cria (nomes unicos) e os remove no fim.
   await usar("template1", async (a) => {
@@ -1252,6 +1300,49 @@ async function provar(cloneDepois, cloneAntes) {
     );
   ok(
     "17a POSITIVA e IGUAL linha a linha a arvore inteira depois do apply dos tres ARQUIVOS sobre o antes (LF; CRLF, com os corpos gravados em CRLF e o `esperado` no LF; na ordem 12->14 e 14->12), de aplicar 2x e de ida, volta e ida; 17b POSITIVA no antes em CRLF (igual ao LF); a 8e POSITIVA em todos",
+  );
+  // A SUCESSORA do painel (a 20261228) por cima do lote: a 17a segue POSITIVA (linha a linha IGUAL a da
+  // arvore do lote), a 17b NEGATIVA so nas 3 linhas de corpo e a 8e POSITIVA.
+  const COM_SUCESSORA = em(DEPOIS, async (c) => {
+    await c.query(lerLF(POSTERIOR_DO_PAINEL.nome));
+    await guardar(
+      c,
+      "a sucessora do painel no ar",
+      `${MD5_VIVO(F.painel.sig)} = '${POSTERIOR_DO_PAINEL.hashDesta}'`,
+    );
+  });
+  {
+    const {
+      saidas: [ra, rb, r8],
+    } = await noEstado(COM_SUCESSORA, [A, B, E8]);
+    await exigirPositiva(A, "17a com a sucessora do painel", ra);
+    assert.deepEqual(
+      ra,
+      depois.ra,
+      "17a com a sucessora: linha a linha IGUAL a arvore do lote",
+    );
+    await exigirReprovadas(
+      B,
+      "17b com a sucessora do painel",
+      rb,
+      corposB(CHAVES),
+    );
+    await exigirPositiva(E8, "8e com a sucessora do painel", r8);
+    assert.deepEqual(r8, depois.r8, "a 8e responde IGUAL com a sucessora");
+    // o MUTANTE: sem o sha256 da sucessora a 17a deixa de aceitar o painel
+    const corpoDaSucessora = corpoDe(
+      lerLF(POSTERIOR_DO_PAINEL.nome),
+      "CREATE OR REPLACE FUNCTION public.painel_inicio(",
+    );
+    await mutantePositivo(
+      "17a sem o sha256 da sucessora do painel",
+      A,
+      [[sha(corpoDaSucessora), "0".repeat(64)]],
+      COM_SUCESSORA,
+    );
+  }
+  ok(
+    "a SUCESSORA do painel (20261228) por cima do lote: 17a POSITIVA e IGUAL linha a linha a arvore do lote, 17b NEGATIVA so nas 3 linhas de corpo, 8e POSITIVA e igual",
   );
   // a ida e volta em QUALQUER ordem devolve o antes
   for (const ordem of [

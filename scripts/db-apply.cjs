@@ -1495,6 +1495,67 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261227000000_o_crm_compara_o_que_e_comparavel.sql": [
+    {
+      // Os números do CRM (14/10/2026): a taxa de devolução fala da MESMA turma de vendas (as pagas no
+      // período, inclusive as estornadas e canceladas) e o anterior de um período que termina hoje é
+      // cortado na MESMA hora. Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários
+      // incluídos): o corte entra UMA vez na declaração e UMA vez no filtro do anterior; a turma lê só
+      // as vendas pagas/estornadas; o pedido estornado conta o total e o resto é limitado ao total
+      // (LEAST); o reembolso manual só vale na devolução concluída; a razão da taxa tem UM ponto. As duas
+      // travas de admin (is_admin e is_admin_atual, 20261199000000) seguem UMA vez cada.
+      funcao: "crm_visao",
+      esperado: [
+        {
+          texto:
+            "v_hora time := (now() AT TIME ZONE 'America/Sao_Paulo')::time;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "OR (v.pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
+          vezes: 1,
+        },
+        {
+          texto:
+            "WHERE o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+          vezes: 1,
+        },
+        { texto: "WHEN t.payment_status = 'estornado' THEN t.total", vezes: 1 },
+        { texto: "ELSE LEAST(t.total,", vezes: 1 },
+        {
+          texto: "AND d.status = 'concluida' AND d.reembolso_manual",
+          vezes: 1,
+        },
+        { texto: "ELSE round(sum(valor) / sum(total), 4) END", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql": [
+    {
+      // A semana passada do Início até a MESMA hora (14/10/2026): o corte entra UMA vez na declaração e
+      // UMA vez na base da semana passada; a regra de estoque baixo da 20261212000000 e as duas travas
+      // de admin da 20261199000000 sobrevivem à troca do corpo.
+      funcao: "painel_inicio",
+      esperado: [
+        {
+          texto:
+            "v_hora time := (now() AT TIME ZONE 'America/Sao_Paulo')::time;",
+          vezes: 1,
+        },
+        {
+          texto:
+            "AND (pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
+          vezes: 1,
+        },
+        { texto: "<= COALESCE(p.estoque_minimo, 5))", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261229000000_o_endereco_da_compra_fica_no_pedido.sql": [
     {
       // O endereço da compra fica no pedido (14/10/2026): o bloco 6-bis copia o endereço da conta para

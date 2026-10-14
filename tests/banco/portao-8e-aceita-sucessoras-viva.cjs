@@ -96,17 +96,39 @@ const N = CONF.ROL_DA_8E.length;
 // literal solto aqui.
 const fnDe = (s) =>
   s.assinatura.slice("public.".length, s.assinatura.indexOf("("));
-const S = Object.fromEntries(SUCESSORAS_DA_99.map((s) => [fnDe(s), s]));
-const PAINEL = S.painel_inicio;
-const ANALYTICS = S.get_admin_analytics_v2;
+// A CADEIA de cada função, em ordem de aplicação: painel_inicio = [12, 28] (o `hashVigente` da 28 é
+// o `hashDesta` da 12), get_admin_analytics_v2 = [14], crm_visao = [27]. O representante de cada
+// função é o ÚLTIMO elo (o topo da cadeia); o corpo da 99 é o `hashVigente` do PRIMEIRO.
+const CADEIAS = new Map();
+for (const s of SUCESSORAS_DA_99)
+  CADEIAS.set(fnDe(s), [...(CADEIAS.get(fnDe(s)) ?? []), s]);
+const topo = (fn) => CADEIAS.get(fn).at(-1);
+const PAINEL = topo("painel_inicio");
+const PAINEL_12 = CADEIAS.get("painel_inicio")[0];
+const ANALYTICS = topo("get_admin_analytics_v2");
+const CRM = topo("crm_visao");
 assert.ok(
-  PAINEL && ANALYTICS && SUCESSORAS_DA_99.length === 2,
-  "as sucessoras da 99 deixaram de ser a 20261212 (painel_inicio) e a 20261214 (get_admin_analytics_v2): reveja a 8e e esta prova",
+  SUCESSORAS_DA_99.length === 4 &&
+    CADEIAS.size === 3 &&
+    CADEIAS.get("painel_inicio").length === 2 &&
+    PAINEL_12.hashDesta === PAINEL.hashVigente &&
+    CADEIAS.get("get_admin_analytics_v2").length === 1 &&
+    CADEIAS.get("crm_visao").length === 1,
+  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 (get_admin_analytics_v2) e a 20261227 (crm_visao): reveja a 8e e esta prova",
 );
+const FUNCOES = [PAINEL, ANALYTICS, CRM];
+/** O corpo da 99 da função (o `esperado` da 8e), o `hashVigente` do primeiro elo da cadeia. */
+const h99 = (s) => CADEIAS.get(fnDe(s))[0].hashVigente;
+/** Todo corpo que a 8e aceita para a função: o da 99 e o de cada elo da cadeia. */
+const aceitosDe = (s) => [
+  h99(s),
+  ...CADEIAS.get(fnDe(s)).map((x) => x.hashDesta),
+];
 const item = (s) => `corpo final ${fnDe(s)}`;
 const OUTRA = new Map([
   [PAINEL, ANALYTICS],
-  [ANALYTICS, PAINEL],
+  [ANALYTICS, CRM],
+  [CRM, PAINEL],
 ]);
 
 const REF = "gnjsrucsmjkajijrakzr";
@@ -142,8 +164,8 @@ async function hashVivo(c, assinatura) {
   );
   return r.rows[0] ? r.rows[0].h : null;
 }
-/** GUARDA do estado: o corpo vivo de cada sucessora é o pedido. */
-async function exigirHashes(c, rotulo, { painel, analytics }) {
+/** GUARDA do estado: o corpo vivo de cada função é o pedido. */
+async function exigirHashes(c, rotulo, { painel, analytics, crm }) {
   assert.equal(
     await hashVivo(c, PAINEL.assinatura),
     painel,
@@ -154,6 +176,7 @@ async function exigirHashes(c, rotulo, { painel, analytics }) {
     analytics,
     `${rotulo}: get_admin_analytics_v2`,
   );
+  assert.equal(await hashVivo(c, CRM.assinatura), crm, `${rotulo}: crm_visao`);
 }
 
 /**
@@ -195,6 +218,7 @@ const ARVORE = async (c) =>
   exigirHashes(c, "árvore", {
     painel: PAINEL.hashDesta,
     analytics: ANALYTICS.hashDesta,
+    crm: CRM.hashDesta,
   });
 const ESTADO_99 = async (c) => {
   await ARVORE(c);
@@ -202,11 +226,12 @@ const ESTADO_99 = async (c) => {
   assert.deepEqual(
     desfeitas,
     SUCESSORAS_DA_99.map((s) => s.nome).reverse(),
-    "as duas sucessoras tinham de estar no ar e sair",
+    "as quatro sucessoras tinham de estar no ar e sair",
   );
   await exigirHashes(c, "estado 99", {
-    painel: PAINEL.hashVigente,
-    analytics: ANALYTICS.hashVigente,
+    painel: h99(PAINEL),
+    analytics: h99(ANALYTICS),
+    crm: h99(CRM),
   });
 };
 /** Desfaz UMA sucessora pelo rollback-manual dela (o preflight dele exige o desta). */
@@ -216,30 +241,49 @@ const desfazerUma = (s) => async (c) => {
   assert.equal(
     await hashVivo(c, s.assinatura),
     s.hashVigente,
-    `${s.rollback} não devolveu o corpo da 99`,
+    `${s.rollback} não devolveu o corpo anterior na cadeia`,
   );
 };
-const SO_12 = async (c) => {
+/** O painel PARADO NA 12 (a 28 desfeita): o intermediário da cadeia segue aceito. */
+const PAINEL_NA_12 = async (c) => {
   await ARVORE(c);
-  await desfazerUma(ANALYTICS)(c);
-  await exigirHashes(c, "só 12", {
-    painel: PAINEL.hashDesta,
-    analytics: ANALYTICS.hashVigente,
+  await desfazerUma(PAINEL)(c);
+  await exigirHashes(c, "painel na 12", {
+    painel: PAINEL_12.hashDesta,
+    analytics: ANALYTICS.hashDesta,
+    crm: CRM.hashDesta,
   });
 };
+/** SÓ a 14 no ar: o painel volta à 99 (28 e 12 desfeitas) e o CRM também (27). */
 const SO_14 = async (c) => {
   await ARVORE(c);
   await desfazerUma(PAINEL)(c);
+  await desfazerUma(PAINEL_12)(c);
+  await desfazerUma(CRM)(c);
   await exigirHashes(c, "só 14", {
-    painel: PAINEL.hashVigente,
+    painel: h99(PAINEL),
     analytics: ANALYTICS.hashDesta,
+    crm: h99(CRM),
+  });
+};
+/** SÓ a 27 no ar (CRM): painel (28 e 12) e analytics (14) voltam à 99. */
+const SO_27 = async (c) => {
+  await ARVORE(c);
+  await desfazerUma(PAINEL)(c);
+  await desfazerUma(PAINEL_12)(c);
+  await desfazerUma(ANALYTICS)(c);
+  await exigirHashes(c, "só 27", {
+    painel: h99(PAINEL),
+    analytics: h99(ANALYTICS),
+    crm: CRM.hashDesta,
   });
 };
 const ESTADOS = [
-  ["árvore inteira (12 e 14 no ar)", ARVORE],
-  ["estado da 20261199 (14 e 12 desfeitas)", ESTADO_99],
-  ["misto: só a 20261212 (14 desfeita)", SO_12],
-  ["misto: só a 20261214 (12 desfeita)", SO_14],
+  ["árvore inteira (12, 28, 14 e 27 no ar)", ARVORE],
+  ["estado da 20261199 (as quatro sucessoras desfeitas)", ESTADO_99],
+  ["painel parado na 20261212 (a 20261228 desfeita)", PAINEL_NA_12],
+  ["misto: só a 20261214 (as outras desfeitas)", SO_14],
+  ["misto: só a 20261227 (as outras desfeitas)", SO_27],
 ];
 
 /** CREATE OR REPLACE com o texto de pg_get_functiondef e o corpo transformado
@@ -408,13 +452,9 @@ function exigirFormato(rotulo, rows) {
 async function exigirPositiva(rotulo, rows) {
   exigirFormato(rotulo, rows);
   assert.deepEqual(reprovadas(rows), [], `${rotulo}: nada podia reprovar`);
-  for (const s of SUCESSORAS_DA_99) {
+  for (const s of FUNCOES) {
     const l = linha(rows, item(s));
-    assert.equal(
-      l.esperado,
-      s.hashVigente,
-      `${rotulo}: esperado de ${item(s)}`,
-    );
+    assert.equal(l.esperado, h99(s), `${rotulo}: esperado de ${item(s)}`);
     assert.equal(l.vivo, l.esperado, `${rotulo}: vivo de ${item(s)}`);
   }
   assert.ok(
@@ -532,14 +572,14 @@ async function provar() {
     );
   }
   for (const rows of respostas.slice(1))
-    assert.deepEqual(rows, respostas[0], "os quatro estados respondem igual");
+    assert.deepEqual(rows, respostas[0], "os cinco estados respondem igual");
   ok(
-    "os quatro estados (árvore, 99, só 12, só 14) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
+    "os cinco estados (árvore, 99, painel na 12, só 14, só 27) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
   );
 
   // ------------------------------------------------------------- NEGATIVOS
-  for (const s of SUCESSORAS_DA_99) {
-    const aceitos = [s.hashVigente, s.hashDesta];
+  for (const s of FUNCOES) {
+    const aceitos = aceitosDe(s);
     {
       const { rows, montado: h } = await noEstado(
         em(ARVORE, corpoEstranho(s.assinatura, aceitos)),
@@ -550,7 +590,7 @@ async function provar() {
         h,
         "o vivo mostra o md5 estranho",
       );
-      assert.equal(linha(rows, item(s)).esperado, s.hashVigente);
+      assert.equal(linha(rows, item(s)).esperado, h99(s));
     }
     {
       const { rows } = await noEstado(em(ARVORE, ausente(s)));
@@ -591,77 +631,81 @@ async function provar() {
       `negativo — ${fnDe(s)}: corpo estranho, AUSENTE, sobrecarga com o mesmo corpo e o corpo da sucessora da outra função reprovam SÓ "${item(s)}" (árvore e estado 99); portão NEGATIVA, pré-checagem lança`,
     );
   }
-  // Os mistos: a função que ficou na 99 e a que está na sucessora, cada uma por si.
+  // Os mistos: a função que ficou na 99 (ou no intermediário) e a que está na sucessora, cada uma por si.
   {
-    const { rows } = await noEstado(em(SO_12, ausente(ANALYTICS)));
-    await exigirReprovadas("só 12 + analytics ausente", rows, [
+    const { rows } = await noEstado(em(PAINEL_NA_12, ausente(ANALYTICS)));
+    await exigirReprovadas("painel na 12 + analytics ausente", rows, [
       item(ANALYTICS),
     ]);
     const r2 = await noEstado(
-      em(
-        SO_12,
-        corpoEstranho(PAINEL.assinatura, [
-          PAINEL.hashVigente,
-          PAINEL.hashDesta,
-        ]),
-      ),
+      em(PAINEL_NA_12, corpoEstranho(PAINEL.assinatura, aceitosDe(PAINEL))),
     );
-    await exigirReprovadas("só 12 + painel estranho", r2.rows, [item(PAINEL)]);
+    await exigirReprovadas("painel na 12 + painel estranho", r2.rows, [
+      item(PAINEL),
+    ]);
     const r3 = await noEstado(em(SO_14, sobrecarga(ANALYTICS)));
     await exigirReprovadas("só 14 + sobrecarga do analytics", r3.rows, [
       item(ANALYTICS),
     ]);
     const r4 = await noEstado(em(SO_14, ausente(PAINEL)));
     await exigirReprovadas("só 14 + painel ausente", r4.rows, [item(PAINEL)]);
+    const r5 = await noEstado(em(SO_27, sobrecarga(CRM)));
+    await exigirReprovadas("só 27 + sobrecarga do crm_visao", r5.rows, [
+      item(CRM),
+    ]);
+    const r6 = await noEstado(em(SO_27, ausente(PAINEL)));
+    await exigirReprovadas("só 27 + painel ausente", r6.rows, [item(PAINEL)]);
   }
   ok(
-    "negativo — nos estados MISTOS (só 12, só 14) a função ausente, estranha ou sobrecarregada reprova SÓ a linha dela",
+    "negativo — nos estados MISTOS (painel na 12, só 14, só 27) a função ausente, estranha ou sobrecarregada reprova SÓ a linha dela",
   );
-  // Controle: as outras 59 seguem exatas.
+  // Controle: as outras 58 seguem exatas.
   {
     const { rows } = await noEstado(async (c) => {
       await ARVORE(c);
       const r = await c.query(
         `SELECT p.oid::regprocedure::text AS a FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
-          WHERE ns.nspname = 'public' AND p.proname = 'crm_visao'`,
+          WHERE ns.nspname = 'public' AND p.proname = 'crm_clientes'`,
       );
       assert.equal(r.rows.length, 1);
       return corpoEstranho(r.rows[0].a, [])(c);
     });
-    await exigirReprovadas("crm_visao estranho", rows, [
-      "corpo final crm_visao",
+    await exigirReprovadas("crm_clientes estranho", rows, [
+      "corpo final crm_clientes",
     ]);
   }
   ok(
-    "controle — uma das outras 59 (crm_visao) com corpo estranho reprova só ela: nada além das duas foi afrouxado",
+    "controle — uma das outras 58 (crm_clientes) com corpo estranho reprova só ela: nada além das três funções com sucessora foi afrouxado",
   );
 
   // ------------------------------------------------------------- MUTANTES
   const zero = "0".repeat(32);
+  // cada elo da cadeia, no estado em que ELE é o corpo vivo
   for (const s of SUCESSORAS_DA_99) {
     await mutantePositivo(
-      `hash da sucessora de ${fnDe(s)} trocado`,
+      `hash da sucessora ${s.nome.slice(0, 14)} de ${fnDe(s)} trocado`,
       [[`('${fnDe(s)}', '${s.hashDesta}', `, `('${fnDe(s)}', '${zero}', `]],
-      ARVORE,
-    );
-    await mutantePositivo(
-      `hash da 99 de ${fnDe(s)} trocado no final`,
-      [[`('${fnDe(s)}', '${s.hashVigente}')`, `('${fnDe(s)}', '${zero}')`]],
-      ESTADO_99,
+      s === PAINEL_12 ? PAINEL_NA_12 : ARVORE,
     );
   }
+  for (const s of FUNCOES)
+    await mutantePositivo(
+      `hash da 99 de ${fnDe(s)} trocado no final`,
+      [[`('${fnDe(s)}', '${h99(s)}')`, `('${fnDe(s)}', '${zero}')`]],
+      ESTADO_99,
+    );
   await mutantePositivo(
     "aceitos removidos (sem o OR da sucessora)",
     [[" OR c.h IN (SELECT s.h FROM sucessoras s WHERE s.fn = f.fn)", ""]],
     ARVORE,
   );
   await mutantePositivo(
-    "aceitos removidos (CTE sucessoras sem as duas)",
+    "aceitos removidos (CTE sucessoras sem as quatro)",
     SUCESSORAS_DA_99.map((s) => [
       `('${fnDe(s)}', '${s.hashDesta}', '${s.nome.slice(0, 14)}')`,
       `('nenhuma_${s.nome.slice(0, 14)}', '${zero}', '${s.nome.slice(0, 14)}')`,
     ]),
-    SO_12,
+    ARVORE,
   );
   await mutanteNegativo(
     "aceito de qualquer função (sem s.fn = f.fn)",
@@ -678,10 +722,7 @@ async function provar() {
   await mutanteNegativo(
     "corpo estranho aceito",
     [["ELSE c.h END\n    FROM final f", "ELSE f.h END\n    FROM final f"]],
-    em(
-      ARVORE,
-      corpoEstranho(PAINEL.assinatura, [PAINEL.hashVigente, PAINEL.hashDesta]),
-    ),
+    em(ARVORE, corpoEstranho(PAINEL.assinatura, aceitosDe(PAINEL))),
     [item(PAINEL)],
   );
   await mutanteNegativo(
@@ -696,7 +737,7 @@ async function provar() {
     [item(PAINEL)],
   );
   ok(
-    "MUTANTES do texto da 8e: hash da sucessora trocado (cada uma), hash da 99 trocado (cada uma), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
+    "MUTANTES do texto da 8e: hash de cada elo da cadeia trocado (12, 28, 14 e 27, cada um no estado em que ele é o vivo), hash da 99 trocado (cada função), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
   );
 }
 

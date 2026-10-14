@@ -1010,6 +1010,52 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         pre-voo, conferencia, rollback, concorrencia e a `27m` rodada de verdade) num Postgres 17 efemero; nao
         prova o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o estado vivo delas.
 
+  27. **Lote de DUAS migrations independentes, de apply normal: `20261227000000` e `20261228000000` (os
+      numeros do painel; numeros, sem permissao nova).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as
+      duas lojas assinantes (IKCOUS e Savy), **depois do item 17** (o pre-voo do `painel_inicio` recusa a loja
+      sem a `20261212000000`). Cada uma troca o corpo de UMA funcao por `CREATE OR REPLACE`, sem tocar dado,
+      assinatura, tipo de retorno, SECURITY DEFINER, STABLE, `search_path`, ACL nem o formato do JSON:
+      - **`20261227000000` (`crm_visao`)**: a "taxa de devolucao" do CRM falava de dois grupos diferentes (o
+        numerador somava toda devolucao concluida no periodo; o denominador excluia o pedido estornado ou
+        cancelado) e passava de 100%. Agora fala de UMA turma: as vendas pagas no periodo, inclusive as que
+        depois foram estornadas ou canceladas, contra so as devolucoes DESSAS vendas (pedido estornado conta o
+        total; senao o ledger mais o reembolso manual, nunca mais que o total). Resultado entre 0 e 100% sempre.
+        **SIGNIFICADO que muda:** a devolucao entra na taxa do periodo da VENDA. Tambem corta o "vs. ontem"
+        (periodo que termina hoje) na MESMA hora de agora.
+      - **`20261228000000` (`painel_inicio`)**: a semana passada do "Hoje" do Inicio so entra ate a MESMA hora
+        de hoje (relogio fixo de America/Sao_Paulo); antes comparava o dia de hoje (parcial) com o dia INTEIRO
+        da semana passada e mostrava queda falsa de manha.
+      - Quem quebra: ninguem (nenhuma assinatura muda). O front muda so TEXTO. Duas consultas, so leitura, so
+        catalogo, de ROL FECHADO (9 e 7 linhas, so valem com `rol=ok`):
+        - **`30a-conferir-numeros-do-painel-aplicado`** (a consulta do lote) prova DEPOIS do apply, nas DUAS
+          funcoes, o corpo novo (md5), o corte na mesma hora, os atributos de sempre e o `EXECUTE` fechado ao
+          visitante.
+        - **`30b-antes-numeros-do-painel-corpos-vigentes`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo da
+          `20261199000000` (`crm_visao`) e o da `20261212000000` (`painel_inicio`), sem o corte, com os atributos de
+          sempre. **Nao mede a ACL.** O md5 vem dos arquivos das migrations, nao de uma loja: **rode a `30b` (e a
+          `22m`) em CADA loja ANTES do apply** e compare o corpo vivo; corpo diferente e loja que ninguem mediu.
+      - **Caminho, uma loja por vez:** `30a` (sai NEGATIVA) → `30b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com as duas migrations, em ordem → o ensaio pede a `30a` DE NOVO, que tem de
+        sair POSITIVA. `30a` POSITIVA com a versao fora do ledger: PARAR (sem backfill). Loja com SO UMA das
+        duas aplicada: PARAR e medir (reprova nas duas consultas).
+      - **A cadeia das sucessoras:** a `8e` (lote 92-202) aceita a `20261227000000` e a `20261228000000` como
+        sucessoras do corpo da `20261199000000` (no `painel_inicio` a cadeia e 99, 12, 28) e a `17a` aceita o
+        corpo da `20261228000000` ao lado do da `20261212000000`: as duas seguem POSITIVAS depois deste lote.
+        Rodar a `8e` e a `17a` DE NOVO depois do apply.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`, **nesta ordem**:
+        `rollback-manual-20261228000000_o_inicio_compara_ate_a_mesma_hora.sql` e
+        `rollback-manual-20261227000000_o_crm_compara_o_que_e_comparavel.sql` (cada um recria o corpo antigo, mesmo
+        md5, sem tocar a ACL, com pre-voo proprio). O da `20261228` vem ANTES do da `20261212` (lote 17) e o da
+        `20261227` ANTES do da `20261199`: o rollback da 99 recusa enquanto houver redefinicao posterior no ar.
+        Depois deles a `30b` volta a ser POSITIVA e a `30a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a `8e`,
+        a `17a`, a `30a` e a `30b` DE NOVO.
+      - **Limites:** `tests/banco/numeros-do-painel-viva.cjs` prova o comportamento (cada cenario da taxa,
+        o corte na mesma hora com o relogio real do banco, formato, ACL, travas de admin, rollback, pre-voo
+        que recusa sem escrever, mutantes) num Postgres 17 efemero; nao prova o Postgres da Supabase, o papel
+        `supabase_read_only_user` de cada loja nem o corpo vivo delas. O relogio do banco nao e injetado: a
+        prova monta os pedidos em torno do `now()` real (com guarda de virada do dia).
+
   28. **Lote de UMA migration, de apply normal: `20261229000000` (o endereco da compra fica no pedido; dado de
       cliente).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy).
       Troca o corpo de `create_marketplace_order_v23` (compra na entrega) e de `create_marketplace_order_v24`

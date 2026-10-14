@@ -68,6 +68,11 @@ const NOME_13 =
   "20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql";
 const M12 = ler(NOME_12);
 const RB12 = ler(`rollback-manual-${NOME_12}`);
+// A SUCESSORA de painel_inicio (14/10/2026): a cadeia é 99 → 12 → 28. Esta prova mede o
+// estado "12 no ar"; antes de medir, desfaz a 28 (no clone descartável), se ela estiver lá.
+const NOME_28 = "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql";
+const M28 = ler(NOME_28);
+const RB28 = ler(`rollback-manual-${NOME_28}`);
 const M13 = ler(NOME_13);
 const RB13 = ler(`rollback-manual-${NOME_13}`);
 
@@ -84,6 +89,7 @@ function hashesDoPreflight(sql, assinatura) {
 }
 const PAINEL = "public.painel_inicio()";
 const H12 = hashesDoPreflight(M12, PAINEL);
+const H28 = hashesDoPreflight(M28, PAINEL);
 // O corpo que a 20261199000000 deixa (o "desta" dela) é o vigente da 12.
 const H99 = hashesDoPreflight(ler(NOME_99), PAINEL);
 const FILTRO =
@@ -318,6 +324,17 @@ PROVAS.push({
       `INSERT INTO public.profiles (id, full_name, role) VALUES
          ($1, 'Admin Estoque', 'admin'), ($2, 'Cliente Estoque', 'customer')`,
       [U_ADMIN, U_CLIENTE],
+    );
+
+    // A 20261228000000 (o Início compara até a mesma hora) sucede a 12 no mesmo corpo: o clone
+    // volta ao corpo da 12 antes de medir (o rollback da 28 tem preflight próprio).
+    if ((await catalogo(c, PAINEL)).hash === H28.desta) {
+      await c.query(RB28);
+    }
+    assert.equal(
+      (await catalogo(c, PAINEL)).hash,
+      H12.desta,
+      "o corpo do Início não é o da 20261212000000 nem o da sucessora",
     );
 
     fx.antes = await painel(c);
