@@ -188,14 +188,30 @@ const TIMELINE_STEPS: Array<{
  * `paymentStatusKey` (a ÚNICA fonte que decide "null vira sem_cobranca"),
  * não um segundo emaranhado de `if` dentro de `statusConfig`.
  *
- * `aguardando` e `sem_cobranca` caem no `default`: devolvem o texto que já
- * estava certo, sem mudar uma vírgula.
+ * `aguardando` cai no `default`: devolve o texto que já estava certo, sem
+ * mudar uma vírgula.
+ *
+ * `sem_cobranca` NÃO é "falta pagar": a compra "na entrega" grava
+ * `payment_status` nulo (RPC v23, sem cobrança online nenhuma), e a frase de
+ * "aguardando confirmação de pagamento" mandava a cliente achar que devia
+ * algo ao app. Só vale para forma de pagamento que não é `online` — um
+ * pedido online sem status é dado incompleto, e esse continua com o texto
+ * de sempre em vez de afirmar "você paga na entrega". Sem prazo inventado:
+ * a loja é quem separa e confirma.
  */
 function pendingDescription(
   paymentStatus: PaymentStatus | null | undefined,
+  forma: { paymentMethod: Order["paymentMethod"]; retiradaNaLoja?: boolean },
 ): string {
   const key = paymentStatusKey(paymentStatus);
   switch (key) {
+    case "sem_cobranca":
+      if (forma.paymentMethod === "online") {
+        return statusConfig.pending.description;
+      }
+      return forma.retiradaNaLoja === true
+        ? "Recebemos seu pedido. A loja vai separar e você paga na loja, na hora de retirar."
+        : "Recebemos seu pedido. A loja vai separar e você paga na entrega.";
     case "pago":
     case "pago_apos_expirar":
     case "recebido_na_entrega":
@@ -688,7 +704,10 @@ export function OrderDetailsView({
   const StatusIcon = currentStatus.icon;
   const statusDescription =
     order.status === "pending"
-      ? pendingDescription(order.paymentStatus)
+      ? pendingDescription(order.paymentStatus, {
+          paymentMethod: order.paymentMethod,
+          retiradaNaLoja: order.retiradaNaLoja,
+        })
       : order.status === "cancelled"
         ? cancelledDescription(order.paymentStatus, linhasDevolucao)
         : currentStatus.description;
