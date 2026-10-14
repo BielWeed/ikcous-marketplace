@@ -12,6 +12,7 @@ import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import { escolherVersaoDoPedido } from "@/lib/versao-do-pedido";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
@@ -339,6 +340,10 @@ export function OrderDetailsView({
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  // Espelho de `isCancelling` para o efeito que acompanha a lista (ele não
+  // pode depender do estado: religar o efeito ao terminar o cancelamento
+  // reaplicaria uma versão da lista que talvez ainda não tenha o desfecho).
+  const cancelandoRef = useRef(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [reviewedProductIds, setReviewedProductIds] = useState<Set<string>>(
     new Set(),
@@ -410,6 +415,7 @@ export function OrderDetailsView({
     const confirmCancel = globalThis.confirm(textoConfirm);
     if (!confirmCancel) return;
 
+    cancelandoRef.current = true;
     setIsCancelling(true);
     haptic.medium();
     try {
@@ -429,6 +435,7 @@ export function OrderDetailsView({
         void loadOrder();
       }
     } finally {
+      cancelandoRef.current = false;
       setIsCancelling(false);
     }
   };
@@ -455,9 +462,16 @@ export function OrderDetailsView({
   const loadOrder = useCallback(async () => {
     // 1. Pinta com o que já está em memória (vem do cache do localStorage),
     //    para a tela não ficar branca enquanto a rede responde.
+    //
+    //    Todo `setOrder` que traz uma versão de FORA (esta, e a do passo 2)
+    //    passa por `escolherVersaoDoPedido`: a tela pode já ter recebido uma
+    //    versão mais nova pela lista do tempo real (efeito logo abaixo), e a
+    //    resposta de uma busca que nasceu antes do pagamento não a desfaz.
     const emMemoria = ordersRef.current.find((o) => o.id === orderId);
     if (emMemoria) {
-      setOrder(emMemoria);
+      setOrder((prev) =>
+        prev ? escolherVersaoDoPedido(prev, emMemoria) : emMemoria,
+      );
       setLoading(false);
     }
 
@@ -487,13 +501,45 @@ export function OrderDetailsView({
     // Se a revalidação não achou nada mas havia algo em memória, mantém o que
     // está na tela: melhor um dado de um segundo atrás do que piscar para
     // "pedido não encontrado" por causa de uma resposta abortada.
-    if (encontrado || !emMemoria) setOrder(encontrado || null);
+    if (encontrado || !emMemoria) {
+      const novo = encontrado ?? null;
+      setOrder((prev) =>
+        novo && prev ? escolherVersaoDoPedido(prev, novo) : novo,
+      );
+    }
     setLoading(false);
   }, [orderId, fetchUserOrders]);
 
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+
+  // A tela acompanha o pedido enquanto ele está aberto. A cliente paga o PIX
+  // no app do banco e volta aqui: o tempo real já atualizou o pedido na lista
+  // `orders`, mas a tela só lia a lista na abertura (`loadOrder`) e ficava em
+  // "Aguardando pagamento", com o "Retomar pagamento", até sair e voltar.
+  //
+  // O efeito depende da REFERÊNCIA do pedido na lista, não da lista: o
+  // `setOrders` do hook mantém a mesma referência de quem não mudou (ver o
+  // comentário do `ordersRef`, acima), então só dispara quando ESTE pedido
+  // mudou — outro pedido mudando não mexe aqui. Nenhuma busca nova é feita
+  // (nada de laço) e a tela não volta ao carregamento: é um `setOrder`
+  // funcional, e `escolherVersaoDoPedido` descarta versão mais velha e
+  // conteúdo igual.
+  //
+  // Durante o cancelamento (`cancelandoRef`) a lista não mexe na tela: o hook
+  // aplica o cancelamento na lista de forma otimista e, se o servidor recusar,
+  // desfaz — quem decide o que a tela mostra nesse intervalo é o
+  // `handleCancelOrder`, que no fim grava `cancelled` ou relê o servidor.
+  const doPedidoNaLista = orders.find((o) => o.id === orderId);
+  useEffect(() => {
+    if (!doPedidoNaLista || cancelandoRef.current) return;
+    setOrder((prev) =>
+      prev && prev.id === doPedidoNaLista.id
+        ? escolherVersaoDoPedido(prev, doPedidoNaLista)
+        : prev,
+    );
+  }, [doPedidoNaLista]);
 
   // Outro pedido na tela = outras avaliações: o conjunto do anterior não pode
   // aparecer como "Avaliado" no novo. Reseta pelo ID (e não pelo objeto), senão

@@ -1,0 +1,282 @@
+// @vitest-environment jsdom
+//
+// Defeito (14/10/2026, caçador de leitura de código no commit 28602766): a
+// tela do pedido da cliente só chamava `setOrder` na abertura (`loadOrder`) e
+// ao cancelar. A lista `orders` — que o tempo real atualiza — só alimentava um
+// `ref` que nada lia. Efeito visível: a cliente paga o PIX no app do banco,
+// volta ao app e a tela continua em "Aguardando pagamento", com o botão
+// "Retomar pagamento", até sair e voltar.
+//
+// A regra: quando o pedido ABERTO muda na lista, a tela passa a mostrar a
+// versão nova — sem refazer a busca, sem trazer versão mais velha por cima da
+// mais nova, sem piscar, e sem atropelar um cancelamento em andamento.
+//
+// POR QUE RENDER DE VERDADE: mesmo raciocínio de
+// pedido-mostra-pagamento-confirmado.test.tsx. As funções do dublê do hook são
+// ESTÁVEIS (fora do `useOrders`): uma função nova a cada render refaria a
+// busca da tela inteira e esconderia exatamente o defeito que se mede aqui.
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { Order } from "@/types";
+
+const ID = "pedido-aberto";
+
+const pedidoAguardando: Order = {
+  id: ID,
+  customer: { name: "Cliente Teste", whatsapp: "34999999999" },
+  items: [
+    {
+      productId: "prod-1",
+      name: "Blusa Teste",
+      price: 100,
+      quantity: 1,
+      image: "https://exemplo.invalid/foto.jpg",
+    },
+  ],
+  subtotal: 100,
+  shipping: 20,
+  discount: 0,
+  total: 120,
+  paymentMethod: "online",
+  status: "pending",
+  paymentStatus: "aguardando",
+  createdAt: "2026-10-14T10:00:00.000Z",
+  updatedAt: "2026-10-14T10:00:00.000Z",
+  cancelledAfterShipping: false,
+};
+
+const pedidoPago: Order = {
+  ...pedidoAguardando,
+  paymentStatus: "pago",
+  updatedAt: "2026-10-14T10:05:00.000Z",
+};
+
+const outroPedido: Order = {
+  ...pedidoAguardando,
+  id: "outro-pedido",
+  items: [{ ...pedidoAguardando.items[0], name: "Saia Outra" }],
+};
+
+let lista: Order[] = [pedidoAguardando];
+
+// Estáveis de propósito — ver o cabeçalho.
+const fetchUserOrders = vi.fn();
+const updateOrderStatus = vi.fn();
+
+vi.mock("@/hooks/useOrders", () => ({
+  useOrders: () => ({
+    orders: lista,
+    fetchUserOrders,
+    updateOrderStatus,
+  }),
+  ErroCancelamentoNaoConcluido: class extends Error {},
+}));
+
+const usuario = { id: "user-1" };
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: usuario }) }));
+
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { enableReviews: false, whatsappNumber: "34999999999" },
+  }),
+}));
+
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({
+        eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }),
+      }),
+    }),
+  },
+}));
+
+// @ts-expect-error flag interna do React, sem tipo público.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+describe("OrderDetailsView — a tela acompanha o pedido quando ele muda na lista", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    lista = [pedidoAguardando];
+    fetchUserOrders.mockReset();
+    fetchUserOrders.mockResolvedValue([pedidoAguardando]);
+    updateOrderStatus.mockReset();
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    vi.restoreAllMocks();
+  });
+
+  /** Elemento NOVO a cada chamada: o React não refaz o render de um elemento
+   * idêntico ao anterior, e aí a lista nova nunca seria lida. */
+  async function montarTela() {
+    const { OrderDetailsView } = await import(
+      "@/views/customer/OrderDetailsView"
+    );
+    await act(async () => {
+      raiz.render(
+        <OrderDetailsView
+          orderId={ID}
+          onBack={() => {}}
+          onNavigate={() => {}}
+          onRetomarPagamento={() => {}}
+        />,
+      );
+    });
+  }
+
+  async function renderizar() {
+    await montarTela();
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+
+  /** O tempo real troca a lista: o componente relê `orders` no próximo render. */
+  async function emitirLista(nova: Order[]): Promise<void> {
+    lista = nova;
+    await montarTela();
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+
+  const temRetomarPagamento = () =>
+    hospedeiro.textContent?.includes("Retomar pagamento") ?? false;
+
+  it("PIX pago no app do banco: a lista traz a versão paga e a tela troca o status e some o 'Retomar pagamento'", async () => {
+    await renderizar();
+    expect(temRetomarPagamento()).toBe(true);
+    expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+
+    await emitirLista([pedidoPago]);
+
+    expect(temRetomarPagamento()).toBe(false);
+    expect(hospedeiro.textContent).toContain(
+      "Pagamento confirmado. A loja vai iniciar a separação.",
+    );
+    expect(hospedeiro.textContent).not.toContain("Aguardando pagamento");
+    // sem piscar: nunca voltou ao carregamento, e a busca não foi refeita
+    expect(hospedeiro.textContent).not.toContain("Sincronizando pedido");
+    expect(fetchUserOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it("a lista traz o pedido avançando na esteira: o título e o cartão acompanham", async () => {
+    await renderizar();
+
+    await emitirLista([
+      {
+        ...pedidoPago,
+        status: "processing",
+        updatedAt: "2026-10-14T10:10:00.000Z",
+      },
+    ]);
+
+    expect(hospedeiro.textContent).toContain("Preparando seu pedido");
+    expect(temRetomarPagamento()).toBe(false);
+  });
+
+  it("CONTROLE — outro pedido mudando na lista não mexe na tela deste", async () => {
+    lista = [pedidoAguardando, outroPedido];
+    await renderizar();
+
+    await emitirLista([
+      pedidoAguardando,
+      {
+        ...outroPedido,
+        paymentStatus: "pago",
+        updatedAt: "2026-10-14T10:09:00.000Z",
+      },
+    ]);
+
+    expect(temRetomarPagamento()).toBe(true);
+    expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+    expect(hospedeiro.textContent).toContain("Blusa Teste");
+    expect(hospedeiro.textContent).not.toContain("Saia Outra");
+  });
+
+  it("versão MAIS VELHA na lista não regride a tela", async () => {
+    lista = [pedidoPago];
+    fetchUserOrders.mockResolvedValue([pedidoPago]);
+    await renderizar();
+    expect(temRetomarPagamento()).toBe(false);
+
+    // eco atrasado do tempo real, de antes do pagamento
+    await emitirLista([
+      { ...pedidoAguardando, updatedAt: "2026-10-14T10:01:00.000Z" },
+    ]);
+
+    expect(temRetomarPagamento()).toBe(false);
+    expect(hospedeiro.textContent).toContain("Pagamento confirmado");
+    expect(hospedeiro.textContent).not.toContain("Aguardando pagamento");
+  });
+
+  it("cancelamento em andamento: o que a lista emitir no meio não atropela a tela, e ao terminar vale o cancelamento", async () => {
+    vi.spyOn(globalThis, "confirm").mockReturnValue(true);
+    let terminarCancelamento: () => void = () => {};
+    updateOrderStatus.mockReturnValue(
+      new Promise<void>((resolve) => {
+        terminarCancelamento = resolve;
+      }),
+    );
+    await renderizar();
+
+    const botaoCancelar = Array.from(
+      hospedeiro.querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Cancelar Pedido"));
+    expect(botaoCancelar).toBeDefined();
+    await act(async () => {
+      botaoCancelar?.click();
+    });
+    expect(hospedeiro.textContent).toContain("Processando");
+
+    // no meio do cancelamento, chega uma versão paga: não pode mexer na tela
+    await emitirLista([pedidoPago]);
+    expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+
+    await act(async () => {
+      terminarCancelamento();
+    });
+
+    // o cancelamento terminou: a tela mostra cancelado, com o estado de
+    // pagamento que ela tinha ao cancelar (não o "pago" que chegou no meio)
+    expect(hospedeiro.textContent).toContain("Pedido cancelado");
+    expect(hospedeiro.textContent).toContain(
+      "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague",
+    );
+  });
+
+  it("a busca que volta atrasada, mais velha que o que a lista já trouxe, não desfaz a atualização", async () => {
+    let responderBusca: (pedidos: Order[]) => void = () => {};
+    fetchUserOrders.mockReturnValue(
+      new Promise<Order[]>((resolve) => {
+        responderBusca = resolve;
+      }),
+    );
+    await montarTela();
+    // a tela já pintou com o que estava em memória; a busca ainda não voltou
+    expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+
+    await emitirLista([pedidoPago]);
+    expect(hospedeiro.textContent).toContain("Pagamento confirmado");
+
+    // a resposta da busca nasceu ANTES do pagamento
+    await act(async () => {
+      responderBusca([pedidoAguardando]);
+    });
+
+    expect(hospedeiro.textContent).toContain("Pagamento confirmado");
+    expect(temRetomarPagamento()).toBe(false);
+  });
+});
