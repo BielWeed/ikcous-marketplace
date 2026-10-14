@@ -13,6 +13,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   chamadasPainel: 0,
   aoMudarPedido: null as null | (() => void),
+  // Como o banco responde: "ok", "erro" (resposta com error) ou "rejeita" (a rede cai).
+  modo: "ok" as "ok" | "erro" | "rejeita",
+  ultimo: null as null | {
+    painel: unknown;
+    erro: string | null;
+    erroAssinatura: string | null;
+  },
 }));
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -28,6 +35,13 @@ vi.mock("@/lib/supabase", () => ({
     rpc: vi.fn((nome: string) => {
       if (nome === "painel_inicio") {
         h.chamadasPainel += 1;
+        if (h.modo === "rejeita") return Promise.reject(new Error("rede caiu"));
+        if (h.modo === "erro") {
+          return Promise.resolve({
+            data: null,
+            error: { message: "Failed to fetch" },
+          });
+        }
         return Promise.resolve({
           data: { leitura: h.chamadasPainel },
           error: null,
@@ -65,11 +79,17 @@ function definirVisibilidade(estado: "visible" | "hidden") {
 describe("usePainelInicio — voltar a ficar visível", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
+  let espiaoDoConsole: { mockRestore: () => void } | undefined;
 
   async function montar(ativo: boolean) {
     const modulo = await import("@/hooks/usePainelInicio");
     function Sonda() {
-      modulo.usePainelInicio(ativo);
+      const estado = modulo.usePainelInicio(ativo);
+      h.ultimo = {
+        painel: estado.painel,
+        erro: estado.erro,
+        erroAssinatura: estado.erroAssinatura,
+      };
       return null;
     }
     await act(async () => raiz.render(createElement(Sonda)));
@@ -89,6 +109,12 @@ describe("usePainelInicio — voltar a ficar visível", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     h.chamadasPainel = 0;
     h.aoMudarPedido = null;
+    h.modo = "ok";
+    h.ultimo = null;
+    // O hook registra a falha no console; o teste provoca falhas de propósito.
+    espiaoDoConsole = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -98,6 +124,7 @@ describe("usePainelInicio — voltar a ficar visível", () => {
     act(() => raiz.unmount());
     hospedeiro.remove();
     vi.useRealTimers();
+    espiaoDoConsole?.mockRestore();
     Object.defineProperty(document, "visibilityState", {
       value: "visible",
       configurable: true,
@@ -189,5 +216,81 @@ describe("usePainelInicio — voltar a ficar visível", () => {
 
     expect(h.chamadasPainel).toBe(0);
     expect(h.aoMudarPedido).toBeNull();
+  });
+
+  it("esconder a tela (hidden) com o retrato velho NÃO busca: só voltar a ficar visível busca", async () => {
+    await montar(true);
+    expect(h.chamadasPainel).toBe(1);
+
+    await passar(UMA_HORA_MS); // o retrato fica velho com a tela visível
+    definirVisibilidade("hidden");
+    await passar(5000);
+
+    expect(h.chamadasPainel).toBe(1);
+  });
+
+  it("evento de pedido com a tela visível (recarga marcada) e um esconde-e-volta antes dela: uma busca a mais, não duas", async () => {
+    await montar(true);
+    expect(h.chamadasPainel).toBe(1);
+
+    await passar(40_000); // retrato com mais de 30 s
+    expect(h.aoMudarPedido).not.toBeNull();
+    h.aoMudarPedido?.(); // recarga por evento marcada para daqui a 1,5 s
+    await passar(200);
+    definirVisibilidade("hidden");
+    definirVisibilidade("visible"); // volta antes de a recarga marcada rodar
+    await passar(5000);
+
+    expect(h.chamadasPainel).toBe(2);
+  });
+
+  describe("busca que falha ao voltar a ficar visível", () => {
+    it.each(["erro", "rejeita"] as const)(
+      "com retrato velho em mãos (falha por %s): leitura silenciosa, sem erro por cima dos números",
+      async (modo) => {
+        await montar(true);
+        expect(h.ultimo?.painel).toEqual({ leitura: 1 });
+        expect(h.ultimo?.erro).toBeNull();
+
+        h.modo = modo; // o celular ainda não reconectou
+        definirVisibilidade("hidden");
+        await passar(8 * UMA_HORA_MS);
+        definirVisibilidade("visible");
+        await passar(5000);
+
+        expect(h.chamadasPainel).toBe(2); // tentou
+        expect(h.ultimo?.erro).toBeNull();
+        expect(h.ultimo?.erroAssinatura).toBeNull();
+        expect(h.ultimo?.painel).toEqual({ leitura: 1 }); // números de antes seguem
+      },
+    );
+
+    it("a falha silenciosa não vira retrato fresco: a próxima volta tenta de novo e, com rede, atualiza", async () => {
+      await montar(true);
+      h.modo = "erro";
+      definirVisibilidade("hidden");
+      await passar(8 * UMA_HORA_MS);
+      definirVisibilidade("visible");
+      await passar(5000);
+      expect(h.chamadasPainel).toBe(2);
+
+      h.modo = "ok";
+      definirVisibilidade("hidden");
+      definirVisibilidade("visible");
+      await passar(5000);
+
+      expect(h.chamadasPainel).toBe(3);
+      expect(h.ultimo?.painel).toEqual({ leitura: 3 });
+      expect(h.ultimo?.erro).toBeNull();
+    });
+
+    it("sem nada em cache, a falha continua mostrando o erro (comportamento de antes)", async () => {
+      h.modo = "erro";
+      await montar(true);
+
+      expect(h.chamadasPainel).toBe(1);
+      expect(h.ultimo?.painel).toBeNull();
+      expect(h.ultimo?.erro).toContain("erro ao");
+    });
   });
 });
