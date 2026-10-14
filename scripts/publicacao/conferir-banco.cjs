@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 31a, 31b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1633,6 +1633,37 @@ const ROL_DA_27B = [
   "rls_admin_atual(): existe e devolve boolean (20261197000000)",
   "tr_avaliacao_nasce_verificada: o gatilho irmao do selo (AFTER INSERT por linha em reviews) esta de pe",
 ];
+/** O rol da 31a (a prova de objetos do lote 20261229000000, o endereco da compra fica no pedido): as 9 linhas que
+ * scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de create_
+ * marketplace_order_v23 e v24 e o NOVO (md5), cada um copia o endereco da conta antes de gravar o pedido, os
+ * atributos de sempre e o EXECUTE de sempre (PUBLIC nao; anon, authenticated e service_role sim).
+ * tests/banco/endereco-no-pedido-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a
+ * consulta devolve. */
+const ROL_DA_31A = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo e o da 20261229000000, com a copia do endereco (md5)",
+  "create_marketplace_order_v24: corpo e o da 20261229000000, com a copia do endereco (md5)",
+  "create_marketplace_order_v23: o corpo copia o endereco da conta antes de gravar o pedido",
+  "create_marketplace_order_v24: o corpo copia o endereco da conta antes de gravar o pedido",
+  "create_marketplace_order_v23: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "create_marketplace_order_v24: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "create_marketplace_order_v23: EXECUTE de sempre (anon, authenticated e service_role sim; PUBLIC nao)",
+  "create_marketplace_order_v24: EXECUTE de sempre (anon, authenticated e service_role sim; PUBLIC nao)",
+];
+/** O rol da 31b (a consulta de AUSENCIA do lote do endereco da compra; `ausenciaConfirmadaPor`): as 7 linhas que
+ * scripts/publicacao/consultas/31b-antes-endereco-da-compra-so-no-ponteiro.sql devolve — a base de antes: os dois
+ * corpos sao os da 20261174000000 (md5), sem a copia do endereco, com os atributos de sempre. NAO mede a ACL (e' da
+ * 31a). Uma loja que ja tem a copia reprova aqui de proposito, nas linhas dos corpos. */
+const ROL_DA_31B = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo e o da 20261174000000, sem a copia do endereco (md5)",
+  "create_marketplace_order_v24: corpo e o da 20261174000000, sem a copia do endereco (md5)",
+  "create_marketplace_order_v23: o corpo ainda NAO copia o endereco da conta",
+  "create_marketplace_order_v24: o corpo ainda NAO copia o endereco da conta",
+  "create_marketplace_order_v23: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "create_marketplace_order_v24: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1673,6 +1704,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "26b-antes-voto-util-sem-guarda-de-status": ROL_DA_26B,
   "27a-conferir-avaliacao-nasce-sem-resposta-da-loja": ROL_DA_27A,
   "27b-antes-avaliacao-aceita-resposta-forjada": ROL_DA_27B,
+  "31a-conferir-endereco-da-compra-fica-no-pedido": ROL_DA_31A,
+  "31b-antes-endereco-da-compra-so-no-ponteiro": ROL_DA_31B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2251,6 +2284,8 @@ module.exports = {
   ROL_DA_26B,
   ROL_DA_27A,
   ROL_DA_27B,
+  ROL_DA_31A,
+  ROL_DA_31B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

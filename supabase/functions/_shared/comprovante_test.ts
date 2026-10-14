@@ -2,7 +2,10 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { enviarComprovantePedido } from "./comprovante.ts";
+import {
+  enviarComprovantePedido,
+  fonteDoEnderecoDoComprovante,
+} from "./comprovante.ts";
 
 /**
  * O miolo (`enviarComprovantePedido`) e' o que `send-order-confirmation`
@@ -858,4 +861,194 @@ Deno.test("resolvedor REAL sem remetente nenhum (sem cofre e sem SMTP no ambient
       else Deno.env.set(nome, valor);
     }
   }
+});
+
+// --- O ENDEREÇO DA COMPRA (migration 20261229): o e-mail mostra o da COMPRA ---
+//
+// Antes da migration 20261229 o pedido de quem tem conta só guardava o ponteiro
+// (`address_id`); a migration passou a gravar também uma CÓPIA em
+// `customer_data.address` (objeto, 8 chaves). O comprovante lia a linha ATUAL de
+// `user_addresses` e, se ela tinha sido apagada, caía na raiz de `customer_data`,
+// onde `pegar("street", "address")` transformava o OBJETO da cópia em texto:
+// "[object Object] · 38500100". Agora ele PREFERE a cópia (como o mapper do
+// front, a etiqueta e o antifraude), depois a linha da conta, depois o formato
+// antigo — e nunca converte objeto em texto.
+
+const COPIA_DA_COMPRA = {
+  cep: "38600-123",
+  street: "Rua das Acácias",
+  number: "120",
+  complement: "Apto 301",
+  neighborhood: "Jardim Primavera",
+  city: "Paracatu",
+  state: "MG",
+};
+const LINHA_EDITADA_DEPOIS = {
+  street: "Avenida Nova Demais",
+  number: "999",
+  complement: null,
+  neighborhood: "Bairro Que Nao Existia",
+  city: "Outra Cidade",
+  state: "SP",
+  cep: "01310-100",
+};
+
+async function htmlComEndereco(args: {
+  customerData: Record<string, unknown>;
+  addressId?: string | null;
+  linhaDaConta?: Record<string, unknown> | null;
+  chamadas?: Chamada[];
+}): Promise<string> {
+  const chamadasEnvio: Array<{ para: string; assunto: string; html: string }> = [];
+  const supabase = clienteFalso({
+    pedido: {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com", ...args.customerData },
+      address_id: args.addressId ?? null,
+      subtotal: 100,
+      shipping: 0,
+      total: 100,
+      payment_method: "cash",
+      payment_status: null,
+    },
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    storeConfig: { store_name: "Loja Teste" },
+    endereco: args.linhaDaConta ?? null,
+    chamadas: args.chamadas,
+    reservou: true,
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
+      enviarEmail: async (args) => {
+        chamadasEnvio.push(args);
+      },
+    },
+  });
+  assertEquals(desfecho, { ok: true });
+  return chamadasEnvio[0].html;
+}
+
+Deno.test("endereço da conta APAGADO depois da compra + cópia no pedido -> o e-mail mostra rua, número e bairro certos (nunca '[object Object]')", async () => {
+  const html = await htmlComEndereco({
+    customerData: { address: COPIA_DA_COMPRA, destination_cep: "38600123" },
+    addressId: "addr-apagado",
+    linhaDaConta: null, // ON DELETE SET NULL no pedido, ou a linha some do select
+  });
+  assertStringIncludes(html, "Rua das Acácias, 120");
+  assertStringIncludes(html, "Apto 301");
+  assertStringIncludes(html, "Jardim Primavera");
+  assertStringIncludes(html, "Paracatu - MG");
+  assertStringIncludes(html, "38600-123");
+  assertEquals(html.includes("[object Object]"), false);
+});
+
+Deno.test("endereço da conta EDITADO depois da compra -> o e-mail mostra o da COMPRA (a cópia), não o da linha atual", async () => {
+  const html = await htmlComEndereco({
+    customerData: { address: COPIA_DA_COMPRA },
+    addressId: "addr-1",
+    linhaDaConta: LINHA_EDITADA_DEPOIS,
+  });
+  assertStringIncludes(html, "Rua das Acácias, 120");
+  assertEquals(html.includes("Avenida Nova Demais"), false);
+  assertEquals(html.includes("Bairro Que Nao Existia"), false);
+  assertEquals(html.includes("[object Object]"), false);
+});
+
+Deno.test("pedido ANTIGO (sem cópia) de quem tem conta -> segue lendo a linha atual de user_addresses, igual a antes", async () => {
+  const chamadas: Chamada[] = [];
+  const html = await htmlComEndereco({
+    customerData: { address: null },
+    addressId: "addr-1",
+    linhaDaConta: LINHA_EDITADA_DEPOIS,
+    chamadas,
+  });
+  assertStringIncludes(html, "Avenida Nova Demais, 999");
+  assertStringIncludes(html, "Outra Cidade - SP");
+  assertEquals(html.includes("[object Object]"), false);
+  assertEquals(
+    chamadas.some((c) => c.tipo === "from" && c.nome === "user_addresses"),
+    true,
+    "sem cópia, a linha da conta é consultada",
+  );
+});
+
+Deno.test("pedido ANTIGO (sem cópia) com a linha da conta apagada -> cai no formato antigo da raiz de customer_data, igual a antes", async () => {
+  const html = await htmlComEndereco({
+    customerData: {
+      address: "Rua Antiga do Convidado",
+      number: "55",
+      neighborhood: "Centro Velho",
+      destination_cep: "38500100",
+    },
+    addressId: "addr-apagado",
+    linhaDaConta: null,
+  });
+  assertStringIncludes(html, "Rua Antiga do Convidado, 55");
+  assertStringIncludes(html, "Centro Velho");
+  assertStringIncludes(html, "38500100");
+  assertEquals(html.includes("[object Object]"), false);
+});
+
+Deno.test("CONVIDADO (cópia em customer_data.address, sem address_id) -> o e-mail mostra a rua em vez de '[object Object]'", async () => {
+  const chamadas: Chamada[] = [];
+  const html = await htmlComEndereco({
+    customerData: { address: COPIA_DA_COMPRA, destination_cep: "38600123" },
+    addressId: null,
+    chamadas,
+  });
+  assertStringIncludes(html, "Rua das Acácias, 120");
+  assertStringIncludes(html, "Jardim Primavera");
+  assertEquals(html.includes("[object Object]"), false);
+  assertEquals(
+    chamadas.some((c) => c.tipo === "from" && c.nome === "user_addresses"),
+    false,
+    "sem address_id nenhuma linha de conta é lida",
+  );
+});
+
+Deno.test("objeto em customer_data.address que NÃO serve (vazio, sem nenhuma chave de endereço) + nada mais -> sem endereço, e NUNCA vira texto", async () => {
+  const html = await htmlComEndereco({
+    customerData: { address: {}, destination_cep: "38500100" },
+    addressId: null,
+  });
+  assertEquals(html.includes("[object Object]"), false);
+  assertStringIncludes(html, "38500100");
+  const html2 = await htmlComEndereco({
+    customerData: { address: { foo: { bar: 1 } } },
+    addressId: "addr-apagado",
+    linhaDaConta: null,
+  });
+  assertEquals(html2.includes("[object Object]"), false);
+});
+
+Deno.test("cópia inutilizável + linha da conta existente -> a linha da conta ainda socorre (a cópia só vale quando tem endereço)", async () => {
+  const html = await htmlComEndereco({
+    customerData: { address: {} },
+    addressId: "addr-1",
+    linhaDaConta: LINHA_EDITADA_DEPOIS,
+  });
+  assertStringIncludes(html, "Avenida Nova Demais, 999");
+});
+
+Deno.test("fonteDoEnderecoDoComprovante: preferência cópia > linha da conta > raiz; da raiz só entram valores simples (texto/número)", () => {
+  assertEquals(
+    fonteDoEnderecoDoComprovante({ address: COPIA_DA_COMPRA }, LINHA_EDITADA_DEPOIS),
+    COPIA_DA_COMPRA,
+  );
+  assertEquals(
+    fonteDoEnderecoDoComprovante({ address: null }, LINHA_EDITADA_DEPOIS),
+    LINHA_EDITADA_DEPOIS,
+  );
+  assertEquals(
+    fonteDoEnderecoDoComprovante(
+      { address: ["lista", "nao", "e", "copia"], number: "5", ok: true, nested: { a: 1 } },
+      null,
+    ),
+    { number: "5" },
+  );
+  assertEquals(fonteDoEnderecoDoComprovante(null, null), null);
+  assertEquals(fonteDoEnderecoDoComprovante({}, null), null);
 });

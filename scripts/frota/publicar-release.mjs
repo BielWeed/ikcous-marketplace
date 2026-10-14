@@ -430,6 +430,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "26b-antes-voto-util-sem-guarda-de-status",
   "27a-conferir-avaliacao-nasce-sem-resposta-da-loja",
   "27b-antes-avaliacao-aceita-resposta-forjada",
+  "31a-conferir-endereco-da-compra-fica-no-pedido",
+  "31b-antes-endereco-da-compra-so-no-ponteiro",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

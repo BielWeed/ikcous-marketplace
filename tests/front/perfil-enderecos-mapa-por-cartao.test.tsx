@@ -178,6 +178,14 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
         .click();
     });
     expect(onEdit).toHaveBeenCalledWith(CASA);
+    // Desde 14/10/2026 a lixeira só ABRE a pergunta "Apagar este endereço?"; quem apaga é o botão dela
+    // (tests/front/address-list-apagar-pede-confirmacao.test.tsx cobre a pergunta inteira).
+    expect(onDelete).not.toHaveBeenCalled();
+    await act(async () => {
+      [...document.body.querySelectorAll<HTMLButtonElement>("button")]
+        .find((b) => b.textContent?.trim() === "Apagar")!
+        .click();
+    });
     expect(onDelete).toHaveBeenCalledWith("addr-1");
   });
 });
