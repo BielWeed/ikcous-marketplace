@@ -43,6 +43,11 @@ import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import {
+  MENSAGEM_FIM_ANTES_DO_INICIO,
+  fimDoBannerEmTexto,
+  problemaDasDatas,
+} from "@/lib/datas-do-banner";
+import {
   LINK_DA_PAGINA_DA_LOJA,
   linkDaCategoria,
   linkDigitadoParaGravar,
@@ -729,6 +734,9 @@ export const AdminBannersView = memo(function AdminBannersView({
     id: string;
     imageUrl: string;
   } | null>(null);
+  // Fim da programação já passou: pede confirmação antes de salvar.
+  const [confirmarFimVencido, setConfirmarFimVencido] = useState(false);
+  const fimVencidoConfirmadoRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAction, setActiveAction] = useState<{
     id: string;
@@ -1704,6 +1712,35 @@ export const AdminBannersView = memo(function AdminBannersView({
       if (!formData.imageUrl) {
         toast.error("Imagem é obrigatória");
         setIsSubmitting(false);
+        return;
+      }
+
+      // Datas sem sentido não salvam em silêncio: fim antes do início
+      // bloqueia; fim que já passou (banner que nunca vai aparecer) pergunta.
+      // Banner que já estava vencido e continua com a mesma data de fim não
+      // pergunta de novo (a lojista não mexeu nas datas).
+      const jaConfirmouFimVencido = fimVencidoConfirmadoRef.current;
+      fimVencidoConfirmadoRef.current = false;
+      const problemaDeData = problemaDasDatas(
+        formData.startDate,
+        formData.endDate,
+      );
+      const fimMudou =
+        !editingBanner ||
+        (editingBanner.endDate ?? null) !== (formData.endDate ?? null);
+      if (
+        problemaDeData === "fim-antes-do-inicio" ||
+        (problemaDeData === "fim-ja-passou" &&
+          fimMudou &&
+          !jaConfirmouFimVencido)
+      ) {
+        if (problemaDeData === "fim-antes-do-inicio") {
+          toast.error(MENSAGEM_FIM_ANTES_DO_INICIO);
+        } else {
+          setConfirmarFimVencido(true);
+        }
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
         return;
       }
 
@@ -4756,15 +4793,23 @@ export const AdminBannersView = memo(function AdminBannersView({
                               />
                             </div>
 
-                            {formData.startDate &&
-                              formData.endDate &&
-                              new Date(formData.startDate) >
-                                new Date(formData.endDate) && (
-                                <div className="col-span-2 select-none rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-[11px] font-bold text-rose-400">
-                                  ⚠️ Atenção: A data de expiração deve ser
-                                  posterior à data de início.
-                                </div>
-                              )}
+                            {problemaDasDatas(
+                              formData.startDate,
+                              formData.endDate,
+                            ) === "fim-antes-do-inicio" ? (
+                              <div
+                                role="alert"
+                                className="col-span-2 select-none rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-[11px] font-bold text-rose-400"
+                              >
+                                ⚠️ {MENSAGEM_FIM_ANTES_DO_INICIO}
+                              </div>
+                            ) : (
+                              formData.endDate && (
+                                <p className="select-none text-[11px] font-bold text-amber-300 sm:col-span-2">
+                                  ⏱ {fimDoBannerEmTexto(formData.endDate)}
+                                </p>
+                              )
+                            )}
                           </div>
 
                           {/* Scheduling Sentinel - Campaign Overlap & Clutter Auditor */}
@@ -5074,6 +5119,38 @@ export const AdminBannersView = memo(function AdminBannersView({
           />
         )}
       </AnimatePresence>
+
+      {/* Confirmação: salvar banner cujo fim já passou (nunca vai aparecer) */}
+      <AlertDialog
+        open={confirmarFimVencido}
+        onOpenChange={(open) => !open && setConfirmarFimVencido(false)}
+      >
+        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
+              Banner já terminou
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-zinc-400">
+              Este banner já terminou e não vai aparecer. Salvar mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+              Voltar e ajustar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                fimVencidoConfirmadoRef.current = true;
+                setConfirmarFimVencido(false);
+                handleSubmit();
+              }}
+              className="rounded-xl border-0 bg-amber-500 px-4 py-2 text-xs font-bold text-black hover:bg-amber-400"
+            >
+              Salvar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Diálogo de Confirmação de Exclusão de Banner */}
       <AlertDialog
