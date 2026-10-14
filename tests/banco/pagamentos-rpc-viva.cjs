@@ -1719,6 +1719,14 @@ const POSTERIORES_A_97 = [
           AND polrelid = to_regclass('public.public_profiles')
           AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%') AS sim`,
   },
+  // 20261224000000: a avaliacao nasce sem a resposta da loja. A funcao do gatilho chama
+  // rls_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT: "funcoes
+  // fora da 20261197000000 ainda usam ..."). Ela nao depende de nenhuma outra da lista; so tem de
+  // sair ANTES da 97. No FIM da lista de proposito, como as demais.
+  {
+    nome: "20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql",
+    noAr: `SELECT to_regprocedure('public.avaliacao_nasce_sem_a_resposta_da_loja()') IS NOT NULL AS sim`,
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

@@ -406,6 +406,27 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `26b-antes-voto-util-sem-guarda-de-status` (ANTES, 4 linhas; **não mede a ACL**, que é da 24a), a "prova de
   objetos" do lote `20261223000000`. Mesmo desenho do portão 25: rol exato nos dois estados, um negativo por
   linha, mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
+- **avaliação que nasce sem a resposta da loja (`avaliacao-nasce-sem-resposta-da-loja-viva.cjs`, via
+  `rodar-isolado.cjs`)**: a migration `20261224000000` (gatilho BEFORE INSERT em `reviews` que zera
+  `merchant_reply`, `merchant_reply_at`, `helpful` e `created_at` de quem NÃO é administrador) com os papéis
+  reais num Postgres efêmero. O controle parte do estado ANTES (o rollback) e prova o defeito: o logado grava a
+  própria avaliação com a "Resposta Oficial", 9999 úteis e data de 2030. Depois: a avaliação forjada entra
+  LIMPA e NADA é recusado; a avaliação normal do app (cinco colunas) entra igual e ainda ganha o selo de compra
+  pelo gatilho irmão; `reply_review_atomic` (UPDATE) continua gravando a resposta e avisando o lojista; o
+  administrador atual e o `service_role` gravam as quatro colunas como mandaram; sessão direta no banco (papel
+  `none`) também; quem só tem "admin" no JWT (sem o papel de agora no banco) é tratado como cliente; mutantes
+  (AFTER INSERT, gatilho desligado, corpo com cada condição trocada) ficam vermelhos pela mensagem certa. Só os
+  dois objetos novos mudam; reaplicar 2x e em CRLF = mesmo estado; o rollback apaga só o que é dele; o pré-voo
+  recusa sem escrever (corpo desconhecido, sobrecarga, gatilho fora do desenho, coluna ou `rls_admin_atual`
+  ausente); as conferências finais recusam estado ruim; concorrência (uma avaliação em voo não deixa passar
+  forjada: a que chega durante a espera sai limpa). A mesma prova roda a `27m` de verdade (contagem de forjadas
+  por sinal, sem id nem texto).
+- **portão da avaliação que nasce sem a resposta da loja
+  (`avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `27a-conferir-avaliacao-nasce-sem-resposta-da-loja` (DEPOIS, 6 linhas) e
+  `27b-antes-avaliacao-aceita-resposta-forjada` (ANTES, 6 linhas), a "prova de objetos" do lote `20261224000000`.
+  Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por linha, o veredito do
+  `conferir-banco.cjs` (`rol=ok`), mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

@@ -11040,3 +11040,342 @@ Deno.test("26a/26b — o rpc-ci.yml roda as duas provas vivas do lote (comportam
       );
   }
 });
+
+// 27m (14/10/2026) — MEDICAO das avaliacoes que podem ter sido forjadas pela API antes do gatilho da migration
+// 20261224000000 (a avaliacao nasce sem a resposta da loja). Consulta de LEITURA, de rol ABERTO (molde da 18a/22m:
+// tipo/objeto/detalhe, sem coluna `ok`, nunca prova do portao). O que este teste prende: ela le so o catalogo, o
+// registro de migrations e DUAS tabelas (reviews e push_notifications_log) SO por agregado; nenhuma coluna de
+// pessoa, nenhum id e nenhum texto de resposta sai no log do run (merchant_reply so e' testada por "vazia?").
+// O COMPORTAMENTO (as contagens certas, a resposta legitima nao contada, o limite por produto) e' provado com
+// Postgres real em tests/banco/avaliacao-nasce-sem-resposta-da-loja-viva.cjs.
+const NOME_27M = "27m-medir-avaliacao-forjada";
+Deno.test(`${NOME_27M} — no menu, UM SELECT so leitura de rol aberto, so catalogo e duas tabelas por agregado, nenhum dado de pessoa nem texto de resposta`, async (t) => {
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_27M}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+  await t.step("esta no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "nao achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${NOME_27M}\n`, i) > i,
+      `falta a opcao ${NOME_27M} no workflow`,
+    );
+  });
+  await t.step(
+    "um statement, comeca por WITH, sem palavra de escrita e sem SQL dinamico",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*WITH\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+          semTexto,
+        ),
+        "palavra de escrita fora de comentario/string",
+      );
+      assert(
+        !/\b(EXECUTE|query_to_xml|dblink\w*|format|pg_read_file|lo_import|pg_sleep)\b/i.test(
+          semTexto,
+        ),
+        "SQL dinamico, leitura de arquivo ou espera",
+      );
+    },
+  );
+  await t.step("a saida final e tipo, objeto, detalhe, em ordem fixa", () => {
+    assert(
+      /SELECT tipo, objeto, detalhe\s+FROM r\s+ORDER BY ordem, objeto, detalhe;/.test(
+        limpo,
+      ),
+      "a saida final tem de ser tipo, objeto, detalhe, com ORDER BY ordem, objeto, detalhe",
+    );
+  });
+  await t.step(
+    "rol ABERTO: sem coluna `ok` e fora de ROL_FECHADO_POR_CONSULTA e de CONSULTAS_DE_ROL_FECHADO (nunca vira prova do portao)",
+    async () => {
+      assert(!/\bAS ok\b/i.test(semTexto), "a 27m nao tem coluna ok");
+      assert(
+        !Object.hasOwn(ROL_FECHADO_POR_CONSULTA, NOME_27M),
+        "a 27m e de rol aberto: nao pode estar no rol fechado",
+      );
+      const { CONSULTAS_DE_ROL_FECHADO } = await import(
+        "../scripts/frota/publicar-release.mjs"
+      );
+      assert(!CONSULTAS_DE_ROL_FECHADO.has(NOME_27M));
+    },
+  );
+  await t.step(
+    "so le catalogo, o registro de migrations e DUAS tabelas (reviews, push_notifications_log)",
+    () => {
+      const permitidos = new Set([
+        "public.reviews",
+        "public.push_notifications_log",
+        "pg_roles",
+        "pg_trigger",
+        "pg_proc",
+        "supabase_migrations.schema_migrations",
+        // as CTEs da propria consulta
+        "av",
+        "sinais",
+        "nomes",
+        "ativos",
+        "contados",
+        "r",
+      ]);
+      const alvos = [...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi)]
+        .map((m) => m[1].toLowerCase())
+        .filter((a) => a !== "lateral"); // `CROSS JOIN LATERAL (VALUES ...)` nao e' tabela
+      assert(alvos.length > 0);
+      for (const a of alvos)
+        assert(permitidos.has(a), `a 27m le ${a}, fora da lista do permitido`);
+      assert(alvos.includes("public.reviews"));
+      assert(alvos.includes("public.push_notifications_log"));
+    },
+  );
+  await t.step(
+    "nenhuma coluna de pessoa nem de texto livre, nenhum id: merchant_reply so e' testada por vazia (IS NOT NULL / btrim)",
+    () => {
+      assert(
+        !/\b(comment|user_id|email|full_name|cpf|phone|whatsapp|customer\w*|avatar\w*|id)\b/i.test(
+          semTexto,
+        ),
+        "a 27m toca coluna de pessoa, texto livre ou id",
+      );
+      const semPermitido = semTexto.replace(
+        /\(r\.merchant_reply IS NOT NULL AND btrim\(r\.merchant_reply\) <> ''\)/,
+        "",
+      );
+      assert(
+        !/\bmerchant_reply\b(?!_at)/.test(semPermitido),
+        "merchant_reply aparece fora do teste de vazia",
+      );
+    },
+  );
+  await t.step(
+    "cobre cada medicao: controle, gatilho, migration, contagem e os 11 sinais, com zero tambem aparecendo",
+    () => {
+      for (const tipo of [
+        "controle",
+        "gatilho",
+        "migration",
+        "contagem",
+        "sinal",
+      ])
+        assertStringIncludes(limpo, `'${tipo}'`, `falta o tipo ${tipo}`);
+      for (const nome of [
+        "resposta preenchida",
+        "resposta sem data da resposta",
+        "data da resposta no futuro",
+        "resposta sem nenhum log do produto",
+        "resposta sem log na data (+-10 min)",
+        "helpful maior que 0",
+        "helpful >= 100",
+        "helpful maior que 0 em avaliacao pendente",
+        "criada no futuro",
+        "criada mais de 1 dia no futuro",
+        "SUSPEITA FORTE",
+      ])
+        assertStringIncludes(limpo, `'${nome}'`, `falta o sinal ${nome}`);
+      // zero aparece: a lista de nomes e' LEFT JOIN dos contados, nunca so o que tem linha
+      assert(
+        /FROM nomes n\s+LEFT JOIN contados c ON c\.ordem = n\.ordem/.test(
+          limpo,
+        ),
+      );
+    },
+  );
+  await t.step(
+    "o md5 do corpo e a versao da migration citados sao os da migration de verdade",
+    async () => {
+      const { createHash } = require("node:crypto");
+      const migracao = (
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql`,
+        )
+      ).replace(/\r\n/g, "\n");
+      const i = migracao.indexOf("AS $function$") + "AS $function$".length;
+      const corpo = migracao.slice(i, migracao.indexOf("$function$;", i));
+      const md5 = createHash("md5").update(corpo).digest("hex");
+      assertStringIncludes(sql, `'${md5}'`);
+      assertStringIncludes(sql, "'20261224000000'");
+      assertStringIncludes(sql, "tr_avaliacao_nasce_sem_a_resposta_da_loja");
+    },
+  );
+});
+
+// 27a/27b (14/10/2026) — a PROVA DE OBJETOS do lote da migration 20261224000000 (a avaliacao nasce sem a resposta da
+// loja). A 27a e' a consulta do lote (DEPOIS: corpo por md5, limpeza das quatro colunas, atributos, EXECUTE fechado a
+// todos, gatilho BEFORE INSERT); a 27b a de ausencia (ANTES: funcao e gatilho AUSENTES e o terreno de pe). As duas
+// sao de ROL FECHADO (6 e 6 linhas) e so leem o catalogo. Estes testes medem o texto dos .sql contra os ARQUIVOS desta
+// arvore; a decisao de cada consulta num Postgres real fica com
+// tests/banco/avaliacao-nasce-sem-resposta-da-loja-portao-viva.cjs.
+const NOME_27A = "27a-conferir-avaliacao-nasce-sem-resposta-da-loja";
+const NOME_27B = "27b-antes-avaliacao-aceita-resposta-forjada";
+const MIGRACAO_224 = `${MIGRATIONS_DIR}/20261224000000_a_avaliacao_nasce_sem_a_resposta_da_loja.sql`;
+
+for (const [nome, linhasDoRol] of [
+  [NOME_27A, 6],
+  [NOME_27B, 6],
+] as Array<[string, number]>) {
+  Deno.test(`${nome} — no menu, UM statement so leitura (WITH), rol fechado de ${linhasDoRol} itens, so catalogo e nenhuma linha de dado e lida`, async () => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const estrutura = semLiterais(sql);
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    assertStringIncludes(yaml, `- ${nome}\n`);
+    assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+    assert(/^\s*WITH\b/i.test(limpo), "comeca por WITH");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+        estrutura,
+      ),
+      "palavra de escrita fora de comentario/literal",
+    );
+    assert(
+      !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+        estrutura,
+      ),
+      "SQL dinamico (ou leitura de arquivo)",
+    );
+    assert(
+      /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+        limpo,
+      ),
+      "saida item/esperado/vivo/ok com as reprovadas primeiro",
+    );
+    const alvos = [
+      ...estrutura.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+    ].map((m) => m[1].toLowerCase());
+    assert(alvos.length > 0);
+    const permitidos = new Set([
+      "pg_proc",
+      "pg_namespace",
+      "pg_language",
+      "pg_trigger",
+      "pg_attribute",
+      "pg_type",
+      "aclexplode",
+      "alvo",
+      "fn",
+      "gat",
+      "colunas",
+      "itens",
+    ]);
+    for (const alvo of alvos)
+      assert(
+        permitidos.has(alvo),
+        `le de "${alvo}", que nao e catalogo nem CTE`,
+      );
+    assert(
+      !/\b(?:FROM|JOIN)\s+(?:public\.|auth\.)?(?:reviews|review_votes|marketplace_orders|users|public_profiles|produtos|push_notifications_log)\b/i.test(
+        estrutura,
+      ),
+      "a consulta leu uma tabela de dados",
+    );
+    // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    assertEquals(rol.length, linhasDoRol);
+    assertEquals(new Set(rol).size, rol.length);
+    for (const item of rol)
+      assertStringIncludes(limpo, `'${item}'`, `item "${item}" fora do .sql`);
+    assertEquals(
+      [...limpo.matchAll(/SELECT '([^']+)',/g)].length,
+      rol.length,
+      "o .sql tem mais (ou menos) linhas que o rol",
+    );
+  });
+}
+
+Deno.test("27a/27b — o md5 da 27a e' o do corpo que o arquivo da migration carrega (o mesmo do pre-voo, da conferencia e do rollback); a 27b nao cita o corpo e nao mede ACL", async () => {
+  const { createHash } = require("node:crypto");
+  const md5 = (s: string) =>
+    createHash("md5").update(s.replace(/\r/g, "")).digest("hex");
+  const corpoDe = (sql: string) => {
+    const i = sql.indexOf("AS $function$") + "AS $function$".length;
+    return sql.slice(i, sql.indexOf("$function$;", i));
+  };
+  const mig = await Deno.readTextFile(MIGRACAO_224);
+  const rb = await Deno.readTextFile(rollbackDe(MIGRACAO_224));
+  const novo = md5(corpoDe(mig));
+  const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_27A}.sql`);
+  const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_27B}.sql`);
+  assertStringIncludes(a, `'${novo}'`, "27a: md5 do corpo");
+  assert(!b.includes(novo), "27b nao cita o corpo novo");
+  assertStringIncludes(
+    a,
+    "md5(replace(p.prosrc, chr(13), ''))",
+    "27a: o md5 e do corpo sem \\r",
+  );
+  assertStringIncludes(mig, `'${novo}'`);
+  assertStringIncludes(rb, `'${novo}'`);
+  // a 27a espera a funcao FECHADA a todos (gatilho nao precisa de EXECUTE de quem grava); a 27b nem a mede
+  assertStringIncludes(
+    a,
+    "'PUBLIC=nao anon=nao authenticated=nao service_role=nao'",
+  );
+  assert(
+    !/aclexplode|has_function_privilege|prosrc/.test(sqlSemComentarios(b)),
+  );
+  // o gatilho que as duas medem e' o que a migration cria
+  for (const sql of [a, b])
+    assertStringIncludes(sql, "tr_avaliacao_nasce_sem_a_resposta_da_loja");
+  assertStringIncludes(
+    mig,
+    "CREATE OR REPLACE TRIGGER tr_avaliacao_nasce_sem_a_resposta_da_loja",
+  );
+});
+
+Deno.test("27a/27b — o rpc-ci.yml roda as duas provas vivas do lote (comportamento e portao) no job bloqueante, depois de aplica, e e' disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const linhas = bloqueante.split("\n");
+  for (const prova of [
+    "avaliacao-nasce-sem-resposta-da-loja-viva",
+    "avaliacao-nasce-sem-resposta-da-loja-portao-viva",
+  ]) {
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} nao esta no job bloqueante`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assert(
+      bloqueante.indexOf(`tests/banco/${prova}.cjs`) >
+        bloqueante.indexOf("id: aplica"),
+    );
+    assert(!yaml.slice(inicioInformacional).includes(`${prova}.cjs`));
+    assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+    assert(
+      (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+      `tests/banco/${prova}.cjs nao existe`,
+    );
+  }
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `nao achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      `scripts/publicacao/consultas/${NOME_27A}.sql`,
+      `scripts/publicacao/consultas/${NOME_27B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});
