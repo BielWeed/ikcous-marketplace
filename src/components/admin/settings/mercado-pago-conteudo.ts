@@ -210,7 +210,15 @@ export const PROMPT_PARA_AGENTE_MP = montarPromptParaAgenteMp({
  * resposta do salvar/testar). Há um teste que confere os dois lados.
  */
 export const AVISO_CHAVES_DE_TESTE =
-  'Essas chaves são de TESTE. Suas clientes não vão conseguir pagar. Troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
+  'Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago). O PIX fica desligado até lá.';
+
+/**
+ * O mesmo aviso SEM a última frase: para a tela que lê uma loja em que o PIX
+ * ainda aparece LIGADO (a loja só desliga quando alguém testa ou salva de
+ * novo) — dizer "fica desligado" ali seria mentira. É igual à edge.
+ */
+export const AVISO_BASE_CHAVES_DE_TESTE =
+  'Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
 
 /**
  * O mesmo aviso, para a loja que DECLAROU o modo de teste (`modo_de_teste:

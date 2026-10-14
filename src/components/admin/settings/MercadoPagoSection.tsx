@@ -24,6 +24,7 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  AVISO_BASE_CHAVES_DE_TESTE,
   AVISO_CHAVES_DE_TESTE,
   AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE,
   PASSOS_DO_GUIA,
@@ -177,6 +178,7 @@ const TEXTO_DA_FALTA: ReadonlyMap<string, string> = new Map([
   ["access_token", "colar a chave secreta"],
   ["chave_notificacoes", "colar a senha dos avisos"],
   ["teste", "testar a conexão com o Mercado Pago"],
+  ["chave_de_teste", "trocar as chaves de TESTE pelas de PRODUÇÃO"],
 ]);
 
 function textoDaFalta(falta: string): string {
@@ -848,7 +850,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               <span className="block">
                 {config.modo_de_teste === true
                   ? AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE
-                  : AVISO_CHAVES_DE_TESTE}
+                  : config.pix_ligado
+                    ? AVISO_BASE_CHAVES_DE_TESTE
+                    : AVISO_CHAVES_DE_TESTE}
               </span>
             )}
           </span>

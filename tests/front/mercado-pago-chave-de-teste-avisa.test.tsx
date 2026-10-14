@@ -59,11 +59,18 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 import { MercadoPagoSection } from "@/components/admin/settings/MercadoPagoSection";
 import {
+  AVISO_BASE_CHAVES_DE_TESTE,
   AVISO_CHAVES_DE_TESTE,
   AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE,
 } from "@/components/admin/settings/mercado-pago-conteudo";
 
-const FRASE_DO_AVISO = "Suas clientes não vão conseguir pagar";
+const FRASE_DO_AVISO = "Essas chaves são de TESTE";
+const PIX_FICA_DESLIGADO = "O PIX fica desligado até lá";
+/** O que a edge devolve hoje com chave de teste e sem modo declarado: PIX desligado + a falta. */
+const BLOQUEADA_POR_CHAVE_DE_TESTE = {
+  pix_ligado: false,
+  faltando: ["chave_de_teste"],
+};
 
 async function assentar() {
   await act(async () => {
@@ -163,8 +170,12 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
     document.body.innerHTML = "";
   });
 
-  it("T1 — conta de teste: o resumo fica âmbar (não verde) e diz que as clientes não conseguem pagar", async () => {
-    cenario.salvo = { ...BASE, ultimo_teste: CONTA_DE_TESTE };
+  it("T1 — conta de teste (PIX desligado pela falta): o resumo fica âmbar (não verde) e diz que é preciso trocar as chaves e que o PIX fica desligado", async () => {
+    cenario.salvo = {
+      ...BASE,
+      ...BLOQUEADA_POR_CHAVE_DE_TESTE,
+      ultimo_teste: CONTA_DE_TESTE,
+    };
     raiz = await montarSecao();
 
     const resumo = resumoDoTeste();
@@ -172,7 +183,8 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
     expect(resumo.className).not.toContain("emerald");
     expect(resumo.textContent).toContain("TESTUSER1234567890");
     expect(resumo.textContent).toContain(FRASE_DO_AVISO);
-    expect(resumo.textContent).toContain("Troque pelas chaves de PRODUÇÃO");
+    expect(resumo.textContent).toContain("troque pelas chaves de PRODUÇÃO");
+    expect(resumo.textContent).toContain(PIX_FICA_DESLIGADO);
     expect(resumo.textContent).toBe(
       `${CONTA_DE_TESTE.mensagem}${AVISO_CHAVES_DE_TESTE}`,
     );
@@ -209,9 +221,8 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
       mensagem: CONTA_DE_TESTE.mensagem,
       ambiente: "teste",
       conta: CONTA_DE_TESTE.conta,
-      pix_ligado: true,
+      ...BLOQUEADA_POR_CHAVE_DE_TESTE,
       public_key_na_loja: true,
-      faltando: [],
       pausado: false,
       aviso: AVISO_CHAVES_DE_TESTE,
     };
@@ -241,6 +252,7 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
       "utf8",
     );
     expect(edge).toContain(AVISO_CHAVES_DE_TESTE);
+    expect(edge).toContain(AVISO_BASE_CHAVES_DE_TESTE);
     // O aviso curto na edge termina sem ponto (o ponto entra ao juntar avisos).
     expect(edge).toContain(AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE.slice(0, -1));
   });
@@ -252,7 +264,12 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
       ["ausente", {}, false],
     ];
     for (const [rotulo, campo, curto] of casos) {
-      cenario.salvo = { ...BASE, ultimo_teste: CONTA_DE_TESTE, ...campo };
+      cenario.salvo = {
+        ...BASE,
+        ...BLOQUEADA_POR_CHAVE_DE_TESTE,
+        ultimo_teste: CONTA_DE_TESTE,
+        ...campo,
+      };
       raiz = await montarSecao();
 
       const texto = resumoDoTeste().textContent ?? "";
@@ -287,6 +304,7 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
       pausado: false,
       modo_de_teste: true,
     };
+    // (Em modo de teste declarado o PIX liga como sempre: sem falta nenhuma.)
     await abrirExpansor("Suas chaves");
     await clique(botaoPorTexto("Testar conexão"));
 
@@ -302,9 +320,8 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
       mensagem: CONTA_DE_TESTE.mensagem,
       ambiente: "teste",
       conta: CONTA_DE_TESTE.conta,
-      pix_ligado: true,
+      ...BLOQUEADA_POR_CHAVE_DE_TESTE,
       public_key_na_loja: true,
-      faltando: [],
       pausado: false,
       aviso: AVISO_CHAVES_DE_TESTE,
     };
@@ -315,5 +332,42 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
       ...document.body.querySelectorAll('[role="status"]'),
     ].filter((el) => el.textContent?.includes(FRASE_DO_AVISO));
     expect(avisos).toHaveLength(1);
+  });
+
+  it("T8 — loja que ainda aparece LIGADA com conta de teste (só desliga quando alguém testa/salva): o resumo avisa SEM dizer que o PIX 'fica desligado'", async () => {
+    cenario.salvo = { ...BASE, pix_ligado: true, ultimo_teste: CONTA_DE_TESTE };
+    raiz = await montarSecao();
+
+    const texto = resumoDoTeste().textContent ?? "";
+    expect(texto).toContain(AVISO_BASE_CHAVES_DE_TESTE);
+    expect(texto).not.toContain(PIX_FICA_DESLIGADO);
+  });
+
+  it("T9 — a falta nova aparece em linguagem de leigo na lista 'o que falta'; código que a tela não conhece cai em 'completar as chaves' sem quebrar", async () => {
+    cenario.salvo = {
+      ...BASE,
+      ...BLOQUEADA_POR_CHAVE_DE_TESTE,
+      ultimo_teste: CONTA_DE_TESTE,
+    };
+    raiz = await montarSecao();
+    expect(document.body.textContent).toContain(
+      "trocar as chaves de TESTE pelas de PRODUÇÃO",
+    );
+    expect(document.body.textContent).not.toContain("chave_de_teste");
+    await act(async () => {
+      raiz.unmount();
+    });
+    document.body.innerHTML = "";
+
+    cenario.salvo = {
+      ...BASE,
+      pix_ligado: false,
+      faltando: ["falta_que_a_tela_nao_conhece"],
+    };
+    raiz = await montarSecao();
+    expect(document.body.textContent).toContain("completar as chaves");
+    expect(document.body.textContent).not.toContain(
+      "falta_que_a_tela_nao_conhece",
+    );
   });
 });
