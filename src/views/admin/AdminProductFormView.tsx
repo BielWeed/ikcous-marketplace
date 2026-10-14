@@ -65,6 +65,7 @@ import {
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
 } from "@/utils/motivo-do-bloqueio-do-produto";
+import { avisarProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import {
   gruposDeVariacao,
   temGrupoDemais,
@@ -2255,6 +2256,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           sold: 0,
           variants: variantsWithSanitizedSku,
         });
+        // A lista de produtos lembra busca, categoria e página: avisa que há um
+        // produto novo para ela abrir na página 1, sem filtro, e mostrá-lo.
+        if (criado) avisarProdutoNovoCadastrado();
 
         // O produto foi criado mas a grade NÃO gravou (o hook já avisou por
         // toast). Dar "Salvo" e sair para a lista esconderia isso -- e ficar

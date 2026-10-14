@@ -46,6 +46,7 @@ import {
   precisaDeReposicao,
 } from "@/utils/avisos-do-lojista";
 import { haptic } from "@/utils/haptic";
+import { consumirProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -250,6 +251,20 @@ export const AdminProductsView = memo(function AdminProductsView({
   const [loadError, setLoadError] = useState(false);
   const effectiveLoading = loading || !hasLoadedOnce;
   const shouldScrollToTop = useRef(false);
+
+  // Logo depois de CADASTRAR um produto novo, a lista abre na página 1 e sem
+  // busca nem categoria: o produto novo é o mais recente, e com o filtro ou a
+  // página de antes a lojista não o veria. Qualquer outra abertura continua
+  // lembrando o estado guardado no aparelho. O aviso vem do formulário e vale
+  // uma vez só (`consumirProdutoNovoCadastrado`).
+  useEffect(() => {
+    if (!active) return;
+    if (!consumirProdutoNovoCadastrado()) return;
+    setSearchTerm("");
+    setFilterCategory("all");
+    setCurrentPage(0);
+    shouldScrollToTop.current = true;
+  }, [active, setSearchTerm, setFilterCategory, setCurrentPage]);
 
   useEffect(() => {
     if (shouldScrollToTop.current) {
