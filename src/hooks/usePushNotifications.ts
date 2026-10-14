@@ -1,5 +1,6 @@
 import { chavePublicaVapid } from "@/config/configuracaoDaLoja";
 import { useAuth } from "@/hooks/useAuth";
+import { estaComoAppInstalado } from "@/lib/avisos-do-aparelho";
 import { dequemEAInscricao } from "@/lib/inscricao-de-push-da-conta";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
@@ -38,28 +39,6 @@ type PushSubscribeErrorOrigin =
   | "navegador"
   | "banco"
   | "sem_conta";
-
-// Instalado = roda sozinho, sem a barra do navegador. É o mesmo par de sinais
-// que `App.tsx` e `AdminLayout.tsx` já usam (`display-mode: standalone`, e
-// `navigator.standalone` do iOS), SEM o `?standalone` da URL que os dois
-// aceitam: ele força o layout standalone e não prova instalação nenhuma (vale
-// em qualquer aba), e aqui a resposta escolhe entre "deste app" e "do
-// navegador" — numa aba com `?standalone` dizer "deste app" mandaria a pessoa
-// procurar um app que ela não abriu.
-// Sem `matchMedia` (ambiente que não implementa, como o jsdom) não há
-// prova de instalação: vale "aba", e o tratamento do erro não quebra.
-function estaComoAppInstalado(): boolean {
-  if (
-    typeof globalThis.matchMedia === "function" &&
-    globalThis.matchMedia("(display-mode: standalone)").matches
-  ) {
-    return true;
-  }
-  return (
-    typeof navigator !== "undefined" &&
-    (navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
-}
 
 // `NotAllowedError`, ou `AbortError` cujo texto diz "permission denied" — o
 // segundo é o que um Chrome real lançou no caso medido (o nome é genérico e
@@ -228,6 +207,11 @@ export function usePushNotifications() {
   const [isSupported, setIsSupported] = useState(false);
   const [permission, setPermission] =
     useState<NotificationPermission>("default");
+  // A sondagem do navegador (suporte, permissão, inscrição) já terminou? Antes
+  // disso `subscription` é `null` só por não ter sido lido ainda, e quem
+  // mostra "este aparelho não está inscrito" (o cartão do Início) o mostraria
+  // por um instante também para o aparelho que ESTÁ inscrito.
+  const [sondado, setSondado] = useState(false);
   const userId = user?.id ?? null;
   // A inscrição que ESTA instância criou, e para qual conta — a verificação de
   // dono abaixo não a re-julga (só vale enquanto a conta for a mesma).
@@ -243,10 +227,14 @@ export function usePushNotifications() {
     let desmontado = false;
 
     const checkSupport = async () => {
+      setSondado(false);
       const supported = suporteRealDePush();
       setIsSupported(supported);
 
-      if (!supported) return;
+      if (!supported) {
+        setSondado(true);
+        return;
+      }
 
       setPermission(Notification.permission);
 
@@ -263,20 +251,27 @@ export function usePushNotifications() {
         if (!desmontado) {
           setIsSupported(false);
           setSubscription(null);
+          setSondado(true);
         }
         return;
       }
 
       try {
         const sub = await registration.pushManager.getSubscription();
-        if (!desmontado) setSubscription(sub);
+        if (!desmontado) {
+          setSubscription(sub);
+          setSondado(true);
+        }
       } catch {
         // A SONDA falhou; o estado da inscrição é DESCONHECIDO, e
         // desconhecido não é prova de falta de suporte — `subscribe()`
         // re-sonda com a própria tolerância a falha antes de decidir
         // qualquer coisa. Sem inscrição conhecida = `null`, sem rejeição
         // não tratada.
-        if (!desmontado) setSubscription(null);
+        if (!desmontado) {
+          setSubscription(null);
+          setSondado(true);
+        }
       }
     };
 
@@ -580,6 +575,7 @@ export function usePushNotifications() {
     subscription,
     isSupported,
     permission,
+    sondado,
     // Visitante que não entrou na conta: é a MESMA checagem (`!user`) que faz
     // o subscribe() recusar com a origem "sem_conta". Exposta para o banner
     // não convidar quem não consegue aceitar.
