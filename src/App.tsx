@@ -22,6 +22,7 @@ import {
   existeAlgumPedidoPendenteDoCheckout,
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
+import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
 
 // Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
 // fora dele (runner de teste), o app segue de pé.
@@ -3168,6 +3169,14 @@ const AppContent = () => {
             <AlertDialogAction
               onClick={() => {
                 setIsAdminDirty(false);
+                // "Descartar" é descartar: o rascunho do produto que ela está
+                // deixando sai do aparelho, senão voltaria como "Restaurar?".
+                if (currentView === "admin-product-form") {
+                  descartarRascunhoDoProduto(
+                    user?.id,
+                    selectedProductId || undefined,
+                  );
+                }
                 if (pendingNavigation) {
                   handleNavigate(
                     pendingNavigation.view,

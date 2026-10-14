@@ -576,7 +576,13 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
     it("'Restaurar' o rascunho de um produto salvo sem variações, com variação no rascunho, abre 'Variações'", async () => {
       armazem.set(
         "ikcous_product_form_draft_edit_prod-1:u-teste",
-        JSON.stringify({ ...produtoDoBanco, variants: [variacao] }),
+        // Variação que a lojista criou no rascunho e ainda não está no banco:
+        // toda variação nova nasce com id provisório `temp-…`. (Com id de
+        // verdade ausente do banco ela já saiu de lá, e não volta.)
+        JSON.stringify({
+          ...produtoDoBanco,
+          variants: [{ ...variacao, id: "temp-v-1" }],
+        }),
       );
       await montar("prod-1");
       expect(estaAberta("Variações")).toBe(false);
