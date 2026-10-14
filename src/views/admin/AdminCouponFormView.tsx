@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { codigoDoCupomParaSalvar } from "@/lib/codigo-do-cupom";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -225,9 +226,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
       return;
     }
 
-    const cleanCode = formData.code
-      ? formData.code.trim().toUpperCase().replace(/\s+/g, "")
-      : "";
+    const cleanCode = codigoDoCupomParaSalvar(formData.code, initialData.code);
     if (!cleanCode) {
       toast.error("O código do cupom é obrigatório.");
       return;
@@ -494,10 +493,10 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                   onFlush={(val) =>
                     setFormData((prev) => ({
                       ...prev,
-                      code: val.toUpperCase().trim().replace(/\s+/g, ""),
+                      code: codigoDoCupomParaSalvar(val, initialData.code),
                     }))
                   }
-                  placeholder="EX: VERÃO10"
+                  placeholder="EX: VERAO10"
                   useShadcn={true}
                   disabled={isOffline || isSubmitting}
                   className="h-11 w-full rounded-xl border-white/10 bg-white/[0.03] text-sm font-bold uppercase italic tracking-tight transition-all focus:border-emerald-500/30 focus:ring-emerald-500/20 disabled:opacity-50"

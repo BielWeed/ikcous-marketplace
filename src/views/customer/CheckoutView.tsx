@@ -92,6 +92,7 @@ import {
 } from "@/lib/recusaDoPedido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
+import { mascaraWhatsappBr } from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { cn } from "@/lib/utils";
 import type {
@@ -835,16 +836,8 @@ export function CheckoutView({
     loading: addressesLoading,
   } = useAddresses();
 
-  const formatWhatsApp = (value: string) => {
-    const numbers = value.replaceAll(/\D/g, "");
-
-    if (numbers.length <= 2) return numbers;
-    if (numbers.length <= 7)
-      return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
-    if (numbers.length <= 11)
-      return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7)}`;
-    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
-  };
+  const formatWhatsApp = (value: string, anterior?: string) =>
+    mascaraWhatsappBr(value, anterior);
 
   const getDefaultWhatsApp = () => {
     const whatsapp = profile?.whatsapp || user?.user_metadata?.whatsapp;
@@ -5146,11 +5139,12 @@ export function CheckoutView({
                         autoComplete="tel"
                         value={field.value}
                         onChange={(e) =>
-                          field.onChange(formatWhatsApp(e.target.value))
+                          field.onChange(
+                            formatWhatsApp(e.target.value, field.value),
+                          )
                         }
                         ref={field.ref}
                         placeholder="(00) 00000-0000"
-                        maxLength={15}
                         aria-invalid={
                           form.formState.errors.whatsapp ? true : undefined
                         }

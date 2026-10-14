@@ -1,4 +1,5 @@
 import { useOrders } from "@/hooks/useOrders";
+import { mascaraWhatsappBr } from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import type { Order, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -50,18 +51,8 @@ export function OrderSearch({
   const [step, setStep] = useState<"request" | "verify">("request");
   const [isLoading, setIsLoading] = useState(false);
 
-  const formatWhatsApp = (value: string) => {
-    const numbers = value.replaceAll(/\D/g, "");
-    if (numbers.length <= 2) return numbers;
-    if (numbers.length <= 7)
-      return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
-    if (numbers.length <= 11)
-      return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7)}`;
-    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
-  };
-
   const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatWhatsApp(e.target.value);
+    const formatted = mascaraWhatsappBr(e.target.value, whatsapp);
     setWhatsapp(formatted);
   };
 
