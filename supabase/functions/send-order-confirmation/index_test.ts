@@ -133,7 +133,7 @@ Deno.test("pagamento pendente NAO diz que o pedido esta confirmado", () => {
     aguardandoPagamento: true,
   });
   // No caminho online o pedido e uma RESERVA que o pg_cron cancela em 30 min.
-  assertStringIncludes(html, "aguardando a confirmacao do pagamento");
+  assertStringIncludes(html, "está aguardando a confirmação do pagamento");
   assertEquals(html.includes("Guarde este e-mail"), false);
   assertStringIncludes(html, "PIX pelo site");
 });
@@ -194,8 +194,8 @@ Deno.test("htmlDoPedido com canal presencial abre com 'Compra na loja' e nao fal
     canal: "presencial",
   });
   assertStringIncludes(html, "Compra na loja");
-  assertEquals(html.includes("fila de separacao"), false);
-  assertEquals(html.includes("aguardando a confirmacao do pagamento"), false);
+  assertEquals(html.includes("fila de separação"), false);
+  assertEquals(html.includes("aguardando a confirmação do pagamento"), false);
   assertEquals(html.includes("Entrega em"), false);
 });
 
@@ -220,9 +220,82 @@ Deno.test("htmlDoPedido SEM o campo `canal` continua o caminho online de sempre 
   assertEquals(html.includes("Compra na loja"), false);
   assertStringIncludes(
     html,
-    "Recebemos seu pedido. Guarde este e-mail: ele e o resumo do que voce comprou.",
+    "Recebemos seu pedido. Guarde este e-mail: ele é o resumo do que você comprou.",
   );
   assertStringIncludes(html, "Entrega em");
+});
+
+// --- TEXTO COM ACENTO (caçada de 14/10/2026) ---------------------------------
+// O e-mail dizia "ele e o resumo do que voce comprou" — sem acento, "e" (e)
+// muda o sentido de "é" (verbo) e a mensagem parece amadora. O e-mail de
+// pagamento atrasado já era acentuado; o comprovante é que ficou para trás.
+// Cada frase visível ao cliente é provada nas DUAS formas: a acentuada tem de
+// estar lá e a sem acento não pode voltar.
+
+Deno.test("o comprovante usa acento em TODAS as frases fixas (online, aguardando, balcão e retirada)", () => {
+  const aguardando = base({ aguardandoPagamento: true });
+  const confirmado = base();
+  const balcao = base({ canal: "presencial", endereco: "" });
+  const retirada = base({
+    retirada: { endereco: "Rua da Loja, 1" },
+    endereco: "Rua da Cliente, 7",
+  });
+
+  assertStringIncludes(confirmado, "ele é o resumo do que você comprou");
+  assertStringIncludes(
+    aguardando,
+    "ele está aguardando a confirmação do pagamento. Assim que o pagamento for confirmado, ele entra na fila de separação.",
+  );
+  assertStringIncludes(
+    balcao,
+    "Obrigado pela preferência! Este e-mail é o resumo do que você levou hoje.",
+  );
+  assertStringIncludes(retirada, "Aguarde a confirmação da loja para retirar.");
+  assertStringIncludes(retirada, "Endereço do cliente");
+  for (const html of [aguardando, confirmado, balcao, retirada]) {
+    assertStringIncludes(html, "Dúvida sobre este pedido? Responda este e-mail.");
+    for (const semAcento of [
+      "ele e o resumo",
+      "voce",
+      "esta aguardando",
+      "confirmacao",
+      "separacao",
+      "preferencia",
+      "Duvida",
+      "Endereco",
+    ]) {
+      assertEquals(html.includes(semAcento), false, `voltou texto sem acento: "${semAcento}"`);
+    }
+  }
+});
+
+Deno.test("o desconto sai COM sinal de menos no e-mail; frete e subtotal seguem sem sinal", () => {
+  const html = base();
+  assertStringIncludes(html, "− R$ 10,00");
+  assertEquals(html.includes(">R$ 10,00<"), false, "desconto sem sinal parece valor a pagar");
+  assertStringIncludes(html, ">R$ 15,00<"); // frete: positivo, como sempre
+  assertStringIncludes(html, ">R$ 100,00<"); // subtotal
+  // Desconto gravado já negativo no banco não vira "− −": sai uma vez só.
+  const negativo = base({ pedido: { ...PEDIDO, discount: -10 } });
+  assertStringIncludes(negativo, "− R$ 10,00");
+  assertEquals(negativo.includes("− -"), false);
+  assertEquals(negativo.includes("−-"), false);
+});
+
+Deno.test("linhasDosItens: com variação mostra 'Produto – Tamanho: M'; sem variação, o nome simples de sempre", () => {
+  const html = linhasDosItens([
+    { product_name: "Vestido", quantity: 1, price: 100, variacao: "Tamanho: P" },
+    { product_name: "Vestido", quantity: 1, price: 100, variacao: "Tamanho: G" },
+    { product_name: "Cinto", quantity: 1, price: 30 },
+    { product_name: "Bolsa", quantity: 1, price: 40, variacao: "   " },
+  ]);
+  assertStringIncludes(html, "1× Vestido – Tamanho: P");
+  assertStringIncludes(html, "1× Vestido – Tamanho: G");
+  assertStringIncludes(html, "1× Cinto");
+  assertEquals(html.includes("Cinto –"), false);
+  // Variação só com espaços não vira "Bolsa – " pendurado.
+  assertEquals(html.includes("Bolsa –"), false);
+  assertStringIncludes(html, "1× Bolsa");
 });
 
 Deno.test("montarResposta traduz cada desfecho para o status certo", () => {

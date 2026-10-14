@@ -48,15 +48,15 @@ Deno.test("rotuloDoPagamento fala PIX no online, e nao promete cartao", () => {
   assertEquals(rotuloDoPagamento("online"), "PIX pelo site");
   assertEquals(rotuloDoPagamento("online").toLowerCase().includes("cart"), false);
   assertEquals(rotuloDoPagamento("pix"), "PIX na entrega");
-  assertEquals(rotuloDoPagamento("card"), "Cartao na entrega");
+  assertEquals(rotuloDoPagamento("card"), "Cartão na entrega");
   assertEquals(rotuloDoPagamento("cash"), "Dinheiro na entrega");
 });
 
 Deno.test("rotuloDoPagamento: online + metodo_online diz a forma de verdade (Fase 3.5); sem metodo_online continua PIX (pedido antigo)", () => {
   assertEquals(rotuloDoPagamento("online", "pix"), "PIX pelo site");
-  assertEquals(rotuloDoPagamento("online", "credito"), "Cartao de credito pelo site");
-  assertEquals(rotuloDoPagamento("online", "debito"), "Cartao de debito pelo site");
-  assertEquals(rotuloDoPagamento("online", "CREDITO"), "Cartao de credito pelo site");
+  assertEquals(rotuloDoPagamento("online", "credito"), "Cartão de crédito pelo site");
+  assertEquals(rotuloDoPagamento("online", "debito"), "Cartão de débito pelo site");
+  assertEquals(rotuloDoPagamento("online", "CREDITO"), "Cartão de crédito pelo site");
   // Pedido de antes do cartao: metodo_online NULL — foi PIX, nao palpite.
   assertEquals(rotuloDoPagamento("online", null), "PIX pelo site");
   assertEquals(rotuloDoPagamento("online", undefined), "PIX pelo site");
@@ -64,7 +64,7 @@ Deno.test("rotuloDoPagamento: online + metodo_online diz a forma de verdade (Fas
   // Valor fora do conjunto: verdade sem inventar a forma.
   assertEquals(rotuloDoPagamento("online", "boleto"), "Pagamento pelo site");
   // O segundo argumento so vale para `online`: venda na entrega nao muda.
-  assertEquals(rotuloDoPagamento("card", "credito"), "Cartao na entrega");
+  assertEquals(rotuloDoPagamento("card", "credito"), "Cartão na entrega");
   assertEquals(rotuloDoPagamento("cash", "pix"), "Dinheiro na entrega");
 });
 
@@ -78,7 +78,7 @@ Deno.test("rotuloDoPagamento: venda de BALCAO diz a forma real paga na loja, sem
   // O balcao nao entrega nada: o cliente pagou ali, na hora.
   assertEquals(rotuloDoPagamento("cash", null, "presencial"), "Dinheiro");
   assertEquals(rotuloDoPagamento("pix", null, "presencial"), "PIX");
-  assertEquals(rotuloDoPagamento("card", null, "presencial"), "Cartao na maquininha");
+  assertEquals(rotuloDoPagamento("card", null, "presencial"), "Cartão na maquininha");
   for (const metodo of ["cash", "pix", "card"]) {
     assertEquals(
       rotuloDoPagamento(metodo, null, "presencial").toLowerCase().includes("entrega"),
@@ -87,7 +87,7 @@ Deno.test("rotuloDoPagamento: venda de BALCAO diz a forma real paga na loja, sem
     );
   }
   // O segundo argumento continua irrelevante para quem nao e' `online`.
-  assertEquals(rotuloDoPagamento("card", "credito", "presencial"), "Cartao na maquininha");
+  assertEquals(rotuloDoPagamento("card", "credito", "presencial"), "Cartão na maquininha");
 });
 
 Deno.test("rotuloDoPagamento: pedido do SITE nao muda de texto (nao-regressao do D3)", () => {
@@ -106,12 +106,12 @@ Deno.test("rotuloDoPagamento: pedido do SITE nao muda de texto (nao-regressao do
     "presencial-x",
   ]) {
     assertEquals(rotuloDoPagamento("pix", null, canal), "PIX na entrega");
-    assertEquals(rotuloDoPagamento("card", null, canal), "Cartao na entrega");
+    assertEquals(rotuloDoPagamento("card", null, canal), "Cartão na entrega");
     assertEquals(rotuloDoPagamento("cash", null, canal), "Dinheiro na entrega");
     assertEquals(rotuloDoPagamento("online", "pix", canal), "PIX pelo site");
     assertEquals(
       rotuloDoPagamento("online", "credito", canal),
-      "Cartao de credito pelo site",
+      "Cartão de crédito pelo site",
     );
     assertEquals(rotuloDoPagamento("online", null, canal), "PIX pelo site");
   }

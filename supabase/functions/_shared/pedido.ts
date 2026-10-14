@@ -96,14 +96,14 @@ export function escaparHtml(texto: unknown): string {
 const ROTULO_PAGAMENTO = new Map<string, string>([
   ["online", "PIX pelo site"],
   ["pix", "PIX na entrega"],
-  ["card", "Cartao na entrega"],
+  ["card", "Cartão na entrega"],
   ["cash", "Dinheiro na entrega"],
 ]);
 
 const ROTULO_DO_ONLINE = new Map<string, string>([
   ["pix", "PIX pelo site"],
-  ["credito", "Cartao de credito pelo site"],
-  ["debito", "Cartao de debito pelo site"],
+  ["credito", "Cartão de crédito pelo site"],
+  ["debito", "Cartão de débito pelo site"],
 ]);
 
 /**
@@ -115,7 +115,7 @@ const ROTULO_DO_ONLINE = new Map<string, string>([
 const ROTULO_PAGAMENTO_NO_BALCAO = new Map<string, string>([
   ["cash", "Dinheiro"],
   ["pix", "PIX"],
-  ["card", "Cartao na maquininha"],
+  ["card", "Cartão na maquininha"],
 ]);
 
 /**
