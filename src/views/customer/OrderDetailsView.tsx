@@ -190,11 +190,28 @@ const TIMELINE_STEPS: Array<{
  *
  * `aguardando` e `sem_cobranca` caem no `default`: devolvem o texto que já
  * estava certo, sem mudar uma vírgula.
+ *
+ * Exceção (14/10/2026): `sem_cobranca` de pedido que se paga NA ENTREGA ou
+ * NA RETIRADA (`cash`/`card`/`pix` — o `online` nasce `aguardando`) não está
+ * "aguardando confirmação de pagamento": a cliente não deve nada agora, só a
+ * loja precisa confirmar o pedido. O texto do `default` mandava esperar um
+ * pagamento que nunca vai acontecer no app.
  */
 function pendingDescription(
   paymentStatus: PaymentStatus | null | undefined,
+  paymentMethod?: string | null,
+  retiradaNaLoja?: boolean,
 ): string {
   const key = paymentStatusKey(paymentStatus);
+  const pagaNaMao =
+    paymentMethod === "cash" ||
+    paymentMethod === "card" ||
+    paymentMethod === "pix";
+  if (key === "sem_cobranca" && pagaNaMao) {
+    return retiradaNaLoja === true
+      ? "A loja vai confirmar seu pedido. Você paga na retirada."
+      : "A loja vai confirmar seu pedido. Você paga na entrega.";
+  }
   switch (key) {
     case "pago":
     case "pago_apos_expirar":
@@ -688,7 +705,11 @@ export function OrderDetailsView({
   const StatusIcon = currentStatus.icon;
   const statusDescription =
     order.status === "pending"
-      ? pendingDescription(order.paymentStatus)
+      ? pendingDescription(
+          order.paymentStatus,
+          order.paymentMethod,
+          order.retiradaNaLoja,
+        )
       : order.status === "cancelled"
         ? cancelledDescription(order.paymentStatus, linhasDevolucao)
         : currentStatus.description;
