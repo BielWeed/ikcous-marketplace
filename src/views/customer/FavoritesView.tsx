@@ -20,6 +20,15 @@ interface FavoritesViewProps {
   onNavigate: (view: View) => void;
   selectedProductId?: string;
   isActive?: boolean;
+  /** O carrinho do App (mesma função que a Home recebe). Sem ela os cards
+   * ficam sem como adicionar: viram "Ver produto" em vez de fingir que
+   * adicionaram. */
+  onAddToCart?: (
+    product: Product,
+    quantity?: number,
+    variantId?: string,
+    variantNames?: string,
+  ) => void;
 }
 
 export const FavoritesView = React.memo(function FavoritesView({
@@ -30,6 +39,7 @@ export const FavoritesView = React.memo(function FavoritesView({
   onNavigate,
   selectedProductId,
   isActive = true,
+  onAddToCart,
 }: FavoritesViewProps) {
   const { config, products } = useStore();
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
@@ -58,6 +68,28 @@ export const FavoritesView = React.memo(function FavoritesView({
       onProductClick(productId);
     },
     [onProductClick],
+  );
+
+  // Mesmos dois caminhos da Home. O card chama `onAddToCart(produto, clique)`:
+  // o invólucro entrega só o produto — o clique no lugar de `quantity` viraria
+  // quantidade. Com opções (tamanho/cor), o card abre a folha e entrega
+  // variação + quantidade escolhidas.
+  const handleAddToCart = useCallback(
+    (product: Product) => {
+      onAddToCart?.(product);
+    },
+    [onAddToCart],
+  );
+  const handleAddToCartWithVariants = useCallback(
+    (
+      product: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity = 1,
+    ) => {
+      onAddToCart?.(product, quantity, variantId, variantNames);
+    },
+    [onAddToCart],
   );
 
   const handlePrefetchProductDetail = useCallback(() => {
@@ -248,6 +280,10 @@ export const FavoritesView = React.memo(function FavoritesView({
                   isFavorite={false}
                   onToggleFavorite={handleToggleFavorite}
                   onClick={handleProductClick}
+                  onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                  onAddToCartWithVariants={
+                    onAddToCart ? handleAddToCartWithVariants : undefined
+                  }
                   showRating={config.enableReviews}
                   promessasDeFrete={promessasDaLoja}
                   onMouseEnter={handlePrefetchProductDetail}
@@ -304,6 +340,10 @@ export const FavoritesView = React.memo(function FavoritesView({
                   isFavorite={true}
                   onToggleFavorite={handleToggleFavorite}
                   onClick={handleProductClick}
+                  onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                  onAddToCartWithVariants={
+                    onAddToCart ? handleAddToCartWithVariants : undefined
+                  }
                   showRating={config.enableReviews}
                   promessasDeFrete={promessasDaLoja}
                   onMouseEnter={handlePrefetchProductDetail}

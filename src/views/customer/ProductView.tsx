@@ -309,8 +309,13 @@ export const ProductView = React.memo(function ProductView({
   // Card inteligente (02/09): os relacionados também escolhem opções no
   // próprio card — a escolha vai para o addToCart global via prop do App.
   const handleAddToCartWithVariantsFromCard = useCallback(
-    (p: Product, variantId: string | undefined, variantNames: string) => {
-      onAddToCartProduct?.(p, 1, variantId, variantNames);
+    (
+      p: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity = 1,
+    ) => {
+      onAddToCartProduct?.(p, quantity, variantId, variantNames);
     },
     [onAddToCartProduct],
   );
