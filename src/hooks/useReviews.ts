@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { getReviewsCache, updateReviewsCache } from "@/lib/cache-de-avaliacoes";
 import { supabase } from "@/lib/supabase";
 import type { Review } from "@/types";
 import { cachedReviewsData, setCachedReviewsData } from "@/utils/admin_cache";
@@ -12,44 +13,8 @@ export interface AdminReview extends Review {
   merchantReply?: string;
 }
 
-const REVIEWS_CACHE_KEY_PREFIX = "ikcous_reviews_cache_";
-const memoryReviewsCache = new Map<string, Review[]>();
-
-const getReviewsCache = (productId: string): Review[] | null => {
-  if (memoryReviewsCache.has(productId)) {
-    return memoryReviewsCache.get(productId)!;
-  }
-  if (typeof window !== "undefined") {
-    try {
-      const stored = localStorage.getItem(
-        `${REVIEWS_CACHE_KEY_PREFIX}${productId}`,
-      );
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        memoryReviewsCache.set(productId, parsed);
-        return parsed;
-      }
-    } catch (e) {
-      console.error("Failed to parse reviews cache", e);
-    }
-  }
-  return null;
-};
-
-const updateReviewsCache = (productId: string, newReviews: Review[]) => {
-  memoryReviewsCache.set(productId, newReviews);
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(
-        `${REVIEWS_CACHE_KEY_PREFIX}${productId}`,
-        JSON.stringify(newReviews),
-      );
-    } catch (e) {
-      console.error("Failed to update reviews cache", e);
-    }
-  }
-};
-
+// O cache de avaliações por produto mora em `@/lib/cache-de-avaliacoes` (o
+// `AuthContext` o esvazia no logout sem importar este hook).
 const bc =
   typeof window !== "undefined"
     ? new BroadcastChannel("ikcous_reviews_sync")
