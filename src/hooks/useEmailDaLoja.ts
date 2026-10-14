@@ -30,7 +30,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type CargaDoEmail = "carregando" | "pronto" | "indisponivel" | "erro";
 export type OcupadoDoEmail = null | "salvando" | "testando" | "removendo";
-export type ResultadoDaAcao = { ok: true } | { ok: false; mensagem: string };
+export type ResultadoDaAcao =
+  | { ok: true }
+  | {
+      ok: false;
+      mensagem: string;
+      /** Só no 429 do servidor: quantos segundos faltam para poder tentar. */
+      espereSegundos?: number;
+    };
 
 export interface UseEmailDaLoja {
   readonly carga: CargaDoEmail;
@@ -137,9 +144,11 @@ export function useEmailDaLoja(): UseEmailDaLoja {
       try {
         return await trabalho();
       } catch (erro) {
+        const traduzida = traduzirFalha(await lerFalha(erro), acao);
         return {
           ok: false,
-          mensagem: traduzirFalha(await lerFalha(erro), acao).mensagem,
+          mensagem: traduzida.mensagem,
+          espereSegundos: traduzida.espereSegundos,
         };
       } finally {
         ocupadoRef.current = null;

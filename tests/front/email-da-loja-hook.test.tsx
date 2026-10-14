@@ -132,10 +132,12 @@ describe("useEmailDaLoja", () => {
     expect(atual.status).toBeNull();
   });
 
-  it("H2 — erro de rede COM internet: indisponível (função sem CORS por não existir)", async () => {
+  it("H2 — erro de rede COM internet: 'erro' com frase de conexão (dá para tentar de novo), NÃO 'indisponível'", async () => {
     invokeFalso.mockResolvedValue({ data: null, error: erroDeRede() });
     await montar();
-    expect(atual.carga).toBe("indisponivel");
+    expect(atual.carga).toBe("erro");
+    expect(atual.mensagemDeCarga).not.toContain("ainda não está disponível");
+    expect(atual.mensagemDeCarga).toContain("tente de novo");
   });
 
   it("H2 — erro de rede SEM internet: erro de conexão, não 'indisponível'", async () => {
@@ -226,6 +228,8 @@ describe("useEmailDaLoja", () => {
     });
     expect(r?.ok).toBe(false);
     expect(r && !r.ok ? r.mensagem : "").toContain("3 minutos");
+    // a tela usa o número para segurar o botão de teste
+    expect(r && !r.ok ? r.espereSegundos : undefined).toBe(125);
   });
 
   it("H5 — testar com ok:true é sucesso e relê o status", async () => {

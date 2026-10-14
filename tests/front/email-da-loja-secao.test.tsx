@@ -506,6 +506,91 @@ describe("EmailDaLojaSection", () => {
     });
   });
 
+  describe("T11 — o teste espera o limite de 1 tentativa por minuto do servidor", () => {
+    beforeEach(() => {
+      // Só relógio e intervalo são falsos: o setTimeout real continua valendo
+      // para os helpers de clique.
+      vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const botaoTeste = () => botao("Enviar e-mail de teste");
+
+    it("depois de SALVAR com sucesso, o botão de teste fica travado com contagem regressiva e o aviso diz para esperar 1 minuto", async () => {
+      fns.salvar.mockImplementation(async () => {
+        definirHook({ status: { ...STATUS_SALVO, ultimoTeste: TESTE_OK } });
+        return { ok: true };
+      });
+      await montar();
+      await irParaPasso(4);
+      digitar("email-loja-usuario", "loja@gmail.com");
+      digitar("email-loja-senha", SENHA_BOA);
+      await clicar("Salvar");
+
+      expect(botaoTeste()?.disabled).toBe(true);
+      expect(texto()).toContain("Pode testar em 60 s");
+      const verde = hospedeiro.querySelector("[data-resultado]");
+      expect(verde?.textContent).toContain("Espere 1 minuto antes de testar");
+
+      await act(async () => {
+        vi.advanceTimersByTime(59_000);
+      });
+      expect(botaoTeste()?.disabled).toBe(true);
+      expect(texto()).toContain("Pode testar em 1 s");
+
+      await act(async () => {
+        vi.advanceTimersByTime(1_000);
+      });
+      expect(botaoTeste()?.disabled).toBe(false);
+      expect(texto()).not.toContain("Pode testar em");
+      await clicar("Enviar e-mail de teste");
+      expect(fns.testar).toHaveBeenCalledTimes(1);
+    });
+
+    it("clicar no teste travado não chama o servidor", async () => {
+      fns.salvar.mockImplementation(async () => {
+        definirHook({ status: { ...STATUS_SALVO, ultimoTeste: TESTE_OK } });
+        return { ok: true };
+      });
+      await montar();
+      await irParaPasso(4);
+      digitar("email-loja-usuario", "loja@gmail.com");
+      digitar("email-loja-senha", SENHA_BOA);
+      await clicar("Salvar");
+      await act(async () => {
+        botaoTeste()?.click();
+      });
+      expect(fns.testar).not.toHaveBeenCalled();
+    });
+
+    it("429 no teste: usa o `espere_segundos` que o servidor devolveu para segurar o botão", async () => {
+      fns.testar.mockResolvedValue({
+        ok: false,
+        mensagem: "Calma: dá para tentar de novo em 45 segundos.",
+        espereSegundos: 45,
+      });
+      definirHook({ status: STATUS_SALVO });
+      await montar();
+      expect(botaoTeste()?.disabled).toBe(false);
+      await clicar("Enviar e-mail de teste");
+      expect(botaoTeste()?.disabled).toBe(true);
+      expect(texto()).toContain("Pode testar em 45 s");
+      await act(async () => {
+        vi.advanceTimersByTime(45_000);
+      });
+      expect(botaoTeste()?.disabled).toBe(false);
+    });
+
+    it("quem já tinha tudo salvo antes (sem salvar agora) testa na hora", async () => {
+      definirHook({ status: STATUS_SALVO });
+      await montar();
+      expect(botaoTeste()?.disabled).toBe(false);
+      expect(texto()).not.toContain("Pode testar em");
+    });
+  });
+
   describe("T9 — remover pede confirmação", () => {
     it("o primeiro clique só pergunta; só 'Sim, remover' chama o servidor; 'Cancelar' desiste", async () => {
       definirHook({ status: STATUS_SALVO });

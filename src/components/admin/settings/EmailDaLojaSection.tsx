@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import {
+  ESPERA_DEPOIS_DE_SALVAR_SEGUNDOS,
   MENSAGEM_DO_TESTE_OK,
   MENSAGEM_SEM_COFRE,
   MENSAGEM_SEM_INTERNET,
@@ -21,6 +22,7 @@ import {
   type SeloDoEmail,
   normalizarSenhaDeApp,
   seloDoEmail,
+  textoDaContagem,
   textoDaSaudeDoEnvio,
   validarGmailDaLoja,
 } from "./email-da-loja-conteudo";
@@ -101,6 +103,28 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
 
+  // O servidor divide 1 tentativa por minuto entre salvar e testar. Quem salva e
+  // toca em "Enviar e-mail de teste" na hora leva 429: a tela segura o botão com
+  // contagem regressiva (e usa o `espere_segundos` do servidor quando ele manda).
+  const [liberaTesteEm, setLiberaTesteEm] = useState<number | null>(null);
+  const [agora, setAgora] = useState(() => Date.now());
+  const segurarTeste = (segundos: number) => {
+    const inicio = Date.now();
+    setAgora(inicio);
+    setLiberaTesteEm(inicio + segundos * 1000);
+  };
+  useEffect(() => {
+    if (liberaTesteEm === null) return;
+    const relogio = setInterval(() => {
+      const instante = Date.now();
+      setAgora(instante);
+      if (instante >= liberaTesteEm) setLiberaTesteEm(null);
+    }, 1000);
+    return () => clearInterval(relogio);
+  }, [liberaTesteEm]);
+  const segundosParaTestar =
+    liberaTesteEm === null ? 0 : Math.ceil((liberaTesteEm - agora) / 1000);
+
   // O foco acompanha a etapa: quem usa leitor de tela (ou teclado) cai no título novo.
   const tituloDoPasso = useRef<HTMLHeadingElement | null>(null);
   const jaMontou = useRef(false);
@@ -166,7 +190,12 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
   const mostrarResumo = status.cofrePronto && senhaUtil && !verPassos;
   const campoDaSenhaVisivel = !senhaUtil || trocandoSenha || usuarioMudou;
   const emAndamento = ocupado !== null;
-  const testeLiberado = senhaUtil && !dirty && !emAndamento && !isOffline;
+  const testeLiberado =
+    senhaUtil &&
+    !dirty &&
+    !emAndamento &&
+    !isOffline &&
+    segundosParaTestar <= 0;
 
   const irParaEtapa = (n: number) => {
     setAviso(null);
@@ -192,10 +221,12 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
       setAviso({
         ok: true,
         texto:
-          "Gmail salvo. Senha guardada com segurança. Agora envie o e-mail de teste.",
+          "Gmail salvo. Senha guardada com segurança. Espere 1 minuto antes de testar: o Google bloqueia a conta quando recebe tentativas demais. Depois envie o e-mail de teste.",
       });
+      segurarTeste(ESPERA_DEPOIS_DE_SALVAR_SEGUNDOS);
     } else {
       setAviso({ ok: false, texto: resultado.mensagem });
+      if (resultado.espereSegundos) segurarTeste(resultado.espereSegundos);
     }
   };
 
@@ -207,6 +238,9 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
         ? { ok: true, texto: MENSAGEM_DO_TESTE_OK }
         : { ok: false, texto: resultado.mensagem },
     );
+    if (!resultado.ok && resultado.espereSegundos) {
+      segurarTeste(resultado.espereSegundos);
+    }
   };
 
   const aoRemover = async () => {
@@ -248,6 +282,14 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
         <p className="text-[11px] leading-relaxed text-zinc-500">
           Salve o Gmail e a senha de app no passo {PASSO_DE_COLAR} antes de
           testar.
+        </p>
+      )}
+      {senhaUtil && !dirty && segundosParaTestar > 0 && (
+        <p
+          data-contagem=""
+          className="text-[11px] font-bold uppercase tracking-widest text-amber-400"
+        >
+          Pode testar em {textoDaContagem(segundosParaTestar)}
         </p>
       )}
       {senhaUtil && dirty && (

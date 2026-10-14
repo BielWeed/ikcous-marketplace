@@ -279,6 +279,14 @@ export const MENSAGEM_INDISPONIVEL =
   "Este recurso ainda não está disponível nesta loja. Fale com o suporte.";
 export const MENSAGEM_SEM_COFRE =
   "Esta loja ainda não está preparada para guardar a senha com segurança. Fale com o suporte.";
+/**
+ * Queda de rede com a internet LIGADA. Não dá para saber daqui se foi um
+ * soluço ou se a função não existe nesta loja (o gateway responde "não existe"
+ * sem CORS e o navegador só vê um erro de rede): a frase cobre os dois e a
+ * tela oferece "Tentar de novo". Só o 404 de verdade diz "não disponível".
+ */
+export const MENSAGEM_SEM_RESPOSTA =
+  "Não consegui falar com o servidor da loja agora. Confira a internet e tente de novo. Se continuar, este recurso pode ainda não estar disponível nesta loja: fale com o suporte.";
 export const MENSAGEM_SEM_INTERNET =
   "Sem conexão com a internet. Confira o sinal e tente de novo.";
 const MENSAGEM_SEM_PERMISSAO =
@@ -318,6 +326,19 @@ export function descreverEspera(segundos: unknown): string {
   return `${h} ${h === 1 ? "hora" : "horas"}`;
 }
 
+/**
+ * Salvar e testar dividem o MESMO limite do servidor (1 tentativa por minuto):
+ * quem acabou de salvar e toca em "Enviar e-mail de teste" na hora leva 429.
+ * A tela segura o botão por este tempo depois de um salvar bem-sucedido.
+ */
+export const ESPERA_DEPOIS_DE_SALVAR_SEGUNDOS = 60;
+
+/** "42 s" até 1 minuto, depois "2 min" (sempre arredondando para cima). */
+export function textoDaContagem(segundos: number): string {
+  if (segundos <= 60) return `${Math.max(1, Math.ceil(segundos))} s`;
+  return `${Math.ceil(segundos / 60)} min`;
+}
+
 /** O que sabemos de uma chamada que falhou (lido pelo hook, sem o texto do servidor). */
 export interface FalhaDaChamada {
   /** O `fetch` nem chegou a ter resposta HTTP (rede, ou função sem CORS por não existir). */
@@ -332,8 +353,10 @@ export type AcaoDoEmail = "status" | "salvar" | "testar" | "remover";
 
 export interface FalhaTraduzida {
   readonly mensagem: string;
-  /** A função nem existe nesta loja (404, ou rede estando online). */
+  /** A função nem existe nesta loja (404). Queda de rede NÃO entra aqui. */
   readonly indisponivel: boolean;
+  /** Só no 429: quantos segundos faltam, quando o servidor informou um número válido. */
+  readonly espereSegundos?: number;
 }
 
 /** Traduz uma falha de chamada para uma frase da casa. NUNCA usa texto do servidor. */
@@ -350,16 +373,24 @@ export function traduzirFalha(
     indisponivel: true,
   };
   if (falha.semResposta) {
-    return falha.offline ? nao(MENSAGEM_SEM_INTERNET) : indisponivel;
+    return nao(falha.offline ? MENSAGEM_SEM_INTERNET : MENSAGEM_SEM_RESPOSTA);
   }
   const status = falha.status;
   if (status === 404) return indisponivel;
   if (status === 401 || status === 403) return nao(MENSAGEM_SEM_PERMISSAO);
   if (status === 429) {
     const espera = descreverEspera(falha.espereSegundos);
-    return nao(
-      `Calma: o Google bloqueia a conta quando recebe tentativas demais, então o painel espera um pouco entre uma e outra. Dá para tentar de novo em ${espera}.`,
-    );
+    const segundos =
+      typeof falha.espereSegundos === "number" &&
+      Number.isFinite(falha.espereSegundos) &&
+      falha.espereSegundos > 0
+        ? falha.espereSegundos
+        : undefined;
+    return {
+      mensagem: `Calma: o Google bloqueia a conta quando recebe tentativas demais, então o painel espera um pouco entre uma e outra. Dá para tentar de novo em ${espera}.`,
+      indisponivel: false,
+      espereSegundos: segundos,
+    };
   }
   const motivo = comoMotivo(falha.motivo);
   if (motivo) return nao(mensagemDoMotivo(motivo));
@@ -510,7 +541,7 @@ export const PASSOS_DO_EMAIL: readonly PassoDoGuia[] = [
 ];
 
 export const RECADO_DE_SEGURANCA =
-  "A senha de app passa só pelo servidor da loja e fica guardada cifrada. Ela nunca volta para esta tela, nem para quem trabalha no sistema.";
+  "A senha de app fica guardada cifrada no servidor da loja e nunca é mostrada de volta na tela nem enviada ao seu navegador. Se suspeitar que ela vazou, revogue a senha de app na sua Conta do Google.";
 
 export const MENSAGEM_DO_TESTE_OK =
   "E-mail de teste enviado para o Gmail da loja. Procure na pasta ENVIADOS (o e-mail de você para você costuma ficar lá) e, se não achar, no Spam.";

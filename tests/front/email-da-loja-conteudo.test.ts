@@ -2,13 +2,16 @@ import {
   MENSAGEM_INDISPONIVEL,
   MENSAGEM_SEM_COFRE,
   MENSAGEM_SEM_INTERNET,
+  MENSAGEM_SEM_RESPOSTA,
   PASSOS_DO_EMAIL,
+  RECADO_DE_SEGURANCA,
   dataCurta,
   descreverEspera,
   lerStatusDoEmail,
   mensagemDoMotivo,
   normalizarSenhaDeApp,
   seloDoEmail,
+  textoDaContagem,
   textoDaSaudeDoEnvio,
   traduzirFalha,
   validarGmailDaLoja,
@@ -326,17 +329,19 @@ describe("traduzirFalha — erro do servidor vira frase da casa", () => {
     expect(todas).not.toMatch(/por dia|diários/);
   });
 
-  it("404 e erro de rede com internet = recurso indisponível nesta loja", () => {
+  it("404 = recurso indisponível nesta loja", () => {
     expect(traduzirFalha({ status: 404 }, "status")).toEqual({
       mensagem: MENSAGEM_INDISPONIVEL,
       indisponivel: true,
     });
-    expect(
-      traduzirFalha({ semResposta: true, offline: false }, "status"),
-    ).toEqual({
-      mensagem: MENSAGEM_INDISPONIVEL,
-      indisponivel: true,
-    });
+  });
+
+  it("queda de rede COM internet NÃO vira 'indisponível': é frase de conexão, para tentar de novo", () => {
+    const r = traduzirFalha({ semResposta: true, offline: false }, "status");
+    expect(r.indisponivel).toBe(false);
+    expect(r.mensagem).toBe(MENSAGEM_SEM_RESPOSTA);
+    expect(r.mensagem).not.toBe(MENSAGEM_INDISPONIVEL);
+    expect(r.mensagem).toContain("tente de novo");
   });
 
   it("erro de rede SEM internet é 'sem conexão', e não 'indisponível'", () => {
@@ -406,5 +411,55 @@ describe("PASSOS_DO_EMAIL — o passo a passo", () => {
     const passo5 = PASSOS_DO_EMAIL[4].fazer.join(" ");
     expect(passo5).toContain("ENVIADOS");
     expect(passo5).toContain("Spam");
+  });
+});
+
+describe("espera entre tentativas (salvar e testar dividem o mesmo limite do servidor)", () => {
+  it("429 devolve o tempo que falta como número, para a tela segurar o botão", () => {
+    expect(
+      traduzirFalha({ status: 429, espereSegundos: 42 }, "testar")
+        .espereSegundos,
+    ).toBe(42);
+  });
+
+  it("429 sem tempo válido não inventa número", () => {
+    expect(
+      traduzirFalha({ status: 429 }, "testar").espereSegundos,
+    ).toBeUndefined();
+    expect(
+      traduzirFalha({ status: 429, espereSegundos: "abc" }, "testar")
+        .espereSegundos,
+    ).toBeUndefined();
+    expect(
+      traduzirFalha({ status: 429, espereSegundos: -5 }, "testar")
+        .espereSegundos,
+    ).toBeUndefined();
+  });
+
+  it("falha que não é 429 não traz espera", () => {
+    expect(
+      traduzirFalha({ status: 500 }, "testar").espereSegundos,
+    ).toBeUndefined();
+  });
+
+  it("textoDaContagem: segundos até 1 minuto, depois minutos", () => {
+    expect(textoDaContagem(42)).toBe("42 s");
+    expect(textoDaContagem(59.2)).toBe("60 s");
+    expect(textoDaContagem(61)).toBe("2 min");
+    expect(textoDaContagem(3300)).toBe("55 min");
+  });
+});
+
+describe("RECADO_DE_SEGURANCA — só diz o que é verdade", () => {
+  it("não promete que ninguém do sistema alcança a senha (a cifra é reversível no servidor)", () => {
+    expect(RECADO_DE_SEGURANCA).not.toContain("quem trabalha no sistema");
+    expect(RECADO_DE_SEGURANCA).not.toMatch(/ningu[eé]m/i);
+  });
+
+  it("diz o que vale: guardada cifrada, nunca mostrada nem enviada ao navegador, e como revogar", () => {
+    expect(RECADO_DE_SEGURANCA).toContain("cifrada");
+    expect(RECADO_DE_SEGURANCA).toContain("nunca é mostrada de volta");
+    expect(RECADO_DE_SEGURANCA).toContain("navegador");
+    expect(RECADO_DE_SEGURANCA).toContain("revogue");
   });
 });

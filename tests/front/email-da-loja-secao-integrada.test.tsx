@@ -188,4 +188,23 @@ describe("EmailDaLojaSection + useEmailDaLoja", () => {
     );
     expect(hospedeiro.querySelector("input")).toBeNull();
   });
+
+  it("I4 — queda de rede passageira (internet ligada): frase de conexão e 'Tentar de novo' que funciona; não diz que o recurso não existe", async () => {
+    invokeFalso
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          name: "FunctionsFetchError",
+          message: "Failed to send a request to the Edge Function",
+          context: new TypeError("Failed to fetch"),
+        },
+      })
+      .mockResolvedValueOnce({ data: STATUS_VAZIO, error: null });
+    await montar();
+    expect(hospedeiro.textContent).not.toContain("ainda não está disponível");
+    expect(hospedeiro.textContent).toContain("tente de novo");
+    await clicar("Tentar de novo");
+    expect(hospedeiro.querySelector("[data-selo]")).not.toBeNull();
+    expect(hospedeiro.textContent).toContain("Passo 1 de 5");
+  });
 });
