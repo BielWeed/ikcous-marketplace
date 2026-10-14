@@ -14,6 +14,43 @@ export function linkDaCategoria(nome: string): string {
   return `/?category=${encodeURIComponent(nome)}`;
 }
 
+// `wa.me`, `www.loja.com.br`, `loja.com:8080`: ao menos dois trechos separados
+// por ponto, o último só com letras (a terminação), porta opcional. Sem regex
+// aninhada de propósito (backtracking caro, e o eslint a recusa).
+function pareceEnderecoDeSite(trecho: string): boolean {
+  const [host, porta, ...sobra] = trecho.split(":");
+  if (sobra.length > 0) return false;
+  if (porta !== undefined && !/^\d{1,5}$/.test(porta)) return false;
+  const partes = host.split(".");
+  if (partes.length < 2) return false;
+  const terminacao = partes[partes.length - 1];
+  return (
+    /^[a-z]{2,}$/i.test(terminacao) &&
+    partes.every((parte) => /^[a-z0-9-]+$/i.test(parte))
+  );
+}
+
+/**
+ * O link que o painel grava a partir do que a lojista digitou.
+ *  - `http(s)://...` e `/pagina` ficam como estão;
+ *  - o que PARECE endereço de site (`wa.me/55...`, `instagram.com/loja`,
+ *    `www.loja.com`: sem espaço, começa por um domínio) ganha `https://`;
+ *  - o resto (`ofertas`, `?category=X`, `#topo`) vira caminho da loja, com
+ *    `/` na frente, como sempre foi.
+ * Esquema perigoso (`javascript:`, `data:`) NÃO é endereço de site: cai no
+ * último caso e a `/` na frente o neutraliza (vira caminho, nunca script).
+ */
+export function linkDigitadoParaGravar(digitado: string): string {
+  const link = digitado.trim();
+  if (!link) return "";
+  if (link.startsWith("/") || /^https?:\/\//i.test(link)) return link;
+  const comecoDoEndereco = link.split(/[/?#]/, 1)[0];
+  if (!/\s/.test(link) && pareceEnderecoDeSite(comecoDoEndereco)) {
+    return `https://${link}`;
+  }
+  return `/${link}`;
+}
+
 const CATEGORIA_CRUA = /^\/\?category=([\s\S]*)$/;
 const PARAMETRO_DE_VERDADE = /^[\w.-]+=/;
 

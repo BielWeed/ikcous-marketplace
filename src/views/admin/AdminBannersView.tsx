@@ -45,6 +45,7 @@ import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import {
   LINK_DA_PAGINA_DA_LOJA,
   linkDaCategoria,
+  linkDigitadoParaGravar,
 } from "@/lib/destino-do-banner";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import {
@@ -1706,15 +1707,9 @@ export const AdminBannersView = memo(function AdminBannersView({
         return;
       }
 
-      let sanitizedLink = formData.link ? formData.link.trim() : "";
-      if (
-        sanitizedLink &&
-        !sanitizedLink.startsWith("/") &&
-        !sanitizedLink.startsWith("http://") &&
-        !sanitizedLink.startsWith("https://")
-      ) {
-        sanitizedLink = `/${sanitizedLink}`;
-      }
+      // `wa.me/55...` e `instagram.com/loja` (sem https://) ganham o https://
+      // que faltava; esquema perigoso continua neutralizado com a `/`.
+      const sanitizedLink = linkDigitadoParaGravar(formData.link ?? "");
 
       const dataToSubmit = {
         ...formData,
@@ -4620,7 +4615,19 @@ export const AdminBannersView = memo(function AdminBannersView({
                             name="link"
                             value={formData.link || ""}
                             onFlush={(val) =>
-                              setFormData((prev) => ({ ...prev, link: val }))
+                              setFormData((prev) => {
+                                // Endereço de site sem https:// ganha o
+                                // https:// já aqui: sem isso o painel o
+                                // tratava como "Página da Loja" e o campo
+                                // sumia da tela enquanto a lojista digitava.
+                                const gravado = linkDigitadoParaGravar(val);
+                                return {
+                                  ...prev,
+                                  link: gravado.startsWith("https://")
+                                    ? gravado
+                                    : val,
+                                };
+                              })
                             }
                             placeholder="Ex: https://wa.me/5511999999999 ou link externo"
                             useShadcn={true}
