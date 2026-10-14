@@ -40,7 +40,15 @@ import { useProducts } from "@/hooks/useProducts";
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
-import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
+import { soFotosReais } from "@/lib/foto-do-produto";
+import {
+  AVISO_ESTOQUE_NAO_RESTAURADO,
+  chaveDoRascunhoDoProduto,
+  estoqueDoRascunhoDifereDoBanco,
+  lerRascunhoVigenteDoProduto,
+  serializarRascunhoDoProduto,
+  variacoesDoRascunhoComEstoqueDoBanco,
+} from "@/lib/rascunho-do-produto";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
@@ -289,20 +297,6 @@ interface AdminProductFormViewProps {
   userId?: string;
 }
 
-/** L10 — a chave do rascunho DO USUÁRIO (`null` sem uid). */
-function chaveDoRascunhoDoProduto(
-  userId: string | undefined,
-  productId?: string,
-): string | null {
-  if (!userId) return null;
-  return chaveDoUsuario(
-    productId
-      ? `ikcous_product_form_draft_edit_${productId}`
-      : "ikcous_product_form_draft",
-    userId,
-  );
-}
-
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
@@ -361,7 +355,9 @@ function camposDoFormularioDoProduto(product: Product): ProductFormFields {
     estoqueMinimo:
       product.estoqueMinimo == null ? "" : String(product.estoqueMinimo),
     category: product.category,
-    images: product.images,
+    // Só fotos de verdade: o "Sem Imagem" que a exibição inventa para produto
+    // sem foto não entra no formulário (nem, por ele, no banco).
+    images: soFotosReais(product.images),
     freeShipping: product.freeShipping,
     isBestseller: product.isBestseller,
     isActive: product.isActive,
@@ -880,8 +876,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   useEffect(() => {
     if (!productId) {
       const chaveDoRascunho = chaveDoRascunhoDoProduto(userId);
+      // Rascunho com mais de 7 dias já sai daqui descartado (vira `null`).
       const savedDraft = chaveDoRascunho
-        ? localStorage.getItem(chaveDoRascunho)
+        ? lerRascunhoVigenteDoProduto(chaveDoRascunho)
         : null;
       if (savedDraft && chaveDoRascunho) {
         try {
@@ -895,7 +892,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             stock: parsed.stock || "",
             estoqueMinimo: parsed.estoqueMinimo || "",
             category: parsed.category || "",
-            images: parsed.images || [],
+            images: soFotosReais(parsed.images),
             freeShipping: !!parsed.freeShipping,
             isBestseller: !!parsed.isBestseller,
             isActive: parsed.isActive !== false,
@@ -966,10 +963,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   useEffect(() => {
     if (productId && !isLoading) {
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
-      const savedDraft = draftKey ? localStorage.getItem(draftKey) : null;
+      // Rascunho com mais de 7 dias já sai daqui descartado (vira `null`).
+      const savedDraft = draftKey
+        ? lerRascunhoVigenteDoProduto(draftKey)
+        : null;
       if (savedDraft && draftKey) {
         try {
           const parsed = JSON.parse(savedDraft);
+
+          // ESTOQUE NÃO SE RESTAURA. O número de estoque (do produto e de cada
+          // variação) que o rascunho guardou ficou velho no dia em que uma
+          // venda o descontou no banco; restaurá-lo e salvar devolvia a peça
+          // vendida à prateleira. O estoque vem sempre de `initialData` (o
+          // banco de hoje); o resto do rascunho volta. Variação NOVA (`temp-…`)
+          // mantém o que foi digitado — não há estoque de banco para ela.
+          const estoqueDoRascunhoDiferia = estoqueDoRascunhoDifereDoBanco(
+            parsed,
+            initialData,
+          );
 
           // Only prompt if the draft actually contains modified data compared to DB (initialData)
           const draftFields = {
@@ -978,10 +989,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             price: parsed.price ?? initialData.price,
             costPrice: parsed.costPrice ?? initialData.costPrice,
             originalPrice: parsed.originalPrice ?? initialData.originalPrice,
-            stock: parsed.stock ?? initialData.stock,
+            stock: initialData.stock,
             estoqueMinimo: parsed.estoqueMinimo ?? initialData.estoqueMinimo,
             category: parsed.category ?? initialData.category,
-            images: parsed.images ?? initialData.images,
+            images: soFotosReais(parsed.images ?? initialData.images),
             freeShipping:
               parsed.freeShipping !== undefined
                 ? !!parsed.freeShipping
@@ -999,7 +1010,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               parsed.metaDescription ?? initialData.metaDescription,
             sku: parsed.sku ?? initialData.sku,
             codigoBarras: parsed.codigoBarras ?? initialData.codigoBarras,
-            variants: parsed.variants ?? initialData.variants,
+            variants: Array.isArray(parsed.variants)
+              ? variacoesDoRascunhoComEstoqueDoBanco(
+                  parsed.variants,
+                  initialData.variants,
+                )
+              : initialData.variants,
             weightKg: parsed.weightKg ?? initialData.weightKg,
             widthCm: parsed.widthCm ?? initialData.widthCm,
             heightCm: parsed.heightCm ?? initialData.heightCm,
@@ -1010,8 +1026,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
           if (isDraftDifferent) {
             toast.info("Rascunho não salvo encontrado para este produto", {
-              description:
-                "Deseja restaurar as alterações que você fez anteriormente?",
+              description: estoqueDoRascunhoDiferia
+                ? `Deseja restaurar as alterações que você fez anteriormente? ${AVISO_ESTOQUE_NAO_RESTAURADO}`
+                : "Deseja restaurar as alterações que você fez anteriormente?",
               action: {
                 label: "Restaurar",
                 onClick: () => {
@@ -1020,7 +1037,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   if (draftFields.variants.length > 0) {
                     setChaveDasVariacoes((chave) => chave + 1);
                   }
-                  toast.success("Rascunho restaurado!");
+                  toast.success(
+                    "Rascunho restaurado!",
+                    estoqueDoRascunhoDiferia
+                      ? { description: AVISO_ESTOQUE_NAO_RESTAURADO }
+                      : undefined,
+                  );
                 },
               },
               cancel: {
@@ -1365,7 +1387,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       if (isDirty && draftKey) {
-        localStorage.setItem(draftKey, JSON.stringify(formData));
+        // Com o carimbo de quando foi guardado: o rascunho vence em 7 dias.
+        localStorage.setItem(draftKey, serializarRascunhoDoProduto(formData));
       }
     }, 1000);
 
@@ -2032,7 +2055,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // Texto inválido já bloqueou o salvar acima, então aqui nunca é NaN.
       estoqueMinimo: lerEstoqueMinimo(formData.estoqueMinimo).valor,
       category: formData.category,
-      images: formData.images,
+      // Nunca o marcador "Sem Imagem" (placehold.co): a vitrine mostra
+      // `images[0]`, e foto de verdade não pode ficar atrás dele. Sem foto, a
+      // lista vai vazia e a exibição põe o marcador por conta própria.
+      images: soFotosReais(formData.images),
       freeShipping: formData.freeShipping,
       isBestseller: formData.isBestseller,
       isActive: formData.isActive,
@@ -2231,7 +2257,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           try {
             const chaveDeEdicao = chaveDoRascunhoDoProduto(userId, criado.id);
             if (chaveDeEdicao) {
-              localStorage.setItem(chaveDeEdicao, JSON.stringify(formData));
+              localStorage.setItem(
+                chaveDeEdicao,
+                serializarRascunhoDoProduto(formData),
+              );
             }
           } catch (erroDeCota) {
             // Sem rascunho a lojista perde só a digitação da grade; com a chave
