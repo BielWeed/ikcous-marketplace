@@ -216,9 +216,22 @@ describe("selecionarCancelamentosDoCliente — pedido sem pagamento online, aind
   });
 
   it("cancelamento feito pela PROPRIA LOJA (admin) nao avisa a loja dela mesma", () => {
+    // Admin cancelando pedido de cliente: cai no "autor nao e o dono".
     expect(
       selecionarCancelamentosDoCliente(
         [linha({ created_by: ADMIN }, { payment_status: null })],
+        COM_ADMIN,
+      ),
+    ).toEqual([]);
+    // Admin cancelando o PROPRIO pedido (autor = dono): so o papel o barra.
+    expect(
+      selecionarCancelamentosDoCliente(
+        [
+          linha(
+            { created_by: ADMIN },
+            { user_id: ADMIN, payment_status: null },
+          ),
+        ],
         COM_ADMIN,
       ),
     ).toEqual([]);
