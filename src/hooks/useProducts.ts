@@ -1546,7 +1546,11 @@ export function useProducts({ autoFetch = true } = {}) {
         }
 
         await refreshContext();
-        toast.success(`${ids.length} produtos removidos`);
+        toast.success(
+          ids.length === 1
+            ? "1 produto removido"
+            : `${ids.length} produtos removidos`,
+        );
         return true;
       } catch (err) {
         console.error("Error deleting products:", err);

@@ -203,7 +203,7 @@ describe("montarAvisos — cancelamento do cliente", () => {
       id: "cancelamento:h1",
       tipo: "cancelamento",
       titulo: "Maria Silva cancelou o pedido #4F5A6B",
-      detalhe: "R$ 149,90 — pago, o reembolso é automático",
+      detalhe: "R$ 149,90 — pago, o reembolso é automático",
       quando: "2026-10-14T11:57:00.000Z",
       destino: { view: "admin-orders", id: PEDIDO },
     });
