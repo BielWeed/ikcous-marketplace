@@ -1345,3 +1345,29 @@ body.admin-modal-open .active-scroll-container {
     display: none !important;
   }
 }
+
+/* iPhone: o Safari amplia a página inteira quando o cliente toca num campo de
+   texto com letra menor que 16px (checkout, busca, cupom, rastrear pedido,
+   login). Como `html` e `body` têm `overflow: hidden`, a página ampliada não
+   volta sozinha. O `!important` e a lista de `:not` existem para vencer as
+   classes `text-sm`/`text-xs`/`text-[11px]` dos campos; o `@supports` limita a
+   regra ao iOS/iPadOS, então Android e computador não mudam de aparência.
+   Caixa de marcar, botão de escolha, arquivo e campo oculto ficam de fora. */
+@supports (-webkit-touch-callout: none) {
+  input:not(
+      [type="checkbox"],
+      [type="radio"],
+      [type="range"],
+      [type="file"],
+      [type="hidden"],
+      [type="button"],
+      [type="submit"],
+      [type="reset"],
+      [type="image"],
+      [type="color"]
+    ),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
