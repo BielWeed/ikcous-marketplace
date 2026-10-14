@@ -5105,7 +5105,7 @@ export function CheckoutView({
                       ? "erro-checkout-name"
                       : undefined
                   }
-                  className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                  className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                 />
                 {form.formState.errors.name && (
                   <p
@@ -5153,7 +5153,7 @@ export function CheckoutView({
                             ? "erro-checkout-tel"
                             : undefined
                         }
-                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 py-3 pl-12 pr-4 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 py-3 pl-12 pr-4 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                       />
                     )}
                   />
@@ -5210,7 +5210,7 @@ export function CheckoutView({
                           ? "erro-checkout-cpf"
                           : "ajuda-checkout-cpf"
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   )}
                 />
@@ -5316,7 +5316,7 @@ export function CheckoutView({
                             ? "erro-guest-cep"
                             : undefined
                         }
-                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                         onChange={async (e) => {
                           const { limpo, formatado } = formatarCep(
                             e.target.value,
@@ -5388,7 +5388,7 @@ export function CheckoutView({
                           ? "erro-guest-number"
                           : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                     {form.formState.errors.number && (
                       <p
@@ -5418,7 +5418,7 @@ export function CheckoutView({
                           ? "erro-guest-street"
                           : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                     {form.formState.errors.street && (
                       <p
@@ -5448,7 +5448,7 @@ export function CheckoutView({
                           ? "erro-guest-neighborhood"
                           : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                     {form.formState.errors.neighborhood && (
                       <p
@@ -5476,7 +5476,7 @@ export function CheckoutView({
                       aria-invalid={
                         form.formState.errors.city ? true : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   </div>
                   <div className="col-span-3">
@@ -5496,7 +5496,7 @@ export function CheckoutView({
                       aria-invalid={
                         form.formState.errors.state ? true : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   </div>
                   <div className="col-span-6">
@@ -5510,7 +5510,7 @@ export function CheckoutView({
                       id="guest-complement"
                       {...form.register("complement")}
                       placeholder="Apto, Bloco, Fundos, etc."
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   </div>
                 </div>
@@ -5800,7 +5800,7 @@ export function CheckoutView({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
               rows={2}
-              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-primary focus:bg-white"
+              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-primary focus:bg-white md:text-sm"
               autoComplete="off"
             />
           </div>

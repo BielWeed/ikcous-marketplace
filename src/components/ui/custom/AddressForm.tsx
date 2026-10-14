@@ -85,8 +85,12 @@ const URL_DESCOBRIR_CEP =
 // Classes de campo — tokens do tema (claro/escuro e a cor da loja), nunca cor
 // fixa. Os estados de erro e de "achado" usam vermelho/esmeralda com variante
 // escura, o mesmo par que o resto do app já usa.
+// Fonte do campo: 16 px no celular (`text-base`) — abaixo disso o Safari do
+// iPhone dá zoom na tela quando o campo ganha foco e a barra de ação some —
+// e os 15 px de sempre de `md` (768 px) para cima. Sem `maximum-scale`: o
+// zoom do usuário continua livre.
 const CAMPO =
-  "h-[52px] w-full rounded-2xl border-[1.5px] border-input bg-muted/40 px-3.5 text-[15px] font-medium text-foreground outline-none transition-all placeholder:text-muted-foreground/60 focus:border-ring focus:bg-background focus:ring-4 focus:ring-ring/10 disabled:cursor-not-allowed disabled:opacity-60";
+  "h-[52px] w-full rounded-2xl border-[1.5px] border-input bg-muted/40 px-3.5 text-base font-medium text-foreground outline-none transition-all placeholder:text-muted-foreground/60 focus:border-ring focus:bg-background focus:ring-4 focus:ring-ring/10 disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px]";
 const CAMPO_COM_ERRO =
   "border-red-300 bg-background ring-4 ring-red-500/10 dark:border-red-500/60";
 const ROTULO =
@@ -510,7 +514,9 @@ export function AddressForm({
                   aria-describedby="aviso-cep"
                   className={cn(
                     CAMPO,
-                    "h-16 rounded-[20px] px-4 pr-12 text-[22px] font-bold tracking-[0.04em] tabular-nums placeholder:font-bold placeholder:text-muted-foreground/40",
+                    // 22 px já passa dos 16 px do iPhone; o `md:` repete o 22 px
+                    // para o `md:text-[15px]` do CAMPO não encolher o CEP no desktop.
+                    "h-16 rounded-[20px] px-4 pr-12 text-[22px] md:text-[22px] font-bold tracking-[0.04em] tabular-nums placeholder:font-bold placeholder:text-muted-foreground/40",
                     cepAchado &&
                       "border-emerald-200 bg-background dark:border-emerald-500/40",
                     (cepComProblema || !!erros.cep) && CAMPO_COM_ERRO,
