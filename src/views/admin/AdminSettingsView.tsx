@@ -9,6 +9,7 @@ import {
   CreditCard,
   HelpCircle,
   Layers,
+  Mail,
   Palette,
   RefreshCw,
   RotateCcw,
@@ -71,6 +72,16 @@ interface AdminSettingsViewProps {
 const MercadoPagoSection = lazy(() =>
   import("@/components/admin/settings/MercadoPagoSection").then((module) => ({
     default: module.MercadoPagoSection,
+  })),
+);
+
+// E-mail da loja (14/10/2026, pedido do dono): a lojista cadastra o Gmail que
+// envia o e-mail do pedido, com o passo a passo dentro da tela. Carregada sob
+// demanda, como o Mercado Pago: só é baixada (e só fala com o servidor) quando
+// a seção é aberta.
+const EmailDaLojaSection = lazy(() =>
+  import("@/components/admin/settings/EmailDaLojaSection").then((module) => ({
+    default: module.EmailDaLojaSection,
   })),
 );
 
@@ -663,6 +674,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // salva não some num clique no cabeçalho da seção.
   const [politicaDevolucaoPendente, setPoliticaDevolucaoPendente] =
     useState(false);
+  // E-mail da loja (14/10/2026): Gmail ou senha de app digitados e não salvos
+  // não somem num clique no cabeçalho da seção.
+  const [emailPendente, setEmailPendente] = useState(false);
   // Contador que só CRESCE: o botão "Configurar credenciais" da seção nova
   // incrementa para abrir a seção Mercado Pago de fora (SecaoColapsavel
   // continua dona do próprio fechar).
@@ -684,13 +698,15 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       onSetDirty?.(
         pagamentosPendente ||
           formasPagamentoPendente ||
-          politicaDevolucaoPendente,
+          politicaDevolucaoPendente ||
+          emailPendente,
       );
   }, [
     active,
     pagamentosPendente,
     formasPagamentoPendente,
     politicaDevolucaoPendente,
+    emailPendente,
     onSetDirty,
   ]);
 
@@ -887,7 +903,27 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               chave="minha-loja"
               onNavigate={onNavigate}
               subtitulos={subtitulos}
-            />
+            >
+              {/* E-mail da loja (14/10/2026): o Gmail que envia o e-mail do
+                  pedido e o código de login. Nascida FECHADA como as demais;
+                  com algo digitado e não salvo, o cabeçalho não fecha. */}
+              <SecaoColapsavel
+                titulo="E-mail da loja"
+                subtitulo="O Gmail que envia os e-mails do pedido aos seus clientes"
+                icone={Mail}
+                comPendencia={emailPendente}
+              >
+                <Suspense
+                  fallback={
+                    <p className="text-sm text-zinc-400">
+                      Carregando E-mail da loja…
+                    </p>
+                  }
+                >
+                  <EmailDaLojaSection onDirtyMudou={setEmailPendente} />
+                </Suspense>
+              </SecaoColapsavel>
+            </GrupoDeAjustes>
 
             {/* Aparência do app: Banners e Vitrines — só portas. */}
             <GrupoDeAjustes
