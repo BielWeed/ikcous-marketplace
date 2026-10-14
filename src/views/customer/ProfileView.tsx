@@ -1,6 +1,7 @@
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
+import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { OrderTimeline } from "@/components/ui/custom/OrderTimeline";
 import { ProfileSkeleton } from "@/components/ui/custom/Skeletons";
 import {
@@ -32,6 +33,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  CreditCard,
   Loader2,
   LogOut,
   MapPin,
@@ -75,15 +77,26 @@ import { useStore } from "@/contexts/StoreContext";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import { haptic } from "@/utils/haptic";
 
 interface ProfileViewProps {
   onNavigate: (view: View, id?: string) => void;
   /** A aba fica montada escondida; `true` quando é a aba visível. */
   isActive?: boolean;
+  /**
+   * Atalho do cartão "Pedidos em Andamento" para voltar ao pagamento de um
+   * pedido ainda não pago. Mesma porta do detalhe do pedido; sem ela, o botão
+   * não aparece.
+   */
+  onRetomarPagamento?: (orderId: string) => void;
 }
 
-export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
+export function ProfileView({
+  onNavigate,
+  isActive = true,
+  onRetomarPagamento,
+}: ProfileViewProps) {
   const {
     user,
     profile,
@@ -608,7 +621,34 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
                         </div>
                       </div>
 
-                      <OrderTimeline status={order.status} />
+                      {/* Pedido pago pelo app e ainda não pago: o cartão não
+                          pode parecer um pedido "Recebido" qualquer (em 30
+                          min ele é cancelado). Mesmo selo da lista de pedidos
+                          e mesma regra de "Retomar pagamento" do detalhe. */}
+                      <CustomerPaymentBadge
+                        paymentStatus={order.paymentStatus}
+                        orderStatus={order.status}
+                      />
+
+                      <OrderTimeline
+                        status={order.status}
+                        retiradaNaLoja={order.retiradaNaLoja}
+                      />
+
+                      {onRetomarPagamento &&
+                        podeRetomarPagamento({
+                          status: order.status,
+                          paymentStatus: order.paymentStatus,
+                          logado: !!user,
+                        }) && (
+                          <Button
+                            onClick={() => onRetomarPagamento(order.id)}
+                            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-[10px] font-black uppercase tracking-widest text-white shadow-sm transition-all active:scale-95"
+                          >
+                            <CreditCard className="size-4" aria-hidden="true" />
+                            Retomar pagamento
+                          </Button>
+                        )}
 
                       <div className="flex gap-2 pt-2">
                         <Button

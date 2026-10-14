@@ -15,6 +15,7 @@ import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import { supabase } from "@/lib/supabase";
 import {
   type LinhaDevolucaoDoCliente,
@@ -799,10 +800,11 @@ export function OrderDetailsView({
             devolve o MESMO QR se a cobrança vive, cria outra com chave nova
             se a anterior morreu, e 409 terminal se o pedido não é mais
             cobrável — nunca cobrança duplicada. */}
-        {order.status === "pending" &&
-          (paymentStatusKey(order.paymentStatus) === "aguardando" ||
-            paymentStatusKey(order.paymentStatus) === "recusado") &&
-          user &&
+        {podeRetomarPagamento({
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          logado: !!user,
+        }) &&
           onRetomarPagamento && (
             <button
               onClick={() => onRetomarPagamento(order.id)}
