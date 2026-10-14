@@ -46,7 +46,14 @@ vi.mock("@/lib/supabase", () => ({
           order: () => ({
             abortSignal: () => Promise.resolve({ data: [], error: null }),
           }),
-          single: () => Promise.resolve({ data: null, error: null }),
+          // A releitura do status do pedido: sem login no cliente (a conta
+          // saiu) o servidor não devolve a linha e a leitura falha.
+          single: () =>
+            Promise.resolve(
+              sessao.id
+                ? { data: null, error: null }
+                : { data: null, error: { message: "JWT ausente" } },
+            ),
         }),
       }),
     }),
@@ -292,6 +299,36 @@ describe("fila offline de pedidos — uma chave por usuário", () => {
       expect(filaDe("admin-a")).toEqual([segundo]);
       expect(armazem.has(chaveDe("admin-b"))).toBe(false);
       expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it("a conta SAI no meio de uma passada de avanços: o resto não é nem relido, e não aparece falha falsa", async () => {
+      // Avanço de status (não é cancelamento): cada item é RELIDO no servidor
+      // antes de seguir. Sem login, a releitura falharia e viraria "falha
+      // transitória" — aviso falso para quem vier depois.
+      const primeiro = {
+        ...itemDeA,
+        orderId: "pedido-a1",
+        status: "processing",
+      };
+      const segundo = {
+        ...itemDeA,
+        orderId: "pedido-a2",
+        status: "processing",
+      };
+      guardarFila("admin-a", [primeiro, segundo]);
+      rpcMock.mockImplementationOnce(async () => {
+        sessao.id = null; // A saiu da conta depois do primeiro envio
+        return { data: null, error: null };
+      });
+      entrarComo("admin-a");
+      await renderizar();
+      await reconectar();
+
+      expect(pedidosEnviados()).toEqual(["pedido-a1"]);
+      expect(filaDe("admin-a")).toEqual([segundo]);
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(toast.warning).not.toHaveBeenCalled();
+      expect(toast.info).not.toHaveBeenCalled();
     });
 
     it("a sessão já é outra quando a passada ia começar: nenhum envio, fila intacta", async () => {

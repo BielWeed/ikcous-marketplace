@@ -475,6 +475,16 @@ async function processarFilaOfflineDePedidos(
           : Number.NEGATIVE_INFINITY;
       tentados.set(orderId, timestamp);
 
+      // L10 — a sessão também é conferida ANTES da releitura abaixo. Se a
+      // conta saiu no meio da passada, a releitura (sem login) falharia e o
+      // item viraria "falha transitória": aviso falso para quem vier depois.
+      // Aqui a passada só encerra, sem gravar fora da fila do dono nem avisar.
+      if (!(await sessaoAindaEhDoDono(userId))) {
+        interrompida = true;
+        remainingQueue.push(...queue.slice(indice));
+        break;
+      }
+
       // useOrders-196 (15/09/2026): a fila offline nunca guardou o status
       // ESPERADO do pedido, e `update_order_status_atomic` não valida a
       // transição para admin — só restringe destino para NÃO-admin (mesma
@@ -529,7 +539,8 @@ async function processarFilaOfflineDePedidos(
       // meio. Se a sessão já não é a dele, o envio NÃO sai: a passada
       // encerra, o que já saiu é tirado da fila DELE (abaixo, mesma
       // mescla), o resto continua lá, e nada é gravado em outra chave.
-      if (!(await sessaoAindaEhDoDono(userId))) {
+      // Sem releitura (cancelamento) a conferência do topo já é a imediata.
+      if (status !== "cancelled" && !(await sessaoAindaEhDoDono(userId))) {
         interrompida = true;
         remainingQueue.push(...queue.slice(indice));
         break;

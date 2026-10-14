@@ -125,8 +125,8 @@ export function migrarFilaLegada(
       id === undefined ? -1 : juntada.findIndex((i) => idDe(i) === id);
     if (indice === -1) {
       juntada.push(item);
-    } else if (timestampDe(item) > timestampDe(juntada[indice])) {
-      juntada[indice] = item;
+    } else if (timestampDe(item) > timestampDe(juntada.at(indice))) {
+      juntada.splice(indice, 1, item);
     }
   }
   localStorage.setItem(chaveNova, JSON.stringify(juntada));
