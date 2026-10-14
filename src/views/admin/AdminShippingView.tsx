@@ -20,11 +20,17 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  AVISO_DO_FRETE,
+  transportadoraFicaSemPagamento,
+  transportadoraVendeForaDaCidade,
+} from "@/lib/aviso-transportadora-sem-pagamento";
+import {
   erroDoFormularioNacional,
   estrategiaTemAlcanceEditavel,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
 import { listaComRetirada, retiradaLigadaNaLista } from "@/lib/guarda-de-frete";
+import { usePagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
 import {
   type PresetFreteGratis,
   presetDoConfig,
@@ -381,6 +387,21 @@ export const AdminShippingView = memo(function AdminShippingView({
     [config, credsErro, nomesLigados],
   );
 
+  // Transportadora vendendo + pagamento pelo app desligado = o cliente de
+  // outra cidade só descobre no ÚLTIMO passo do checkout, e o lojista nunca
+  // (14/10/2026). Mesma régua da faixa acima para "transportadora ligada" (a
+  // leitura que falhou NÃO chuta) e o estado do pagamento pelo app é o do
+  // PAINEL — o retrato do boot mais o eco que Ajustes recebe do servidor —,
+  // nunca só o boot: aviso falso é pior que aviso nenhum.
+  const pagamentoPeloAppLigado = usePagamentoPeloApp();
+  const avisarTransportadoraSemPagamento = transportadoraFicaSemPagamento({
+    transportadoraVende: transportadoraVendeForaDaCidade({
+      cobertura: config?.shippingCoverage,
+      nomesLigados: credsErro ? null : nomesLigados,
+    }),
+    pagamentoPeloAppLigado,
+  });
+
   // Resumo CURTO de cada painel fechado — deriva do MESMO `statusDaFaixa`
   // (fonte única; regra escrita em dois lugares diverge — lição #53).
   const resumoPainelLocal = statusDaFaixa[0].detalhe
@@ -714,6 +735,29 @@ export const AdminShippingView = memo(function AdminShippingView({
             <div className="mt-5">
               <FreteResumoFaixa status={statusDaFaixa} />
             </div>
+
+            {avisarTransportadoraSemPagamento && (
+              <div
+                role="status"
+                data-aviso-transportadora-sem-pagamento=""
+                className="mt-4 flex flex-wrap items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-300 duration-200 animate-in fade-in"
+              >
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <p className="min-w-0 flex-1 text-[12.5px] leading-snug">
+                  <span className="font-bold">{AVISO_DO_FRETE.titulo}</span>{" "}
+                  {AVISO_DO_FRETE.detalhe}
+                </p>
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin-settings")}
+                    className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
+                  >
+                    Ver pagamento pelo app
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="mt-8 space-y-7">
               <PainelRecolhivel

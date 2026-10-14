@@ -41,8 +41,10 @@ import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { NOMES_DO_PAINEL, type TelaDoPainel } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { transportadoraVendeForaDaCidade } from "@/lib/aviso-transportadora-sem-pagamento";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import { publicarPagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -802,6 +804,14 @@ export const AdminSettingsView = memo(function AdminSettingsView({
           })
           .map((p) => NOME_DO_PROVEDOR.get(p) ?? p);
 
+  // A transportadora está de fato OFERECIDA ao cliente de outra cidade? Com
+  // o que esta tela já leu (a mesma lista acima); sem leitura (`null`) não se
+  // chuta. Pausar o pagamento pelo app avisa disso ANTES (MercadoPagoSection).
+  const transportadoraVende = transportadoraVendeForaDaCidade({
+    cobertura: config.shippingCoverage,
+    nomesLigados: nomesLigadosDeFrete,
+  });
+
   // O subtítulo de status de cada grupo — a mesma função dos seis passos do
   // Início (grupos-de-ajustes.ts); aqui só se entregam os fatos.
   const subtitulos = subtitulosDosGrupos({
@@ -961,8 +971,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   <MercadoPagoSection
                     onDirtyMudou={setPagamentosPendente}
                     abrirChavesGatilho={abrirChavesGatilho}
+                    transportadoraVende={transportadoraVende}
                     onPixAlternado={(ligado, chaveNaLoja) => {
                       setPixLigado(ligado);
+                      // A tela de Frete é OUTRA aba (as duas ficam montadas):
+                      // o mesmo eco do servidor vai para ela, que o usa para
+                      // avisar da transportadora sem aviso falso.
+                      publicarPagamentoPeloApp(ligado);
                       // `chaveNaLoja` só vem preenchido no eco do `ler`
                       // (mp-10): é o único dos quatro que NÃO garante chave
                       // publicada quando `ligado` é `true` — `ler` devolve o
