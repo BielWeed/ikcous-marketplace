@@ -10969,7 +10969,10 @@ Deno.test("26a/26b — o md5 da 26a e' o do corpo NOVO que o arquivo da migratio
   );
   assert(!/aclexplode|has_function_privilege/.test(sqlSemComentarios(b)));
   // a guarda que as duas medem e' a mesma que o corpo da migration escreve
-  assertStringIncludes(corpoDe(mig), "id = v_review_id AND status = 'publicada'");
+  assertStringIncludes(
+    corpoDe(mig),
+    "id = v_review_id AND status = 'publicada'",
+  );
   for (const sql of [a, b])
     assertStringIncludes(sql, "id = v_review_id AND status = ''publicada''");
   // a 24a/24b (so ACL) nao foram tocadas: continuam sem medir corpo
