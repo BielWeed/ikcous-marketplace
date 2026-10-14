@@ -104,6 +104,7 @@ import { STATUS_DA_CONTESTACAO } from "../_shared/contestacao.ts";
 // fecha a porta quando não dá para decidir com segurança, é este módulo.
 import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import {
+  aplicarDiagnosticoDoPost,
   autorizacaoPeloBanco,
   confirmarPorConsulta,
   consultarTransacaoDaOrder,
@@ -156,9 +157,18 @@ const TEXTO_FALHA_AO_REGISTRAR_CONCLUSAO =
 async function gravarDesfechoDoEstorno(
   supabase: ReturnType<typeof createClient>,
   refundId: string,
-  resultado: ResultadoEstorno,
+  resultadoDoExecutor: ResultadoEstorno,
   tentativasAtuais: number,
 ): Promise<"concluido" | "adiado" | "falhou"> {
+  // 14/10/2026 (D4/D5/D6): o diagnóstico do POST (código do MP + carimbo de
+  // incerteza) é gravado ANTES de qualquer desfecho — se não grava, a linha não
+  // vira `falhou`; na 5ª falha "nada saiu" SEM carimbo ela vira `falhou`; com
+  // carimbo, nunca. Uma decisão, dois chamadores (a edge do clique usa a mesma).
+  const resultado = await aplicarDiagnosticoDoPost(
+    (nome, argumentos) => supabase.rpc(nome, argumentos),
+    refundId,
+    resultadoDoExecutor,
+  );
   if (resultado.tipo === "concluido") {
     const { error } = await supabase.rpc("concluir_estorno", {
       p_refund_id: refundId,
