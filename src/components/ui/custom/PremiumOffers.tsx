@@ -255,13 +255,6 @@ function HeroOfferCard({
     "idle",
   );
 
-  // Scarcity progress calculations
-  const totalSimulated = (product.sold || 3) + product.stock;
-  const pctSold = Math.min(
-    95,
-    Math.max(60, Math.round(((product.sold || 3) / totalSimulated) * 100)),
-  );
-
   const handleCardClick = () => {
     haptic.light();
     onProductClick(product.id);
@@ -431,30 +424,22 @@ function HeroOfferCard({
               </button>
             </h3>
 
-            <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
-              {/* LOJA-01 (auditoria 26/08/2026): mesmo raciocínio de
-                  ProductCard.tsx -- `produtos.rating` nasce com DEFAULT 5 e
-                  nunca é recalculado, então só `reviewCount > 0` diz se
-                  existe avaliação de verdade por trás do número. */}
-              {showRating && (product.reviewCount ?? 0) > 0 && (
-                <>
-                  <StarRating rating={product.rating ?? 0} size={12} />
-                  <span className="text-[11px] font-bold text-slate-400">
-                    ({product.reviewCount})
-                  </span>
-                  {/* Separador só faz sentido com a estrela antes dele --
-                      some junto (ADMIN-091, #202). O selo "Alta Procura"
-                      abaixo é um sinal de demanda que a loja já tinha,
-                      independente de avaliação, e continua sozinho na
-                      linha sem deixar buraco. */}
-                  <span className="text-xs text-slate-200">|</span>
-                </>
-              )}
-              <span className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-700 transition-transform duration-300 group-hover:scale-105">
-                <Flame className="size-2.5 animate-pulse fill-amber-500 text-amber-500" />
-                Alta Procura
-              </span>
-            </div>
+            {/* LOJA-01 (auditoria 26/08/2026): mesmo raciocínio de
+                ProductCard.tsx -- `produtos.rating` nasce com DEFAULT 5 e
+                nunca é recalculado, então só `reviewCount > 0` diz se
+                existe avaliação de verdade por trás do número. ADMIN-091
+                (#202): o interruptor de Avaliações da loja manda aqui.
+                O selo "Alta Procura" que ficava ao lado saiu (14/10/2026):
+                era fixo em TODO cartão, sem nenhum dado de demanda atrás --
+                afirmava à cliente algo que a loja não sabe. */}
+            {showRating && (product.reviewCount ?? 0) > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <StarRating rating={product.rating ?? 0} size={12} />
+                <span className="text-[11px] font-bold text-slate-400">
+                  ({product.reviewCount})
+                </span>
+              </div>
+            )}
 
             {/* Price details with absolute premium styling */}
             <div className="mb-3.5 flex flex-wrap items-end gap-3">
@@ -480,27 +465,17 @@ function HeroOfferCard({
               )}
             </div>
 
-            {/* Scarcity meter progress bar */}
-            <div className="mb-4 max-w-sm space-y-1">
-              <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
-                <span className="flex items-center gap-1 text-primary">
-                  <Flame className="size-2.5 animate-pulse fill-primary" />
-                  {pctSold}% VENDIDO
-                </span>
-                <span>
-                  {product.stock <= 0
-                    ? "Sem estoque"
-                    : product.stock === 1
-                      ? "Só resta 1!"
-                      : `Apenas ${product.stock} restantes`}
-                </span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-100/70">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-primary to-amber-500 transition-all duration-1000 ease-out"
-                  style={{ width: `${pctSold}%` }}
-                />
-              </div>
+            {/* Só o estoque REAL. A barra "X% VENDIDO" que ficava aqui
+                saiu (14/10/2026): `produtos.sold` é 0 em toda loja (nada o
+                atualiza) e a conta fingia 3 vendas e prendia o resultado
+                entre 60% e 95% -- porcentagem inventada, publicidade
+                enganosa (CDC art. 37). */}
+            <div className="mb-4 max-w-sm text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
+              {product.stock <= 0
+                ? "Sem estoque"
+                : product.stock === 1
+                  ? "Só resta 1!"
+                  : `Apenas ${product.stock} restantes`}
             </div>
           </div>
 

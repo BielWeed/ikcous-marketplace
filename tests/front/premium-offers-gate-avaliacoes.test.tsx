@@ -90,7 +90,7 @@ describe("PremiumOffers/HeroOfferCard — gate do interruptor de Avaliações (A
     enableReviews = true;
   });
 
-  it("com o flag DESLIGADO, some a estrela, a contagem e o separador -- 'Alta Procura' continua", async () => {
+  it("com o flag DESLIGADO, some a estrela, a contagem e o separador, e nenhum selo inventado no lugar", async () => {
     enableReviews = false;
     const { PremiumOffers } = await import(
       "@/components/ui/custom/PremiumOffers"
@@ -109,10 +109,10 @@ describe("PremiumOffers/HeroOfferCard — gate do interruptor de Avaliações (A
 
     expect(hospedeiro.querySelectorAll("svg.lucide-star").length).toBe(0);
     expect(hospedeiro.textContent).not.toContain("(12)");
-    expect(hospedeiro.textContent).toContain("Alta Procura");
+    expect(hospedeiro.textContent).not.toContain("Alta Procura");
   });
 
-  it("com o flag LIGADO, continua exatamente como hoje: 5 estrelas, contagem e separador", async () => {
+  it("com o flag LIGADO, continua exatamente como hoje: 5 estrelas e contagem", async () => {
     enableReviews = true;
     const { PremiumOffers } = await import(
       "@/components/ui/custom/PremiumOffers"
@@ -131,6 +131,6 @@ describe("PremiumOffers/HeroOfferCard — gate do interruptor de Avaliações (A
 
     expect(hospedeiro.querySelectorAll("svg.lucide-star").length).toBe(5);
     expect(hospedeiro.textContent).toContain("(12)");
-    expect(hospedeiro.textContent).toContain("Alta Procura");
+    expect(hospedeiro.textContent).not.toContain("Alta Procura");
   });
 });
