@@ -21,24 +21,29 @@ export const TEXTOS_DA_CLIENTE = {
   abertura: "Aqui você pede à loja para mexer nos dados da sua conta.",
   guardaTitulo: "O que a loja guarda de você",
   guarda:
-    "Seu nome, WhatsApp, e-mail de entrada, endereços, favoritos e o histórico dos seus pedidos.",
+    "Seu nome, WhatsApp, CPF (se você informou), e-mail de entrada, endereços, favoritos e o histórico dos seus pedidos.",
+  // A lista abaixo é a MESMA que o roteiro da loja executa
+  // (docs/runbooks/atender-pedido-de-privacidade.md, bloco "anonimizar"): se uma
+  // mudar, a outra muda junto — a tela não pode prometer o que o roteiro não faz.
   apagaTitulo: "O que a exclusão apaga",
   apaga: [
-    "Seu nome",
-    "Seu telefone",
-    "Seus endereços",
-    "Seus favoritos",
-    "Os avisos guardados neste aparelho",
+    "Seu nome, seu telefone e seu CPF",
+    "Seu e-mail de entrada: a conta fica bloqueada e você deixa de entrar",
+    "Seus endereços, inclusive os guardados dentro dos pedidos",
+    "Seus favoritos, seu carrinho e seus avisos dentro do app",
+    "As fotos de devolução que você enviou",
+    "Os códigos de confirmação enviados para você",
+    "O que você escreveu nas observações dos pedidos",
   ],
   ficaTitulo: "O que fica guardado por lei",
-  fica: "Os pedidos e as notas fiscais ficam guardados, mas sem o seu nome depois da exclusão.",
+  fica: "Os pedidos e as notas fiscais ficam guardados (valores, itens, datas e forma de pagamento), mas sem o seu nome, telefone, CPF, e-mail e endereço. Suas avaliações e perguntas públicas, se houver, também ficam, sem o seu nome.",
   prazo: `A loja responde em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias.`,
 
   botaoExcluir: "Pedir exclusão da minha conta",
   botaoCorrigirEmail: "Corrigir meu e-mail",
 
   confirmaExcluirTitulo: "Pedir a exclusão da sua conta?",
-  confirmaExcluirTexto: `A loja vai analisar o seu pedido e responder em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias. Quando a exclusão for feita, você deixa de entrar na conta. Seus pedidos e notas ficam guardados por lei, sem o seu nome.`,
+  confirmaExcluirTexto: `A loja vai analisar o seu pedido e responder em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias. Quando a exclusão for feita, você deixa de entrar na conta. Seus pedidos e notas ficam guardados por lei, sem os seus dados pessoais.`,
   confirmaExcluirAcao: "Sim, pedir exclusão",
   confirmaVoltar: "Voltar",
 
@@ -93,7 +98,7 @@ export const NOME_DO_PEDIDO = {
 export const TEXTOS_DA_LOJA = {
   titulo: "Pedidos de privacidade dos clientes",
   subtitulo: "Exclusão de conta e correção de e-mail pedidas pelo app",
-  explicacao: `Quando uma cliente pede para excluir a conta ou corrigir o e-mail, o pedido aparece aqui. A loja tem até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias para responder. O app NÃO apaga nada sozinho: quem atende é a loja, seguindo o roteiro (anonimizar nome, telefone, endereços e favoritos, bloquear a entrada e manter os pedidos como "Cliente removido"). Depois de atender, marque o pedido aqui.`,
+  explicacao: `Quando uma cliente pede para excluir a conta ou corrigir o e-mail, o pedido aparece aqui. A loja tem até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias para responder. O app NÃO apaga nada sozinho: quem atende é a loja, seguindo o roteiro (anonimizar nome, telefone, CPF, e-mail de entrada, endereços, favoritos, fotos e textos dos pedidos, bloquear a entrada e manter os pedidos como "Cliente removido"). Depois de atender, marque o pedido aqui.`,
   vazio: "Nenhum pedido de privacidade por enquanto.",
   abertos: "Esperando resposta",
   decididos: "Já respondidos",
@@ -120,7 +125,9 @@ export const TEXTOS_DA_LOJA = {
   prazoAte: "Responder até",
   prazoVencido: "Prazo vencido — responda hoje",
   listaCortada:
-    "Há mais pedidos do que cabem aqui. Os mais antigos estão guardados no banco.",
+    "Há mais pedidos já respondidos do que cabem aqui. Os mais antigos estão guardados no banco.",
+  abertosCortados:
+    "Há mais pedidos esperando resposta do que cabem aqui. Atenda estes e recarregue a tela para ver os próximos.",
   confirmaAtendidoTitulo: "Marcar como atendido?",
   confirmaAtendidoTexto:
     "Confirme só depois de fazer o que o roteiro pede (anonimizar a conta e bloquear a entrada, ou trocar o e-mail). A resposta fica registrada e não dá para mudar depois.",

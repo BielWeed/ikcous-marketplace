@@ -37,6 +37,8 @@ const banco = {
   leituras: 0,
   inserts: [] as Array<Record<string, unknown>>,
   todasAsChamadas: [] as string[],
+  // As colunas que a tela pediu ao banco em cada leitura e na devolução do insert.
+  colunasPedidas: [] as string[],
 };
 
 vi.mock("@/lib/supabase", () => ({
@@ -44,9 +46,11 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => {
       banco.todasAsChamadas.push(`from:${tabela}`);
       return {
-        select: () => ({
+        select: (colunas?: string) => ({
           eq: () => ({
+            // (a leitura registra as colunas pedidas)
             order: async () => {
+              banco.colunasPedidas.push(colunas ?? "");
               banco.leituras += 1;
               if (banco.leituras > 1 && banco.listaDepois) {
                 return banco.listaDepois;
@@ -59,8 +63,9 @@ vi.mock("@/lib/supabase", () => ({
           banco.inserts.push(linha);
           banco.todasAsChamadas.push("insert");
           return {
-            select: () => ({
+            select: (colunas?: string) => ({
               single: async () => {
+                banco.colunasPedidas.push(colunas ?? "");
                 if (banco.insercaoQuebra) throw banco.insercaoQuebra;
                 return banco.insercao;
               },
@@ -128,6 +133,7 @@ describe("PrivacidadeEMeusDados", () => {
     banco.leituras = 0;
     banco.inserts = [];
     banco.todasAsChamadas = [];
+    banco.colunasPedidas = [];
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -154,17 +160,21 @@ describe("PrivacidadeEMeusDados", () => {
     expect(texto).toContain("Privacidade e meus dados");
     expect(texto).toContain("O que a loja guarda de você");
     for (const item of [
-      "Seu nome",
-      "Seu telefone",
-      "Seus endereços",
-      "Seus favoritos",
-      "Os avisos guardados neste aparelho",
+      "Seu nome, seu telefone e seu CPF",
+      "Seu e-mail de entrada: a conta fica bloqueada e você deixa de entrar",
+      "Seus endereços, inclusive os guardados dentro dos pedidos",
+      "Seus favoritos, seu carrinho e seus avisos dentro do app",
+      "As fotos de devolução que você enviou",
+      "Os códigos de confirmação enviados para você",
+      "O que você escreveu nas observações dos pedidos",
     ]) {
       expect(texto).toContain(item);
     }
+    // O que a tela NÃO pode prometer: apagar o que está só no aparelho dela.
+    expect(texto).not.toContain("neste aparelho");
     expect(texto).toContain("O que fica guardado por lei");
     expect(texto).toContain(
-      "Os pedidos e as notas fiscais ficam guardados, mas sem o seu nome depois da exclusão.",
+      "Os pedidos e as notas fiscais ficam guardados (valores, itens, datas e forma de pagamento), mas sem o seu nome, telefone, CPF, e-mail e endereço.",
     );
     expect(texto).toContain("A loja responde em até 15 dias.");
     expect(botao("Pedir exclusão da minha conta")).toBeDefined();
@@ -219,6 +229,23 @@ describe("PrivacidadeEMeusDados", () => {
     );
     // Pedido aberto: não há como pedir de novo por aqui.
     expect(botao("Pedir exclusão da minha conta")).toBeUndefined();
+  });
+
+  it("a tela da cliente só pede ao banco as colunas que mostra: nunca `atendido_por` (quem respondeu na loja)", async () => {
+    banco.insercao = { data: pedido(), error: null };
+    await montar();
+    act(() => botao("Pedir exclusão da minha conta")?.click());
+    await act(async () => {
+      botao("Sim, pedir exclusão", dialogo() as HTMLElement)?.click();
+    });
+    await assentar();
+    // Uma leitura na montagem, uma na devolução do insert e (se houver) a releitura.
+    expect(banco.colunasPedidas.length).toBeGreaterThanOrEqual(2);
+    for (const colunas of banco.colunasPedidas) {
+      expect(colunas).not.toBe("");
+      expect(colunas).not.toContain("*");
+      expect(colunas).not.toContain("atendido_por");
+    }
   });
 
   it("e-mail vazio, sem formato ou igual ao atual: mostra o motivo ao lado do campo, mantém a pergunta aberta e NÃO grava", async () => {
