@@ -2764,7 +2764,15 @@ Deno.test("MP-4 — lote com DOIS candidatos resolve as credenciais UMA vez (um 
       status_detail: "accredited",
     });
 
-    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    // O e-mail do comprovante entra como dublê: ele resolve o REMETENTE em
+    // app_settings (outra linha, a do e-mail da loja) e este teste conta só as
+    // leituras das credenciais do Mercado Pago.
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase,
+      fetchImpl,
+      enviarComprovante: async () => {},
+      enviarAvisoAtrasado: async () => {},
+    });
     const corpo = await resposta.json();
 
     // Os DOIS candidatos passaram pelo laço com o token do lojista.

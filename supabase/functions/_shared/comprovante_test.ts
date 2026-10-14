@@ -25,6 +25,23 @@ import { enviarComprovantePedido } from "./comprovante.ts";
 
 const UUID_PEDIDO = "d77c6616-c389-4caa-b5c1-9a8d7af77f72";
 
+// O remetente que `resolverRemetente` devolve (14/10/2026): o resolvedor real
+// e testado em `email-da-loja_test.ts`; aqui ele entra como dubla.
+const REMETENTE_DE_TESTE = {
+  origem: "ambiente",
+  usuario: "loja@exemplo.com",
+  senha: "senha-de-teste",
+  motivo: null,
+  reserva: null,
+};
+const REMETENTE_NENHUM = {
+  origem: "nenhum",
+  usuario: null,
+  senha: null,
+  motivo: "sem_registro",
+  reserva: null,
+};
+
 type Chamada = { tipo: "rpc" | "from"; nome: string; args?: unknown };
 
 /**
@@ -135,7 +152,7 @@ Deno.test("SMTP não configurado -> sem_remetente, e NADA é lido nem reservado 
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => false },
+    deps: { resolverRemetente: async () => REMETENTE_NENHUM },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "sem_remetente" });
@@ -151,7 +168,7 @@ Deno.test("pedido inexistente -> sem_pedido, reserva NÃO chamada", async () => 
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "sem_pedido" });
@@ -166,7 +183,7 @@ Deno.test("leitura do pedido falha -> envio_falhou", async () => {
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "envio_falhou" });
@@ -182,7 +199,7 @@ Deno.test("pedido sem e-mail em lugar nenhum -> sem_destinatario, reserva NÃO �
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "sem_destinatario" });
@@ -202,7 +219,7 @@ Deno.test("reserva falha (erro de banco) -> envio_falhou", async () => {
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE },
   });
 
   assertEquals(desfecho, { ok: false, motivo: "envio_falhou" });
@@ -217,7 +234,7 @@ Deno.test("reserva devolve false ('já enviado') -> ja_enviado, e o e-mail NUNCA
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async () => {
         enviarEmailChamado = true;
       },
@@ -236,7 +253,7 @@ Deno.test("reserva concedida -> a RPC 'reivindicar_email_de_confirmacao' é cham
   const desfecho = await enviarComprovantePedido({
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
-    deps: { remetenteConfigurado: () => true, enviarEmail: async () => {} },
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE, enviarEmail: async () => {} },
   });
 
   assertEquals(desfecho, { ok: true });
@@ -270,7 +287,7 @@ Deno.test("reserva concedida + SMTP configurado -> envia com o texto certo e dev
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
@@ -315,7 +332,7 @@ async function htmlDoPedidoEnviado(
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
@@ -394,7 +411,7 @@ Deno.test("pedido com canal 'presencial' no banco -> o e-mail abre com 'Compra n
       supabase: supabase as never,
       orderId: UUID_PEDIDO,
       deps: {
-        remetenteConfigurado: () => true,
+        resolverRemetente: async () => REMETENTE_DE_TESTE,
         enviarEmail: async (args) => {
           chamadasEnvio.push(args);
         },
@@ -440,7 +457,7 @@ async function htmlDoComprovante(
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         enviados.push(args);
       },
@@ -503,7 +520,7 @@ Deno.test("PIX pelo site JÁ PAGO -> abertura de CONFIRMADO, nunca a de 'aguarda
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
@@ -545,7 +562,7 @@ Deno.test("PIX pelo site AINDA aguardando pagamento -> abertura de 'aguardando',
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
@@ -608,7 +625,7 @@ async function enviarComItens(
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         enviados.push(args);
       },
@@ -732,7 +749,7 @@ Deno.test("envio de e-mail falha -> libera a reserva (RPC 'liberar_email_de_conf
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async () => {
         throw new Error("SMTP: envio recusado");
       },
@@ -773,7 +790,7 @@ Deno.test("cartão de crédito pelo app -> o comprovante diz cartão, nunca PIX"
     supabase: supabase as never,
     orderId: UUID_PEDIDO,
     deps: {
-      remetenteConfigurado: () => true,
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
       enviarEmail: async (args) => {
         chamadasEnvio.push(args);
       },
@@ -782,4 +799,63 @@ Deno.test("cartão de crédito pelo app -> o comprovante diz cartão, nunca PIX"
   assertEquals(desfecho, { ok: true });
   assertStringIncludes(chamadasEnvio[0].html, "Cartão de crédito pelo site");
   assertEquals(chamadasEnvio[0].html.includes("PIX pelo site"), false);
+});
+
+// --- o remetente resolvido (e-mail da loja no painel, 14/10/2026) -----------
+
+Deno.test("o remetente resolvido sai da `resolverRemetente` com o MESMO supabase, e e' ELE que chega ao envio", async () => {
+  const supabase = clienteFalso({
+    pedido: {
+      id: UUID_PEDIDO,
+      customer_data: { email: "cliente@exemplo.com" },
+      subtotal: 100,
+      total: 100,
+      payment_method: "pix",
+      payment_status: "aguardando",
+    },
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    reservou: true,
+  });
+  const doPainel = { ...REMETENTE_DE_TESTE, origem: "painel", usuario: "painel@gmail.com" };
+  const recebidoPeloResolvedor: unknown[] = [];
+  const recebidoPeloEnvio: unknown[] = [];
+
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: async (cliente: unknown) => {
+        recebidoPeloResolvedor.push(cliente);
+        return doPainel;
+      },
+      enviarEmail: async (_mensagem: unknown, remetente: unknown) => {
+        recebidoPeloEnvio.push(remetente);
+      },
+    },
+  });
+
+  assertEquals(desfecho, { ok: true });
+  assertEquals(recebidoPeloResolvedor, [supabase]);
+  assertEquals(recebidoPeloEnvio, [doPainel]);
+});
+
+Deno.test("resolvedor REAL sem remetente nenhum (sem cofre e sem SMTP no ambiente) -> sem_remetente, e NADA e' lido nem reservado", async () => {
+  const guardados = ["SMTP_USER", "SMTP_PASSWORD", "MP_CHAVES_ENCRYPTION_KEY"].map(
+    (nome) => [nome, Deno.env.get(nome)] as const,
+  );
+  for (const [nome] of guardados) Deno.env.delete(nome);
+  try {
+    const chamadas: Chamada[] = [];
+    const desfecho = await enviarComprovantePedido({
+      supabase: clienteFalso({ chamadas }) as never,
+      orderId: UUID_PEDIDO,
+    });
+    assertEquals(desfecho, { ok: false, motivo: "sem_remetente" });
+    assertEquals(chamadas.length, 0);
+  } finally {
+    for (const [nome, valor] of guardados) {
+      if (valor === undefined) Deno.env.delete(nome);
+      else Deno.env.set(nome, valor);
+    }
+  }
 });

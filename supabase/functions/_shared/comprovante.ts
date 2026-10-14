@@ -38,7 +38,7 @@
  *   protegidos pela trava do banco, não por acordo entre os dois lados do
  *   código.
  *
- * `deps.enviarEmail`/`deps.remetenteConfigurado` SÃO INJETÁVEIS, E POR QUÊ
+ * `deps.enviarEmail`/`deps.resolverRemetente` SÃO INJETÁVEIS, E POR QUÊ
  *   Nem o `send-order-confirmation` original nem o SMTP (`_shared/smtp.ts`)
  *   tinham esse ponto de injeção — a suíte antiga só provava HTML/texto,
  *   nunca o fluxo (reserva → leitura → envio → liberação em falha), porque
@@ -50,10 +50,8 @@
  *   `webhook-mercadopago`) chamam sem `deps`, e caem nos defaults reais.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  enviarEmail as enviarEmailReal,
-  remetenteConfigurado as remetenteConfiguradoReal,
-} from "./smtp.ts";
+import { resolverRemetente as resolverRemetenteReal } from "./email-da-loja.ts";
+import { enviarEmail as enviarEmailReal } from "./smtp.ts";
 import {
   escaparHtml,
   formatarBRL,
@@ -388,17 +386,18 @@ export async function enviarComprovantePedido(args: {
   orderId: string;
   deps?: {
     enviarEmail?: typeof enviarEmailReal;
-    remetenteConfigurado?: typeof remetenteConfiguradoReal;
+    resolverRemetente?: typeof resolverRemetenteReal;
   };
 }): Promise<DesfechoComprovante> {
   const { supabase, orderId } = args;
   const enviarEmail = args.deps?.enviarEmail ?? enviarEmailReal;
-  const remetenteConfigurado = args.deps?.remetenteConfigurado ?? remetenteConfiguradoReal;
+  const resolverRemetente = args.deps?.resolverRemetente ?? resolverRemetenteReal;
 
   // Falha fechada ANTES de reservar. Reservar sem poder enviar deixaria o
   // pedido marcado como "ja avisado" para sempre, e o cliente sem comprovante
   // nenhum — sem nem a chance de uma tentativa posterior dar certo.
-  if (!remetenteConfigurado()) {
+  const remetente = await resolverRemetente(supabase);
+  if (remetente.origem === "nenhum") {
     console.error("comprovante: SMTP nao configurado nesta loja");
     return { ok: false, motivo: "sem_remetente" };
   }
@@ -507,7 +506,7 @@ export async function enviarComprovantePedido(args: {
         canal: String(pedido.canal ?? "online"),
         retirada: retiradaDoPedido(pedido.customer_data),
       }),
-    });
+    }, remetente);
   } catch (e) {
     // Devolve a reserva: o SMTP RECUSOU a mensagem, entao ninguem recebeu
     // nada e uma tentativa posterior tem de ser possivel.

@@ -17,6 +17,7 @@ import {
   assuntoDoAvisoDePagamentoAtrasado,
   avisoAoLojista,
   confirmarPagamentoProvado,
+  dispararAvisoDePagamentoAtrasadoReal,
   htmlDoAvisoDePagamentoAtrasado,
 } from "./efeitos-do-pagamento.ts";
 import { formatarBRL, numeroDoPedido } from "./pedido.ts";
@@ -239,4 +240,65 @@ Deno.test("paridade: o e-mail de pagamento atrasado (assunto e HTML) é BYTE A B
 Deno.test("avisoAoLojista: só 'pago' e 'pago_apos_expirar' têm aviso", () => {
   assertEquals(avisoAoLojista(PEDIDO, "ja_pago", 10), null);
   assertEquals(avisoAoLojista(PEDIDO, "divergente", 10), null);
+});
+
+// --- o remetente resolvido no aviso de pagamento atrasado (14/10/2026) ------
+
+function supabaseDoAviso(chamadas: string[]) {
+  return {
+    rpc: async (nome: string) => {
+      chamadas.push(`rpc:${nome}`);
+      return { data: nome === "reivindicar_email_de_confirmacao" ? true : null, error: null };
+    },
+    from(tabela: string) {
+      chamadas.push(`from:${tabela}`);
+      const resultado = tabela === "marketplace_orders"
+        ? { data: { id: PEDIDO, user_id: null, customer_data: { email: "cliente@exemplo.com" } }, error: null }
+        : { data: { store_name: "Loja Teste" }, error: null };
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => resultado }),
+          limit: () => ({ maybeSingle: async () => resultado }),
+        }),
+      };
+    },
+    auth: { admin: { getUserById: async () => ({ data: { user: null } }) } },
+  };
+}
+
+Deno.test("aviso atrasado: remetente 'nenhum' PARA antes de ler o pedido ou reservar o aviso (nada gasto)", async () => {
+  const chamadas: string[] = [];
+  const enviados: unknown[] = [];
+  await emSilencio(() =>
+    dispararAvisoDePagamentoAtrasadoReal({
+      supabase: supabaseDoAviso(chamadas) as never,
+      orderId: PEDIDO,
+      deps: {
+        resolverRemetente: async () => ({ origem: "nenhum", usuario: null, senha: null, motivo: "sem_registro", reserva: null }),
+        enviarEmail: async (...args: unknown[]) => void enviados.push(args),
+      },
+    })
+  );
+  assertEquals(chamadas, []);
+  assertEquals(enviados, []);
+});
+
+Deno.test("aviso atrasado: com remetente, reserva UMA vez e o envio recebe o MESMO remetente resolvido", async () => {
+  const chamadas: string[] = [];
+  const enviados: any[] = [];
+  const remetente = { origem: "painel", usuario: "painel@gmail.com", senha: "x", motivo: null, reserva: null };
+  await emSilencio(() =>
+    dispararAvisoDePagamentoAtrasadoReal({
+      supabase: supabaseDoAviso(chamadas) as never,
+      orderId: PEDIDO,
+      deps: {
+        resolverRemetente: async () => remetente,
+        enviarEmail: async (...args: unknown[]) => void enviados.push(args),
+      },
+    })
+  );
+  assertEquals(chamadas.filter((c) => c === "rpc:reivindicar_email_de_confirmacao").length, 1);
+  assertEquals(enviados.length, 1);
+  assertEquals(enviados[0][0].para, "cliente@exemplo.com");
+  assertEquals(enviados[0][1], remetente);
 });

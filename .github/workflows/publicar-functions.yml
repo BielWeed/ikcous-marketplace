@@ -44,7 +44,10 @@
 # cinco functions NOMEADAS, também SÓ na ikcous-publicada e na savy:
 # calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e
 # send-push. Antes, uma delas que mudasse numa release deixava a loja PARADA
-# pelo nome (o portão não imprimia comando). Nenhuma outra entra, a almeida
+# pelo nome (o portão não imprimia comando). EXCEÇÃO (14/10/2026): mais uma
+# NOMEADA, também SÓ na ikcous-publicada e na savy: `credenciais-email` (a lojista
+# cadastra o Gmail da loja no painel; ela é admin-only, verify_jwt = true no
+# config.toml). Nenhuma outra entra, a almeida
 # segue nas cinco e a send-order-whatsapp continua proibida. O verify_jwt de
 # cada uma é o do supabase/config.toml (o workflow nunca passa flag). A lista
 # por loja que a release enxerga é
@@ -159,12 +162,12 @@ jobs:
             if [ "$CLIENTE" = "sim" ]; then
               case "$n" in
                 criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
-                send-order-confirmation|calculate-shipping|notify-new-order|send-otp-email|melhor-envio-etiqueta|send-push)
+                send-order-confirmation|calculate-shipping|notify-new-order|send-otp-email|melhor-envio-etiqueta|send-push|credenciais-email)
                   case "$PROJETO" in
                     ikcous-publicada|savy) ;;
                     *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (as outras seis nomeadas só sobem na IKCOUS e na Savy)"; exit 1 ;;
                   esac ;;
-                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (mais as seis nomeadas: send-order-confirmation, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta e send-push, só na IKCOUS e na Savy)"; exit 1 ;;
+                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (mais as sete nomeadas: send-order-confirmation, calculate-shipping, notify-new-order, send-otp-email, melhor-envio-etiqueta, send-push e credenciais-email, só na IKCOUS e na Savy)"; exit 1 ;;
               esac
             fi
             if [ ! -f "supabase/functions/$n/index.ts" ]; then

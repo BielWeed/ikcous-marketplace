@@ -50,7 +50,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { dispararPushContadoReal } from "./aviso-ao-lojista.ts";
 import { enviarComprovantePedido } from "./comprovante.ts";
 import { escaparHtml, formatarBRL, numeroDoPedido } from "./pedido.ts";
-import { enviarEmail, remetenteConfigurado } from "./smtp.ts";
+import { resolverRemetente } from "./email-da-loja.ts";
+import { enviarEmail } from "./smtp.ts";
 import { comTempoLimite } from "./webpush.ts";
 
 type Supabase = ReturnType<typeof createClient>;
@@ -279,10 +280,16 @@ export function assuntoDoAvisoDePagamentoAtrasado(orderId: string, nomeDaLoja: s
 export async function dispararAvisoDePagamentoAtrasadoReal(args: {
   supabase: Supabase;
   orderId: string;
+  /** Costura de teste: em produção, o resolvedor e o envio reais. */
+  deps?: { resolverRemetente?: typeof resolverRemetente; enviarEmail?: typeof enviarEmail };
 }): Promise<void> {
   const { supabase, orderId } = args;
+  const resolver = args.deps?.resolverRemetente ?? resolverRemetente;
+  const enviar = args.deps?.enviarEmail ?? enviarEmail;
   try {
-    if (!remetenteConfigurado()) {
+    // Falha fechada ANTES de reservar (mesma regra do comprovante).
+    const remetente = await resolver(supabase);
+    if (remetente.origem === "nenhum") {
       console.error("efeitos-do-pagamento: SMTP não configurado — aviso de pagamento atrasado não enviado", orderId);
       return;
     }
@@ -322,11 +329,11 @@ export async function dispararAvisoDePagamentoAtrasadoReal(args: {
       .maybeSingle();
     const nomeDaLoja = String((config as Record<string, unknown> | null)?.store_name ?? "");
     try {
-      await enviarEmail({
+      await enviar({
         para: destinatario,
         assunto: assuntoDoAvisoDePagamentoAtrasado(orderId, nomeDaLoja),
         html: htmlDoAvisoDePagamentoAtrasado({ orderId, nomeDaLoja }),
-      });
+      }, remetente);
     } catch (erroEnvio) {
       await supabase
         .rpc("liberar_email_de_confirmacao", { p_order_id: orderId })
