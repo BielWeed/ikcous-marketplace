@@ -61,6 +61,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
 import { supabase } from "@/lib/supabase";
+import { urlDoPedidoNoPush } from "@/lib/url-do-pedido-no-push";
 import { cn } from "@/lib/utils";
 import {
   valorDevolverAgora,
@@ -1399,6 +1400,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             targetUserId: alvo.userId,
             title,
             body,
+            // Sem `url` o toque no aviso abre a vitrine ("/"): o service
+            // worker lê só `data.url`, que a edge preenche com `url || "/"`.
+            url: urlDoPedidoNoPush(orderId),
             data: { orderId, type: "order_status" },
           },
           headers: token
