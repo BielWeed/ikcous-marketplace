@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Pendente = {
   resolve: (corpo: unknown) => void;
+  reject: (erro: unknown) => void;
 };
 
 const pendentes = vi.hoisted(() => ({
@@ -60,8 +61,8 @@ vi.mock("@/lib/supabase", () => {
     // biome-ignore lint/suspicious/noThenProperty: mock de consulta precisa ser awaitable
     Object.defineProperty(alvo, "then", {
       value: (res: (v: unknown) => unknown, rej: (r: unknown) => unknown) =>
-        new Promise((resolve) => {
-          pendentes.fila.push({ resolve });
+        new Promise((resolve, reject) => {
+          pendentes.fila.push({ resolve, reject });
         }).then(res, rej),
     });
     return alvo;
@@ -243,6 +244,24 @@ describe("useOrders — leitura da conta A em voo não pousa na conta B", () => 
         data: null,
         error: { message: "Failed to fetch" },
       });
+      await leitura;
+    });
+
+    expect(exposto.ordersLoadError).toBeNull();
+    expect(toasts.erro).not.toHaveBeenCalled();
+  });
+
+  it("A em voo, troca para B, a leitura de A CAI (rede): o erro e o toast de A não aparecem para B", async () => {
+    await montarComoA();
+
+    let leitura!: Promise<unknown>;
+    await act(async () => {
+      leitura = exposto.fetchUserOrders!();
+    });
+    await trocarParaB();
+
+    await act(async () => {
+      pendentes.fila[0].reject(new TypeError("Failed to fetch"));
       await leitura;
     });
 
