@@ -12,6 +12,14 @@ export const REVIEWS_CACHE_KEY_PREFIX = "ikcous_reviews_cache_";
 
 const memoryReviewsCache = new Map<string, Review[]>();
 
+// Geração do cache: sobe a cada limpeza (logout, troca de conta). Quem começa
+// uma leitura captura o número e, quando a resposta chega, só grava se ele não
+// mudou — senão a resposta atrasada de quem acabou de sair devolveria ao
+// aparelho (memória e `localStorage`) a lista que a limpeza apagou.
+let geracaoDoCache = 0;
+
+export const geracaoAtualDoCache = (): number => geracaoDoCache;
+
 export const getReviewsCache = (productId: string): Review[] | null => {
   if (memoryReviewsCache.has(productId)) {
     return memoryReviewsCache.get(productId) as Review[];
@@ -47,9 +55,23 @@ export const updateReviewsCache = (productId: string, newReviews: Review[]) => {
   }
 };
 
+/** Grava no cache só se nenhuma limpeza aconteceu desde que `geracao` foi
+ * capturada (`geracaoAtualDoCache()` no começo da operação assíncrona).
+ * Devolve se gravou. */
+export const updateReviewsCacheSeMesmaGeracao = (
+  productId: string,
+  newReviews: Review[],
+  geracao: number,
+): boolean => {
+  if (geracao !== geracaoDoCache) return false;
+  updateReviewsCache(productId, newReviews);
+  return true;
+};
+
 /** Esvazia SÓ o mapa em memória (não depende de `window`). A varredura das
  * chaves do `localStorage` é a de `clearLocalUserData`, no `AuthContext`. */
 export function esvaziarAvaliacoesEmMemoria() {
+  geracaoDoCache++;
   memoryReviewsCache.clear();
 }
 
@@ -57,6 +79,7 @@ export function esvaziarAvaliacoesEmMemoria() {
  * (uid → uid), que não passa por `clearLocalUserData`. Protegido: modo
  * privado ou política do navegador podem lançar. */
 export function esquecerAvaliacoesGuardadas() {
+  geracaoDoCache++;
   memoryReviewsCache.clear();
   if (typeof window === "undefined") return;
   try {

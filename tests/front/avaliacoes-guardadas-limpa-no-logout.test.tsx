@@ -252,4 +252,76 @@ describe("avaliações guardadas — apagadas no logout e na troca de usuário",
     expect(cache.getReviewsCache(PRODUTO)).toEqual(AVALIACAO_PENDENTE);
     expect(localStorage.getItem(CHAVE)).not.toBeNull();
   });
+
+  // Varrer o localStorage de frente para trás removendo durante a iteração
+  // PULA chaves (o índice seguinte desliza para a posição já visitada): com
+  // um produto só o defeito não aparece. Aqui são 4 produtos guardados,
+  // vizinhos, e chaves de outro prefixo que precisam sobreviver.
+  const PRODUTOS = ["p1", "p2", "p3", "p4"];
+  const CHAVES_DE_AVALIACAO = PRODUTOS.map((p) => `ikcous_reviews_cache_${p}`);
+  const CHAVES_DE_OUTRO_PREFIXO = ["ikcous_questions_cache_p1", "tema-escuro"];
+
+  function guardarVariosProdutos(cache: {
+    updateReviewsCache: (id: string, lista: any[]) => void;
+  }) {
+    localStorage.setItem(CHAVES_DE_OUTRO_PREFIXO[0] as string, "[]");
+    // As chaves de avaliação ficam CONTÍGUAS (o pulo só acontece entre duas
+    // chaves a apagar vizinhas); as alheias ficam antes e depois do bloco.
+    for (const p of PRODUTOS) {
+      cache.updateReviewsCache(p, AVALIACAO_PENDENTE);
+    }
+    for (const p of PRODUTOS) {
+      localStorage.setItem(`ikcous_questions_cache_${p}_x`, "[]");
+    }
+    localStorage.setItem(CHAVES_DE_OUTRO_PREFIXO[1] as string, "claro");
+    for (const chave of CHAVES_DE_AVALIACAO) {
+      expect(localStorage.getItem(chave)).not.toBeNull();
+    }
+  }
+
+  function esperarSoOutroPrefixo() {
+    for (const chave of CHAVES_DE_AVALIACAO) {
+      expect(localStorage.getItem(chave)).toBeNull();
+    }
+    for (const p of PRODUTOS) {
+      // A chave de perguntas (público) e as alheias não são tocadas.
+      expect(localStorage.getItem(`ikcous_questions_cache_${p}_x`)).toBe("[]");
+    }
+    expect(localStorage.getItem(CHAVES_DE_OUTRO_PREFIXO[0] as string)).toBe(
+      "[]",
+    );
+    expect(localStorage.getItem(CHAVES_DE_OUTRO_PREFIXO[1] as string)).toBe(
+      "claro",
+    );
+  }
+
+  it("5. SIGNED_OUT com vários produtos guardados apaga TODAS as chaves de avaliação e só elas", async () => {
+    const { cache, callback } = await montarLogado();
+    guardarVariosProdutos(cache);
+
+    await act(async () => {
+      callback()("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+
+    esperarSoOutroPrefixo();
+    for (const p of PRODUTOS) {
+      expect(cache.getReviewsCache(p)).toBeNull();
+    }
+  });
+
+  it("6. troca direta de conta com vários produtos guardados apaga TODAS as chaves de avaliação e só elas", async () => {
+    const { cache, callback } = await montarLogado();
+    guardarVariosProdutos(cache);
+
+    await act(async () => {
+      callback()("SIGNED_IN", sessaoDe("user-b"));
+      await esperarMicrotarefas();
+    });
+
+    esperarSoOutroPrefixo();
+    for (const p of PRODUTOS) {
+      expect(cache.getReviewsCache(p)).toBeNull();
+    }
+  });
 });
