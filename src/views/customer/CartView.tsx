@@ -422,12 +422,24 @@ export function CartView({
 
   // "Tentar de novo" da lista de pedidos: refaz a leitura do servidor. O hook
   // limpa o erro quando a resposta vem ok e o mantém se falhar de novo.
+  const devolverFocoDoRetryRef = useRef(false);
   const tentarCarregarPedidosDeNovo = useCallback(() => {
+    devolverFocoDoRetryRef.current = true;
     setIsLoadingOrders(true);
     fetchUserOrders().then(() => {
       setIsLoadingOrders(false);
     });
   }, [fetchUserOrders]);
+
+  // Foco de quem tocou em "Tentar de novo": se a leitura falhar de novo, o
+  // botão continua montado (a OrderList o mantém, "Carregando…") e o foco
+  // fica nele. Se der certo, o botão sai de cena — o foco vai para o painel
+  // da aba (tabIndex -1, estável), em vez de cair no corpo da página.
+  useEffect(() => {
+    if (!devolverFocoDoRetryRef.current || isLoadingOrders) return;
+    devolverFocoDoRetryRef.current = false;
+    if (!erroDosPedidos) document.getElementById("painel-orders")?.focus();
+  }, [isLoadingOrders, erroDosPedidos]);
 
   useEffect(() => {
     const getScrollElement = () => document.querySelector("main");
@@ -1181,6 +1193,7 @@ export function CartView({
             <motion.div
               key="orders-content"
               id="painel-orders"
+              tabIndex={-1}
               role="tabpanel"
               aria-labelledby="tab-orders"
               custom={tabDirection}
@@ -1192,7 +1205,7 @@ export function CartView({
                 x: { ease: [0.16, 1, 0.3, 1], duration: 0.38 },
                 opacity: { duration: 0.2 },
               }}
-              className="flex w-full flex-1 flex-col px-6 pb-6 pt-0"
+              className="flex w-full flex-1 flex-col px-6 pb-6 pt-0 focus:outline-none"
             >
               {orderViewMode === "guest" && (
                 <OrderSearch

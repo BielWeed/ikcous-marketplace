@@ -223,7 +223,22 @@ export const OrderList = memo(function OrderList({
   // Falha de carregamento não é lista vazia. O convidado nunca tem erro aqui
   // (a lista dele vem da busca por OTP/WhatsApp, não desta consulta).
   const temPedidosEmMemoria = hasAnyOrders ?? orders.length > 0;
-  const falhou = Boolean(loadError) && !isGuest && !isLoadingOrders;
+  // A falha continua na tela ENQUANTO a releitura roda (o botão fica montado,
+  // desabilitado e dizendo "Carregando…"): se ele sumisse, o foco de quem
+  // tocou — teclado, leitor de tela — cairia no corpo da página. Quem decide
+  // se a releitura ainda corre é `isLoadingOrders`; o erro só sai quando o
+  // hook recebe uma resposta ok.
+  const falhou = Boolean(loadError) && !isGuest;
+  const relendo = Boolean(isLoadingOrders);
+  // Sem internet o conselho é a conexão; com internet (5xx, sessão vencida,
+  // servidor fora) mandar "verificar a conexão" seria acusar quem não errou.
+  const semInternet =
+    typeof navigator !== "undefined" && navigator.onLine === false;
+  // `aria-disabled`, não `disabled`: `disabled` tira o foco do botão em alguns
+  // navegadores. O clique é ignorado aqui mesmo enquanto relê.
+  const tentarDeNovo = () => {
+    if (!relendo) onRetry?.();
+  };
 
   if (falhou && !temPedidosEmMemoria && orders.length === 0) {
     return (
@@ -260,16 +275,20 @@ export const OrderList = memo(function OrderList({
               : "text-xs xs:text-sm max-w-[300px]",
           )}
         >
-          Verifique sua conexão e tente de novo. Se você acabou de pagar, o
-          pedido não sumiu — ele só não apareceu aqui ainda.
+          {semInternet
+            ? "Verifique sua conexão e tente de novo."
+            : "Tente de novo em instantes."}{" "}
+          Se você acabou de pagar, o pedido não sumiu — ele só não apareceu aqui
+          ainda.
         </p>
         {onRetry && (
           <button
             type="button"
-            onClick={onRetry}
-            className="mt-5 rounded-2xl bg-zinc-900 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-zinc-800 active:scale-95"
+            onClick={tentarDeNovo}
+            aria-disabled={relendo}
+            className="mt-5 rounded-2xl bg-zinc-900 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-zinc-800 active:scale-95 aria-disabled:opacity-60"
           >
-            Tentar de novo
+            {relendo ? "Carregando…" : "Tentar de novo"}
           </button>
         )}
       </div>
@@ -290,10 +309,11 @@ export const OrderList = memo(function OrderList({
         {onRetry && (
           <button
             type="button"
-            onClick={onRetry}
-            className="shrink-0 rounded-lg bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900 active:scale-95"
+            onClick={tentarDeNovo}
+            aria-disabled={relendo}
+            className="shrink-0 rounded-lg bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900 active:scale-95 aria-disabled:opacity-60"
           >
-            Tentar de novo
+            {relendo ? "Carregando…" : "Tentar de novo"}
           </button>
         )}
       </div>

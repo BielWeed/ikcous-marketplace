@@ -68,6 +68,7 @@ describe("OrderList — falha de carregamento não vira 'Nenhum pedido'", () => 
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.restoreAllMocks();
   });
 
   async function renderizar(
@@ -123,11 +124,75 @@ describe("OrderList — falha de carregamento não vira 'Nenhum pedido'", () => 
     expect(botaoTentar()).toBeUndefined();
   });
 
-  it("carregando (esqueleto): não mostra erro nem 'Nenhum pedido'", async () => {
-    const texto = await renderizar({ isLoadingOrders: true, loadError: FALHA });
+  it("primeira carga em andamento (sem erro): não mostra erro nem 'Nenhum pedido'", async () => {
+    const texto = await renderizar({ isLoadingOrders: true, loadError: null });
 
     expect(texto).not.toContain("Não conseguimos carregar");
     expect(texto).not.toContain("Nenhum pedido");
+  });
+
+  it("releitura depois de falha: o botão FICA montado, 'Carregando…', sem 'Nenhum pedido' e sem novo clique", async () => {
+    const onRetry = vi.fn();
+    const texto = await renderizar({
+      isLoadingOrders: true,
+      loadError: FALHA,
+      onRetry,
+    });
+
+    expect(texto).toContain("Não conseguimos carregar seus pedidos agora");
+    expect(texto).not.toContain("Nenhum pedido");
+    expect(texto).toContain("Carregando");
+    expect(botaoTentar()).toBeUndefined();
+
+    const botao = hospedeiro.querySelector("button") as HTMLButtonElement;
+    expect(botao.getAttribute("aria-disabled")).toBe("true");
+    // aria-disabled (não `disabled`) mantém o foco; o clique é ignorado.
+    expect(botao.disabled).toBe(false);
+    await act(async () => {
+      botao.click();
+    });
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it("o foco de quem tocou em 'Tentar de novo' fica no mesmo botão durante a releitura", async () => {
+    const onRetry = vi.fn();
+    await renderizar({ loadError: FALHA, onRetry });
+    const botao = botaoTentar()!;
+    botao.focus();
+    expect(document.activeElement).toBe(botao);
+
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    await act(async () => {
+      raiz.render(
+        <OrderList
+          orders={[]}
+          onNavigate={() => {}}
+          loadError={FALHA}
+          onRetry={onRetry}
+          isLoadingOrders
+        />,
+      );
+    });
+
+    expect(botao.isConnected).toBe(true);
+    expect(document.activeElement).toBe(botao);
+  });
+
+  it("sem internet: o conselho é verificar a conexão", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    const texto = await renderizar({ loadError: FALHA, onRetry: () => {} });
+
+    expect(texto).toContain("Verifique sua conexão e tente de novo.");
+    expect(texto).not.toContain("Tente de novo em instantes");
+  });
+
+  it("com internet (5xx, sessão vencida): não acusa a conexão", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    const texto = await renderizar({ loadError: FALHA, onRetry: () => {} });
+
+    expect(texto).toContain("Tente de novo em instantes.");
+    expect(texto).not.toContain("Verifique sua conexão");
+    expect(texto).toContain("o pedido não sumiu");
   });
 
   it("com pedidos em memória e recarga falha: a lista fica e só aparece um aviso discreto", async () => {

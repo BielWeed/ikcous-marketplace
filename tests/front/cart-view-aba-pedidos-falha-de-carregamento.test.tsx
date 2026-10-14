@@ -207,6 +207,44 @@ describe("CartView — aba Meus Pedidos: falha de carregamento não é lista vaz
     expect(texto()).toContain("Nenhum pedido");
   });
 
+  it("foco: releitura que dá certo leva o foco ao painel da aba, não ao corpo da página", async () => {
+    duble.proximaFalha = true;
+    await montarAbaPedidos();
+    const botao = botaoTentar()!;
+    botao.focus();
+
+    duble.proximaFalha = false;
+    await act(async () => {
+      botao.click();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(botao.isConnected).toBe(false);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.id).toBe("painel-orders");
+  });
+
+  it("foco: releitura que falha de novo mantém o MESMO botão montado e focado", async () => {
+    duble.proximaFalha = true;
+    await montarAbaPedidos();
+    const botao = botaoTentar()!;
+    botao.focus();
+
+    await act(async () => {
+      botao.click();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(duble.chamadasFetch).toBe(2);
+    expect(botao.isConnected).toBe(true);
+    expect(document.activeElement).toBe(botao);
+    expect(botao.textContent).toContain("Tentar de novo");
+  });
+
   it("lista vazia de verdade (busca ok, 0 pedidos): 'Nenhum pedido' segue lá", async () => {
     await montarAbaPedidos();
 

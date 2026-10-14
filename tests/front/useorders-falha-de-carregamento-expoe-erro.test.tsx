@@ -88,8 +88,22 @@ vi.mock("@/lib/supabase", () => {
   };
 });
 
+// A conta logada é mutável (teste de troca de conta); o objeto `user` é
+// estável por id, como o do AuthContext de verdade.
+const conta = vi.hoisted(() => ({
+  id: "cliente-1",
+  usuarios: new Map<string, { id: string }>(),
+}));
+
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: { id: "cliente-1" }, isAdmin: false }),
+  useAuth: () => {
+    let user = conta.usuarios.get(conta.id);
+    if (!user) {
+      user = { id: conta.id };
+      conta.usuarios.set(conta.id, user);
+    }
+    return { user, isAdmin: false };
+  },
 }));
 
 vi.mock("sonner", () => ({
@@ -156,6 +170,7 @@ describe("useOrders — falha de carregamento é exposta, não vira lista vazia"
     exposto.fetchUserOrders = null;
     exposto.ordersLoadError = undefined;
     exposto.orders = [];
+    conta.id = "cliente-1";
     localStorage.clear();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
@@ -267,6 +282,23 @@ describe("useOrders — falha de carregamento é exposta, não vira lista vazia"
     resposta.modo = "vazio";
     await act(async () => {
       await exposto.fetchUserOrders!();
+    });
+
+    expect(exposto.ordersLoadError).toBeNull();
+  });
+
+  it("troca de conta: a falha da conta A NÃO aparece para a conta B", async () => {
+    await montar();
+    resposta.modo = "erro";
+    await act(async () => {
+      await exposto.fetchUserOrders!();
+    });
+    // Âncora: a conta A está com a falha pendente.
+    expect(exposto.ordersLoadError).not.toBeNull();
+
+    conta.id = "cliente-2";
+    await act(async () => {
+      raiz.render(<Alvo />);
     });
 
     expect(exposto.ordersLoadError).toBeNull();
