@@ -2230,8 +2230,11 @@ const AppContent = () => {
               .single();
             if (error) {
               // PGRST116 = `.single()` não achou linha nenhuma: não existe.
+              // 22P02 = o id do link nem é um uuid (link truncado): também
+              // não existe, e vai para a Home como antes.
               // Qualquer outro erro (rede, servidor) é falha de CARREGAR.
-              if ((error as { code?: string }).code === "PGRST116") {
+              const codigoDoErro = (error as { code?: string }).code;
+              if (codigoDoErro === "PGRST116" || codigoDoErro === "22P02") {
                 console.error(
                   "[App] verifyProduct: produto não existe:",
                   error,

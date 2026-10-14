@@ -430,6 +430,22 @@ describe("link de produto aberto sem rede nao vai para a Home", () => {
     expect(caminho()).toBe("/");
   });
 
+  it("link com código malformado (22P02, não é uuid) é 'não existe': vai para a Home, como antes", async () => {
+    catalogo.respostaDoProduto = {
+      data: null,
+      error: {
+        message: 'invalid input syntax for type uuid: "abc"',
+        code: "22P02",
+      },
+    };
+    await abrir();
+    await clicar("produto-inexistente");
+    await assentar(20);
+
+    expect(container?.textContent).not.toContain("Não conseguimos carregar");
+    expect(caminho()).toBe("/");
+  });
+
   it("consulta sem erro e sem linha também é 'não existe': vai para a Home", async () => {
     catalogo.respostaDoProduto = { data: null, error: null };
     await abrir();
