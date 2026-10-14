@@ -87,6 +87,12 @@ import {
   avisarAdminUmaVez,
   dispararPushContadoReal,
 } from "../_shared/aviso-ao-lojista.ts";
+// 14/10/2026: o lojista fica sabendo quando o CLIENTE cancela (passo próprio,
+// mais abaixo; o porquê de morar nesta rotina está no cabeçalho do módulo).
+import {
+  avisarCancelamentosDoCliente,
+  type ResumoDosCancelamentos,
+} from "../_shared/aviso-de-cancelamento-do-cliente.ts";
 import {
   reconsultarContestacoesPresas,
   type ResumoDaReconsulta,
@@ -868,6 +874,33 @@ async function handler(
     }
   }
 
+  // ─── PASSO NOVO (14/10/2026): avisa o lojista que o CLIENTE cancelou um pedido
+  // pago. ANTES do passo do estorno, de propósito: o estorno automático vira o
+  // pedido para 'estornado' (o módulo aceita os dois, mas assim o texto sai
+  // com o pedido ainda 'pago', como o cliente o deixou). TRY PRÓPRIO, como os
+  // passos vizinhos: leitura do histórico fora do ar, perfil ilegível ou push
+  // que não sobe só registram — nunca mudam pagamento, estorno nem resposta
+  // (a resposta ganha só a contagem `cancelamentos`). Não depende do token do
+  // Mercado Pago: não fala com ele.
+  let cancelamentos: ResumoDosCancelamentos = { candidatos: 0, avisados: 0, ignorados: 0, falhas: 0 };
+  try {
+    cancelamentos = await avisarCancelamentosDoCliente({
+      supabase,
+      avisar: (chave, aviso) =>
+        avisarAdminUmaVez({
+          supabase,
+          enviarPushContado: deps.enviarPushContado ??
+            ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+          chave,
+          aviso,
+          rotulo: "reconciliar-pagamentos",
+        }),
+      rotulo: "reconciliar-pagamentos",
+    });
+  } catch (erro) {
+    console.error("reconciliar-pagamentos: aviso de cancelamento do cliente falhou (não fatal)", erro);
+  }
+
   // ─── PASSO NOVO (Task 4, frente "estorno pelo app"): processa a fila de
   // `order_refunds` pendentes — o cron pega tudo que a edge do clique do
   // lojista (T3) ou o cancelamento automático (T1) deixaram para trás. TRY
@@ -1245,6 +1278,7 @@ async function handler(
         falhos: refundsFalhos,
       },
       contestacoes,
+      cancelamentos,
     },
     200,
   );
