@@ -2876,7 +2876,7 @@ const AppContent = () => {
         {isTransitionSupported ? (
           !isMainTab && (
             <div
-              className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none"
+              className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none [&>*]:shrink-0"
               style={{ viewTransitionName: "main-content" }}
             >
               {renderCustomerSecondaryView()}
