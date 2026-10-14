@@ -24,20 +24,22 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
 1. Fazer o deploy da função via CLI:
 
    ```bash
-   supabase functions deploy send-push --project-ref dekxabvqdsuukijblazl
+   supabase functions deploy send-push --project-ref cafkrminfnokvgjqtkle
    ```
 
-   **Informe sempre `--project-ref` no comando.** A loja ativa usa
-   `dekxabvqdsuukijblazl`; o projeto anterior `cafkrminfnokvgjqtkle` está
-   pausado. O `lofznuxcvezrhxsgjqyg` é o sandbox e não recebe a publicação da
+   **Informe sempre `--project-ref` no comando.** A IKCOUS usa
+   `cafkrminfnokvgjqtkle` e a Savy `gnjsrucsmjkajijrakzr`; o `dekxabvqdsuukijblazl`
+   é o projeto antigo (nenhuma loja no ar chama as functions dele) e não deve receber
+   publicação. O `lofznuxcvezrhxsgjqyg` é o sandbox e não recebe a publicação da
    loja. Sem o ref explícito, o CLI abre uma escolha interativa na qual confirmar
    o projeto errado pode publicar sem erro.
 
    Desde 17/09/2026 dá para publicar sem CLI na máquina: o workflow
    `publicar-functions` (GitHub → Actions → "Publicar edge functions
    (Supabase)") roda o mesmo comando num runner do GitHub, com o destino
-   escolhido numa lista fechada — `loja` ou `sandbox`, sem cursor no lugar
-   errado. Como disparar e o que ele recusa: §5.3.2.
+   escolhido numa lista fechada — `ikcous-publicada` (IKCOUS), `savy`,
+   `almeida`, `sandbox` ou `loja`, sem cursor no lugar errado. Atenção: `loja`
+   **não é a loja ativa**, é o projeto antigo `dekxabvqdsuukijblazl`. Como disparar e o que ele recusa: §5.3.2.
 
    O `lofznuxcvezrhxsgjqyg` é o **sandbox do MCP** — apesar do nome, não é loja
    de cliente. É para onde os `mcp.json` das IDEs apontam, para o servidor MCP
@@ -75,7 +77,7 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    **A `notify-new-order` também exige `--no-verify-jwt`** (PEDIDO-020, #89):
 
    ```bash
-   supabase functions deploy notify-new-order --no-verify-jwt --project-ref dekxabvqdsuukijblazl
+   supabase functions deploy notify-new-order --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
    ```
 
    Ela é chamada pelo navegador do CLIENTE logo depois do pedido — muitas vezes
@@ -90,9 +92,9 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
 
    **O que estava publicado em 11/08/2026** — medido depois da
    despublicação da `send-order-whatsapp`, com
-   `supabase functions list --project-ref cafkrminfnokvgjqtkle` no projeto
-   anterior. Esta tabela é histórica; para conferir a loja ativa, rode
-   `supabase functions list --project-ref dekxabvqdsuukijblazl`:
+   `supabase functions list --project-ref cafkrminfnokvgjqtkle`, projeto que hoje é
+   a IKCOUS. Esta tabela é histórica (foto de 11/08/2026); para ver o que está
+   publicado hoje, rode o mesmo comando de novo:
 
    | Função | Versão | Atualizada em (UTC) |
    | --- | --- | --- |
@@ -119,8 +121,9 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
      com o painel fechado — continua não exercitado**, porque testá-lo cria
      pedido em produção.
    - **`send-order-whatsapp` foi DESPUBLICADA em 11/08/2026** (#167, rastreada
-     pela #187). O comando e a saída abaixo são registro histórico do projeto
-     anterior; **não execute este comando**:
+     pela #187). O comando e a saída abaixo são registro histórico, já executado em
+     11/08/2026 no `cafkrminfnokvgjqtkle` (a saída `Deleted Function` abaixo é a
+     confirmação); **não execute este comando**:
 
      ```
      supabase functions delete send-order-whatsapp --project-ref cafkrminfnokvgjqtkle --yes
@@ -225,11 +228,18 @@ sem dizer **como o PIX de teste é pago** — que é a única parte não óbvia 
 4. A **assinatura secreta** do webhook, que aparece em *Detalhes da aplicação → Notificações*
    ao cadastrar a URL de notificação.
 
-A URL a cadastrar é:
+A URL a cadastrar é a do projeto Supabase **da própria loja** (cada loja publica a sua
+`webhook-mercadopago`, no projeto dela):
 
 ```
-https://dekxabvqdsuukijblazl.supabase.co/functions/v1/webhook-mercadopago
+https://<ref-do-projeto-da-loja>.supabase.co/functions/v1/webhook-mercadopago
 ```
+
+- **IKCOUS:** `https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago`
+- **Savy:** `https://gnjsrucsmjkajijrakzr.supabase.co/functions/v1/webhook-mercadopago`
+
+O `dekxabvqdsuukijblazl` é o projeto antigo (nenhuma loja no ar chama as functions dele): **não cadastre aviso nele**. O
+aviso cadastrado no projeto errado não chega à loja certa e o pagamento não confirma sozinho.
 
 **Isto mudou com a migração para a Orders API.** Com `montarCorpoPix` (clássico) o código mandava
 `notification_url` dentro de cada cobrança, e o cadastro no painel era redundante para o
@@ -342,15 +352,15 @@ O `verify_jwt` de cada uma está versionado em `supabase/config.toml`, mas **a f
 comando ganha do arquivo**. Então os comandos abaixo não são intercambiáveis:
 
 ```bash
-supabase functions deploy criar-pagamento --project-ref dekxabvqdsuukijblazl
+supabase functions deploy criar-pagamento --project-ref cafkrminfnokvgjqtkle
 ```
 
 ```bash
-supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref dekxabvqdsuukijblazl
+supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
 ```
 
 ```bash
-supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref dekxabvqdsuukijblazl
+supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
 ```
 
 - `criar-pagamento` vai **sem** `--no-verify-jwt`: quem chama é o cliente com sessão.
@@ -365,11 +375,11 @@ valer de verdade (§5.2.1) e trouxe duas functions para esta mesma folha. As dua
 **sem** `--no-verify-jwt`:
 
 ```bash
-supabase functions deploy estornar-pagamento --project-ref dekxabvqdsuukijblazl
+supabase functions deploy estornar-pagamento --project-ref cafkrminfnokvgjqtkle
 ```
 
 ```bash
-supabase functions deploy credenciais-mercado-pago --project-ref dekxabvqdsuukijblazl
+supabase functions deploy credenciais-mercado-pago --project-ref cafkrminfnokvgjqtkle
 ```
 
 - `estornar-pagamento` já existia e passou a resolver a credencial como as outras três;
