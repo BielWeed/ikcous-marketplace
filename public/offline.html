@@ -5,6 +5,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sem conexão</title>
+    <!--
+        Tenta de novo sozinha a cada 10 segundos, SEM script: a CSP de produção
+        (vercel.json) só libera 1 hash em script-src, então um script em linha
+        ou um atributo onclick aqui seriam bloqueados e a página ficaria parada para sempre.
+        O service worker responde a este endereço de novo a cada recarga: com
+        sinal, abre a loja; sem sinal, volta para esta página.
+    -->
+    <meta http-equiv="refresh" content="10" />
     <style>
         *,
         *::before,
@@ -222,6 +230,7 @@
             font-size: 14px;
             font-weight: 800;
             cursor: pointer;
+            text-decoration: none;
             transition: transform 0.15s, opacity 0.15s;
         }
 
@@ -277,48 +286,18 @@
         </div>
 
         <h1>Sem conexão</h1>
-        <p>Você está offline. Reconecte para continuar navegando.</p>
+        <p>Sem internet. Confira sua conexão; vamos tentar de novo sozinhos.</p>
 
-        <button class="btn" onclick="handleRetry()" id="retry-btn">
+        <a class="btn" href="" id="retry-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M23 4v6h-6" />
                 <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
             </svg>
             Tentar novamente
-        </button>
-        <div id="countdown"></div>
-
-        <div class="bottom-info">SUPERNOVA · v15.0</div>
+        </a>
+        <div id="countdown">Nova tentativa automática a cada 10 segundos.</div>
     </div>
-
-    <script>
-        // Auto-retry after 10s
-        let secs = 10;
-        const countEl = document.getElementById('countdown');
-        const retryBtn = document.getElementById('retry-btn');
-
-        function updateCountdown() {
-            countEl.textContent = `Tentativa automática em ${secs}s`;
-            if (secs <= 0) { window.location.reload(); return; }
-            secs--;
-            setTimeout(updateCountdown, 1000);
-        }
-        updateCountdown();
-
-        function handleRetry() {
-            retryBtn.textContent = 'Conectando...';
-            retryBtn.disabled = true;
-            secs = 0;
-            window.location.reload();
-        }
-
-        // If back online, reload automatically
-        window.addEventListener('online', () => {
-            countEl.textContent = 'Conectado! Recarregando...';
-            setTimeout(() => window.location.reload(), 500);
-        });
-    </script>
 </body>
 
 </html>

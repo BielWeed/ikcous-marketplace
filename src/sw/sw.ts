@@ -199,6 +199,27 @@ function respostaEmManutencao(): Response {
   );
 }
 
+/**
+ * A página "Sem internet" (`public/offline.html`), guardada no precache. Só
+ * serve para o caso em que a REDE falhou: quando a rede responde (inclusive
+ * o 503 "sem ficha" do porteiro), a resposta passa como veio — mostrar "sem
+ * internet" com a internet funcionando e a loja fora do ar de verdade seria
+ * mentir para a cliente. É a mesma página para toda a frota: sem marca.
+ *
+ * Devolve `null` quando ela não está guardada (precache que falhou) ou o
+ * cache não responde; quem chama cai no 503 de manutenção, como sempre foi.
+ * Nunca rejeita: uma falha aqui viraria navegação sem resposta nenhuma.
+ */
+async function paginaSemInternet(): Promise<Response | null> {
+  try {
+    const pagina = await caches.match("/offline.html");
+    return pagina?.ok ? pagina : null;
+  } catch (e) {
+    console.warn("[SW] Falha ao ler a página offline do cache:", e);
+    return null;
+  }
+}
+
 sw.addEventListener("fetch", (event: any) => {
   const url = new URL(event.request.url);
 
@@ -327,7 +348,11 @@ sw.addEventListener("fetch", (event: any) => {
                 if (raiz && (await respostaTemFichaDaLoja(raiz))) {
                   return raiz;
                 }
-                return respostaEmManutencao();
+                // Chegou até aqui por REDE FORA DO AR (o `fetch` lançou) e
+                // nenhuma página guardada serve: a cliente está sem
+                // internet, não a loja sem ficha. "Em manutenção" aqui
+                // fazia a cliente achar que a loja fechou.
+                return (await paginaSemInternet()) ?? respostaEmManutencao();
               });
             });
           });

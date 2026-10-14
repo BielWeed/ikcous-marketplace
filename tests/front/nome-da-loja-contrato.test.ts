@@ -43,7 +43,7 @@ describe("critério 4 — tela estática sem conexão", () => {
       /<img[^>]+src="\/branding\/logo.svg"[^>]+alt=""[^>]+onerror="this.hidden=true"/,
     );
     expect(html).toContain(
-      "Você está offline. Reconecte para continuar navegando.",
+      "Sem internet. Confira sua conexão; vamos tentar de novo sozinhos.",
     );
   });
 });
