@@ -212,6 +212,40 @@ describe("MercadoPagoSection — Pausar avisa que a transportadora para de vende
     expect(pausouNaEdge()).toBe(true);
   });
 
+  it("P6 — caminho ANTIGO (edge sem `faltando`): 'Desligar o pagamento pelo app' também avisa, com as palavras do botão, e só desliga confirmando", async () => {
+    // A edge ainda não atualizada não conhece pausa: o botão diz "Desligar",
+    // e o aviso fala a mesma língua (nada de "pausar"/"retomar" aqui).
+    const { faltando: _semFaltando, ...edgeAntiga } = RECEBENDO;
+    cenario.salvo = { ...edgeAntiga };
+    cenario.respostaPausar = { pix_ligado: false };
+    await montar(true);
+
+    await clique(botaoExato("Desligar o pagamento pelo app"));
+
+    expect(pausouNaEdge()).toBe(false);
+    expect(aviso()).not.toBeNull();
+    expect(aviso()?.textContent).toMatch(/transportadora/i);
+    expect(aviso()?.textContent).toMatch(/outras cidades/i);
+    expect(aviso()?.textContent).not.toMatch(/paus|retom/i);
+    expect(temBotaoExato("Desligar mesmo assim")).toBe(true);
+    expect(temBotaoExato("Pausar mesmo assim")).toBe(false);
+
+    await clique(botaoExato("Desligar mesmo assim"));
+    expect(pausouNaEdge()).toBe(true);
+  });
+
+  it("P6b — caminho antigo SEM transportadora vendendo: 'Desligar' desliga direto", async () => {
+    const { faltando: _semFaltando, ...edgeAntiga } = RECEBENDO;
+    cenario.salvo = { ...edgeAntiga };
+    cenario.respostaPausar = { pix_ligado: false };
+    await montar(false);
+
+    await clique(botaoExato("Desligar o pagamento pelo app"));
+
+    expect(aviso()).toBeNull();
+    expect(pausouNaEdge()).toBe(true);
+  });
+
   it("P5 — depois de pausar e retomar, Pausar volta a perguntar", async () => {
     await montar(true);
     await clique(botaoExato("Pausar"));

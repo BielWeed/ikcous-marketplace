@@ -1,6 +1,9 @@
 import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { AVISO_DE_PAUSAR } from "@/lib/aviso-transportadora-sem-pagamento";
+import {
+  AVISO_DE_DESLIGAR,
+  AVISO_DE_PAUSAR,
+} from "@/lib/aviso-transportadora-sem-pagamento";
 import { lerSupabaseUrl } from "@/lib/env-valores";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
@@ -714,6 +717,14 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   }, [pagamentoLigadoNoServidor]);
   // O aviso em si: no lugar da linha do botão Pausar (nos dois estados em que
   // ela existe), com os dois caminhos — voltar sem mexer, ou pausar mesmo assim.
+  // Edge antiga (`servidorDesatualizado`): o botão da tela diz "Desligar", e o
+  // aviso fala a mesma língua.
+  const textoDoAviso = servidorDesatualizado
+    ? AVISO_DE_DESLIGAR
+    : AVISO_DE_PAUSAR;
+  const rotuloDeConfirmar = servidorDesatualizado
+    ? "Desligar mesmo assim"
+    : "Pausar mesmo assim";
   const avisoDePausar =
     confirmandoPausa && transportadoraVende && config.pix_ligado ? (
       <div
@@ -723,10 +734,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       >
         <p className="flex items-start gap-1.5 text-xs font-bold text-amber-300">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          {AVISO_DE_PAUSAR.titulo}
+          {textoDoAviso.titulo}
         </p>
         <p className="text-[11px] leading-relaxed text-amber-200/90">
-          {AVISO_DE_PAUSAR.detalhe}
+          {textoDoAviso.detalhe}
         </p>
         <div className="flex flex-wrap justify-end gap-2">
           <button
@@ -742,7 +753,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             onClick={() => pausarOuRetomar(false)}
             className="min-h-11 shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
           >
-            Pausar mesmo assim
+            {rotuloDeConfirmar}
           </button>
         </div>
       </div>

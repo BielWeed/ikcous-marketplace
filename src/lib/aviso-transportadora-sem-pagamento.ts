@@ -49,6 +49,16 @@ export const AVISO_DO_FRETE = {
     "Hoje seus clientes de outras cidades não conseguem finalizar a compra. Ligue o pagamento pelo app para voltar a vender para fora da cidade.",
 } as const;
 
+/**
+ * O mesmo aviso, com as palavras do botão "Desligar o pagamento pelo app" —
+ * o caminho antigo, de loja cuja edge ainda não conhece "pausar".
+ */
+export const AVISO_DE_DESLIGAR = {
+  titulo: "Sua transportadora vai parar de vender.",
+  detalhe:
+    "A transportadora só funciona com pagamento pelo app ligado. Enquanto estiver desligado, seus clientes de outras cidades não conseguem finalizar a compra. Você pode ligar de novo quando quiser.",
+} as const;
+
 /** O aviso de ANTES de pausar: a loja VAI entrar nesse estado. */
 export const AVISO_DE_PAUSAR = {
   titulo: "Sua transportadora vai parar de vender.",

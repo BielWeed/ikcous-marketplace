@@ -227,6 +227,44 @@ describe("AdminShippingView — avisa quando a transportadora fica sem pagamento
     expect(aviso()).toBeNull();
   });
 
+  it("F5b — leitura BOA e depois uma releitura que FALHA: o aviso some (a lista velha não vale mais) e volta quando a leitura volta", async () => {
+    // Este é o caso real da guarda `credsErro ? null : nomesLigados`: numa
+    // releitura que falha, a tela NÃO apaga a lista de ligadas que já tinha
+    // (só marca `credsErro`) — sem a guarda, o aviso seguiria de pé apoiado
+    // em dado que a própria tela diz não conseguir confirmar.
+    const { AdminShippingView } = await import(
+      "@/views/admin/AdminShippingView"
+    );
+    const renderizar = (ativa: boolean) =>
+      act(async () => {
+        raiz.render(
+          <AdminShippingView
+            active={ativa}
+            onSetDirty={vi.fn()}
+            onNavigate={onNavigate}
+          />,
+        );
+      });
+    await renderizar(true);
+    await assentar();
+    expect(aviso()).not.toBeNull();
+
+    // A tela sai de cena e volta (a aba de Frete fica montada): é uma
+    // releitura, e agora o servidor não responde.
+    cenario.leituraFalha = true;
+    await renderizar(false);
+    await renderizar(true);
+    await assentar();
+    expect(aviso()).toBeNull();
+
+    // O servidor volta: a releitura boa traz o aviso de volta.
+    cenario.leituraFalha = false;
+    await renderizar(false);
+    await renderizar(true);
+    await assentar();
+    expect(aviso()).not.toBeNull();
+  });
+
   it("F6 — SuperFrete ligada mas sem e-mail de contato (incompleta): não vende, nenhum aviso", async () => {
     cenario.ligados = ["superfrete"];
     cenario.provedores = {

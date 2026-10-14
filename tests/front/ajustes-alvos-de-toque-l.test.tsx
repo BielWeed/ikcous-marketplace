@@ -167,16 +167,45 @@ describe("L1 · Mercado Pago: botões e campos com 44px (estático)", () => {
     ["Copiar prompt", "onClick={copiarPrompt}"],
     ["Salvar chaves", "onClick={salvar}"],
     ["Testar conexão (formulário e aviso)", "onClick={testarConexao}"],
+    // Desde 14/10/2026 o clique em Pausar pode abrir o aviso da transportadora
+    // (`pedirPausa`): cada botão tem o SEU marcador, senão um marcador antigo
+    // passa casando com o botão novo e o Pausar de verdade fica sem guarda.
     [
       "Desligar/Ligar o pagamento pelo app",
-      "onClick={() => pausarOuRetomar(!config.pix_ligado)}",
+      "config.pix_ligado ? pedirPausa() : pausarOuRetomar(true)",
     ],
-    ["Pausar", "onClick={() => pausarOuRetomar(false)}"],
+    ["Pausar", "onClick={pedirPausa}"],
+    ["Pausar mesmo assim (do aviso)", "onClick={() => pausarOuRetomar(false)}"],
+    ["Voltar (do aviso)", "onClick={() => setConfirmandoPausa(false)}"],
     ["Retomar", "onClick={() => pausarOuRetomar(true)}"],
   ])("(b) o botão %s tem min-h-11", (_nome, marcador) => {
     const tags = aberturasComMarcador(fonte, "button", marcador);
     for (const tag of tags) expect(tag).toMatch(MIN_H_11);
   });
+
+  it.each([
+    ["Pausar", "onClick={pedirPausa}", "Pausar"],
+    [
+      "Pausar mesmo assim",
+      "onClick={() => pausarOuRetomar(false)}",
+      // O rótulo vira "Desligar mesmo assim" na edge antiga.
+      "{rotuloDeConfirmar}",
+    ],
+    ["Voltar", "onClick={() => setConfirmandoPausa(false)}", "Voltar"],
+  ])(
+    "(b3) o marcador do botão %s casa com UM botão só, e é o dele",
+    (_nome, marcador, rotulo) => {
+      const tags = aberturasComMarcador(fonte, "button", marcador);
+      expect(tags).toHaveLength(1);
+      // O texto do botão é o que vem entre a tag de abertura e o </button>.
+      const fimDaAbertura = fonte.indexOf(tags[0]) + tags[0].length;
+      const texto = fonte.slice(
+        fimDaAbertura,
+        fonte.indexOf("</button>", fimDaAbertura),
+      );
+      expect(texto.trim()).toBe(rotulo);
+    },
+  );
 
   it("(b2) 'Testar conexão' aparece em dois botões e os dois têm min-h-11", () => {
     expect(
