@@ -2,6 +2,7 @@ import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
 import { DevolucaoDoPedidoCard } from "@/components/devolucao/DevolucaoDoPedidoCard";
 import { SolicitarDevolucaoSheet } from "@/components/devolucao/SolicitarDevolucaoSheet";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
+import { FotoDoItemDoPedido } from "@/components/ui/custom/FotoDoItemDoPedido";
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -1081,12 +1082,8 @@ export function OrderDetailsView({
                 const avaliado = reviewedProductIds.has(item.productId);
                 return (
                   <div key={item.productId} className="flex items-start gap-3">
-                    <div className="size-14 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="size-full object-cover"
-                      />
+                    <div className="flex size-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                      <FotoDoItemDoPedido src={item.image} alt={item.name} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold text-zinc-900">
@@ -1188,11 +1185,11 @@ export function OrderDetailsView({
                   order.status === "cancelled" && "opacity-60",
                 )}
               >
-                <div className="relative size-14 flex-shrink-0 overflow-hidden rounded-2xl border border-zinc-100 bg-zinc-50">
-                  <img
+                <div className="relative flex size-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-100 bg-zinc-50">
+                  <FotoDoItemDoPedido
                     src={item.image}
                     alt={item.name}
-                    className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="transition-transform duration-500 group-hover:scale-105"
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
