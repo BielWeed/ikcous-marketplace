@@ -345,6 +345,9 @@ export function OrderDetailsView({
   // pode depender do estado: religar o efeito ao terminar o cancelamento
   // reaplicaria uma versão da lista que talvez ainda não tenha o desfecho).
   const cancelandoRef = useRef(false);
+  // A última versão deste pedido que a lista emitiu ENQUANTO o cancelamento
+  // durava (o efeito que acompanha a lista a guarda aqui em vez de aplicar).
+  const emitidoDuranteOCancelamentoRef = useRef<Order | null>(null);
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [reviewedProductIds, setReviewedProductIds] = useState<Set<string>>(
     new Set(),
@@ -417,6 +420,7 @@ export function OrderDetailsView({
     if (!confirmCancel) return;
 
     cancelandoRef.current = true;
+    emitidoDuranteOCancelamentoRef.current = null;
     setIsCancelling(true);
     haptic.medium();
     try {
@@ -438,6 +442,28 @@ export function OrderDetailsView({
     } finally {
       cancelandoRef.current = false;
       setIsCancelling(false);
+      // O que a lista emitiu DURANTE o cancelamento ficou guardado (o efeito
+      // que acompanha a lista não mexe na tela enquanto ele dura, e não roda
+      // de novo ao terminar). Pior caso: o pagamento é confirmado e o eco do
+      // cancelamento chega dentro da janela — sem isto a tela ficava em
+      // "cancelado, se o pagamento ainda estiver aberto não pague" com o
+      // dinheiro já dentro, até a próxima mudança na lista. Aplica-se só o
+      // que de fato foi emitido (lista parada = nada muda: uma lista que
+      // ainda não refletiu o cancelamento não desfaz o `cancelled` que acabou
+      // de ser gravado) e pela MESMA regra de versão do efeito: mais velha
+      // nunca ganha, sem nova busca.
+      // (O `as` é porque o TypeScript lembra do `= null` do começo da função e
+      // não enxerga que o efeito pode ter gravado outra coisa no meio.)
+      const emitidoNoMeio =
+        emitidoDuranteOCancelamentoRef.current as Order | null;
+      emitidoDuranteOCancelamentoRef.current = null;
+      if (emitidoNoMeio) {
+        setOrder((prev) =>
+          prev && prev.id === emitidoNoMeio.id
+            ? escolherVersaoDoPedido(prev, emitidoNoMeio)
+            : prev,
+        );
+      }
     }
   };
 
@@ -521,20 +547,29 @@ export function OrderDetailsView({
   // "Aguardando pagamento", com o "Retomar pagamento", até sair e voltar.
   //
   // O efeito depende da REFERÊNCIA do pedido na lista, não da lista: o
-  // `setOrders` do hook mantém a mesma referência de quem não mudou (ver o
-  // comentário do `ordersRef`, acima), então só dispara quando ESTE pedido
-  // mudou — outro pedido mudando não mexe aqui. Nenhuma busca nova é feita
-  // (nada de laço) e a tela não volta ao carregamento: é um `setOrder`
-  // funcional, e `escolherVersaoDoPedido` descarta versão mais velha e
-  // conteúdo igual.
+  // `setOrders` do hook mantém a mesma referência de quem não mudou quando a
+  // mudança vem do tempo real, então só dispara quando ESTE pedido mudou —
+  // outro pedido mudando não mexe aqui. Nem toda atualização é assim: o
+  // `fetchUserOrders` troca a lista INTEIRA (objetos novos para todo mundo), e
+  // aí o efeito dispara com conteúdo igual; quem absorve isso é o comparador
+  // por conteúdo de `escolherVersaoDoPedido`, que devolve a mesma referência e
+  // não deixa o React refazer nada. Nenhuma busca nova é feita (nada de laço)
+  // e a tela não volta ao carregamento: é um `setOrder` funcional, e o
+  // comparador também descarta versão mais velha.
   //
   // Durante o cancelamento (`cancelandoRef`) a lista não mexe na tela: o hook
   // aplica o cancelamento na lista de forma otimista e, se o servidor recusar,
   // desfaz — quem decide o que a tela mostra nesse intervalo é o
-  // `handleCancelOrder`, que no fim grava `cancelled` ou relê o servidor.
+  // `handleCancelOrder`, que no fim grava `cancelled`, relê o servidor e
+  // aplica o que a lista emitiu no meio (guardado em
+  // `emitidoDuranteOCancelamentoRef`).
   const doPedidoNaLista = orders.find((o) => o.id === orderId);
   useEffect(() => {
-    if (!doPedidoNaLista || cancelandoRef.current) return;
+    if (!doPedidoNaLista) return;
+    if (cancelandoRef.current) {
+      emitidoDuranteOCancelamentoRef.current = doPedidoNaLista;
+      return;
+    }
     setOrder((prev) =>
       prev && prev.id === doPedidoNaLista.id
         ? escolherVersaoDoPedido(prev, doPedidoNaLista)

@@ -191,8 +191,11 @@ describe("OrderDetailsView — a tela acompanha o pedido quando ele muda na list
     lista = [pedidoAguardando, outroPedido];
     await renderizar();
 
+    // Este pedido volta como objeto NOVO com o MESMO conteúdo (é o que a busca
+    // `fetchUserOrders` faz com a lista inteira): o comparador por conteúdo
+    // absorve, a tela não muda.
     await emitirLista([
-      pedidoAguardando,
+      { ...pedidoAguardando },
       {
         ...outroPedido,
         paymentStatus: "pago",
@@ -222,39 +225,123 @@ describe("OrderDetailsView — a tela acompanha o pedido quando ele muda na list
     expect(hospedeiro.textContent).not.toContain("Aguardando pagamento");
   });
 
-  it("cancelamento em andamento: o que a lista emitir no meio não atropela a tela, e ao terminar vale o cancelamento", async () => {
-    vi.spyOn(globalThis, "confirm").mockReturnValue(true);
-    let terminarCancelamento: () => void = () => {};
-    updateOrderStatus.mockReturnValue(
-      new Promise<void>((resolve) => {
-        terminarCancelamento = resolve;
-      }),
-    );
-    await renderizar();
+  describe("cancelamento em andamento", () => {
+    const TEXTO_NAO_PAGUE =
+      "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague";
+    const TEXTO_PAGO_E_CANCELADO =
+      "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
 
-    const botaoCancelar = Array.from(
-      hospedeiro.querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Cancelar Pedido"));
-    expect(botaoCancelar).toBeDefined();
-    await act(async () => {
-      botaoCancelar?.click();
+    // O pior caso real: o cancelamento chega ao servidor e, ao mesmo tempo, o
+    // pagamento é confirmado. O eco do tempo real traz o pedido cancelado COM
+    // o dinheiro dentro (`pago_apos_expirar` é o par que o banco grava).
+    const canceladoMasPago: Order = {
+      ...pedidoAguardando,
+      status: "cancelled",
+      paymentStatus: "pago_apos_expirar",
+      updatedAt: "2026-10-14T10:05:00.000Z",
+    };
+
+    /** Abre o cancelamento e o deixa PENDURADO; devolve como terminá-lo. */
+    async function iniciarCancelamento() {
+      vi.spyOn(globalThis, "confirm").mockReturnValue(true);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      let terminar: (falhou: boolean) => void = () => {};
+      updateOrderStatus.mockReturnValue(
+        new Promise<void>((resolve, reject) => {
+          terminar = (falhou) =>
+            falhou ? reject(new Error("falha de rede")) : resolve();
+        }),
+      );
+      await renderizar();
+
+      const botaoCancelar = Array.from(
+        hospedeiro.querySelectorAll("button"),
+      ).find((b) => b.textContent?.includes("Cancelar Pedido"));
+      expect(botaoCancelar).toBeDefined();
+      await act(async () => {
+        botaoCancelar?.click();
+      });
+      expect(hospedeiro.textContent).toContain("Processando");
+      return async (falhou: boolean) => {
+        await act(async () => {
+          terminar(falhou);
+        });
+      };
+    }
+
+    it("a lista emite no meio: a tela não é mexida enquanto dura, e ao terminar (sucesso) mostra a versão mais nova da lista", async () => {
+      const terminar = await iniciarCancelamento();
+
+      await emitirLista([canceladoMasPago]);
+      // durante: nada mudou
+      expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+
+      await terminar(false);
+
+      // depois: a tela não fica em "não pague" com o dinheiro já dentro
+      expect(hospedeiro.textContent).toContain("Pedido cancelado");
+      expect(hospedeiro.textContent).toContain(TEXTO_PAGO_E_CANCELADO);
+      expect(hospedeiro.textContent).not.toContain(TEXTO_NAO_PAGUE);
     });
-    expect(hospedeiro.textContent).toContain("Processando");
 
-    // no meio do cancelamento, chega uma versão paga: não pode mexer na tela
-    await emitirLista([pedidoPago]);
-    expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+    it("a lista emite no meio e o cancelamento FALHA: a tela passa a mostrar a versão mais nova da lista (paga)", async () => {
+      const terminar = await iniciarCancelamento();
 
-    await act(async () => {
-      terminarCancelamento();
+      await emitirLista([pedidoPago]);
+      expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+
+      await terminar(true);
+
+      expect(hospedeiro.textContent).toContain(
+        "Pagamento confirmado. A loja vai iniciar a separação.",
+      );
+      expect(temRetomarPagamento()).toBe(false);
+      expect(hospedeiro.textContent).not.toContain("Aguardando pagamento");
     });
 
-    // o cancelamento terminou: a tela mostra cancelado, com o estado de
-    // pagamento que ela tinha ao cancelar (não o "pago" que chegou no meio)
-    expect(hospedeiro.textContent).toContain("Pedido cancelado");
-    expect(hospedeiro.textContent).toContain(
-      "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague",
-    );
+    it("CONTROLE — a lista não emite nada: sucesso mostra cancelado com o pagamento de antes", async () => {
+      const terminar = await iniciarCancelamento();
+
+      await terminar(false);
+
+      expect(hospedeiro.textContent).toContain("Pedido cancelado");
+      expect(hospedeiro.textContent).toContain(TEXTO_NAO_PAGUE);
+    });
+
+    it("CONTROLE — a lista não emite nada: falha deixa a tela como estava", async () => {
+      const terminar = await iniciarCancelamento();
+
+      await terminar(true);
+
+      expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+      expect(temRetomarPagamento()).toBe(true);
+    });
+
+    // eco atrasado, de antes da tela abrir (e com "pago", para ser notado)
+    const ecoMaisVelho: Order = {
+      ...pedidoPago,
+      updatedAt: "2026-10-14T09:00:00.000Z",
+    };
+
+    it("a lista emite no meio uma versão MAIS VELHA e o cancelamento dá certo: não regride a tela", async () => {
+      const terminar = await iniciarCancelamento();
+      await emitirLista([ecoMaisVelho]);
+
+      await terminar(false);
+
+      expect(hospedeiro.textContent).toContain("Pedido cancelado");
+      expect(hospedeiro.textContent).toContain(TEXTO_NAO_PAGUE);
+    });
+
+    it("a lista emite no meio uma versão MAIS VELHA e o cancelamento falha: não regride a tela", async () => {
+      const terminar = await iniciarCancelamento();
+      await emitirLista([ecoMaisVelho]);
+
+      await terminar(true);
+
+      expect(hospedeiro.textContent).toContain("Aguardando pagamento");
+      expect(temRetomarPagamento()).toBe(true);
+    });
   });
 
   it("a busca que volta atrasada, mais velha que o que a lista já trouxe, não desfaz a atualização", async () => {
