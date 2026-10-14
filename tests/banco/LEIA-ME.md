@@ -328,6 +328,22 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   fechadas); reaplicar, CRLF e `search_path` de quem lê não mudam o resultado; o papel mínimo dá o mesmo
   resultado do dono; cada desvio (política, gatilho, EXECUTE, view, tabela, papel) reprova só a sua linha; o
   veredito do `conferir-banco.cjs` sobre as linhas reais sai com `rol=ok`.
+- **consulta antiga de pedido por código (`consulta-antiga-de-pedido-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261220000000` (etapa 2 do achado A-1) tira o `EXECUTE` de `get_orders_by_otp_v1` de PUBLIC, anon e
+  authenticated. Cada caso parte do estado ANTES (o `rollback-manual`, um GRANT idempotente): o A-1 reproduz
+  (CONTROLE); DEPOIS anon e authenticated recebem 42501, service_role e o dono seguem executando, o A-1 não gasta
+  tentativa e a vítima confere pela `get_orders_by_otp_v2`; só a ACL da v1 muda (nenhuma outra função, tabela ou
+  corpo), nenhuma linha de pedido ou código muda; reaplicar e CRLF idênticos; o rollback devolve a ACL de antes
+  (comparada por conjunto de aclitem: a ordem das entradas do array pode mudar); pré-voo recusa sem escrever
+  (corpo, ACL fora das duas conhecidas, v2 ausente/fechada); GRANT de outro grantor faz a conferência recusar; apply
+  com uma verificação em voo não espera a trava. **As provas do lote 21 (`teto-de-email-viva` e
+  `teto-de-email-portao-viva`) montam o estado de ANTES da 20261220 dentro da transação** (rollback-manual dela
+  primeiro): o rollback da 20261220 vem sempre antes de mexer na 20261217.
+- **portão da consulta antiga de pedido (`consulta-antiga-de-pedido-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `23a-conferir-consulta-antiga-de-pedido-fechada` (DEPOIS, 5 linhas) e
+  `23b-antes-consulta-antiga-de-pedido-aberta` (ANTES, 5 linhas), a "prova de objetos" do lote `20261220000000`. Rol
+  exato nos dois estados; 23a positiva depois do apply e 23b positiva depois do rollback; cada desvio (EXECUTE por
+  papel e PUBLIC, corpo, função ausente) reprova só a sua linha; a 21a segue positiva depois do corte.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

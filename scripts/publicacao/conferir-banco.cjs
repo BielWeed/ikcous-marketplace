@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1512,6 +1512,31 @@ const ROL_DA_22B = [
   "rls_admin_atual: corpo da 20261197000000 (md5) e EXECUTE",
   "vw_produtos_admin: anon le",
 ];
+/** O rol da 23a (a prova de objetos do lote 20261220000000, a consulta antiga de pedido por codigo
+ * fecha para o visitante): as 5 linhas que
+ * scripts/publicacao/consultas/23a-conferir-consulta-antiga-de-pedido-fechada.sql devolve, cada uma UMA
+ * vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo
+ * e o EXECUTE da get_orders_by_otp_v1 (FECHADA para anon e authenticated, service_role sim) e da
+ * get_orders_by_otp_v2 (ABERTA). tests/banco/consulta-antiga-de-pedido-portao-viva.cjs prova, num
+ * Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_23A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_orders_by_otp_v1: corpo e o da 20261217000000 (md5)",
+  "get_orders_by_otp_v1: EXECUTE fechado para anon e authenticated",
+  "get_orders_by_otp_v2: corpo e o da 20261217000000 (md5)",
+  "get_orders_by_otp_v2: EXECUTE aberto para anon e authenticated",
+];
+/** O rol da 23b (a consulta de AUSENCIA do lote da consulta antiga de pedido; `ausenciaConfirmadaPor`):
+ * as 5 linhas que scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql devolve — a
+ * base de antes: a 20261217000000 aplicada (corpos), a v1 ABERTA como sempre e a v2 aberta. Uma loja que
+ * ja tem o corte reprova aqui de proposito, na linha de EXECUTE da v1. */
+const ROL_DA_23B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_orders_by_otp_v1: corpo e o da 20261217000000 (md5)",
+  "get_orders_by_otp_v1: EXECUTE aberto para anon e authenticated",
+  "get_orders_by_otp_v2: corpo e o da 20261217000000 (md5)",
+  "get_orders_by_otp_v2: EXECUTE aberto para anon e authenticated",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1542,6 +1567,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "21b-antes-teto-de-email-corpos-vigentes": ROL_DA_21B,
   "22a-conferir-portas-do-banco-aplicado": ROL_DA_22A,
   "22b-antes-portas-do-banco-estado-vigente": ROL_DA_22B,
+  "23a-conferir-consulta-antiga-de-pedido-fechada": ROL_DA_23A,
+  "23b-antes-consulta-antiga-de-pedido-aberta": ROL_DA_23B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2110,6 +2137,8 @@ module.exports = {
   ROL_DA_21B,
   ROL_DA_22A,
   ROL_DA_22B,
+  ROL_DA_23A,
+  ROL_DA_23B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

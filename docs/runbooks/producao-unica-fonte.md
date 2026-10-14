@@ -768,7 +768,13 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `aplicar-migrations.yml`. Devolve os TRES corpos vivos de antes byte a byte; a tabela, as funcoes
         de apoio e a `get_orders_by_otp_v2` FICAM (o front novo depende da v2 e o envelope recusa apagar
         tabela). Depois dele a `21b` volta a ser POSITIVA e a `21a` NEGATIVA (provado em
-        `tests/banco/teto-de-email-portao-viva.cjs`).
+        `tests/banco/teto-de-email-portao-viva.cjs`), **desde que a `get_orders_by_otp_v1` esteja
+        aberta** (a `21b` espera `anon=sim` nela). **ORDEM: numa loja que ja recebeu o corte do item 20
+        (`20261220000000`), o rollback da 20261220 vem SEMPRE ANTES de qualquer rollback ou reaplicacao
+        da 20261217** — a conferencia final da 20261217 exige `anon` e `authenticated` com `EXECUTE` na
+        v1 e ABORTA com ela fechada. O pre-voo do `rollback-manual-20261217000000_*.sql` RECUSA
+        (`B1_BASELINE_DIVERGENT`, "rode o rollback-manual-20261220000000 ... ANTES deste") quando a v1 esta
+        fechada para `anon` ou `authenticated`; com a 20261217 sendo a ultima, nada muda.
       - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a
         `21a` e a `21b` DE NOVO.
       - **Limites:** `tests/banco/teto-de-email-viva.cjs` prova o comportamento (tetos, corrida de duas
@@ -818,6 +824,41 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         INSERT, perfil antigo grande continua editavel, contagem do push e view so com login, as duas
         tabelas so pelo servidor) num Postgres 17 efemero com os papeis reais; nao prova o Postgres da
         Supabase nem o papel `supabase_read_only_user` de cada loja.
+
+  20. **Lote de UMA migration, de apply normal: `20261220000000` (a consulta antiga de pedido por codigo
+      fecha para o visitante; etapa 2 do achado A-1).** Sem `backfillLedger` e sem `nuncaAplicar`; valem
+      as duas lojas assinantes (IKCOUS e Savy). Tira o `EXECUTE` de `get_orders_by_otp_v1` de PUBLIC,
+      `anon` e `authenticated` (a porta do convidado e a `get_orders_by_otp_v2`, que o front novo, no ar
+      desde 13/10/2026, ja chama). So muda a ACL de uma funcao: nenhum DROP, nenhum corpo novo, nenhuma
+      linha de dado. **Exige o item 18 (`20261217000000`) aplicado** (sem a v2 o pre-voo recusa).
+      Quem quebra: so um app antigo que ainda chame a v1 (a chamada e recusada, a tela mostra o aviso
+      generico). Duas consultas, so leitura, so catalogo, de ROL FECHADO (5 e 5 linhas, so valem com
+      `rol=ok`):
+      - **`23a-conferir-consulta-antiga-de-pedido-fechada`** (a consulta do lote) prova DEPOIS do apply o
+        corpo (md5) e o `EXECUTE` da v1 (fechada para `anon`/`authenticated`, `service_role` sim) e da v2
+        (aberta).
+      - **`23b-antes-consulta-antiga-de-pedido-aberta`** (`ausenciaConfirmadaPor`) prova o ANTES: a
+        20261217000000 aplicada (corpos) e a v1 e a v2 abertas.
+      - **Caminho, uma loja por vez:** `23a` (sai NEGATIVA) → `23b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com
+        `20261220000000_a_consulta_antiga_de_pedido_por_codigo_fecha_para_o_visitante.sql` → o ensaio pede
+        a `23a` DE NOVO, que tem de sair POSITIVA. `23a` POSITIVA com a versao fora do ledger: PARAR (sem
+        backfill). A `21a` continua certa depois do corte (a linha de `EXECUTE` da v1 vale aberta ou
+        fechada).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261220000000_a_consulta_antiga_de_pedido_por_codigo_fecha_para_o_visitante.sql`
+        pelo `aplicar-migrations.yml` (um `GRANT`; com ele volta o achado A-1). Depois dele a `23b` volta a
+        ser POSITIVA e a `23a` NEGATIVA. **O rollback da 20261220 vem SEMPRE ANTES de qualquer rollback ou
+        reaplicacao da 20261217** (item 18). **NUNCA** rodar o
+        `rollback-manual-20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql` depois do corte: ele
+        faz `GRANT EXECUTE ... get_orders_by_otp_v1 ... TO PUBLIC` e reabre a v1 para todos.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a
+        `23a` e a `23b` DE NOVO.
+      - **Limites:** `tests/banco/consulta-antiga-de-pedido-viva.cjs` prova o comportamento (A-1
+        reproduz antes e nao depois, so a ACL da v1 muda, dados intactos, rollback com a mesma ACL,
+        pre-voo, conferencia, apply com uma verificacao em voo) num Postgres 17 efemero; nao prova o
+        Postgres da Supabase nem o papel `supabase_read_only_user` de cada loja, e o `service_role` com
+        `EXECUTE` na v1 de cada loja so a `23b` mede.
 
 4. **Promover UM front e conferir a frota.**
 

@@ -68,6 +68,8 @@ on:
       - "scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/22a-conferir-portas-do-banco-aplicado.sql"
       - "scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql"
+      - "scripts/publicacao/consultas/23a-conferir-consulta-antiga-de-pedido-fechada.sql"
+      - "scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -106,6 +108,8 @@ on:
       - "scripts/publicacao/consultas/21b-antes-teto-de-email-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/22a-conferir-portas-do-banco-aplicado.sql"
       - "scripts/publicacao/consultas/22b-antes-portas-do-banco-estado-vigente.sql"
+      - "scripts/publicacao/consultas/23a-conferir-consulta-antiga-de-pedido-fechada.sql"
+      - "scripts/publicacao/consultas/23b-antes-consulta-antiga-de-pedido-aberta.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -509,6 +513,18 @@ jobs:
       - name: Prova viva do portao das portas pequenas do banco (consultas 22a e 22b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/portas-do-banco-portao-viva.cjs
+      # A consulta antiga de pedido por codigo fecha para o visitante (migration 20261220, etapa 2 do L1). A
+      # primeira prova e o COMPORTAMENTO com os papeis reais (anon e authenticated recebem 42501 na v1, a v2
+      # segue aberta, o achado A-1 reproduz ANTES e nao DEPOIS, so a ACL da v1 muda, dados intactos, rollback
+      # identico, pre-voo, conferencia, concorrencia); a segunda e o PORTAO: as consultas 23a (DEPOIS) e 23b
+      # (ANTES), 5 linhas cada. BLOQUEANTES. CLONE proprio. As provas do lote 21 (teto de e-mail) montam o
+      # estado de ANTES da 20261220 dentro da transacao.
+      - name: Prova viva da consulta antiga de pedido por codigo (migration 20261220)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-antiga-de-pedido-viva.cjs
+      - name: Prova viva do portao da consulta antiga de pedido (consultas 23a e 23b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-antiga-de-pedido-portao-viva.cjs
       # Onda I do painel simples (20261212 a 20261214): o estoque baixo e uma regua so (Inicio, lista, analytics),
       # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (sem migration) e o estoque
       # minimo e editavel so pelo admin. Cada prova clona o banco.

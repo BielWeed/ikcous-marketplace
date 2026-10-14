@@ -16,7 +16,10 @@
 --   * corpo   -- o sha256 do corpo vivo e' o desta migration (LF ou CRLF).
 --   * EXECUTE -- as tres de servidor e as duas de apoio: so service_role
 --                (`PUBLIC=nao anon=nao authenticated=nao service_role=sim`); as duas portas do
---                rastreio do convidado (v1 e v2): `PUBLIC=nao anon=sim authenticated=sim`.
+--                rastreio do convidado (v1 e v2): `PUBLIC=nao anon=sim authenticated=sim`. A v1 tambem
+--                vale FECHADA (`PUBLIC=nao anon=nao authenticated=nao`): e' o estado que a
+--                20261220000000 (lote 23) deixa, e esta consulta continua certa depois dele; a coluna
+--                `esperado` dessa linha mostra qual dos dois estados validos o `vivo` ocupa.
 --                PUBLIC e' medido por aclexplode(coalesce(proacl, acldefault('f', dono))), porque
 --                has_function_privilege nao tem o pseudo-papel PUBLIC.
 --
@@ -90,7 +93,14 @@ WITH alvo(nome, assinatura) AS (
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_orders_by_otp_v1'), 'AUSENTE')
   UNION ALL
-  SELECT 'get_orders_by_otp_v1: EXECUTE', 'PUBLIC=nao anon=sim authenticated=sim',
+  -- Os DOIS estados validos da v1: aberta (so este lote) ou FECHADA (depois da 20261220000000, o
+  -- lote 23). `esperado` mostra o estado valido que o `vivo` ocupa; qualquer outra combinacao
+  -- (PUBLIC aberto, so um dos dois papeis, funcao ausente) fica com o esperado de "aberta" e reprova.
+  SELECT 'get_orders_by_otp_v1: EXECUTE',
+         CASE WHEN (SELECT f.acl FROM fn f WHERE f.nome = 'get_orders_by_otp_v1')
+                   = 'PUBLIC=nao anon=nao authenticated=nao'
+              THEN 'PUBLIC=nao anon=nao authenticated=nao'
+              ELSE 'PUBLIC=nao anon=sim authenticated=sim' END,
          COALESCE((SELECT f.acl FROM fn f WHERE f.nome = 'get_orders_by_otp_v1'), 'AUSENTE')
   UNION ALL
   SELECT 'get_orders_by_otp_v2: corpo e o da 20261217000000 (sha256)',

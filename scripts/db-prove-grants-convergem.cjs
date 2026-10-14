@@ -296,10 +296,15 @@ const ALVO = {
     anon: false,
     authenticated: true,
   },
+  // Corrigido pela 20261220000000 (achado A-1, lote L1 etapa 2, 14/10/2026): a consulta antiga de
+  // pedido por codigo perdeu EXECUTE de anon e authenticated (a v2 e' a porta do convidado). Valia
+  // `anon: true, authenticated: true` desde 08/09 (a fotografia da 20261090500000), e continua
+  // sendo o estado de uma loja SEM a 20261220000000; o ALVO descreve o banco DEPOIS dela. Como o
+  // ALVO de v3 abaixo, e' o que `--verificar` mede num banco ja corrigido.
   "get_orders_by_otp_v1(text,text)": {
     PUBLIC: false,
-    anon: true,
-    authenticated: true,
+    anon: false,
+    authenticated: false,
   },
   // Corrigido pela 20261181000000 (achado LGPD, 26/09/2026): a função não
   // tem mais consumidor legítimo (nem convidado, nem conta logada) e perdeu

@@ -28,6 +28,11 @@
 -- cima de uma redefinição POSTERIOR apagaria a dela em silêncio, e desfazer
 -- duas vezes não tem o que desfazer.
 --
+-- ORDEM: se a 20261220000000 (a consulta antiga de pedido por código fecha para o visitante) já está
+-- aplicada, o pré-voo RECUSA este rollback (v1 sem EXECUTE para anon ou authenticated): rode antes o
+-- rollback-manual-20261220000000_a_consulta_antiga_de_pedido_por_codigo_fecha_para_o_visitante.sql.
+-- Com a 20261217000000 sendo a última (v1 aberta), nada muda aqui.
+--
 -- Executar pelo aplicar-migrations.yml (apaga o registro do ledger na mesma
 -- transação). Sem BEGIN/COMMIT de nível superior neste arquivo — regra da casa.
 -- ============================================================================
@@ -53,6 +58,14 @@ BEGIN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo de % (hash %) não é o que a 20261217000000 deixou — nada a desfazer, ou uma redefinição posterior está no ar; revise antes de reverter.', r.assinatura, COALESCE(v_hash, 'ausente');
     END IF;
   END LOOP;
+
+  -- Ordem de desfazer: com a 20261220000000 (a v1 fechada para o visitante) aplicada, este rollback
+  -- deixaria a v1 com o corpo antigo e FECHADA, e nem o rollback da 20261220 (que exige o corpo da
+  -- 20261217) nem a reaplicação da 20261217 (cuja conferência exige a v1 aberta) voltariam a passar.
+  IF NOT has_function_privilege('anon', 'public.get_orders_by_otp_v1(text,text)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.get_orders_by_otp_v1(text,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.get_orders_by_otp_v1(text,text) está fechada para anon ou authenticated (a 20261220000000 está aplicada) — rode o rollback-manual-20261220000000_a_consulta_antiga_de_pedido_por_codigo_fecha_para_o_visitante.sql ANTES deste.';
+  END IF;
 END $preflight_rollback_20261217$;
 
 -- generate_order_otp_v2: corpo vigente da 20260820000000_otp_v2_devolve_o_codigo.sql.
