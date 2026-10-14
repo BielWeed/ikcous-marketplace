@@ -1,5 +1,9 @@
 import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import {
+  AVISO_DE_DESLIGAR,
+  AVISO_DE_PAUSAR,
+} from "@/lib/aviso-transportadora-sem-pagamento";
 import { lerSupabaseUrl } from "@/lib/env-valores";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
@@ -276,6 +280,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   onDirtyMudou,
   onPixAlternado,
   abrirChavesGatilho = 0,
+  transportadoraVende = false,
 }: {
   /** Mesma trava das demais seções: avisa o pai para BLOQUEAR o fecho da
    * seção colapsável enquanto houver chave digitada e não salva. */
@@ -299,6 +304,13 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
    * "Formas de pagamento" pede para cair direto nos campos das chaves —
    * abre "Avançado" e "Suas chaves" de uma vez. 0 = ninguém pediu. */
   readonly abrirChavesGatilho?: number;
+  /** A loja tem transportadora de fato OFERECIDA ao cliente de outra cidade
+   * (14/10/2026). O checkout recusa o envio por transportadora sem pagamento
+   * pelo app — então PAUSAR derruba as vendas para fora da cidade, e o
+   * lojista precisa saber ANTES. Com `true`, o clique em Pausar abre um aviso
+   * que deixa confirmar (não bloqueia: pausar é o lado seguro). Ausente ou
+   * `false` (quem não sabe, quem não tem transportadora): Pausar pausa direto. */
+  readonly transportadoraVende?: boolean;
 }) {
   const isOffline = useOnlineStatus();
 
@@ -324,6 +336,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   const [alternandoPix, setAlternandoPix] = useState(false);
   const [avisoPix, setAvisoPix] = useState<string | null>(null);
   const [ecoDaVitrine, setEcoDaVitrine] = useState(false);
+  // O aviso de "a transportadora vai parar de vender", aberto pelo clique em
+  // Pausar quando `transportadoraVende`. Fecha sozinho quando o estado deixa
+  // de ser "ligado" (pausou, o servidor desligou, a leitura mudou) — senão
+  // voltaria aberto na próxima vez que o pagamento fosse retomado.
+  const [confirmandoPausa, setConfirmandoPausa] = useState(false);
 
   // Segunda camada (pedido do dono, 14/09 à noite): guia e chaves em
   // expandidores próprios, ambos FECHADOS por padrão — o grupo abre
@@ -603,6 +620,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     setAlternandoPix(true);
     setAvisoPix(null);
     setEcoDaVitrine(false);
+    setConfirmandoPausa(false);
     haptic.medium();
     try {
       const { data, error } = await supabase.functions.invoke(
@@ -625,6 +643,21 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     } finally {
       setAlternandoPix(false);
     }
+  };
+
+  /**
+   * O clique em PAUSAR (14/10/2026). Com transportadora vendendo, pausar
+   * derruba as vendas para fora da cidade (o checkout recusa transportadora
+   * sem pagamento pelo app): o clique só ABRE o aviso, e quem pausa de
+   * verdade é "Pausar mesmo assim". Sem transportadora, pausa direto como
+   * sempre. O aviso nunca bloqueia — pausar é o lado seguro.
+   */
+  const pedirPausa = () => {
+    if (transportadoraVende) {
+      setConfirmandoPausa(true);
+      return;
+    }
+    pausarOuRetomar(false);
   };
 
   // O prompt leva o endereço de notificações DESTA loja (peça 28): é o que
@@ -676,6 +709,55 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         : faltando.length > 0
           ? "faltando"
           : "pronto";
+  // Fecha o aviso de Pausar quando o estado deixa de ser "ligado": pausou, o
+  // servidor desligou por conta própria ou a leitura trouxe outro retrato.
+  const pagamentoLigadoNoServidor = config.pix_ligado;
+  useEffect(() => {
+    if (!pagamentoLigadoNoServidor) setConfirmandoPausa(false);
+  }, [pagamentoLigadoNoServidor]);
+  // O aviso em si: no lugar da linha do botão Pausar (nos dois estados em que
+  // ela existe), com os dois caminhos — voltar sem mexer, ou pausar mesmo assim.
+  // Edge antiga (`servidorDesatualizado`): o botão da tela diz "Desligar", e o
+  // aviso fala a mesma língua.
+  const textoDoAviso = servidorDesatualizado
+    ? AVISO_DE_DESLIGAR
+    : AVISO_DE_PAUSAR;
+  const rotuloDeConfirmar = servidorDesatualizado
+    ? "Desligar mesmo assim"
+    : "Pausar mesmo assim";
+  const avisoDePausar =
+    confirmandoPausa && transportadoraVende && config.pix_ligado ? (
+      <div
+        role="alert"
+        data-aviso-pausar-sem-transportadora=""
+        className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2"
+      >
+        <p className="flex items-start gap-1.5 text-xs font-bold text-amber-300">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+          {textoDoAviso.titulo}
+        </p>
+        <p className="text-[11px] leading-relaxed text-amber-200/90">
+          {textoDoAviso.detalhe}
+        </p>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setConfirmandoPausa(false)}
+            className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95"
+          >
+            Voltar
+          </button>
+          <button
+            type="button"
+            disabled={alternandoPix || isOffline || testando || salvando}
+            onClick={() => pausarOuRetomar(false)}
+            className="min-h-11 shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+          >
+            {rotuloDeConfirmar}
+          </button>
+        </div>
+      </div>
+    ) : null;
   const listaDoQueFalta = faltando.map(textoDaFalta);
   const faltaTestar = faltando.includes("teste");
   // Pendência que abre "Avançado: chaves do Mercado Pago" sozinho (H6): nada
@@ -1009,14 +1091,17 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               {/* Sem "Pix liberado"/"desligado" aqui (H6): o estado REAL
                       que a edge antiga devolveu sobe pelo `onPixAlternado`
                       para o termômetro de Pagamentos; o botão diz a ação. */}
-              {(config.pix_ligado || teste?.conectado) && (
+              {avisoDePausar}
+              {!avisoDePausar && (config.pix_ligado || teste?.conectado) && (
                 <div className="flex justify-end">
                   <button
                     type="button"
                     disabled={
                       alternandoPix || isOffline || testando || salvando
                     }
-                    onClick={() => pausarOuRetomar(!config.pix_ligado)}
+                    onClick={() =>
+                      config.pix_ligado ? pedirPausa() : pausarOuRetomar(true)
+                    }
                     className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
                   >
                     {config.pix_ligado
@@ -1036,7 +1121,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             </div>
           )}
 
-          {estadoDoRecebimento === "recebendo" && (
+          {estadoDoRecebimento === "recebendo" && avisoDePausar}
+          {estadoDoRecebimento === "recebendo" && !avisoDePausar && (
             <div className="flex items-center justify-between gap-3">
               {/* Só o que é verdade: `pagamento_online` liberou o PIX, mas o
                       CARTÃO tem interruptor próprio (`config_pagamento_cartao`,
@@ -1058,7 +1144,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               <button
                 type="button"
                 disabled={alternandoPix || isOffline || testando || salvando}
-                onClick={() => pausarOuRetomar(false)}
+                onClick={pedirPausa}
                 className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
               >
                 Pausar
