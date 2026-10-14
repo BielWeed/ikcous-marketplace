@@ -1381,6 +1381,41 @@ export type Database = {
         };
         Relationships: [];
       };
+      order_refund_diagnostico: {
+        Row: {
+          atualizado_em: string;
+          criado_em: string;
+          mp_codigo: string | null;
+          post_incerto_em: string | null;
+          refund_id: string;
+          transitorios: number;
+        };
+        Insert: {
+          atualizado_em?: string;
+          criado_em?: string;
+          mp_codigo?: string | null;
+          post_incerto_em?: string | null;
+          refund_id: string;
+          transitorios?: number;
+        };
+        Update: {
+          atualizado_em?: string;
+          criado_em?: string;
+          mp_codigo?: string | null;
+          post_incerto_em?: string | null;
+          refund_id?: string;
+          transitorios?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_refund_diagnostico_refund_id_fkey";
+            columns: ["refund_id"];
+            isOneToOne: true;
+            referencedRelation: "order_refunds";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       order_refunds: {
         Row: {
           amount: number;
@@ -2931,6 +2966,10 @@ export type Database = {
         Args: { p_conferi_no_melhor_envio?: boolean; p_id: string };
         Returns: Json;
       };
+      admin_devolucao_reembolso_por_fora: {
+        Args: { p_devolucao_id: string; p_refund_esperado: string };
+        Returns: Json;
+      };
       admin_devolucao_reemitir_reembolso: {
         Args: { p_devolucao_id: string; p_manual?: boolean };
         Returns: Json;
@@ -3614,6 +3653,15 @@ export type Database = {
         };
         Returns: undefined;
       };
+      reemitir_reembolso_da_devolucao: {
+        Args: {
+          p_ator: string;
+          p_consulta: Json;
+          p_devolucao_id: string;
+          p_refund_esperado: string;
+        };
+        Returns: Json;
+      };
       registrar_contestacao_no_ledger: {
         Args: {
           p_case_id: string;
@@ -3623,6 +3671,15 @@ export type Database = {
           p_order_id: string;
           p_valor_caso: number;
           p_valor_estimado: number;
+        };
+        Returns: Json;
+      };
+      registrar_diagnostico_do_estorno: {
+        Args: {
+          p_mp_codigo?: string;
+          p_post_incerto?: boolean;
+          p_refund_id: string;
+          p_transitorio?: boolean;
         };
         Returns: Json;
       };

@@ -1047,6 +1047,41 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         "liberado" ja enviados para devolucoes cujo reembolso falhou ficam como estao (a cliente ja leu): a lista
         das afetadas esta no cabecalho da migration.
 
+  26. **Lote de UMA migration, de apply normal: `20261226000000` (a reemissao do reembolso consulta o Mercado
+      Pago antes de pagar de novo; dinheiro).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy), e **o item 25 (a `28a` positiva) tem de estar aplicado antes**. Cria a tabela
+      `order_refund_diagnostico` (so do servidor: RLS ligada, nenhuma policy, nenhum acesso de `anon` nem de
+      `authenticated`) e tres funcoes: `registrar_diagnostico_do_estorno` e `reemitir_reembolso_da_devolucao` (so
+      `service_role`; a segunda ou ADOTA o reembolso que o MP ja fez ou CRIA a tentativa nova, nunca as duas, e confere
+      o ator como admin ATUAL em `auth.users` e `profiles`) e `admin_devolucao_reembolso_por_fora` ("Ja devolvi por
+      fora", do lojista logado). Antes, "Tentar de novo" sobre reembolso `falhou` nao tinha caminho; reemitir sem
+      saber POR QUE falhou pagaria duas vezes. Nao toca dado, nao muda funcao existente (a `admin_devolucao_reemitir_reembolso`
+      antiga fica como esta). **Este lote so cria objetos que nada chama ainda**: a edge `estornar-pagamento` (acao
+      `reemitir`) e o cron `reconciliar-pagamentos` que gravam o diagnostico e chamam estas funcoes vem em outro
+      lote, depois do banco. Quem quebra: ninguem. Duas consultas, so leitura, so catalogo, de ROL FECHADO (9 e 5
+      linhas, so valem com `rol=ok`):
+      - **`29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes`** (a consulta do lote) prova DEPOIS do apply os
+        tres corpos (md5), os atributos, o `EXECUTE` por papel, a tabela fechada e a decisao da reemissao.
+      - **`29b-antes-reemissao-do-reembolso-base-conhecida`** (`ausenciaConfirmadaPor`) prova o ANTES: as tres
+        funcoes e a tabela ausentes e os corpos de `concluir_estorno`, `pedido__saldo_a_estornar` e
+        `devolucao__avisar_reembolso` (da `20261225000000`) conhecidos. Os md5 vem dos arquivos das migrations, nao de
+        uma loja: **rode a `29b` em CADA loja ANTES do apply**; corpo diferente e loja que ninguem mediu, e o pre-voo
+        tambem para.
+      - **Caminho, uma loja por vez:** `29a` (sai NEGATIVA) → `29b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com `20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql` → o ensaio pede a `29a` DE NOVO, que tem de sair POSITIVA. `29a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql`
+        pelo `aplicar-migrations.yml` (apaga as tres funcoes e a tabela; **recusa** se a tabela tiver linhas, ate o
+        operador declarar `app.rollback_aceita_perder_diagnostico = sim` na sessao; sem o diagnostico toda linha
+        `falhou` volta a ser incerta, o lado seguro). Depois dele a `29b` volta a ser POSITIVA e a `29a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga (a deste lote e a
+        dos lotes 24 a 27): rodar a `24a`, `24b`, `25a`, `25b`, `26a`, `26b`, `28a`, `28b`, `29a` e `29b` DE NOVO.
+      - **Limites:** `tests/banco/reemissao-do-reembolso-viva.cjs` prova o comportamento (gate de "nada saiu", adotar so
+        linha incerta, devolucao pelo painel do MP, saldo da funcao unica, duplo clique e duas conexoes em corrida,
+        ator admin ATUAL, ACL, "por fora", diagnostico atomico, pre-voo, conferencia, rollback e mutantes) num Postgres
+        17 efemero; nao prova o Postgres da Supabase, o corpo vivo de cada loja nem o comportamento do Mercado Pago.
+
   27. **Lote de DUAS migrations independentes, de apply normal: `20261227000000` e `20261228000000` (os
       numeros do painel; numeros, sem permissao nova).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as
       duas lojas assinantes (IKCOUS e Savy), **depois do item 17** (o pre-voo do `painel_inicio` recusa a loja

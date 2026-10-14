@@ -436,6 +436,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "31b-antes-endereco-da-compra-so-no-ponteiro",
   "28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro",
   "28b-antes-reembolso-da-devolucao-avisa-liberado-na-conclusao",
+  "29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes",
+  "29b-antes-reemissao-do-reembolso-base-conhecida",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

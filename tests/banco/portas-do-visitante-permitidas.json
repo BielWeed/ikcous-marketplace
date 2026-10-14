@@ -51,6 +51,14 @@
       "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
     },
     {
+      "funcao": "public.admin_devolucao_reembolso_por_fora(p_devolucao_id uuid, p_refund_esperado uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Devolucoes e estornos do painel do lojista (Ja devolvi por fora): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (is_admin e is_admin_atual) e auth.uid(); nao move dinheiro no Mercado Pago; o visitante nao a executa."
+    },
+    {
       "funcao": "public.admin_devolucao_reemitir_reembolso(p_devolucao_id uuid, p_manual boolean)",
       "executa": ["authenticated"],
       "tipo": "volatil",
