@@ -1616,6 +1616,42 @@ export type Database = {
           },
         ];
       };
+      pedidos_de_privacidade: {
+        Row: {
+          atendido_em: string | null;
+          atendido_por: string | null;
+          criado_em: string;
+          email_novo: string | null;
+          id: string;
+          observacao: string | null;
+          situacao: string;
+          tipo: string;
+          user_id: string;
+        };
+        Insert: {
+          atendido_em?: string | null;
+          atendido_por?: string | null;
+          criado_em?: string;
+          email_novo?: string | null;
+          id?: string;
+          observacao?: string | null;
+          situacao?: string;
+          tipo: string;
+          user_id: string;
+        };
+        Update: {
+          atendido_em?: string | null;
+          atendido_por?: string | null;
+          criado_em?: string;
+          email_novo?: string | null;
+          id?: string;
+          observacao?: string | null;
+          situacao?: string;
+          tipo?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       politica_devolucao: {
         Row: {
           aceita_troca: boolean;

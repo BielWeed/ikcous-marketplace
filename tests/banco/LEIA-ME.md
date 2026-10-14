@@ -545,6 +545,14 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   linhas) e a medição `34m-medir-sino-da-retirada` (rol aberto, só contagens), a "prova de objetos" do lote
   `20261233000000`. Mesmo desenho do portão 26: rol exato nos estados, um negativo por linha, o veredito do
   `conferir-banco.cjs` (`rol=ok`), a 34m por diferença contra os pedidos montados. **Não prova** a IKCOUS nem a Savy.
+- **pedidos de privacidade da cliente (`pedidos-de-privacidade-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261234000000` — a tabela `pedidos_de_privacidade` (excluir conta / corrigir e-mail, atendida à mão). Com a RLS real:
+  a cliente lê e insere só o dela (leitura cruzada e inserção em nome de outra recusadas), não decide nem escreve
+  situação/carimbos/observação, um aberto por (cliente, tipo) (23505), anon fechado, o admin atual atende com carimbo
+  do servidor e a decisão é final, o admin rebaixado com JWT velho não lê nem decide, **ninguém apaga** (DELETE e
+  TRUNCATE recusados para anon, cliente, admin e service_role; sem grant e sem política de DELETE), forma do e-mail e
+  chave estrangeira sem cascata, estrutura (RLS, políticas, índice, colunas de INSERT/UPDATE), rollback que RECUSA com
+  pedido registrado. **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

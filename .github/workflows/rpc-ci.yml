@@ -697,6 +697,14 @@ jobs:
       - name: Prova viva do portao do sino do pedido de retirada (consultas 34a e 34b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs
+      # Pedidos de privacidade da cliente (migration 20261234, dado de cliente + permissao): exclusao de conta e correcao de
+      # e-mail pedidas pelo app e atendidas a mao. COMPORTAMENTO com a RLS real: a cliente le e insere so o dela, nao decide,
+      # um aberto por (cliente, tipo), anon fechado, admin atual atende com carimbo do servidor, rebaixado nao, NINGUEM apaga
+      # (DELETE e TRUNCATE recusados ate para o service_role), forma do e-mail, chave estrangeira sem cascata, rollback que
+      # recusa apagar com pedido registrado. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva dos pedidos de privacidade da cliente (migration 20261234)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pedidos-de-privacidade-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que
