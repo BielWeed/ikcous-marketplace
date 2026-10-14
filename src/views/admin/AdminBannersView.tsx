@@ -43,8 +43,11 @@ import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import {
+  AVISO_DE_LINK_RECUSADO,
   LINK_DA_PAGINA_DA_LOJA,
+  avisoDoLinkDigitado,
   linkDaCategoria,
+  linkDoBannerParaSalvar,
 } from "@/lib/destino-do-banner";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import {
@@ -1706,14 +1709,13 @@ export const AdminBannersView = memo(function AdminBannersView({
         return;
       }
 
-      let sanitizedLink = formData.link ? formData.link.trim() : "";
-      if (
-        sanitizedLink &&
-        !sanitizedLink.startsWith("/") &&
-        !sanitizedLink.startsWith("http://") &&
-        !sanitizedLink.startsWith("https://")
-      ) {
-        sanitizedLink = `/${sanitizedLink}`;
+      // Sem barra no começo ganha uma (como sempre foi); `javascript:`, `data:`,
+      // `//outro-site` e afins não passam: a loja abriria o link ao tocar.
+      const sanitizedLink = linkDoBannerParaSalvar(formData.link);
+      if (sanitizedLink === null) {
+        toast.error(AVISO_DE_LINK_RECUSADO);
+        setIsSubmitting(false);
+        return;
       }
 
       const dataToSubmit = {
@@ -4622,6 +4624,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             onFlush={(val) =>
                               setFormData((prev) => ({ ...prev, link: val }))
                             }
+                            validate={avisoDoLinkDigitado}
                             placeholder="Ex: https://wa.me/5511999999999 ou link externo"
                             useShadcn={true}
                             className="h-9 rounded-xl border-white/10 bg-zinc-900/90 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-sky-400 focus:ring-sky-400"

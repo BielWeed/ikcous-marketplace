@@ -74,8 +74,8 @@ describe("linkDaCategoria: o link novo sai codificado", () => {
 });
 
 describe("destinoDoBanner: banner já gravado funciona sem migrar dado", () => {
-  const lerCategoria = (link: string) =>
-    new URLSearchParams(new URL(link, "https://loja.test").search).get(
+  const lerCategoria = (link: string | null) =>
+    new URLSearchParams(new URL(link ?? "", "https://loja.test").search).get(
       "category",
     );
 
@@ -101,7 +101,9 @@ describe("destinoDoBanner: banner já gravado funciona sem migrar dado", () => {
 
   it("parâmetro de verdade depois do nome (chave=valor) é preservado", () => {
     const novo = destinoDoBanner("/?category=Roupas&utm_source=insta");
-    const p = new URLSearchParams(new URL(novo, "https://loja.test").search);
+    const p = new URLSearchParams(
+      new URL(novo ?? "", "https://loja.test").search,
+    );
     expect(p.get("category")).toBe("Roupas");
     expect(p.get("utm_source")).toBe("insta");
   });
