@@ -481,6 +481,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261233000000: o sino do pedido de retirada fala de retirada (corpo da funcao de gatilho com o ramo da retirada; comportamento e portao 34a/34b).
     "tests/banco/o-sino-do-pedido-de-retirada-viva.cjs",
     "tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs",
+    // 20261237000000: a lojista renomeia e apaga categoria sem deixar produto orfao (permissao e regra de devolucao; comportamento e portao 35a/35b).
+    "tests/banco/categorias-gestao-viva.cjs",
+    "tests/banco/categorias-gestao-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

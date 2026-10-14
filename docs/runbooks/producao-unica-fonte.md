@@ -1258,6 +1258,48 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
 
+  35. **Migration de apply normal: `20261237000000` (a lojista renomeia e apaga categoria sem deixar produto
+      orfao; PERMISSAO e REGRA DE DEVOLUCAO, nada se abre e nada se apaga no apply).** Sem `backfillLedger` e sem
+      `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). So CRIA funcoes (`CREATE OR REPLACE`): as
+      tres portas do painel, `renomear_categoria`, `apagar_categoria_vazia` e `categorias_com_uso`, e oito
+      auxiliares internas `categoria__*`. Nenhuma tabela, coluna, politica de RLS, gatilho ou linha de dado muda
+      no apply; so a lojista, usando a tela "Gerenciar categorias", troca dado:
+      - **O defeito:** a categoria do produto e guardada pelo NOME, em quatro lugares (a linha de `categorias`,
+        `produtos.categoria`, `banners.link` nos formatos codificado e cru, e `politica_devolucao.categorias_sem_troca`).
+        Trocar o nome so na linha deixava o produto sumido da vitrine, o banner apontando para pagina vazia e a
+        regra de "sem troca" apontando para um nome que nao existe mais (o produto voltava a ser trocavel).
+      - **Agora:** `renomear_categoria` troca os quatro lugares numa transacao so (falha no meio nao deixa nada
+        trocado), com a trava de admin ATUAL (`is_admin()` e `is_admin_atual()`), recusa nome repetido (maiuscula,
+        acento ou pontuacao a mais) e vazio, e devolve quantos produtos, banners e regras trocou;
+        `apagar_categoria_vazia` recusa com o motivo enquanto houver produto, banner ou regra apontando.
+        "Esconder da vitrine" e a coluna `categorias.ativo`, que ja existia e que a vitrine ja respeita.
+      - **Quem quebra:** ninguem (so a tela nova chama as funcoes). **ORDEM: o banco de CADA loja ANTES do front**,
+        porque front novo contra banco sem as portas deixa a lojista sem renomear nem apagar categoria.
+      - **Duas consultas**, so leitura, so catalogo, de ROL FECHADO (8 e 6 linhas, so valem com `rol=ok`):
+        - **`35a-conferir-gestao-de-categorias-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo (md5)
+          de cada uma das tres portas, os atributos, o EXECUTE so de `authenticated` e `service_role`, as oito
+          auxiliares fechadas e o gatilho `set_ultima_atualizacao` do produto ligado.
+        - **`35b-antes-gestao-de-categorias-funcoes-ausentes`** (`ausenciaConfirmadaPor`) prova o ANTES: as onze
+          funcoes ainda ausentes, as colunas de que a migration depende de pe, `is_admin`, `is_admin_atual` e
+          `f_unaccent` existindo e o gatilho do produto ligado. **Rode a `35b` em CADA loja ANTES do apply**
+          (a migration tambem recusa, `B1_BASELINE_DIVERGENT`, se faltar dependencia).
+      - **Caminho, uma loja por vez:** `35a` (sai NEGATIVA) -> `35b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `35a` DE NOVO, que tem de sair POSITIVA. `35a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql` apaga as
+        onze funcoes e so elas. **Nao desfaz nenhum renome ja feito:** os dados trocados ficam como estao (sao
+        dado da lojista). Depois dele a `35b` volta a ser POSITIVA e a `35a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `35a` e a `35b`
+        DE NOVO.
+      - **Limites:** `tests/banco/categorias-gestao-viva.cjs` prova o comportamento (os quatro lugares, nome
+        repetido, apagar com e sem uso, permissao de anon, logado comum e admin rebaixado, a codificacao do link,
+        rollback, mutantes) e `tests/banco/categorias-gestao-portao-viva.cjs` prova a decisao das duas consultas,
+        num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja
+        nem o corpo vivo delas. **Corrida conhecida:** uma aba de produto aberta ANTES de um renome, salva
+        DEPOIS, grava o nome antigo no produto (o produto volta a ficar com um nome que nao existe mais; a lojista
+        o ve na tela "Gerenciar categorias" como categoria sem produto e corrige o produto).
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
