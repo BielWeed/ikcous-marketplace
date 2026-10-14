@@ -2122,7 +2122,8 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
       );
       // O pino do que foi medido em 09/10/2026 (20261212 e 20261214) e em 14/10/2026 (20261227 e
       // 20261228: os números do painel; painel_inicio ganha a segunda sucessora; 20261230 e 20261231: a
-      // busca de clientes, get_admin_customers_paged e crm_clientes ganham a sua).
+      // busca de clientes, get_admin_customers_paged e crm_clientes ganham a sua; 20261234: o lucro só
+      // conta produto com custo, get_admin_analytics_v2 ganha a SEGUNDA sucessora).
       assertEquals([...sucessoras8e].sort(porFn), [
         {
           fn: "crm_clientes",
@@ -2138,6 +2139,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_analytics_v2",
           h: "0a5f8c75bbeeda3777a6a7326a0e281c",
           versao: "20261214000000",
+        },
+        {
+          fn: "get_admin_analytics_v2",
+          h: "05eac70f6bd4360c1f71fd373747ad0e",
+          versao: "20261234000000",
         },
         {
           fn: "get_admin_customers_paged",
@@ -7334,6 +7340,7 @@ const MIGRACAO_199 = `${MIGRATIONS_DIR}/20261199000000_portas_do_painel_exigem_a
 const MIGRACAO_BASELINE = `${MIGRATIONS_DIR}/20260806000000_baseline_do_schema_vivo.sql`;
 const MIGRACAO_212 = `${MIGRATIONS_DIR}/20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql`;
 const MIGRACAO_213 = `${MIGRATIONS_DIR}/20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql`;
+const MIGRACAO_234 = `${MIGRATIONS_DIR}/20261234000000_o_lucro_so_conta_produto_com_custo.sql`;
 const MIGRACAO_214 = `${MIGRATIONS_DIR}/20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql`;
 /** A SUCESSORA de painel_inicio (14/10/2026): o Início compara até a mesma hora. A 17a a aceita ao lado da 12. */
 const MIGRACAO_228 = `${MIGRATIONS_DIR}/20261228000000_o_inicio_compara_ate_a_mesma_hora.sql`;
@@ -7649,19 +7656,48 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpoSucessora.replace(/\n/g, "\r\n"), "utf8")
       .digest("hex"),
   };
+  // O corpo da sucessora de get_admin_analytics_v2 (a 20261234, o lucro só conta produto com custo):
+  // a 17a o aceita ao lado do da 14 (LF e CRLF); a 17b (o ANTES) nunca.
+  const textoSucessoraAn = (await Deno.readTextFile(MIGRACAO_234)).replace(
+    /\r\n/g,
+    "\n",
+  );
+  const iniSucessoraAn = textoSucessoraAn.indexOf(
+    cabecalhoDepois17("get_admin_analytics_v2"),
+  );
+  assert(iniSucessoraAn >= 0, "a 20261234 não define get_admin_analytics_v2");
+  const abreSucessoraAn =
+    textoSucessoraAn.indexOf("AS $$", iniSucessoraAn) + "AS $$".length;
+  const corpoSucessoraAn = textoSucessoraAn.slice(
+    abreSucessoraAn,
+    textoSucessoraAn.indexOf("$$;", abreSucessoraAn),
+  );
+  const shaSucessoraAn = {
+    lf: criarHash("sha256").update(corpoSucessoraAn, "utf8").digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpoSucessoraAn.replace(/\n/g, "\r\n"), "utf8")
+      .digest("hex"),
+  };
   for (const [nome, sql, lado, outro, rotulo] of [
     [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 2 da de get_admin_analytics_v2 (a 20261234)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
           return [x.lf, x.crlf];
         });
         const aceitosExtras =
-          lado === "depois" ? [shaSucessora.lf, shaSucessora.crlf] : [];
+          lado === "depois"
+            ? [
+                shaSucessora.lf,
+                shaSucessora.crlf,
+                shaSucessoraAn.lf,
+                shaSucessoraAn.crlf,
+              ]
+            : [];
         assertEquals(new Set(todos).size, 6);
         assertEquals(
           new Set([...todos, ...aceitosExtras]).size,
@@ -7679,8 +7715,17 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
             [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
             lado === "depois" && f.nome === "painel_inicio"
               ? [x.lf, x.lf, x.crlf, shaSucessora.lf, shaSucessora.crlf, x.lf]
-              : [x.lf, x.lf, x.crlf, x.lf],
-            `${f.nome}: esperado LF, aceitos LF e CRLF (e, no painel, o da sucessora), resultado LF`,
+              : lado === "depois" && f.nome === "get_admin_analytics_v2"
+                ? [
+                    x.lf,
+                    x.lf,
+                    x.crlf,
+                    shaSucessoraAn.lf,
+                    shaSucessoraAn.crlf,
+                    x.lf,
+                  ]
+                : [x.lf, x.lf, x.crlf, x.lf],
+            `${f.nome}: esperado LF, aceitos LF e CRLF (e, no painel e no analytics, o da sucessora), resultado LF`,
           );
           assertStringIncludes(
             linha,
@@ -7691,7 +7736,12 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
           for (const proibido of [y.lf, y.crlf])
             assert(!sql.includes(proibido), `${nome} aceitaria ${proibido}`);
           if (lado === "antes")
-            for (const proibido of [shaSucessora.lf, shaSucessora.crlf])
+            for (const proibido of [
+              shaSucessora.lf,
+              shaSucessora.crlf,
+              shaSucessoraAn.lf,
+              shaSucessoraAn.crlf,
+            ])
               assert(!sql.includes(proibido), `${nome} aceitaria a sucessora`);
         }
       },

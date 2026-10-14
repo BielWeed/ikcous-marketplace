@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 35a, 35b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1788,6 +1788,31 @@ const ROL_DA_32B = [
   "crm_clientes: o corpo ainda NAO ignora o acento do nome",
   "crm_clientes: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
 ];
+/** O rol da 35a (a prova de objetos da migration 20261234000000, o lucro so conta produto com custo: o grafico "Lucro acumulado" e
+ * o "Top 5 produtos mais lucrativos" do CRM > Visao geral deixam de tratar produto sem custo como margem de 100%): as 6 linhas que
+ * scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado
+ * do banco (funcao ausente vira `AUSENTE` na propria linha): o controle, UMA so funcao, o corpo vivo e o NOVO (md5), ele traz a
+ * regra nova, os atributos de sempre e o EXECUTE segue FECHADO ao visitante.
+ * tests/banco/lucro-so-com-custo-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_35A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_analytics_v2: corpo e o da 20261234000000, com o lucro so de produto com custo (md5)",
+  "get_admin_analytics_v2: o corpo so soma lucro de produto com custo e conta os sem custo",
+  "get_admin_analytics_v2: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "get_admin_analytics_v2: EXECUTE fechado para anon (authenticated sim)",
+];
+/** O rol da 35b (a consulta de AUSENCIA do lote do lucro so com custo; `ausenciaConfirmadaPor`): as 5 linhas que
+ * scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql devolve - a base de antes: a funcao com o corpo da
+ * 20261214000000 (md5), sem a regra nova, com os atributos de sempre. NAO mede a ACL. Uma loja que ja tem o corpo novo (ou ainda
+ * esta no da 20261199000000) reprova aqui de proposito, nas linhas do corpo e do marcador. */
+const ROL_DA_35B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_analytics_v2: corpo e o da 20261214000000, sem o lucro so de produto com custo (md5)",
+  "get_admin_analytics_v2: o corpo ainda NAO conta os produtos sem custo",
+  "get_admin_analytics_v2: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1838,6 +1863,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "29b-antes-reemissao-do-reembolso-base-conhecida": ROL_DA_29B,
   "32a-conferir-busca-de-clientes-aplicado": ROL_DA_32A,
   "32b-antes-busca-de-clientes-corpos-vigentes": ROL_DA_32B,
+  "35a-conferir-lucro-so-com-custo-aplicado": ROL_DA_35A,
+  "35b-antes-lucro-so-com-custo-corpo-vigente": ROL_DA_35B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2426,6 +2453,8 @@ module.exports = {
   ROL_DA_29B,
   ROL_DA_32A,
   ROL_DA_32B,
+  ROL_DA_35A,
+  ROL_DA_35B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

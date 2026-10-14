@@ -1213,6 +1213,57 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         decisao das duas consultas, num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel
         `supabase_read_only_user` de cada loja nem o corpo vivo delas.
 
+  35. **Lote de UMA migration, de apply normal: `20261234000000` (o lucro so conta produto com custo; MUDA O
+      NUMERO QUE A LOJISTA LE, nao muda dado).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy). Troca o corpo de `get_admin_analytics_v2` (a RPC do CRM > Visao geral) por
+      `CREATE OR REPLACE`, com o corpo da `20261214000000` mais quatro trocas declaradas, sem tocar assinatura,
+      volatilidade, `search_path`, as travas de admin, a ACL, a receita nem outra chave do JSON:
+      - **O defeito:** o grafico "Lucro acumulado" e o "Top 5 produtos mais lucrativos" contavam a venda de produto
+        SEM custo cadastrado (`custo IS NULL`) como lucro = preco inteiro (margem de 100% inventada; medido: Brinco
+        de R$ 30 sem custo, uma venda, aparecia com lucro de R$ 30 e empatado com a receita). A decisao do dono
+        ("custo ausente nao pode virar margem 100%", `20261024000000`) so tinha chegado a lista de produtos e ao
+        "Lucro se vender tudo" (`20261214000000`).
+      - **A regra (a MESMA do resto do app):** tem custo = `produtos.custo IS NOT NULL`. Custo 0 e zero medido (o
+        brinde) e CONTA. O lucro por dia e o top 5 so somam produto com custo; a receita (dia a dia, hoje, mes,
+        executivo) nao muda; `cost_sold` nao muda. Chave nova e aditiva: `productsWithoutCost` (quantos produtos
+        diferentes, nao apagados, tem venda reconhecida e ficaram fora por nao ter custo).
+      - **SIGNIFICADO que muda (decisao do dono, ja registrada):** o lucro do grafico CAI para quem tem produto sem
+        custo, e o ranking perde esse produto; numa loja onde NENHUM produto tem custo o ranking fica vazio ate a
+        lojista cadastrar o custo. A tela ainda nao avisa disso (o campo novo e o que deixa a tela avisar, em PR
+        proprio): **rode a `35m` e mostre o numero ao dono antes do apply.**
+      - Quem quebra: ninguem (nenhuma assinatura muda; o front le as mesmas chaves e uma chave a mais nao quebra
+        nada). Nenhuma edge function muda. Duas consultas, so leitura, so catalogo, de ROL FECHADO (6 e 5 linhas,
+        so valem com `rol=ok`):
+        - **`35a-conferir-lucro-so-com-custo-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo novo
+          (md5), a regra no corpo, os atributos de sempre e o `EXECUTE` fechado ao visitante.
+        - **`35b-antes-lucro-so-com-custo-corpo-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo da
+          `20261214000000`, sem a regra nova, com os atributos de sempre. **Nao mede a ACL.** O md5 vem do arquivo
+          da migration, nao de uma loja: **rode a `35b` em CADA loja ANTES do apply**; corpo diferente e loja que
+          ninguem mediu (a migration tambem recusa, `B1_BASELINE_DIVERGENT`). Loja ainda no corpo da
+          `20261199000000` reprova aqui: aplique o lote 17 antes.
+      - **Medir antes (so leitura, nao e portao):** `35m-medir-lucro-so-com-custo` conta (so numeros e somas, nenhum
+        dado pessoal) quantos produtos nao tem custo, quantos tem custo zero, e quanto das vendas e de produto sem
+        custo: o tamanho do lucro inventado que sai do grafico.
+      - **Caminho, uma loja por vez:** `35a` (sai NEGATIVA) -> `35b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `35a` DE NOVO, que tem de sair POSITIVA. `35a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **A cadeia das sucessoras:** `get_admin_analytics_v2` passa a ser 99 -> 14 -> 34. A `17a` (lote 17) e a `8e`
+        (lote 92-202) aceitam o corpo novo ao lado do da `20261214000000` e seguem POSITIVAS: rodar a `17a` e a `8e`
+        DE NOVO depois do apply.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261234000000_o_lucro_so_conta_produto_com_custo.sql` (recria o corpo da `20261214000000`,
+        mesmo md5, sem tocar a ACL, com pre-voo proprio; rodar duas vezes deixa o mesmo estado), ANTES do rollback da
+        `20261214000000` (o da 14 recusa enquanto houver redefinicao posterior no ar). Depois dele a `35b` volta a
+        ser POSITIVA e a `35a` NEGATIVA. O campo `productsWithoutCost` some do JSON (nenhuma tela o le ainda).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `17a`, a
+        `35a` e a `35b` DE NOVO.
+      - **Limites:** `tests/banco/lucro-so-com-custo-viva.cjs` prova o comportamento (lucro e ranking antes e depois,
+        custo zero, receita igual, produto com custo igual byte a byte, dia sem venda, fuso das 22h, pedido que nao
+        conta, dado que ja existia, rollback, pre-voo que recusa sem escrever, leitura concorrente, mutantes) e
+        `tests/banco/lucro-so-com-custo-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
+        delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

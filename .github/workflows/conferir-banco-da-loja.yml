@@ -33,7 +33,7 @@
 # cliente explícita, 06/10/2026; ref fixo gnjsrucsmjkajijrakzr) usa o de NOME
 # `SUPABASE_ACCESS_TOKEN_SAVY` — o mesmo que publicar-functions.yml já usa para
 # a Savy. Nunca o legado, e sem fallback entre eles: cada alvo enxerga SÓ o seu
-# segredo. Nenhuma credencial nova. As consultas 8a..8k, 9a, 10a, 10b, 11a, 11b, 12a, 12b, 13a, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 18a, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 22m, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 27m, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b e 32m rodam por aqui contra
+# segredo. Nenhuma credencial nova. As consultas 8a..8k, 9a, 10a, 10b, 11a, 11b, 12a, 12b, 13a, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 18a, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 22m, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 27m, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 32m, 35a, 35b e 35m rodam por aqui contra
 # qualquer um dos quatro alvos; o job `ledger` continua só para as faixas 72..83
 # e NUNCA roda para `ikcous-publicada` nem para `savy`, EXCETO a faixa 92-202 (backfill
 # do registro das migrations 92..202 sem a 201, só com a pré-checagem da 8e).
@@ -154,6 +154,9 @@ on:
           - 32a-conferir-busca-de-clientes-aplicado
           - 32b-antes-busca-de-clientes-corpos-vigentes
           - 32m-medir-busca-de-clientes
+          - 35a-conferir-lucro-so-com-custo-aplicado
+          - 35b-antes-lucro-so-com-custo-corpo-vigente
+          - 35m-medir-lucro-so-com-custo
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

@@ -528,6 +528,21 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   linhas; **não mede a ACL**, que é da 32a), a "prova de objetos" do lote `20261230000000` + `20261231000000`. Mesmo
   desenho do portão 26: rol exato nos estados (antes, depois, só uma das duas), um negativo por linha em CADA função, o
   veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **o lucro só conta produto com custo (`lucro-so-com-custo-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261234000000` (`get_admin_analytics_v2`: o lucro diário e o "Top 5 produtos mais lucrativos" do CRM > Visão geral
+  só somam item de produto com custo informado; produto sem custo fica na receita e fora do lucro, e o campo novo
+  `productsWithoutCost` conta quantos ficaram de fora), num Postgres efêmero, loja LIMPA. Produtos: com custo, custo
+  NULL, custo 0 (zero medido, CONTA) e um apagado; dia sem venda, cancelado/estornado/aguardando fora, 22h de São Paulo
+  no dia certo. O corpo ANTIGO (rollback numa transação desfeita) reproduz o defeito (lucro 230 onde é 120, Brinco em
+  1º) e a receita, os pedidos, o custo vendido e o produto-controle saem IGUAIS byte a byte; a única chave nova do
+  JSON é `productsWithoutCost`. Porta (cliente e admin rebaixado recusados, anon sem EXECUTE), dados intactos, reaplicar
+  2x e aplicar-desfazer-aplicar idênticos, pré-voo recusa sem escrever (corpo divergente, corpo da 20261199, ACL
+  aberta), rollback idempotente, leitura concorrente nunca vê estado misto, cinco mutantes ficam vermelhos.
+  `LUCRO_SO=comportamento` roda só o comportamento. **Não prova** a IKCOUS nem a Savy.
+- **portão do lucro só com custo (`lucro-so-com-custo-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `35a-conferir-lucro-so-com-custo-aplicado` (DEPOIS, 6 linhas) e `35b-antes-lucro-so-com-custo-corpo-vigente` (ANTES, 5
+  linhas) do lote `20261234000000`. Rol exato nos estados (depois, antes, corpo da 99), um negativo por linha, mutantes
+  do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
@@ -537,7 +552,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   desfeita, para provar grants/RLS/view — o admin grava
   `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
 - **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
-  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261234) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
   reprova se aparecer uma sucessora que não esteja na lista.
 - **função nova não nasce aberta (`portas-do-visitante-so-as-permitidas-viva.cjs`, via `rodar-isolado.cjs`)**: L8 da
   auditoria de 12/10, sem migration. Com todas as migrations aplicadas, toda função de `public` que anon,
