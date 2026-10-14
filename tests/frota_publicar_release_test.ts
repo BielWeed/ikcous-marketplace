@@ -2690,8 +2690,8 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     A25,
     A26,
     A27,
-    A30,
     A31,
+    A30,
   ]);
 });
 
