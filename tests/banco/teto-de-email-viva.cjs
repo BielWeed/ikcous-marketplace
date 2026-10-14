@@ -48,6 +48,11 @@ const lerSeExiste = (nome) => {
 };
 const MIGRATION = lerSeExiste(ARQ);
 const ROLLBACK = lerSeExiste(`rollback-manual-${ARQ}`);
+// A 20261220 (etapa 2: a v1 fecha para anon e authenticated) vem DEPOIS da 20261217. O rollback-manual
+// dela e' um GRANT idempotente: roda mesmo se a arvore ainda nao a tem (o arquivo nao existe: null).
+const ROLLBACK_220 = lerSeExiste(
+  "rollback-manual-20261220000000_a_consulta_antiga_de_pedido_por_codigo_fecha_para_o_visitante.sql",
+);
 
 // md5(replace(prosrc, E'\r', '')) dos corpos VIGENTES antes da 20261217000000 (20260820000000,
 // 20260821000000 e 20261181000000) -- os mesmos do pre-voo da migration.
@@ -77,10 +82,14 @@ let C;
 const PROVAS = [];
 const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
 
-/** Uma transacao por caso, sempre desfeita. */
+/** Uma transacao por caso, sempre desfeita, JA NO ESTADO DA 20261217: se a arvore tem a 20261220
+ * (a consulta antiga fecha para o visitante), o rollback-manual dela (um GRANT) reabre a v1 aqui
+ * dentro. Sem isso a v1 como `anon` e a reaplicacao da 20261217 (cuja conferencia exige o EXECUTE
+ * de anon e authenticated na v1) deixariam de valer para o que esta prova mede. */
 async function emTransacao(fn) {
   await C.query("BEGIN");
   try {
+    if (ROLLBACK_220) await C.query(ROLLBACK_220);
     return await fn();
   } finally {
     await C.query("ROLLBACK");
