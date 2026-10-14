@@ -303,7 +303,14 @@ export function CartView({
   // Insert/Delete em useOrders.ts:1247-1279). Antes a view copiava a lista
   // para um estado local na entrada da aba e ficava congelada até sair e
   // voltar. Prendado por tests/front/cart-aba-pedidos-viva.test.tsx.
-  const { fetchUserOrders, orders: pedidosVivos } = useOrders(true, false);
+  // `ordersLoadError`: a consulta falhou (rede/servidor) — a aba mostra "Não
+  // conseguimos carregar" com "Tentar de novo" em vez de "Nenhum pedido".
+  // `?? null` porque dublês de teste anteriores ao campo devolvem `undefined`.
+  const {
+    fetchUserOrders,
+    orders: pedidosVivos,
+    ordersLoadError: erroDosPedidos,
+  } = useOrders(true, false);
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(80);
   const isSummaryReady = useDeferredRender(380);
@@ -412,6 +419,15 @@ export function CartView({
       }
     }
   }, [user, fetchUserOrders, activeTab, isReady]);
+
+  // "Tentar de novo" da lista de pedidos: refaz a leitura do servidor. O hook
+  // limpa o erro quando a resposta vem ok e o mantém se falhar de novo.
+  const tentarCarregarPedidosDeNovo = useCallback(() => {
+    setIsLoadingOrders(true);
+    fetchUserOrders().then(() => {
+      setIsLoadingOrders(false);
+    });
+  }, [fetchUserOrders]);
 
   useEffect(() => {
     const getScrollElement = () => document.querySelector("main");
@@ -1275,6 +1291,9 @@ export function CartView({
                       isLoadingOrders={isLoadingOrders}
                       onNavigate={onNavigate}
                       isGuest={!user}
+                      loadError={user ? (erroDosPedidos ?? null) : null}
+                      onRetry={tentarCarregarPedidosDeNovo}
+                      hasAnyOrders={orders.length > 0}
                       emptyTitle={
                         orders.length > 0
                           ? ordersTab === "active"

@@ -18,6 +18,7 @@ import {
   QrCode,
   ShieldCheck,
   Truck,
+  WifiOff,
   XCircle,
 } from "lucide-react";
 import { memo, useState } from "react";
@@ -167,6 +168,21 @@ interface OrderListProps {
   guestMessage?: string;
   emptyTitle?: string;
   emptyDescription?: string;
+  /**
+   * A consulta dos pedidos FALHOU (rede/servidor) e ainda não foi refeita com
+   * sucesso. Falha não é lista vazia: sem pedido nenhum em memória a lista
+   * diz que não conseguiu carregar (com "Tentar de novo"); com pedidos em
+   * memória mantém tudo e só avisa, sem alarde.
+   */
+  loadError?: string | null;
+  /** Refaz a leitura. Sem ele, o erro aparece sem botão. */
+  onRetry?: () => void;
+  /**
+   * Há pedidos em memória, mesmo que `orders` (a lista da aba já filtrada)
+   * esteja vazia. Aba "Em andamento" sem pedidos NÃO é falha de carregamento.
+   * Padrão: `orders.length > 0`.
+   */
+  hasAnyOrders?: boolean;
 }
 
 export const OrderList = memo(function OrderList({
@@ -178,6 +194,9 @@ export const OrderList = memo(function OrderList({
   guestMessage,
   emptyTitle,
   emptyDescription,
+  loadError,
+  onRetry,
+  hasAnyOrders,
 }: Readonly<OrderListProps>) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -201,11 +220,91 @@ export const OrderList = memo(function OrderList({
     }, 2000);
   };
 
+  // Falha de carregamento não é lista vazia. O convidado nunca tem erro aqui
+  // (a lista dele vem da busca por OTP/WhatsApp, não desta consulta).
+  const temPedidosEmMemoria = hasAnyOrders ?? orders.length > 0;
+  const falhou = Boolean(loadError) && !isGuest && !isLoadingOrders;
+
+  if (falhou && !temPedidosEmMemoria && orders.length === 0) {
+    return (
+      <div
+        role="alert"
+        className={cn("text-center px-6", compact ? "py-2" : "py-4 xs:py-16")}
+      >
+        <div
+          className={cn(
+            "bg-amber-50 rounded-full flex items-center justify-center mx-auto border border-amber-100 overflow-hidden",
+            compact ? "w-8 h-8 mb-2" : "w-12 h-12 xs:w-24 xs:h-24 mb-3 xs:mb-8",
+          )}
+        >
+          <WifiOff
+            className={cn(
+              "text-amber-500",
+              compact ? "w-4 h-4" : "w-6 h-6 xs:w-12 xs:h-12",
+            )}
+          />
+        </div>
+        <h3
+          className={cn(
+            "font-black italic uppercase tracking-tighter text-zinc-900",
+            compact ? "text-sm mb-0.5" : "text-base xs:text-2xl mb-1 xs:mb-3",
+          )}
+        >
+          {loadError}
+        </h3>
+        <p
+          className={cn(
+            "font-bold text-zinc-500 leading-relaxed mx-auto",
+            compact
+              ? "text-[10px] max-w-[220px]"
+              : "text-xs xs:text-sm max-w-[300px]",
+          )}
+        >
+          Verifique sua conexão e tente de novo. Se você acabou de pagar, o
+          pedido não sumiu — ele só não apareceu aqui ainda.
+        </p>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-5 rounded-2xl bg-zinc-900 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-zinc-800 active:scale-95"
+          >
+            Tentar de novo
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Pedidos já em memória + recarga que falhou: a lista fica como está e só
+  // aparece um aviso discreto (nada de apagar o que a cliente já via).
+  const avisoDeFalha =
+    falhou && temPedidosEmMemoria ? (
+      <div
+        role="status"
+        className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800"
+      >
+        <span>
+          Não foi possível atualizar agora. Mostrando o que já tínhamos.
+        </span>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="shrink-0 rounded-lg bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900 active:scale-95"
+          >
+            Tentar de novo
+          </button>
+        )}
+      </div>
+    ) : null;
+
   if (orders.length === 0 && !isLoadingOrders) {
     return (
       <div
         className={cn("text-center px-6", compact ? "py-2" : "py-4 xs:py-16")}
       >
+        {avisoDeFalha}
         <motion.div
           initial={{ scale: 0.5, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -260,6 +359,7 @@ export const OrderList = memo(function OrderList({
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {avisoDeFalha && <div className="col-span-full">{avisoDeFalha}</div>}
       {orders.map((order, idx) => {
         const statusBase = statusConfig[order.status] || statusConfig.pending;
         const status =
