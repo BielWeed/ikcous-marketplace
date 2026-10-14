@@ -308,7 +308,7 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
   });
 
-  it("lojista CANCELA o aviso do navegador: o botao volta depois do prazo e a recarga e devolvida", async () => {
+  it("lojista CANCELA o aviso do navegador: o botao volta depois do prazo, mas a recarga continua gasta", async () => {
     definirOnLine(true);
     instalarSondaDeRede(true);
     await montarPagina();
@@ -333,29 +333,59 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     await descarregar();
 
     expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
-    expect(recargasGastas()).toBe(0);
+    // Custo aceito: o prazo NAO consegue separar "cancelou" de "esta lenta",
+    // entao nunca devolve a reserva - cancelar o aviso gasta 1 recarga.
+    expect(recargasGastas()).toBe(1);
     expect(hospedeiro.textContent).toContain("Toque em Tentar de novo.");
     expect(hospedeiro.textContent).not.toContain(FRASE_DE_REDE);
   });
 
-  it("cancelar o aviso varias vezes nunca esgota a guarda nem prende a cliente", async () => {
+  it("cancelar o aviso varias vezes gasta as recargas da janela e acaba em 'feche e abra' (nao fica tocando para sempre)", async () => {
     definirOnLine(true);
     instalarSondaDeRede(true);
     await montarPagina();
 
-    for (let i = 0; i <= MAX_RECARGAS_DE_ABA_QUE_FALHOU + 1; i++) {
+    for (let i = 0; i < MAX_RECARGAS_DE_ABA_QUE_FALHOU; i++) {
       await tocarEmTentarDeNovo();
       await act(async () => {
         vi.advanceTimersByTime(PRAZO_DA_PAGINA_SAIR_MS);
       });
       await descarregar();
+      expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
+    }
+    expect(recargasGastas()).toBe(MAX_RECARGAS_DE_ABA_QUE_FALHOU);
+
+    await tocarEmTentarDeNovo();
+
+    expect(reloadEspiao).toHaveBeenCalledTimes(MAX_RECARGAS_DE_ABA_QUE_FALHOU);
+    expect(hospedeiro.textContent).toContain(FRASE_FECHE_E_ABRA);
+    expect(botaoPorTexto("Tentar de novo")).toBeUndefined();
+  });
+
+  it("recarga LENTA (3G): a pagina velha segue viva alem do prazo e a reserva NAO e devolvida", async () => {
+    definirOnLine(true);
+    instalarSondaDeRede(true);
+    await montarPagina();
+    const HTML_DEMORA_MS = 6000; // medido no Chromium: pagina nova em 6 s
+
+    for (let i = 0; i < MAX_RECARGAS_DE_ABA_QUE_FALHOU; i++) {
+      await tocarEmTentarDeNovo();
+      await act(async () => {
+        vi.advanceTimersByTime(HTML_DEMORA_MS);
+      });
+      await descarregar();
+      // Passado o prazo o botao reaparece, mas a recarga que esta a caminho
+      // continua contada: o contador nunca anda para tras.
+      expect(recargasGastas()).toBe(i + 1);
+      // ... e a pagina nova finalmente chega (sessionStorage mantido).
+      await recarregarPagina();
+      expect(recargasGastas()).toBe(i + 1);
     }
 
-    expect(reloadEspiao).toHaveBeenCalledTimes(
-      MAX_RECARGAS_DE_ABA_QUE_FALHOU + 2,
-    );
-    expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
-    expect(hospedeiro.textContent).not.toContain(FRASE_FECHE_E_ABRA);
+    await tocarEmTentarDeNovo();
+
+    expect(reloadEspiao).toHaveBeenCalledTimes(MAX_RECARGAS_DE_ABA_QUE_FALHOU);
+    expect(hospedeiro.textContent).toContain(FRASE_FECHE_E_ABRA);
   });
 
   it("falha que NAO e de chunk mantem o comportamento de antes", async () => {
