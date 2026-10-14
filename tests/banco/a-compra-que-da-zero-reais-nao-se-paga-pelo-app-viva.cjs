@@ -1077,11 +1077,11 @@ async function main() {
   await C.connect();
   let ok = 0;
   const falhas = [];
+  // No modo mutante de arquivo roda SO a prova de comportamento (ver MUTADO).
+  const lista = MUTADO
+    ? PROVAS.filter((p) => p.nome.startsWith("DEPOIS: zero + app recusa"))
+    : PROVAS;
   try {
-    // No modo mutante de arquivo roda SO a prova de comportamento (ver MUTADO).
-    const lista = MUTADO
-      ? PROVAS.filter((p) => p.nome.startsWith("DEPOIS: zero + app recusa"))
-      : PROVAS;
     for (const { nome, corpo } of lista) {
       try {
         await corpo();
@@ -1098,7 +1098,7 @@ async function main() {
   } finally {
     await C.end();
   }
-  console.log(`\n${ok}/${PROVAS.length} provas passaram.`);
+  console.log(`\n${ok}/${lista.length} provas passaram.`);
   if (falhas.length) falhar("FALHOU", `${falhas.length} prova(s) reprovadas.`);
 }
 
