@@ -106,3 +106,59 @@ describe("palavra singular que termina em 's' nao some da busca", () => {
     );
   });
 });
+
+// Medido na revisao: o singular de 3 letras ("cases" -> "cas") achava por
+// TRECHO tudo que tivesse essas 3 letras. Como palavra inteira, so acha o que
+// e' a palavra mesma.
+describe("singular derivado de 3 letras so vale como palavra inteira", () => {
+  const catalogo = [
+    produto("Case iPhone", "Acessórios"),
+    produto("Casaco Longo", "Roupas"),
+    produto("Parka Verde", "Casa"),
+    produto("Tinta Cor Azul", "Casa"),
+    produto("Colar Coração", "Joias"),
+    produto("Corrente Dourada", "Joias"),
+    produto("Cordão de Prata", "Joias"),
+    produto("Base Líquida", "Maquiagem"),
+    produto("Camiseta Básica", "Roupas"),
+    produto("Pires de Porcelana", "Cozinha"),
+    produto("Espiral Decorativa", "Casa"),
+    produto("Pirulito de Morango", "Doces"),
+    produto("Botijão de Gás", "Casa"),
+    produto("Gasolina Aditivo", "Carro"),
+    produto("Par de Brincos", "Joias"),
+    produto("Luz de Presença", "Casa"),
+    produto("Pendente Luz", "Casa"),
+    produto("Luzia Perfume", "Beleza"),
+  ];
+  const quemAcha = (busca: string) =>
+    catalogo.filter((p) => produtoCombinaComBusca(p, busca)).map((p) => p.name);
+
+  it.each([
+    ["cases", ["Case iPhone"]],
+    ["cores", ["Tinta Cor Azul"]],
+    ["bases", ["Base Líquida"]],
+    ["pires", ["Pires de Porcelana"]],
+    ["gases", ["Botijão de Gás"]],
+    ["pares", ["Par de Brincos"]],
+  ])("%s acha so o que e' o singular de verdade", (busca, esperado) => {
+    expect(quemAcha(busca)).toEqual(esperado);
+  });
+
+  it("luzes continua achando a palavra Luz, no comeco e no fim, e nao Luzia", () => {
+    expect(quemAcha("luzes")).toEqual(["Luz de Presença", "Pendente Luz"]);
+  });
+
+  it("forma de 2 letras nunca vale (ares nao vira ar)", () => {
+    expect(produtoCombinaComBusca(produto("Ar Condicionado"), "ares")).toBe(
+      false,
+    );
+  });
+
+  it("jeans nao inventa jeam (so e/i/o/u + ns vira m)", () => {
+    expect(produtoCombinaComBusca(produto("Jeam Fashion"), "jeans")).toBe(
+      false,
+    );
+    expect(produtoCombinaComBusca(produto("Calça Jeans"), "jeans")).toBe(true);
+  });
+});

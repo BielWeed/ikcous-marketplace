@@ -87,8 +87,18 @@ vi.mock("@/views/customer/HomeView", () => ({
       >
         Produto
       </button>
+      <button
+        type="button"
+        data-testid="tela-de-busca"
+        onClick={() => onNavigate("search")}
+      >
+        Busca
+      </button>
     </div>
   ),
+}));
+vi.mock("@/views/customer/SearchView", () => ({
+  SearchView: () => <div data-testid="tela-busca" />,
 }));
 vi.mock("@/views/customer/CartView", () => ({
   CartView: () => <div data-testid="tela-carrinho" />,
@@ -197,6 +207,7 @@ vi.mock("@/hooks/useAuth", () => ({
   }),
 }));
 // Referencia ESTAVEL: a SearchBar tem efeitos que dependem de `products`.
+const prefetchesPendentes = vi.hoisted(() => [] as Promise<void>[]);
 const catalogo = vi.hoisted(() => [
   {
     id: "produto-A",
@@ -233,8 +244,14 @@ vi.mock("@/hooks/usePrefetchOnHover", () => ({
     // como num celular lento. E' nessa janela, com o termo ja digitado e a
     // tela ainda a antiga, que uma limpeza presa ao TERMO (e nao a troca de
     // tela) apagaria o campo.
-    prefetchViewPromise: () =>
-      new Promise<void>((resolve) => setTimeout(resolve, 40)),
+    prefetchViewPromise: () => {
+      const espera = new Promise<void>((resolve) => setTimeout(resolve, 40));
+      // O teste espera cada uma terminar antes de seguir (ver `afterEach`):
+      // transicao pendente de um teste vazaria para o seguinte, porque o
+      // historico do jsdom e' global.
+      prefetchesPendentes.push(espera);
+      return espera;
+    },
   }),
 }));
 vi.mock("@/hooks/useNetworkAdaptive", () => ({
@@ -344,6 +361,13 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
   });
 
   afterEach(async () => {
+    // Toda troca de tela que o teste deixou pendente (a espera do pedaco de
+    // codigo da tela) termina ANTES de desmontar: senao ela empurraria uma
+    // entrada no historico global do jsdom no meio do teste seguinte.
+    while (prefetchesPendentes.length > 0) {
+      await Promise.all(prefetchesPendentes.splice(0));
+      await act(async () => {});
+    }
     const paraDesmontar = raiz;
     await act(async () => {
       paraDesmontar?.unmount();
@@ -353,13 +377,31 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
     container = null;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    globalThis.history.replaceState(null, "", "/");
   });
 
-  // Espera de RELOGIO, FORA do `act`: dentro de um `act` assincrono o React
-  // segura todas as atualizacoes ate o fim da espera e junta tudo num render
-  // so -- o tempo em que o termo ja existe e a tela ainda e a antiga some, e o
-  // teste nao enxerga a limpeza precoce que e' o defeito.
-  const esperar = async (ms: number) => {
+  // Espera por ESTADO, nao por tempo, e FORA do `act`: dentro de um `act`
+  // assincrono o React segura todas as atualizacoes ate o fim da espera e
+  // junta tudo num render so -- o tempo em que o termo ja existe e a tela
+  // ainda e a antiga some, e o teste nao enxerga a limpeza precoce que e' o
+  // defeito. Sob carga a troca de tela demora mais; a condicao e' que manda.
+  const aguardar = async (condicao: () => void) => {
+    // @ts-expect-error — bandeira interna do React para o `act`
+    globalThis.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      await vi.waitFor(condicao, { timeout: 8000, interval: 20 });
+    } finally {
+      // @ts-expect-error — bandeira interna do React para o `act`
+      globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    }
+    await act(async () => {});
+  };
+  /**
+   * Espera de relogio, so para provar que ALGO NAO acontece (nao navega, nao
+   * apaga). Sob carga ela pode ser curta demais, e isso so deixa o teste
+   * passar mais facil -- nunca o faz falhar sem motivo.
+   */
+  const esperarQueNadaAconteca = async (ms: number) => {
     // @ts-expect-error — bandeira interna do React para o `act`
     globalThis.IS_REACT_ACT_ENVIRONMENT = false;
     try {
@@ -370,21 +412,17 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
     }
     await act(async () => {});
   };
-  const assentar = async (voltas = 10) => {
-    for (let i = 0; i < voltas; i++) {
-      await act(async () => {
-        await Promise.resolve();
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-  };
   const abrir = async () => {
     await act(async () => {
       raiz?.render(<App />);
     });
-    await assentar();
+    await aguardar(() => {
+      expect(container?.querySelector('input[name="search"]')).not.toBeNull();
+      expect(container?.querySelector('[data-testid="home"]')).not.toBeNull();
+    });
   };
-  const clicar = async (marca: string) => {
+  /** Clica e espera a tela de destino CHEGAR (pelo endereco), nao um tempo. */
+  const irPara = async (marca: string, endereco: string) => {
     const botao = container?.querySelector<HTMLButtonElement>(
       `[data-testid="${marca}"]`,
     );
@@ -392,7 +430,9 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
     await act(async () => {
       botao.click();
     });
-    await assentar();
+    await aguardar(() => {
+      expect(caminho()).toBe(endereco);
+    });
   };
   const campo = () => {
     const input = container?.querySelector<HTMLInputElement>(
@@ -412,11 +452,12 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
       campo().dispatchEvent(new Event("input", { bubbles: true }));
     });
   };
-  /** Digita e espera mais que os 150 ms em que a barra repassa o termo. */
+  /** Digita e espera o termo CHEGAR a Home (a barra o repassa apos 150 ms). */
   const digitarEEsperar = async (texto: string) => {
     await digitar(texto);
-    await esperar(300);
-    await assentar();
+    await aguardar(() => {
+      expect(termoDaHome()).toBe(texto);
+    });
   };
   const termoDaHome = () =>
     container
@@ -424,33 +465,36 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
       ?.getAttribute("data-busca");
   const caminho = () => globalThis.location.pathname;
 
+  /** A cliente chegou a Home com o termo e o campo o mostra. */
+  const aguardarNaHomeCom = async (texto: string) => {
+    await aguardar(() => {
+      expect(caminho()).toBe("/");
+      expect(termoDaHome()).toBe(texto);
+      expect(campo().value).toBe(texto);
+    });
+  };
+
   it("no carrinho, o termo NAO some e a cliente cai na Home com ele", async () => {
     await abrir();
-    await clicar("carrinho");
-    expect(caminho()).toBe("/cart");
+    await irPara("carrinho", "/cart");
 
-    await digitarEEsperar("vestido");
+    await digitar("vestido");
 
-    expect(campo().value).toBe("vestido");
-    expect(caminho()).toBe("/");
-    expect(termoDaHome()).toBe("vestido");
+    await aguardarNaHomeCom("vestido");
   });
 
   it("no produto, o termo NAO some e a cliente cai na Home com ele", async () => {
     await abrir();
-    await clicar("produto");
-    expect(caminho()).toBe("/product-detail");
+    await irPara("produto", "/product-detail");
 
-    await digitarEEsperar("vestido");
+    await digitar("vestido");
 
-    expect(campo().value).toBe("vestido");
-    expect(caminho()).toBe("/");
-    expect(termoDaHome()).toBe("vestido");
+    await aguardarNaHomeCom("vestido");
   });
 
   it("apertar Enter fora da Home tambem leva a Home com o termo", async () => {
     await abrir();
-    await clicar("carrinho");
+    await irPara("carrinho", "/cart");
 
     await digitar("vestido");
     await act(async () => {
@@ -458,68 +502,88 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
         new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
       );
     });
-    await assentar();
 
-    expect(caminho()).toBe("/");
-    expect(termoDaHome()).toBe("vestido");
+    await aguardarNaHomeCom("vestido");
   });
 
   it("na Home o termo continua valendo e a Home nao navega", async () => {
     await abrir();
     const empurrar = vi.spyOn(globalThis.history, "pushState");
 
-    await digitarEEsperar("vestido");
+    await digitar("vestido");
+    await aguardarNaHomeCom("vestido");
+    await esperarQueNadaAconteca(100);
 
-    expect(campo().value).toBe("vestido");
-    expect(termoDaHome()).toBe("vestido");
     expect(caminho()).toBe("/");
     expect(empurrar).not.toHaveBeenCalled();
   });
 
   it("digitar letra por letra fora da Home cria UMA entrada de historico, nao uma por termo", async () => {
     await abrir();
-    await clicar("carrinho");
+    await irPara("carrinho", "/cart");
     const empurrar = vi.spyOn(globalThis.history, "pushState");
 
-    await digitarEEsperar("ve");
-    await digitarEEsperar("ves");
-    await digitarEEsperar("vest");
-    await digitarEEsperar("vesti");
+    for (const texto of ["ve", "ves", "vest", "vesti"]) {
+      await digitar(texto);
+      await aguardarNaHomeCom(texto);
+    }
+    await esperarQueNadaAconteca(100);
 
-    expect(termoDaHome()).toBe("vesti");
-    expect(campo().value).toBe("vesti");
     expect(empurrar).toHaveBeenCalledTimes(1);
   });
 
-  it("campo so com espacos fora da Home nao navega para lugar nenhum", async () => {
+  it("campo so com espacos fora da Home nao navega, e e zerado como antes", async () => {
     await abrir();
-    await clicar("carrinho");
+    await irPara("carrinho", "/cart");
+
     await digitar("   ");
-    await esperar(300);
-    await assentar();
+    // O campo volta a ficar vazio (antes o App zerava o termo, e a barra
+    // copiava o vazio de volta).
+    await aguardar(() => {
+      expect(campo().value).toBe("");
+    });
+    await esperarQueNadaAconteca(250);
 
     expect(caminho()).toBe("/cart");
+    expect(campo().value).toBe("");
+  });
+
+  it("na tela de busca, digitar no topo NAO leva a Home (ela filtra sozinha)", async () => {
+    await abrir();
+    await irPara("tela-de-busca", "/search");
+
+    await digitar("vestido");
+    await aguardar(() => {
+      expect(termoDaHome()).toBe("vestido");
+    });
+    // Tempo para uma navegacao indevida acontecer (150 ms da barra + 40 ms
+    // da espera da tela).
+    await esperarQueNadaAconteca(350);
+
+    expect(caminho()).toBe("/search");
+    expect(campo().value).toBe("vestido");
   });
 
   it("trocar de tela SEM buscar limpa a busca, como antes", async () => {
     await abrir();
     await digitarEEsperar("vestido");
-    expect(termoDaHome()).toBe("vestido");
 
-    await clicar("carrinho");
+    await irPara("carrinho", "/cart");
 
-    expect(caminho()).toBe("/cart");
-    expect(campo().value).toBe("");
-    expect(termoDaHome()).toBe("");
+    await aguardar(() => {
+      expect(campo().value).toBe("");
+      expect(termoDaHome()).toBe("");
+    });
   });
 
   it("sair da Home para o produto tambem limpa", async () => {
     await abrir();
     await digitarEEsperar("vestido");
 
-    await clicar("produto");
+    await irPara("produto", "/product-detail");
 
-    expect(caminho()).toBe("/product-detail");
-    expect(campo().value).toBe("");
+    await aguardar(() => {
+      expect(campo().value).toBe("");
+    });
   });
 });

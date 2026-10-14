@@ -2202,6 +2202,20 @@ const AppContent = () => {
     }
   }, [currentView]);
 
+  // Só espaços fora da Home/da busca não é busca nem leva a lugar nenhum
+  // (`handleSearch` não navega): zera o campo, como sempre foi. Só toca em
+  // termo VAZIO de verdade — termo com letra nunca é apagado por aqui.
+  useEffect(() => {
+    if (
+      currentView !== "search" &&
+      currentView !== "home" &&
+      searchQuery &&
+      !searchQuery.trim()
+    ) {
+      setSearchQuery("");
+    }
+  }, [currentView, searchQuery]);
+
   // Link de produto cuja checagem falhou por REDE (id do produto, ou null).
   // Falha de rede NÃO é "o produto não existe": o cliente fica no link e vê
   // "Não conseguimos carregar" com "Tentar de novo", em vez de cair na Home.

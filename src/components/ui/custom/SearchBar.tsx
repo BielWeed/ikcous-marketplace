@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { useProducts } from "@/hooks/useProducts";
 import {
+  formaAparece,
   palavrasDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
@@ -200,8 +201,9 @@ export function SearchBar({
 
         // Word level score (qualquer forma da palavra: "colares" -> "colar")
         for (const formas of palavras) {
-          if (formas.some((forma) => name.includes(forma))) score += 20;
-          if (formas.some((forma) => category.includes(forma))) score += 15;
+          if (formas.some((forma) => formaAparece(name, forma))) score += 20;
+          if (formas.some((forma) => formaAparece(category, forma)))
+            score += 15;
         }
 
         // Category match
