@@ -147,7 +147,7 @@ describe("Balcão — busca de produto: corrida e foco", () => {
 
   async function resolver(indice: number, valor: unknown): Promise<void> {
     await act(async () => {
-      pendentes[indice].resolver(valor);
+      pendentes.at(indice)!.resolver(valor);
     });
     await avancar();
   }
