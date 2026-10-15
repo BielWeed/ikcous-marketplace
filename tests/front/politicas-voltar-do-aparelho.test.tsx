@@ -3,24 +3,20 @@
 // VOLTAR DO APARELHO COM A FOLHA ABERTA. O defeito: no Android, com a política
 // aberta por cima do checkout, do cadastro ou do produto, o Voltar tirava a
 // cliente da tela e apagava o que ela já tinha digitado. Aqui usa-se o
-// HISTÓRICO REAL do jsdom (`history.back()` de verdade) e um ouvinte que faz o
-// papel do roteador do App (registrado ANTES da folha, como o handler do
-// App.tsx), para provar:
-//   - o Voltar fecha só a folha, a URL e a tela de baixo ficam como estavam;
-//   - o roteador do App nem é acordado (senão ele chamaria o `backOverride`
-//     do checkout e fecharia o painel de resumo que estiver aberto);
-//   - fechar pelo X devolve a entrada, e o roteador também não é acordado.
+// HISTÓRICO REAL do jsdom (`history.back()` de verdade) e um "App" simulado: um
+// ouvinte de popstate registrado ANTES da folha (como o handler do App.tsx, que
+// se registra na montagem) e que só NAVEGA quando a tela do histórico é
+// diferente da que ele está mostrando (o "já estamos no mesmo destino" do
+// `syncWithUrl`). Para provar o RESULTADO, não o mecanismo:
+//   - o Voltar fecha só a folha; o endereço e o estado do histórico ficam como
+//     estavam, o App não troca de tela e nada do que foi digitado se perde;
+//   - fechar pelo X devolve a entrada empurrada, com o mesmo resultado.
+// Nota: no Chromium real o App (registrado primeiro) também acorda; ele só não
+// faz nada porque a tela não mudou. O jsdom põe a captura na frente, então este
+// teste NÃO afirma "o App nem acordou".
 import { act, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import {
-  type Mock,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { storeName: "Loja da Ana" } }),
@@ -50,15 +46,28 @@ function esperar(ms = 0): Promise<void> {
 describe("folha de política — o Voltar do aparelho fecha só a folha", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
-  let roteadorDoApp: Mock<() => void>;
+  // Telas para as quais o "App" navegou (vazio = ficou onde estava).
+  let navegacoesDoApp: string[];
   const ouvintes: Array<(e: PopStateEvent) => void> = [];
 
+  const telaDoHistorico = () =>
+    `${globalThis.history.state?.view}|${globalThis.location.pathname}${globalThis.location.search}`;
+
   beforeEach(() => {
-    // Tela do app: /checkout com o estado que o roteador grava.
-    globalThis.history.replaceState({ view: "checkout" }, "", "/checkout");
-    // O "App": um ouvinte de popstate (bolha) registrado ANTES de a folha abrir.
-    roteadorDoApp = vi.fn<() => void>();
-    const ouvinte = () => roteadorDoApp();
+    // Uma entrada anterior (Home) e, por cima, a tela do app: /checkout com o
+    // estado que o roteador grava. Assim o segundo Voltar tem para onde ir.
+    globalThis.history.replaceState({ view: "home" }, "", "/");
+    globalThis.history.pushState({ view: "checkout" }, "", "/checkout");
+    // O "App": ouvinte de popstate (bolha) registrado ANTES de a folha abrir,
+    // como o do App.tsx. Só navega se a tela do histórico mudou.
+    navegacoesDoApp = [];
+    let telaMostrada = telaDoHistorico();
+    const ouvinte = () => {
+      const alvo = telaDoHistorico();
+      if (alvo === telaMostrada) return;
+      telaMostrada = alvo;
+      navegacoesDoApp.push(alvo);
+    };
     ouvintes.push(ouvinte);
     globalThis.addEventListener("popstate", ouvinte);
     hospedeiro = document.createElement("div");
@@ -92,7 +101,8 @@ describe("folha de política — o Voltar do aparelho fecha só a folha", () => 
   };
 
   async function aguardarFolha(): Promise<Element> {
-    for (let i = 0; i < 80; i++) {
+    // Folga para a primeira abertura, que baixa o pedaço da folha a frio.
+    for (let i = 0; i < 240; i++) {
       const folha = document.querySelector('[data-testid="folha-politica"]');
       if (folha) return folha;
       await act(async () => {
@@ -179,7 +189,7 @@ describe("folha de política — o Voltar do aparelho fecha só a folha", () => 
     expect(globalThis.location.search).toBe("?id=p-9");
   });
 
-  it("Voltar do aparelho: a folha fecha, o roteador do App nem é acordado e o que a cliente digitou fica", async () => {
+  it("Voltar do aparelho: a folha fecha, a tela e o endereço não mudam e o que a cliente digitou fica", async () => {
     const campo = await montarTelaComFrase();
     act(() => botaoPorTexto("Termos de uso").click());
     await aguardarFolha();
@@ -192,7 +202,7 @@ describe("folha de política — o Voltar do aparelho fecha só a folha", () => 
     expect(globalThis.history.state).toEqual({ view: "checkout" });
     expect(hospedeiro.querySelector("input")).toBe(campo);
     expect(campo.value).toBe("123.456.789-09");
-    expect(roteadorDoApp).not.toHaveBeenCalled();
+    expect(navegacoesDoApp).toEqual([]);
   });
 
   it("um segundo Voltar (sem folha) volta a ser do roteador: a folha não rouba nada", async () => {
@@ -200,13 +210,13 @@ describe("folha de política — o Voltar do aparelho fecha só a folha", () => 
     act(() => botaoPorTexto("Termos de uso").click());
     await aguardarFolha();
     await apertarVoltar();
-    expect(roteadorDoApp).not.toHaveBeenCalled();
-    // Sem folha aberta, o Voltar chega ao roteador como sempre.
+    expect(navegacoesDoApp).toEqual([]);
+    // Sem folha aberta, o Voltar leva o App à tela anterior, como sempre.
     await apertarVoltar();
-    expect(roteadorDoApp).toHaveBeenCalledTimes(1);
+    expect(navegacoesDoApp).toEqual(["home|/"]);
   });
 
-  it("fechar pelo X devolve a entrada que a folha empurrou, sem acordar o roteador", async () => {
+  it("fechar pelo X devolve a entrada que a folha empurrou, e o App não troca de tela", async () => {
     await montarTelaComFrase();
     act(() => botaoPorTexto("Termos de uso").click());
     await aguardarFolha();
@@ -226,7 +236,7 @@ describe("folha de política — o Voltar do aparelho fecha só a folha", () => 
     // A entrada empurrada foi devolvida: o topo é a da tela, sem a marca.
     expect(globalThis.history.state).toEqual({ view: "checkout" });
     expect(globalThis.location.pathname).toBe("/checkout");
-    expect(roteadorDoApp).not.toHaveBeenCalled();
+    expect(navegacoesDoApp).toEqual([]);
   });
 
   it("abrir, fechar e abrir de novo: cada abertura tem a sua entrada, e o Voltar ainda fecha", async () => {
@@ -240,7 +250,7 @@ describe("folha de política — o Voltar do aparelho fecha só a folha", () => 
       ).toBeNull();
       expect(campo.value).toBe("123.456.789-09");
     }
-    expect(roteadorDoApp).not.toHaveBeenCalled();
+    expect(navegacoesDoApp).toEqual([]);
     expect(globalThis.history.state).toEqual({ view: "checkout" });
   });
 

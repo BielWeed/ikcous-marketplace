@@ -24,11 +24,22 @@ const JANELA_DO_RETORNO_MS = 500;
  *  3. fechar pelo X, pelo toque fora ou por Esc devolve a entrada com
  *     `history.back()`, para o próximo Voltar não ficar "sem efeito".
  *
- * O ouvinte é de CAPTURA e engole o evento (`stopImmediatePropagation`): a
- * camada aberta é dona do Voltar, e o handler do App não pode, por exemplo,
- * chamar o `backOverride` do checkout e fechar o painel de resumo que estiver
- * aberto por baixo. O mesmo vale para o `popstate` do nosso próprio
- * `history.back()`: é engolido uma vez só, com prazo curto.
+ * Quem trata o `popstate` primeiro, no navegador de verdade, é quem se
+ * registrou primeiro (o `true` de captura NÃO passa na frente no `window`; só o
+ * jsdom faz isso). O App se registra na montagem, antes de qualquer folha, então
+ * o App SEMPRE acorda também: o `stopImmediatePropagation` daqui não o impede.
+ * O que torna o fluxo correto é o App não fazer nada quando o endereço e a tela
+ * não mudam (`syncWithUrl`, "já estamos no mesmo destino"); a folha fecha pelo
+ * ouvinte daqui. O `popstate` do nosso próprio `history.back()` (fechar pelo X)
+ * é engolido uma vez só, com prazo curto, para o ouvinte da folha não tratá-lo
+ * como Voltar.
+ *
+ * Limite conhecido: se o App tiver um desvio do Voltar ativo (o `backOverride`
+ * do checkout, com o painel de resumo aberto por baixo da folha), ele roda no
+ * mesmo Voltar. Então um único Voltar pode fechar a folha E o painel, e sobra
+ * uma entrada de histórico a mais (o Voltar seguinte pode parecer "sem
+ * efeito"). A tela não troca, então o que foi digitado fica. Corrigir isso
+ * é mexer no App.
  *
  * Se a tela some com a folha aberta (a navegação trocou de tela), NADA é
  * devolvido: a entrada no topo já não é a nossa, e mexer no histórico no meio
