@@ -96,8 +96,17 @@ module.exports = [
     // recibo, Mercado Pago), sem duplicata nem dependência nova; `import()`
     // não ajuda porque o portão SOMA todos os chunks do painel. Cliente fica
     // em 522,77/550 kB, sem mudança de teto.
+    //
+    // 15/10/2026 — teto 455 -> 460 kB (decisão técnica do hub, não do dono, no
+    // PR #885 que integra os lotes de banco 36 a 41). Medido depois de juntar a
+    // base com o #882: painel 459,61 kB (base c67d95ea 448,04; +3,5 do #882; +8,0
+    // dos lotes 36 a 41). O +8,0 é funcionalidade real, sem duplicata nem
+    // import estático errado: privacidade dos clientes 2,8, gerenciar categorias
+    // 2,6, "Sobre a loja" 1,1, formulário e lista de produtos 0,8, ajustes 0,3,
+    // o resto em sobras pequenas. Folga de 0,39 kB de propósito. Reduzir de
+    // verdade (recharts, ~141 kB de módulos; tus-js-client, ~26 kB) fica na fila.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "455 kB",
+    limit: "460 kB",
     webpack: false,
     running: false,
   },
