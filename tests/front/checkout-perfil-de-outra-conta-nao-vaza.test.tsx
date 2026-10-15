@@ -112,6 +112,12 @@ vi.mock("@/hooks/useCart", async () => {
   }
   return { useCart: useCartComEstado };
 });
+// A tela chama `useIrAoCarrinhoRelido`, que por dentro chama `useCart()` de
+// novo. Sem este dublê, cada montagem da tela contaria 2 no `useEffect` do
+// `useCart` acima, embora a tela monte UMA vez só.
+vi.mock("@/hooks/useIrAoCarrinhoRelido", () => ({
+  useIrAoCarrinhoRelido: () => (ir: () => void) => ir(),
+}));
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
 }));
