@@ -22,7 +22,7 @@
 -- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
 -- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
 -- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
--- apply da sucessora. Hoje são seis funções (oito migrations), cada uma POR SI (função independente:
+-- apply da sucessora. Hoje são sete funções (nove migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
@@ -44,7 +44,7 @@
 -- `sucessoras`); aceito, o `vivo` mostra o `esperado`. O rollback-manual de cada
 -- sucessora devolve o corpo da anterior na cadeia (o da 99 para a primeira), que segue aceito. Nada mais foi afrouxado:
 -- corpo estranho (vivo = o md5 dele), função AUSENTE e sobrecarga múltipla
--- (vivo = os md5 separados por vírgula) reprovam igual, e as outras 56 seguem
+-- (vivo = os md5 separados por vírgula) reprovam igual, e as outras 54 seguem
 -- exatas. tests/ci_conferir_banco_test.ts confere os hashes aceitos contra os
 -- arquivos (sucessoras = as migrations depois da 202 que redefinem uma das 61,
 -- com o md5 do corpo; o preflight delas e o rollback-manual citam os dois) e
