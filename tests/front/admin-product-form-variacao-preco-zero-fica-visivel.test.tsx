@@ -179,12 +179,6 @@ describe("AdminProductFormView — preço 0 da variação fica visível", () => 
     });
   }
 
-  async function abrirNovaVariacao() {
-    await act(async () => {
-      botaoPorTexto("+ Novo")?.click();
-    });
-  }
-
   describe("a linha da variação", () => {
     it("preço próprio 0: mostra 'R$ 0,00', não um '0' solto", async () => {
       await montarProduto([variacao("Brinde", 0)]);
@@ -213,12 +207,26 @@ describe("AdminProductFormView — preço 0 da variação fica visível", () => 
   });
 
   describe("o aviso no formulário da variação", () => {
-    it("com 0 digitado: avisa que a variação sai de graça e diz como usar o preço do produto", async () => {
-      await montarProduto();
-      await abrirNovaVariacao();
+    // O zero NOVO não existe mais: o campo de moeda esvazia o "0" digitado
+    // (preço próprio apagado = segue o do produto; ver
+    // admin-product-form-preco-proprio-da-variacao-nao-vira-zero). O zero que
+    // ainda existe é o de uma variação JÁ salva a R$ 0,00 -- é essa que o
+    // formulário avisa quando a lojista a reabre.
+    async function editarVariacao(valor: string) {
+      await act(async () => {
+        (
+          document.body.querySelector(
+            `button[aria-label="Editar variação ${valor}"]`,
+          ) as HTMLButtonElement
+        ).click();
+      });
+    }
+
+    it("variação já salva a 0: avisa que sai de graça e diz como usar o preço do produto", async () => {
+      await montarProduto([variacao("Brinde", 0)]);
       expect(document.body.textContent).not.toMatch(AVISO);
 
-      await digitarPreco("0");
+      await editarVariacao("Brinde");
 
       expect(document.body.textContent).toMatch(AVISO);
       expect(document.body.textContent).toContain(
@@ -226,29 +234,25 @@ describe("AdminProductFormView — preço 0 da variação fica visível", () => 
       );
     });
 
-    it("com outro valor, ou campo vazio: não avisa", async () => {
-      await montarProduto();
-      await abrirNovaVariacao();
+    it("com outro valor, ou campo vazio: não avisa (e o 0 digitado esvazia o campo)", async () => {
+      await montarProduto([variacao("Brinde", 0)]);
+      await editarVariacao("Brinde");
+      expect(document.body.textContent).toMatch(AVISO);
 
       await digitarPreco("5");
       expect(document.body.textContent).not.toMatch(AVISO);
 
+      // O zero digitado vira campo vazio: não há brinde novo para avisar.
       await digitarPreco("0");
-      expect(document.body.textContent).toMatch(AVISO);
+      expect(document.body.textContent).not.toMatch(AVISO);
 
       await digitarPreco("");
       expect(document.body.textContent).not.toMatch(AVISO);
     });
 
-    it("não bloqueia: salvar a variação com 0 grava 0 e a linha mostra 'R$ 0,00'", async () => {
-      await montarProduto();
-      await abrirNovaVariacao();
-      await act(async () => {
-        digitar("variant-name", "Cor");
-        digitar("variant-value", "Brinde");
-        await new Promise((r) => setTimeout(r, 300));
-      });
-      await digitarPreco("0");
+    it("não bloqueia: salvar a variação que já estava a 0, sem mexer, mantém 0 e a linha mostra 'R$ 0,00'", async () => {
+      await montarProduto([variacao("Brinde", 0)]);
+      await editarVariacao("Brinde");
 
       await act(async () => {
         botaoPorTexto("Salvar variação")?.click();

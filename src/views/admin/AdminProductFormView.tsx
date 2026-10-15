@@ -65,6 +65,7 @@ import {
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
 } from "@/utils/motivo-do-bloqueio-do-produto";
+import { precoProprioDaVariacao } from "@/utils/preco-da-variacao";
 import { avisarProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import {
   gruposDeVariacao,
@@ -1680,9 +1681,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const sanitizedVarPrice = cleanNumberString(variantFormData.priceOverride);
     const sanitizedVarStock = variantFormData.stockIncrement.replace(/\D/g, "");
 
-    const parsedPriceOverride = sanitizedVarPrice
-      ? Number.parseFloat(sanitizedVarPrice)
-      : undefined;
+    // Zero não é preço próprio (a máscara de moeda nunca esvazia: o campo
+    // apagado chega como "0.00" e a loja cobraria R$ 0,00). Só a variação que
+    // já estava salva com zero mantém o zero. Ver `preco-da-variacao.ts`.
+    const parsedPriceOverride = precoProprioDaVariacao(
+      sanitizedVarPrice,
+      editingVariant?.priceOverride === 0,
+    );
     const sanitizedVarSku = variantFormData.sku
       ? variantFormData.sku.trim().toUpperCase().replace(/\s+/g, "-")
       : undefined;
@@ -1722,10 +1727,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       sku: sanitizedVarSku || undefined,
       codigoBarras: sanitizedVarCodigoBarras || undefined,
       stockIncrement: Number.parseInt(sanitizedVarStock) || 0,
-      priceOverride:
-        parsedPriceOverride !== undefined
-          ? Math.max(0, parsedPriceOverride)
-          : undefined,
+      priceOverride: parsedPriceOverride,
       active: variantFormData.active,
       imageUrl: variantFormData.imageUrl || undefined,
     };
@@ -2999,6 +3001,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             id="variant-price"
                             name="variant-price"
                             mask="currency"
+                            zeroVazio
                             value={variantFormData.priceOverride}
                             onFlush={(val) =>
                               setVariantFormData((p) => ({
@@ -3012,6 +3015,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         </div>
                         <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                           Deixe em branco para usar o preço padrão.
+                          {editingVariant?.priceOverride === 0 &&
+                            " Esta variação está salva a R$ 0,00 (de graça na loja): apague o campo para voltar ao preço padrão."}
                         </span>
                         {/* O 0 é gravado como preço próprio e vale no lugar do
                             preço do produto: a variação sai de graça. Só
@@ -5170,9 +5175,19 @@ const VariantItem = React.memo(function VariantItem({
             {/* `!= null`, não verdade: o 0 é um preço próprio (brinde) e
                 `{0 && ...}` desenharia só o algarismo solto. */}
             {variant.priceOverride != null && (
-              <span className="flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-emerald-500">
+              <span
+                data-testid="preco-proprio-da-variacao"
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md border px-2 py-1",
+                  variant.priceOverride === 0
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                    : "border-emerald-500/20 bg-emerald-500/10 text-emerald-500",
+                )}
+              >
                 <DollarSign className="size-3" />
-                {formatCurrency(Number(variant.priceOverride))}
+                {variant.priceOverride === 0
+                  ? "R$ 0,00 — de graça na loja"
+                  : formatCurrency(Number(variant.priceOverride))}
               </span>
             )}
           </div>
