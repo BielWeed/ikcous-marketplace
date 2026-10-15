@@ -22,11 +22,13 @@ import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import { manterItensEEnderecoDaTela } from "@/lib/fundir-pedido-do-hook";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
+import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import { supabase } from "@/lib/supabase";
 import { motivoDaDevolucaoIndisponivel } from "@/lib/texto-devolucao-indisponivel";
 import {
@@ -245,6 +247,19 @@ function pendingDescription(
 }
 
 /**
+ * Estado da consulta da devolução de um pedido cancelado e pago: ainda
+ * conferindo (carregando, ou erro com nova tentativa a caminho), não deu para
+ * conferir (desistiu) ou lida (a partir daí valem as frases de sempre).
+ */
+type LeituraDaDevolucao = "conferindo" | "falhou" | "lida";
+
+const PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO =
+  "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
+const TEXTO_CONFERINDO_DEVOLUCAO = "Conferindo sua devolução…";
+const TEXTO_NAO_CONSEGUI_CONFERIR =
+  "Não consegui conferir agora. Tente de novo mais tarde ou fale com a loja.";
+
+/**
  * `cancelled` (esteira) quase sempre significa "não seguirá para entrega",
  * mas há um par real que a produção gera (rastreado no SQL,
  * `20260810000000_confirmar_pagamento_guarda_status.sql`, ~118-120 e
@@ -300,6 +315,7 @@ function pendingDescription(
 function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
   linhasDevolucao: LinhaDevolucaoDoCliente[],
+  leituraDaDevolucao: LeituraDaDevolucao = "lida",
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -324,6 +340,16 @@ function cancelledDescription(
     // convidado por rastreio (a RPC de OTP não carrega
     // `cancelled_after_shipping`), pedido legado sem `paid_at`, cache velho
     // do `localStorage` sem a chave nova, e o automático que desistiu.
+    // 14/10/2026: ANTES de a consulta da devolução voltar, `linhasDevolucao`
+    // é `[]` — e `[]` é exatamente o "sem devolução automática" que manda
+    // "fale com a loja". "Ainda não sei" não pode se passar por "sei que não
+    // há": enquanto a leitura não deu certo, a tela só diz o que já é fato.
+    if (leituraDaDevolucao === "conferindo") {
+      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} ${TEXTO_CONFERINDO_DEVOLUCAO}`;
+    }
+    if (leituraDaDevolucao === "falhou") {
+      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} ${TEXTO_NAO_CONSEGUI_CONFERIR}`;
+    }
     const desfecho = desfechoDaDevolucao(linhasDevolucao);
     if (desfecho === "em_curso") {
       return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
@@ -336,13 +362,26 @@ function cancelledDescription(
   if (key === "aguardando") {
     return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
   }
+  // 14/10/2026: o cron que vence a reserva de 30 minutos grava
+  // `status='cancelled'` + `payment_status='expirado'` (migration
+  // 20261186000000, `expirar_pedidos_vencidos`). A frase genérica de baixo
+  // ("não seguirá para entrega") não dizia POR QUÊ: quem só demorou para pagar
+  // achava que a loja cancelou. A tela não sabe se a cobrança era PIX ou
+  // cartão (`metodo_online` não chega ao app), então o texto não nomeia o
+  // meio — "pagamento", que vale para os dois.
+  if (key === "expirado") {
+    // Pagou no fim do prazo e o vencimento passou antes da confirmação do
+    // Mercado Pago: o pedido fica minutos como `expirado` e só depois vira
+    // `pago_apos_expirar`. Comprar de novo na hora seria pagar duas vezes.
+    return "O prazo do pagamento terminou e o pedido foi cancelado. Se você já pagou, aguarde alguns minutos antes de comprar de novo. Se não pagou, é só comprar de novo.";
+  }
   return statusConfig.cancelled.description;
 }
 
 export function OrderDetailsView({
   orderId,
   onBack,
-  onNavigate: _onNavigate,
+  onNavigate,
   onRetomarPagamento,
 }: OrderDetailsViewProps) {
   const { orders, fetchUserOrders, updateOrderStatus, reenviarComprovante } =
@@ -614,11 +653,18 @@ export function OrderDetailsView({
       emitidoDuranteOCancelamentoRef.current = doPedidoNaLista;
       return;
     }
-    setOrder((prev) =>
-      prev && prev.id === doPedidoNaLista.id
-        ? escolherVersaoDoPedido(prev, doPedidoNaLista)
-        : prev,
-    );
+    setOrder((prev) => {
+      if (!prev || prev.id !== doPedidoNaLista.id) return prev;
+      const escolhida = escolherVersaoDoPedido(prev, doPedidoNaLista);
+      if (escolhida !== doPedidoNaLista) return escolhida;
+      // A linha do tempo real não traz itens nem endereço: o que só a
+      // abertura do pedido trouxe não some da tela. Se, com isso, o conteúdo
+      // fica igual ao da tela, o comparador devolve a mesma referência.
+      return escolherVersaoDoPedido(
+        prev,
+        manterItensEEnderecoDaTela(prev, doPedidoNaLista),
+      );
+    });
   }, [doPedidoNaLista]);
 
   // Outro pedido na tela = outras avaliações: o conjunto do anterior não pode
@@ -765,10 +811,16 @@ export function OrderDetailsView({
   const mostrarDevolucao =
     order?.status === "cancelled" &&
     (chaveDoPagamento === "pago" || chaveDoPagamento === "pago_apos_expirar");
-  const { linhas: linhasDevolucao } = useDevolucaoDoPedidoCliente(
-    orderId,
-    mostrarDevolucao,
-  );
+  const {
+    linhas: linhasDevolucao,
+    lido: devolucaoLida,
+    desistiu: devolucaoDesistiu,
+  } = useDevolucaoDoPedidoCliente(orderId, mostrarDevolucao);
+  const leituraDaDevolucao: LeituraDaDevolucao = devolucaoLida
+    ? "lida"
+    : devolucaoDesistiu
+      ? "falhou"
+      : "conferindo";
 
   // Devolução/troca de produto ENTREGUE (plano 2026-09-26, seção
   // "Devoluções") — outro assunto que a devolução de DINHEIRO de pedido
@@ -836,16 +888,24 @@ export function OrderDetailsView({
           retiradaNaLoja: order.retiradaNaLoja,
         })
       : order.status === "cancelled"
-        ? cancelledDescription(order.paymentStatus, linhasDevolucao)
+        ? cancelledDescription(
+            order.paymentStatus,
+            linhasDevolucao,
+            leituraDaDevolucao,
+          )
         : currentStatus.description;
-  const textoDaDevolucao = mostrarDevolucao
-    ? textoDevolucao({
-        linhas: linhasDevolucao,
-        cancelledAfterShipping: order.cancelledAfterShipping,
-        returnedToSellerAt: order.returnedToSellerAt,
-        retiradaNaLoja: order.retiradaNaLoja === true,
-      })
-    : null;
+  const textoDaDevolucao = !mostrarDevolucao
+    ? null
+    : leituraDaDevolucao === "conferindo"
+      ? TEXTO_CONFERINDO_DEVOLUCAO
+      : leituraDaDevolucao === "falhou"
+        ? TEXTO_NAO_CONSEGUI_CONFERIR
+        : textoDevolucao({
+            linhas: linhasDevolucao,
+            cancelledAfterShipping: order.cancelledAfterShipping,
+            returnedToSellerAt: order.returnedToSellerAt,
+            retiradaNaLoja: order.retiradaNaLoja === true,
+          });
 
   // Cartão "O que achou da compra?" (redesenho 25/09/2026) — mesma trava de
   // sempre (ADMIN-090, #101): sem `enableReviews`, sem `user`, ou fora de
@@ -925,10 +985,11 @@ export function OrderDetailsView({
             devolve o MESMO QR se a cobrança vive, cria outra com chave nova
             se a anterior morreu, e 409 terminal se o pedido não é mais
             cobrável — nunca cobrança duplicada. */}
-        {order.status === "pending" &&
-          (paymentStatusKey(order.paymentStatus) === "aguardando" ||
-            paymentStatusKey(order.paymentStatus) === "recusado") &&
-          user &&
+        {podeRetomarPagamento({
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          logado: !!user,
+        }) &&
           onRetomarPagamento && (
             <button
               onClick={() => onRetomarPagamento(order.id)}
@@ -1108,6 +1169,20 @@ export function OrderDetailsView({
                 {statusDescription}
               </p>
             </div>
+          )}
+
+          {/* Venceu o prazo do pagamento: o caminho para comprar de novo é a
+              vitrine (a mesma porta `home` que as outras telas de fim de
+              compra usam — nenhum fluxo novo). */}
+          {order.status === "cancelled" && chaveDoPagamento === "expirado" && (
+            <button
+              type="button"
+              onClick={() => onNavigate("home")}
+              className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-95"
+            >
+              <Store className="size-4" aria-hidden="true" />
+              Voltar para a loja
+            </button>
           )}
 
           {/* Rastreio (PEDIDO-060, #105).

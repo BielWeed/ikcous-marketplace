@@ -71,7 +71,16 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({
-        eq: () => ({ in: () => Promise.resolve({ data: [], error: null }) }),
+        eq: () => ({
+          in: () => Promise.resolve({ data: [], error: null }),
+          // `order_refunds` (useDevolucaoDoPedidoCliente): leitura que DÁ
+          // CERTO e volta sem linha — a pergunta "há devolução?" respondida
+          // com "não". Antes (14/10/2026) este dublê não tinha `.order` e a
+          // leitura estourava; a tela tratava o erro como "sem linha" e
+          // mandava falar com a loja sem saber (ver
+          // order-details-devolucao-nao-afirma-antes-de-saber.test.tsx).
+          order: () => Promise.resolve({ data: [], error: null }),
+        }),
       }),
     }),
   },
@@ -270,9 +279,8 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
   }
 
   // Rodada 3 (laudo Opus PR#457, BLOQUEIA A): este arquivo nunca dá uma linha
-  // de devolução à tela (o mock de `@/lib/supabase` acima só sabe responder
-  // `.select().eq().in()` — a chamada real do hook é `.select().eq().order()`,
-  // que estoura e vira `erro=true`/`linhas=[]`) — é exatamente o estado de
+  // de devolução à tela (o mock de `@/lib/supabase` acima responde a leitura
+  // de `order_refunds` com `[]`, sem erro) — é exatamente o estado de
   // "nenhuma linha observada" (o mesmo de `pago_apos_expirar` real, onde a
   // linha nunca nasce porque o cancelamento aconteceu ANTES do dinheiro
   // entrar) e a rodada 3 manda "Fale com a loja" para ele, nunca mais
