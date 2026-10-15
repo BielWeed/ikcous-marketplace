@@ -100,6 +100,33 @@ describe("emailDeAtendimentoValido", () => {
   ])("recusa %j (forma que não é de um e-mail comum)", (e) =>
     expect(emailDeAtendimentoValido(e)).toBe(false),
   );
+  // Cada caractere proibido sozinho, no começo, no meio e no domínio: um
+  // validador que esquece UM deles tem de derrubar pelo menos um destes.
+  it.each([
+    "<x@y.com",
+    "a<b@y.com",
+    "x@y<.com",
+    "x@y.c<om",
+    "x>@y.com",
+    "a>b@y.com",
+    "x@y.c>om",
+    "a`b@y.com",
+    "`x@y.com",
+    "x@y`.com",
+    "x@y.c`om",
+    "a&b@y.com",
+    "x@y&z.com",
+    "a#b@y.com",
+    "x@y#z.com",
+    "a?b@y.com",
+    "x@y?z.com",
+    'a"b@y.com',
+    'x@y"z.com',
+    "a'b@y.com",
+    "x@y'z.com",
+  ])("recusa %j (um só caractere proibido já basta)", (e) =>
+    expect(emailDeAtendimentoValido(e)).toBe(false),
+  );
   it("o limite é 254 caracteres, o mesmo da CHECK do banco", () => {
     expect(emailDeAtendimentoValido(`${"a".repeat(248)}@b.com`)).toBe(true);
     expect(emailDeAtendimentoValido(`${"a".repeat(249)}@b.com`)).toBe(false);
