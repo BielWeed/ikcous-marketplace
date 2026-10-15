@@ -546,6 +546,7 @@ export function AdminPdvView({
           subtotal={subtotal}
           buscarProdutos={buscarProdutos}
           onNavigate={onNavigate}
+          limparCupom={limparCupom}
         />
       )}
 

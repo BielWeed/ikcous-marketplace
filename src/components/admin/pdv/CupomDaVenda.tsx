@@ -31,6 +31,7 @@ import {
   Plus,
   Search,
   Trash2,
+  XCircle,
 } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 
@@ -78,6 +79,10 @@ export interface PropsDoCupomDaVenda {
     pagina: number,
   ) => Promise<PaginaDeProdutosEncontrados>;
   readonly onNavigate: (view: View) => void;
+  /** `useVendaPresencial().limparCupom`: volta o caixa ao zero (itens,
+   * desconto, cliente, forma de pagamento e rascunho). Ausente = sem o botão
+   * "Cancelar venda" (testes que montam só a lista). */
+  readonly limparCupom?: () => void;
   /** Injeção de teste — padrão `criarFeedbackDoLeitor()`. `null` desliga
    * bip/vibração (mesmo padrão de `useLeitorDeCodigo`, opções). */
   readonly feedback?: FeedbackDoLeitor | null;
@@ -149,6 +154,7 @@ export function CupomDaVenda({
   subtotal,
   buscarProdutos,
   onNavigate,
+  limparCupom,
   feedback: feedbackProp,
   agora = () => Date.now(),
 }: PropsDoCupomDaVenda): ReactElement {
@@ -299,6 +305,28 @@ export function CupomDaVenda({
   }
 
   const escolha = estado.escolhaDeVariacao;
+
+  // "Cancelar venda": só há o que cancelar quando o cupom guarda ALGUMA coisa
+  // da venda (item, desconto, cliente ou forma de pagamento — os dois últimos
+  // sobreviviam à desistência e iam para a venda seguinte).
+  const temVendaParaCancelar =
+    estado.itens.length > 0 ||
+    estado.desconto > 0 ||
+    estado.cliente.tipo !== "sem_cliente" ||
+    estado.pagamento !== null;
+  const [confirmandoCancelamento, setConfirmandoCancelamento] = useState(false);
+  // O cupom esvaziou por outro caminho (tirou o último item, por exemplo)
+  // com a pergunta aberta: ela some junto — senão voltaria sozinha na venda
+  // seguinte, perguntando por uma venda que não existe mais.
+  if (confirmandoCancelamento && !temVendaParaCancelar) {
+    setConfirmandoCancelamento(false);
+  }
+  // O foco cai no "Voltar": o gesto automático de quem toca duas vezes por
+  // reflexo não pode apagar a venda — a ação padrão é a segura.
+  const voltarDoCancelamentoRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (confirmandoCancelamento) voltarDoCancelamentoRef.current?.focus();
+  }, [confirmandoCancelamento]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -684,6 +712,58 @@ export function CupomDaVenda({
           Fechar venda
         </Button>
       </div>
+
+      {limparCupom && temVendaParaCancelar && !confirmandoCancelamento && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          // Com a venda sendo gravada no banco não dá para desistir: limpar
+          // agora deixaria a tela zerada e a venda feita.
+          disabled={estado.enviando}
+          className="self-center text-zinc-500 hover:text-red-300"
+          onClick={() => setConfirmandoCancelamento(true)}
+        >
+          <XCircle aria-hidden="true" className="mr-1.5 size-4" />
+          Cancelar venda
+        </Button>
+      )}
+      {limparCupom && temVendaParaCancelar && confirmandoCancelamento && (
+        <div
+          role="group"
+          aria-label="Cancelar venda"
+          className="flex flex-col gap-2 rounded-xl border border-red-900/60 bg-red-950/20 p-3"
+        >
+          <p className="text-sm font-semibold text-red-200">
+            Cancelar esta venda?
+          </p>
+          <p className="text-xs text-zinc-400">
+            Os itens e o cliente escolhido serão limpos, e o caixa volta ao
+            começo. Nada é registrado.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              ref={voltarDoCancelamentoRef}
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setConfirmandoCancelamento(false)}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              className="flex-1 bg-red-700 text-white hover:bg-red-600"
+              onClick={() => {
+                setConfirmandoCancelamento(false);
+                limparCupom();
+              }}
+            >
+              Sim, cancelar venda
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
