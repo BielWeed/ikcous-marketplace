@@ -1,8 +1,10 @@
 import { chavePublicaVapid } from "@/config/configuracaoDaLoja";
 import { useAuth } from "@/hooks/useAuth";
+import { estaComoAppInstalado } from "@/lib/avisos-do-aparelho";
+import { dequemEAInscricao } from "@/lib/inscricao-de-push-da-conta";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // `subscribe()` mistura DUAS famílias de erro que não têm nada a ver uma com
@@ -37,28 +39,6 @@ type PushSubscribeErrorOrigin =
   | "navegador"
   | "banco"
   | "sem_conta";
-
-// Instalado = roda sozinho, sem a barra do navegador. É o mesmo par de sinais
-// que `App.tsx` e `AdminLayout.tsx` já usam (`display-mode: standalone`, e
-// `navigator.standalone` do iOS), SEM o `?standalone` da URL que os dois
-// aceitam: ele força o layout standalone e não prova instalação nenhuma (vale
-// em qualquer aba), e aqui a resposta escolhe entre "deste app" e "do
-// navegador" — numa aba com `?standalone` dizer "deste app" mandaria a pessoa
-// procurar um app que ela não abriu.
-// Sem `matchMedia` (ambiente que não implementa, como o jsdom) não há
-// prova de instalação: vale "aba", e o tratamento do erro não quebra.
-function estaComoAppInstalado(): boolean {
-  if (
-    typeof globalThis.matchMedia === "function" &&
-    globalThis.matchMedia("(display-mode: standalone)").matches
-  ) {
-    return true;
-  }
-  return (
-    typeof navigator !== "undefined" &&
-    (navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
-}
 
 // `NotAllowedError`, ou `AbortError` cujo texto diz "permission denied" — o
 // segundo é o que um Chrome real lançou no caso medido (o nome é genérico e
@@ -227,6 +207,18 @@ export function usePushNotifications() {
   const [isSupported, setIsSupported] = useState(false);
   const [permission, setPermission] =
     useState<NotificationPermission>("default");
+  // A sondagem do navegador (suporte, permissão, inscrição) já terminou? Antes
+  // disso `subscription` é `null` só por não ter sido lido ainda, e quem
+  // mostra "este aparelho não está inscrito" (o cartão do Início) o mostraria
+  // por um instante também para o aparelho que ESTÁ inscrito.
+  const [sondado, setSondado] = useState(false);
+  const userId = user?.id ?? null;
+  // A inscrição que ESTA instância criou, e para qual conta — a verificação de
+  // dono abaixo não a re-julga (só vale enquanto a conta for a mesma).
+  const inscricaoCriadaAqui = useRef<{
+    endpoint: string;
+    userId: string;
+  } | null>(null);
 
   useEffect(() => {
     // Desmontou no meio da sonda (StrictMode remonta, rota troca): as
@@ -235,10 +227,14 @@ export function usePushNotifications() {
     let desmontado = false;
 
     const checkSupport = async () => {
+      setSondado(false);
       const supported = suporteRealDePush();
       setIsSupported(supported);
 
-      if (!supported) return;
+      if (!supported) {
+        setSondado(true);
+        return;
+      }
 
       setPermission(Notification.permission);
 
@@ -255,20 +251,27 @@ export function usePushNotifications() {
         if (!desmontado) {
           setIsSupported(false);
           setSubscription(null);
+          setSondado(true);
         }
         return;
       }
 
       try {
         const sub = await registration.pushManager.getSubscription();
-        if (!desmontado) setSubscription(sub);
+        if (!desmontado) {
+          setSubscription(sub);
+          setSondado(true);
+        }
       } catch {
         // A SONDA falhou; o estado da inscrição é DESCONHECIDO, e
         // desconhecido não é prova de falta de suporte — `subscribe()`
         // re-sonda com a própria tolerância a falha antes de decidir
         // qualquer coisa. Sem inscrição conhecida = `null`, sem rejeição
         // não tratada.
-        if (!desmontado) setSubscription(null);
+        if (!desmontado) {
+          setSubscription(null);
+          setSondado(true);
+        }
       }
     };
 
@@ -276,7 +279,56 @@ export function usePushNotifications() {
     return () => {
       desmontado = true;
     };
-  }, []);
+    // `userId` na lista: quem entra ou sai da conta muda o que o navegador
+    // tem (o Sair desinscreve o aparelho), então a sonda lê o navegador de
+    // novo em vez de confiar no estado de antes. Sem troca de conta isto roda
+    // uma vez, como sempre rodou.
+  }, [userId]);
+
+  // A inscrição do NAVEGADOR pode ser de OUTRA conta: quem estava logado antes
+  // a gravou no nome dele e o navegador a mantém depois do Sair (celular da
+  // família, aparelho da loja; e todo aparelho que saiu antes do Sair passar
+  // a cancelá-la). Deixada assim, o banner não convida a conta nova (ele some
+  // se há inscrição), o push dirigido a ela dá 0 inscrições, e o da conta
+  // antiga cai neste aparelho. A RLS não deixa a conta nova tomar nem apagar
+  // a linha da antiga — mas ela vê que NÃO tem linha própria com este
+  // endpoint, e então desinscreve o navegador: a inscrição sai do estado, o
+  // convite volta e o toque cria uma inscrição nova, dela (a permissão do
+  // navegador já foi concedida, nada é perguntado de novo).
+  //
+  // Só roda com conta, e nunca sobre a inscrição que ESTA instância acabou de
+  // criar (a de agora é desta conta). Consulta que falha = dono desconhecido =
+  // não se destrói nada.
+  useEffect(() => {
+    if (!userId || !subscription) return;
+    const criada = inscricaoCriadaAqui.current;
+    if (
+      criada &&
+      criada.endpoint === subscription.endpoint &&
+      criada.userId === userId
+    ) {
+      return;
+    }
+
+    let cancelado = false;
+    const verificar = async () => {
+      const dono = await dequemEAInscricao(subscription.endpoint, userId);
+      if (cancelado || dono !== "outra-conta") return;
+      try {
+        await subscription.unsubscribe();
+      } catch (erro) {
+        console.warn(
+          "[push] Não foi possível soltar a inscrição alheia:",
+          erro,
+        );
+      }
+      if (!cancelado) setSubscription(null);
+    };
+    void verificar();
+    return () => {
+      cancelado = true;
+    };
+  }, [userId, subscription]);
 
   const subscribe = useCallback(async () => {
     if (!isSupported) return;
@@ -475,6 +527,10 @@ export function usePushNotifications() {
         throw new PushSubscribeError("banco", error);
       }
 
+      inscricaoCriadaAqui.current = {
+        endpoint: newSubscription.endpoint,
+        userId: user.id,
+      };
       setSubscription(newSubscription);
       toast.success("Inscrição realizada com sucesso!");
       return newSubscription;
@@ -519,6 +575,7 @@ export function usePushNotifications() {
     subscription,
     isSupported,
     permission,
+    sondado,
     // Visitante que não entrou na conta: é a MESMA checagem (`!user`) que faz
     // o subscribe() recusar com a origem "sem_conta". Exposta para o banner
     // não convidar quem não consegue aceitar.
