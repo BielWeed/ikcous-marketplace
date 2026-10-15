@@ -15,6 +15,16 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -110,8 +120,20 @@ const soltarPrevia = (previa: string) => {
  */
 export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
   const { aberto, onAbertoMudou } = props;
+  // O conteúdo da folha é desmontado ao fechar: o que a cliente preencheu some
+  // junto. Quem sabe se há algo preenchido é o fluxo (ele avisa por esta ref);
+  // aqui, por toque fora, Esc ou X, fechar com rascunho vira uma pergunta.
+  const temRascunhoRef = useRef(false);
+  const [confirmandoDescarte, setConfirmandoDescarte] = useState(false);
+  const pedirParaMudar = (abrir: boolean) => {
+    if (!abrir && temRascunhoRef.current) {
+      setConfirmandoDescarte(true);
+      return;
+    }
+    onAbertoMudou(abrir);
+  };
   return (
-    <Sheet open={aberto} onOpenChange={onAbertoMudou}>
+    <Sheet open={aberto} onOpenChange={pedirParaMudar}>
       <SheetContent
         side="bottom"
         data-testid="folha-devolucao"
@@ -121,7 +143,35 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
           "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=open]:slide-in-from-left-1/2",
         )}
       >
-        <FluxoDaDevolucao {...props} />
+        <FluxoDaDevolucao {...props} temRascunhoRef={temRascunhoRef} />
+        <AlertDialog
+          open={confirmandoDescarte}
+          onOpenChange={setConfirmandoDescarte}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Descartar o que você preencheu?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Se sair agora, o que você marcou e escreveu neste pedido, e as
+                fotos escolhidas, serão perdidos.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Continuar preenchendo</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  temRascunhoRef.current = false;
+                  setConfirmandoDescarte(false);
+                  onAbertoMudou(false);
+                }}
+              >
+                Descartar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SheetContent>
     </Sheet>
   );
@@ -136,7 +186,10 @@ function FluxoDaDevolucao({
   solicitar,
   enviarFoto,
   descartarFotos,
-}: SolicitarDevolucaoSheetProps) {
+  temRascunhoRef,
+}: SolicitarDevolucaoSheetProps & {
+  readonly temRascunhoRef: { current: boolean };
+}) {
   const { itens, janelas, politica, prazos, metodos } = elegibilidade;
   const itensDisponiveis = itens.filter((item) => item.disponivel > 0);
 
@@ -193,6 +246,28 @@ function FluxoDaDevolucao({
       if (enviadas.length > 0) void descartarRef.current?.(enviadas);
     };
   }, []);
+
+  // Há algo a perder? Itens além do que já vinha marcado, motivo, texto, fotos
+  // ou resolução. Pedido já aceito (protocolo na tela) não tem o que perder.
+  const selecaoInicialRef = useRef(selecao);
+  const selecaoMudou =
+    selecao.size !== selecaoInicialRef.current.size ||
+    Array.from(selecao).some(
+      ([id, qtd]) => selecaoInicialRef.current.get(id) !== qtd,
+    );
+  const temRascunho =
+    !resultado &&
+    (selecaoMudou ||
+      motivo !== null ||
+      detalhe.trim() !== "" ||
+      fotos.length > 0 ||
+      resolucao !== null);
+  useEffect(() => {
+    temRascunhoRef.current = temRascunho;
+    return () => {
+      temRascunhoRef.current = false;
+    };
+  }, [temRascunho, temRascunhoRef]);
 
   const tipo = motivo ? tipoPrevisto(motivo, janelas) : null;
   const permitidas = resolucoesPermitidas(motivo, janelas, politica);
