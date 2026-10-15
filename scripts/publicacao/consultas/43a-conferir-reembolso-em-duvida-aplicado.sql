@@ -45,7 +45,7 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          ('avisa', 'public.devolucao_avisa_o_cliente()', 'plpgsql', 'v', '56502b960dcf3e136c1d0d5c41091c20'),
          ('esperadev', 'public.admin_devolucao_reembolso_por_fora_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', '92dd1608d02ef5e9fd9fe34e0bd7c49f'),
          ('esperaped', 'public.registrar_estorno_manual_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', '7b1403e418b2d80d02db287444f8a0ef'),
-         ('painel', 'public.pedido_reembolsos_e_saldo(uuid)', 'plpgsql', 's', 'baf21d65b13bea6b8e0d18f3ced1e05e')
+         ('painel', 'public.pedido_reembolsos_e_saldo(uuid)', 'plpgsql', 's', '86dd0eaaaa571a4d5e85622e90442bc0')
 ), fn AS (
   SELECT t.chave, p.oid,
          md5(replace(p.prosrc, chr(13), '')) AS m,
@@ -131,7 +131,7 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'esperaped'), 'AUSENTE')
   UNION ALL
   SELECT 'pedido_reembolsos_e_saldo: corpo e o da 20261241000000 (md5)',
-         'baf21d65b13bea6b8e0d18f3ced1e05e',
+         '86dd0eaaaa571a4d5e85622e90442bc0',
          COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'painel'), 'AUSENTE')
   UNION ALL
   SELECT 'as doze funcoes: atributos do desenho (SECURITY DEFINER, search_path=public, linguagem e volatilidade de cada uma)',

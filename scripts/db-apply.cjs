@@ -2209,6 +2209,8 @@ const VERIFICACOES = {
             "'substituida_por_manual', pv.substituida_por_manual_em IS NOT NULL,",
           vezes: 1,
         },
+        // o valor reservado (linha resolvida por fora ainda viva no MP) que a tela mostra
+        { texto: "'reservado_por_fora', v_reservado,", vezes: 1 },
       ],
     },
   ],

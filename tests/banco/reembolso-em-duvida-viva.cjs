@@ -428,9 +428,11 @@ async function contratoDoPainel() {
     "em_voo",
     "linhas",
     "manual",
+    "reservado_por_fora",
     "total",
     "valor_estornado",
   ]);
+  assert.equal(Number(p.reservado_por_fora), 0, "nada resolvido por fora");
   assert.equal(p.linhas.length, 2);
   for (const l of p.linhas)
     assert.deepEqual(Object.keys(l).sort(), [
@@ -784,6 +786,12 @@ async function parcialNaoEstorna() {
   assert.equal((await autorizar(l, 100)).decisao, "linha_mudou");
   // em voo E por fora (o lado seguro, como a saída da devolução): 300 − 150 em voo − 100 por fora
   assert.equal(await saldo(o), 50);
+  // a tela diz que os 100 estão RESERVADOS até o MP responder (nunca "tudo devolvido")
+  assert.equal(
+    Number((await painel(o)).reservado_por_fora),
+    100,
+    "o painel não diz quanto está reservado",
+  );
   // o robô fecha a linha como falhou e "nada saiu": os 100 pagos por fora SEGUEM descontados
   await C.query(
     "UPDATE public.order_refunds SET status = 'falhou' WHERE id = $1",
@@ -799,6 +807,11 @@ async function parcialNaoEstorna() {
   assert.equal(Number(p.manual), 100);
   assert.equal(Number(p.em_duvida), 0, "o por fora não conta duas vezes");
   assert.equal(Number(p.disponivel), 150);
+  assert.equal(
+    Number(p.reservado_por_fora),
+    0,
+    "a linha fechou: nada mais reservado",
+  );
   const de = await tentar(
     "authenticated",
     "SELECT public.solicitar_estorno($1, 200, 'o resto') AS r",
@@ -856,6 +869,15 @@ async function duasParciaisFecham() {
   assert.equal(r1.detalhe, "parcial");
   assert.equal((await pedidoDe(o)).payment_status, "pago");
   assert.equal(await saldo(o), 0, "200 por fora + 100 em dúvida");
+  // (R2 da releitura) a parcial ainda 'falhou' e que PODE ter saído conta SÓ como por fora, nunca em dúvida
+  const p1 = await painel(o);
+  assert.equal(
+    Number(p1.em_duvida),
+    100,
+    "a linha parcial por fora contou também em dúvida",
+  );
+  assert.equal(Number(p1.manual), 200);
+  assert.equal(Number(p1.reservado_por_fora), 0, "falhou não está viva no MP");
   const r2 = await saidaPed(o, l2);
   assert.equal(
     r2.detalhe,
@@ -863,6 +885,30 @@ async function duasParciaisFecham() {
     "a segunda não somou o que a primeira já pagou por fora",
   );
   assert.equal((await pedidoDe(o)).payment_status, "estornado");
+}
+
+/**
+ * (R2 da releitura) A ÚNICA linha do pedido, 'falhou' e que PODE ter saído, resolvida por fora
+ * pela saída PARCIAL: o painel diz em_duvida = 0 (ela conta só como por fora, nunca em dúvida).
+ */
+async function parcialPorForaNaoFicaEmDuvida() {
+  await semearPessoas();
+  const o = await pedido({ total: 300, status: "cancelled" });
+  const l = await linha(o, { status: "falhou", valor: 200, postEm: oito() });
+  const antes = await painel(o);
+  assert.equal(Number(antes.em_duvida), 200, "antes da saída: em dúvida");
+  const r = await saidaPed(o, l);
+  assert.equal(r.detalhe, "parcial");
+  assert.equal(await statusDe(l), "falhou", "a linha segue 'falhou'");
+  const p = await painel(o);
+  assert.equal(
+    Number(p.em_duvida),
+    0,
+    "a linha parcial por fora (falhou, pode ter saído) contou em dúvida",
+  );
+  assert.equal(Number(p.manual), 200);
+  assert.equal(Number(p.disponivel), 100);
+  assert.equal(Number(p.reservado_por_fora), 0, "falhou não está viva no MP");
 }
 
 /** DISPONÍVEL nunca negativo no painel (achado C): 100 − 100 em voo − 100 manual. */
@@ -884,6 +930,11 @@ async function disponivelNuncaNegativo() {
     Number(p.disponivel),
     0,
     "o painel devolveu disponível NEGATIVO",
+  );
+  assert.equal(
+    Number(p.reservado_por_fora),
+    100,
+    "o painel não diz quanto está reservado",
   );
 }
 
@@ -970,6 +1021,10 @@ prova(
 prova(
   "DUAS PARCIAIS (A): 200 e depois 100 num pedido de 300 -> a segunda conta o por fora da primeira e estorna",
   () => emTransacao(duasParciaisFecham),
+);
+prova(
+  "PARCIAL POR FORA (R2): a única linha, falhou e que pode ter saído, resolvida pela saída parcial -> o painel diz em_duvida = 0",
+  () => emTransacao(parcialPorForaNaoFicaEmDuvida),
 );
 prova(
   "DISPONÍVEL (C): 100 − 100 em voo − 100 manual = −100 na conta crua; o painel devolve 0",
@@ -1431,6 +1486,37 @@ const MUTANTES = [
         ["AND pf.substituida_por_manual_em IS NULL), 0)", "AND false), 0)"],
       ]),
     morre: [parcialNaoEstorna],
+  },
+  {
+    // (R2 da releitura) o em dúvida do painel volta a contar a linha parcial por fora
+    nome: "o em_duvida do painel sem o filtro da linha POR FORA",
+    sabotar: () =>
+      sabotar(SIG.painel, [
+        [
+          "     AND NOT EXISTS (SELECT 1\n                       FROM public.order_refund_prova pf\n                      WHERE pf.refund_id = r.id\n                        AND pf.por_fora_liberado_em IS NOT NULL)\n",
+          "",
+        ],
+      ]),
+    morre: [duasParciaisFecham, parcialPorForaNaoFicaEmDuvida],
+  },
+  {
+    nome: "o saldo sem o filtro da linha POR FORA no em dúvida (conta duas vezes)",
+    sabotar: () =>
+      sabotar(SIG.saldo, [
+        [
+          "                        AND NOT EXISTS (SELECT 1\n                                          FROM public.order_refund_prova pf\n                                         WHERE pf.refund_id = r.id\n                                           AND pf.por_fora_liberado_em IS NOT NULL)\n",
+          "",
+        ],
+      ]),
+    morre: [duasParciaisFecham],
+  },
+  {
+    nome: "o painel sem o RESERVADO por fora (sempre 0)",
+    sabotar: () =>
+      sabotar(SIG.painel, [
+        ["'reservado_por_fora', v_reservado,", "'reservado_por_fora', 0,"],
+      ]),
+    morre: [parcialNaoEstorna, disponivelNuncaNegativo],
   },
   {
     nome: "o painel sem o GREATEST (disponível negativo)",

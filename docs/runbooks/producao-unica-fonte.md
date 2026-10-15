@@ -1721,7 +1721,9 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         desconta o "em duvida" pela regra UNICA `order_refund__pode_ter_saido` (com a regra do legado: linha de antes
         da autorizacao marcada mais de uma vez PODE ter saido); a linha resolvida por fora sai da conta (nao desconta
         duas vezes). O painel le `pedido_reembolsos_e_saldo` (total, estornado, em voo, em duvida, manual,
-        disponivel nunca negativo e as linhas com `pode_ter_saido`, `por_fora_liberado_em` = a MARCA,
+        disponivel nunca negativo, `reservado_por_fora` = linha resolvida por fora que o Mercado Pago ainda nao
+        respondeu, mantida fora do saldo e mostrada como "reservado" (nunca "tudo devolvido"), e as linhas com
+        `pode_ter_saido`, `por_fora_liberado_em` = a MARCA,
         `por_fora_apos_espera_liberado` = a ESPERA de 7 dias passou (a porta ainda pode recusar por outro motivo; o
         front mostra a resposta dela) e `substituida_por_manual`). Duas
         saidas de 7 dias com a frase `DEVOLVI POR FORA` (`admin_devolucao_reembolso_por_fora_apos_espera`,

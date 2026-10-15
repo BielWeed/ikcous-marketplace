@@ -56,7 +56,7 @@ const DESTA = {
   admin_devolucao_reembolso_por_fora_apos_espera:
     "92dd1608d02ef5e9fd9fe34e0bd7c49f",
   registrar_estorno_manual_apos_espera: "7b1403e418b2d80d02db287444f8a0ef",
-  pedido_reembolsos_e_saldo: "baf21d65b13bea6b8e0d18f3ced1e05e",
+  pedido_reembolsos_e_saldo: "86dd0eaaaa571a4d5e85622e90442bc0",
 };
 // Os sete corpos VIGENTES (o que esta no ar antes dela) — o rollback os devolve byte a byte.
 const VIGENTE = {
@@ -419,8 +419,20 @@ Deno.test("o contrato do painel (pedido_reembolsos_e_saldo): os NOMES que o fron
       "em_duvida",
       "manual",
       "disponivel",
+      "reservado_por_fora",
       "linhas",
     ],
+  );
+  // o reservado: linha resolvida por fora ainda viva no MP (os status de em voo)
+  assert.ok(
+    c.includes("JOIN public.order_refund_prova pr ON pr.refund_id = r.id"),
+  );
+  assert.ok(c.includes("AND pr.por_fora_liberado_em IS NOT NULL"));
+  // o em duvida do painel nao conta a linha por fora (ela ja conta como por fora no manual)
+  assert.ok(
+    c.includes(
+      "     AND NOT EXISTS (SELECT 1\n                       FROM public.order_refund_prova pf\n                      WHERE pf.refund_id = r.id\n                        AND pf.por_fora_liberado_em IS NOT NULL)\n",
+    ),
   );
   assert.ok(
     topo.includes(

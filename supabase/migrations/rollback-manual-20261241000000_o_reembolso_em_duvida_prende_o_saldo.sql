@@ -61,7 +61,7 @@ BEGIN
     SELECT * FROM (VALUES
       ('order_refund__pode_ter_saido', 'bdbb28b3d91588c8b10283d57bfb73d6'),
       ('order_refund__liberavel_apos_espera', 'cb37f24646fda24e1a51c8f01983e083'),
-      ('pedido_reembolsos_e_saldo', 'baf21d65b13bea6b8e0d18f3ced1e05e'),
+      ('pedido_reembolsos_e_saldo', '86dd0eaaaa571a4d5e85622e90442bc0'),
       ('admin_devolucao_reembolso_por_fora_apos_espera', '92dd1608d02ef5e9fd9fe34e0bd7c49f'),
       ('registrar_estorno_manual_apos_espera', '7b1403e418b2d80d02db287444f8a0ef')
     ) AS esperado(nome, hash_desta)

@@ -57,7 +57,8 @@
 --       resto (linha do sistema, outra linha em processamento, linha de devolução...) e pode recusar — o front
 --       mostra a RESPOSTA da porta.
 --   (g) `pedido_reembolsos_e_saldo(pedido)` — o que o painel mostra: total, valor_estornado, em_voo,
---       em_duvida, manual, disponivel (nunca negativo: GREATEST(saldo, 0)) e as linhas {id, status, amount,
+--       em_duvida, manual, disponivel (nunca negativo: GREATEST(saldo, 0)), reservado_por_fora (linha resolvida
+--       por fora ainda viva no MP: conta em voo E por fora até o MP responder) e as linhas {id, status, amount,
 --       pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado, substituida_por_manual, eh_pix};
 --       NUNCA o código do MP. Só o admin atual logado. O front deixa de copiar a conta.
 --       por_fora_liberado_em = a MARCA (a saída dos 7 dias JÁ foi usada); por_fora_apos_espera_liberado = a
@@ -104,7 +105,7 @@
 --   devolucao_avisa_o_cliente           2cd21f47021cafc15cae4ccd0c8c67e5 -> 56502b960dcf3e136c1d0d5c41091c20
 --   novas: order_refund__pode_ter_saido bdbb28b3d91588c8b10283d57bfb73d6,
 --   order_refund__liberavel_apos_espera cb37f24646fda24e1a51c8f01983e083, pedido_reembolsos_e_saldo
---   baf21d65b13bea6b8e0d18f3ced1e05e, admin_devolucao_reembolso_por_fora_apos_espera
+--   86dd0eaaaa571a4d5e85622e90442bc0, admin_devolucao_reembolso_por_fora_apos_espera
 --   92dd1608d02ef5e9fd9fe34e0bd7c49f, registrar_estorno_manual_apos_espera
 --   7b1403e418b2d80d02db287444f8a0ef.
 -- Os "vigentes" vêm dos ARQUIVOS das migrations 20261198/20261197/20261196/20261226/20261225; o corpo vivo
@@ -226,7 +227,7 @@ BEGIN
     SELECT * FROM (VALUES
       ('order_refund__pode_ter_saido', 'bdbb28b3d91588c8b10283d57bfb73d6'),
       ('order_refund__liberavel_apos_espera', 'cb37f24646fda24e1a51c8f01983e083'),
-      ('pedido_reembolsos_e_saldo', 'baf21d65b13bea6b8e0d18f3ced1e05e'),
+      ('pedido_reembolsos_e_saldo', '86dd0eaaaa571a4d5e85622e90442bc0'),
       ('admin_devolucao_reembolso_por_fora_apos_espera', '92dd1608d02ef5e9fd9fe34e0bd7c49f'),
       ('registrar_estorno_manual_apos_espera', '7b1403e418b2d80d02db287444f8a0ef')
     ) AS esperado(nome, hash_desta)
@@ -1488,8 +1489,11 @@ GRANT EXECUTE ON FUNCTION public.registrar_estorno_manual_apos_espera(uuid, uuid
 -- 11. pedido_reembolsos_e_saldo — o que o painel mostra (o front deixa de copiar a conta)
 -- ---------------------------------------------------------------------------
 -- Contrato (o front depende dos NOMES): {total, valor_estornado, em_voo, em_duvida, manual, disponivel,
--- linhas: [{id, status, amount, pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado,
--- substituida_por_manual, eh_pix}]}.
+-- reservado_por_fora, linhas: [{id, status, amount, pode_ter_saido, por_fora_liberado_em,
+-- por_fora_apos_espera_liberado, substituida_por_manual, eh_pix}]}.
+-- reservado_por_fora = soma das linhas resolvidas por fora (por_fora_liberado_em) ainda vivas no MP: o valor
+-- que fica preso (em voo E por fora) até o MP responder; a tela mostra "R$ X reservado até o Mercado Pago
+-- responder" e nunca "tudo devolvido" enquanto ele existir.
 -- disponivel = GREATEST(pedido__saldo_a_estornar, 0) = total − valor_estornado − em_voo − em_duvida − manual,
 -- nunca negativo (a linha em_processamento resolvida por fora conta em em_voo E em manual até o robô fechá-la:
 -- o lado seguro, mas a conta crua pode ficar abaixo de zero). manual = devolução manual concluída + por fora
@@ -1511,6 +1515,7 @@ DECLARE
   v_em_voo numeric;
   v_em_duvida numeric;
   v_manual numeric;
+  v_reservado numeric;
   v_linhas jsonb;
 BEGIN
   IF auth.uid() IS NULL OR NOT public.is_admin_atual() THEN
@@ -1556,6 +1561,17 @@ BEGIN
                                       AND pf.por_fora_liberado_em IS NOT NULL
                                       AND pf.substituida_por_manual_em IS NULL), 0);
 
+  -- RESERVADO por fora: linha já resolvida por fora (por_fora_liberado_em) que ainda está viva no MP (os mesmos
+  -- status de em_voo). O valor dela conta em em_voo E no que saiu por fora até o MP responder: é o lado seguro
+  -- (decisão do plano), e a tela diz isso à lojista em vez de "tudo devolvido".
+  SELECT COALESCE(sum(r.amount), 0) INTO v_reservado
+    FROM public.order_refunds r
+    JOIN public.order_refund_prova pr ON pr.refund_id = r.id
+   WHERE r.order_id = p_order_id
+     AND pr.por_fora_liberado_em IS NOT NULL
+     AND (r.status IN ('solicitado', 'em_processamento')
+          OR (r.status = 'concluido' AND r.concluido_em IS NULL));
+
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
            'id', r.id,
            'status', r.status,
@@ -1578,6 +1594,7 @@ BEGIN
     'em_duvida', v_em_duvida,
     'manual', v_manual,
     'disponivel', GREATEST(public.pedido__saldo_a_estornar(p_order_id), 0),
+    'reservado_por_fora', v_reservado,
     'linhas', v_linhas
   );
 END;
@@ -1611,7 +1628,7 @@ BEGIN
       ('public.devolucao_avisa_o_cliente()', 'plpgsql', 'v', '56502b960dcf3e136c1d0d5c41091c20'),
       ('public.admin_devolucao_reembolso_por_fora_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', '92dd1608d02ef5e9fd9fe34e0bd7c49f'),
       ('public.registrar_estorno_manual_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', '7b1403e418b2d80d02db287444f8a0ef'),
-      ('public.pedido_reembolsos_e_saldo(uuid)', 'plpgsql', 's', 'baf21d65b13bea6b8e0d18f3ced1e05e')
+      ('public.pedido_reembolsos_e_saldo(uuid)', 'plpgsql', 's', '86dd0eaaaa571a4d5e85622e90442bc0')
     ) AS esperado(assinatura, lingua, volatilidade, hash_desta)
   LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang

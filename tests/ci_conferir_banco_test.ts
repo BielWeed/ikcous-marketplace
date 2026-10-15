@@ -13574,7 +13574,7 @@ Deno.test("43a/43b — os md5 da 43a sao os dos DOZE corpos que o arquivo da mig
     admin_devolucao_reembolso_por_fora_apos_espera:
       "92dd1608d02ef5e9fd9fe34e0bd7c49f",
     registrar_estorno_manual_apos_espera: "7b1403e418b2d80d02db287444f8a0ef",
-    pedido_reembolsos_e_saldo: "baf21d65b13bea6b8e0d18f3ced1e05e",
+    pedido_reembolsos_e_saldo: "86dd0eaaaa571a4d5e85622e90442bc0",
   };
   // De onde vem cada corpo VIGENTE (a ultima migration antes desta que o define).
   const ANTES: Record<string, [string, string]> = {
