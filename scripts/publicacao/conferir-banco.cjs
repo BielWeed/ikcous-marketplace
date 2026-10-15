@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 39a, 39b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 39a, 39b, 40a, 40b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1910,6 +1910,44 @@ const ROL_DA_39B = [
   "dependencia public.rls_admin_atual(): existe",
   "auth.users: o papel postgres (que aplica a migration) tem REFERENCES",
 ];
+/** O rol da 40a (a prova de objetos da migration 20261239000000, a identidade legal da loja: razao social, CNPJ/CPF e e-mail de
+ * atendimento, tres colunas novas e opcionais de store_config, lidas pela view v_store_config e gravadas por upsert_store_config): as 11
+ * linhas que scripts/publicacao/consultas/40a-conferir-identidade-legal-da-loja-aplicado.sql devolve, cada uma UMA vez, as mesmas em
+ * qualquer estado do banco (objeto ausente vira `AUSENTE` ou `nenhuma` na propria linha): o controle, UMA so funcao, o corpo vivo e o
+ * NOVO (md5), os tres CASE no corpo, os atributos e o EXECUTE de sempre, as tres colunas (text, nulas, sem default), as tres CHECK de
+ * forma, a view com as 45 colunas, as opcoes de sempre e o ACL de sempre (o que o rollback-manual so reproduz se for exatamente esse).
+ * tests/banco/loja-declara-quem-e-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_40A = [
+  "controle: funcoes de public visiveis a este papel",
+  "upsert_store_config: sobrecargas",
+  "upsert_store_config: corpo e o da 20261239000000, com razao social, documento e e-mail (md5)",
+  "upsert_store_config: o corpo so grava razao social, documento e e-mail quando a chave vem no payload",
+  "upsert_store_config: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "upsert_store_config: EXECUTE fechado para anon (authenticated sim)",
+  "store_config: razao social, documento e e-mail sao text, nulos e sem default",
+  "store_config: as tres CHECK de forma existem, validadas, cada uma na sua coluna",
+  "v_store_config: as 45 colunas, as tres novas no fim",
+  "v_store_config: opcoes de sempre (security_invoker=on)",
+  "v_store_config: ACL de sempre (anon, authenticated e service_role com ALL, dono postgres, ninguem mais)",
+];
+/** O rol da 40b (a consulta de AUSENCIA do lote da identidade legal; `ausenciaConfirmadaPor`): as 10 linhas que
+ * scripts/publicacao/consultas/40b-antes-identidade-legal-da-loja-base-vigente.sql devolve - a base de antes: a funcao com o corpo da
+ * 20261199000000 (md5), sem os tres CASE novos, com os atributos de sempre; as tres colunas e as tres CHECK ainda ausentes; a view com
+ * as 42 colunas, as opcoes de sempre e o ACL que o rollback-manual devolve (a FOTOGRAFIA do ACL vivo, antes do apply). NAO mede o EXECUTE
+ * da funcao. Uma loja que ja tem a migration reprova aqui de proposito, nas linhas do corpo, do marcador, das colunas, das CHECK e da
+ * lista de colunas da view. */
+const ROL_DA_40B = [
+  "controle: funcoes de public visiveis a este papel",
+  "upsert_store_config: sobrecargas",
+  "upsert_store_config: corpo e o da 20261199000000, sem razao social, documento e e-mail (md5)",
+  "upsert_store_config: o corpo ainda NAO grava razao social, documento e e-mail",
+  "upsert_store_config: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
+  "store_config: razao social, documento e e-mail ainda NAO existem",
+  "store_config: as tres CHECK de forma ainda NAO existem",
+  "v_store_config: as 42 colunas de sempre",
+  "v_store_config: opcoes de sempre (security_invoker=on)",
+  "v_store_config: ACL que o rollback devolve (anon, authenticated e service_role com ALL, dono postgres, ninguem mais)",
+];
 /** O rol da 34a (a prova de objetos da migration 20261233000000, o sino do pedido de retirada fala de retirada): as 7 linhas que
  * scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado do
  * banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de notifica_cliente_de_mudanca_de_status e o NOVO (md5), ele traz
@@ -1997,6 +2035,8 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_37B,
   "39a-conferir-pedidos-de-privacidade-aplicado": ROL_DA_39A,
   "39b-antes-pedidos-de-privacidade-objetos-ausentes": ROL_DA_39B,
+  "40a-conferir-identidade-legal-da-loja-aplicado": ROL_DA_40A,
+  "40b-antes-identidade-legal-da-loja-base-vigente": ROL_DA_40B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2595,6 +2635,8 @@ module.exports = {
   ROL_DA_37B,
   ROL_DA_39A,
   ROL_DA_39B,
+  ROL_DA_40A,
+  ROL_DA_40B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

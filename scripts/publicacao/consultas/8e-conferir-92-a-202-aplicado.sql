@@ -31,7 +31,8 @@
 --   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento);
---   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita).
+--   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita);
+--   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento).
 -- CADEIA (decidido em 14/10/2026, quando `painel_inicio` ganhou a SEGUNDA sucessora, e repetida quando
 -- `get_admin_analytics_v2` ganhou a dela, a 20261234000000): o CTE
 -- `sucessoras` guarda TODOS os corpos intermediários e o final de cada função (várias linhas por
@@ -130,7 +131,8 @@ WITH corpos AS (
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
-    ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa', '20261235000000')), colunas(tabela, coluna) AS (VALUES
+    ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa', '20261235000000'),
+    ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
     ('order_refunds', 'mp_chargeback_valor_do_caso'),

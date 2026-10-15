@@ -58,6 +58,9 @@ const NOMES = [
   // A venda repetida do balcão (14/10/2026): registrar_venda_presencial sucede o corpo da 99 (trava consultiva
   // pela chave de idempotência antes de conferir a chave).
   "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql",
+  // A identidade legal da loja (14/10/2026): upsert_store_config passa a gravar razão social, documento e e-mail
+  // de atendimento; sucede o corpo da 99 (hashVigente = o `hashDesta` da 99 para essa função).
+  "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql",
 ];
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

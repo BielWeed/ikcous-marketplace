@@ -104,6 +104,9 @@ on:
       - "scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql"
       - "scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql"
       - "scripts/publicacao/consultas/39m-medir-privilegios-do-roteiro-de-privacidade.sql"
+      - "scripts/publicacao/consultas/40a-conferir-identidade-legal-da-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/40b-antes-identidade-legal-da-loja-base-vigente.sql"
+      - "scripts/publicacao/consultas/40m-medir-identidade-legal-da-loja.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -177,6 +180,9 @@ on:
       - "scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql"
       - "scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql"
       - "scripts/publicacao/consultas/39m-medir-privilegios-do-roteiro-de-privacidade.sql"
+      - "scripts/publicacao/consultas/40a-conferir-identidade-legal-da-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/40b-antes-identidade-legal-da-loja-base-vigente.sql"
+      - "scripts/publicacao/consultas/40m-medir-identidade-legal-da-loja.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -784,6 +790,20 @@ jobs:
       - name: Prova viva do portao dos pedidos de privacidade (consultas 39a e 39b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/pedidos-de-privacidade-portao-viva.cjs
+      # A loja PODE declarar razao social, CNPJ/CPF e e-mail de atendimento (migration 20261239, aditiva e opcional; decisao do
+      # dono de 14/10/2026). COMPORTAMENTO com os papeis reais: salvar um dos tres nao apaga horario, endereco, descricao nem os
+      # outros dois (e salvar qualquer outro campo nao apaga os tres); null limpa so o campo pedido; a CHECK de forma recusa
+      # vazio, 201 caracteres, documento com mascara ou minusculo e e-mail sem forma (o digito verificador e' do app); so o admin
+      # ATUAL grava (cliente, visitante e admin rebaixado recusados sem escrever); o visitante le pela view e pela tabela e nao
+      # escreve; a view publica so ganha as 3 colunas; ida e volta com o corpo da 20261199 byte a byte e o ACL da view igual; o
+      # rollback recusa se a loja ja preencheu algum campo; pre-voo que recusa sem escrever; mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da identidade legal da loja (migration 20261239)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/loja-declara-quem-e-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 40a (DEPOIS, 11 linhas), 40b (ANTES, 10 linhas, com o ACL da view que o rollback recria) e a medicao 40m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da identidade legal da loja (consultas 40a e 40b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/loja-declara-quem-e-portao-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que

@@ -2124,7 +2124,8 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
       // 20261228: os números do painel; painel_inicio ganha a segunda sucessora; 20261230 e 20261231: a
       // busca de clientes, get_admin_customers_paged e crm_clientes ganham a sua; 20261234: o lucro só
       // conta produto com custo, get_admin_analytics_v2 ganha a SEGUNDA sucessora; 20261235: a venda
-      // repetida do balcão, registrar_venda_presencial ganha a sua).
+      // repetida do balcão, registrar_venda_presencial ganha a sua; 20261239: a identidade legal da loja,
+      // upsert_store_config ganha a sua — e a 9a passa a provar o corpo dela).
       assertEquals([...sucessoras8e].sort(porFn), [
         {
           fn: "crm_clientes",
@@ -2166,6 +2167,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "registrar_venda_presencial",
           h: "996caf02505ac16a8bded73bcf8900aa",
           versao: "20261235000000",
+        },
+        {
+          fn: "upsert_store_config",
+          h: "b562669936df1cda31d4bdd4d075bff3",
+          versao: "20261239000000",
         },
       ]);
       for (const s of sucessoras8e)
@@ -2216,9 +2222,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
         const rb = await Deno.readTextFile(
           `${MIGRATIONS_DIR}/rollback-manual-${arq[0]}`,
         );
-        assertStringIncludes(
-          rb,
-          `', '${s.h}')`,
+        // o preflight do rollback exige o corpo desta: lista de VALUES (..., 'h') ou, quando e' uma
+        // funcao so, a comparacao direta IS DISTINCT FROM 'h' (o desfazer da 20261239)
+        assert(
+          rb.includes(`', '${s.h}')`) ||
+            rb.includes(`IS DISTINCT FROM '${s.h}'`),
           `rollback-manual-${arq[0]}: o preflight não exige o corpo desta`,
         );
         const corpoRb = corpoNoTexto(rb, s.fn);
@@ -3474,7 +3482,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para as três que nenhuma migration posterior redefine; três são da 20261199 e registrar_venda_presencial é da 20261235",
+    "quem é o dono do corpo: 60..66 só para as três que nenhuma migration posterior redefine; duas são da 20261199, registrar_venda_presencial é da 20261235 e upsert_store_config é da 20261239 (a identidade legal da loja)",
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261161000000",
@@ -3483,7 +3491,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
         get_product_recommendations: "20261160000000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261235000000",
-        upsert_store_config: "20261199000000",
+        upsert_store_config: "20261239000000",
       });
     },
   );

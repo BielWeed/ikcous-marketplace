@@ -15,6 +15,7 @@ import {
   IconeDinheiro,
   IconePix,
 } from "@/components/icons/IconesDePagamento";
+import { FraseDeAceite } from "@/components/politicas/LinksDasPoliticas";
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
@@ -5866,15 +5867,24 @@ export function CheckoutView({
           necessário antigo era 215,9px → 215,9 − 19 ≈ 197 → 200px mantidos.
 
           Se a barra crescer de novo (nova linha, mais um selo, aviso novo),
-          remedir do mesmo jeito antes de só somar um número por adivinhação. */}
+          remedir do mesmo jeito antes de só somar um número por adivinhação.
+
+          14/10/2026: a barra ganhou a frase "Ao finalizar você concorda com os
+          Termos de uso e a Política de Privacidade" (`FraseDeAceite`): 6px de
+          margem + 1ª linha de 11px (~15px) + 2ª linha só com os dois links, cuja
+          caixa tem 44px de verdade (alvo de toque sem invadir o botão
+          Finalizar) = ~65px. Reserva somada por CONTA, não por medida no
+          navegador: 196→264px no celular, 200→268px no computador. Falta
+          REMEDIR no aparelho (fim do último card menos o `top` da barra, no
+          scroll máximo) — se sobrar folga grande, aperte. */}
       <div
         className="hidden md:block"
-        style={{ height: "200px" }}
+        style={{ height: "268px" }}
         aria-hidden="true"
       />
       <div
         className="block md:hidden"
-        style={{ height: "calc(196px + var(--safe-area-bottom, 0px))" }}
+        style={{ height: "calc(264px + var(--safe-area-bottom, 0px))" }}
         aria-hidden="true"
       />
 
@@ -6244,6 +6254,16 @@ export function CheckoutView({
                         )}
                       </button>
                     </div>
+                    {/* Termos e Privacidade ao lado de quem fecha a compra
+                        (LGPD/CDC): só texto e dois links, NÃO é caixa de
+                        marcar e não participa de nenhuma condição do
+                        Finalizar. Os links abrem uma FOLHA por cima — o
+                        checkout segue montado, com frete, pagamento e dados
+                        como estavam (sair daqui apagaria o formulário). */}
+                    <FraseDeAceite
+                      acao="finalizar"
+                      className="mx-auto mt-1.5 max-w-md text-center"
+                    />
                     {!semFreteSelecionado &&
                       !isOffline &&
                       !pagamentoIncompativel &&

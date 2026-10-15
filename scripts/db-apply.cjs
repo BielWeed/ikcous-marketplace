@@ -1866,6 +1866,43 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql": [
+    {
+      // A loja PODE declarar razão social, CNPJ/CPF e e-mail de atendimento (14/10/2026): três colunas novas e
+      // opcionais, gravadas pela upsert_store_config. Sem esta entrada a migration saía PULADA (saída 2: "ninguém
+      // verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos): o CASE de cada
+      // coluna (o coração do aceite "salvar um campo não apaga os outros") aparece UMA vez, e cada chave aparece
+      // DUAS (uma no INSERT sem COALESCE, uma no THEN do CASE); as duas travas de admin (20261199000000) e o CASE do
+      // endereço (20261167000000) seguem UMA vez cada.
+      funcao: "upsert_store_config",
+      esperado: [
+        {
+          texto:
+            "store_legal_name = CASE WHEN config_json ? 'store_legal_name'",
+          vezes: 1,
+        },
+        {
+          texto:
+            "store_legal_document = CASE WHEN config_json ? 'store_legal_document'",
+          vezes: 1,
+        },
+        {
+          texto:
+            "store_support_email = CASE WHEN config_json ? 'store_support_email'",
+          vezes: 1,
+        },
+        { texto: "config_json->>'store_legal_name'", vezes: 2 },
+        { texto: "config_json->>'store_legal_document'", vezes: 2 },
+        { texto: "config_json->>'store_support_email'", vezes: 2 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto: "store_address = CASE WHEN config_json ? 'store_address'",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

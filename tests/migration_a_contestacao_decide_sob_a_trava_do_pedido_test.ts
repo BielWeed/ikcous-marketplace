@@ -494,6 +494,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/pedidos-de-privacidade-viva.cjs",
     "tests/banco/anonimizar-conta-ensaio-viva.cjs",
     "tests/banco/pedidos-de-privacidade-portao-viva.cjs",
+    // 20261239000000: a loja declara razao social, CNPJ/CPF e e-mail de atendimento (upsert_store_config, as tres colunas e a v_store_config; comportamento e portao 40a/40b).
+    "tests/banco/loja-declara-quem-e-viva.cjs",
+    "tests/banco/loja-declara-quem-e-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

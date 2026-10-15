@@ -273,6 +273,12 @@ const AboutStoreView = lazyWithPreload(() =>
     default: m.AboutStoreView,
   })),
 );
+// Termos de uso, Privacidade e Trocas e devoluções: uma página só, três textos.
+const PoliticaDaLojaView = lazyWithPreload(() =>
+  import("@/views/customer/PoliticaDaLojaView").then((m) => ({
+    default: m.PoliticaDaLojaView,
+  })),
+);
 
 // --- LAZY LOADED ADMIN VIEWS ---
 // O portao do painel mora em `@/components/layouts/AdminAreaGate`. Ele saiu de
@@ -390,6 +396,9 @@ const VIEW_COMPONENTS = {
   "admin-login": AdminLogin,
   "user-profile": UserProfileView,
   "about-store": AboutStoreView,
+  terms: PoliticaDaLojaView,
+  privacy: PoliticaDaLojaView,
+  "returns-policy": PoliticaDaLojaView,
 };
 
 // F1 (glm-perf-1paint-0309): PushNotificationBanner usa framer-motion —
@@ -2572,6 +2581,24 @@ const AppContent = () => {
 
       case "about-store":
         return <PreloadedOrLazy component={AboutStoreView} props={{}} />;
+
+      case "terms":
+      case "privacy":
+      case "returns-policy":
+        return (
+          <PreloadedOrLazy
+            component={PoliticaDaLojaView}
+            props={{
+              tipo:
+                currentView === "terms"
+                  ? "termos"
+                  : currentView === "privacy"
+                    ? "privacidade"
+                    : "trocas",
+              onNavigate: handleNavigate,
+            }}
+          />
+        );
 
       case "order-details":
         return (

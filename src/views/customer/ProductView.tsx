@@ -3,6 +3,7 @@ import {
   CONTAINER_DO_COMPUTADOR,
   ROTULO_NO_COMPUTADOR,
 } from "@/components/desktop/medidas";
+import { LinkDeTrocas } from "@/components/politicas/LinksDasPoliticas";
 import { MarkdownRenderer } from "@/components/ui/custom/MarkdownRenderer";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
@@ -1465,6 +1466,10 @@ export const ProductView = React.memo(function ProductView({
                   : ""}
               </span>
             </div>
+            {/* A cliente que vai comprar acha as regras de troca AQUI, sem
+                sair da página: abre em folha, então o tamanho e a cor que
+                ela escolheu ficam como estão. Discreto de propósito. */}
+            <LinkDeTrocas />
           </div>
           <div
             className={cn(

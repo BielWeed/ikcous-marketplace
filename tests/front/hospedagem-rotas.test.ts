@@ -15,9 +15,12 @@ describe("rotas da hospedagem", () => {
     ]);
   });
 
-  it("67 formas: 43 nominais + 24 aliases admin/<x>, ordenadas (C3.3: +admin-pdv/admin/pdv; 20/09: +admin-about-store; 23/09: +admin-shipping-national; 26/09: +admin-crm, +admin-financeiro, +admin-devolucoes)", () => {
+  it("70 formas: 46 nominais + 24 aliases admin/<x>, ordenadas (C3.3: +admin-pdv/admin/pdv; 20/09: +admin-about-store; 23/09: +admin-shipping-national; 26/09: +admin-crm, +admin-financeiro, +admin-devolucoes; 14/10: +terms, +privacy, +returns-policy)", () => {
     const formas = hospedagem.formasDeEntrada();
-    expect(formas).toHaveLength(67);
+    expect(formas).toHaveLength(70);
+    expect(formas).toContain("/terms");
+    expect(formas).toContain("/privacy");
+    expect(formas).toContain("/returns-policy");
     expect(formas).toEqual([...formas].sort());
     expect(formas).toContain("/admin/orders");
     expect(formas).toContain("/admin-orders");
@@ -35,11 +38,11 @@ describe("rotas da hospedagem", () => {
     expect(formas).not.toContain("/admin/"); // "admin" não ganha alias
   });
 
-  it("_redirects tem 134 regras, cada forma com e sem barra final, alvo raiz 200", () => {
+  it("_redirects tem 140 regras, cada forma com e sem barra final, alvo raiz 200", () => {
     const texto = hospedagem.redirects();
     expect(texto.endsWith("\n")).toBe(true);
     const linhas = texto.trimEnd().split("\n");
-    expect(linhas).toHaveLength(134);
+    expect(linhas).toHaveLength(140);
     expect(linhas).toContain("/admin/orders / 200");
     expect(linhas).toContain("/admin/orders/ / 200");
     expect(linhas).toContain("/admin/pdv / 200");
