@@ -47,7 +47,7 @@ describe("AjudaDoCrm — ranking de lucro e produto sem custo", () => {
     // A tela só mostra a QUANTIDADE, não a lista de quais são.
     expect(texto).not.toContain("avisa quais são");
     expect(texto).toContain(
-      "Cada venda nova guarda o custo do dia: mudar o custo depois não altera o lucro dela. As vendas de antes dessa mudança usam o custo de hoje.",
+      "A venda de um produto que já tinha custo guarda o custo do dia: mudar o custo depois não altera o lucro dela. As vendas feitas sem custo cadastrado, e as feitas antes de o app passar a guardar o custo do dia, usam o custo de hoje.",
     );
     // A promessa antiga, falsa desde o custo do dia: mudar o custo mudava o lucro de TODA venda antiga.
     expect(texto).not.toContain("o lucro das vendas antigas muda junto");

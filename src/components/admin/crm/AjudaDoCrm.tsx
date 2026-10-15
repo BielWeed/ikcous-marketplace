@@ -92,9 +92,11 @@ export function AjudaDoCrm({
               lucro, e a tela avisa quantos produtos ficaram de fora. Para achar
               os sem custo hoje, abra Produtos, toque no botão ao lado da busca
               ("Mostrar em lista com detalhes") e procure o selo "Sem Custo
-              Cadastrado"; cadastre o custo para ele entrar. Cada venda nova
-              guarda o custo do dia: mudar o custo depois não altera o lucro
-              dela. As vendas de antes dessa mudança usam o custo de hoje.
+              Cadastrado"; cadastre o custo para ele entrar. A venda de um
+              produto que já tinha custo guarda o custo do dia: mudar o custo
+              depois não altera o lucro dela. As vendas feitas sem custo
+              cadastrado, e as feitas antes de o app passar a guardar o custo do
+              dia, usam o custo de hoje.
             </li>
           </ul>
         </div>
