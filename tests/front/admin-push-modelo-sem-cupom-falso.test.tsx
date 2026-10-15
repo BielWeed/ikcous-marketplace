@@ -61,7 +61,12 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "coupons") {
         return {
           select: () => ({
-            in: (_coluna: string, codigos: string[]) => {
+            // A tela pede os códigos num filtro `or` de `ilike` (sem diferenciar
+            // maiúscula, como o checkout): o dublê lê o filtro e compara igual.
+            or: (filtro: string) => {
+              const codigos = filtro
+                .split(",")
+                .map((parte) => parte.replace(/^code\.ilike\./, ""));
               estado.consultasDeCupom.push(codigos);
               if (estado.erroDosCupons) {
                 return Promise.resolve({
@@ -69,9 +74,10 @@ vi.mock("@/lib/supabase", () => ({
                   error: estado.erroDosCupons,
                 });
               }
+              const minusculas = codigos.map((c) => c.toLowerCase());
               return Promise.resolve({
                 data: estado.cupons.filter((c) =>
-                  codigos.includes(String(c.code)),
+                  minusculas.includes(String(c.code).toLowerCase()),
                 ),
                 error: null,
               });
@@ -324,6 +330,24 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
 
     await enviar();
     expect(estado.consultasDeCupom).toEqual([["VERAO10"]]);
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("cupom antigo guardado em caixa mista é achado, não vira 'não existe'", async () => {
+    estado.cupons = [
+      {
+        code: "Verao10",
+        active: true,
+        valid_until: null,
+        usage_limit: null,
+        usage_count: 0,
+      },
+    ];
+    await abrirTela();
+    await clicarModelo("Cupom de boas-vindas");
+    await escrever("Oferta na loja", "Use o cupom VERAO10 na sua compra.");
+
+    await enviar();
     expect(invokeSendPush).toHaveBeenCalledTimes(1);
   });
 
