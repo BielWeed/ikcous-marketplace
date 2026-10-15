@@ -177,7 +177,8 @@ describe("F3 — produto no computador e celular preservado", () => {
   it("F3.2 limita a galeria, mantém as setas visíveis e oculta só os pontos no desktop", async () => {
     await montar();
     const foto = elemento(".main-product-image");
-    const caixa = foto.parentElement!.parentElement!;
+    // foto > encaixe da foto > faixa que rola > caixa da galeria.
+    const caixa = foto.parentElement!.parentElement!.parentElement!;
     expect(classesDoCelular(caixa.className)).toBe(
       "group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3]",
     );
@@ -187,7 +188,7 @@ describe("F3 — produto no computador e celular preservado", () => {
         "lg:max-h-[calc(100dvh-var(--header-height)-220px)]",
       ),
     ).toBe(true);
-    expect(foto.parentElement!.classList.contains("lg:h-[70vh]")).toBe(false);
+    expect(caixa.classList.contains("lg:h-[70vh]")).toBe(false);
     expect(foto.getAttribute("sizes")).toBe("(min-width: 1024px) 720px, 100vw");
     expect(
       elemento(
@@ -301,7 +302,7 @@ describe("F3 — produto no computador e celular preservado", () => {
     expect(miniatura.getAttribute("aria-current")).toBe("true");
   });
 
-  it("F3.3 não mostra miniaturas para foto única; variação com imagem própria destaca a foto dela sem esconder as miniaturas", async () => {
+  it("F3.3 sem miniaturas para foto única; variação com imagem própria NÃO esconde as outras fotos", async () => {
     vi.stubGlobal("matchMedia", (q: string) => ({
       matches: q === "(min-width: 1024px)",
     }));
@@ -326,18 +327,22 @@ describe("F3 — produto no computador e celular preservado", () => {
     )!;
     expect(tamanho).toBeDefined();
     await act(async () => tamanho.click());
-    // Antes (defeito): as miniaturas sumiam e as outras fotos só voltavam
-    // recarregando. Agora seguem a um toque, e a principal mostra a da variação.
+    // A foto da variação entra no fim da faixa (o produto não a tem) e as
+    // fotos do produto continuam lá, com as miniaturas.
+    const fotos = [...host.querySelectorAll(".main-product-image")];
+    expect(fotos.map((f) => f.getAttribute("src"))).toEqual([
+      "/foto-1.png",
+      "/foto-2.png",
+      "/foto-m.png",
+    ]);
     expect(
-      host.querySelectorAll("button[aria-label^='Ver foto']").length,
-    ).toBeGreaterThan(1);
-    // A troca é com fade: a foto antiga ainda pode estar saindo (no jsdom a
-    // animação não termina), então basta alguma principal mostrar a da variação.
+      host.querySelectorAll("button[aria-label^='Ver foto']"),
+    ).toHaveLength(3);
     expect(
-      [...host.querySelectorAll(".main-product-image")].some((img) =>
-        (img.getAttribute("src") ?? "").includes("foto-m.png"),
+      elemento("button[aria-label='Ver foto 3 de 3']").getAttribute(
+        "aria-current",
       ),
-    ).toBe(true);
+    ).toBe("true");
   });
 
   it("mostra a foto original da IKCOUS sem pedir transformação indisponível", async () => {

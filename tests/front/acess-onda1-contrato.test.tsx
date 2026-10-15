@@ -38,6 +38,7 @@ function fonte(caminho: string): string {
 
 const CHECKOUT = "/src/views/customer/CheckoutView.tsx";
 const PRODUCT_VIEW = "/src/views/customer/ProductView.tsx";
+const GALERIA_DO_PRODUTO = "/src/components/ui/custom/GaleriaDoProduto.tsx";
 const COUPON_INPUT = "/src/components/ui/custom/CouponInput.tsx";
 const PRODUCT_CARD = "/src/components/ui/custom/ProductCard.tsx";
 const BOTTOM_NAV = "/src/components/ui/custom/BottomNav.tsx";
@@ -124,13 +125,12 @@ describe("achado 1 — checkout: erro de preenchimento marcado e anunciado", () 
 
 describe("achado 2 — página de produto e cupom: botões de ícone com nome", () => {
   it("galeria do produto: setas e bolinhas nomeadas, bolinha atual marcada", () => {
-    const src = fonte(PRODUCT_VIEW);
+    // A galeria mora em GaleriaDoProduto (saiu do ProductView).
+    const src = fonte(GALERIA_DO_PRODUTO);
     expect(src).toContain('aria-label="Foto anterior"');
     expect(src).toContain('aria-label="Próxima foto"');
-    expect(src).toContain("aria-label={`Foto ${index + 1} de");
-    // A bolinha atual segue `indiceAtivo` (a foto da variação, ou a do índice
-    // navegado) -- antes era direto `currentImageIndex`.
-    expect(src).toMatch(/aria-current=\{\s*index === indiceAtivo/);
+    expect(src).toContain("aria-label={`Foto ${posicao + 1} de");
+    expect(src).toMatch(/aria-current=\{\s*posicao === indice/);
   });
 
   it("coração de favoritar nomeado nos dois estados", () => {
