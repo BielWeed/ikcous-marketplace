@@ -9,6 +9,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { type TipoDePolitica, nomeDaPolitica } from "@/lib/nomes-das-politicas";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,9 @@ interface PoliticaEmFolhaProps {
  * lida do banco quando alguém de fato a abre.
  */
 export function PoliticaEmFolha({ tipo, onFechar }: PoliticaEmFolhaProps) {
+  // O Voltar do aparelho fecha SÓ a folha (a tela de baixo não se mexe).
+  useVoltarFechaAFolha(tipo !== null, onFechar);
+
   return (
     <Sheet
       open={tipo !== null}

@@ -186,4 +186,63 @@ describe("AuthView — termos e privacidade junto do botão de entrar/cadastrar"
     expect(email.value).toBe("maria@exemplo.com");
     expect(onNavigate).not.toHaveBeenCalled();
   });
+
+  it("Voltar do aparelho com a folha aberta: fecha só a folha e o cadastro digitado fica inteiro", async () => {
+    // O roteador do App (handler de popstate do App.tsx) registrado ANTES da
+    // folha. Se ele acordasse, a cliente sairia do cadastro.
+    globalThis.history.replaceState({ view: "auth" }, "", "/auth");
+    const roteadorDoApp = vi.fn();
+    globalThis.addEventListener("popstate", roteadorDoApp);
+    try {
+      await montar();
+      await irParaCadastro();
+      const campos = [
+        ...hospedeiro.querySelectorAll<HTMLInputElement>("input"),
+      ].filter((i) => i.type !== "checkbox");
+      expect(campos.length).toBeGreaterThanOrEqual(4);
+      const digitados: string[] = [];
+      for (const [i, campo] of campos.entries()) {
+        const valor =
+          campo.type === "password" ? "senha-secreta-1" : `valor-${i}`;
+        // Os campos com máscara (WhatsApp, CPF) aceitam só dígitos.
+        const bruto =
+          campo.inputMode === "numeric" || campo.type === "tel"
+            ? "34999998888"
+            : valor;
+        await digitar(campo, bruto);
+        digitados.push(campo.value);
+      }
+      expect(digitados.every((v) => v.length > 0)).toBe(true);
+
+      await act(async () => {
+        (frase()?.querySelector("button") as HTMLButtonElement).click();
+      });
+      await aguardarFolha();
+
+      await act(async () => {
+        globalThis.history.back();
+        await new Promise((r) => setTimeout(r, 60));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 300));
+      });
+
+      expect(
+        document.querySelector('[data-testid="folha-politica"]'),
+      ).toBeNull();
+      expect(roteadorDoApp).not.toHaveBeenCalled();
+      expect(onNavigate).not.toHaveBeenCalled();
+      expect(globalThis.location.pathname).toBe("/auth");
+      // Os MESMOS campos, com o que ela digitou, e o botão do cadastro ali.
+      const depois = [
+        ...hospedeiro.querySelectorAll<HTMLInputElement>("input"),
+      ].filter((i) => i.type !== "checkbox");
+      expect(depois).toEqual(campos);
+      expect(depois.map((c) => c.value)).toEqual(digitados);
+      expect(botaoPorTexto("FINALIZAR REGISTRO")).toBeDefined();
+      expect(signUp).not.toHaveBeenCalled();
+    } finally {
+      globalThis.removeEventListener("popstate", roteadorDoApp);
+    }
+  });
 });

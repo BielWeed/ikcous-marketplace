@@ -198,4 +198,53 @@ describe("ProductView — Trocas e devoluções perto do botão de comprar", () 
     const chamada = onAddToCart.mock.calls[0];
     expect(JSON.stringify(chamada)).toContain("var-p");
   });
+
+  it("Voltar do aparelho com a folha aberta: fecha só a folha, fica na página (com ?id=) e o tamanho escolhido continua", async () => {
+    globalThis.history.replaceState(
+      { view: "product-detail", id: PRODUTO.id },
+      "",
+      `/product-detail?id=${PRODUTO.id}`,
+    );
+    const roteadorDoApp = vi.fn();
+    globalThis.addEventListener("popstate", roteadorDoApp);
+    try {
+      await montar();
+      const rotulo = [...hospedeiro.querySelectorAll("span")].find(
+        (s) => s.textContent === "Selecione Tamanho",
+      );
+      const botaoP = [
+        ...(rotulo?.parentElement?.querySelectorAll("button") ?? []),
+      ].find((b) => b.textContent?.startsWith("P"));
+      expect(botaoP).toBeDefined();
+      act(() => botaoP?.click());
+
+      act(() => link()?.click());
+      await aguardarFolha();
+
+      await act(async () => {
+        globalThis.history.back();
+        await new Promise((r) => setTimeout(r, 60));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 300));
+      });
+
+      expect(
+        document.querySelector('[data-testid="folha-politica"]'),
+      ).toBeNull();
+      expect(roteadorDoApp).not.toHaveBeenCalled();
+      expect(globalThis.location.pathname + globalThis.location.search).toBe(
+        `/product-detail?id=${PRODUTO.id}`,
+      );
+      expect(onAddToCart).not.toHaveBeenCalled();
+      // A escolha do tamanho continua valendo: a compra leva a variação P.
+      await act(async () => {
+        botaoAdicionar().click();
+      });
+      expect(onAddToCart).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(onAddToCart.mock.calls[0])).toContain("var-p");
+    } finally {
+      globalThis.removeEventListener("popstate", roteadorDoApp);
+    }
+  });
 });

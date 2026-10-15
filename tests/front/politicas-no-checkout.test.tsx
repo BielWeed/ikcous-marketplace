@@ -311,6 +311,52 @@ describe("CheckoutView — termos e privacidade ao lado do Finalizar", () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
+  it("Voltar do aparelho com a folha aberta: fecha só a folha, o checkout não sai de cena e o pedido sai igual", async () => {
+    // O roteador do App (handler de popstate) registrado ANTES da folha. Se
+    // ele acordasse, a cliente sairia do checkout e perderia pagamento e frete.
+    globalThis.history.replaceState({ view: "checkout" }, "", "/checkout");
+    const roteadorDoApp = vi.fn();
+    globalThis.addEventListener("popstate", roteadorDoApp);
+    try {
+      await montar();
+      await clicar(botao("Dinheiro na Entrega"));
+      expect(espelho.selecionada?.id).toBe("local-delivery");
+
+      await clicar(botao("Política de Privacidade"));
+      await aguardarFolha();
+      expect(globalThis.history.state).toMatchObject({
+        view: "checkout",
+        folhaDePolitica: true,
+      });
+
+      await act(async () => {
+        globalThis.history.back();
+        await new Promise((r) => setTimeout(r, 60));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 300));
+      });
+
+      expect(
+        document.querySelector('[data-testid="folha-politica"]'),
+      ).toBeNull();
+      expect(roteadorDoApp).not.toHaveBeenCalled();
+      expect(onNavigate).not.toHaveBeenCalled();
+      expect(globalThis.location.pathname).toBe("/checkout");
+      // Frete e pagamento como estavam; o pedido sai com o mesmo payload.
+      expect(espelho.selecionada?.id).toBe("local-delivery");
+      expect(finalizar().disabled).toBe(false);
+      await clicar(finalizar());
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      const [pedido] = createOrder.mock.calls[0];
+      expect(pedido.shippingOptionId).toBe("local-delivery");
+      expect(pedido.paymentMethod).toBe("cash");
+      expect(pedido.totalAmount).toBe(261.5);
+    } finally {
+      globalThis.removeEventListener("popstate", roteadorDoApp);
+    }
+  });
+
   it("a Política de Privacidade abre o texto certo, por cima do checkout", async () => {
     await montar();
     await clicar(botao("Política de Privacidade"));
