@@ -1,5 +1,14 @@
-import { atributosDeImagem } from "@/lib/imageUrl";
-import { useEffect, useRef, useState } from "react";
+import {
+  atributosDeImagem,
+  comMarcaDeTentativa,
+  conjuntoComMarcaDeTentativa,
+} from "@/lib/imageUrl";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+// Espera (ms) antes de cada nova tentativa AUTOMÁTICA de uma foto que falhou:
+// curta e crescente. O tamanho da lista é o teto -- depois dela só o toque da
+// cliente tenta de novo.
+const ESPERAS_DE_NOVA_TENTATIVA_MS: readonly number[] = [1500, 3000];
 
 interface LazyImageProps {
   src: string;
@@ -42,6 +51,36 @@ export function LazyImage({
   // recai para a URL original em vez de mostrar erro ao cliente.
   const [transformacaoFalhou, setTransformacaoFalhou] = useState(false);
   const imgRef = useRef<HTMLDivElement>(null);
+
+  // Rede fraca (3G, sinal oscilando): a falha de verdade não é definitiva na
+  // primeira vez. `ciclo` conta os pedidos já refeitos -- serve de `key` do
+  // <img> (elemento novo, pedido novo) e de marca na URL (`_r=N`, para não
+  // reaproveitar uma falha guardada). `automaticasRef` conta só as tentativas
+  // que o próprio componente agendou; o teto é o tamanho da lista, não há laço.
+  const [ciclo, setCiclo] = useState(0);
+  const automaticasRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const limparTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  // Foto nova (src diferente): o erro e as tentativas da foto antiga não valem
+  // para ela. O ajuste de estado durante a renderização é o jeito que o React
+  // recomenda -- num efeito, o aviso de erro velho piscaria por cima da foto nova.
+  const [srcVisto, setSrcVisto] = useState(src);
+  if (src !== srcVisto) {
+    setSrcVisto(src);
+    setHasError(false);
+    setCiclo(0);
+  }
+  // Tira o relógio pendente ao trocar de foto e ao sair da tela.
+  useEffect(() => {
+    automaticasRef.current = 0;
+    return limparTimer;
+  }, [src, limparTimer]);
 
   useEffect(() => {
     if (priority) {
@@ -91,6 +130,19 @@ export function LazyImage({
     quality,
   });
 
+  // Toque da cliente no aviso de falha: pede de novo na hora e devolve o
+  // fôlego das tentativas automáticas. `stopPropagation` porque o aviso mora
+  // dentro de cards clicáveis -- tentar de novo não pode abrir o produto.
+  const tentarDeNovo = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    limparTimer();
+    automaticasRef.current = 0;
+    setHasError(false);
+    setIsLoaded(false);
+    setTransformacaoFalhou(false);
+    setCiclo((c) => c + 1);
+  };
+
   const style: React.CSSProperties = {};
   if (width !== undefined) style.width = width;
   if (height !== undefined) style.height = height;
@@ -108,20 +160,31 @@ export function LazyImage({
         />
       )}
 
-      {/* Error Fallback */}
+      {/* Falha definitiva (as novas tentativas automáticas acabaram): aviso
+          discreto, e o toque pede a foto de novo. */}
       {hasError && (
-        <div className="absolute inset-0 flex items-center justify-center border border-zinc-100 bg-zinc-50 dark:border-white/5 dark:bg-zinc-900">
-          <span className="text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
-            Erro ao carregar
+        <button
+          type="button"
+          aria-label={
+            alt
+              ? `A foto "${alt}" não carregou. Toque para tentar de novo`
+              : "A foto não carregou. Toque para tentar de novo"
+          }
+          onClick={tentarDeNovo}
+          className="absolute inset-0 flex items-center justify-center border border-zinc-100 bg-zinc-50 dark:border-white/5 dark:bg-zinc-900"
+        >
+          <span className="px-2 text-center text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
+            Toque para tentar de novo
           </span>
-        </div>
+        </button>
       )}
 
       {/* Actual image - only load when in viewport */}
       {isInView && (
         <img
-          src={atributos.src}
-          srcSet={atributos.srcSet}
+          key={ciclo}
+          src={comMarcaDeTentativa(atributos.src, ciclo)}
+          srcSet={conjuntoComMarcaDeTentativa(atributos.srcSet, ciclo)}
           sizes={atributos.sizes}
           alt={alt}
           loading={priority ? "eager" : "lazy"}
@@ -130,9 +193,27 @@ export function LazyImage({
           onLoad={() => setIsLoaded(true)}
           onError={() => {
             // Primeira falha com transformação ligada: tenta a URL original
-            // antes de desistir e mostrar "Erro ao carregar".
+            // antes de desistir.
             if (podeRedimensionar) {
               setTransformacaoFalhou(true);
+              return;
+            }
+            // Falha de verdade: ainda há nova tentativa automática? Agenda
+            // (uma só por vez) e deixa o esqueleto no lugar -- nada de aviso
+            // de erro enquanto há esperança.
+            const espera = ESPERAS_DE_NOVA_TENTATIVA_MS.at(
+              automaticasRef.current,
+            );
+            if (espera !== undefined) {
+              if (timerRef.current) return;
+              automaticasRef.current += 1;
+              timerRef.current = setTimeout(() => {
+                timerRef.current = null;
+                // Recomeça pela foto pequena: se a rede estava só oscilando,
+                // a original (muito maior) seria o pior pedido no 3G.
+                setTransformacaoFalhou(false);
+                setCiclo((c) => c + 1);
+              }, espera);
               return;
             }
             setHasError(true);
