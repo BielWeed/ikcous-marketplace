@@ -435,7 +435,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
           estado={estadoInicialDaVenda(() => "chave-fixa")}
           despachar={vi.fn()}
           subtotal={0}
-          buscarProdutos={vi.fn().mockResolvedValue([])}
+          buscarProdutos={vi.fn().mockResolvedValue({ produtos: [], total: 0 })}
           onNavigate={vi.fn()}
           feedback={null}
         />,

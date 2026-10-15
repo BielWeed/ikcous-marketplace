@@ -31,6 +31,7 @@ import {
   Plus,
   Search,
   Trash2,
+  XCircle,
 } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 
@@ -60,14 +61,28 @@ export interface ProdutoEncontradoNaBusca {
   readonly product_variants: readonly VarianteEncontradaNaBusca[];
 }
 
+/** Uma página da busca por nome: os produtos dela e QUANTOS existem no total
+ * (o `total_count` que a RPC já devolve) — é o que deixa a tela dizer
+ * "mostrando 8 de 22" em vez de fingir que 8 é tudo. */
+export interface PaginaDeProdutosEncontrados {
+  readonly produtos: readonly ProdutoEncontradoNaBusca[];
+  readonly total: number;
+}
+
 export interface PropsDoCupomDaVenda {
   readonly estado: EstadoDaVenda;
   readonly despachar: (acao: AcaoDaVenda) => void;
   readonly subtotal: number;
+  /** `pagina` começa em 0. */
   readonly buscarProdutos: (
     termo: string,
-  ) => Promise<readonly ProdutoEncontradoNaBusca[]>;
+    pagina: number,
+  ) => Promise<PaginaDeProdutosEncontrados>;
   readonly onNavigate: (view: View) => void;
+  /** `useVendaPresencial().limparCupom`: volta o caixa ao zero (itens,
+   * desconto, cliente, forma de pagamento e rascunho). Ausente = sem o botão
+   * "Cancelar venda" (testes que montam só a lista). */
+  readonly limparCupom?: () => void;
   /** Injeção de teste — padrão `criarFeedbackDoLeitor()`. `null` desliga
    * bip/vibração (mesmo padrão de `useLeitorDeCodigo`, opções). */
   readonly feedback?: FeedbackDoLeitor | null;
@@ -139,6 +154,7 @@ export function CupomDaVenda({
   subtotal,
   buscarProdutos,
   onNavigate,
+  limparCupom,
   feedback: feedbackProp,
   agora = () => Date.now(),
 }: PropsDoCupomDaVenda): ReactElement {
@@ -147,6 +163,17 @@ export function CupomDaVenda({
     readonly ProdutoEncontradoNaBusca[]
   >([]);
   const [buscando, setBuscando] = useState(false);
+  // Quantos produtos o banco tem para o termo (não só os da tela), a última
+  // página que chegou, se a busca já respondeu ao menos uma vez e a falha que
+  // a lojista precisa ver: calar na falha fazia "a rede caiu" parecer "não
+  // existe esse produto".
+  const [totalDaBusca, setTotalDaBusca] = useState(0);
+  const [paginaCarregada, setPaginaCarregada] = useState(0);
+  const [buscaRespondeu, setBuscaRespondeu] = useState(false);
+  const [falhaDaBusca, setFalhaDaBusca] = useState<{
+    readonly pagina: number;
+  } | null>(null);
+  const [termoBuscado, setTermoBuscado] = useState("");
 
   // O AudioContext NASCE PREGUIÇOSO dentro de `criarFeedbackDoLeitor` — não
   // tem custo criar a instância aqui mesmo sem gesto do usuário ainda.
@@ -182,26 +209,76 @@ export function CupomDaVenda({
   // uma busca antiga não pode gravar por cima da busca mais nova.
   const rodadaRef = useRef(0);
 
+  // Busca UMA página do termo. Página 0 recomeça a lista; as seguintes
+  // ("Mostrar mais") somam à que já está na tela, sem repetir produto (um
+  // cadastro novo entre duas páginas empurra a fila e o mesmo produto
+  // apareceria de novo).
+  async function buscarPagina(termo: string, pagina: number): Promise<void> {
+    const rodada = ++rodadaRef.current;
+    setTermoBuscado(termo);
+    setBuscando(true);
+    setFalhaDaBusca(null);
+    try {
+      const resposta = await buscarProdutos(termo, pagina);
+      if (rodada !== rodadaRef.current) return;
+      const jaNaTela = pagina === 0 ? [] : resultadosDaBusca;
+      const ids = new Set(jaNaTela.map((p) => p.id));
+      const novos = resposta.produtos.filter((p) => !ids.has(p.id));
+      const todos = [...jaNaTela, ...novos];
+      setResultadosDaBusca(todos);
+      // Página seguinte vazia com a lista ainda "incompleta" = o catálogo
+      // mudou no meio do caminho: fecha a conta com o que há, em vez de
+      // oferecer um "Mostrar mais" que não traz nada.
+      setTotalDaBusca(
+        pagina > 0 && novos.length === 0
+          ? todos.length
+          : Math.max(resposta.total, todos.length),
+      );
+      setPaginaCarregada(pagina);
+      setBuscaRespondeu(true);
+    } catch (erro) {
+      if (rodada !== rodadaRef.current) return;
+      console.error("Erro ao buscar produto no balcão:", erro);
+      if (pagina === 0) {
+        setResultadosDaBusca([]);
+        setTotalDaBusca(0);
+        setBuscaRespondeu(false);
+      }
+      setFalhaDaBusca({ pagina });
+    } finally {
+      if (rodada === rodadaRef.current) setBuscando(false);
+    }
+  }
+
   async function aoDigitarBusca(valor: string): Promise<void> {
     setTermoDeBusca(valor);
     const termoLimpo = valor.trim();
     if (termoLimpo.length < 2) {
+      // Uma resposta ainda no ar não pode reabrir a lista de um termo que a
+      // lojista já apagou.
+      rodadaRef.current++;
+      setTermoBuscado("");
       setResultadosDaBusca([]);
+      setTotalDaBusca(0);
+      setPaginaCarregada(0);
+      setBuscaRespondeu(false);
+      setFalhaDaBusca(null);
+      setBuscando(false);
       return;
     }
-    const rodada = ++rodadaRef.current;
-    setBuscando(true);
-    try {
-      const resultados = await buscarProdutos(termoLimpo);
-      if (rodada !== rodadaRef.current) return;
-      setResultadosDaBusca(resultados);
-    } catch (erro) {
-      if (rodada !== rodadaRef.current) return;
-      console.error("Erro ao buscar produto no balcão:", erro);
-      setResultadosDaBusca([]);
-    } finally {
-      if (rodada === rodadaRef.current) setBuscando(false);
+    // O campo entrega o texto de novo quando PERDE O FOCO. No celular o toque
+    // em "Mostrar mais" tira o foco do campo antes do clique: refazer aqui a
+    // busca do termo que já está na tela (ou a caminho) travava o botão no
+    // meio do toque e o primeiro toque morria. Termo que falhou continua
+    // podendo ser buscado de novo.
+    if (
+      termoLimpo === termoBuscado &&
+      (buscaRespondeu || buscando) &&
+      !falhaDaBusca
+    ) {
+      return;
     }
+    await buscarPagina(termoLimpo, 0);
   }
 
   const [produtoExpandidoId, setProdutoExpandidoId] = useState<string | null>(
@@ -240,6 +317,31 @@ export function CupomDaVenda({
   }
 
   const escolha = estado.escolhaDeVariacao;
+
+  // "Cancelar venda": só há o que cancelar quando o cupom guarda ALGUMA coisa
+  // da venda (item, desconto, cliente ou forma de pagamento — os dois últimos
+  // sobreviviam à desistência e iam para a venda seguinte).
+  const temVendaParaCancelar =
+    estado.itens.length > 0 ||
+    estado.desconto > 0 ||
+    estado.cliente.tipo !== "sem_cliente" ||
+    estado.pagamento !== null;
+  const [confirmandoCancelamento, setConfirmandoCancelamento] = useState(false);
+  // O cupom esvaziou por outro caminho (tirou o último item, por exemplo)
+  // com a pergunta aberta: ela some junto — senão voltaria sozinha na venda
+  // seguinte, perguntando por uma venda que não existe mais.
+  // O mesmo vale se a venda começa a ser GRAVADA com a pergunta aberta
+  // (foi a "Fechar venda" e "Registrar venda"): o "Sim" zeraria a tela com a
+  // venda no ar.
+  if (confirmandoCancelamento && (!temVendaParaCancelar || estado.enviando)) {
+    setConfirmandoCancelamento(false);
+  }
+  // O foco cai no "Voltar": o gesto automático de quem toca duas vezes por
+  // reflexo não pode apagar a venda — a ação padrão é a segura.
+  const voltarDoCancelamentoRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (confirmandoCancelamento) voltarDoCancelamentoRef.current?.focus();
+  }, [confirmandoCancelamento]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -496,6 +598,36 @@ export function CupomDaVenda({
           className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
         />
         {buscando && <p className="text-xs text-zinc-500">Buscando…</p>}
+        {!buscando &&
+          !falhaDaBusca &&
+          buscaRespondeu &&
+          resultadosDaBusca.length === 0 && (
+            <p className="text-xs text-zinc-400">
+              Nenhum produto encontrado para &quot;{termoBuscado}&quot;. Confira
+              o nome ou digite menos letras.
+            </p>
+          )}
+        {falhaDaBusca && !buscando && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 rounded-lg border border-red-800/50 bg-red-950/30 p-3 text-xs text-red-200"
+          >
+            <p>
+              Não consegui buscar agora. Confira a internet e tente de novo.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-11 shrink-0"
+              onClick={() =>
+                void buscarPagina(termoBuscado, falhaDaBusca.pagina)
+              }
+            >
+              Tentar de novo
+            </Button>
+          </div>
+        )}
         {resultadosDaBusca.length > 0 && (
           <ul className="flex flex-col gap-1.5">
             {resultadosDaBusca.map((produto) => {
@@ -544,6 +676,30 @@ export function CupomDaVenda({
             })}
           </ul>
         )}
+        {/* A lista é uma página da busca, não o catálogo: sem esta linha a
+            lojista achava que "vestido" tinha 8 produtos quando tinha 22. */}
+        {resultadosDaBusca.length > 0 &&
+          resultadosDaBusca.length < totalDaBusca &&
+          !falhaDaBusca && (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-zinc-400">
+                Mostrando {resultadosDaBusca.length} de {totalDaBusca}. Digite
+                mais letras para filtrar ou toque em Mostrar mais.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-11 shrink-0"
+                disabled={buscando}
+                onClick={() =>
+                  void buscarPagina(termoBuscado, paginaCarregada + 1)
+                }
+              >
+                Mostrar mais
+              </Button>
+            </div>
+          )}
       </div>
 
       {/* Navegação para as próximas camadas. As ações do PDV usam cor
@@ -573,6 +729,62 @@ export function CupomDaVenda({
           Fechar venda
         </Button>
       </div>
+
+      {limparCupom && temVendaParaCancelar && !confirmandoCancelamento && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          // Com a venda sendo gravada no banco não dá para desistir: limpar
+          // agora deixaria a tela zerada e a venda feita.
+          disabled={estado.enviando}
+          className="h-11 self-center text-zinc-500 hover:text-red-300"
+          onClick={() => setConfirmandoCancelamento(true)}
+        >
+          <XCircle aria-hidden="true" className="mr-1.5 size-4" />
+          Cancelar venda
+        </Button>
+      )}
+      {limparCupom && temVendaParaCancelar && confirmandoCancelamento && (
+        <div
+          role="group"
+          aria-label="Cancelar venda"
+          className="flex flex-col gap-2 rounded-xl border border-red-900/60 bg-red-950/20 p-3"
+        >
+          <p className="text-sm font-semibold text-red-200">
+            Cancelar esta venda?
+          </p>
+          <p className="text-xs text-zinc-400">
+            Os itens e o cliente escolhido serão limpos, e o caixa volta ao
+            começo.{" "}
+            {estado.erro
+              ? "Se a venda chegou a ser gravada, ela está em Pedidos."
+              : "Nada é registrado."}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              ref={voltarDoCancelamentoRef}
+              type="button"
+              variant="outline"
+              className="h-11 flex-1"
+              onClick={() => setConfirmandoCancelamento(false)}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              disabled={estado.enviando}
+              className="h-11 flex-1 bg-red-700 text-white hover:bg-red-600"
+              onClick={() => {
+                setConfirmandoCancelamento(false);
+                limparCupom();
+              }}
+            >
+              Sim, cancelar venda
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

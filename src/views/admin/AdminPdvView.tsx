@@ -26,7 +26,10 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ClienteDaVenda } from "@/components/admin/pdv/ClienteDaVenda";
 import type { LinhaDeClienteEncontrado } from "@/components/admin/pdv/ClienteDaVenda";
 import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
-import type { ProdutoEncontradoNaBusca } from "@/components/admin/pdv/CupomDaVenda";
+import type {
+  PaginaDeProdutosEncontrados,
+  ProdutoEncontradoNaBusca,
+} from "@/components/admin/pdv/CupomDaVenda";
 import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
 import { LeitorDeCodigo } from "@/components/admin/pdv/LeitorDeCodigo";
 import { ReciboDaVenda } from "@/components/admin/pdv/ReciboDaVenda";
@@ -249,19 +252,27 @@ export function AdminPdvView({
 
   async function buscarProdutos(
     termo: string,
-  ): Promise<readonly ProdutoEncontradoNaBusca[]> {
+    pagina: number,
+  ): Promise<PaginaDeProdutosEncontrados> {
     const rodada = ++rodadaProdutosRef.current;
     const { data, error } = await supabase.rpc("get_admin_products_paged", {
       p_search: termo,
       p_category: "all",
       p_status: "active",
       p_stock: "all",
-      p_page: 0,
+      p_page: pagina,
       p_page_size: 8,
     });
-    if (rodada !== rodadaProdutosRef.current) return [];
+    if (rodada !== rodadaProdutosRef.current) return { produtos: [], total: 0 };
     if (error) throw error;
-    return ((data as any)?.data ?? []) as ProdutoEncontradoNaBusca[];
+    const produtos = ((data as any)?.data ?? []) as ProdutoEncontradoNaBusca[];
+    // `total_count` é quantos produtos o termo acha no banco inteiro, não só
+    // nesta página — é o que deixa a tela dizer "mostrando 8 de 22".
+    const total = Number((data as any)?.total_count);
+    return {
+      produtos,
+      total: Number.isFinite(total) ? total : produtos.length,
+    };
   }
 
   // A linha inteira de `marketplace_orders` que `to_jsonb(o.*)` devolve
@@ -555,6 +566,7 @@ export function AdminPdvView({
           subtotal={subtotal}
           buscarProdutos={buscarProdutos}
           onNavigate={onNavigate}
+          limparCupom={limparCupom}
         />
       )}
 

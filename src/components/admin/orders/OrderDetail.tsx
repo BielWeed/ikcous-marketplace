@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
@@ -14,7 +15,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
-import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
+import {
+  DEPOIS_DO_DIA_COM_CLIENTE,
+  DEPOIS_DO_DIA_SEM_CLIENTE,
+  FRASE_ANULAR_SO_NO_MESMO_DIA,
+  podeAnularVendaDoBalcao,
+} from "@/lib/anulacao-do-balcao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
@@ -829,20 +835,8 @@ interface OrderFinanceCardProps {
   registrandoPagamento?: boolean;
 }
 
-// F7 do painel simples — venda do balcão não se CANCELA (nasce entregue, e
-// "Cancelar pedido" não existe para entregue): o caminho é ANULAR, e só no
-// mesmo dia. A 1ª frase é a da recusa do banco (migration 20261204000000,
-// `anular_venda_presencial`); a 2ª da recusa ("registre uma devolução") NÃO
-// vale aqui: o lojista não abre devolução de balcão no painel
-// (`solicitar_devolucao` exige o cliente logado, `user_id = auth.uid()`).
-// No balcão não há arrependimento (ele exige canal 'online'): sobra troca ou
-// vício, pedidos pelo cliente — e só se a venda nasceu na conta dele
-// (`registrar_venda_presencial(p_cliente_user_id)`; não há vínculo depois).
-const FRASE_ANULAR_SO_NO_MESMO_DIA = "Só dá para anular no mesmo dia da venda.";
-const DEPOIS_DO_DIA_COM_CLIENTE =
-  "Depois disso, a troca ou o reparo de defeito só podem ser pedidos pelo cliente, no app, dentro do prazo da loja.";
-const DEPOIS_DO_DIA_SEM_CLIENTE =
-  "Esta venda não está na conta de nenhum cliente: o app não abre devolução para ela.";
+// As frases de "passou do dia" (F7) moram em `@/lib/anulacao-do-balcao`: o
+// recibo da tela Vender diz a MESMA coisa.
 
 /** A venda do balcão que só não se anula mais porque o dia passou: a MESMA
  * regra do botão, com o recebimento trazido para hoje. Não decide nada — só
@@ -969,14 +963,12 @@ function OrderFinanceCard({
                   { day: "2-digit", month: "short" },
                 )}
               </span>
-              <button
-                type="button"
-                onClick={() => onRegistrarPagamento(order.id, false)}
+              <DesfazerRecebimento
+                order={order}
+                aoDesfazer={() => onRegistrarPagamento(order.id, false)}
                 disabled={registrandoPagamento}
                 className="h-11 shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
-              >
-                Desfazer
-              </button>
+              />
             </>
           ) : (
             <button
