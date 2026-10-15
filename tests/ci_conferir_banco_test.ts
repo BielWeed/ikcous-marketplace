@@ -12929,7 +12929,7 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
   );
   await t.step(
     "a regra 'pode ter saido': texto do plano no cabecalho, na ORDEM, e a mesma ordem no CASE",
-    () => {
+    async () => {
       const cab = normal(sql.slice(0, sql.indexOf("WITH ped AS")));
       const passos = [
         "(1) mp_refund_id presente -> true;",
@@ -12947,6 +12947,30 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
       assertStringIncludes(
         cab,
         "O passo (2) e IGNORADO aqui: a tabela `order_refund_prova` ainda nao existe",
+      );
+      // a regra final publicada (20261241000000) DIFERE desta: a 42m foi medicao ANTES dela, e o cabecalho tem de
+      // dizer isso (nao pode voltar a afirmar que o texto e identico ao da funcao publicada)
+      assertStringIncludes(
+        cab,
+        "medicao feita ANTES da migration 20261241; a regra final publicada",
+      );
+      assertStringIncludes(
+        cab,
+        "DIFERE nos passos 2 e 3 e acrescenta a regra legada",
+      );
+      assert(
+        !/texto IDENTICO a ordem do plano/.test(cab),
+        "o cabecalho voltou a afirmar que a regra e identica a da funcao publicada",
+      );
+      // o que o cabecalho afirma da funcao final tem de ser verdade na migration publicada
+      const mig41 = normal(
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql`,
+        ),
+      );
+      assertStringIncludes(
+        mig41,
+        "WHEN pv.substituida_por_manual_em IS NOT NULL THEN false WHEN r.criada_sob_autorizacao IS NOT TRUE AND r.tentativas > 1 THEN true WHEN r.status = 'recusado' AND r.post_autorizado_em IS NULL THEN false",
       );
       assertStringIncludes(
         normal(limpo),
@@ -13090,6 +13114,32 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
       assert(
         !/\b\w+\.(?:pedido|linha)\b/.test(semContagem),
         "id de pedido ou de linha aparece na saida fora de count()",
+      );
+      // Guarda de vazamento de identificador na saida (bloco final `r`, o que vira a coluna `detalhe`). Achada pela
+      // revisao do PR #887: `o.id` / `r.id` passavam. Dentro do bloco `r` NENHUM identificador individual pode
+      // aparecer, com ou sem alias (id, o.id, r.id, user_id, order_id, refund_id, pedido, linha, mp_refund_id...),
+      // nem coringa (`*`, `x.*`) fora de count(*), nem agregador que junte valores em lista (string_agg, array_agg,
+      // json*). LIMITE do criterio: ele olha o bloco `r` INTEIRO, nao so a lista de colunas (o `r` nao tem JOIN/WHERE
+      // com ids: as ids vivem nas CTEs de cima, onde `o.id AS pedido` / `r.id AS linha` e JOIN/WHERE sao legitimos
+      // e ficam FORA desta guarda). Se um dia o `r` precisar de um id num JOIN/WHERE, esta guarda barra de proposito:
+      // a pessoa tem de provar que ele nao sai no log. Contagens `count(x.pedido)` e `count(x.linha)` sao permitidas.
+      const semCountEstrela = semContagem.replace(/count\(\*\)/gi, "count()");
+      // `tem_mp_refund_id` e a unica coluna *_id legitima do bloco `r`: um BOOLEANO calculado na CTE `lin`
+      // (mp_refund_id IS NOT NULL), nunca o id. Sai antes da regra generica de sufixo `_id`.
+      const semBooleano = semCountEstrela.replace(/\btem_mp_refund_id\b/g, "");
+      assert(
+        !/\b(?:id|pedido|linha|\w+_id)\b/i.test(semBooleano),
+        "identificador individual (id, o.id, r.id, pedido, linha, *_id) aparece na saida da 42m",
+      );
+      assert(
+        !/\*/.test(semCountEstrela),
+        "coringa (* ou x.*) na saida da 42m devolveria linhas inteiras",
+      );
+      assert(
+        !/\b(?:string_agg|array_agg|json\w*|jsonb\w*|to_json\w*|row_to_json|xmlagg)\s*\(/i.test(
+          semCountEstrela,
+        ),
+        "agregador que junta valores individuais em lista na saida da 42m",
       );
     },
   );

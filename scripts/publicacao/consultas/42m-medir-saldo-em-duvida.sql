@@ -6,8 +6,13 @@
 -- Quem decide e a pessoa que le a tabela. Rodar nas duas lojas assinantes (IKCOUS e Savy), por
 -- conferir-banco-da-loja.yml (papel `supabase_read_only_user`), ANTES de escrever a migration.
 --
--- REGRA "PODE TER SAIDO" (texto IDENTICO a ordem do plano; a funcao `order_refund__pode_ter_saido` da T1 nasce
--- com esta mesma ordem, e tests/ci_conferir_banco_test.ts prende os dois textos):
+-- REGRA "PODE TER SAIDO" (a ordem do PLANO, como estava ANTES da migration; o texto abaixo e o que esta consulta
+-- mede). ATENCAO: medicao feita ANTES da migration 20261241; a regra final publicada (a funcao
+-- `order_refund__pode_ter_saido` da 20261241000000, 6 passos) DIFERE nos passos 2 e 3 e acrescenta a regra legada.
+-- Na final: (2) linha substituida por reembolso manual -> false (no lugar do `nada_saiu_provado_em` do plano);
+-- (3) LEGADO criada_sob_autorizacao IS NOT TRUE AND tentativas > 1 -> true (passo NOVO); os passos (3), (4) e (5)
+-- do plano passam a (4), (5) e (6). O passo (1) e o CASE de recusado/falhou/senao sao os mesmos.
+-- tests/ci_conferir_banco_test.ts prende o texto do plano e esta ressalva:
 --   (1) mp_refund_id presente -> true;
 --   (2) nada_saiu_provado_em presente -> false;
 --   (3) recusado sem post_autorizado_em -> false;
