@@ -332,7 +332,9 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       detalhe:
         produto.stock === 0
           ? "Sem nenhuma unidade"
-          : `${produto.stock} ${produto.stock === 1 ? "unidade" : "unidades"} restantes`,
+          : produto.stock === 1
+            ? "1 unidade restante"
+            : `${produto.stock} unidades restantes`,
       quando: produto.created_at,
       destino: { view: "admin-product-form", id: produto.id },
       // NAO conta no cracha, e isso e' deliberado: estoque baixo so' termina
