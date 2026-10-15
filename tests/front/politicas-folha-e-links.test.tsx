@@ -154,7 +154,11 @@ describe("folha e links das políticas", () => {
       const usos = fonte.match(/<(LinkDeTrocas|FraseDeAceite)\b[^>]*>/g) ?? [];
       expect(usos.length, arquivo).toBeGreaterThan(0);
       for (const uso of usos) {
-        expect(uso, arquivo).not.toMatch(/className="([^"]*\s)?-m[trblxy]?-/);
+        const valor = uso.match(/className="([^"]*)"/)?.[1] ?? "";
+        const negativas = valor
+          .split(/\s+/)
+          .filter((c) => /^-m[trblxy]?-/.test(c));
+        expect(negativas, `${arquivo}: ${uso}`).toEqual([]);
       }
     }
   });
@@ -179,11 +183,15 @@ describe("folha e links das políticas", () => {
       return css.slice(i, css.indexOf("}", i));
     };
     const token = (b: string, nome: string): [number, number, number] => {
-      const m = new RegExp(
-        `--${nome}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`,
-      ).exec(b);
-      expect(m, `--${nome}`).not.toBeNull();
-      return [Number(m?.[1]), Number(m?.[2]), Number(m?.[3])];
+      // Declaração `--nome: H S% L%;` — acha a linha pelo nome, sem montar
+      // expressão regular a partir de variável.
+      const linha = b
+        .split("\n")
+        .find((l) => l.trim().startsWith(`--${nome}:`));
+      expect(linha, `--${nome}`).toBeDefined();
+      const numeros = (linha ?? "").match(/[\d.]+/g) ?? [];
+      expect(numeros.length, `--${nome}: ${linha}`).toBeGreaterThanOrEqual(3);
+      return [Number(numeros[0]), Number(numeros[1]), Number(numeros[2])];
     };
     const luz = ([h, s, l]: [number, number, number]): number => {
       const S = s / 100;

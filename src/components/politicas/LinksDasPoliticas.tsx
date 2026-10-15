@@ -50,8 +50,7 @@ export function FraseDeAceite({
         data-testid="frase-de-aceite"
         className={cn("text-[11px] leading-snug text-zinc-500", className)}
       >
-        Ao {acao} você concorda com os{" "}
-        <br />
+        Ao {acao} você concorda com os <br />
         <button
           type="button"
           onClick={() => abrir("termos")}

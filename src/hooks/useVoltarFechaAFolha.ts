@@ -1,8 +1,5 @@
 import { useEffect, useRef } from "react";
 
-/** Marca gravada no `history.state` da entrada que a folha empurra. */
-const MARCA_DA_FOLHA = "folhaDePolitica";
-
 /** Quanto tempo esperamos o `popstate` do nosso próprio `history.back()`. */
 const JANELA_DO_RETORNO_MS = 500;
 
@@ -19,7 +16,8 @@ const JANELA_DO_RETORNO_MS = 500;
  * Como funciona, o mesmo caminho que o checkout já usa para o painel de
  * resumo e o modal de endereço (`{ modal: ... }` + `popstate`):
  *
- *  1. ao abrir, empurra UMA entrada nova no histórico com o MESMO endereço
+ *  1. ao abrir, empurra UMA entrada nova no histórico (marca
+ *     `folhaDePolitica` no `history.state`) com o MESMO endereço
  *     (caminho + `?id=` do produto) e o mesmo `state` da tela, mais uma marca;
  *  2. o Voltar consome essa entrada: a folha fecha e a URL não muda — o
  *     roteador do App vê "mesma tela" e não navega;
@@ -64,7 +62,7 @@ export function useVoltarFechaAFolha(
     // a nossa entrada faria o App achar que está de volta ao início.
     const { isBase: _isBase, ...resto } = atual;
     globalThis.history.pushState(
-      { ...resto, [MARCA_DA_FOLHA]: true },
+      { ...resto, folhaDePolitica: true },
       "",
       `${globalThis.location.pathname}${globalThis.location.search}`,
     );
@@ -81,7 +79,7 @@ export function useVoltarFechaAFolha(
       globalThis.removeEventListener("popstate", aoPopState, true);
       if (desmontandoRef.current) return;
       if (!entradaPropria) return;
-      if (!globalThis.history.state?.[MARCA_DA_FOLHA]) return;
+      if (globalThis.history.state?.folhaDePolitica !== true) return;
       engolirOProximoPopState();
       globalThis.history.back();
     };

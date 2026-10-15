@@ -35,6 +35,7 @@ function importsEstaticos(arquivo: string): string[] {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho dentro do proprio repositorio
   const fonte = readFileSync(resolve(RAIZ, arquivo), "utf8");
   const achados: string[] = [];
+  // eslint-disable-next-line security/detect-unsafe-regex -- le o fonte do proprio repositorio, com quantificador preguicoso e ancora `;`: sem entrada hostil
   const regex = /^import\s+(type\s+)?([^;]*?)\s+from\s+"([^"]+)";/gms;
   for (const m of fonte.matchAll(regex)) {
     if (m[1]) continue; // import type
