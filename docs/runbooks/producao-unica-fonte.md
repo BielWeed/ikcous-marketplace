@@ -1309,6 +1309,61 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
 
+  41. **Lote de UMA migration, de apply normal: `20261240000000` (a cliente e avisada quando a loja responde a
+      pergunta dela; DADO DE CLIENTE: o sino e da cliente).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as
+      duas lojas assinantes (IKCOUS e Savy). Troca o corpo das DUAS sobrecargas de `answer_question_atomic` (a de 2
+      argumentos, que o app usa, e a de 3) por `CREATE OR REPLACE`, sem tocar assinatura, `SECURITY DEFINER`,
+      volatilidade, `search_path` nem ACL:
+      - **O defeito:** a tela de perguntas do painel diz "Notificar Cliente", mas a resposta so gravava o texto e uma
+        linha falsa em `push_notifications_log` (0 aparelhos): nenhum push saia e nada chegava ao sino da cliente (quem
+        perguntou "tem no M?" nunca soube que a loja respondeu). A linha falsa ainda empurrava as campanhas reais para
+        fora da lista de 20 do painel.
+      - **O que muda:** a resposta cria UM aviso em `notificacoes` para quem perguntou (tipo `info`, titulo "Sua
+        pergunta foi respondida", mensagem com o nome do produto, destino `/product-detail?id=<produto>`, nao lido) e
+        PARA de gravar a linha falsa. Resposta repetida ou editada nao duplica (um aviso por pergunta; se a cliente
+        dispensou e a loja edita, nasce um aviso novo). Pergunta ja respondida antes do apply NAO ganha aviso em
+        massa: so se a loja editar a resposta. O aviso e best-effort: se falhar, a RESPOSTA nunca se perde. **Nao envia
+        push** (exige a edge function e rede). O sino acende sozinho pelo realtime que o app ja escuta.
+      - **O que NAO muda:** nenhum dado existente (as linhas falsas que ja estao em `push_notifications_log` FICAM no
+        banco; apagar e decisao do dono, e o painel de campanhas as esconde do historico). `reply_review_atomic` (a
+        resposta a AVALIACAO) NAO e tocada: a consulta `27m` usa a linha do log dela como rastro de resposta legitima.
+      - **A MESMA release leva o front** (texto da caixa de resposta "Avisa a cliente no app" e o historico de
+        campanhas sem as linhas da resposta da loja). **Ordem: o banco de CADA loja primeiro, o front depois** (o texto
+        novo so e verdade com a migration aplicada). Quem quebra: ninguem (nenhuma assinatura muda).
+      - Duas consultas, so leitura, so catalogo, de ROL FECHADO (10 e 8 linhas, so valem com `rol=ok`):
+        - **`41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado`** (a consulta do lote) prova DEPOIS do apply,
+          nas DUAS sobrecargas, o corpo novo (md5), o aviso no sino sem o log de push, os atributos de sempre e o
+          `EXECUTE` fechado ao visitante.
+        - **`41b-antes-pergunta-respondida-corpos-vigentes`** (`ausenciaConfirmadaPor`) prova o ANTES: as duas
+          sobrecargas (e so elas) com os corpos da `20261065000000` (2 args) e da `20261064000000` (3 args), sem
+          gravar no sino. **Nao mede a ACL.** O md5 vem dos arquivos das migrations, nao de uma loja: **rode a `41b`
+          em CADA loja ANTES do apply**; corpo diferente e loja que ninguem mediu (a migration tambem recusa,
+          `B1_BASELINE_DIVERGENT`).
+      - **Medir antes (so leitura, nao e portao):** `41m-medir-pergunta-respondida` conta (so numeros, nenhum dado
+        pessoal) quantas perguntas ja foram respondidas sem aviso, quantas linhas falsas ja estao no log de push e se
+        ja existe algum aviso de pergunta no sino (esperado zero).
+      - **Caminho, uma loja por vez:** `41a` (sai NEGATIVA) -> `41b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `41a` DE NOVO, que tem de sair POSITIVA. `41a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **NUNCA reaplicar a `20261064` nem a `20261065` depois desta.** Elas recriam o corpo ANTIGO de
+        `answer_question_atomic` (a linha falsa no log de push, sem aviso no sino) por cima do novo, e o marcador
+        `A10: log honesto` que o `db-apply` confere nelas deixou de existir nessa funcao (segue valendo em
+        `reply_review_atomic`). Se for preciso desfazer, use o rollback abaixo, nunca essas duas.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261240000000_a_cliente_e_avisada_quando_a_loja_responde_sua_pergunta.sql` (recria os dois
+        corpos de antes, mesmo md5; os avisos ja criados em `notificacoes` FICAM, sao avisos verdadeiros). **Este
+        rollback NAO tem pre-voo proprio** (os outros rollbacks da casa recusam se o corpo vivo nao e o esperado):
+        rodar so com a `41a` POSITIVA na mao e depois conferir a `41b` POSITIVA e a `41a` NEGATIVA. Desfazer volta o
+        defeito (a linha falsa no log e nenhum aviso na cliente).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `41a` e a `41b` DE
+        NOVO.
+      - **Limites:** `tests/banco/pergunta-respondida-avisa-viva.cjs` prova o comportamento (defeito antes, aviso so
+        para quem perguntou nas duas sobrecargas, um aviso por pergunta, permissao, falha do aviso sem perder a
+        resposta, corrida de duas conexoes, rollback byte a byte, pre-voo que recusa sem escrever, mutantes) e
+        `tests/banco/pergunta-respondida-avisa-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
+        delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

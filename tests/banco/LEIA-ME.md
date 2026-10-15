@@ -543,6 +543,25 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `35a-conferir-lucro-so-com-custo-aplicado` (DEPOIS, 6 linhas) e `35b-antes-lucro-so-com-custo-corpo-vigente` (ANTES, 5
   linhas) do lote `20261234000000`. Rol exato nos estados (depois, antes, corpo da 99), um negativo por linha, mutantes
   do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **a cliente é avisada quando a loja responde a pergunta (`pergunta-respondida-avisa-viva.cjs`, via
+  `rodar-isolado.cjs`)**: a migration `20261240000000` (`answer_question_atomic`, as DUAS sobrecargas: a de 2 argumentos,
+  que o app usa, e a de 3), num Postgres efêmero. O corpo ANTIGO (rollback numa transação desfeita) reproduz o defeito
+  (resposta gravada, nenhum aviso para a cliente, uma linha falsa em `push_notifications_log`); o corpo novo cria UM
+  aviso em `notificacoes` só para quem perguntou (tipo, título, nome do produto, destino que abre o produto, não lido) e
+  nenhuma linha no log de push, nas duas sobrecargas. Resposta repetida ou editada não duplica; dispensado o aviso, a
+  edição avisa de novo; pergunta antiga não ganha aviso em massa. Quem não é admin é recusado sem escrever, o visitante
+  não executa, ACL e atributos iguais antes e depois; o aviso que falha nunca perde a resposta; duas lojistas
+  respondendo a MESMA pergunta (duas conexões reais) geram UM aviso. Aplicar 2x e em CRLF = mesmo estado, o rollback
+  devolve os corpos de antes byte a byte, o pré-voo recusa sem escrever (corpo divergente, sobrecarga extra, índice
+  único ausente), seis mutantes ficam vermelhos e o ENSAIO (um bloco `DO` que termina em `RAISE EXCEPTION`) serve a uma
+  loja real. **Não prova** a IKCOUS nem a Savy.
+- **portão da pergunta respondida (`pergunta-respondida-avisa-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado` (DEPOIS, 10 linhas) e
+  `41b-antes-pergunta-respondida-corpos-vigentes` (ANTES, 8 linhas) do lote `20261240000000`. Rol exato nos estados
+  (depois, antes e a loja PELA METADE, com só a sobrecarga de 3 argumentos de volta), um negativo por linha em CADA
+  sobrecarga (corpo +1 byte, corpo que volta a citar o log de push, atributo, `EXECUTE` de PUBLIC/anon/authenticated,
+  função ausente, terceira sobrecarga), mutantes do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`).
+  **Não prova** a IKCOUS nem a Savy.
 - **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
   RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`) avisa "Pedido pronto para retirar" e

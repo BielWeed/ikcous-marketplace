@@ -95,6 +95,9 @@ on:
       - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
       - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
       - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
+      - "scripts/publicacao/consultas/41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado.sql"
+      - "scripts/publicacao/consultas/41b-antes-pergunta-respondida-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/41m-medir-pergunta-respondida.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -160,6 +163,9 @@ on:
       - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
       - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
       - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
+      - "scripts/publicacao/consultas/41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado.sql"
+      - "scripts/publicacao/consultas/41b-antes-pergunta-respondida-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/41m-medir-pergunta-respondida.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -703,6 +709,21 @@ jobs:
       - name: Prova viva do portao do lucro so com custo (consultas 35a e 35b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-so-com-custo-portao-viva.cjs
+      # A cliente e avisada quando a loja responde a pergunta dela (migration 20261240, dado de cliente; cacada de 14/10/2026):
+      # answer_question_atomic (as DUAS sobrecargas) cria UM aviso no sino `notificacoes` de quem perguntou e deixa de gravar a linha
+      # falsa em push_notifications_log. COMPORTAMENTO com as funcoes reais: o corpo de antes reproduz o defeito (resposta gravada, nenhum
+      # aviso, uma linha falsa no log), depois o aviso nasce so para quem perguntou (tipo, titulo, nome do produto, destino que abre o
+      # produto, nao lido) nas duas sobrecargas, resposta repetida ou editada nao duplica, dispensado o aviso a edicao avisa de novo,
+      # pergunta antiga nao ganha aviso em massa, nao-admin recusado sem escrever, ACL e atributos iguais, o aviso que falha nunca perde
+      # a resposta, corrida de duas conexoes gera um aviso so, aplicar 2x e em CRLF = mesmo estado, rollback devolve o corpo de antes
+      # byte a byte, pre-voo que recusa sem escrever, mutantes, ensaio DO. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da pergunta respondida que avisa a cliente (migration 20261240)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pergunta-respondida-avisa-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 41a (DEPOIS, 10 linhas), 41b (ANTES, 8 linhas) e a medicao 41m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da pergunta respondida (consultas 41a e 41b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pergunta-respondida-avisa-portao-viva.cjs
       # O sino do pedido de retirada (migration 20261233, dado de cliente; cacada de 14/10/2026): o pedido de RETIRADA na loja
       # (customer_data->>'shipping_option_id' = 'store-pickup') avisa "Pedido pronto para retirar" e "Pedido retirado" no sino, e
       # o resto fica byte a byte como era. COMPORTAMENTO com a trigger real: o fluxo de entrega e o de retirada, o cancelamento
