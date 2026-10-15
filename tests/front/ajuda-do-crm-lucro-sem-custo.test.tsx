@@ -37,7 +37,7 @@ describe("AjudaDoCrm — ranking de lucro e produto sem custo", () => {
 
     expect(texto).toContain("Produtos Mais Lucrativos");
     expect(texto).toContain(
-      "Produto sem custo cadastrado fica fora da conta do lucro",
+      "Venda sem custo (nem guardado no dia, nem cadastrado hoje) fica fora da conta do lucro",
     );
     expect(texto).toContain("a tela avisa quantos produtos ficaram de fora");
     expect(texto).toContain(
@@ -47,8 +47,10 @@ describe("AjudaDoCrm — ranking de lucro e produto sem custo", () => {
     // A tela só mostra a QUANTIDADE, não a lista de quais são.
     expect(texto).not.toContain("avisa quais são");
     expect(texto).toContain(
-      "O lucro usa o custo de hoje de cada produto: se você mudar o custo, o lucro das vendas antigas muda junto.",
+      "A venda de um produto que já tinha custo guarda o custo do dia: mudar o custo depois não altera o lucro dela. As vendas feitas sem custo cadastrado, e as feitas antes de o app passar a guardar o custo do dia, usam o custo de hoje.",
     );
+    // A promessa antiga, falsa desde o custo do dia: mudar o custo mudava o lucro de TODA venda antiga.
+    expect(texto).not.toContain("o lucro das vendas antigas muda junto");
     // A afirmação antiga, falsa.
     expect(texto).not.toContain("conta custo zero");
   });

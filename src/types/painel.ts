@@ -32,7 +32,7 @@ export interface PainelInicio {
     readonly receitaMesAnterior: number | null;
     readonly pedidos: number | null;
     readonly ticketMedio: number | null;
-    /** Receita − custo cadastrado dos itens (estimado: custo atual). */
+    /** Receita − custo dos itens (o do dia da venda quando existe; senão o cadastro de hoje). */
     readonly lucroEstimado: number | null;
   };
   readonly saldoTotal: number | null;

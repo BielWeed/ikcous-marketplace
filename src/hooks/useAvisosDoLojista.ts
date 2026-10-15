@@ -9,7 +9,7 @@ import {
 import {
   FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
   TETO_DE_RECEBIMENTOS,
-  inicioDaJanelaDeRecebimento,
+  inicioDaJanelaDoSino,
 } from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
@@ -203,7 +203,7 @@ async function buscarRecebimentosPorMarcar(): Promise<RecebimentoPorMarcar[]> {
     .eq("status", "delivered")
     .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
     .is("payment_status", null)
-    .gte("updated_at", inicioDaJanelaDeRecebimento())
+    .gte("updated_at", await inicioDaJanelaDoSino())
     .order("updated_at", { ascending: false })
     .limit(TETO_DE_RECEBIMENTOS);
 

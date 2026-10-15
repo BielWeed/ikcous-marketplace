@@ -2214,6 +2214,66 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O lucro usa o custo do dia da venda (15/10/2026; DINHEIRO e dado de cliente). Sem esta entrada a migration saia
+  // PULADA. Os marcadores contam no corpo VIVO (pg_get_functiondef, comentarios incluidos), exatos: nos dois relatorios a
+  // juncao com a tabela lateral e o COALESCE do custo do dia com o de hoje nos lugares que decidem (lucro por dia, ranking,
+  // contador de sem custo; CMV da venda e da devolucao, e o cmv_estimado calculado), as duas travas de admin intactas, e,
+  // no gatilho, o INSERT idempotente, o tratamento de erro e o filtro de custo ausente. O resto (tabela, EXECUTE,
+  // atributos, gatilho ligado) o DO de conferencia da migration aborta o apply se divergir.
+  "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "LEFT JOIN public.marketplace_order_item_custo oic ON oic.item_id = oi.id",
+          vezes: 3,
+        },
+        {
+          texto:
+            "FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit",
+          vezes: 1,
+        },
+        { texto: "AND COALESCE(oic.custo, p.custo) IS NOT NULL", vezes: 1 },
+        { texto: "AND COALESCE(oic.custo, p.custo) IS NULL;", vezes: 1 },
+        {
+          texto: "'productsWithoutCost', products_without_cost",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_dre",
+      esperado: [
+        {
+          texto:
+            "LEFT JOIN public.marketplace_order_item_custo oic ON oic.item_id = oi.id",
+          vezes: 2,
+        },
+        {
+          texto:
+            "LEFT JOIN public.marketplace_order_item_custo oic ON oic.item_id = di.order_item_id",
+          vezes: 2,
+        },
+        { texto: "COALESCE(oic.custo, p.custo, 0)", vezes: 2 },
+        { texto: "'cmv_estimado', v_cmv_estimado,", vezes: 1 },
+        { texto: "AND oic.item_id IS NULL", vezes: 2 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "marketplace_order_item__guarda_o_custo_do_dia",
+      esperado: [
+        { texto: "ON CONFLICT (item_id) DO NOTHING", vezes: 1 },
+        { texto: "EXCEPTION WHEN OTHERS THEN", vezes: 1 },
+        { texto: "AND p.custo IS NOT NULL", vezes: 1 },
+        { texto: "IF NEW.product_id IS NULL THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

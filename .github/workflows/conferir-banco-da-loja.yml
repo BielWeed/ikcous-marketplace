@@ -182,6 +182,9 @@ on:
           - 43a-conferir-reembolso-em-duvida-aplicado
           - 43b-antes-reembolso-em-duvida-base-vigente
           - 44m-medir-pedidos-de-zero-e-desconto
+          - 45a-conferir-custo-do-dia-aplicado
+          - 45b-antes-custo-do-dia-base-vigente
+          - 45m-medir-itens-sem-custo-do-dia
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

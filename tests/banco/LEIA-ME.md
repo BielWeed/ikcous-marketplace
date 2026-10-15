@@ -658,6 +658,28 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   corpos +1 linha, atributo, `EXECUTE` por papel, a função antiga reaberta, a tabela com policy/grant/sem RLS/coluna a
   mais, a espera ausente, os marcadores), as sucessoras na `8e`, `28a` e `29a` antes e depois, mutantes do texto das
   consultas e o veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **o lucro usa o custo do dia da venda (`custo-do-dia-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261242000000` (DINHEIRO e dado de cliente), com o gatilho real, as portas reais de venda (loja e balcão) e os papéis
+  reais num Postgres efêmero. A venda grava o custo do dia numa tabela lateral só do servidor (o custo não vai para o
+  item, que a cliente lê); o lucro novo de uma venda com a tabela vazia é igual ao de antes; mudar o custo do produto
+  NÃO muda o lucro da venda nova e muda o da antiga (custo de hoje); a DRE credita a devolução com o custo do item
+  ORIGINAL (custo trocado entre a venda e a devolução, no mesmo período e em outro, `cmv_estimado` falso/verdadeiro/
+  falso); o aviso do gatilho que falha leva só o SQLSTATE e o id do item e a compra não cai; item sem produto e produto sem
+  custo não geram linha; ACL por `aclexplode` (tabela e função fechadas, sem `FORCE RLS`); aplicar 2x, com a tabela
+  derrubada antes e em CRLF; ROLLBACK EM DOIS DEGRAUS (o comum deixa a tabela e os registros e é reaplicável; o
+  destrutivo só com a confirmação e só depois do comum); a trava do apply (venda nova passa com a migration esperando,
+  recusa 55P03 em ~4 s, aplica logo depois que a venda sai); venda de 200 itens no balcão (203 contra 3 transações
+  internas, ~475 contra ~434 ms). Mutantes ficam VERMELHOS (o CRM só com o custo do dia ou com o de hoje na frente, o custo vendido,
+  o ranking e o contador sem o custo do dia, o CMV da venda sem ele, a devolução com o custo de hoje, `cmv_estimado`
+  constante, o gatilho sem o tratamento de erro e sem o filtro de custo nulo). **Não prova** a IKCOUS nem a Savy.
+- **portão do custo do dia (`custo-do-dia-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `45a-conferir-custo-do-dia-aplicado` (DEPOIS, 13 linhas) e `45b-antes-custo-do-dia-base-vigente` (ANTES, 6 linhas) do
+  lote `20261242000000`, mais a `45m-medir-itens-sem-custo-do-dia` (medição, rol aberto, só agregados, INCONCLUSIVO para
+  quem a RLS esconde). Rol exato nos dois estados, 26 negativos da 45a e 8 da 45b, mutantes do texto das consultas, e as
+  sucessoras da `8e`, `35a` e `17a` POSITIVAS com o corpo novo. **Não prova** a IKCOUS nem a Savy.
+- **as provas que DESFAZEM corpos redefinidos pela `20261242000000`** (`get_admin_analytics_v2` e `fin_dre`: `lucro-so-com-custo`,
+  `inventario-so-com-custo`, `estoque-do-painel`, `portao-8e`) a devolvem ao estado anterior ANTES, na transação, por
+  `devolverAoEstadoAnteriorAoCustoDoDia` (em `sucessoras-da-99.cjs`), sem apagar a tabela lateral.
 - **as provas que DESFAZEM corpos redefinidos pela `20261241000000`** (`pagamentos-rpc`, `admin-atual`,
   `contestacao`, `cancelar-pedido`, `ordem-das-travas-composta`, `reembolso-da-devolucao` e `reemissao-do-reembolso`,
   com os portões delas) a desfazem ANTES, na transação, por

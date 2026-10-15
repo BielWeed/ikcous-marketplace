@@ -27,6 +27,7 @@ import {
   FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
   JANELA_DE_RECEBIMENTO_DIAS,
   TETO_DE_RECEBIMENTOS,
+  inicioDaJanelaDeRecebimento,
 } from "@/lib/recebimentos-por-marcar";
 
 // Reatribuiveis e lidos no momento da consulta: e assim que um caso troca
@@ -53,6 +54,10 @@ let RESPOSTA_PRIVACIDADE: unknown = { data: null, count: 0, error: null };
 // recebimento marcado. Lidos de `marketplace_orders` (a mesma tabela dos
 // pedidos pendentes), distinguidos pelo `.eq("status", "delivered")`.
 let RESPOSTA_RECEBIMENTOS: unknown = { data: [], error: null };
+// A janela do sino segue `politica_devolucao` (15/10/2026). `null` = a leitura
+// da configuracao nao trouxe nada (o hook tem de cair em 90 dias).
+let RESPOSTA_POLITICA: unknown = { data: null, error: null };
+let POLITICA_LANCA = false;
 const CONSULTAS_DE_PEDIDOS: Array<Array<[string, ...unknown[]]>> = [];
 
 // `loadProducts` do useProducts engole o erro e devolve `null`. `null` aqui
@@ -84,6 +89,11 @@ function criarBuilder(tabela: string) {
       (c) => c[0] === "eq" && c[1] === "status" && c[2] === "delivered",
     );
   builder.select = vi.fn(() => builder);
+  builder.maybeSingle = vi.fn(() =>
+    POLITICA_LANCA
+      ? Promise.reject(new Error("rede caiu"))
+      : Promise.resolve(RESPOSTA_POLITICA),
+  );
   builder.in = vi.fn((coluna: string, valores: readonly string[]) => {
     calls.push(["in", coluna, valores]);
     CHAMADAS_DE_IN.push([coluna, [...valores]]);
@@ -248,6 +258,8 @@ beforeEach(() => {
   FILTROS_DO_HISTORICO.length = 0;
   CONSULTAS_DE_PEDIDOS.length = 0;
   RESPOSTA_RECEBIMENTOS = { data: [], error: null };
+  RESPOSTA_POLITICA = { data: null, error: null };
+  POLITICA_LANCA = false;
   RESPOSTA_CANCELAMENTOS = { data: [], error: null };
   RESPOSTA_PERFIS = { data: [], error: null };
   RESPOSTA_PRIVACIDADE = { data: null, count: 0, error: null };
@@ -728,9 +740,7 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
     expect(atual().quantidadeNoCracha).toBe(4);
   });
 
-  it("a consulta le SO entregue, nao-online, pagamento em branco, dos ultimos 30 dias, no maximo 100", async () => {
-    const antes = Date.now();
-
+  it("a consulta le SO entregue, nao-online, pagamento em branco, dos ultimos 90 dias (sem configuracao), no maximo 100", async () => {
     await montarSonda();
 
     const calls = consultaDeRecebimentos();
@@ -741,24 +751,71 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
     expect(calls).toContainEqual(["or", FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA]);
     // Pagamento em branco.
     expect(calls).toContainEqual(["is", "payment_status", null]);
-    // Janela de 30 dias, pela data da entrega.
+    // Janela de 90 dias (a configuracao nao chegou), pela data da entrega.
     const gte = calls?.find((c) => c[0] === "gte");
     expect(gte?.[1]).toBe("updated_at");
-    const desde = Date.parse(String(gte?.[2]));
-    expect(Math.abs(antes - 30 * 24 * 3600 * 1000 - desde)).toBeLessThan(
-      10_000,
-    );
+    expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 90));
     // Teto de 100.
     expect(calls).toContainEqual(["limit", 100]);
   });
 
-  it("o filtro de 'nao e online' e o do arquivo compartilhado, e a janela e de 30 dias", () => {
+  it("o filtro de 'nao e online' e o do arquivo compartilhado, e a janela padrao e de 90 dias", () => {
     expect(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA).toBe(
       "payment_method.is.null,payment_method.neq.online",
     );
-    expect(JANELA_DE_RECEBIMENTO_DIAS).toBe(30);
+    expect(JANELA_DE_RECEBIMENTO_DIAS).toBe(90);
     expect(TETO_DE_RECEBIMENTOS).toBe(100);
   });
+
+  /** O corte da consulta de recebimentos, para um prazo em dias. */
+  function corteDe(dias: number): string {
+    return inicioDaJanelaDeRecebimento(Date.now(), dias);
+  }
+  const corteDaConsulta = () =>
+    consultaDeRecebimentos()?.find((c) => c[0] === "gte")?.[2];
+
+  it.each([
+    ["30 (o minimo do banco)", 30],
+    ["180", 180],
+  ])("a janela segue o prazo de vicio da loja: %s dias", async (_n, vicio) => {
+    RESPOSTA_POLITICA = { data: { prazo_vicio_dias: vicio }, error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(tabelasConsultadas).toContain("politica_devolucao");
+    expect(corteDaConsulta()).toBe(corteDe(vicio));
+    // O teto e o resto da consulta nao mudam.
+    expect(consultaDeRecebimentos()).toContainEqual(["limit", 100]);
+    // Ler a configuracao nao e uma fonte de aviso: nada de "falha".
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a leitura da configuracao devolve erro",
+      { data: null, error: { message: "caiu" } },
+      false,
+    ],
+    ["a configuracao nao existe", { data: null, error: null }, false],
+    [
+      "a leitura da configuracao lanca (rede)",
+      { data: null, error: null },
+      true,
+    ],
+  ])(
+    "%s: a janela cai em 90 dias e o aviso aparece",
+    async (_n, resposta, lanca) => {
+      RESPOSTA_POLITICA = resposta;
+      POLITICA_LANCA = lanca;
+      RESPOSTA_RECEBIMENTOS = { data: [entregueSemRecebimento()], error: null };
+
+      const { atual } = await montarSonda();
+
+      expect(corteDaConsulta()).toBe(corteDe(90));
+      expect(atual().avisos.map((a) => a.tipo)).toContain("recebimento");
+      expect(atual().fontesComFalha).toEqual([]);
+    },
+  );
 
   it("leitura que falha marca a fonte como falha, nao vira lista vazia, e as outras seguem", async () => {
     RESPOSTA_RECEBIMENTOS = { data: null, error: { message: "caiu" } };
