@@ -58,6 +58,9 @@ function botaoDeNovaTentativa(): HTMLButtonElement | null {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Meio da faixa de variacao das esperas (fator 1,0): os testes de tempo
+  // exato valem; a variacao em si tem seu proprio teste.
+  vi.spyOn(Math, "random").mockReturnValue(0.5);
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
@@ -67,6 +70,7 @@ afterEach(() => {
   act(() => raiz.unmount());
   hospedeiro.remove();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("LazyImage — rede fraca", () => {
@@ -204,6 +208,62 @@ describe("LazyImage — rede fraca", () => {
       botaoDeNovaTentativa()?.click();
     });
     expect(aoClicarNoCard).not.toHaveBeenCalled();
+  });
+
+  it("o botao fica POR CIMA da foto invisivel (z-10): sem isso o toque cai na <img> e abre o produto", async () => {
+    // O jsdom nao calcula empilhamento -- `button.click()` passa mesmo com a
+    // <img> (opacity-0, camada propria, depois no DOM) pintada por cima do
+    // botao. Quem prova o toque de verdade e o Chromium (elementFromPoint); aqui
+    // so se trava a classe que decide a ordem, para ninguem tirar sem ver.
+    montar();
+    falhar(imagem());
+    await avancar(1_500);
+    falhar(imagem());
+    await avancar(3_000);
+    falhar(imagem());
+
+    const botao = botaoDeNovaTentativa();
+    expect(botao?.className.split(/\s+/)).toContain("z-10");
+    // e a foto invisivel continua la, sem z-index proprio acima do botao
+    expect(imagem()?.className).toContain("opacity-0");
+    expect(imagem()?.className.split(/\s+/)).not.toContain("z-10");
+  });
+
+  it("o toque no botao nao navega (preventDefault), caso a foto more dentro de um link", async () => {
+    montar();
+    falhar(imagem());
+    await avancar(1_500);
+    falhar(imagem());
+    await avancar(3_000);
+    falhar(imagem());
+
+    const clique = new MouseEvent("click", { bubbles: true, cancelable: true });
+    act(() => {
+      botaoDeNovaTentativa()?.dispatchEvent(clique);
+    });
+    expect(clique.defaultPrevented).toBe(true);
+  });
+
+  it("as esperas variam ±20%: nao saem todas no mesmo instante numa grade de fotos", async () => {
+    // sorteio no minimo: 1,2 s
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    montar();
+    falhar(imagem());
+    await avancar(1_199);
+    expect(imagem()?.getAttribute("src")).toBe(URL_FOTO);
+    await avancar(1);
+    expect(imagem()?.getAttribute("src")).toContain("_r=1");
+
+    // sorteio no maximo: 1,8 s
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    montar();
+    falhar(imagem());
+    await avancar(1_799);
+    expect(imagem()?.getAttribute("src")).toBe(URL_FOTO);
+    await avancar(1);
+    expect(imagem()?.getAttribute("src")).toContain("_r=1");
   });
 
   it("foto que carregou de primeira nao e pedida de novo e nao deixa relogio nenhum", async () => {

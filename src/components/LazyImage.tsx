@@ -10,6 +10,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // cliente tenta de novo.
 const ESPERAS_DE_NOVA_TENTATIVA_MS: readonly number[] = [1500, 3000];
 
+// ±20% sobre a espera: numa grade de 30 fotos com a rede morta, todas falham no
+// mesmo instante, e sem variação as novas tentativas saíam em rajada sincronizada.
+function comVariacao(esperaMs: number): number {
+  return Math.round(esperaMs * (0.8 + Math.random() * 0.4));
+}
+
 interface LazyImageProps {
   src: string;
   alt: string;
@@ -133,7 +139,10 @@ export function LazyImage({
   // Toque da cliente no aviso de falha: pede de novo na hora e devolve o
   // fôlego das tentativas automáticas. `stopPropagation` porque o aviso mora
   // dentro de cards clicáveis -- tentar de novo não pode abrir o produto.
+  // `preventDefault` por precaução: se um dia a foto morar dentro de um <a>,
+  // o toque não pode navegar.
   const tentarDeNovo = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
     e.stopPropagation();
     limparTimer();
     automaticasRef.current = 0;
@@ -171,7 +180,12 @@ export function LazyImage({
               : "A foto não carregou. Toque para tentar de novo"
           }
           onClick={tentarDeNovo}
-          className="absolute inset-0 flex items-center justify-center border border-zinc-100 bg-zinc-50 dark:border-white/5 dark:bg-zinc-900"
+          // `z-10` NÃO é enfeite: a <img> logo abaixo fica invisível
+          // (opacity-0) mas CONTINUA no lugar, e `opacity` < 1 cria camada
+          // própria que, vindo depois no DOM, pintava POR CIMA do botão
+          // (z-index auto) e engolia o toque -- o clique caía no card e abria
+          // o produto. Medido no Chromium real; jsdom não enxerga empilhamento.
+          className="absolute inset-0 z-10 flex items-center justify-center border border-zinc-100 bg-zinc-50 dark:border-white/5 dark:bg-zinc-900"
         >
           <span className="px-2 text-center text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
             Toque para tentar de novo
@@ -213,7 +227,7 @@ export function LazyImage({
                 // a original (muito maior) seria o pior pedido no 3G.
                 setTransformacaoFalhou(false);
                 setCiclo((c) => c + 1);
-              }, espera);
+              }, comVariacao(espera));
               return;
             }
             setHasError(true);
