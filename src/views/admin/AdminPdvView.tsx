@@ -47,11 +47,16 @@ import type {
   RespostaDoCodigo,
 } from "@/hooks/useVendaPresencial";
 import type { Leitura } from "@/lib/leitor/decodificador";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { ScanBarcode } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
+/** Quanto o balconista espera pelo registro da venda antes de ver a frase de
+ * rede e poder tentar de novo (a retentativa é idempotente). */
+const PRAZO_DO_REGISTRO_DA_VENDA_MS = 20_000;
 
 export interface AdminPdvViewProps {
   readonly onNavigate: (view: View, id?: string) => void;
@@ -386,28 +391,43 @@ export function AdminPdvView({
     if (!estado.pagamento) {
       throw new Error("A venda saiu sem meio de pagamento escolhido.");
     }
-    const { data, error } = await supabase.rpc("registrar_venda_presencial", {
-      p_itens: estado.itens.map((item) => ({
-        product_id: item.productId,
-        variant_id: item.variantId,
-        quantity: item.quantidade,
-      })),
-      p_pagamento: estado.pagamento,
-      p_cliente_user_id:
-        estado.cliente.tipo === "cadastrado" ? estado.cliente.userId : null,
-      p_cliente_nome:
-        estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
-      p_cliente_whatsapp:
-        estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
-      p_desconto: estado.desconto,
-      p_observacao: estado.motivoDoDesconto || null,
-      // A MESMA chave em toda retentativa do MESMO cupom — nasce em
-      // `estadoInicialDaVenda`/`cupom_limpo` (C3.1), nunca aqui. É o que
-      // faz a segunda tentativa de uma venda que já foi gravada (rede
-      // caindo na resposta, F5 no meio do envio) devolver `ja_existia:
-      // true` em vez de debitar estoque duas vezes.
-      p_idempotency_key: estado.chaveDeIdempotencia,
-    });
+    // PRAZO PRÓPRIO: a sonda de conexão só diz "lenta" (não "sem internet")
+    // quando a rede está pendurada, e o botão segue habilitado — sem prazo,
+    // o clique giraria por minutos. Estourar NÃO prova que a venda não
+    // chegou ao servidor: o erro sai SEM `code`, então a tradução do
+    // fechamento mostra a frase de rede de sempre (cupom salvo, tentar de
+    // novo), e a retentativa leva a MESMA chave de idempotência — se a venda
+    // já tinha sido gravada, o servidor devolve `ja_existia` em vez de
+    // debitar o estoque de novo. A resposta que chegar depois do prazo é
+    // descartada por `aguardarComPrazo`.
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase.rpc("registrar_venda_presencial", {
+          p_itens: estado.itens.map((item) => ({
+            product_id: item.productId,
+            variant_id: item.variantId,
+            quantity: item.quantidade,
+          })),
+          p_pagamento: estado.pagamento,
+          p_cliente_user_id:
+            estado.cliente.tipo === "cadastrado" ? estado.cliente.userId : null,
+          p_cliente_nome:
+            estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
+          p_cliente_whatsapp:
+            estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
+          p_desconto: estado.desconto,
+          p_observacao: estado.motivoDoDesconto || null,
+          // A MESMA chave em toda retentativa do MESMO cupom — nasce em
+          // `estadoInicialDaVenda`/`cupom_limpo` (C3.1), nunca aqui. É o que
+          // faz a segunda tentativa de uma venda que já foi gravada (rede
+          // caindo na resposta, F5 no meio do envio) devolver `ja_existia:
+          // true` em vez de debitar estoque duas vezes.
+          p_idempotency_key: estado.chaveDeIdempotencia,
+        }),
+      ),
+      PRAZO_DO_REGISTRO_DA_VENDA_MS,
+      () => new Error("O registro da venda não respondeu a tempo."),
+    );
 
     // Deixa o erro CRU subir: quem traduz para português é
     // `mensagemDaFalhaDaVenda` (C3.4), chamada de dentro de

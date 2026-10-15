@@ -608,9 +608,14 @@ export function AdminLayout({
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
   const prevOfflineRef = React.useRef(isOffline);
+  // Lida DENTRO do efeito, sem entrar nas deps: sair de "sem internet" para
+  // "lenta" não sincronizou nada — o flash "Sincronizado" só vale para a volta
+  // a uma conexão que responde.
+  const qualityRef = React.useRef(quality);
+  qualityRef.current = quality;
 
   React.useEffect(() => {
-    if (prevOfflineRef.current && !isOffline) {
+    if (prevOfflineRef.current && !isOffline && qualityRef.current !== "slow") {
       setShowSyncFlash(true);
       const timer = setTimeout(() => {
         setShowSyncFlash(false);
