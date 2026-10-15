@@ -21,9 +21,12 @@ import type { PoliticaDevolucao } from "@/types/devolucao";
 // - não há rastreador de publicidade no app de quem compra.
 // Texto-base fixo no código: hoje NÃO existe tela para a lojista editar Termos
 // nem Privacidade (só as regras de troca, em Ajustes → Trocas e devoluções).
-// Quem revisa e muda estes dois textos é quem mantém o código. O que o texto
-// ainda não diz porque o app não guarda: CNPJ/razão social, prazo de guarda
-// dos dados e quem responde por eles — decisão do dono.
+// Quem revisa e muda estes dois textos é quem mantém o código. Razão social,
+// CNPJ ou CPF e e-mail de atendimento a lojista pode declarar em Minha loja:
+// quando declarados, entram como UMA linha ("Responsável: …") na primeira seção
+// de Termos e de Privacidade (`DadosDaLoja.responsavel`); sem eles o texto é
+// o de sempre. O que o texto ainda não diz porque o app não guarda: prazo de
+// guarda dos dados — decisão do dono.
 
 export interface SecaoDeTexto {
   readonly id: string;
@@ -40,6 +43,21 @@ export interface DocumentoDePolitica {
 
 export interface DadosDaLoja {
   readonly nome: string;
+  /**
+   * A frase "Responsável: razão social — CNPJ n — contato: e-mail" que a lojista
+   * declarou (`linhaDoResponsavel`). Ausente ou vazia: os textos saem idênticos
+   * aos de uma loja que nunca preencheu nada.
+   */
+  readonly responsavel?: string | null;
+}
+
+/** Acrescenta a linha do responsável ao fim dos parágrafos, só se existir. */
+function comResponsavel(
+  paragrafos: readonly string[],
+  loja: DadosDaLoja,
+): readonly string[] {
+  const linha = loja.responsavel?.trim();
+  return linha ? [...paragrafos, linha] : paragrafos;
 }
 
 /** Quando não há política carregada, vale o mínimo do CDC art. 49. */
@@ -55,9 +73,12 @@ function montarTermos(loja: DadosDaLoja): DocumentoDePolitica {
       {
         id: "quem-somos",
         titulo: "Quem vende",
-        paragrafos: [
-          `Este app é a loja virtual da ${loja.nome}. Ao criar uma conta, navegar ou fazer um pedido por aqui, você concorda com estes termos.`,
-        ],
+        paragrafos: comResponsavel(
+          [
+            `Este app é a loja virtual da ${loja.nome}. Ao criar uma conta, navegar ou fazer um pedido por aqui, você concorda com estes termos.`,
+          ],
+          loja,
+        ),
       },
       {
         id: "sua-conta",
@@ -125,9 +146,12 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
       {
         id: "quem-cuida",
         titulo: "Quem cuida dos seus dados",
-        paragrafos: [
-          `A ${loja.nome} é quem decide como os dados deste app são usados (a "controladora" na Lei Geral de Proteção de Dados, a LGPD). Fale com a loja pelo contato que aparece no fim desta página.`,
-        ],
+        paragrafos: comResponsavel(
+          [
+            `A ${loja.nome} é quem decide como os dados deste app são usados (a "controladora" na Lei Geral de Proteção de Dados, a LGPD). Fale com a loja pelo contato que aparece no fim desta página.`,
+          ],
+          loja,
+        ),
       },
       {
         id: "que-dados",

@@ -345,6 +345,15 @@ export interface StoreConfig {
    * inventa.
    */
   storeDescription?: string | null;
+  /**
+   * Quem é a loja para a cliente (migration 20261239), tudo OPCIONAL: razão
+   * social (ou nome do titular), CNPJ ou CPF (só dígitos/letras, sem máscara,
+   * DV conferido pelo app) e e-mail de atendimento. Ausente/`null` = a loja
+   * não disse — nenhuma tela inventa nem mostra no lugar.
+   */
+  storeLegalName?: string | null;
+  storeLegalDocument?: string | null;
+  storeSupportEmail?: string | null;
   originCep?: string;
   shippingProvider?: "flat_fee" | "melhor_envio" | "frenet" | "superfrete";
   enabledShippingMethods?: string[];

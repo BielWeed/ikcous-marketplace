@@ -775,6 +775,10 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
       // coluna existe e o updateConfig tem o `if` de cada uma.
       storeAddress: "Rua das Flores, 123",
       storeDescription: "<p>sobre</p>",
+      // 20261239000000: quem é a loja (razão social, CNPJ/CPF, e-mail).
+      storeLegalName: "Loja da Ana Ltda",
+      storeLegalDocument: "11222333000181",
+      storeSupportEmail: "oi@loja.com",
       originCep: "38500-000",
       shippingProvider: "flat_fee",
       enabledShippingMethods: ["sedex"],

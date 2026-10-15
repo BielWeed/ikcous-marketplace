@@ -1,9 +1,13 @@
-import { MapPin, MessageCircle } from "lucide-react";
+import { Mail, MapPin, MessageCircle } from "lucide-react";
 import { useMemo } from "react";
 
 import { useStore } from "@/contexts/StoreContext";
 import { usePoliticaDeTrocasDaLoja } from "@/hooks/usePoliticaDeTrocasDaLoja";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import {
+  identidadeLegalDaLoja,
+  linhaDoResponsavel,
+} from "@/lib/identidade-legal-da-loja";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import type { TipoDePolitica } from "@/lib/nomes-das-politicas";
@@ -29,10 +33,13 @@ export function ConteudoDaPolitica({
   const { config } = useStore();
   const nome = nomeDaLoja(config);
   const trocas = usePoliticaDeTrocasDaLoja(tipo === "trocas");
+  // "Responsável: razão social — CNPJ — contato" só existe se a lojista
+  // declarou; sem isso o texto é exatamente o de sempre.
+  const responsavel = linhaDoResponsavel(identidadeLegalDaLoja(config));
 
   const documento: DocumentoDePolitica = useMemo(
-    () => montarPolitica(tipo, { nome }, trocas.politica),
-    [tipo, nome, trocas.politica],
+    () => montarPolitica(tipo, { nome, responsavel }, trocas.politica),
+    [tipo, nome, responsavel, trocas.politica],
   );
 
   return (
@@ -75,15 +82,16 @@ export function ConteudoDaPolitica({
 }
 
 /**
- * O contato que a lojista cadastrou (WhatsApp e endereço). Sem nenhum dos
- * dois o bloco diz isso com todas as letras em vez de apontar para um canal
- * que não existe.
+ * O contato que a lojista cadastrou (WhatsApp, e-mail de atendimento e
+ * endereço). Sem nenhum dos três o bloco diz isso com todas as letras em vez
+ * de apontar para um canal que não existe.
  */
 function ContatoDaLoja() {
   const { config } = useStore();
   const nome = nomeDaLoja(config);
   const temWhatsapp = lojaTemWhatsapp(config.whatsappNumber);
   const endereco = config.storeAddress?.trim() || "";
+  const email = identidadeLegalDaLoja(config)?.email ?? null;
 
   function falarComALoja() {
     let fone = (config.whatsappNumber || "").replace(/\D/g, "");
@@ -114,13 +122,22 @@ function ContatoDaLoja() {
           WhatsApp {formatarWhatsAppParaExibicao(config.whatsappNumber ?? "")}
         </button>
       )}
+      {email && (
+        <a
+          href={`mailto:${email}`}
+          className="flex min-h-11 w-full items-center gap-2 break-all text-sm font-semibold text-foreground underline underline-offset-2"
+        >
+          <Mail className="size-4 shrink-0" aria-hidden="true" />
+          {email}
+        </a>
+      )}
       {endereco && (
         <p className="mt-1 flex items-start gap-2 text-sm text-muted-foreground">
           <MapPin className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           {endereco}
         </p>
       )}
-      {!temWhatsapp && !endereco && (
+      {!temWhatsapp && !endereco && !email && (
         <p className="text-sm text-muted-foreground">
           A loja ainda não cadastrou um contato neste app. Procure a loja pelos
           canais em que você a conheceu.
