@@ -8,7 +8,10 @@ import React, {
 
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { applyThemeColor, branding } from "@/config/branding";
-import { destinoPosLogin } from "@/lib/destinoPosLogin";
+import {
+  destinoPosLogin,
+  painelSemContaPedeEntrada,
+} from "@/lib/destinoPosLogin";
 import {
   CHAVE_MOTIVO_DE_RECARGA,
   atualizacaoTrocouDeBuild,
@@ -163,11 +166,20 @@ function AdminAccessDenied({
   // passa por aqui com `adminStatus === "unknown"` (o pai só troca para
   // `<AdminArea>` quando `isAdmin` vira `true`) — expulsar nesse instante
   // era exatamente o piscar que a Parte B veio resolver.
-  const { adminStatus, loading } = useAuth();
+  const { adminStatus, loading, user } = useAuth();
 
   useEffect(() => {
     // If auth is still loading, wait.
     if (loading) return;
+
+    // SEM sessão não há veredito de permissão a dar: quem decide a rota é o
+    // `syncWithUrl` (painel sem conta pede a tela de entrada e guarda o
+    // pedido). Este efeito é de FILHO e roda antes do dele; expulsar aqui
+    // mandava para a vitrine, com "Acesso restrito", a lojista cuja sessão
+    // guardada o servidor acabou de derrubar (refresh token vencido) — e a
+    // transição terminava por cima do redirecionamento para a entrada. Quem
+    // TEM sessão e não é admin continua expulsa, com o aviso, como sempre.
+    if (!user) return;
 
     // Ainda verificando com o servidor — não expulsa, não redireciona.
     if (adminStatus === "unknown") return;
@@ -178,7 +190,7 @@ function AdminAccessDenied({
       toast.error("Acesso restrito a administradores.");
       onNavigate("home");
     }
-  }, [onNavigate, adminStatus, loading]);
+  }, [onNavigate, adminStatus, loading, user]);
 
   return <AdminRouteLoading />;
 }
@@ -976,7 +988,16 @@ const AppContent = () => {
         targetView = "auth";
       }
 
+      // Painel pedido SEM sessão: vai para a tela de entrada (o `requested`
+      // gravado no pushState abaixo faz `handleAuthSuccess` devolvê-la ao
+      // painel) em vez de cair em silêncio na vitrine. É `else if` de
+      // propósito: a guarda de admin logo abaixo usa `view` e mandaria
+      // para a home também quem acabou de ser mandada ao login.
       if (
+        painelSemContaPedeEntrada(view, { authLoading: isAuthL, user: usr })
+      ) {
+        targetView = "auth";
+      } else if (
         view.startsWith("admin") &&
         view !== "admin-login" &&
         !isAuthL &&
@@ -1824,6 +1845,22 @@ const AppContent = () => {
           targetView = "auth";
           if (globalThis.location.pathname !== "/auth") {
             globalThis.history.replaceState({ view: "auth" }, "", "/auth");
+          }
+        }
+
+        // Painel pedido SEM sessão (o toque no aviso de "pedido novo" abre
+        // `/admin-orders` numa janela nova): tela de entrada com o pedido
+        // guardado, não a vitrine. Só olha a AUSÊNCIA de sessão — quem está
+        // logada e não é admin cai na guarda logo abaixo, como sempre caiu.
+        if (painelSemContaPedeEntrada(targetView, { authLoading, user })) {
+          const pedida = targetView;
+          targetView = "auth";
+          if (globalThis.location.pathname !== "/auth") {
+            globalThis.history.replaceState(
+              { view: "auth", requested: pedida },
+              "",
+              "/auth",
+            );
           }
         }
 
