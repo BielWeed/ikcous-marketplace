@@ -234,7 +234,7 @@ const globalSkuCache: Record<string, string> = {};
 // Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
 // mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
 // quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
-const globalVariacaoCache: Record<string, string> = {};
+const globalVariacaoCache = new Map<string, string>();
 
 // Redesenho da ficha (08/10/2026, aprovado pelo dono): a MESMA linguagem do
 // card de pedido redesenhado em 07/10 (`AdminOrderCard`) — blocos
@@ -1507,17 +1507,15 @@ export const OrderDetail = memo(function OrderDetail({
           (id) => !globalSkuCache[`prod-${id}`],
         );
         const missingVariantIds = variantIds.filter(
-          (id) =>
-            !globalSkuCache[`var-${id}`] ||
-            globalVariacaoCache[id] === undefined,
+          (id) => !globalSkuCache[`var-${id}`] || !globalVariacaoCache.has(id),
         );
-        const variacoesLidas = () => {
-          const lidas: Record<string, string> = {};
-          variantIds.forEach((id) => {
-            if (globalVariacaoCache[id]) lidas[id] = globalVariacaoCache[id];
-          });
-          return lidas;
-        };
+        const variacoesLidas = () =>
+          Object.fromEntries(
+            variantIds.flatMap((id) => {
+              const rotulo = globalVariacaoCache.get(id);
+              return rotulo ? [[id, rotulo] as const] : [];
+            }),
+          );
 
         if (missingProductIds.length === 0 && missingVariantIds.length === 0) {
           setVariacoes(variacoesLidas());
@@ -1551,7 +1549,7 @@ export const OrderDetail = memo(function OrderDetail({
             .in("id", missingVariantIds);
           variantsData?.forEach((v) => {
             if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
-            globalVariacaoCache[v.id] = rotuloDaVariacao(v.name, v.value);
+            globalVariacaoCache.set(v.id, rotuloDaVariacao(v.name, v.value));
           });
         }
         setVariacoes(variacoesLidas());
@@ -1863,11 +1861,7 @@ export const OrderDetail = memo(function OrderDetail({
         </section>
       </div>
 
-      <OrderReceipt
-        order={order}
-        storeName={storeName}
-        variacoes={variacoes}
-      />
+      <OrderReceipt order={order} storeName={storeName} variacoes={variacoes} />
 
       <AlertDialog
         open={pendingAdvance !== null}
