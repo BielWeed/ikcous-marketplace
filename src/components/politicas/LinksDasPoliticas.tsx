@@ -11,8 +11,14 @@ import { haptic } from "@/utils/haptic";
 // Link no meio de uma frase: o texto fica pequeno, mas a área de toque chega
 // aos 44px (py-3.5 de cima e de baixo) sem aumentar a altura da linha —
 // `-my-3.5` devolve o espaço que o padding tomaria.
+//
+// CORES: estes dois componentes moram sobre superfícies BRANCAS fixas (a barra
+// do Finalizar, o cartão do cadastro, a página do produto — todas `bg-white`
+// mesmo com o tema escuro ligado). Por isso zinc fixo e não o token do tema:
+// `text-muted-foreground` no tema escuro vira cinza-claro sobre branco, abaixo
+// de 3:1. zinc-500 sobre branco dá 4,8:1 e zinc-900 dá 17:1.
 const LINK_NA_FRASE =
-  "-my-3.5 inline cursor-pointer rounded-sm py-3.5 font-semibold text-foreground underline underline-offset-2";
+  "-my-3.5 inline cursor-pointer rounded-sm py-3.5 font-semibold text-zinc-900 underline underline-offset-2";
 
 /**
  * "Ao finalizar você concorda com os Termos de uso e a Política de
@@ -40,10 +46,7 @@ export function FraseDeAceite({
     <>
       <p
         data-testid="frase-de-aceite"
-        className={cn(
-          "text-[11px] leading-snug text-muted-foreground",
-          className,
-        )}
+        className={cn("text-[11px] leading-snug text-zinc-500", className)}
       >
         Ao {acao} você concorda com os{" "}
         <button
@@ -88,7 +91,7 @@ export function LinkDeTrocas({ className }: { readonly className?: string }) {
           setAberta(true);
         }}
         className={cn(
-          "flex min-h-11 w-full items-center justify-center text-xs font-semibold text-muted-foreground underline underline-offset-2",
+          "flex min-h-11 w-full items-center justify-center text-xs font-semibold text-zinc-500 underline underline-offset-2",
           className,
         )}
       >
