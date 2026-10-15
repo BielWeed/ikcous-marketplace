@@ -5,10 +5,10 @@ import { useStore } from "@/contexts/StoreContext";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import {
-  NOME_DA_POLITICA,
   TIPOS_DE_POLITICA,
   type TipoDePolitica,
-  VIEW_DA_POLITICA,
+  nomeDaPolitica,
+  viewDaPolitica,
 } from "@/lib/textos-das-politicas";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -32,7 +32,7 @@ export function PoliticaDaLojaView({
   const { config } = useStore();
   const nome = nomeDaLoja(config);
 
-  useDocumentMeta({ title: `${NOME_DA_POLITICA[tipo]} | ${nome}` });
+  useDocumentMeta({ title: `${nomeDaPolitica(tipo)} | ${nome}` });
 
   const outras = TIPOS_DE_POLITICA.filter((t) => t !== tipo);
 
@@ -40,7 +40,7 @@ export function PoliticaDaLojaView({
     <div className="pb-customer min-h-full bg-background">
       <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <h1 className="text-2xl font-black tracking-tight text-foreground">
-          {NOME_DA_POLITICA[tipo]}
+          {nomeDaPolitica(tipo)}
         </h1>
 
         <ConteudoDaPolitica tipo={tipo} />
@@ -52,11 +52,11 @@ export function PoliticaDaLojaView({
               type="button"
               onClick={() => {
                 haptic.light();
-                onNavigate(VIEW_DA_POLITICA[outra]);
+                onNavigate(viewDaPolitica(outra));
               }}
               className="flex min-h-12 w-full items-center justify-between rounded-2xl border border-border px-4 text-left text-sm font-semibold text-foreground"
             >
-              {NOME_DA_POLITICA[outra]}
+              {nomeDaPolitica(outra)}
               <ChevronRight className="size-4 text-muted-foreground" />
             </button>
           ))}

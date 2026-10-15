@@ -10,8 +10,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  NOME_DA_POLITICA,
   type TipoDePolitica,
+  nomeDaPolitica,
 } from "@/lib/textos-das-politicas";
 import { cn } from "@/lib/utils";
 
@@ -57,14 +57,14 @@ export function PoliticaEmFolha({ tipo, onFechar }: PoliticaEmFolhaProps) {
             <X className="size-5" aria-hidden="true" />
           </SheetClose>
           <SheetTitle className="text-lg font-black tracking-tight">
-            {tipo ? NOME_DA_POLITICA[tipo] : ""}
+            {tipo ? nomeDaPolitica(tipo) : ""}
           </SheetTitle>
           <SheetDescription className="sr-only">
-            Texto da página {tipo ? NOME_DA_POLITICA[tipo] : ""} da loja. Feche
+            Texto da página {tipo ? nomeDaPolitica(tipo) : ""} da loja. Feche
             para voltar de onde você estava.
           </SheetDescription>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">
           {tipo && <ConteudoDaPolitica tipo={tipo} />}
         </div>
       </SheetContent>

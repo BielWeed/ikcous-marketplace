@@ -7,11 +7,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { TELAS_DE_ENTRADA } from "@/config/rotas";
-import {
-  TIPOS_DE_POLITICA,
-  VIEW_DA_POLITICA,
-} from "@/lib/textos-das-politicas";
+import { TIPOS_DE_POLITICA, viewDaPolitica } from "@/lib/textos-das-politicas";
 
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do proprio repositorio
 const APP = readFileSync(
   new URL("../../src/App.tsx", import.meta.url),
   "utf8",
@@ -19,7 +17,7 @@ const APP = readFileSync(
 
 describe("roteador — as três políticas", () => {
   it("cada página tem uma tela própria, diferente das outras", () => {
-    const telas = TIPOS_DE_POLITICA.map((t) => VIEW_DA_POLITICA[t]);
+    const telas = TIPOS_DE_POLITICA.map(viewDaPolitica);
     expect(telas).toEqual(["terms", "privacy", "returns-policy"]);
     expect(new Set(telas).size).toBe(3);
   });

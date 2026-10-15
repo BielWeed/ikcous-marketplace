@@ -40,18 +40,28 @@ export interface DadosDaLoja {
 }
 
 /** Nome que a cliente lê no link e no título de cada página. */
-export const NOME_DA_POLITICA: Readonly<Record<TipoDePolitica, string>> = {
-  termos: "Termos de uso",
-  privacidade: "Política de Privacidade",
-  trocas: "Trocas e devoluções",
-};
+export function nomeDaPolitica(tipo: TipoDePolitica): string {
+  switch (tipo) {
+    case "termos":
+      return "Termos de uso";
+    case "privacidade":
+      return "Política de Privacidade";
+    case "trocas":
+      return "Trocas e devoluções";
+  }
+}
 
 /** A tela (`View`) de cada página: é por ela que o rodapé da vitrine navega. */
-export const VIEW_DA_POLITICA: Readonly<Record<TipoDePolitica, View>> = {
-  termos: "terms",
-  privacidade: "privacy",
-  trocas: "returns-policy",
-};
+export function viewDaPolitica(tipo: TipoDePolitica): View {
+  switch (tipo) {
+    case "termos":
+      return "terms";
+    case "privacidade":
+      return "privacy";
+    case "trocas":
+      return "returns-policy";
+  }
+}
 
 /** Quando não há política carregada, vale o mínimo do CDC art. 49. */
 const ARREPENDIMENTO_MINIMO_DIAS = 7;
@@ -60,7 +70,7 @@ const ARREPENDIMENTO_MINIMO_DIAS = 7;
 function montarTermos(loja: DadosDaLoja): DocumentoDePolitica {
   return {
     tipo: "termos",
-    titulo: NOME_DA_POLITICA.termos,
+    titulo: nomeDaPolitica("termos"),
     resumo: `As regras para usar o app e comprar na ${loja.nome}.`,
     secoes: [
       {
@@ -130,7 +140,7 @@ function montarTermos(loja: DadosDaLoja): DocumentoDePolitica {
 function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
   return {
     tipo: "privacidade",
-    titulo: NOME_DA_POLITICA.privacidade,
+    titulo: nomeDaPolitica("privacidade"),
     resumo: `Quais dados a ${loja.nome} guarda de você, para quê, e como pedir para corrigir ou apagar.`,
     secoes: [
       {
@@ -319,7 +329,7 @@ function montarTrocas(
 
   return {
     tipo: "trocas",
-    titulo: NOME_DA_POLITICA.trocas,
+    titulo: nomeDaPolitica("trocas"),
     resumo: `Como desistir, trocar ou devolver um pedido da ${loja.nome}.`,
     secoes,
   };

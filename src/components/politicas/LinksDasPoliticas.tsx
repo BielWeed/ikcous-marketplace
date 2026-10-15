@@ -2,10 +2,10 @@ import { useState } from "react";
 
 import { PoliticaEmFolha } from "@/components/politicas/PoliticaEmFolha";
 import {
-  NOME_DA_POLITICA,
   TIPOS_DE_POLITICA,
   type TipoDePolitica,
-  VIEW_DA_POLITICA,
+  nomeDaPolitica,
+  viewDaPolitica,
 } from "@/lib/textos-das-politicas";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -54,7 +54,7 @@ export function FraseDeAceite({
           onClick={() => abrir("termos")}
           className={LINK_NA_FRASE}
         >
-          {NOME_DA_POLITICA.termos}
+          {nomeDaPolitica("termos")}
         </button>{" "}
         e a{" "}
         <button
@@ -62,7 +62,7 @@ export function FraseDeAceite({
           onClick={() => abrir("privacidade")}
           className={LINK_NA_FRASE}
         >
-          {NOME_DA_POLITICA.privacidade}
+          {nomeDaPolitica("privacidade")}
         </button>
         .
       </p>
@@ -92,7 +92,7 @@ export function LinkDeTrocas({ className }: { readonly className?: string }) {
           className,
         )}
       >
-        {NOME_DA_POLITICA.trocas}
+        {nomeDaPolitica("trocas")}
       </button>
       <PoliticaEmFolha
         tipo={aberta ? "trocas" : null}
@@ -123,11 +123,11 @@ export function RodapeDasPoliticas({
           type="button"
           onClick={() => {
             haptic.light();
-            onNavigate(VIEW_DA_POLITICA[tipo]);
+            onNavigate(viewDaPolitica(tipo));
           }}
           className="flex min-h-11 items-center px-2 text-xs font-semibold text-muted-foreground underline underline-offset-2"
         >
-          {NOME_DA_POLITICA[tipo]}
+          {nomeDaPolitica(tipo)}
         </button>
       ))}
     </nav>

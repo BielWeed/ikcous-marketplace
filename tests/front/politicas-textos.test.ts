@@ -67,6 +67,7 @@ describe("textos das políticas — todas as três", () => {
   it("cada texto-base carrega o aviso de revisão da lojista, no código", () => {
     // O aviso é comentário de código (a lojista revisa antes de publicar),
     // nunca texto que a cliente vê na tela.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do proprio repositorio
     const fonte = readFileSync(
       new URL("../../src/lib/textos-das-politicas.ts", import.meta.url),
       "utf8",
