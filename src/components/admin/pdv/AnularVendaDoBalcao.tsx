@@ -138,7 +138,7 @@ export function AnularVendaDoBalcao({
       setResultado(resposta);
       aoConcluir?.(resposta);
     } catch (e) {
-      setErro(mensagemDaFalhaDaAnulacao(e));
+      setErro(mensagemDaFalhaDaAnulacao(e, clienteComConta));
     } finally {
       emVoo.current = false;
       setEnviando(false);

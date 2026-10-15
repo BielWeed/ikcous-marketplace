@@ -290,7 +290,7 @@ describe("AnularVendaDoBalcao", () => {
     expect(hospedeiro.textContent).toContain("Venda anulada");
   });
 
-  it("recusa do dia que passou: mostra a frase que manda registrar uma devolução, fica aberto e deixa tentar de novo", async () => {
+  it("recusa do dia que passou: mostra a frase sem o 'registre uma devolução' impossível, fica aberto e deixa tentar de novo", async () => {
     const frase =
       "Só dá para anular no mesmo dia da venda. Para outro dia, registre uma devolução.";
     const aoAnular = vi
@@ -302,7 +302,9 @@ describe("AnularVendaDoBalcao", () => {
     await act(async () => digitarMotivo("engano"));
     await confirmar();
     const alerta = hospedeiro.querySelector('[role="alert"]');
-    expect(alerta?.textContent).toBe(frase);
+    expect(alerta?.textContent).toBe(
+      "Só dá para anular no mesmo dia da venda. Esta venda não está na conta de nenhum cliente: o app não abre devolução para ela.",
+    );
     expect(hospedeiro.querySelector("textarea")).not.toBeNull();
     // o motivo digitado não se perde
     expect(
