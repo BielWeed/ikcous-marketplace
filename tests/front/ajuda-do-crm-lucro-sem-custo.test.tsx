@@ -41,8 +41,9 @@ describe("AjudaDoCrm — ranking de lucro e produto sem custo", () => {
     );
     expect(texto).toContain("a tela avisa quantos produtos ficaram de fora");
     expect(texto).toContain(
-      'procure "Sem Custo Cadastrado" no cartão detalhado',
+      'toque no botão ao lado da busca ("Mostrar em lista com detalhes") e procure o selo "Sem Custo Cadastrado"',
     );
+    expect(texto).not.toContain("cartão detalhado");
     // A tela só mostra a QUANTIDADE, não a lista de quais são.
     expect(texto).not.toContain("avisa quais são");
     expect(texto).toContain(

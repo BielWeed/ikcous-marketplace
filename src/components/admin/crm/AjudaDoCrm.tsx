@@ -89,9 +89,10 @@ export function AjudaDoCrm({
               Os cinco produtos com maior lucro (preço de venda menos o custo
               cadastrado) em pedidos válidos de todo o período. Produto sem
               custo cadastrado fica fora da conta do lucro, e a tela avisa
-              quantos produtos ficaram de fora. Para achar quais são, procure
-              "Sem Custo Cadastrado" no cartão detalhado dos Produtos e cadastre
-              o custo para ele entrar. O lucro usa o custo de hoje de cada
+              quantos produtos ficaram de fora. Para achar quais são, abra
+              Produtos, toque no botão ao lado da busca ("Mostrar em lista com
+              detalhes") e procure o selo "Sem Custo Cadastrado"; cadastre o
+              custo para ele entrar. O lucro usa o custo de hoje de cada
               produto: se você mudar o custo, o lucro das vendas antigas muda
               junto.
             </li>
