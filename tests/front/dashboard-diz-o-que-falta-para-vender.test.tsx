@@ -38,13 +38,19 @@ const ENDERECO_PRONTO = montarEnderecoDaLoja({
 });
 
 /** Loja toda pronta (6/6); cada teste estraga só o que quer provar. Repare:
- * nenhum horário de atendimento aqui — ele não faz parte da contagem. */
+ * nenhum horário de atendimento aqui — ele não faz parte da contagem.
+ *
+ * O "Alcance por CEP" cobre a cidade (São Paulo, 01000 a 05999): desde
+ * 15/10/2026 CEP de rua com alcance vazio deixa a entrega pendente (alcance
+ * curto) e a loja deixa de contar como 6/6 — esse caso é provado em
+ * loja-pronta-entrega-alcance-curto.test.tsx. */
 const CONFIG_PRONTA: Props["config"] = {
   storeName: "Ateliê da Serra",
   logoUrl: "https://exemplo.test/logo.png",
   originCep: ENDERECO_PRONTO.originCep,
   storeAddress: ENDERECO_PRONTO.storeAddress,
   whatsappNumber: "(34) 99999-9999",
+  localCepRange: "01000-000, 05999-999",
 };
 
 function propsDoCartao(parcial: Partial<Props> = {}): Props {
