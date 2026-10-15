@@ -28,6 +28,7 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { supabase } from "@/lib/supabase";
+import { motivoDaDevolucaoIndisponivel } from "@/lib/texto-devolucao-indisponivel";
 import {
   type LinhaDevolucaoDoCliente,
   desfechoDaDevolucao,
@@ -1571,7 +1572,10 @@ export function OrderDetailsView({
                     Devolução ou troca
                   </span>
                   <span className="block text-xs leading-snug text-zinc-500">
-                    {devolucaoDoProduto.elegibilidade.motivo_bloqueio}
+                    {motivoDaDevolucaoIndisponivel(
+                      devolucaoDoProduto.elegibilidade.motivo_bloqueio,
+                      order,
+                    )}
                   </span>
                 </span>
               </div>

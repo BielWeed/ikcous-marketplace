@@ -6,6 +6,11 @@ import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
+import {
+  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+  TETO_DE_RECEBIMENTOS,
+  inicioDaJanelaDeRecebimento,
+} from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import {
@@ -16,6 +21,7 @@ import {
   type LinhaDeCancelamento,
   type PedidoPendente,
   type ProdutoComEstoque,
+  type RecebimentoPorMarcar,
   type TipoDeAviso,
   montarAvisos,
   selecionarCancelamentosDoCliente,
@@ -169,6 +175,26 @@ async function buscarCancelamentosDoCliente(): Promise<
   return selecionarCancelamentosDoCliente(linhas, admins);
 }
 
+// 14/10/2026: pedido ENTREGUE, pago na entrega, em que a lojista ainda nao
+// marcou o recebimento — enquanto isso o servidor recusa a devolucao da
+// cliente. A regra (e o porque) mora em `@/lib/recebimentos-por-marcar`, lida
+// tambem pela bolinha do sino (`AdminLayout`). Falha de leitura LANCA: vira
+// falha da FONTE, nunca "nenhum pedido por marcar".
+async function buscarRecebimentosPorMarcar(): Promise<RecebimentoPorMarcar[]> {
+  const { data, error } = await supabase
+    .from("marketplace_orders")
+    .select("id, customer_name, total, updated_at")
+    .eq("status", "delivered")
+    .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
+    .is("payment_status", null)
+    .gte("updated_at", inicioDaJanelaDeRecebimento())
+    .order("updated_at", { ascending: false })
+    .limit(TETO_DE_RECEBIMENTOS);
+
+  if (error) throw error;
+  return (data ?? []) as unknown as RecebimentoPorMarcar[];
+}
+
 interface LeituraDeProdutos {
   produtos: ProdutoComEstoque[];
   /** O catalogo era maior que o teto: esta varredura NAO viu tudo. */
@@ -209,11 +235,11 @@ async function buscarProdutosComEstoqueBaixo(
 }
 
 /**
- * Junta as seis fontes de aviso do lojista numa lista so (a quinta,
+ * Junta as sete fontes de aviso do lojista numa lista so (a quinta,
  * devolucao, entrou com o plano 2026-09-26; a sexta, cancelamento do cliente,
- * em 14/10/2026).
+ * e a setima, recebimento por marcar, em 14/10/2026).
  *
- * Falha parcial nao derruba a tela: as seis consultas correm em
+ * Falha parcial nao derruba a tela: as sete consultas correm em
  * `Promise.allSettled`, e a que cair entra em `fontesComFalha` enquanto as
  * outras seguem. Tela em branco por causa de uma consulta e pior que tela
  * incompleta e honesta.
@@ -245,6 +271,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rProdutos,
       rDevolucoes,
       rCancelamentos,
+      rRecebimentos,
     ] = await Promise.allSettled([
       buscarPedidosPendentes(),
       buscarPerguntasPendentes(),
@@ -256,6 +283,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       ),
       buscarDevolucoesSolicitadas(),
       buscarCancelamentosDoCliente(),
+      buscarRecebimentosPorMarcar(),
     ]);
 
     // Componente desmontado, ou rodada atropelada por outra mais nova: em
@@ -278,6 +306,10 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     const cancelamentosDoCliente =
       rCancelamentos.status === "fulfilled" ? rCancelamentos.value : [];
     if (rCancelamentos.status === "rejected") falhas.push("cancelamento");
+
+    const recebimentosPorMarcar =
+      rRecebimentos.status === "fulfilled" ? rRecebimentos.value : [];
+    if (rRecebimentos.status === "rejected") falhas.push("recebimento");
 
     const avaliacoesCruas =
       rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value : [];
@@ -314,6 +346,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
         produtos,
         devolucoesSolicitadas,
         cancelamentosDoCliente,
+        recebimentosPorMarcar,
       }),
     );
     setFontesComFalha(falhas);
