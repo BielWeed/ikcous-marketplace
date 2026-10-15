@@ -38,11 +38,25 @@ export const ROTULO_SEM_VALOR_A_PAGAR = "Sem valor a pagar";
  */
 export function pedidoSemValorAPagar(pedido: {
   readonly total?: number | null;
+  readonly subtotal?: number | null;
+  readonly discount?: number | null;
+  readonly shipping?: number | null;
 }): boolean {
-  const { total } = pedido;
-  return typeof total === "number" && Number.isFinite(total)
-    ? Math.round(total * 100) === 0
-    : false;
+  const centavos = (valor: number | null | undefined) =>
+    typeof valor === "number" && Number.isFinite(valor)
+      ? Math.round(valor * 100)
+      : null;
+  if (centavos(pedido.total) !== 0) return false;
+  // A conta tem de bater: o mapper (`mapOrderFromDB`) devolve `total` 0 para
+  // linha SEM a coluna, e isso não pode virar "sem valor a pagar" num pedido
+  // que tem produtos e frete. Quando subtotal, desconto e frete existem no
+  // objeto, subtotal - desconto + frete tem de dar zero também; se algum
+  // faltar, não há o que conferir e vale o total.
+  const subtotal = centavos(pedido.subtotal);
+  const desconto = centavos(pedido.discount);
+  const frete = centavos(pedido.shipping);
+  if (subtotal === null || desconto === null || frete === null) return true;
+  return subtotal - desconto + frete === 0;
 }
 
 function rotuloDoPagamentoPeloSite(metodoOnline: string | null | undefined) {

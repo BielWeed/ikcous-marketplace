@@ -226,6 +226,9 @@ function pendingDescription(
     paymentMethod: Order["paymentMethod"];
     retiradaNaLoja?: boolean;
     total?: number | null;
+    subtotal?: number | null;
+    discount?: number | null;
+    shipping?: number | null;
   },
 ): string {
   const key = paymentStatusKey(paymentStatus);
@@ -851,6 +854,9 @@ export function OrderDetailsView({
           paymentMethod: order.paymentMethod,
           retiradaNaLoja: order.retiradaNaLoja,
           total: order.total,
+          subtotal: order.subtotal,
+          discount: order.discount,
+          shipping: order.shipping,
         })
       : order.status === "cancelled"
         ? cancelledDescription(order.paymentStatus, linhasDevolucao)

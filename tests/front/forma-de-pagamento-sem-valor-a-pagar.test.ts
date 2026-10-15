@@ -50,6 +50,55 @@ describe("pedidoSemValorAPagar", () => {
     expect(pedidoSemValorAPagar({ total: undefined })).toBe(false);
     expect(pedidoSemValorAPagar({ total: Number.NaN })).toBe(false);
   });
+
+  it("total negativo NÃO é sem valor a pagar; zero negativo (-0) é zero", () => {
+    // Fecha o mutante `=== 0` -> `<= 0` na conta em centavos.
+    expect(pedidoSemValorAPagar({ total: -1 })).toBe(false);
+    expect(pedidoSemValorAPagar({ total: -0 })).toBe(true);
+  });
+
+  it("a conta tem de bater: linha sem coluna total (mapper devolve 0) com subtotal 150 e frete 20 NÃO é sem valor a pagar", () => {
+    expect(
+      pedidoSemValorAPagar({
+        total: 0,
+        subtotal: 150,
+        discount: 0,
+        shipping: 20,
+      }),
+    ).toBe(false);
+    expect(
+      pedidoSemValorAPagar({
+        total: 0,
+        subtotal: 100,
+        discount: 50,
+        shipping: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("cupom de 100% real (subtotal 100, desconto 100, frete 0, total 0) continua sendo; frete grátis com desconto cobrindo tudo também", () => {
+    expect(
+      pedidoSemValorAPagar({
+        total: 0,
+        subtotal: 100,
+        discount: 100,
+        shipping: 0,
+      }),
+    ).toBe(true);
+    // Centavos de ponto flutuante não quebram a conta.
+    expect(
+      pedidoSemValorAPagar({
+        total: 0,
+        subtotal: 0.3,
+        discount: 0.1 + 0.2,
+        shipping: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("campos da conta ausentes: vale o total (nada a conferir)", () => {
+    expect(pedidoSemValorAPagar({ total: 0, subtotal: 100 })).toBe(true);
+  });
 });
 
 describe("rotuloDaFormaDoPedido com total zero", () => {

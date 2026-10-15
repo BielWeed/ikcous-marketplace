@@ -224,6 +224,65 @@ describe("ficha do pedido — pedido de R$ 0,00 (sem valor a pagar)", () => {
     expect(onStatusChangeMock).not.toHaveBeenCalled();
   });
 
+  it("duplo clique em 'Avançar' antes do registro responder: UM registro e UMA mudança de status", async () => {
+    let resolver: (v: unknown) => void = () => {};
+    onRegistrarPagamentoMock.mockImplementation(
+      (_id: string, recebido: boolean) => {
+        ordem.push(`recebido:${recebido}`);
+        return new Promise((r) => {
+          resolver = r;
+        });
+      },
+    );
+    await renderizar(
+      pedidoFake({ id: "ped-zero", total: 0, status: "shipping" }),
+    );
+
+    await clicarAvancar();
+    await clicarAvancar();
+    await act(async () => {
+      resolver({ payment_status: "recebido_na_entrega" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onRegistrarPagamentoMock).toHaveBeenCalledTimes(1);
+    expect(onStatusChangeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("depois de o registro FALHAR a trava é liberada: a lojista pode tentar de novo", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    onRegistrarPagamentoMock.mockRejectedValueOnce(new Error("rede"));
+    await renderizar(
+      pedidoFake({ id: "ped-zero", total: 0, status: "shipping" }),
+    );
+
+    await clicarAvancar();
+    expect(onStatusChangeMock).not.toHaveBeenCalled();
+
+    await clicarAvancar();
+
+    expect(onRegistrarPagamentoMock).toHaveBeenCalledTimes(2);
+    expect(onStatusChangeMock).toHaveBeenCalledTimes(1);
+    expect(onStatusChangeMock).toHaveBeenCalledWith("ped-zero", "delivered");
+  });
+
+  it("total 0 mas a conta não bate (subtotal 150 + frete 20, sem coluna total): NÃO é 'Sem valor a pagar' e NÃO grava 'Recebi' sozinha", async () => {
+    await renderizar({
+      ...pedidoFake({ id: "ped-sem-total", total: 0, status: "shipping" }),
+      subtotal: 150,
+      shipping: 20,
+      discount: 0,
+    });
+
+    expect(blocoDoDinheiro()).not.toContain("Sem valor a pagar");
+
+    await clicarAvancar();
+
+    expect(onRegistrarPagamentoMock).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toMatch(/Recebeu/i);
+  });
+
   it("pedido de R$ 0 que JÁ tem recebimento registrado: só avança, sem registrar de novo", async () => {
     await renderizar(
       pedidoFake({

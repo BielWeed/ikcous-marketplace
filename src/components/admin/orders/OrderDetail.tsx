@@ -1393,21 +1393,34 @@ export const OrderDetail = memo(function OrderDetail({
   // continua "em aberto" e o botão de registrar continua na tela, em vez de
   // ficar "entregue" e sem registro nenhum — o dano silencioso que esta
   // tarefa existe pra evitar.
+  //
+  // Trava de reentrada: duplo clique em "Avançar" (pedido de R$ 0, que não
+  // abre caixinha) chamaria o registro e a mudança de status duas vezes. Uma
+  // `ref` — não depende de re-render, vale já no segundo clique — fica presa
+  // até o fim do registro E do avanço, e sempre solta no `finally`, então
+  // depois de uma falha a lojista pode tentar de novo.
+  const registrandoEAvancandoRef = useRef(false);
   const registrarRecebimentoEAvancar = async (
     orderId: string,
     status: OrderStatus,
   ) => {
     if (!onRegistrarPagamento) return;
+    if (registrandoEAvancandoRef.current) return;
+    registrandoEAvancandoRef.current = true;
     try {
-      await onRegistrarPagamento(orderId, true);
-    } catch (err) {
-      console.error(
-        "[OrderDetail] Erro ao registrar pagamento recebido antes de avançar:",
-        err,
-      );
-      return;
+      try {
+        await onRegistrarPagamento(orderId, true);
+      } catch (err) {
+        console.error(
+          "[OrderDetail] Erro ao registrar pagamento recebido antes de avançar:",
+          err,
+        );
+        return;
+      }
+      await handleStatusChange(orderId, status);
+    } finally {
+      registrandoEAvancandoRef.current = false;
     }
-    handleStatusChange(orderId, status);
   };
 
   // Ponto de entrada exclusivo do botão "Avançar" — o botão de abortar chama
