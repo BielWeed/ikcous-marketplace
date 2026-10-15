@@ -224,6 +224,40 @@ describe("useCategories — renomear passa SÓ pela porta do banco", () => {
     t.desmontar();
   });
 
+  it("'Todas' e 'all' (o filtro da vitrine e o do painel) nao passam: nem renomear nem criar, e o banco nem e' chamado", async () => {
+    const t = await montar();
+    for (const nome of ["Todas", " todas ", "all", "ALL"]) {
+      let erro: unknown;
+      await act(async () => {
+        try {
+          await t.hook().renameCategory("c1", nome);
+        } catch (e) {
+          erro = e;
+        }
+      });
+      expect(erro).toBeInstanceOf(t.ErroDeCategoria);
+      expect((erro as Error).message, nome).toMatch(
+        /já é do filtro que mostra todos os produtos/,
+      );
+      await act(async () => {
+        erro = undefined;
+        try {
+          await t
+            .hook()
+            .addCategory({ name: nome, description: "", isActive: true }, true);
+        } catch (e) {
+          erro = e;
+        }
+      });
+      expect(erro, `criar ${nome}`).toBeInstanceOf(t.ErroDeCategoria);
+    }
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(escritasNaTabela).toEqual([]);
+    expect(t.linhas()).toEqual(["Brinquedo|brinquedo|true", "Cama|cama|true"]);
+    expect(t.eventos).toEqual([]);
+    t.desmontar();
+  });
+
   it("avisa as outras telas (filtro lembrado da lista, campo do formulário) com o nome antigo e o novo", async () => {
     const t = await montar();
     await act(async () => {

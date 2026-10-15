@@ -44,6 +44,7 @@ const USOS = [
     slug: "brinquedos",
     ativo: true,
     produtos: 3,
+    produtos_excluidos: 0,
     banners: 1,
     regra_devolucao: 1,
   },
@@ -53,15 +54,18 @@ const USOS = [
     slug: "promocao-antiga",
     ativo: true,
     produtos: 0,
+    produtos_excluidos: 0,
     banners: 0,
     regra_devolucao: 0,
   },
   {
+    // 2 produtos, 1 deles excluído: a lojista só enxerga 1 na lista de produtos
     id: "c-oculta",
     nome: "Outono",
     slug: "outono",
     ativo: false,
     produtos: 2,
+    produtos_excluidos: 1,
     banners: 0,
     regra_devolucao: 0,
   },
@@ -152,6 +156,49 @@ describe("Gerenciar categorias", () => {
     expect(texto).toMatch(/Escondida da vitrine/);
   });
 
+  it("produto EXCLUIDO conta, mas a tela explica que ele nao aparece na lista e o que fazer", async () => {
+    await abrir();
+    const texto = document.body.textContent ?? "";
+    expect(texto).toMatch(
+      /Em uso: 2 produtos \(1 excluído, que não aparece na lista\)\./,
+    );
+    expect(texto).toMatch(
+      /Produto excluído não aparece na lista de produtos e só sai da categoria com a ajuda do suporte\./,
+    );
+    // quem nao tem produto excluido nao ganha o aviso
+    expect(
+      texto.match(/só sai da categoria com a ajuda do suporte/g),
+    ).toHaveLength(1);
+  });
+
+  it("a lista aparece na ordem do idioma pt-BR, nao na do banco (sem acento no meio da lista)", async () => {
+    const linha = (id: string, nome: string) => ({
+      id,
+      nome,
+      slug: id,
+      ativo: true,
+      produtos: 0,
+      produtos_excluidos: 0,
+      banners: 0,
+      regra_devolucao: 0,
+    });
+    // a ordem do banco e' por byte: maiuscula antes de minuscula, acentuada no fim
+    rpcMock.mockResolvedValueOnce({
+      data: [
+        linha("c1", "Outlet"),
+        linha("c2", "bijuterias"),
+        linha("c3", "Íntimos"),
+        linha("c4", "Joias"),
+      ],
+      error: null,
+    });
+    await abrir();
+    const nomes = [...document.querySelectorAll("li > div:first-child > span")]
+      .map((s) => s.textContent)
+      .filter((t) => t && !/Escondida/.test(t));
+    expect(nomes).toEqual(["bijuterias", "Íntimos", "Joias", "Outlet"]);
+  });
+
   it("'Apagar' só está habilitado quando NADA aponta para a categoria", async () => {
     await abrir();
     expect(botao("Apagar Brinquedos").disabled).toBe(true);
@@ -235,6 +282,77 @@ describe("Gerenciar categorias", () => {
       digitar("nome", "Brinquedos 2");
     });
     expect(botao("Salvar nome").disabled).toBe(false);
+  });
+
+  it("teclado: abrir 'Renomear' leva o foco ao campo; 'Cancelar' devolve o foco ao botao Renomear", async () => {
+    await abrir();
+    await act(async () => {
+      botao("Renomear Brinquedos").click();
+    });
+    const campo = document.querySelector<HTMLInputElement>(
+      'input[id^="nome-da-categoria-"]',
+    );
+    expect(campo).not.toBeNull();
+    expect(document.activeElement).toBe(campo);
+
+    await act(async () => {
+      botao("Cancelar").click();
+    });
+    expect(document.activeElement).toBe(botao("Renomear Brinquedos"));
+  });
+
+  it("teclado: depois de renomear, o foco volta ao botao Renomear da mesma linha", async () => {
+    await abrir();
+    await act(async () => {
+      botao("Renomear Brinquedos").click();
+    });
+    await act(async () => {
+      digitar("nome", "Brinquedos de Montar");
+    });
+    await act(async () => {
+      botao("Salvar nome").click();
+      await espera();
+    });
+    await act(async () => {
+      await espera();
+    });
+    expect(document.activeElement).toBe(botao("Renomear Brinquedos"));
+  });
+
+  it("teclado: 'Apagar' leva o foco ao 'Manter' (o lado seguro); 'Manter' devolve o foco ao botao Apagar", async () => {
+    await abrir();
+    await act(async () => {
+      botao("Apagar Promoção antiga").click();
+    });
+    expect(document.activeElement).toBe(botao("Manter"));
+    await act(async () => {
+      botao("Manter").click();
+    });
+    expect(document.activeElement).toBe(botao("Apagar Promoção antiga"));
+  });
+
+  it("'Todas' e 'all' (o filtro da vitrine e o do painel) nao passam: avisa na tela, desabilita o Salvar e nao chama o banco", async () => {
+    await abrir();
+    await act(async () => {
+      botao("Renomear Brinquedos").click();
+    });
+    for (const nome of ["Todas", "  TODAS ", "all", "All"]) {
+      await act(async () => {
+        digitar("nome", nome);
+      });
+      expect(botao("Salvar nome").disabled, nome).toBe(true);
+      expect(
+        document.querySelector('[role="alert"]')?.textContent,
+        nome,
+      ).toMatch(/já é do filtro que mostra todos os produtos/);
+    }
+    // com outro nome o aviso some e o Salvar volta
+    await act(async () => {
+      digitar("nome", "Todas as festas");
+    });
+    expect(botao("Salvar nome").disabled).toBe(false);
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(renameCategory).not.toHaveBeenCalled();
   });
 
   it("quando o banco recusa (nome repetido), a frase DELE aparece na linha e nada é anunciado como feito", async () => {

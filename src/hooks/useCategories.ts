@@ -5,6 +5,7 @@ import {
   ErroDeCategoria,
   type ResultadoDoApagar,
   type ResultadoDoRenome,
+  erroDoNomeReservado,
   lerResultadoDoApagar,
   lerResultadoDoRenome,
   mensagemDaFalhaDeCategoria,
@@ -158,6 +159,13 @@ export function useCategories() {
       category: Omit<Category, "id" | "createdAt" | "slug">,
       silent?: boolean,
     ) => {
+      // "Todas" e "all" são do filtro da vitrine e do painel: criar categoria com
+      // esse nome a deixaria sem filtro. (Só a tela protege; o INSERT direto não.)
+      const reservado = erroDoNomeReservado(category.name);
+      if (reservado) {
+        if (!silent) toast.error(reservado);
+        throw new ErroDeCategoria(reservado);
+      }
       const tempId = `temp-${Date.now()}`;
       const slug = generateSlug(category.name);
       const newCategory: Category = {
@@ -245,6 +253,8 @@ export function useCategories() {
 
   const renameCategory = useCallback(
     async (id: string, novoNome: string): Promise<ResultadoDoRenome> => {
+      const reservado = erroDoNomeReservado(novoNome);
+      if (reservado) throw new ErroDeCategoria(reservado, "22023");
       const { data, error } = await supabase.rpc("renomear_categoria", {
         p_id: id,
         p_novo_nome: novoNome,

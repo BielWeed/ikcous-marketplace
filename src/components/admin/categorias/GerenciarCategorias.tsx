@@ -7,11 +7,12 @@ import {
   LIMITE_DO_NOME_DA_CATEGORIA,
   categoriaEmUso,
   descreverUso,
+  erroDoNomeReservado,
   fraseDoRenome,
   mensagemDaFalhaDeCategoria,
 } from "@/lib/gestao-de-categorias";
 import { Eye, EyeOff, Layers, Pencil, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // Gerenciar categorias (migration 20261237000000). A lojista só conseguia CRIAR
@@ -77,6 +78,27 @@ function ConteudoDaGestao() {
   // Duplo toque: uma ação por vez, mesmo antes de o React repintar o botão.
   const emVooRef = useRef(false);
 
+  // Foco do teclado: o botão que a lojista apertou some quando o campo (ou a
+  // confirmação) aparece, e o foco ia junto. Ao abrir, o foco vai para o campo de
+  // nome (ou para "Manter", o lado seguro da confirmação); ao fechar, volta para
+  // o botão que abriu.
+  const campoDoNomeRef = useRef<HTMLInputElement | null>(null);
+  const manterRef = useRef<HTMLButtonElement | null>(null);
+  const [devolverFoco, setDevolverFoco] = useState<string | null>(null);
+  const idEditando = editando?.id ?? null;
+  useEffect(() => {
+    if (idEditando) campoDoNomeRef.current?.focus();
+  }, [idEditando]);
+  useEffect(() => {
+    if (apagando) manterRef.current?.focus();
+  }, [apagando]);
+  useEffect(() => {
+    // Só com a tela livre: durante a ação o botão está desabilitado e não recebe foco.
+    if (!devolverFoco || ocupado !== null) return;
+    document.getElementById(devolverFoco)?.focus();
+    setDevolverFoco(null);
+  }, [devolverFoco, ocupado]);
+
   async function executar(
     id: string,
     acao: () => Promise<string>,
@@ -114,7 +136,10 @@ function ConteudoDaGestao() {
         const r = await renameCategory(c.id, valor);
         return fraseDoRenome(r);
       },
-      () => setEditando(null),
+      () => {
+        setEditando(null);
+        setDevolverFoco(`renomear-categoria-${c.id}`);
+      },
     );
   }
 
@@ -190,6 +215,7 @@ function ConteudoDaGestao() {
           const esteApaga = apagando === c.id;
           const valor = editando?.valor ?? "";
           const nomeIgual = esteEdita && valor === c.nome;
+          const nomeReservado = esteEdita ? erroDoNomeReservado(valor) : null;
           return (
             <li
               key={c.id}
@@ -216,7 +242,8 @@ function ConteudoDaGestao() {
                   className="space-y-2"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (!nomeIgual && valor.trim() !== "") salvarNome(c, valor);
+                    if (!nomeIgual && !nomeReservado && valor.trim() !== "")
+                      salvarNome(c, valor);
                   }}
                 >
                   <label
@@ -227,6 +254,11 @@ function ConteudoDaGestao() {
                   </label>
                   <input
                     id={`nome-da-categoria-${c.id}`}
+                    ref={campoDoNomeRef}
+                    aria-invalid={nomeReservado ? true : undefined}
+                    aria-describedby={
+                      nomeReservado ? `nome-reservado-${c.id}` : undefined
+                    }
                     type="text"
                     value={valor}
                     maxLength={LIMITE_DO_NOME_DA_CATEGORIA}
@@ -235,6 +267,15 @@ function ConteudoDaGestao() {
                     }
                     className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-4 text-sm font-bold text-white focus:border-admin-gold focus:outline-none focus:ring-2 focus:ring-admin-gold/30"
                   />
+                  {nomeReservado ? (
+                    <p
+                      id={`nome-reservado-${c.id}`}
+                      role="alert"
+                      className="text-xs font-bold text-amber-300"
+                    >
+                      {nomeReservado}
+                    </p>
+                  ) : null}
                   {uso ? (
                     <p className="text-xs text-zinc-500">
                       Vão acompanhar o nome novo: {uso}.
@@ -243,7 +284,12 @@ function ConteudoDaGestao() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="submit"
-                      disabled={nestaLinha || nomeIgual || valor.trim() === ""}
+                      disabled={
+                        nestaLinha ||
+                        nomeIgual ||
+                        valor.trim() === "" ||
+                        nomeReservado !== null
+                      }
                       className={BOTAO_DOURADO}
                     >
                       {nestaLinha ? "Salvando…" : "Salvar nome"}
@@ -255,6 +301,7 @@ function ConteudoDaGestao() {
                       onClick={() => {
                         setEditando(null);
                         setFalha(null);
+                        setDevolverFoco(`renomear-categoria-${c.id}`);
                       }}
                     >
                       Cancelar
@@ -279,11 +326,13 @@ function ConteudoDaGestao() {
                     </button>
                     <button
                       type="button"
+                      ref={manterRef}
                       disabled={nestaLinha}
                       className={BOTAO_NEUTRO}
                       onClick={() => {
                         setApagando(null);
                         setFalha(null);
+                        setDevolverFoco(`apagar-categoria-${c.id}`);
                       }}
                     >
                       Manter
@@ -305,6 +354,7 @@ function ConteudoDaGestao() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
+                    id={`renomear-categoria-${c.id}`}
                     aria-label={`Renomear ${c.nome}`}
                     disabled={ocupado !== null}
                     className={BOTAO_NEUTRO}
@@ -338,6 +388,7 @@ function ConteudoDaGestao() {
                   </button>
                   <button
                     type="button"
+                    id={`apagar-categoria-${c.id}`}
                     aria-label={`Apagar ${c.nome}`}
                     disabled={ocupado !== null || emUso}
                     title={
@@ -363,6 +414,9 @@ function ConteudoDaGestao() {
                   Para apagar: mude os produtos para outra categoria, troque o
                   link do banner e tire a categoria da regra de devolução. Se só
                   quer tirá-la da loja, use Esconder.
+                  {c.produtosExcluidos > 0
+                    ? " Produto excluído não aparece na lista de produtos e só sai da categoria com a ajuda do suporte."
+                    : ""}
                 </p>
               ) : null}
             </li>

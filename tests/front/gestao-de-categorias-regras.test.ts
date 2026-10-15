@@ -5,8 +5,10 @@
 import {
   ErroDeCategoria,
   categoriaEmUso,
+  categoriaExisteNaLista,
   chaveDaCategoria,
   descreverUso,
+  erroDoNomeReservado,
   fraseDoRenome,
   lerCategoriasComUso,
   lerResultadoDoApagar,
@@ -23,6 +25,7 @@ const linha = (extra: Record<string, unknown> = {}) => ({
   slug: "brinquedos",
   ativo: true,
   produtos: 3,
+  produtos_excluidos: 0,
   banners: 1,
   regra_devolucao: 0,
   ...extra,
@@ -39,11 +42,45 @@ describe("lerCategoriasComUso", () => {
         slug: "brinquedos",
         ativa: true,
         produtos: 3,
+        produtosExcluidos: 0,
         banners: 1,
         regraDeDevolucao: 0,
       },
       expect.objectContaining({ id: "c2", ativa: false }),
     ]);
+  });
+
+  it("ordena pelo idioma pt-BR (acento e caixa nao jogam a categoria para o fim), desempatando pelo id", () => {
+    // a ordem do banco e' por byte: "Outlet" < "bijuterias" < "Íntimos"
+    const nomes = lerCategoriasComUso([
+      linha({ id: "c1", nome: "Outlet" }),
+      linha({ id: "c2", nome: "bijuterias" }),
+      linha({ id: "c3", nome: "Íntimos" }),
+      linha({ id: "c4", nome: "Joias" }),
+      linha({ id: "c6", nome: "Joias" }),
+      linha({ id: "c5", nome: "Joias" }),
+    ]).map((c) => `${c.nome}:${c.id}`);
+    expect(nomes).toEqual([
+      "bijuterias:c2",
+      "Íntimos:c3",
+      "Joias:c4",
+      "Joias:c5",
+      "Joias:c6",
+      "Outlet:c1",
+    ]);
+  });
+
+  it("a contagem de produtos EXCLUIDOS e' lida e obrigatoria", () => {
+    expect(
+      lerCategoriasComUso([linha({ produtos: 3, produtos_excluidos: 2 })])[0]
+        ?.produtosExcluidos,
+    ).toBe(2);
+    expect(() =>
+      lerCategoriasComUso([linha({ produtos_excluidos: undefined })]),
+    ).toThrow(/Resposta inesperada/);
+    expect(() =>
+      lerCategoriasComUso([linha({ produtos_excluidos: -1 })]),
+    ).toThrow(/Resposta inesperada/);
   });
 
   it("lista vazia de verdade é lista vazia", () => {
@@ -133,6 +170,17 @@ describe("o que está em uso", () => {
     expect(descreverUso({ ...zero, regraDeDevolucao: 1 })).toBe(
       "a regra de devolução",
     );
+  });
+
+  it("diz quantos produtos estao EXCLUIDOS (a lista de produtos nao os mostra), no singular e no plural", () => {
+    const base = { produtos: 3, banners: 0, regraDeDevolucao: 0 };
+    expect(descreverUso({ ...base, produtosExcluidos: 0 })).toBe("3 produtos");
+    expect(descreverUso({ ...base, produtosExcluidos: 1 })).toBe(
+      "3 produtos (1 excluído, que não aparece na lista)",
+    );
+    expect(
+      descreverUso({ ...base, produtos: 2, banners: 1, produtosExcluidos: 2 }),
+    ).toBe("2 produtos (2 excluídos, que não aparecem na lista) e 1 banner");
   });
 
   it("a frase do renome diz o que acompanhou, e não promete nada quando o nome era o mesmo", () => {
@@ -245,5 +293,36 @@ describe("trocarNomeNaLista (a copia da regra de devolucao acompanha a renomeaca
   it("nao tira acento: 'Intimos' nao e 'Íntimos'", () => {
     const lista = ["Íntimos"];
     expect(trocarNomeNaLista(lista, "Intimos", "Lingerie")).toBe(lista);
+  });
+});
+
+describe("erroDoNomeReservado ('Todas' e 'all' sao do filtro da vitrine e do painel)", () => {
+  it.each(["Todas", "todas", "  TODAS  ", "all", "ALL", " All "])(
+    "recusa %j",
+    (nome) => {
+      expect(erroDoNomeReservado(nome)).toMatch(
+        /já é do filtro que mostra todos os produtos da loja\. Escolha outro nome\./,
+      );
+    },
+  );
+
+  it.each(["Todas as festas", "Tudo", "Allegro", "Todás", "", "Brinquedos"])(
+    "deixa passar %j",
+    (nome) => {
+      expect(erroDoNomeReservado(nome)).toBeNull();
+    },
+  );
+});
+
+describe("categoriaExisteNaLista", () => {
+  const lista = [{ name: "Geral" }, { name: "Cama & Banho" }];
+  it("acha pela regua da vitrine (caixa e espaco nas pontas)", () => {
+    expect(categoriaExisteNaLista("geral", lista)).toBe(true);
+    expect(categoriaExisteNaLista("  Cama & Banho ", lista)).toBe(true);
+  });
+  it("nome que nao esta na lista (renomeado ou apagado) nao existe", () => {
+    expect(categoriaExisteNaLista("Brinquedo", lista)).toBe(false);
+    expect(categoriaExisteNaLista("Gerais", lista)).toBe(false);
+    expect(categoriaExisteNaLista("Geral", [])).toBe(false);
   });
 });

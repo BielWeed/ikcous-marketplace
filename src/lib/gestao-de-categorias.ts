@@ -16,6 +16,8 @@ export interface CategoriaComUso {
   /** `false` = escondida da vitrine (a coluna `categorias.ativo`). */
   readonly ativa: boolean;
   readonly produtos: number;
+  /** Dos `produtos`, quantos estão excluídos: a lista de produtos não os mostra. */
+  readonly produtosExcluidos: number;
   readonly banners: number;
   readonly regraDeDevolucao: number;
 }
@@ -80,13 +82,18 @@ function contagem(valor: unknown, oQue: string): number {
   return valor;
 }
 
-/** Lê a lista de `categorias_com_uso` pela FORMA; resposta torta é erro, nunca lista vazia. */
+/**
+ * Lê a lista de `categorias_com_uso` pela FORMA; resposta torta é erro, nunca
+ * lista vazia. A ordem que a lojista vê é a do idioma dela (pt-BR: "Íntimos"
+ * fica entre "Hobbies" e "Joias"), não a do banco: o banco ordena por byte, igual
+ * em qualquer loja, e o desempate é o id.
+ */
 export function lerCategoriasComUso(dados: unknown): CategoriaComUso[] {
   const oQue = "listar as categorias";
   if (!Array.isArray(dados)) {
     throw new Error(`Resposta inesperada do servidor ao ${oQue}.`);
   }
-  return dados.map((item) => {
+  const lista = dados.map((item) => {
     const c = objeto(item, oQue);
     if (typeof c.ativo !== "boolean") {
       throw new Error(`Resposta inesperada do servidor ao ${oQue}.`);
@@ -97,10 +104,17 @@ export function lerCategoriasComUso(dados: unknown): CategoriaComUso[] {
       slug: typeof c.slug === "string" ? c.slug : "",
       ativa: c.ativo,
       produtos: contagem(c.produtos, oQue),
+      produtosExcluidos: contagem(c.produtos_excluidos, oQue),
       banners: contagem(c.banners, oQue),
       regraDeDevolucao: contagem(c.regra_devolucao, oQue),
     };
   });
+  return lista.sort(
+    (a, b) =>
+      a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }) ||
+      a.nome.localeCompare(b.nome, "pt-BR") ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
 }
 
 /** Lê a resposta de `renomear_categoria` pela FORMA. */
@@ -146,6 +160,26 @@ export function mesmaCategoria(a: string, b: string): boolean {
 }
 
 /**
+ * "Todas" é o filtro que a vitrine mostra antes de todas as categorias (e "all"
+ * é o valor dele no painel): uma categoria com esse nome colidiria com ele e
+ * nunca poderia ser filtrada. O banco recusa ao renomear; a tela recusa também
+ * ao criar. Devolve a frase para a lojista, ou `null` quando o nome serve.
+ */
+export function erroDoNomeReservado(nome: string): string | null {
+  const chave = chaveDaCategoria(nome);
+  if (chave !== "todas" && chave !== "all") return null;
+  return `O nome “${nome.trim()}” já é do filtro que mostra todos os produtos da loja. Escolha outro nome.`;
+}
+
+/** O nome está na lista de categorias que a tela conhece (pela régua da vitrine)? */
+export function categoriaExisteNaLista(
+  nome: string,
+  lista: readonly { readonly name: string }[],
+): boolean {
+  return lista.some((c) => mesmaCategoria(c.name, nome));
+}
+
+/**
  * Troca o nome antigo pelo novo numa lista de nomes de categoria (a "sem troca
  * por gosto" da política de devolução), do mesmo jeito que o banco faz ao
  * renomear: quem é a mesma categoria pela régua da vitrine passa a ter o nome
@@ -174,14 +208,29 @@ export function categoriaEmUso(c: {
 const plural = (n: number, um: string, varios: string) =>
   `${n} ${n === 1 ? um : varios}`;
 
-/** "3 produtos, 1 banner e a regra de devolução" — ou `null` quando não há uso. */
+/**
+ * "3 produtos, 1 banner e a regra de devolução" — ou `null` quando não há uso.
+ * Produto EXCLUÍDO conta (o banco o troca e ele impede apagar), mas a lojista
+ * não o vê na lista de produtos: o texto diz quantos são, em vez de deixá-la
+ * contando "3 produtos" quando enxerga 1.
+ */
 export function descreverUso(c: {
   readonly produtos: number;
+  readonly produtosExcluidos?: number;
   readonly banners: number;
   readonly regraDeDevolucao: number;
 }): string | null {
   const partes: string[] = [];
-  if (c.produtos > 0) partes.push(plural(c.produtos, "produto", "produtos"));
+  if (c.produtos > 0) {
+    const excluidos = c.produtosExcluidos ?? 0;
+    const sobre =
+      excluidos === 0
+        ? ""
+        : excluidos === 1
+          ? " (1 excluído, que não aparece na lista)"
+          : ` (${excluidos} excluídos, que não aparecem na lista)`;
+    partes.push(`${plural(c.produtos, "produto", "produtos")}${sobre}`);
+  }
   if (c.banners > 0) partes.push(plural(c.banners, "banner", "banners"));
   if (c.regraDeDevolucao > 0) partes.push("a regra de devolução");
   if (partes.length === 0) return null;
