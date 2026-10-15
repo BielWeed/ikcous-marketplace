@@ -27,14 +27,17 @@
  *   O componente é quem liga o rótulo à cor e ao ícone.
  */
 
-/** O que já chegou do banco sobre um cupom — só os dois campos que decidem
- * o rótulo importam aqui. */
+/** O que já chegou do banco sobre um cupom — só os campos que decidem o
+ * rótulo importam aqui. */
 export interface CupomParaStatus {
   active: boolean;
   validUntil?: string | null;
+  /** Teto de usos. Ausente, nulo ou 0 = sem limite (como no checkout). */
+  usageLimit?: number | null;
+  usageCount?: number | null;
 }
 
-export type RotuloDeCupom = "Ativo" | "Inativo" | "Expirado";
+export type RotuloDeCupom = "Ativo" | "Inativo" | "Expirado" | "Esgotado";
 
 /**
  * Um cupom sem `validUntil` nunca expira. Com `validUntil`, expira no
@@ -52,9 +55,26 @@ export function cupomEstaExpirado(
 }
 
 /**
+ * Um cupom com teto de usos esgota quando os usos chegam ao teto. Sem teto
+ * (ausente, nulo ou 0) nunca esgota — a mesma regra do checkout
+ * (`usage_limit IS NOT NULL AND usage_limit > 0 AND usage_count >= usage_limit`,
+ * `supabase/migrations/20261203000000_cupons_desligados_nao_dao_desconto.sql`):
+ * o servidor já recusa o cupom nesse ponto ("Cupom atingiu o limite de uso").
+ */
+export function cupomEstaEsgotado(
+  usageLimit: number | null | undefined,
+  usageCount: number | null | undefined,
+): boolean {
+  if (usageLimit == null || !(usageLimit > 0)) return false;
+  return (usageCount ?? 0) >= usageLimit;
+}
+
+/**
  * O rótulo que a tela mostra. A chavinha manual (`active`) vence qualquer
  * outra leitura: um cupom desligado é "Inativo" mesmo se também estiver
- * vencido. Só um cupom LIGADO e vencido vira "Expirado".
+ * vencido ou esgotado. Um cupom LIGADO e vencido vira "Expirado" (a data é a
+ * primeira checagem do servidor); LIGADO, no prazo e com os usos no teto vira
+ * "Esgotado".
  */
 export function rotuloDoCupom(
   cupom: CupomParaStatus,
@@ -62,5 +82,6 @@ export function rotuloDoCupom(
 ): RotuloDeCupom {
   if (!cupom.active) return "Inativo";
   if (cupomEstaExpirado(cupom.validUntil, agora)) return "Expirado";
+  if (cupomEstaEsgotado(cupom.usageLimit, cupom.usageCount)) return "Esgotado";
   return "Ativo";
 }

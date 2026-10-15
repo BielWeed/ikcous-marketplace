@@ -71,6 +71,8 @@ import {
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
 } from "@/utils/motivo-do-bloqueio-do-produto";
+import { precoProprioDaVariacao } from "@/utils/preco-da-variacao";
+import { avisarProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import {
   gruposDeVariacao,
   temGrupoDemais,
@@ -134,6 +136,13 @@ const MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA =
  * do meio (código colado ou digitado com separador visual). */
 function normalizarCodigoBarras(valor: string): string {
   return valor.trim().replace(/\s+/g, "");
+}
+
+/** O campo "Preço diferente nesta variação" está com um valor, e esse valor é
+ * zero ("0,00", "0.00", "0"). Vazio NÃO conta: vazio é "use o preço do
+ * produto". Olha só os algarismos, sem interpretar vírgula ou ponto. */
+function precoDaVariacaoEhZero(texto: string): boolean {
+  return /\d/.test(texto) && !/[1-9]/.test(texto);
 }
 
 /** Percentual com 1 casa, em pt-BR ("33,3%", nunca "33.3%") — a mesma grafia
@@ -1746,9 +1755,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const sanitizedVarPrice = cleanNumberString(variantFormData.priceOverride);
     const sanitizedVarStock = variantFormData.stockIncrement.replace(/\D/g, "");
 
-    const parsedPriceOverride = sanitizedVarPrice
-      ? Number.parseFloat(sanitizedVarPrice)
-      : undefined;
+    // Zero não é preço próprio (a máscara de moeda nunca esvazia: o campo
+    // apagado chega como "0.00" e a loja cobraria R$ 0,00). Só a variação que
+    // já estava salva com zero mantém o zero. Ver `preco-da-variacao.ts`.
+    const parsedPriceOverride = precoProprioDaVariacao(
+      sanitizedVarPrice,
+      editingVariant?.priceOverride === 0,
+    );
     const sanitizedVarSku = variantFormData.sku
       ? variantFormData.sku.trim().toUpperCase().replace(/\s+/g, "-")
       : undefined;
@@ -1788,10 +1801,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       sku: sanitizedVarSku || undefined,
       codigoBarras: sanitizedVarCodigoBarras || undefined,
       stockIncrement: Number.parseInt(sanitizedVarStock) || 0,
-      priceOverride:
-        parsedPriceOverride !== undefined
-          ? Math.max(0, parsedPriceOverride)
-          : undefined,
+      priceOverride: parsedPriceOverride,
       active: variantFormData.active,
       imageUrl: variantFormData.imageUrl || undefined,
     };
@@ -2353,6 +2363,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           sold: 0,
           variants: variantsWithSanitizedSku,
         });
+        // A lista de produtos lembra busca, categoria e página: avisa que há um
+        // produto novo para ela abrir na página 1, sem filtro, e mostrá-lo.
+        if (criado) avisarProdutoNovoCadastrado();
 
         // O produto foi criado mas a grade NÃO gravou (o hook já avisou por
         // toast). Dar "Salvo" e sair para a lista esconderia isso -- e ficar
@@ -3074,6 +3087,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             id="variant-price"
                             name="variant-price"
                             mask="currency"
+                            zeroVazio
                             value={variantFormData.priceOverride}
                             onFlush={(val) =>
                               setVariantFormData((p) => ({
@@ -3087,7 +3101,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         </div>
                         <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                           Deixe em branco para usar o preço padrão.
+                          {editingVariant?.priceOverride === 0 &&
+                            " Esta variação está salva a R$ 0,00 (de graça na loja): apague o campo para voltar ao preço padrão."}
                         </span>
+                        {/* O 0 é gravado como preço próprio e vale no lugar do
+                            preço do produto: a variação sai de graça. Só
+                            avisa; não bloqueia nem muda o valor gravado. */}
+                        {precoDaVariacaoEhZero(
+                          variantFormData.priceOverride,
+                        ) && (
+                          <span
+                            data-testid="aviso-variacao-de-graca"
+                            className="ml-1 mt-1 block text-[11px] font-bold leading-tight text-amber-400"
+                          >
+                            Com R$ 0,00 esta variação será vendida de graça.
+                            Para usar o preço do produto, deixe o campo vazio.
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -5248,10 +5278,22 @@ const VariantItem = React.memo(function VariantItem({
                 {variant.stockIncrement} UND
               </span>
             </span>
-            {variant.priceOverride && (
-              <span className="flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-emerald-500">
+            {/* `!= null`, não verdade: o 0 é um preço próprio (brinde) e
+                `{0 && ...}` desenharia só o algarismo solto. */}
+            {variant.priceOverride != null && (
+              <span
+                data-testid="preco-proprio-da-variacao"
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md border px-2 py-1",
+                  variant.priceOverride === 0
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                    : "border-emerald-500/20 bg-emerald-500/10 text-emerald-500",
+                )}
+              >
                 <DollarSign className="size-3" />
-                {formatCurrency(Number(variant.priceOverride))}
+                {variant.priceOverride === 0
+                  ? "R$ 0,00 — de graça na loja"
+                  : formatCurrency(Number(variant.priceOverride))}
               </span>
             )}
           </div>

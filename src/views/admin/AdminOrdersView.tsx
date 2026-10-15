@@ -576,7 +576,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         subValue: "PIX ou cartão ainda não pago",
       },
       {
-        label: "Em trânsito",
+        // A contagem é `status = 'shipping'`, que na retirada na loja se lê
+        // "Pronto para retirar" (`rotuloDoStatus`): o cartão diz as duas coisas.
+        // Até ~22 caracteres: o rótulo do cartão é `line-clamp-2` e, a 360 px,
+        // um texto maior perdia o final cortado pelo clamp.
+        label: "A caminho ou retirada",
         value: formatarInteiro(aCaminho),
         icon: Truck,
         accent: "text-indigo-500",

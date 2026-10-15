@@ -1568,6 +1568,16 @@ const AppContent = () => {
     handleNavigate("orders");
   }, [handleNavigate]);
 
+  // "Retomar pagamento" a partir do cartão do pedido no Perfil — a mesma
+  // porta que o detalhe do pedido usa (`retomarPedidoId`, Frente 10).
+  const handleRetomarPagamentoDoPerfil = useCallback(
+    (pedidoId: string) =>
+      handleNavigate("checkout", undefined, false, {
+        retomarPedidoId: pedidoId,
+      }),
+    [handleNavigate],
+  );
+
   // ==============================
   // PWA Reload Reason Consumption — laudo #2 (P-1): o motivo descreve o que
   // REALMENTE aconteceu (update, recuperação de erro, crash, sentinela);
@@ -2851,6 +2861,7 @@ const AppContent = () => {
                       key: user?.id ? `profile-${user.id}` : "profile-guest",
                       onNavigate: handleNavigate,
                       isActive: currentView === "profile",
+                      onRetomarPagamento: handleRetomarPagamentoDoPerfil,
                     }}
                   />
                 </DeferredTabContent>
@@ -2970,6 +2981,7 @@ const AppContent = () => {
                         key: user?.id ? `profile-${user.id}` : "profile-guest",
                         onNavigate: handleNavigate,
                         isActive: currentView === "profile",
+                        onRetomarPagamento: handleRetomarPagamentoDoPerfil,
                       }}
                     />
                   </DeferredTabContent>

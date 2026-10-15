@@ -168,6 +168,18 @@ const textoDe = (testid: string): string | null => {
   return el ? (el.textContent?.replace(/\s+/g, " ").trim() ?? "") : null;
 };
 
+/** O preço próprio que cada linha de variação cadastrada mostra ("80,00"):
+ * só as linhas que têm o selo de preço, na ordem da lista. */
+const precosProprioDasLinhas = (): string[] =>
+  [...document.querySelectorAll('[data-testid="variante-cadastrada"]')]
+    .map(
+      (el) =>
+        (el.closest(".group")?.textContent ?? "").match(
+          /R\$\s(\d+,\d{2})/,
+        )?.[1],
+    )
+    .filter((preco): preco is string => !!preco);
+
 const botaoPublicar = () => botaoPorTexto("Publicar") as HTMLButtonElement;
 
 describe("AdminProductFormView — o preço da grade vira o Preço de Venda", () => {
@@ -272,10 +284,7 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       expect(valorDoCampo("product-sale-price")).toBe("60,00");
       expect(textoDe("preco-veio-da-grade")).toContain("veio da grade");
       // O que a lojista vê na lista: nenhuma variação com preço próprio.
-      // `formatCurrency` põe um espaço inquebrável depois do "R$": normaliza.
-      expect(
-        (document.body.textContent ?? "").replace(/\s+/g, " "),
-      ).not.toContain("R$ 60,00");
+      expect(precosProprioDasLinhas()).toEqual([]);
     });
 
     it("(1) o Publicar já fica liberado (o preço não é pedido de novo) e a gravação leva o preço do produto e variações Auto", async () => {
@@ -329,12 +338,8 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
 
       expect(valorDoCampo("product-sale-price")).toBe("60,00");
       expect(textoDe("preco-veio-da-grade")).toContain("veio da grade");
-      const telaNormalizada = (document.body.textContent ?? "").replace(
-        /\s+/g,
-        " ",
-      );
-      expect(telaNormalizada).toContain("R$ 80,00");
-      expect(telaNormalizada).not.toContain("R$ 60,00");
+      // Só a mais cara mostra preço próprio; as de R$ 60,00 viram Auto.
+      expect(precosProprioDasLinhas()).toEqual(["80,00"]);
 
       await act(async () => {
         botaoPublicar().click();
@@ -374,9 +379,7 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       expect(botaoPublicar().disabled).toBe(true);
       expect(textoDe("motivo-do-bloqueio")).toContain("preço de venda");
       // A linha que tinha preço o mantém.
-      expect((document.body.textContent ?? "").replace(/\s+/g, " ")).toContain(
-        "R$ 70,00",
-      );
+      expect(precosProprioDasLinhas()).toEqual(["70,00"]);
     });
 
     it("preço ZERO na grade não vira Preço de Venda", async () => {

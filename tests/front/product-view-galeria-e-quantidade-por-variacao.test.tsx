@@ -211,14 +211,15 @@ describe("ProductView — galeria e quantidade acompanham a variação", () => {
       // ...e os controles para ver as outras fotos NÃO somem.
       expect(botaoPorRotulo(hospedeiro, "Próxima foto")).not.toBeNull();
       expect(botaoPorRotulo(hospedeiro, "Foto anterior")).not.toBeNull();
-      expect(botaoPorRotulo(hospedeiro, "Foto 2 de 3")).not.toBeNull();
+      // A foto da cor entra no fim da faixa (o produto não a tem): 4 fotos.
+      expect(botaoPorRotulo(hospedeiro, "Foto 2 de 4")).not.toBeNull();
     });
 
     it("com a cor escolhida, a pessoa chega às outras fotos pelas bolinhas e pelas setas, sem desfazer a cor", async () => {
       await montar(produtoComCorComFoto());
       await tocar(botaoDaOpcao(hospedeiro, "Azul"));
 
-      await tocar(botaoPorRotulo(hospedeiro, "Foto 2 de 3"));
+      await tocar(botaoPorRotulo(hospedeiro, "Foto 2 de 4"));
       expect(fotoPrincipalMostra(hospedeiro, "foto-b.jpg")).toBe(true);
 
       await tocar(botaoPorRotulo(hospedeiro, "Próxima foto"));
@@ -244,7 +245,7 @@ describe("ProductView — galeria e quantidade acompanham a variação", () => {
         }),
       );
       await tocar(botaoDaOpcao(hospedeiro, "Azul"));
-      await tocar(botaoPorRotulo(hospedeiro, "Foto 2 de 3"));
+      await tocar(botaoPorRotulo(hospedeiro, "Foto 2 de 4"));
       expect(fotoPrincipalMostra(hospedeiro, "foto-b.jpg")).toBe(true);
 
       await tocar(botaoDaOpcao(hospedeiro, "Verde"));
@@ -298,27 +299,28 @@ describe("ProductView — galeria e quantidade acompanham a variação", () => {
         expect(fotoPrincipalMostra(hospedeiro, "foto-b.jpg")).toBe(true);
       });
 
-      it("foto da variação FORA da galeria: nenhuma bolinha acende, 'Próxima' vai para a 1ª e 'Anterior' para a última", async () => {
+      it("foto da variação FORA da galeria: entra como a última foto, acende a bolinha dela e 'Próxima' volta para a 1ª", async () => {
         await montar(produtoComQuatroFotos());
 
         await tocar(botaoDaOpcao(hospedeiro, "Azul"));
         expect(fotoPrincipalMostra(hospedeiro, "fora-da-galeria.jpg")).toBe(
           true,
         );
-        expect(acesos("Foto ")).toEqual([]);
+        // A faixa passa a ter 5 fotos (4 do produto + a da cor).
+        expect(acesos("Foto ")).toEqual(["Foto 5 de 5"]);
 
         await tocar(botaoPorRotulo(hospedeiro, "Próxima foto"));
-        expect(acesos("Foto ")).toEqual(["Foto 1 de 4"]);
+        expect(acesos("Foto ")).toEqual(["Foto 1 de 5"]);
 
         // Volta a destacar a foto da Azul (passando por outra variação) e usa
-        // "Anterior": sem foto ativa na galeria, vai para a ÚLTIMA.
+        // "Anterior": segue a ordem da faixa, a partir da foto da Azul.
         await tocar(botaoDaOpcao(hospedeiro, "Verde"));
         await tocar(botaoDaOpcao(hospedeiro, "Azul"));
         expect(fotoPrincipalMostra(hospedeiro, "fora-da-galeria.jpg")).toBe(
           true,
         );
         await tocar(botaoPorRotulo(hospedeiro, "Foto anterior"));
-        expect(acesos("Foto ")).toEqual(["Foto 4 de 4"]);
+        expect(acesos("Foto ")).toEqual(["Foto 4 de 5"]);
       });
 
       it("ida e volta entre variações destaca sempre a foto da variação escolhida", async () => {
@@ -353,10 +355,13 @@ describe("ProductView — galeria e quantidade acompanham a variação", () => {
     });
 
     it("produto com uma foto só continua sem setas nem bolinhas", async () => {
+      // A cor aponta para a MESMA foto do produto: continua uma foto só. (Uma
+      // cor com foto que o produto não tem ganha uma foto extra -- coberto em
+      // product-view-galeria-desliza-e-variacao-nao-esconde-as-fotos.)
       await montar(
         umProduto({
           images: [FOTO_A],
-          variants: [variacaoDeCor("v-azul", "Azul", FOTO_AZUL)],
+          variants: [variacaoDeCor("v-azul", "Azul", FOTO_A)],
         }),
       );
       await tocar(botaoDaOpcao(hospedeiro, "Azul"));

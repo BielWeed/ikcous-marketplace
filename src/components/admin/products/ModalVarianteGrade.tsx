@@ -14,7 +14,10 @@ import {
   skusDaGrade,
 } from "@/utils/grade-de-combinacoes";
 import { preencherComSegurado } from "@/utils/grade-valor-segurado";
-import { limparNumero, resolverPrecoDaGrade } from "@/utils/preco-da-grade";
+import {
+  precoPositivoOuVazio,
+  resolverPrecoDaGrade,
+} from "@/utils/preco-da-grade";
 import {
   SEPARADOR_DE_ATRIBUTOS,
   dividirEmAtributos,
@@ -311,7 +314,8 @@ export function ModalVarianteGrade({
         // Aplicar é a lojista decidindo o estoque de TODAS as linhas: o
         // segurado de depois não passa por cima.
         estoqueEditado: linha.estoqueEditado || estoqueAplicado !== "",
-        preco: limparNumero(aplicarPreco) || linha.preco,
+        // Só preço maior que zero: "0.00" é texto não vazio e zerava as linhas.
+        preco: precoPositivoOuVazio(aplicarPreco) || linha.preco,
       })),
     );
     // O que foi aplicado deixa de ser "segurado": sem isto o mesmo valor voltava

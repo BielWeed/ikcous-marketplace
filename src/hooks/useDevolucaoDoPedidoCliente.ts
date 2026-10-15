@@ -5,11 +5,27 @@ import type { LinhaDevolucaoDoCliente } from "@/lib/texto-estorno-do-cliente";
 
 const INTERVALO_DE_RECARGA_MS = 15_000;
 const ESTADOS_EM_CURSO = ["solicitado", "em_processamento"] as const;
+// Enquanto a PRIMEIRA leitura não deu certo, tenta de novo (rede que oscilou)
+// antes de desistir: a tela precisa de uma resposta honesta, e "ainda não sei"
+// não pode durar para sempre nem virar "fale com a loja" só porque a primeira
+// tentativa caiu.
+const TENTATIVAS_ATE_DESISTIR = 3;
+const ATRASO_DA_NOVA_TENTATIVA_MS = 4_000;
 
 interface DevolucaoDoPedidoCliente {
   linhas: LinhaDevolucaoDoCliente[];
   carregando: boolean;
   erro: boolean;
+  /**
+   * A leitura deste pedido já deu certo ao menos uma vez. Antes disso,
+   * `linhas: []` NÃO quer dizer "sem devolução" — quer dizer "ainda não sei".
+   */
+  lido: boolean;
+  /**
+   * Todas as tentativas da primeira leitura falharam: "não sei" virou "não
+   * consegui saber". Só vale enquanto `lido` for falso.
+   */
+  desistiu: boolean;
 }
 
 /**
@@ -37,6 +53,16 @@ export function useDevolucaoDoPedidoCliente(
   const [linhas, setLinhas] = useState<LinhaDevolucaoDoCliente[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(false);
+  // Qual pedido já teve uma leitura bem-sucedida (guarda o id, não um
+  // booleano: trocar de pedido volta a "ainda não sei").
+  const [lidoDoPedido, setLidoDoPedido] = useState<string | null>(null);
+  const [desistiu, setDesistiu] = useState(false);
+  // A nova tentativa chama sempre a versão mais recente de `carregar` (o
+  // `setTimeout` guardaria a do render em que foi agendado).
+  const carregarRef = useRef<() => Promise<void>>(async () => {});
+  const lidoRef = useRef<string | null>(null);
+  const falhasRef = useRef(0);
+  const novaTentativaRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ativoRef = useRef(true);
 
   // Rodada da leitura: a resposta do orderId antigo que chega depois da nova
@@ -48,6 +74,21 @@ export function useDevolucaoDoPedidoCliente(
     const rodada = ++rodadaRef.current;
     const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     setCarregando(true);
+    // Falha: mostra o erro; se ainda não houve leitura boa deste pedido,
+    // tenta de novo algumas vezes e só então desiste. Depois de uma leitura
+    // boa, a falha de uma volta do relógio não apaga o que já se sabe.
+    const aoFalhar = () => {
+      setErro(true);
+      if (lidoRef.current === orderId) return;
+      falhasRef.current += 1;
+      if (falhasRef.current >= TENTATIVAS_ATE_DESISTIR) {
+        setDesistiu(true);
+        return;
+      }
+      novaTentativaRef.current = setTimeout(() => {
+        void carregarRef.current();
+      }, ATRASO_DA_NOVA_TENTATIVA_MS);
+    };
     try {
       const { data, error } = await supabase
         .from("order_refunds")
@@ -58,23 +99,34 @@ export function useDevolucaoDoPedidoCliente(
       if (!valeAinda()) return;
 
       if (error) {
-        setErro(true);
+        aoFalhar();
         return;
       }
       setLinhas((data ?? []) as unknown as LinhaDevolucaoDoCliente[]);
       setErro(false);
+      lidoRef.current = orderId;
+      falhasRef.current = 0;
+      setLidoDoPedido(orderId);
+      setDesistiu(false);
     } catch {
-      if (valeAinda()) setErro(true);
+      if (valeAinda()) aoFalhar();
     } finally {
       if (valeAinda()) setCarregando(false);
     }
   }, [orderId, habilitado]);
 
   useEffect(() => {
+    carregarRef.current = carregar;
+  }, [carregar]);
+
+  useEffect(() => {
     ativoRef.current = true;
+    falhasRef.current = 0;
+    setDesistiu(false);
     if (habilitado) void carregar();
     return () => {
       ativoRef.current = false;
+      if (novaTentativaRef.current) clearTimeout(novaTentativaRef.current);
     };
   }, [habilitado, carregar]);
 
@@ -93,5 +145,6 @@ export function useDevolucaoDoPedidoCliente(
     return () => clearInterval(id);
   }, [habilitado, temLinhaAtiva, carregar]);
 
-  return { linhas, carregando, erro };
+  const lido = lidoDoPedido === orderId;
+  return { linhas, carregando, erro, lido, desistiu: !lido && desistiu };
 }

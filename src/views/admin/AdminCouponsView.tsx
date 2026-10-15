@@ -21,11 +21,7 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
-import {
-  type RotuloDeCupom,
-  cupomEstaExpirado,
-  rotuloDoCupom,
-} from "@/utils/status-do-cupom";
+import { type RotuloDeCupom, rotuloDoCupom } from "@/utils/status-do-cupom";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
   Calendar,
@@ -70,11 +66,13 @@ const classesDoSeloPorRotulo: Record<RotuloDeCupom, string> = {
   Ativo: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
   Expirado: "border-amber-500/20 bg-amber-500/10 text-amber-400",
   Inativo: "border-zinc-500/20 bg-zinc-500/10 text-zinc-500",
+  Esgotado: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
 };
 const classesDoPontoPorRotulo: Record<RotuloDeCupom, string> = {
   Ativo: "animate-pulse bg-emerald-400",
   Expirado: "bg-amber-400",
   Inativo: "bg-zinc-600",
+  Esgotado: "bg-zinc-500",
 };
 
 interface AdminCouponsViewProps {
@@ -186,9 +184,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   // Dynamic stats computation
   const totalCoupons = coupons.length;
   // Achado do lote 1: cupom vencido continuava contado aqui, mesmo o
-  // servidor já recusando ele no checkout (`valid_until > now()`).
+  // servidor já recusando ele no checkout (`valid_until > now()`). O mesmo
+  // vale para o cupom ESGOTADO (usos no teto): "Disponíveis para uso" é o
+  // que o checkout ainda aceita — a mesma leitura do selo do card.
   const activeCoupons = coupons.filter(
-    (c) => c.active && !cupomEstaExpirado(c.validUntil),
+    (c) => rotuloDoCupom(c) === "Ativo",
   ).length;
   const totalUsage = coupons.reduce((sum, c) => sum + (c.usageCount || 0), 0);
   const averageDiscount = (() => {
@@ -791,7 +791,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                 </div>
                 <p className="text-xs text-zinc-400">
                   Configure o valor mínimo de compra para ativação e o limite
-                  total de usos permitidos (para evitar prejuízos).
+                  total de usos permitidos (para evitar prejuízos). Ao chegar no
+                  limite, o selo muda para "Esgotado" e o cupom deixa de ser
+                  aceito no checkout.
                 </p>
               </div>
 
