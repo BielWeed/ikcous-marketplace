@@ -232,7 +232,12 @@ describe("usePainelInicio — o Hoje de ontem não fica na tela", () => {
 
   it("desmontar tira os ouvintes e o temporizador (nada busca depois)", async () => {
     await montar();
+    // Com a tela aberta há um temporizador armado para a meia-noite.
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
     act(() => raiz.unmount());
+    // E ao desmontar não sobra nenhum: sem o `clearTimeout`, ele continuaria
+    // vivo (e, ao disparar, mexeria em estado de um componente que já saiu).
+    expect(vi.getTimerCount()).toBe(0);
     raiz = createRoot(hospedeiro);
     await irPara("2026-10-14T03:00:10Z");
     voltarAVer("visibilitychange");
