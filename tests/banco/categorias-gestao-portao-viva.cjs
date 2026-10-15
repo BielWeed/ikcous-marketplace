@@ -190,7 +190,7 @@ const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
 prova(
   "HASH: o md5 literal da 38a e' o do corpo que o arquivo carrega, e o banco mede o mesmo",
   async () => {
-    assert.equal(H.renomear, "01a0d0acddb57f9ca88f7131336357c9");
+    assert.equal(H.renomear, "09d533dd41f1528f4462af73222773c6");
     assert.equal(H.apagar, "942449150bb5e6fadfa7cf003f3fa49e");
     assert.equal(H.listar, "9e92ace839e626ff293e79b407e5768f");
     for (const h of Object.values(H))

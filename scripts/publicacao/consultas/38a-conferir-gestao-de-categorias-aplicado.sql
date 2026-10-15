@@ -68,7 +68,7 @@ WITH portas AS (
                      WHERE n.nspname = 'public') > 0 THEN '>0' ELSE '0' END
   UNION ALL
   SELECT 'renomear_categoria: corpo e o da 20261237000000 (md5)',
-         '01a0d0acddb57f9ca88f7131336357c9',
+         '09d533dd41f1528f4462af73222773c6',
          COALESCE((SELECT x.m FROM portas x WHERE x.proname = 'renomear_categoria'), 'AUSENTE')
   UNION ALL
   SELECT 'apagar_categoria_vazia: corpo e o da 20261237000000 (md5)',

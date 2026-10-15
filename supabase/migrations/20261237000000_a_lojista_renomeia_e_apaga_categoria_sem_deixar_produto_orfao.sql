@@ -21,7 +21,8 @@
 --   * public.renomear_categoria(p_id uuid, p_novo_nome text) -> jsonb
 --       só o administrador de AGORA. Recusa nome vazio, grande demais, só de símbolos, "Todas"/"all" (o filtro da
 --       vitrine) ou igual (sem diferenciar maiúscula, acento nem pontuação — a mesma regra do slug) ao de OUTRA
---       categoria. Troca o nome (em TODOS os produtos da categoria, também o pausado e o excluído) nos quatro
+--       categoria, ou quando o nome novo já é item da lista de devolução ou categoria de produto de fora (ver 2).
+--       Troca o nome (em TODOS os produtos da categoria, também o pausado e o excluído) nos quatro
 --       lugares e devolve quantos de cada foram trocados: {id, nome_antigo, nome, slug, mudou, produtos, banners,
 --       regra_devolucao}. Se qualquer passo falhar, NADA muda (uma função = uma transação).
 --   * public.apagar_categoria_vazia(p_id uuid) -> jsonb
@@ -54,9 +55,13 @@
 -- vira " Jogos", "Brinquedo " vira "Jogos ". A vitrine continua agrupando (tira o espaço dos dois lados) e, para a
 -- regra de devolução, "Brinquedo" e " Brinquedo" continuam textos diferentes, antes e depois: o resultado de
 -- "aceita troca?" de cada produto é o mesmo de antes (tests/banco/categorias-gestao-viva.cjs prova numa matriz).
--- Limite: se o nome NOVO já estiver escrito na lista de devolução (item antigo, sem categoria própria), os produtos
--- da categoria trocada passam a casar com ele: é o que a lojista escreveu na lista, e a recusa de nome repetido só
--- olha a tabela de categorias.
+-- Por isso "renomear nunca muda o aceita-troca de nenhum produto" é verdade só porque DOIS casos são RECUSADOS (23505,
+-- com a frase para a lojista, sem escrever nada): (1) o nome NOVO já é um item solto da lista de devolução (fora os
+-- itens que são esta categoria): os produtos desta categoria passariam a casar com ele e deixariam de aceitar troca;
+-- (2) o nome NOVO já é a categoria de produtos que NÃO são desta categoria (órfãos, sem linha em categorias, também
+-- pausados e excluídos): ao se misturarem, os de lá casariam com o item trocado da lista. A comparação é pela chave da
+-- vitrine (caixa e espaço nas pontas), que engloba a da regra de devolução. Renomear só a caixa ("brinquedo" ->
+-- "Brinquedo") não cai em nenhum dos dois: o que casa com o nome novo é a própria categoria.
 --
 -- Exceção deliberada: se existirem DUAS linhas em categorias que só diferem por maiúscula/espaço (o slug único
 -- impede isso para quem cria pela tela, mas dado antigo pode ter), renomear RECUSA (a troca não saberia de qual das
@@ -508,6 +513,38 @@ BEGIN
   IF FOUND THEN
     RAISE EXCEPTION 'Existe outra categoria com quase o mesmo nome ("%"). Mude os produtos de uma para a outra e apague a repetida antes de renomear.', v_existente
       USING ERRCODE = '55006';
+  END IF;
+
+  -- O nome NOVO não pode já ser o de outra coisa que a regra de devolução enxerga, senão os produtos desta categoria
+  -- passariam a casar com a lista (ou os de lá com eles) sem a lojista ver. Compara pela chave da vitrine, que também
+  -- cobre a comparação exata da regra de devolução (texto igual sem diferenciar caixa é igual também pela chave).
+  -- A lista é lida já travada (a mesma trava que a troca do item usa mais abaixo).
+  PERFORM 1 FROM public.politica_devolucao d WHERE d.id = 1 FOR UPDATE;
+
+  -- (1) um item solto da lista de devolução (fora os que SÃO esta categoria, que vão ser trocados)
+  SELECT e.item INTO v_existente
+    FROM public.politica_devolucao d
+   CROSS JOIN LATERAL unnest(d.categorias_sem_troca) AS e(item)
+   WHERE d.id = 1
+     AND NOT public.categoria__mesma(e.item, v_antigo, false)
+     AND public.categoria__chave(e.item) = public.categoria__chave(v_novo)
+   LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'O nome "%" já está na lista de produtos que não aceitam troca da política de devolução. Renomear faria os produtos desta categoria deixarem de aceitar troca. Tire "%" dessa lista ou escolha outro nome.', v_novo, v_existente
+      USING ERRCODE = '23505';
+  END IF;
+
+  -- (2) produtos que NÃO são desta categoria mas já têm o nome novo (órfãos: sem linha em categorias), pausados e
+  -- excluídos também
+  SELECT p.categoria INTO v_existente
+    FROM public.produtos p
+   WHERE NOT public.categoria__mesma(p.categoria, v_antigo, false)
+     AND public.categoria__chave(p.categoria) = public.categoria__chave(v_novo)
+   ORDER BY p.categoria
+   LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'Já existem produtos com a categoria "%" que não são desta categoria. Renomear os misturaria e poderia mudar a regra de troca deles. Mude esses produtos de categoria ou escolha outro nome.', v_existente
+      USING ERRCODE = '23505';
   END IF;
 
   -- (a) a própria linha

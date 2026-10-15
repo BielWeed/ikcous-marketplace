@@ -1815,6 +1815,14 @@ const VERIFICACOES = {
           },
           { texto: "UPDATE public.categorias SET nome = v_novo", vezes: 1 },
           { texto: "UPDATE public.produtos", vezes: 1 },
+          {
+            texto: "já está na lista de produtos que não aceitam troca",
+            vezes: 1,
+          },
+          {
+            texto: "que não são desta categoria. Renomear os misturaria",
+            vezes: 1,
+          },
           { texto: "UPDATE public.banners", vezes: 1 },
           { texto: "UPDATE public.politica_devolucao", vezes: 1 },
         ],

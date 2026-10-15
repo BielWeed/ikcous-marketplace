@@ -427,16 +427,16 @@ prova(
 );
 
 prova(
-  "RENOMEAR: a lista da politica nao ganha repetido (o nome novo ja la escrito) e guarda a ordem",
+  "RENOMEAR: a lista da politica nao ganha repetido (dois itens da categoria viram o mesmo texto) e guarda a ordem",
   () =>
     emTransacao(async () => {
       await semear({
         categorias: [[CAT.brinq, "brinquedo", "brinquedo"]],
-        lista: ["Calçados", "BRINQUEDO", "Jogos", "Brinquedos 2", "brinquedo "],
+        lista: ["Calçados", "BRINQUEDO", "Jogos", "brinquedo", "brinquedo "],
       });
       const r = await renomear(CAT.brinq, "Brinquedos 2");
       assert.ok(r.linhas, r.erro);
-      assert.equal(r.linhas[0].r.regra_devolucao, 2);
+      assert.equal(r.linhas[0].r.regra_devolucao, 3);
       // "brinquedo " (com espaco) tambem e' a categoria, mas guarda o espaco: texto diferente de "Brinquedos 2", fica
       assert.deepEqual(await listaDaPolitica(), [
         "Calçados",
@@ -624,6 +624,131 @@ async function casoDaListaPreservada() {
 prova(
   "RENOMEAR mexe SO nos itens da lista que sao a categoria: os repetidos e os outros ficam como estao",
   () => emTransacao(casoDaListaPreservada),
+);
+
+/**
+ * "Renomear nunca muda o aceita-troca de nenhum produto" so vale se o nome NOVO nao for ja o de outra coisa que a regra
+ * de devolucao enxerga: (X1) um item solto da lista ("Jogos") ou (X2) a categoria de produtos que NAO sao desta
+ * categoria (orfaos "Jogos"). Nos dois, juntar os produtos ao nome novo os faria casar com a lista (ou os da lista com
+ * eles) sem a lojista ver. O banco RECUSA, com 23505 e uma frase para ela, sem escrever nada. Compara pela chave da
+ * vitrine (minuscula e sem espaco nas pontas), que engloba a comparacao exata da regra de devolucao.
+ */
+async function casoDaRecusaPorItemDaLista() {
+  await emSavepoint(async () => {
+    // X1: o nome novo ja e um item da lista (e o item a trocar tambem esta la)
+    for (const itemSolto of ["Jogos", "jogos", " JOGOS "])
+      await emSavepoint(async () => {
+        await semear({
+          categorias: [[CAT.brinq, "Brinquedo", "brinquedo"]],
+          produtos: [["P1", "Brinquedo"]],
+          lista: ["Brinquedo", itemSolto],
+        });
+        const antes = await retrato();
+        const r = await renomear(CAT.brinq, "Jogos");
+        assert.equal(r.codigo, "23505", `item "${itemSolto}": ${r.erro}`);
+        assert.match(
+          r.erro,
+          /já está na lista de produtos que não aceitam troca/,
+          "a frase diz o que fazer",
+        );
+        assert.deepEqual(await retrato(), antes, "recusou sem escrever");
+      });
+  });
+}
+
+async function casoDaRecusaPorProdutoDeFora() {
+  await emSavepoint(async () => {
+    // X2: o nome novo ja e a categoria de produtos que NAO sao desta (orfaos, em qualquer caixa/espaco)
+    for (const orfao of ["Jogos", "JOGOS", " jogos", "Jogos "])
+      await emSavepoint(async () => {
+        await semear({
+          categorias: [[CAT.brinq, "Brinquedo", "brinquedo"]],
+          produtos: [
+            ["P1", "Brinquedo"],
+            ["P2 orfao", orfao],
+          ],
+          lista: ["Brinquedo"],
+        });
+        const antes = await retrato();
+        const r = await renomear(CAT.brinq, "Jogos");
+        assert.equal(r.codigo, "23505", `orfao "${orfao}": ${r.erro}`);
+        assert.match(
+          r.erro,
+          /já existem produtos com a categoria "[^"]+" que não são desta categoria/i,
+        );
+        assert.deepEqual(await retrato(), antes, "recusou sem escrever");
+      });
+    // o orfao tambem pausado e excluido impede (o banco os enxerga a todos)
+    await emSavepoint(async () => {
+      await semear({
+        categorias: [[CAT.brinq, "Brinquedo", "brinquedo"]],
+        produtos: [
+          ["P1", "Brinquedo"],
+          ["P2 orfao excluido", "Jogos", false, true],
+        ],
+        lista: ["Brinquedo"],
+      });
+      const antesEx = await retrato();
+      assert.equal((await renomear(CAT.brinq, "Jogos")).codigo, "23505");
+      assert.deepEqual(await retrato(), antesEx);
+    });
+  });
+}
+
+async function casoDoNomeNovoLivre() {
+  await emSavepoint(async () => {
+    // CONTROLE: nome novo livre (so parecido nao conta) continua funcionando, nos tres lugares
+    await emSavepoint(async () => {
+      await semear({
+        categorias: [[CAT.brinq, "Brinquedo", "brinquedo"]],
+        produtos: [
+          ["P1", "Brinquedo"],
+          ["P2 parecido", "Jogos de mesa"],
+          ["P3 parecido", "Jogo"],
+        ],
+        lista: ["Brinquedo", "Jogos de mesa", "Jogo"],
+      });
+      const ok = await renomear(CAT.brinq, "Jogos");
+      assert.ok(ok.linhas, ok.erro);
+      assert.equal(ok.linhas[0].r.produtos, 1);
+      assert.deepEqual(await categoriasDosProdutos(), [
+        "Jogos",
+        "Jogos de mesa",
+        "Jogo",
+      ]);
+      assert.deepEqual(await listaDaPolitica(), [
+        "Jogos",
+        "Jogos de mesa",
+        "Jogo",
+      ]);
+    });
+    // CONTROLE: so mudar a caixa continua passando, mesmo com o item da lista na caixa antiga
+    await emSavepoint(async () => {
+      await semear({
+        categorias: [[CAT.brinq, "brinquedo", "brinquedo"]],
+        produtos: [["P1", "brinquedo"]],
+        lista: ["brinquedo", "BRINQUEDO"],
+      });
+      const caixa = await renomear(CAT.brinq, "Brinquedo");
+      assert.ok(caixa.linhas, caixa.erro);
+      assert.deepEqual(await listaDaPolitica(), ["Brinquedo"]);
+    });
+  });
+}
+
+prova(
+  "RECUSAS: o nome novo ja escrito na lista de devolucao (X1) = 23505 sem escrever",
+  () => emTransacao(casoDaRecusaPorItemDaLista),
+);
+
+prova(
+  "RECUSAS: o nome novo ja e a categoria de produto de fora (X2, orfao em qualquer caixa/espaco, pausado ou excluido) = 23505 sem escrever",
+  () => emTransacao(casoDaRecusaPorProdutoDeFora),
+);
+
+prova(
+  "RENOMEAR: nome novo livre (so parecido) e so-caixa continuam passando depois das recusas",
+  () => emTransacao(casoDoNomeNovoLivre),
 );
 
 // ---------------------------------------------------------------------------
@@ -1041,6 +1166,30 @@ for (const [rotulo, de, para, comportamento] of [
     "THEN substring(e.item from '^[[:space:]]*')\n                             || v_novo\n                             || substring(regexp_replace(e.item, '^[[:space:]]+', '') from '[[:space:]]*$')",
     "THEN v_novo",
     () => casoDaMatrizDeEspacos(),
+  ],
+  [
+    "renomear aceita o nome novo que ja e item solto da lista de devolucao (X1)",
+    "AND public.categoria__chave(e.item) = public.categoria__chave(v_novo)",
+    "AND false",
+    () => casoDaRecusaPorItemDaLista(),
+  ],
+  [
+    "renomear aceita o nome novo que ja e a categoria de produto de fora (X2)",
+    "AND public.categoria__chave(p.categoria) = public.categoria__chave(v_novo)",
+    "AND false",
+    () => casoDaRecusaPorProdutoDeFora(),
+  ],
+  [
+    "renomear recusa o nome novo mesmo quando o item da lista e a propria categoria (so a caixa muda)",
+    "AND NOT public.categoria__mesma(e.item, v_antigo, false)",
+    "",
+    () => casoDoNomeNovoLivre(),
+  ],
+  [
+    "renomear recusa o nome novo mesmo quando o produto e da propria categoria (so a caixa muda)",
+    "WHERE NOT public.categoria__mesma(p.categoria, v_antigo, false)",
+    "WHERE true",
+    () => casoDoNomeNovoLivre(),
   ],
   [
     "renomear junta a lista inteira e perde os repetidos das outras categorias",
