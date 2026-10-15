@@ -12,13 +12,15 @@ import { useReviews } from "@/hooks/useReviews";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Star } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 const reviewSchema = z.object({
   rating: z.number().min(1, "Selecione uma nota de 1 a 5."),
-  comment: z.string().min(3, "O comentário deve ter pelo menos 3 caracteres."),
+  // As estrelas bastam: o banco aceita avaliação sem texto (reviews.comment é
+  // nullable, sem CHECK nem trigger). Só espaços conta como vazio (trim no envio).
+  comment: z.string(),
 });
 
 interface ReviewFormProps {
@@ -28,12 +30,16 @@ interface ReviewFormProps {
   // OrderDetailsView): quem toca numa estrela do cartão já chega aqui com a
   // nota escolhida — só preenche `defaultValues.rating`, nada mais muda.
   initialRating?: number;
+  // Quem fecha a folha precisa saber se há comentário escrito a perder: o
+  // formulário mantém esta ref em dia (true = tem texto digitado).
+  temTextoRef?: { current: boolean };
 }
 
 export function ReviewForm({
   productId,
   onSuccess,
   initialRating,
+  temTextoRef,
 }: ReviewFormProps) {
   const { addReview } = useReviews();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -47,13 +53,22 @@ export function ReviewForm({
     },
   });
 
+  const temTexto = form.watch("comment").trim() !== "";
+  useEffect(() => {
+    if (!temTextoRef) return;
+    temTextoRef.current = temTexto;
+    return () => {
+      temTextoRef.current = false;
+    };
+  }, [temTexto, temTextoRef]);
+
   async function onSubmit(values: z.infer<typeof reviewSchema>) {
     setIsSubmitting(true);
     try {
       const result = await addReview({
         productId,
         rating: values.rating,
-        comment: values.comment,
+        comment: values.comment.trim(),
       });
 
       if (result) {
@@ -116,7 +131,7 @@ export function ReviewForm({
             render={({ field }) => (
               <FormItem className="space-y-2">
                 <FormLabel className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                  Detalhes da Experiência
+                  Detalhes da Experiência (Opcional)
                 </FormLabel>
                 <FormControl>
                   <Textarea

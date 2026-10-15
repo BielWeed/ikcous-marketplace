@@ -1,6 +1,16 @@
 import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
 import { DevolucaoDoPedidoCard } from "@/components/devolucao/DevolucaoDoPedidoCard";
 import { SolicitarDevolucaoSheet } from "@/components/devolucao/SolicitarDevolucaoSheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
@@ -342,6 +352,19 @@ export function OrderDetailsView({
     setReviewingItem(null);
     avaliarTriggerRef.current?.focus();
   }, []);
+  // Fechar a folha desmonta o formulário e apaga o comentário escrito: com
+  // texto digitado (o formulário avisa por `avaliacaoTemTextoRef`), fechar por
+  // toque fora, Esc ou X vira uma pergunta. Publicar com sucesso fecha direto.
+  const avaliacaoTemTextoRef = useRef(false);
+  const [confirmandoDescarteAvaliacao, setConfirmandoDescarteAvaliacao] =
+    useState(false);
+  const fecharAvaliacaoPerguntando = useCallback(() => {
+    if (avaliacaoTemTextoRef.current) {
+      setConfirmandoDescarteAvaliacao(true);
+      return;
+    }
+    fecharAvaliacao();
+  }, [fecharAvaliacao]);
   // Rodada 2 (Codex, 08/09, item 1): o foco continuava no botão "Avaliar"
   // de fora depois de abrir a folha — Esc não chegava a ela e o Tab
   // seguia percorrendo o fundo apesar do aria-modal. A folha agora se
@@ -1488,13 +1511,13 @@ export function OrderDetailsView({
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
             <div
               className="fixed inset-0"
-              onClick={fecharAvaliacao}
+              onClick={fecharAvaliacaoPerguntando}
               role="button"
               aria-label="Fechar avaliacao"
               tabIndex={-1}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
-                  fecharAvaliacao();
+                  fecharAvaliacaoPerguntando();
                 }
               }}
             />
@@ -1515,7 +1538,7 @@ export function OrderDetailsView({
               // fundo da tela apesar do aria-modal.
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
-                  fecharAvaliacao();
+                  fecharAvaliacaoPerguntando();
                   return;
                 }
                 if (e.key === "Tab") {
@@ -1550,7 +1573,7 @@ export function OrderDetailsView({
                   </h3>
                 </div>
                 <button
-                  onClick={fecharAvaliacao}
+                  onClick={fecharAvaliacaoPerguntando}
                   // Laudo 05/09, M5: o nome acessível era "✕" — agora diz
                   // o que fecha.
                   aria-label="Fechar avaliação"
@@ -1563,6 +1586,7 @@ export function OrderDetailsView({
               <ReviewForm
                 productId={reviewingItem.productId}
                 initialRating={reviewingItem.rating}
+                temTextoRef={avaliacaoTemTextoRef}
                 onSuccess={() => {
                   setReviewedProductIds((prev) => {
                     const next = new Set(prev);
@@ -1576,6 +1600,32 @@ export function OrderDetailsView({
           </div>,
           document.body,
         )}
+
+      <AlertDialog
+        open={confirmandoDescarteAvaliacao}
+        onOpenChange={setConfirmandoDescarteAvaliacao}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar o que você escreveu?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se sair agora, o comentário que você escreveu será perdido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar escrevendo</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                avaliacaoTemTextoRef.current = false;
+                setConfirmandoDescarteAvaliacao(false);
+                fecharAvaliacao();
+              }}
+            >
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -11,7 +11,13 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import {
@@ -73,6 +79,10 @@ interface SolicitarDevolucaoSheetProps {
 
 type Passo = 1 | 2 | 3 | 4;
 
+/** O que há a perder ao fechar a folha: nada, o que ela preencheu, ou um
+ * pedido que já está sendo enviado (esse não se descarta: já está em voo). */
+type EstadoDoRascunho = "nenhum" | "preenchido" | "enviando";
+
 const TITULO_DO_PASSO = new Map<Passo, string>([
   [1, "O que vai voltar?"],
   [2, "Por que vai devolver?"],
@@ -110,18 +120,123 @@ const soltarPrevia = (previa: string) => {
  */
 export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
   const { aberto, onAbertoMudou } = props;
+  // O conteúdo da folha é desmontado ao fechar: o que a cliente preencheu some
+  // junto. Quem sabe se há algo preenchido é o fluxo (ele avisa por esta ref);
+  // aqui, por toque fora, Esc ou X, fechar com rascunho vira uma pergunta.
+  const rascunhoRef = useRef<EstadoDoRascunho>("nenhum");
+  const [pergunta, setPergunta] = useState<EstadoDoRascunho>("nenhum");
+  const botaoDeContinuarRef = useRef<HTMLButtonElement>(null);
+  const focoAnteriorRef = useRef<HTMLElement | null>(null);
+  const pedirParaMudar = (abrir: boolean) => {
+    if (!abrir && rascunhoRef.current !== "nenhum") {
+      if (pergunta === "nenhum") {
+        focoAnteriorRef.current =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+      }
+      setPergunta(rascunhoRef.current);
+      return;
+    }
+    onAbertoMudou(abrir);
+  };
+  // O fluxo informa o que há a perder. Se a pergunta "estamos enviando" está
+  // na tela e o envio termina, ela some sozinha e deixa ver o resultado.
+  const aoMudarRascunho = useCallback((estado: EstadoDoRascunho) => {
+    rascunhoRef.current = estado;
+    setPergunta((atual) =>
+      atual === "enviando" && estado !== "enviando" ? "nenhum" : atual,
+    );
+  }, []);
+  const continuarNaFolha = () => {
+    setPergunta("nenhum");
+  };
+  // A pergunta aparece DENTRO da folha (não em portal): o AlertDialog fica em
+  // z-50 e a folha em z-[130], e o guardião do clique pós-fecho do sheet.tsx
+  // engole o clique de quem está fora do conteúdo — lá a tela travava.
+  useEffect(() => {
+    if (pergunta !== "nenhum") {
+      botaoDeContinuarRef.current?.focus();
+    } else {
+      focoAnteriorRef.current?.focus();
+      focoAnteriorRef.current = null;
+    }
+  }, [pergunta]);
   return (
-    <Sheet open={aberto} onOpenChange={onAbertoMudou}>
+    <Sheet open={aberto} onOpenChange={pedirParaMudar}>
       <SheetContent
         side="bottom"
         data-testid="folha-devolucao"
+        // Esc dentro da pergunta volta a preencher, em vez de pedir de novo.
+        onEscapeKeyDown={(evento) => {
+          if (pergunta !== "nenhum") {
+            evento.preventDefault();
+            continuarNaFolha();
+          }
+        }}
         className={cn(
           "mx-auto flex max-h-[92dvh] flex-col gap-0 rounded-t-3xl bg-white p-0 text-zinc-900",
           "sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:max-h-[85dvh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:border",
           "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=open]:slide-in-from-left-1/2",
         )}
       >
-        <FluxoDaDevolucao {...props} />
+        {/* `contents`: não muda o layout; `inert` tira o fluxo do toque, do
+            foco e do leitor de tela enquanto a pergunta está por cima. */}
+        <div className="contents" inert={pergunta !== "nenhum"}>
+          <FluxoDaDevolucao {...props} aoMudarRascunho={aoMudarRascunho} />
+        </div>
+        {pergunta !== "nenhum" && (
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="descartar-devolucao-titulo"
+            aria-describedby="descartar-devolucao-texto"
+            data-testid="descartar-devolucao"
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 rounded-[inherit] bg-white p-6 text-center"
+          >
+            <div className="space-y-2">
+              <h2
+                id="descartar-devolucao-titulo"
+                className="text-lg font-black tracking-tight text-zinc-950"
+              >
+                {pergunta === "enviando"
+                  ? "Estamos enviando o seu pedido"
+                  : "Descartar o que você preencheu?"}
+              </h2>
+              <p
+                id="descartar-devolucao-texto"
+                className="text-sm text-zinc-600"
+              >
+                {pergunta === "enviando"
+                  ? "Aguarde um instante: o pedido já está sendo registrado. Quando terminar, você vê o protocolo aqui."
+                  : "Se sair agora, o que você marcou e escreveu neste pedido, e as fotos escolhidas, serão perdidos."}
+              </p>
+            </div>
+            <div className="flex w-full max-w-xs flex-col gap-2">
+              <button
+                ref={botaoDeContinuarRef}
+                type="button"
+                onClick={continuarNaFolha}
+                className="h-12 rounded-2xl bg-zinc-900 text-sm font-bold text-white"
+              >
+                {pergunta === "enviando" ? "Aguardar" : "Continuar preenchendo"}
+              </button>
+              {pergunta === "preenchido" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    rascunhoRef.current = "nenhum";
+                    setPergunta("nenhum");
+                    onAbertoMudou(false);
+                  }}
+                  className="h-12 rounded-2xl border border-zinc-200 text-sm font-bold text-red-600"
+                >
+                  Descartar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );
@@ -136,7 +251,10 @@ function FluxoDaDevolucao({
   solicitar,
   enviarFoto,
   descartarFotos,
-}: SolicitarDevolucaoSheetProps) {
+  aoMudarRascunho,
+}: SolicitarDevolucaoSheetProps & {
+  readonly aoMudarRascunho: (estado: EstadoDoRascunho) => void;
+}) {
   const { itens, janelas, politica, prazos, metodos } = elegibilidade;
   const itensDisponiveis = itens.filter((item) => item.disponivel > 0);
 
@@ -193,6 +311,32 @@ function FluxoDaDevolucao({
       if (enviadas.length > 0) void descartarRef.current?.(enviadas);
     };
   }, []);
+
+  // Há algo a perder? Item marcado além do que já vinha marcado, motivo,
+  // texto, fotos ou resolução (desmarcar o que já vinha marcado não é
+  // trabalho). Pedido já aceito (protocolo na tela) não tem o que perder, e
+  // pedido em envio não se descarta: já está em voo.
+  const selecaoInicialRef = useRef(selecao);
+  const selecaoMudou = Array.from(selecao).some(
+    ([id, qtd]) => selecaoInicialRef.current.get(id) !== qtd,
+  );
+  const temRascunho =
+    selecaoMudou ||
+    motivo !== null ||
+    detalhe.trim() !== "" ||
+    fotos.length > 0 ||
+    resolucao !== null;
+  const estadoDoRascunho: EstadoDoRascunho = resultado
+    ? "nenhum"
+    : enviando
+      ? "enviando"
+      : temRascunho
+        ? "preenchido"
+        : "nenhum";
+  useEffect(() => {
+    aoMudarRascunho(estadoDoRascunho);
+    return () => aoMudarRascunho("nenhum");
+  }, [estadoDoRascunho, aoMudarRascunho]);
 
   const tipo = motivo ? tipoPrevisto(motivo, janelas) : null;
   const permitidas = resolucoesPermitidas(motivo, janelas, politica);
