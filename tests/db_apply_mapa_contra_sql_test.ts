@@ -108,7 +108,9 @@ function corposDeFuncao(sql) {
   // Literais dentro da função de propósito: `new RegExp` acorda o
   // security/detect-non-literal-regexp, e um literal reavaliado a cada chamada
   // já nasce com `lastIndex` zerado.
-  const abertura = /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+(?:public\.)?(\w+)/gi;
+  // `CREATE FUNCTION` puro tambem conta (20261238000000 NASCE a funcao do gatilho; o pre-voo recusa se ela ja existe).
+  const abertura =
+    /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(\w+)/gi;
   let cabecalho = abertura.exec(texto);
   while (cabecalho) {
     const rotulo = /\$\w*\$/g;
@@ -157,7 +159,7 @@ function corpoDaMigration(arquivo, funcao) {
   assertEquals(
     definicoes.length,
     1,
-    `${arquivo}: esperava exatamente 1 CREATE OR REPLACE FUNCTION de ${funcao}, achei ${definicoes.length}. Este arquivo cria: ${[...corpos.keys()].join(", ") || "nenhuma função"}`,
+    `${arquivo}: esperava exatamente 1 CREATE [OR REPLACE] FUNCTION de ${funcao}, achei ${definicoes.length}. Este arquivo cria: ${[...corpos.keys()].join(", ") || "nenhuma função"}`,
   );
   return definicoes[0];
 }

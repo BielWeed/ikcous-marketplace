@@ -97,6 +97,9 @@ on:
       - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
       - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
       - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
+      - "scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql"
+      - "scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql"
+      - "scripts/publicacao/consultas/39m-medir-privilegios-do-roteiro-de-privacidade.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -163,6 +166,9 @@ on:
       - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
       - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
       - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
+      - "scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql"
+      - "scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql"
+      - "scripts/publicacao/consultas/39m-medir-privilegios-do-roteiro-de-privacidade.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -736,6 +742,13 @@ jobs:
       - name: Ensaio do roteiro de anonimizacao de conta (privacidade)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/anonimizar-conta-ensaio-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 39a (DEPOIS, 19 linhas), 39b (ANTES, 9 linhas, com o REFERENCES do papel que aplica
+      # em auth.users) e a medicao 39m (rol aberto, so catalogo: o que o postgres da loja pode fazer nas tabelas de login do roteiro
+      # manual; o roteiro NAO roda aqui nem no lote). Rol exato em todos os estados, um defeito por vez reprovando SO a sua linha,
+      # o veredito do conferir-banco.cjs. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao dos pedidos de privacidade (consultas 39a e 39b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pedidos-de-privacidade-portao-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que

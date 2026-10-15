@@ -1798,6 +1798,32 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql": [
+    {
+      // A cliente pede a exclusão da conta e a correção do e-mail (14/10/2026; DADO DE CLIENTE, LGPD): a migration
+      // NASCE a tabela public.pedidos_de_privacidade e a função do gatilho que carimba quem decidiu o pedido
+      // (CREATE FUNCTION, não CREATE OR REPLACE: o pré-voo recusa se ela já existe). Sem esta entrada a migration
+      // saía PULADA. O que importa no corpo VIVO e aparece UMA vez cada: a identidade do pedido imutável (id,
+      // user_id, tipo, e-mail novo e criado_em), a decisão final (pedido já decidido não muda), e o carimbo
+      // (quem e quando decidiu, vindos do servidor; pedido aberto não tem carimbo). O resto da migration (tabela,
+      // políticas, privilégios, índice) o próprio DO de conferência dela aborta o apply se divergir.
+      funcao: "pedidos_de_privacidade__carimbar",
+      esperado: [
+        { texto: "IF NEW.id IS DISTINCT FROM OLD.id", vezes: 1 },
+        {
+          texto: "OR NEW.criado_em IS DISTINCT FROM OLD.criado_em THEN",
+          vezes: 1,
+        },
+        { texto: "IF OLD.situacao <> 'aberto' THEN", vezes: 1 },
+        { texto: "IF NEW.situacao <> 'aberto' THEN", vezes: 1 },
+        { texto: "NEW.atendido_em := now();", vezes: 1 },
+        { texto: "NEW.atendido_por := auth.uid();", vezes: 1 },
+        { texto: "NEW.atendido_em := NULL;", vezes: 1 },
+        { texto: "NEW.atendido_por := NULL;", vezes: 1 },
+        { texto: "RETURN NEW;", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

@@ -1309,6 +1309,66 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
 
+  39. **Lote de UMA migration, de apply normal: `20261238000000` (a cliente pede a exclusao da conta e a correcao
+      do e-mail; DADO DE CLIENTE e PERMISSAO (LGPD), ADITIVA: cria uma tabela e nao muda nada que ja exista).** Sem
+      `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). A migration NASCE
+      `public.pedidos_de_privacidade` (o REGISTRO do pedido, que nasce vazio), a funcao de gatilho
+      `pedidos_de_privacidade__carimbar()` e o gatilho `tr_pedidos_de_privacidade_carimbar`, com RLS ligada e tres
+      politicas:
+      - **Quem pode o que:** a cliente le so os pedidos dela e insere so em nome dela (so as colunas `user_id`,
+        `tipo`, `email_novo`); no maximo UM pedido aberto por (cliente, tipo); so o admin de AGORA
+        (`rls_admin_atual()`) le todos e decide (`situacao` e `observacao`), com quem e quando carimbados pelo
+        gatilho; a chave estrangeira para `auth.users(id)` e SEM cascata; **ninguem apaga** (sem grant de DELETE nem
+        para o `service_role`, sem politica de DELETE).
+      - **NAO E REAPLICAVEL:** o pre-voo recusa (`B1_BASELINE_DIVERGENT`) se a tabela ou a funcao ja existirem, e se
+        faltar `auth.users`, `auth.uid()` ou `public.rls_admin_atual()` (a `20261197000000` vem antes). Reaplicar
+        depois de aplicada aborta no pre-voo: o estado se confere pela `39a`, nunca reaplicando. Um bloco `DO` no fim
+        aborta o apply inteiro se a RLS, as politicas, os privilegios de tabela e de coluna, o indice unico parcial, o
+        gatilho ou o `EXECUTE` da funcao nao forem os combinados.
+      - **Ordem:** o banco de CADA loja (IKCOUS, depois Savy) ANTES do front que le a tabela (a tela "Privacidade e
+        meus dados" da cliente e a secao "Pedidos de privacidade dos clientes" do painel dependem dela). Nenhuma edge
+        function muda. Quem quebra: ninguem que ja exista.
+      - **Duas consultas, so leitura, so catalogo, de ROL FECHADO (19 e 9 linhas, so valem com `rol=ok`):**
+        - **`39a-conferir-pedidos-de-privacidade-aplicado`** (a consulta do lote) prova DEPOIS do apply a tabela
+          inteira (colunas, as 8 constraints e a regra de cada CHECK, a chave sem cascata, os dois indices), a RLS ligada
+          com as tres politicas e a expressao delas, os privilegios (PUBLIC e anon nenhum; authenticated so le a tabela
+          e so escreve as colunas do pedido; service_role le, grava e decide, NAO apaga), a funcao do gatilho (corpo por
+          md5, atributos, `EXECUTE` fechado a PUBLIC, anon e authenticated) e o gatilho. O `EXECUTE` do `service_role`
+          nao e medido (a plataforma o concede por padrao e a migration nao o mexe).
+        - **`39b-antes-pedidos-de-privacidade-objetos-ausentes`** (`ausenciaConfirmadaPor`) prova o ANTES: a tabela, os
+          dois indices, a funcao e o gatilho AUSENTES; `auth.users`, `auth.uid()` e `rls_admin_atual()` presentes; e **o
+          papel `postgres` (o que aplica pelo `aplicar-migrations.yml`) com `REFERENCES` em `auth.users`** — o privilegio
+          que a chave estrangeira do pedido exige e que o pre-voo da migration nao confere. **Rode a `39b` em CADA loja
+          ANTES do apply;** um `nao` na linha do `REFERENCES` e a loja onde o apply abortaria no meio (a transacao
+          desfaz, mas e melhor saber antes). Loja com a migration pela metade reprova nas DUAS consultas: PARAR e medir.
+      - **Medir (so leitura, nao e portao):** `39m-medir-privilegios-do-roteiro-de-privacidade` mostra, so por
+        catalogo (nenhuma linha de nenhuma tabela e lida, nem a contagem), se o papel `postgres` da loja tem `UPDATE` e
+        `DELETE` em `auth.users`, `auth.identities`, `auth.audit_log_entries`, `auth.sessions`,
+        `auth.one_time_tokens` e `auth.mfa_factors`, as tabelas de login que o roteiro manual toca. Um `nao` no que o
+        roteiro usa (a coluna `roteiro=` diz o que ele faz em cada tabela) quer dizer que o passo dele falharia nessa
+        loja; nao e defeito da migration.
+      - **O ROTEIRO MANUAL NAO ENTRA NESTE LOTE:** `docs/runbooks/atender-pedido-de-privacidade.md` (o bloco de SQL das
+        linhas ~264-323: anonimizacao de uma conta, que atualiza e APAGA dado real de login) e do DONO, caso a caso,
+        pedido por pedido, sempre depois do ensaio (`v_confirmar := false`). Nenhum workflow, consulta ou comando deste
+        lote o executa; a `39m` so diz se ele esbarraria em falta de privilegio.
+      - **Caminho, uma loja por vez:** `39a` (sai NEGATIVA) -> `39b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `39a` DE NOVO, que tem de sair POSITIVA. `39a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql` (apaga o gatilho, a
+        funcao, as tres politicas e a tabela). **RECUSA se houver QUALQUER pedido registrado:** e registro legal, e
+        arquiva-lo por fora e decisao do dono; rodar duas vezes recusa no pre-voo (nada a desfazer). Depois dele a
+        `39b` volta a ser POSITIVA e a `39a` NEGATIVA. Com o rollback o app volta a nao ter caminho para a cliente
+        pedir a exclusao da conta ou a correcao do e-mail.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `39a` e a `39b`
+        DE NOVO.
+      - **Limites:** `tests/banco/pedidos-de-privacidade-viva.cjs` prova o comportamento com a RLS real,
+        `tests/banco/anonimizar-conta-ensaio-viva.cjs` ensaia o roteiro (com o esquema `auth` emulado) e
+        `tests/banco/pedidos-de-privacidade-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja, o `REFERENCES` do
+        `postgres` real (la ele e superusuario, e o numero que importa e o da `39b` na loja) nem o que ha em
+        `auth.*` de cada uma.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

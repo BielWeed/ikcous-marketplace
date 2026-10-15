@@ -582,6 +582,20 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   passo por vez (7 mutantes + o do IP) e a varredura tem de achar dado dela. O esquema `auth` é **emulado** por esta
   prova (colunas e tabelas que o roteiro toca, com os tipos do GoTrue); o que só um Supabase real prova está marcado
   `[CONFERIR EM LOJA DE TESTE]` no roteiro. **Não prova** a IKCOUS nem a Savy.
+- **portão dos pedidos de privacidade (`pedidos-de-privacidade-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `39a-conferir-pedidos-de-privacidade-aplicado` (DEPOIS do apply, 19 linhas) e `39b-antes-pedidos-de-privacidade-objetos-ausentes`
+  (ANTES, 9 linhas, com o `REFERENCES` do papel `postgres` em `auth.users`) e a medição
+  `39m-medir-privilegios-do-roteiro-de-privacidade` (rol aberto, só catálogo), a "prova de objetos" do lote `20261238000000`.
+  Rol exato em todos os estados (depois, antes, ida e volta, o arquivo em CRLF), a migration que **não é reaplicável**
+  recusada no pré-voo, um defeito por vez reprovando SÓ a sua linha (coluna, CHECK trocada ou com valor a mais, chave com
+  cascata, índice sem o filtro, RLS desligada, política a menos, a mais, para outro papel ou com a expressão frouxa, cada
+  privilégio a mais ou a menos para PUBLIC, anon, authenticated e service_role, corpo com 1 byte, atributos, `EXECUTE`
+  aberto, outra sobrecarga, gatilho desligado, de outro tipo, a mais ou com `WHEN`; e, no ANTES, o resto de uma meia
+  migration e cada dependência que falta), o `REFERENCES` provado trocando o papel alvo por um papel de teste (o
+  `postgres` local é superusuário), a 39m lida certa por tabela com um papel de teste, o papel sem `USAGE` em `auth`
+  fazendo a consulta ERRAR (nunca virar positiva) e o veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS
+  nem a Savy, nem o `REFERENCES` do `postgres` real (só a `39b` rodada na loja). O roteiro manual de anonimização **não
+  roda aqui**: ele apaga dado real de login e fica com o dono, caso a caso.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

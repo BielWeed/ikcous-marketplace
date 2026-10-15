@@ -444,6 +444,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "34b-antes-sino-da-retirada-corpo-vigente",
   "35a-conferir-lucro-so-com-custo-aplicado",
   "35b-antes-lucro-so-com-custo-corpo-vigente",
+  "39a-conferir-pedidos-de-privacidade-aplicado",
+  "39b-antes-pedidos-de-privacidade-objetos-ausentes",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
