@@ -578,6 +578,24 @@ describe("atenderPorteiro — /identidade.json e /manifest.webmanifest", () => {
     ).toBe(true);
   });
 
+  it("/manifest.webmanifest de loja com nome comprido: name inteiro, short_name que cabe embaixo do ícone", async () => {
+    const fetchLongo = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Savy Collection", "#111111", origem),
+        dominioPublico: "a.exemplo",
+      },
+    });
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo", "/manifest.webmanifest"),
+      ambiente,
+      deps(fetchLongo),
+    );
+    const manifest = await resp.json();
+    expect(manifest.name).toBe("Savy Collection");
+    expect(manifest.short_name).toBe("Savy");
+    expect(Array.from(manifest.short_name).length).toBeLessThanOrEqual(12);
+  });
+
   // Achado 4 da revisão: `/manifest.webmanifest` está DENTRO do matcher
   // (`porteiro.ts:31-35`) — um self-fetch da própria origem para esse
   // MESMO caminho re-invocaria o porteiro, que cairia de novo no ramo do
