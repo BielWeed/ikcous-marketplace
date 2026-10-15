@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "acorn";
 import { JSDOM } from "jsdom";
 import { buildStore } from "../../scripts/buildStore.mjs";
+import { nomeCurtoDaLoja } from "../../src/config/nomeCurtoDaLoja.ts";
 import { identityRevision } from "../../src/lib/storeIdentity.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
@@ -366,13 +367,12 @@ export async function buildSelectedKit(destination, store, codeSha) {
     document
       .querySelector(`meta[name="${name}"],meta[property="${name}"]`)
       ?.getAttribute("content");
-  for (const name of [
-    "application-name",
-    "apple-mobile-web-app-title",
-    "og:title",
-    "twitter:title",
-  ])
+  for (const name of ["application-name", "og:title", "twitter:title"])
     assert.equal(meta(name), snapshot.identity.storeName);
+  assert.equal(
+    meta("apple-mobile-web-app-title"),
+    nomeCurtoDaLoja(snapshot.identity.storeName),
+  );
   for (const name of ["description", "og:description", "twitter:description"])
     assert.equal(
       meta(name),
@@ -413,7 +413,10 @@ export async function buildSelectedKit(destination, store, codeSha) {
     await fs.readFile(path.join(artifact, "manifest.webmanifest"), "utf8"),
   );
   assert.equal(webmanifest.name, snapshot.identity.storeName);
-  assert.equal(webmanifest.short_name, snapshot.identity.storeName);
+  assert.equal(
+    webmanifest.short_name,
+    nomeCurtoDaLoja(snapshot.identity.storeName),
+  );
   assert.equal(webmanifest.theme_color, snapshot.identity.theme.primary);
   assert.deepEqual(
     webmanifest.icons.map((icon) => icon.src),

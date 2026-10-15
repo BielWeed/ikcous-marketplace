@@ -567,6 +567,8 @@ describe("atenderPorteiro — /identidade.json e /manifest.webmanifest", () => {
     const manifest = await resp.json();
     expect(manifest.name).toBe("Loja A");
     expect(manifest.short_name).toBe("Loja A");
+    // O app instalado não trava a orientação (a lojista usa o PDV deitada).
+    expect(manifest.orientation).toBe("any");
     expect(manifest.theme_color).toBe("#111111");
     expect(manifest.icons).toHaveLength(3);
     expect(
@@ -576,6 +578,24 @@ describe("atenderPorteiro — /identidade.json e /manifest.webmanifest", () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it("/manifest.webmanifest de loja com nome comprido: name inteiro, short_name que cabe embaixo do ícone", async () => {
+    const fetchLongo = criarFetchDuble({
+      [origem]: {
+        linha: linhaFixture("Savy Collection", "#111111", origem),
+        dominioPublico: "a.exemplo",
+      },
+    });
+    const resp = await atenderPorteiro(
+      pedido("a.exemplo", "/manifest.webmanifest"),
+      ambiente,
+      deps(fetchLongo),
+    );
+    const manifest = await resp.json();
+    expect(manifest.name).toBe("Savy Collection");
+    expect(manifest.short_name).toBe("Savy");
+    expect(Array.from(manifest.short_name).length).toBeLessThanOrEqual(12);
   });
 
   // Achado 4 da revisão: `/manifest.webmanifest` está DENTRO do matcher
