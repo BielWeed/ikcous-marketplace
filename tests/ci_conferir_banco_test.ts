@@ -14035,6 +14035,91 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
     },
   );
   await t.step(
+    "a janela e a do grafico: dia de calendario de Sao Paulo, os ultimos N dias CONTANDO HOJE (slice(-30)/slice(-90)), nunca now() - intervalo",
+    async () => {
+      const DIA_DO_PEDIDO =
+        "(o.created_at AT TIME ZONE 'America/Sao_Paulo')::date";
+      const HOJE = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
+      // o painel: serie de dias que termina HOJE, pedidos no balde do dia de Sao Paulo (daily_orders e daily_items)
+      const mig = normal(
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261234000000_o_lucro_so_conta_produto_com_custo.sql`,
+        ),
+      );
+      const historico = mig.slice(
+        mig.indexOf("WITH days AS ("),
+        mig.indexOf("ORDER BY d.day ASC"),
+      );
+      assertStringIncludes(historico, `${HOJE}, interval '1 day'`);
+      assertEquals(historico.split(`${DIA_DO_PEDIDO} AS day`).length - 1, 2);
+      assertStringIncludes(
+        historico,
+        "LEFT JOIN daily_items dit ON d.day = dit.day",
+      );
+      // o grafico mostra os ULTIMOS N dias da serie e o hook pede a serie inteira (Tudo)
+      const grafico = await Deno.readTextFile(
+        `${RAIZ}/src/components/admin/dashboard/OperationalPerformanceChart.tsx`,
+      );
+      assertStringIncludes(
+        grafico,
+        'if (timeframe === "30") return revenueHistory.slice(-30);',
+      );
+      assertStringIncludes(
+        grafico,
+        'if (timeframe === "90") return revenueHistory.slice(-90);',
+      );
+      const hook = await Deno.readTextFile(`${RAIZ}/src/hooks/useAnalytics.ts`);
+      assertStringIncludes(hook, "export const JANELA_TUDO_DIAS = 3650;");
+      assertStringIncludes(hook, "{ p_limit_days: JANELA_TUDO_DIAS }");
+      // a 44m: N dias contando hoje, no mesmo balde, e o "primeiro pedido" no balde da primeira compra
+      const janelas = bloco("janelas AS (", "), ped AS (");
+      assertStringIncludes(janelas, `ELSE ${HOJE} - (dias - 1) END AS desde`);
+      assertStringIncludes(
+        janelas,
+        "('30 dias', 30, 1), ('90 dias', 90, 2), ('total', NULL::integer, 3)",
+      );
+      assertStringIncludes(
+        bloco("ped AS (", "), item AS ("),
+        `${DIA_DO_PEDIDO} AS dia`,
+      );
+      assertStringIncludes(
+        bloco("painel AS (", "), base AS ("),
+        `${DIA_DO_PEDIDO} AS dia`,
+      );
+      const cliente = bloco("cliente AS (", "), pagtos AS (");
+      assertStringIncludes(
+        cliente,
+        "(min(c.pago_em) AT TIME ZONE 'America/Sao_Paulo')::date AS dia_da_primeira",
+      );
+      assertStringIncludes(
+        cliente,
+        "(array_agg(c.total ORDER BY c.pago_em, c.pedido))[1] AS total_da_primeira",
+      );
+      const r = normal(limpo.slice(limpo.indexOf("), r AS (")));
+      assertEquals(
+        r.split("(j.desde IS NULL OR p.dia >= j.desde)").length - 1,
+        4,
+      );
+      assertEquals(
+        r.split("(j.desde IS NULL OR pn.dia >= j.desde)").length - 1,
+        1,
+      );
+      assertEquals(
+        r.split("(j.desde IS NULL OR cl.dia_da_primeira >= j.desde)").length -
+          1,
+        1,
+      );
+      assert(
+        !/now\(\)\s*-/.test(semTexto),
+        "janela por tempo decorrido (now() - intervalo) voltou",
+      );
+      assert(
+        !/\binterval\b/i.test(semTexto),
+        "intervalo de tempo na 44m: a janela e por dia de calendario",
+      );
+    },
+  );
+  await t.step(
     "a lista de payment_status e a da CHECK (20261020000000), mais nulo e outro",
     async () => {
       const mig = await Deno.readTextFile(

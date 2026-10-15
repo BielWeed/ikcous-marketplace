@@ -15,7 +15,14 @@
 -- SUPERESTIMACAO = o desconto que o pedido concedeu (LEAST(discount, subtotal), o mesmo teto da
 -- create_marketplace_order_v24), somado nos pedidos do painel com desconto > 0, sobre o lucro do painel. Sai em duas
 -- leituras: o desconto INTEIRO (teto) e o desconto RATEADO so aos itens com custo (o que de fato sai do lucro, porque
--- item sem custo ja esta fora do lucro). Janela por created_at, como o grafico: 30 dias, 90 dias e total.
+-- item sem custo ja esta fora do lucro).
+-- JANELA (IDENTICA a do grafico do painel): o historico vem por DIA DE CALENDARIO de Sao Paulo
+-- ((o.created_at AT TIME ZONE 'America/Sao_Paulo')::date, serie que termina em
+-- (now() AT TIME ZONE 'America/Sao_Paulo')::date) e o botao 30/90 mostra `revenueHistory.slice(-30)`/`slice(-90)`
+-- (src/components/admin/dashboard/OperationalPerformanceChart.tsx): os ultimos N dias de calendario CONTANDO HOJE, isto e,
+-- dia >= hoje - (N - 1). "total" = o botao "Tudo" (JANELA_TUDO_DIAS = 3650 de src/hooks/useAnalytics.ts, que cobre a
+-- vida da loja). A mesma fronteira vale para a_*, d_* (por dia de created_at) e c_novo (por dia da primeira compra,
+-- o mesmo balde de fin__dia que o CRM usa nos clientes novos).
 -- REGRA DE CLIENTE (texto IDENTICO a `crm__vendas`, 20261178000000:52-75): venda reconhecida = payment_status
 -- reconhecido, status fora de cancelled/returned e COALESCE(pagamento_recebido_em, paid_at) preenchido; a chave da
 -- cliente = conta, senao a conta dona do mesmo WhatsApp, senao 'wa:' + digitos do WhatsApp. Venda sem chave fica fora
@@ -44,12 +51,15 @@
 -- cliente, que so aparece dentro de count(). O log do run e legivel por quem le o repositorio.
 -- tests/ci_conferir_banco_test.ts prende essas regras no texto desta consulta.
 WITH janelas AS (
-  SELECT j, i, n FROM (VALUES ('30 dias', interval '30 days', 1),
-                              ('90 dias', interval '90 days', 2),
-                              ('total', NULL::interval, 3)) v(j, i, n)
+  SELECT j, n,
+         CASE WHEN dias IS NULL THEN NULL::date
+              ELSE (now() AT TIME ZONE 'America/Sao_Paulo')::date - (dias - 1) END AS desde
+    FROM (VALUES ('30 dias', 30, 1),
+                 ('90 dias', 90, 2),
+                 ('total', NULL::integer, 3)) v(j, dias, n)
 ), ped AS (
   SELECT o.id AS pedido,
-         o.created_at,
+         (o.created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
          o.status,
          CASE WHEN o.payment_status IS NULL THEN 'nulo'
               WHEN o.payment_status IN ('aguardando', 'pago', 'recusado', 'expirado', 'estornado', 'pago_apos_expirar', 'recebido_na_entrega') THEN o.payment_status
@@ -67,7 +77,7 @@ WITH janelas AS (
    GROUP BY oi.order_id
 ), painel AS (
   SELECT o.id AS pedido,
-         o.created_at,
+         (o.created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
          (o.total = 0) AS zero,
          LEAST(GREATEST(COALESCE(o.discount, 0), 0), GREATEST(o.subtotal, 0)) AS desconto_concedido,
          COALESCE(i.lucro_painel, 0) AS lucro_painel,
@@ -105,7 +115,7 @@ WITH janelas AS (
   SELECT c.chave,
          count(*) AS compras,
          count(*) FILTER (WHERE c.total = 0) AS compras_zero,
-         min(c.pago_em) AS primeira,
+         (min(c.pago_em) AT TIME ZONE 'America/Sao_Paulo')::date AS dia_da_primeira,
          (array_agg(c.total ORDER BY c.pago_em, c.pedido))[1] AS total_da_primeira
     FROM crm c
    WHERE c.chave IS NOT NULL
@@ -145,7 +155,7 @@ WITH janelas AS (
          || '|de_zero_no_painel=' || count(p.pedido) FILTER (WHERE p.zero AND p.status NOT IN ('cancelled', 'returned')
                                                               AND p.pagto IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'))::text
     FROM janelas j
-    LEFT JOIN ped p ON (j.i IS NULL OR p.created_at >= now() - j.i)
+    LEFT JOIN ped p ON (j.desde IS NULL OR p.dia >= j.desde)
    WHERE j.n >= 2
    GROUP BY j.j, j.n
   UNION ALL
@@ -154,7 +164,7 @@ WITH janelas AS (
          || '|de_zero_entregues=' || count(p.pedido) FILTER (WHERE p.status = 'delivered')::text
     FROM janelas j
     CROSS JOIN pagtos s
-    LEFT JOIN ped p ON p.zero AND p.pagto = s.s AND (j.i IS NULL OR p.created_at >= now() - j.i)
+    LEFT JOIN ped p ON p.zero AND p.pagto = s.s AND (j.desde IS NULL OR p.dia >= j.desde)
    WHERE j.n >= 2
    GROUP BY j.j, s.s
   UNION ALL
@@ -163,7 +173,7 @@ WITH janelas AS (
          || '|de_zero_entregues=' || count(p.pedido) FILTER (WHERE p.status = 'delivered')::text
     FROM janelas j
     CROSS JOIN canais k
-    LEFT JOIN ped p ON p.zero AND p.canal = k.c AND (j.i IS NULL OR p.created_at >= now() - j.i)
+    LEFT JOIN ped p ON p.zero AND p.canal = k.c AND (j.desde IS NULL OR p.dia >= j.desde)
    WHERE j.n >= 2
    GROUP BY j.j, k.c
   UNION ALL
@@ -187,14 +197,14 @@ WITH janelas AS (
          || '|pedidos_de_zero_no_painel=' || count(pn.pedido) FILTER (WHERE pn.zero)::text
          || '|lucro_painel_dos_pedidos_de_zero=' || COALESCE(sum(pn.lucro_painel) FILTER (WHERE pn.zero), 0)::text
     FROM janelas j
-    LEFT JOIN painel pn ON (j.i IS NULL OR pn.created_at >= now() - j.i)
+    LEFT JOIN painel pn ON (j.desde IS NULL OR pn.dia >= j.desde)
    GROUP BY j.j, j.n
   UNION ALL
   SELECT 6, 'c_novo', j.j,
          'clientes_novos=' || count(cl.chave)::text
          || '|primeiro_pedido_de_zero=' || count(cl.chave) FILTER (WHERE cl.total_da_primeira = 0)::text
     FROM janelas j
-    LEFT JOIN cliente cl ON (j.i IS NULL OR cl.primeira >= now() - j.i)
+    LEFT JOIN cliente cl ON (j.desde IS NULL OR cl.dia_da_primeira >= j.desde)
    GROUP BY j.j, j.n
   UNION ALL
   SELECT 7, 'c_sem_chave', 'vendas reconhecidas de zero reais sem chave de cliente',
@@ -207,7 +217,7 @@ WITH janelas AS (
          || '|desses_com_payment_status_nulo=' || count(p.pedido) FILTER (WHERE p.zero AND p.status = 'delivered' AND p.pagto = 'nulo')::text
          || '|entregues_com_payment_status_nulo_qualquer_valor=' || count(p.pedido) FILTER (WHERE p.status = 'delivered' AND p.pagto = 'nulo')::text
     FROM janelas j
-    LEFT JOIN ped p ON (j.i IS NULL OR p.created_at >= now() - j.i)
+    LEFT JOIN ped p ON (j.desde IS NULL OR p.dia >= j.desde)
    WHERE j.n >= 2
    GROUP BY j.j, j.n
 )
