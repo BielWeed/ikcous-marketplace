@@ -74,6 +74,11 @@ import {
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
+  formasDePagamentoParaTotalZero,
+  saidaDoTotalZero,
+  textoDoPedidoSemValor,
+} from "@/lib/pagamento-com-total-zero";
+import {
   esquecerPedidoPendenteDoCheckout,
   guardarPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
@@ -2577,6 +2582,86 @@ export function CheckoutView({
     }
   }, [authLoading, user, paymentMethod]);
 
+  // Values are now passed from props to ensure consistency
+  const discount = appliedCoupon?.discount || 0;
+  const finalTotal = total - discount;
+
+  // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
+  // (src/lib/guarda-de-frete.ts); o motivo e a história dela estão no
+  // comentário "REGRA DO CONVIDADO", mais abaixo, junto do botão. Mora AQUI
+  // porque a decisão do total zero (logo abaixo) lê o mesmo "frete fechado"
+  // que trava o Finalizar — uma fonte só, nunca duas condições.
+  const semFreteSelecionado =
+    freteIncoerenteComDestino ||
+    freteEmCotacao ||
+    finalizarBloqueadoPorFrete({
+      carrinhoVazio: cart.length === 0,
+      freteIndefinido: ctxFreteIndefinido,
+      shipping,
+      temOpcaoSelecionada: !!selectedShippingOption,
+    });
+
+  // COMPRA QUE FECHA EM R$ 0,00 (decisão do dono, 14/10/2026): cupom que zera
+  // o produto + frete grátis (ou retirada) deixa o total em zero, e o app não
+  // cobra pedido sem valor (`criar-pagamento` recusa). Com total zero a tela
+  // não oferece "pagar pelo app": fecha pelo caminho "na retirada/entrega".
+  // A decisão é pura (src/lib/pagamento-com-total-zero.ts); com total acima de
+  // zero ela devolve "nada muda" e a tela é a de sempre. `freteFechado` é o
+  // MESMO `!semFreteSelecionado` do botão: total que a tela mostra como "a
+  // calcular" nunca vira "sem valor a pagar".
+  const totalZero = formasDePagamentoParaTotalZero({
+    totalFinal: finalTotal,
+    freteFechado: cart.length > 0 && !semFreteSelecionado,
+    modalidadeDaLoja: ehEntregaLocal,
+    formasNaEntrega: formasPagamentoNaEntregaValidas(
+      config.formasPagamentoEntrega,
+    ),
+    paymentMethod,
+  });
+  // O que a cliente tinha marcado ANTES de o total zerar: se era o pagamento
+  // pelo app e ela tira o cupom (total volta a ter valor), a escolha volta
+  // sozinha — senão "Pix na entrega" ficaria marcado sem ela ter pedido. Só
+  // volta se a escolha ainda é a que o efeito marcou (mexeu de propósito =
+  // respeitada).
+  const escolhaAntesDoTotalZeroRef = useRef<{
+    metodoOnline: MetodoOnline;
+    marcada: PaymentMethod;
+  } | null>(null);
+  useEffect(() => {
+    if (totalZero.zerado) {
+      if (totalZero.meioParaMarcar === null) return;
+      if (paymentMethod === "online") {
+        escolhaAntesDoTotalZeroRef.current = {
+          metodoOnline,
+          marcada: totalZero.meioParaMarcar,
+        };
+      } else if (escolhaAntesDoTotalZeroRef.current) {
+        // A loja desligou a forma que o efeito tinha marcado: a "marcada"
+        // acompanha, senão a volta ao app nunca reconheceria a escolha.
+        escolhaAntesDoTotalZeroRef.current = {
+          ...escolhaAntesDoTotalZeroRef.current,
+          marcada: totalZero.meioParaMarcar,
+        };
+      }
+      setPaymentMethod(totalZero.meioParaMarcar);
+      return;
+    }
+    const antes = escolhaAntesDoTotalZeroRef.current;
+    if (!antes) return;
+    escolhaAntesDoTotalZeroRef.current = null;
+    if (paymentMethod !== antes.marcada) return;
+    if (authLoading || !user || !pagamentoOnlineLigado()) return;
+    setPaymentMethod("online");
+    setMetodoOnline(antes.metodoOnline);
+  }, [
+    totalZero.zerado,
+    totalZero.meioParaMarcar,
+    paymentMethod,
+    metodoOnline,
+    authLoading,
+    user,
+  ]);
+
   // TRANSPORTADORA EXIGE PAGAMENTO ANTECIPADO (regra do dono, 21/09/2026).
   // O defeito: quem escolhia "Pix na Entrega" com entrega local, voltava ao
   // carrinho e trocava o frete para uma transportadora, voltava para cá com
@@ -2603,6 +2688,9 @@ export function CheckoutView({
     if (paymentMethod === "online") return;
     if (!pagamentoOnlineLigado()) return;
     if (authLoading || !user) return;
+    // Total zero (14/10/2026): não existe PIX de R$ 0,00 para selecionar — o
+    // Finalizar trava com a explicação própria (`totalZero.travaPor`).
+    if (totalZero.zerado) return;
     setPaymentMethod("online");
     // Auto-seleção é sempre o PIX (o texto do toast promete isso).
     setMetodoOnline("pix");
@@ -2615,6 +2703,7 @@ export function CheckoutView({
     paymentMethod,
     authLoading,
     user,
+    totalZero.zerado,
   ]);
 
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a loja pode desligar a forma
@@ -2635,6 +2724,9 @@ export function CheckoutView({
     if (!ehEntregaLocal && selectedShippingOption) return;
     if (authLoading) return;
     if (paymentMethod === "online") return;
+    // Total zero (14/10/2026): quem marca a forma é o efeito do total zero
+    // (acima) — este aqui poderia escolher "online", que não cobra R$ 0,00.
+    if (totalZero.zerado) return;
     if (
       formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).includes(
         paymentMethod as "pix" | "card" | "cash",
@@ -2660,6 +2752,7 @@ export function CheckoutView({
     paymentMethod,
     authLoading,
     user,
+    totalZero.zerado,
   ]);
 
   useEffect(() => {
@@ -2984,9 +3077,9 @@ export function CheckoutView({
   // Remove !user early return to allow guest checkout UI to render
   // if (!user) return null; // Wait for redirect
 
-  // Values are now passed from props to ensure consistency
-  const discount = appliedCoupon?.discount || 0;
-  const finalTotal = total - discount;
+  // `discount` e `finalTotal` moraram aqui; subiram para antes dos efeitos de
+  // pagamento (a decisão do total zero precisa deles, e os efeitos rodam antes
+  // do retorno antecipado de `authLoading`).
 
   // ECONOMIA total exibida na barra de baixo (pedido do Gabriel,
   // 12/09/2026): cupom + o que o frete grátis deixou de cobrar. NÃO muda o
@@ -3044,15 +3137,8 @@ export function CheckoutView({
   // configurada deixava `shipping === 0`, a guarda antiga não disparava, e
   // o pedido fechava com frete R$ 0 sem cotação nenhuma, depois do
   // carrinho ter dito "A calcular".
-  const semFreteSelecionado =
-    freteIncoerenteComDestino ||
-    freteEmCotacao ||
-    finalizarBloqueadoPorFrete({
-      carrinhoVazio: cart.length === 0,
-      freteIndefinido: ctxFreteIndefinido,
-      shipping,
-      temOpcaoSelecionada: !!selectedShippingOption,
-    });
+  // (`semFreteSelecionado` subiu para antes dos efeitos de pagamento — ver
+  // o comentário "COMPRA QUE FECHA EM R$ 0,00", acima dos efeitos.)
 
   // A outra guarda de frete (regra do dono, 21/09/2026): a modalidade do
   // frete tem de combinar com o meio de pagamento — transportadora exige
@@ -3122,7 +3208,8 @@ export function CheckoutView({
     aguardandoConferenciaDaRecusa ||
     convidadoForaDaCidade ||
     pagamentoIncompativel ||
-    formaDePagamentoDesligada;
+    formaDePagamentoDesligada ||
+    totalZero.bloqueiaFinalizar;
   // Com a identificação recolhida, o botão cinza precisa apontar o campo
   // pendente na própria barra, sem afrouxar a validação do pedido.
   const pendenciaDeIdentificacao = !isValid
@@ -3378,6 +3465,22 @@ export function CheckoutView({
           : freteEmCotacao
             ? "Aguarde: o frete do endereço de entrega ainda está sendo calculado."
             : "Escolha uma opção de frete antes de finalizar o pedido.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // Trava do TOTAL ZERO (14/10/2026), antes da de modalidade × pagamento:
+    // a frase daquela manda "escolher pagamento pelo app", justo o que não
+    // existe com total zero. Cobre o que o `disabled` não alcança (quem chama
+    // o handler por outro caminho) e o instante entre o total zerar e o efeito
+    // trocar a forma de pagamento.
+    if (totalZero.bloqueiaFinalizar) {
+      toast.error(
+        totalZero.travaPor
+          ? `${textoDoPedidoSemValor({ decisao: totalZero, ehRetirada })} ${saidaDoTotalZero({ travaPor: totalZero.travaPor, temCupom: !!appliedCoupon })}`
+          : "Este pedido não tem valor a pagar. Escolha pagar na retirada ou na entrega para finalizar.",
       );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -4710,7 +4813,11 @@ export function CheckoutView({
     requerConta: boolean;
   }
 
-  const opcoesNoApp: OpcaoDePagamento[] = pagamentoOnlineLigado()
+  // Total zero (14/10/2026): o grupo "No app" some inteiro — não existe
+  // cobrança de R$ 0,00 (ver `totalZero`, acima dos efeitos de pagamento).
+  const appOferecidoNestaCompra =
+    pagamentoOnlineLigado() && !totalZero.escondeApp;
+  const opcoesNoApp: OpcaoDePagamento[] = appOferecidoNestaCompra
     ? [
         {
           value: "online",
@@ -5734,7 +5841,19 @@ export function CheckoutView({
                 pagamento online ligado é o PIX no app (auto-selecionado
                 pelo efeito da transição); sem ele, NÃO existe fallback "na
                 entrega" — o bloqueio é a regra e o texto diz por quê. */}
-            {selectedShippingOption && !ehEntregaLocal && (
+            {/* COMPRA QUE FECHA EM R$ 0,00 (dono, 14/10/2026): sem o grupo "No
+                app", a frase explica por que ele sumiu e o que a cliente faz.
+                Quando o Finalizar trava, a saída vem logo abaixo, junto do
+                botão (`totalZero.travaPor`). */}
+            {totalZero.zerado && (
+              <p
+                data-testid="checkout-pedido-sem-valor"
+                className="text-[11px] font-bold normal-case leading-normal tracking-normal text-zinc-700"
+              >
+                {textoDoPedidoSemValor({ decisao: totalZero, ehRetirada })}
+              </p>
+            )}
+            {selectedShippingOption && !ehEntregaLocal && !totalZero.zerado && (
               <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
                 {pagamentoOnlineLigado()
                   ? estadoDoCartao.estado !== "pronto"
@@ -5767,7 +5886,8 @@ export function CheckoutView({
               )}
             {(!selectedShippingOption || ehEntregaLocal) &&
               opcoesNaEntrega.length === 0 &&
-              !user && (
+              !user &&
+              !totalZero.zerado && (
                 <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
                   <p className="text-[11px] font-bold leading-snug text-amber-700">
                     Para comprar nesta loja, entre na sua conta — o pagamento é
@@ -6312,7 +6432,55 @@ export function CheckoutView({
                               : "Informe o endereço de entrega para calcular o frete"}
                       </p>
                     )}
+                    {!semFreteSelecionado && totalZero.travaPor && (
+                      // COMPRA QUE FECHA EM R$ 0,00 (dono, 14/10/2026): o
+                      // total é zero e o pedido não fecha — transportadora
+                      // exige antecipado, ou a loja só recebe pelo app, e o
+                      // app não cobra pedido sem valor. Botão apagado SEM
+                      // saída faz a pessoa desistir: a frase diz o que fazer,
+                      // e os botões levam até lá.
+                      <div
+                        role="alert"
+                        data-testid="checkout-total-zero-trava"
+                        className="mx-auto mt-1.5 max-w-md space-y-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5"
+                      >
+                        <p className="flex items-start gap-1.5 text-[11px] font-bold text-amber-700">
+                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                          {saidaDoTotalZero({
+                            travaPor: totalZero.travaPor,
+                            temCupom: !!appliedCoupon,
+                          })}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {totalZero.travaPor === "transportadora" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                haptic.light();
+                                onNavigate("cart");
+                              }}
+                              className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                            >
+                              Escolher outro frete
+                            </button>
+                          )}
+                          {appliedCoupon && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                haptic.light();
+                                handleRemoveCoupon();
+                              }}
+                              className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                            >
+                              Tirar o cupom
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {!semFreteSelecionado &&
+                      !totalZero.zerado &&
                       pagamentoIncompativel &&
                       paymentMethod === "online" &&
                       ehEntregaLocal && (
@@ -6337,6 +6505,7 @@ export function CheckoutView({
                     {!semFreteSelecionado &&
                       !isOffline &&
                       !pagamentoIncompativel &&
+                      !totalZero.zerado &&
                       formaDePagamentoDesligada &&
                       // 🔴 CORRIGIDO na revisão Opus do commit 085282c3
                       // (anotação 2): sem esta guarda, um convidado numa
