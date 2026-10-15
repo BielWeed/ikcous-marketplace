@@ -33,7 +33,7 @@
 # cliente explícita, 06/10/2026; ref fixo gnjsrucsmjkajijrakzr) usa o de NOME
 # `SUPABASE_ACCESS_TOKEN_SAVY` — o mesmo que publicar-functions.yml já usa para
 # a Savy. Nunca o legado, e sem fallback entre eles: cada alvo enxerga SÓ o seu
-# segredo. Nenhuma credencial nova. As consultas 8a..8k, 9a, 10a, 10b, 11a, 11b, 12a, 12b, 13a, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 18a, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 22m, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 27m, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 32m, 34a, 34b, 34m, 35a, 35b, 35m, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 39m, 40a, 40b, 41a, 41b, 41m e 42m rodam por aqui contra
+# segredo. Nenhuma credencial nova. As consultas 8a..8k, 9a, 10a, 10b, 11a, 11b, 12a, 12b, 13a, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 18a, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 22m, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 27m, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 32m, 33a, 33b, 33m, 34a, 34b, 34m, 35a, 35b, 35m, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 39m, 40a, 40b, 41a, 41b, 41m e 42m rodam por aqui contra
 # qualquer um dos quatro alvos; o job `ledger` continua só para as faixas 72..83
 # e NUNCA roda para `ikcous-publicada` nem para `savy`, EXCETO a faixa 92-202 (backfill
 # do registro das migrations 92..202 sem a 201, só com a pré-checagem da 8e).
@@ -142,6 +142,8 @@ on:
           - 27b-antes-avaliacao-aceita-resposta-forjada
           - 30a-conferir-numeros-do-painel-aplicado
           - 30b-antes-numeros-do-painel-corpos-vigentes
+          - 33a-conferir-grade-do-crm-aplicado
+          - 33b-antes-grade-do-crm-corpo-vigente
           - 31a-conferir-endereco-da-compra-fica-no-pedido
           - 31b-antes-endereco-da-compra-so-no-ponteiro
           - 28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro
@@ -149,6 +151,7 @@ on:
           - 29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes
           - 29b-antes-reemissao-do-reembolso-base-conhecida
           - 18a-inventario-de-portas
+          - 33m-medir-grade-do-crm
           - 22m-medir-portas-do-banco
           - 27m-medir-avaliacao-forjada
           - 32a-conferir-busca-de-clientes-aplicado

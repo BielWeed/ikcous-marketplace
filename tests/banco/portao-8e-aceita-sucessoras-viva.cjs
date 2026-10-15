@@ -8,7 +8,8 @@
  * nada de loja:
  *   painel_inicio()                       20261199 → 20261212000000 → 20261228000000;
  *   get_admin_analytics_v2(integer)       20261199 → 20261214000000 → 20261234000000;
- *   crm_visao(date,date)                  20261199 → 20261227000000;
+ *   crm_visao(date,date)                  20261199 → 20261227000000 → 20261232000000 (a grade do CRM:
+ *                                         a CADEIA do painel_inicio, 99 → 12 → 28, repetida);
  *   get_admin_customers_paged(...)        20261199 → 20261230000000 (a busca de clientes);
  *   crm_clientes(text,text,integer,integer) 20261199 → 20261231000000 (a busca do CRM);
  *   registrar_venda_presencial(...)       20261199 → 20261235000000 (a venda repetida do balcão);
@@ -33,7 +34,7 @@
  *
  * CASOS:
  *  POSITIVOS  árvore inteira (todas as sucessoras no ar); estado da 99 (todas
- *             desfeitas); painel parado na 12; e UM estado "só esta" para cada
+ *             desfeitas); painel parado na 12, analytics na 14 e crm na 27; e UM estado "só esta" para cada
  *             função que não é o painel (só a 14, só a 27, só a 30, só a 31, só a 35, só a 39:
  *             as outras desfeitas). Em todos: todas as linhas ok=true, EXATAMENTE o
  *             ROL_DA_8E (mesmo nº de linhas), e as respostas dos estados são IGUAIS
@@ -104,7 +105,9 @@ const fnDe = (s) =>
   s.assinatura.slice("public.".length, s.assinatura.indexOf("("));
 // A CADEIA de cada função, em ordem de aplicação: painel_inicio = [12, 28] (o `hashVigente` da 28 é
 // o `hashDesta` da 12), get_admin_analytics_v2 = [14, 34] (idem: o `hashVigente` da 34 é o `hashDesta`
-// da 14), crm_visao = [27], get_admin_customers_paged = [30], crm_clientes = [31], upsert_store_config = [39].
+// da 14), crm_visao = [27, 32] (idem: o `hashVigente` da 32 é o `hashDesta` da 27),
+// get_admin_customers_paged = [30], crm_clientes = [31], registrar_venda_presencial = [35],
+// upsert_store_config = [39].
 // O representante de cada função é o ÚLTIMO elo (o topo da cadeia); o corpo da 99 é o `hashVigente` do PRIMEIRO.
 const CADEIAS = new Map();
 for (const s of SUCESSORAS_DA_99)
@@ -115,23 +118,25 @@ const PAINEL_12 = CADEIAS.get("painel_inicio")[0];
 const ANALYTICS = topo("get_admin_analytics_v2");
 const ANALYTICS_14 = CADEIAS.get("get_admin_analytics_v2")[0];
 const CRM = topo("crm_visao");
+const CRM_27 = CADEIAS.get("crm_visao")[0];
 const CLIENTES = topo("get_admin_customers_paged");
 const CRMC = topo("crm_clientes");
 const VENDA = topo("registrar_venda_presencial");
 const UPSERT = topo("upsert_store_config");
 assert.ok(
-  SUCESSORAS_DA_99.length === 9 &&
+  SUCESSORAS_DA_99.length === 10 &&
     CADEIAS.size === 7 &&
     CADEIAS.get("painel_inicio").length === 2 &&
     PAINEL_12.hashDesta === PAINEL.hashVigente &&
     CADEIAS.get("get_admin_analytics_v2").length === 2 &&
     ANALYTICS_14.hashDesta === ANALYTICS.hashVigente &&
-    CADEIAS.get("crm_visao").length === 1 &&
+    CADEIAS.get("crm_visao").length === 2 &&
+    CRM_27.hashDesta === CRM.hashVigente &&
     CADEIAS.get("get_admin_customers_paged").length === 1 &&
     CADEIAS.get("crm_clientes").length === 1 &&
     CADEIAS.get("registrar_venda_presencial").length === 1 &&
     CADEIAS.get("upsert_store_config").length === 1,
-  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 + 20261234 (get_admin_analytics_v2), a 20261227 (crm_visao), a 20261230 (get_admin_customers_paged), a 20261231 (crm_clientes), a 20261235 (registrar_venda_presencial) e a 20261239 (upsert_store_config): reveja a 8e e esta prova",
+  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 + 20261234 (get_admin_analytics_v2), a 20261227 + 20261232 (crm_visao), a 20261230 (get_admin_customers_paged), a 20261231 (crm_clientes), a 20261235 (registrar_venda_presencial) e a 20261239 (upsert_store_config): reveja a 8e e esta prova",
 );
 const FUNCOES = [PAINEL, ANALYTICS, CRM, CLIENTES, CRMC, VENDA, UPSERT];
 /** O corpo da 99 da função (o `esperado` da 8e), o `hashVigente` do primeiro elo da cadeia. */
@@ -249,7 +254,7 @@ const ESTADO_99 = async (c) => {
   assert.deepEqual(
     desfeitas,
     SUCESSORAS_DA_99.map((s) => s.nome).reverse(),
-    "as nove sucessoras tinham de estar no ar e sair",
+    "as dez sucessoras tinham de estar no ar e sair",
   );
   await exigirHashes(c, "estado 99", hashesCom([]));
 };
@@ -289,6 +294,16 @@ const ANALYTICS_NA_14 = async (c) => {
     ),
   );
 };
+/** O CRM PARADO NA 27 (a 32 desfeita): o intermediário da cadeia segue aceito. */
+const CRM_NA_27 = async (c) => {
+  await ARVORE(c);
+  await desfazerUma(CRM)(c);
+  await exigirHashes(
+    c,
+    "crm na 27",
+    hashesCom(FUNCOES.filter((s) => s !== CRM)).set(CRM, CRM_27.hashDesta),
+  );
+};
 /** SÓ `mantida` no ar (no topo da sua cadeia): todas as outras voltam à 99, desfeitas pelo
  * rollback-manual de cada elo, do topo para a base da cadeia. */
 const SO = (mantida, rotulo) => async (c) => {
@@ -299,18 +314,19 @@ const SO = (mantida, rotulo) => async (c) => {
   await exigirHashes(c, rotulo, hashesCom([mantida]));
 };
 const SO_14 = SO(ANALYTICS, "só 14");
-const SO_27 = SO(CRM, "só 27");
+const SO_27 = SO(CRM, "só 27 + 32");
 const SO_30 = SO(CLIENTES, "só 30");
 const SO_31 = SO(CRMC, "só 31");
 const SO_35 = SO(VENDA, "só 35");
 const SO_39 = SO(UPSERT, "só 39");
 const ESTADOS = [
-  ["árvore inteira (12, 28, 14, 34, 27, 30, 31, 35 e 39 no ar)", ARVORE],
-  ["estado da 20261199 (as nove sucessoras desfeitas)", ESTADO_99],
+  ["árvore inteira (12, 28, 14, 34, 27, 32, 30, 31, 35 e 39 no ar)", ARVORE],
+  ["estado da 20261199 (as dez sucessoras desfeitas)", ESTADO_99],
   ["painel parado na 20261212 (a 20261228 desfeita)", PAINEL_NA_12],
   ["analytics parado na 20261214 (a 20261234 desfeita)", ANALYTICS_NA_14],
+  ["crm parado na 20261227 (a 20261232 desfeita)", CRM_NA_27],
   ["misto: só a 20261214 + 20261234 (as outras desfeitas)", SO_14],
-  ["misto: só a 20261227 (as outras desfeitas)", SO_27],
+  ["misto: só a 20261227 + 20261232 (as outras desfeitas)", SO_27],
   ["misto: só a 20261230 (as outras desfeitas)", SO_30],
   ["misto: só a 20261231 (as outras desfeitas)", SO_31],
   ["misto: só a 20261235 (as outras desfeitas)", SO_35],
@@ -603,9 +619,9 @@ async function provar() {
     );
   }
   for (const rows of respostas.slice(1))
-    assert.deepEqual(rows, respostas[0], "os dez estados respondem igual");
+    assert.deepEqual(rows, respostas[0], "os onze estados respondem igual");
   ok(
-    "os dez estados (árvore, 99, painel na 12, analytics na 14, só 14+34, só 27, só 30, só 31, só 35, só 39) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
+    "os onze estados (árvore, 99, painel na 12, analytics na 14, crm na 27, só 14+34, só 27+32, só 30, só 31, só 35, só 39) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
   );
 
   // ------------------------------------------------------------- NEGATIVOS
@@ -743,9 +759,21 @@ async function provar() {
     await exigirReprovadas("só 39 + upsert_store_config estranho", r16.rows, [
       item(UPSERT),
     ]);
+    const r17 = await noEstado(
+      em(CRM_NA_27, corpoEstranho(CRM.assinatura, aceitosDe(CRM))),
+    );
+    await exigirReprovadas("crm na 27 + crm estranho", r17.rows, [item(CRM)]);
+    const r18 = await noEstado(em(CRM_NA_27, sobrecarga(CRM_27)));
+    await exigirReprovadas("crm na 27 + sobrecarga do crm_visao", r18.rows, [
+      item(CRM),
+    ]);
+    const r19 = await noEstado(em(CRM_NA_27, ausente(PAINEL)));
+    await exigirReprovadas("crm na 27 + painel ausente", r19.rows, [
+      item(PAINEL),
+    ]);
   }
   ok(
-    "negativo — nos estados MISTOS (painel na 12, analytics na 14, só 14+34, só 27, só 30, só 31, só 35, só 39) a função ausente, estranha ou sobrecarregada reprova SÓ a linha dela",
+    "negativo — nos estados MISTOS (painel na 12, analytics na 14, crm na 27, só 14+34, só 27+32, só 30, só 31, só 35, só 39) a função ausente, estranha ou sobrecarregada reprova SÓ a linha dela",
   );
   // Controle: as outras 54 seguem exatas (agora a upsert_store_config TEM sucessora; o controle e a save_store_identity).
   {
@@ -777,7 +805,9 @@ async function provar() {
         ? PAINEL_NA_12
         : s === ANALYTICS_14
           ? ANALYTICS_NA_14
-          : ARVORE,
+          : s === CRM_27
+            ? CRM_NA_27
+            : ARVORE,
     );
   }
   for (const s of FUNCOES)
@@ -792,7 +822,7 @@ async function provar() {
     ARVORE,
   );
   await mutantePositivo(
-    "aceitos removidos (CTE sucessoras sem as nove)",
+    "aceitos removidos (CTE sucessoras sem as dez)",
     SUCESSORAS_DA_99.map((s) => [
       `('${fnDe(s)}', '${s.hashDesta}', '${s.nome.slice(0, 14)}')`,
       `('nenhuma_${s.nome.slice(0, 14)}', '${zero}', '${s.nome.slice(0, 14)}')`,
@@ -829,7 +859,7 @@ async function provar() {
     [item(PAINEL)],
   );
   ok(
-    "MUTANTES do texto da 8e: hash de cada elo da cadeia trocado (12, 28, 14, 34, 27, 30, 31, 35 e 39, cada um no estado em que ele é o vivo), hash da 99 trocado (cada função), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
+    "MUTANTES do texto da 8e: hash de cada elo da cadeia trocado (12, 28, 14, 34, 27, 32, 30, 31, 35 e 39, cada um no estado em que ele é o vivo), hash da 99 trocado (cada função), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
   );
 }
 

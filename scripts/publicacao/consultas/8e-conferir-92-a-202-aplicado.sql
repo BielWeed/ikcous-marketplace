@@ -22,19 +22,20 @@
 -- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
 -- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
 -- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
--- apply da sucessora. Hoje são sete funções (nove migrations), cada uma POR SI (função independente:
+-- apply da sucessora. Hoje são sete funções (dez migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo)
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo);
---   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável);
+--   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável)
+--                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento);
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita);
 --   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento).
 -- CADEIA (decidido em 14/10/2026, quando `painel_inicio` ganhou a SEGUNDA sucessora, e repetida quando
--- `get_admin_analytics_v2` ganhou a dela, a 20261234000000): o CTE
+-- `get_admin_analytics_v2` e `crm_visao` ganharam a delas, a 20261234000000 e a 20261232000000): o CTE
 -- `sucessoras` guarda TODOS os corpos intermediários e o final de cada função (várias linhas por
 -- função, uma por migration), nunca só o último — uma loja parada no intermediário (a 12, antes da
 -- 28) continua POSITIVA, e o backfill 92-202 dela não fica bloqueado. A próxima migration que
@@ -130,6 +131,7 @@ WITH corpos AS (
     ('painel_inicio', 'ad5620273997ba9266f240f272bf399b', '20261228000000'),
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
+    ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
     ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa', '20261235000000'),
     ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000')), colunas(tabela, coluna) AS (VALUES

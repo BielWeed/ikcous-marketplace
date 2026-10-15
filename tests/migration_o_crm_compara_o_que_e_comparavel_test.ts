@@ -360,7 +360,7 @@ Deno.test("a ordem de desfazer e o significado novo da taxa estao declarados no 
   assert.ok(sucessoras.includes(NOME));
 });
 
-Deno.test("so a baseline, a 20261199000000 e este par definem crm_visao com este contrato; depois da 20261183 ninguem mais a redefine alem das de sempre", () => {
+Deno.test("so a baseline, a 20261199000000, este par e a sucessora dele (a 20261232000000, a grade do CRM) definem crm_visao com este contrato; depois da 20261183 ninguem mais a redefine alem das de sempre", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -373,5 +373,15 @@ Deno.test("so a baseline, a 20261199000000 e este par definem crm_visao com este
       )
     )
       posteriores.push(n);
-  assert.deepEqual(posteriores.sort(), [NOME, `rollback-manual-${NOME}`]);
+  const SUCESSORA =
+    "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql";
+  assert.deepEqual(
+    posteriores.sort(),
+    [
+      NOME,
+      SUCESSORA,
+      `rollback-manual-${NOME}`,
+      `rollback-manual-${SUCESSORA}`,
+    ].sort(),
+  );
 });

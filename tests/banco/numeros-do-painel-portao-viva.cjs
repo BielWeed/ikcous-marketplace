@@ -30,6 +30,10 @@
  *             rollback-manual (30b) carrega, e o que o banco mede e' o mesmo.
  *  PAPEL      as duas consultas dao o MESMO resultado para o dono da conexao e para o papel minimo.
  *  PORTAO     o veredito do conferir-banco.cjs sobre as linhas reais: rol=ok e ok_false certo.
+ *  SUCESSORA  a 20261232000000 (a grade do CRM) redefine crm_visao por cima da 20261227000000: a 30a aceita os
+ *             DOIS corpos de crm_visao (e mostra o esperado no vivo), a 30b nao muda, e corpo estranho por cima
+ *             da sucessora reprova a linha do md5 mostrando o md5 dele. O estado de partida de toda prova
+ *             desfaz a sucessora primeiro (o rollback-manual dela aceita o corpo da 27 ou o da 32).
  *
  * LIMITE DECLARADO: o Postgres e' o 17 LOCAL; o papel de leitura real da loja (supabase_read_only_user), a
  * ACL real e o corpo vivo das lojas NAO foram medidos aqui.
@@ -61,6 +65,8 @@ const A = "30a-conferir-numeros-do-painel-aplicado";
 const B = "30b-antes-numeros-do-painel-corpos-vigentes";
 const ARQ27 = "20261227000000_o_crm_compara_o_que_e_comparavel.sql";
 const ARQ28 = "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql";
+const ARQ32 =
+  "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql";
 const lerConsulta = (nome) =>
   fs.readFileSync(path.join(CONSULTAS, `${nome}.sql`), "utf8");
 const lerMig = (nome) =>
@@ -71,6 +77,8 @@ const MIG27 = lerMig(ARQ27);
 const MIG28 = lerMig(ARQ28);
 const RB27 = lerMig(`rollback-manual-${ARQ27}`);
 const RB28 = lerMig(`rollback-manual-${ARQ28}`);
+const MIG32 = lerMig(ARQ32);
+const RB32 = lerMig(`rollback-manual-${ARQ32}`);
 const emCRLF = (s) => s.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
 const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 
@@ -94,12 +102,14 @@ const CORPO = {
   crmVigente: corpoDe(RB27, "crm_visao"),
   paiNovo: corpoDe(MIG28, "painel_inicio"),
   paiVigente: corpoDe(RB28, "painel_inicio"),
+  crmSucessora: corpoDe(MIG32, "crm_visao"),
 };
 const H = {
   crmNovo: md5(CORPO.crmNovo),
   crmVigente: md5(CORPO.crmVigente),
   paiNovo: md5(CORPO.paiNovo),
   paiVigente: md5(CORPO.paiVigente),
+  crmSucessora: md5(CORPO.crmSucessora),
 };
 
 const CRM = "public.crm_visao(date,date)";
@@ -166,7 +176,16 @@ async function noEstado(montar, consultas, { comoDono = false } = {}) {
 }
 
 // DEPOIS: as duas migrations (cada uma aceita o corpo vigente ou o seu, entao a ordem de aplicar e' a da 27 e da 28).
+// A arvore pode ter a SUCESSORA 20261232 (a grade do CRM) por cima da 27: quando o corpo vivo do crm_visao e o da
+// sucessora, o rollback-manual dela o leva ao corpo da 27 (nos outros estados nao ha o que desfazer).
+const desfazSucessora = async (c) => {
+  const r = await c.query(
+    "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.crm_visao(date,date)')",
+  );
+  if (r.rows[0] && r.rows[0].h === H.crmSucessora) await c.query(RB32);
+};
 const depois = async (c) => {
+  await desfazSucessora(c);
   await c.query(MIG27);
   await c.query(MIG28);
 };
@@ -184,6 +203,11 @@ const so27 = async (c) => {
 const so28 = async (c) => {
   await antes(c);
   await c.query(MIG28);
+};
+// AS DUAS + A SUCESSORA do crm_visao (a 20261232000000, por cima do corpo da 27)
+const comSucessora = async (c) => {
+  await depois(c);
+  await c.query(MIG32);
 };
 
 const reprovadas = (linhas) =>
@@ -224,6 +248,17 @@ prova(
     assert.equal(H.crmNovo, "c33073503fccc6caa5f1085265501eae");
     assert.equal(H.paiVigente, "f11d22d076c59ab54d1beb280954dd15");
     assert.equal(H.paiNovo, "ad5620273997ba9266f240f272bf399b");
+    assert.equal(H.crmSucessora, "0dfda3ea5129c6f8aabfcf0052fd2936");
+    assert.ok(
+      SQL[A].includes(`'${H.crmSucessora}'`),
+      "30a: md5 da sucessora do crm_visao",
+    );
+    assert.ok(!SQL[B].includes(H.crmSucessora), "30b nao cita a sucessora");
+    assert.ok(
+      MIG32.includes(`'${H.crmNovo}', '${H.crmSucessora}'`) &&
+        RB32.includes(`'${H.crmNovo}', '${H.crmSucessora}'`),
+      "a 32 e o rollback dela citam (vigente = o da 27, desta = o da 32)",
+    );
     assert.ok(SQL[A].includes(`'${H.crmNovo}'`), "30a: md5 do crm_visao novo");
     assert.ok(SQL[A].includes(`'${H.paiNovo}'`), "30a: md5 do painel novo");
     assert.ok(
@@ -250,7 +285,7 @@ prova(
 prova(
   "ROL: as 9 linhas da 30a e as 7 da 30b sao exatamente o rol, em todos os estados",
   async () => {
-    for (const montar of [depois, antes, so27, so28]) {
+    for (const montar of [depois, antes, so27, so28, comSucessora]) {
       const s = await noEstado(montar, [A, B]);
       confereRol(A, s[A]);
       confereRol(B, s[B]);
@@ -310,6 +345,71 @@ prova(
   },
 );
 
+prova(
+  "SUCESSORA (20261232): com a grade do CRM por cima da 27, a 30a segue POSITIVA e mostra o esperado no vivo; a 30b reprova as mesmas 4 linhas; corpo estranho por cima da sucessora reprova o md5 e mostra o md5 dele; desfazer a sucessora volta ao estado de antes",
+  async () => {
+    const s = await noEstado(comSucessora, [A, B]);
+    assert.deepEqual(reprovadas(s[A]), [], "30a toda ok com a sucessora");
+    assert.deepEqual(
+      reprovadas(s[B]),
+      [B_CRM_MD5, B_CRM_MARC, B_PAI_MD5, B_PAI_MARC].sort(),
+    );
+    // aceito o da sucessora, o vivo mostra o esperado (o da 27)
+    assert.equal(s[A].find((l) => l.item === A_CRM_MD5).vivo, H.crmNovo);
+    assert.equal(s[A].find((l) => l.item === A_CRM_MARC).vivo, "sim");
+    assert.equal(
+      s[A].find((l) => l.item === A_CRM_ACL).vivo,
+      "PUBLIC=nao anon=nao authenticated=sim service_role=sim",
+    );
+    // a sucessora sem o painel (so a 32 por cima da 27, painel antigo): o painel reprova SO as linhas dele
+    const soCrm = await noEstado(
+      async (c) => {
+        await antes(c);
+        await c.query(MIG27);
+        await c.query(MIG32);
+      },
+      [A, B],
+    );
+    assert.deepEqual(reprovadas(soCrm[A]), [A_PAI_MD5, A_PAI_MARC].sort());
+    assert.deepEqual(reprovadas(soCrm[B]), [B_CRM_MD5, B_CRM_MARC].sort());
+    // corpo estranho por cima da sucessora (1 byte a mais): reprova SO o md5 e o vivo e o md5 DELE
+    const estranho = await noEstado(
+      async (c) => {
+        await comSucessora(c);
+        await c.query(FUNCOES.crm.cria(`${CORPO.crmSucessora} `, ATRIBUTOS));
+        await guarda(doProc(CRM, "right(prosrc, 1) = ' '"));
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(estranho[A]), [A_CRM_MD5]);
+    assert.equal(
+      estranho[A].find((l) => l.item === A_CRM_MD5).vivo,
+      md5(`${CORPO.crmSucessora} `),
+      "corpo estranho mostra o md5 dele, nao o esperado",
+    );
+    // a sucessora desfeita (o rollback-manual dela): volta ao estado de antes da sucessora, 30a segue positiva
+    const desfeita = await noEstado(
+      async (c) => {
+        await comSucessora(c);
+        await c.query(RB32);
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(desfeita[A]), []);
+    // e a sucessora SEM a 27 no ar (corpo da 99) nao existe: o pre-voo recusa, entao nao ha estado a medir
+    await C.query("BEGIN");
+    try {
+      await antes(C);
+      await assert.rejects(
+        () => C.query(MIG32),
+        /B1_BASELINE_DIVERGENT: o corpo vivo de public\.crm_visao\(date,date\) ainda é o da 20261199000000/,
+      );
+    } finally {
+      await C.query("ROLLBACK");
+    }
+  },
+);
+
 prova("IDEMPOTENCIA, IDA E VOLTA e CRLF: o mesmo veredito", async () => {
   const dobro = await noEstado(
     async (c) => {
@@ -354,7 +454,7 @@ prova("IDEMPOTENCIA, IDA E VOLTA e CRLF: o mesmo veredito", async () => {
 prova(
   "PAPEL: o dono da conexao e o papel minimo de leitura veem o MESMO resultado",
   async () => {
-    for (const montar of [depois, antes, so27, so28]) {
+    for (const montar of [depois, antes, so27, so28, comSucessora]) {
       const comoDono = await noEstado(montar, [A, B], { comoDono: true });
       const comoLeitura = await noEstado(montar, [A, B]);
       assert.deepEqual(comoLeitura[A], comoDono[A]);

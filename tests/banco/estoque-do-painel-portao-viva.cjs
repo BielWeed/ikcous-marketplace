@@ -1142,8 +1142,8 @@ async function main() {
   // as sucessoras da 99 DO LOTE sao exatamente a 20261212 (painel_inicio) e a 20261214 (analytics); as
   // posteriores sao a 20261227 (crm_visao), a 20261228 (que sucede a 12 em painel_inicio) e a 20261230 e a
   // 20261231 (a busca de clientes: get_admin_customers_paged e crm_clientes, funcoes de fora destas tres),
-  // a 20261234 (que sucede a 14 em get_admin_analytics_v2) e a 20261239 (a identidade legal da loja:
-  // upsert_store_config, tambem fora destas tres)
+  // a 20261232 (que sucede a 27 em crm_visao), a 20261234 (que sucede a 14 em get_admin_analytics_v2) e a
+  // 20261239 (a identidade legal da loja: upsert_store_config, tambem fora destas tres)
   assert.deepEqual(
     SUCESSORAS_DO_LOTE.map((s) => [s.nome, s.assinatura, s.hashDesta]).sort(),
     [F.painel, F.analytics].map((f) => [f.arq, f.sig, f.md5.depois]).sort(),
@@ -1167,6 +1167,10 @@ async function main() {
       [
         "20261231000000_a_busca_do_crm_ignora_acento.sql",
         "public.crm_clientes(text,text,integer,integer)",
+      ],
+      [
+        "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql",
+        "public.crm_visao(date,date)",
       ],
       [
         "20261234000000_o_lucro_so_conta_produto_com_custo.sql",

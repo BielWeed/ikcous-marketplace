@@ -1213,6 +1213,64 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         decisao das duas consultas, num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel
         `supabase_read_only_user` de cada loja nem o corpo vivo delas.
 
+  33. **Lote de UMA migration, de apply normal: `20261232000000` (a grade do CRM mede a recencia do mesmo
+      instante da lista; numeros do painel, sem permissao nova).** **So pode ser APLICADO DEPOIS da
+      20261227000000 (item 27), que ainda espera a decisao do dono porque muda o significado da taxa de
+      devolucao:** o pre-voo recusa (`B1_BASELINE_DIVERGENT`) com o corpo da `20261199000000` no ar, e a `33b`
+      reprova na linha do corpo. Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e
+      Savy). Troca o corpo de UMA funcao (`crm_visao`) por `CREATE OR REPLACE`, com o corpo da `20261227000000` e UMA
+      linha diferente (a ancora do periodo), sem tocar dado, assinatura, tipo de retorno, SECURITY DEFINER, STABLE,
+      `search_path`, as travas de admin, ACL nem o formato do JSON:
+      - **O defeito:** a grade de segmentos do CRM media cada cliente ate a MEIA-NOITE DE AMANHA e a lista de
+        clientes ate AGORA. Com o periodo terminando hoje (toda a tela), a grade via cada cliente 1 dia mais velho:
+        quem comprou ha 30 dias estava em "Novos" na lista e em "Promissores" na grade (o mesmo aos 60 e aos 120
+        dias). Medido: lista {novos 2, hibernando 4} x grade {novos 1, hibernando 5}. Agora a ancora e o MENOR entre
+        a meia-noite de amanha e agora, a mesma das quatro chamadas (`crm__vendas`, `crm__clientes_rfm`,
+        `crm__pedidos_nao_pagos`, `crm__nunca_comprou`) e a que a lista ja usa.
+      - **SIGNIFICADO que muda:** so a nota de recencia, e so com o periodo terminando hoje (ou no futuro): mudam
+        `segmentos` e `kpis.receita_em_risco`. Periodo que terminou antes de hoje NAO muda (o JSON e identico, medido
+        em 4 periodos). A virada de 240 dias muda a nota mas nao o segmento: a grade nao a mostra. Dado de verdade
+        nunca tem data depois de agora; a unica diferenca de dado e que uma venda, um pedido ou um perfil com data
+        futura (relogio adiantado de um gateway) deixa de entrar na grade, como ja nao entrava na lista.
+      - Quem quebra: ninguem (nenhuma assinatura muda); nenhum front e nenhuma edge function mudam. Duas consultas,
+        so leitura, so catalogo, de ROL FECHADO (5 e 4 linhas, so valem com `rol=ok`):
+        - **`33a-conferir-grade-do-crm-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo novo (md5), a
+          ancora de agora no corpo, os atributos de sempre e o `EXECUTE` fechado ao visitante.
+        - **`33b-antes-grade-do-crm-corpo-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo da
+          `20261227000000`, sem a ancora de agora, com os atributos de sempre. **Nao mede a ACL.** O md5 vem do
+          arquivo da migration, nao de uma loja: **rode a `33b` em CADA loja ANTES do apply** e compare o corpo vivo;
+          corpo diferente (inclusive o da `20261199000000`, sem a 27) e loja que ninguem mediu.
+      - **Medir antes (opcional, so leitura, nao e portao):** `33m-medir-grade-do-crm` conta (so numeros, nenhum dado
+        pessoal) quantos compradores estao EXATAMENTE nas viradas de 30, 60, 120 e 240 dias: o tamanho do que a
+        correcao move.
+      - **Caminho, uma loja por vez:** `33a` (sai NEGATIVA) → `33b` MAIS NOVA e POSITIVA → UM comando
+        `aplicar-migrations.yml` com a migration → o ensaio pede a `33a` DE NOVO, que tem de sair POSITIVA. `33a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **A cadeia das sucessoras:** a `8e` (lote 92-202) aceita a cadeia 99, 27, 32 de `crm_visao`, e a `30a` (lote
+        do item 27) aceita os DOIS corpos (o da 27 e o da 32): as duas seguem POSITIVAS depois deste lote. Rodar a
+        `8e` e a `30a` DE NOVO depois do apply.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql` (recria o corpo
+        da `20261227000000`, mesmo md5, sem tocar a ACL, com pre-voo proprio; rodar duas vezes deixa o mesmo estado).
+        **Vem ANTES** do rollback da `20261227000000` (o dela recusa enquanto houver redefinicao posterior no ar) e do
+        da `20261199000000`. Depois dele a `33b` volta a ser POSITIVA e a `33a` NEGATIVA.
+      - **Dois aplicadores ao mesmo tempo (medido):** o segundo espera o primeiro confirmar e o Postgres o recusa
+        (`tuple concurrently updated`) sem escrever nada; repetir o aplicador depois e seguro (no-op).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga: rodar a `8e`, a
+        `30a`, a `33a` e a `33b` DE NOVO.
+      - **Limites:** `tests/banco/a-grade-do-crm-mede-a-recencia-viva.cjs` prova o comportamento (cada virada de
+        recencia, o conjunto de 12 compras, as outras tres chamadas, periodo que nao termina hoje identico, resto do
+        corpo igual byte a byte, ACL, travas de admin, rollback, pre-voo que recusa sem escrever, dois aplicadores,
+        mutantes) e `tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs` prova a decisao das duas consultas,
+        num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem
+        o corpo vivo delas. O relogio do banco e o REAL, e a prova se protege da hora do dia: a diferenca entre a
+        ancora antiga (meia-noite de amanha) e a nova (o menor entre ela e agora) so existe entre agora e essa
+        meia-noite, entao o dado "do futuro" fica SEMPRE no meio desse trecho (por construcao, conferido por
+        assert) e todo o resto e "N dias" ou "N horas" ATRAS de agora; tudo numa transacao que sempre e desfeita
+        (o instante e o mesmo nas duas telas). Para provar em qualquer hora, `GRADE_RELOGIO='2026-10-14 22:30:00-03'`
+        injeta um relogio fixo nas provas que dependem da hora (medido em 13 horarios, 14/14 em todos, mutantes
+        mortos em todos); so no microssegundo exato da meia-noite (de Sao Paulo ou UTC) um mutante e equivalente.
+
   34. **Migration de apply normal: `20261233000000` (o sino do pedido de retirada fala de retirada; DADO DE
       CLIENTE, nada se abre e nada se apaga).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
       assinantes (IKCOUS e Savy). Troca por `CREATE OR REPLACE` o corpo de UMA funcao de gatilho,

@@ -37,6 +37,11 @@
  * vermelho do corpo antigo antes da migration existir; NUMEROS_TODAS=1 não
  * para na primeira que falhar (mostra todas as vermelhas de uma vez).
  *
+ * A SUCESSORA 20261232 (a grade do CRM) redefine crm_visao por cima da 20261227 na árvore inteira, e esta
+ * prova é da 20261227: antes de tudo ela leva o crm_visao ao corpo da 27 pelo rollback-manual da 32 (que
+ * aceita o corpo da 32 ou o da 27; o clone é descartável). A prova da 32 é
+ * tests/banco/a-grade-do-crm-mede-a-recencia-viva.cjs.
+ *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/numeros-do-painel-viva.cjs
  */
 
@@ -61,6 +66,8 @@ const DIR_MIGRATIONS = path.join(
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");
 const NOME_C = "20261227000000_o_crm_compara_o_que_e_comparavel.sql";
 const NOME_P = "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql";
+const NOME_32 =
+  "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql";
 const SO_COMPORTAMENTO = process.env.NUMEROS_SO === "comportamento";
 
 const CRM = "public.crm_visao(date,date)";
@@ -978,6 +985,8 @@ async function main() {
   } catch (erro) {
     falhar("INDETERMINADO", `Não conectei no banco efêmero: ${erro.message}`);
   }
+  // A sucessora da 27 (a 32) pode estar no ar: o corpo desta prova é o da 27.
+  await cliente.query(ler(`rollback-manual-${NOME_32}`));
   const linhas = [];
   let falhas = 0;
   const provas = SO_COMPORTAMENTO

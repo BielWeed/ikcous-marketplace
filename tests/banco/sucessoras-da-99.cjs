@@ -51,6 +51,9 @@ const NOMES = [
   // crm_clientes (sem acento) sucedem, cada uma, o corpo da 99.
   "20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql",
   "20261231000000_a_busca_do_crm_ignora_acento.sql",
+  // A grade do CRM (14/10/2026): crm_visao ganha a SEGUNDA sucessora (a CADEIA 99 → 27 → 32: o
+  // `hashVigente` da 32 é o `hashDesta` da 27; desfazer em ordem inversa devolve cada corpo ao anterior).
+  "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql",
   // O lucro só conta produto com custo (14/10/2026): get_admin_analytics_v2 sucede o corpo da 14
   // (a CADEIA 99 → 14 → 34: o `hashVigente` da 34 é o `hashDesta` da 14; desfazer em ordem inversa
   // devolve cada corpo ao anterior).

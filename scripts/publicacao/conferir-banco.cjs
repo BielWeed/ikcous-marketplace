@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 33a, 33b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1666,6 +1666,31 @@ const ROL_DA_30B = [
   "painel_inicio: o corpo ainda NAO corta a semana passada na mesma hora",
   "painel_inicio: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
 ];
+/** O rol da 33a (a prova de objetos do lote 20261232000000, a grade do CRM mede a recencia do mesmo instante da lista):
+ * as 5 linhas que scripts/publicacao/consultas/33a-conferir-grade-do-crm-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de crm_visao e o
+ * NOVO (md5), ele mede o periodo ate agora (LEAST da meia-noite de amanha com now()), os atributos de sempre e o
+ * EXECUTE segue FECHADO ao visitante.
+ * tests/banco/a-grade-do-crm-mede-a-recencia-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que
+ * a consulta devolve. */
+const ROL_DA_33A = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm_visao: corpo e o da 20261232000000, com a ancora de agora (md5)",
+  "crm_visao: o corpo mede o periodo ate agora (LEAST da meia-noite de amanha com now())",
+  "crm_visao: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+  "crm_visao: EXECUTE fechado para anon (authenticated e service_role sim)",
+];
+/** O rol da 33b (a consulta de AUSENCIA do lote da grade do CRM; `ausenciaConfirmadaPor`): as 4 linhas que
+ * scripts/publicacao/consultas/33b-antes-grade-do-crm-corpo-vigente.sql devolve - a base de antes: crm_visao com o
+ * corpo da 20261227000000 (md5), sem a ancora de agora, com os atributos de sempre. NAO mede a ACL. Uma loja que ja
+ * tem a ancora de agora (ou que ainda esta no corpo da 20261199000000, sem a 27) reprova aqui de proposito, nas
+ * linhas do corpo e do marcador. */
+const ROL_DA_33B = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm_visao: corpo e o da 20261227000000, sem a ancora de agora (md5)",
+  "crm_visao: o corpo ainda NAO mede o periodo ate agora",
+  "crm_visao: atributos de sempre (SECURITY DEFINER, STABLE, search_path=public)",
+];
 /** O rol da 31a (a prova de objetos do lote 20261229000000, o endereco da compra fica no pedido): as 9 linhas que
  * scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql devolve, cada uma UMA vez, as
  * mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de create_
@@ -2079,6 +2104,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "27b-antes-avaliacao-aceita-resposta-forjada": ROL_DA_27B,
   "30a-conferir-numeros-do-painel-aplicado": ROL_DA_30A,
   "30b-antes-numeros-do-painel-corpos-vigentes": ROL_DA_30B,
+  "33a-conferir-grade-do-crm-aplicado": ROL_DA_33A,
+  "33b-antes-grade-do-crm-corpo-vigente": ROL_DA_33B,
   "31a-conferir-endereco-da-compra-fica-no-pedido": ROL_DA_31A,
   "31b-antes-endereco-da-compra-so-no-ponteiro": ROL_DA_31B,
   "28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro": ROL_DA_28A,
@@ -2684,6 +2711,8 @@ module.exports = {
   ROL_DA_27B,
   ROL_DA_30A,
   ROL_DA_30B,
+  ROL_DA_33A,
+  ROL_DA_33B,
   ROL_DA_31A,
   ROL_DA_31B,
   ROL_DA_28A,

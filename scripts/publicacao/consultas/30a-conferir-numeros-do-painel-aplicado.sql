@@ -14,7 +14,10 @@
 -- rollback-manual de uma das duas reprovam SO as duas linhas do corpo dela (md5 e marcador).
 --
 --   * corpo   -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF): o da 20261227000000
---                (crm_visao) e o da 20261228000000 (painel_inicio).
+--                (crm_visao) e o da 20261228000000 (painel_inicio). O crm_visao tambem pode estar no corpo da
+--                SUCESSORA 20261232000000 (a grade do CRM: o mesmo corpo com UMA linha trocada, a ancora do
+--                periodo; lote 33): a linha aceita os DOIS e, aceito o da sucessora, o `vivo` mostra o
+--                `esperado` (quem distingue os dois e a 33a). Corpo estranho segue mostrando o md5 dele.
 --   * marcador -- 'sim' se o corpo traz o corte na mesma hora (`::time <= v_hora`, que so existe nos
 --                corpos novos): leitura humana do mesmo fato do md5. No crm_visao, tambem a CTE `turma`
 --                (a turma de vendas da taxa de devolucao).
@@ -63,7 +66,8 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'crm_visao: corpo e o da 20261227000000, com a taxa da turma e o corte na mesma hora (md5)',
          'c33073503fccc6caa5f1085265501eae',
-         COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'crm'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m = '0dfda3ea5129c6f8aabfcf0052fd2936' THEN 'c33073503fccc6caa5f1085265501eae' ELSE f.m END
+                     FROM fn f WHERE f.chave = 'crm'), 'AUSENTE')
   UNION ALL
   SELECT 'crm_visao: o corpo traz a turma de vendas e o corte na mesma hora',
          'sim',
