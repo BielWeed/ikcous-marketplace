@@ -143,6 +143,7 @@ function linha(extra: Record<string, unknown> = {}) {
     pode_ter_saido: false,
     por_fora_liberado_em: null,
     por_fora_apos_espera_liberado: false,
+    substituida_por_manual: false,
     eh_pix: true,
     ...extra,
   };
@@ -203,6 +204,7 @@ describe("regras puras do contrato R1", () => {
     const base = {
       por_fora_liberado_em: null,
       por_fora_apos_espera_liberado: false,
+      substituida_por_manual: false,
     } as const;
     const nada = {
       podeRepetir: false,
@@ -240,6 +242,18 @@ describe("regras puras do contrato R1", () => {
         pode_ter_saido: true,
         por_fora_apos_espera_liberado: true,
         por_fora_liberado_em: "2026-10-16T00:00:00Z",
+        substituida_por_manual: false,
+      }),
+    ).toEqual({ ...nada, jaPorFora: true });
+    // Substituída pelo manual: o pode_ter_saido=false do servidor é "não conta como
+    // dúvida", NUNCA "o dinheiro não saiu" — nada de repetir nem de saída dos 7 dias.
+    expect(
+      acoesDaLinha({
+        ...base,
+        status: "falhou",
+        pode_ter_saido: false,
+        por_fora_apos_espera_liberado: true,
+        substituida_por_manual: true,
       }),
     ).toEqual({ ...nada, jaPorFora: true });
     expect(
@@ -274,8 +288,30 @@ describe("regras puras do contrato R1", () => {
         linhas: [linha({ por_fora_apos_espera_liberado: undefined })],
       }),
     ).toBeNull();
+    expect(
+      lerReembolsosESaldo({
+        ...ok,
+        linhas: [linha({ substituida_por_manual: undefined })],
+      }),
+    ).toBeNull();
     expect(lerReembolsosESaldo({ ...ok, em_duvida: null })).toBeNull();
     expect(lerReembolsosESaldo(null)).toBeNull();
+  });
+
+  it("lerReembolsosESaldo nunca devolve disponível NEGATIVO (a linha em voo resolvida por fora conta duas vezes na conta crua)", () => {
+    const cru = {
+      total: 100,
+      valor_estornado: 0,
+      em_voo: 100,
+      em_duvida: 0,
+      manual: 100,
+      disponivel: "-100.00",
+      linhas: [linha({ status: "em_processamento" })],
+    };
+    expect(lerReembolsosESaldo(cru)?.disponivel).toBe(0);
+    expect(lerReembolsosESaldo({ ...cru, disponivel: 30 })?.disponivel).toBe(
+      30,
+    );
   });
 
   it("lerSaidaAposEspera: só 'combinado'/'registrado' gravou; recusa sem erro nunca vira 'registrado'", () => {

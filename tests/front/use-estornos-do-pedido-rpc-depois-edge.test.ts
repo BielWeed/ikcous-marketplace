@@ -281,6 +281,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
             pode_ter_saido: true,
             por_fora_liberado_em: null,
             por_fora_apos_espera_liberado: false,
+            substituida_por_manual: false,
             eh_pix: false,
           },
           {
@@ -290,6 +291,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
             pode_ter_saido: true,
             por_fora_liberado_em: null,
             por_fora_apos_espera_liberado: false,
+            substituida_por_manual: false,
             eh_pix: true,
           },
         ],
@@ -325,6 +327,16 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(segunda.atual().disponivel).toBe(0);
   });
 
+  it("R1: disponível NEGATIVO do servidor nunca chega à tela (vira 0)", async () => {
+    RESPOSTA_SALDO = {
+      data: { ...SALDO_PADRAO, disponivel: -100 },
+      error: null,
+    };
+    const { atual } = await montarSonda("pedido-negativo");
+    expect(atual().erro).toBe(false);
+    expect(atual().disponivel).toBe(0);
+  });
+
   it("R1: o veredito (pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado) chega em cada linha", async () => {
     RESPOSTA_LINHAS = {
       data: [
@@ -346,6 +358,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
             pode_ter_saido: false,
             por_fora_liberado_em: null,
             por_fora_apos_espera_liberado: false,
+            substituida_por_manual: true,
             eh_pix: false,
           },
           {
@@ -355,6 +368,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
             pode_ter_saido: true,
             por_fora_liberado_em: "2026-10-20T10:00:00Z",
             por_fora_apos_espera_liberado: true,
+            substituida_por_manual: false,
             eh_pix: true,
           },
         ],
@@ -368,9 +382,16 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
       pode_ter_saido: boolean;
       por_fora_liberado_em: string | null;
       por_fora_apos_espera_liberado: boolean;
+      substituida_por_manual: boolean;
     }>;
 
     expect(linhas.find((l) => l.id === "r1")?.pode_ter_saido).toBe(false);
+    expect(linhas.find((l) => l.id === "r1")?.substituida_por_manual).toBe(
+      true,
+    );
+    expect(linhas.find((l) => l.id === "r2")?.substituida_por_manual).toBe(
+      false,
+    );
     expect(linhas.find((l) => l.id === "r2")?.por_fora_liberado_em).toBe(
       "2026-10-20T10:00:00Z",
     );

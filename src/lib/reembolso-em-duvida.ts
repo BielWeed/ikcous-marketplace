@@ -160,8 +160,18 @@ export interface LinhaDoSaldo {
   pode_ter_saido: boolean;
   /** Marca gravada pelo servidor DEPOIS que a saída dos 7 dias foi usada. */
   por_fora_liberado_em: string | null;
-  /** Servidor: a saída dos 7 dias pode ser usada AGORA nesta linha. */
+  /**
+   * Servidor: a ESPERA dos 7 dias desta linha passou. A porta ainda confere o
+   * resto (linha do sistema, outra linha em andamento...) e pode recusar — a
+   * tela mostra a RESPOSTA da porta, nunca promete pelo campo.
+   */
   por_fora_apos_espera_liberado: boolean;
+  /**
+   * Servidor: o reembolso manual tomou o lugar desta linha. Aqui
+   * `pode_ter_saido = false` quer dizer "não conta como dúvida", NÃO "o
+   * dinheiro não saiu" — a linha não ganha "Tentar de novo" nem a saída.
+   */
+  substituida_por_manual: boolean;
   eh_pix: boolean;
 }
 
@@ -200,6 +210,7 @@ function lerLinha(v: unknown): LinhaDoSaldo | null {
     typeof v.pode_ter_saido === "boolean" &&
     typeof v.eh_pix === "boolean" &&
     typeof v.por_fora_apos_espera_liberado === "boolean" &&
+    typeof v.substituida_por_manual === "boolean" &&
     (liberado === null || typeof liberado === "string");
   return ok
     ? ({ ...v, amount, por_fora_liberado_em: liberado } as LinhaDoSaldo)
@@ -210,7 +221,9 @@ function lerLinha(v: unknown): LinhaDoSaldo | null {
  * Lê o jsonb de `pedido_reembolsos_e_saldo`. Forma inesperada (campo faltando,
  * tipo errado, uma linha só que seja) devolve `null` — a tela trata como erro
  * de leitura, nunca como saldo: número de dinheiro de origem incerta não
- * aparece.
+ * aparece. O `disponivel` nunca sai negativo daqui (o servidor já devolve
+ * `GREATEST(saldo, 0)`; esta é a segunda trava, para nenhuma tela mostrar
+ * "Disponível: -R$ 100,00").
  */
 export function lerReembolsosESaldo(v: unknown): ReembolsosESaldo | null {
   if (!ehObjeto(v) || !Array.isArray(v.linhas)) return null;
@@ -232,7 +245,7 @@ export function lerReembolsosESaldo(v: unknown): ReembolsosESaldo | null {
     em_voo,
     em_duvida,
     manual,
-    disponivel,
+    disponivel: Math.max(0, disponivel),
     linhas: linhas as LinhaDoSaldo[],
   };
 }
@@ -243,17 +256,25 @@ interface AcoesDaLinha {
   podeRepetir: boolean;
   /** Parou e PODE ter saído: só o aviso "não repita". */
   confirmando: boolean;
-  /** O servidor liberou AGORA "Já devolvi por fora (depois de 7 dias)". */
+  /** A espera dos 7 dias passou: "Já devolvi por fora (depois de 7 dias)". */
   porForaAposEspera: boolean;
-  /** A saída por fora já foi usada nesta linha (`por_fora_liberado_em`). */
+  /**
+   * A linha já foi resolvida por fora: a saída dos 7 dias foi usada
+   * (`por_fora_liberado_em`) ou o reembolso manual a substituiu
+   * (`substituida_por_manual`).
+   */
   jaPorFora: boolean;
 }
 
 /**
- * Decide os botões de UMA linha a partir do veredito do servidor. A liberação
+ * Decide os botões de UMA linha a partir do veredito do servidor. A espera
  * dos 7 dias é do servidor (`por_fora_apos_espera_liberado`): a tela não
- * conta dias com o relógio do aparelho. Linha concluída nunca tem ação; linha
- * já resolvida por fora (`por_fora_liberado_em`) também não — só o aviso.
+ * conta dias com o relógio do aparelho, e quem decide se a saída vale é a
+ * porta (a tela mostra a resposta dela). Linha concluída nunca tem ação;
+ * linha já resolvida por fora — marca dos 7 dias OU substituída pelo manual
+ * — também não, só o aviso: na substituída o `pode_ter_saido = false` é "não
+ * conta como dúvida", nunca "o dinheiro não saiu", e "Tentar de novo" ali
+ * pagaria o cliente duas vezes.
  */
 export function acoesDaLinha(
   linha: Pick<
@@ -262,9 +283,11 @@ export function acoesDaLinha(
     | "pode_ter_saido"
     | "por_fora_liberado_em"
     | "por_fora_apos_espera_liberado"
+    | "substituida_por_manual"
   >,
 ): AcoesDaLinha {
-  const jaPorFora = linha.por_fora_liberado_em !== null;
+  const jaPorFora =
+    linha.por_fora_liberado_em !== null || linha.substituida_por_manual;
   const parada =
     !jaPorFora && (linha.status === "falhou" || linha.status === "recusado");
   return {

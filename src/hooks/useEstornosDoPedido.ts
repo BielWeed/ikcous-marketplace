@@ -39,8 +39,10 @@ export interface LinhaEstornoDoPedido {
   pode_ter_saido: boolean;
   /** Marca do servidor: a saída dos 7 dias JÁ foi usada nesta linha. */
   por_fora_liberado_em: string | null;
-  /** Servidor: a saída dos 7 dias pode ser usada AGORA. */
+  /** Servidor: a espera dos 7 dias passou (a porta ainda decide). */
   por_fora_apos_espera_liberado: boolean;
+  /** Servidor: o reembolso manual tomou o lugar desta linha. */
+  substituida_por_manual: boolean;
   eh_pix: boolean;
 }
 
@@ -50,6 +52,7 @@ type DetalheDaLinha = Omit<
   | "pode_ter_saido"
   | "por_fora_liberado_em"
   | "por_fora_apos_espera_liberado"
+  | "substituida_por_manual"
   | "eh_pix"
 >;
 
@@ -118,6 +121,7 @@ function juntar(
       por_fora_apos_espera_liberado: j
         ? j.por_fora_apos_espera_liberado
         : false,
+      substituida_por_manual: j ? j.substituida_por_manual : false,
       eh_pix: j ? j.eh_pix : false,
     };
   });

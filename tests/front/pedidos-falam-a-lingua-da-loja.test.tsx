@@ -344,6 +344,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
         pode_ter_saido: true,
         por_fora_liberado_em: null,
         por_fora_apos_espera_liberado: false,
+        substituida_por_manual: false,
         eh_pix: false,
       };
       useEstornosDoPedidoMock.mockReturnValue({

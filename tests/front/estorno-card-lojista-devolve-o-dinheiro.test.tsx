@@ -69,6 +69,7 @@ function linhaDeExemplo(
     pode_ter_saido: false,
     por_fora_liberado_em: null,
     por_fora_apos_espera_liberado: false,
+    substituida_por_manual: false,
     eh_pix: false,
     ...extra,
   };
@@ -880,6 +881,29 @@ describe("EstornoCard — lote R1: linha que pode ter saído não se repete", ()
 
     expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
     expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+    expect(texto()).toContain("Você já registrou que devolveu por fora.");
+  });
+
+  it("R1-J: linha SUBSTITUÍDA pelo manual (pode_ter_saido=false = 'não conta como dúvida') — sem 'Tentar de novo' e sem a saída dos 7 dias, mesmo com saldo", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        disponivel: 100,
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            ultimo_erro: "Tempo esgotado.",
+            pode_ter_saido: false,
+            substituida_por_manual: true,
+            // Mesmo que o servidor dissesse que a espera passou, a linha já foi resolvida.
+            por_fora_apos_espera_liberado: true,
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+    expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
     expect(texto()).toContain("Você já registrou que devolveu por fora.");
   });
 
