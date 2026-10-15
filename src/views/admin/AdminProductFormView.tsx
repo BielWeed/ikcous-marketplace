@@ -42,7 +42,11 @@ import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import { soFotosReais } from "@/lib/foto-do-produto";
-import { mesmaCategoria } from "@/lib/gestao-de-categorias";
+import {
+  ErroDeCategoria,
+  categoriaExisteNaLista,
+  mesmaCategoria,
+} from "@/lib/gestao-de-categorias";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
   chaveDoRascunhoDoProduto,
@@ -497,7 +501,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       ),
     [products],
   );
-  const { categories: dbCategories, addCategory } = useCategories();
+  const {
+    categories: dbCategories,
+    addCategory,
+    isLoading: carregandoCategorias,
+  } = useCategories();
   const isOffline = useOnlineStatus();
   const { config } = useStore();
   const isLocalShipping = config?.shippingCoverage === "local";
@@ -611,6 +619,34 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
     }
   });
+  // A categoria que um RASCUNHO restaurado trouxe, ainda por conferir. O rascunho
+  // fica guardado no aparelho por até 7 dias; nesse tempo a lojista pode ter
+  // renomeado ou apagado a categoria (em "Gerenciar categorias" ou em outro
+  // aparelho), e salvar com o nome velho deixaria o produto órfão da vitrine.
+  // Depois que a lista de categorias chega, o nome que não existe mais sai do
+  // campo e a lojista é avisada de que precisa escolher de novo.
+  const [categoriaDoRascunho, setCategoriaDoRascunho] = useState<string | null>(
+    null,
+  );
+  const [categoriaDoRascunhoSumiu, setCategoriaDoRascunhoSumiu] = useState<
+    string | null
+  >(null);
+  useEffect(() => {
+    if (categoriaDoRascunho === null) return;
+    // Lista ainda chegando (ou vazia por falha de leitura): não dá para afirmar nada.
+    if (carregandoCategorias || dbCategories.length === 0) return;
+    setCategoriaDoRascunho(null);
+    if (categoriaExisteNaLista(categoriaDoRascunho, dbCategories)) return;
+    setCategoriaDoRascunhoSumiu(categoriaDoRascunho);
+    setFormData((prev) =>
+      mesmaCategoria(prev.category ?? "", categoriaDoRascunho)
+        ? { ...prev, category: "" }
+        : prev,
+    );
+    toast.warning(
+      `A categoria “${categoriaDoRascunho}” do rascunho não existe mais. Escolha a categoria de novo.`,
+    );
+  }, [categoriaDoRascunho, carregandoCategorias, dbCategories]);
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
@@ -937,6 +973,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           };
           setFormData(draftFields);
           setInitialData(draftFields);
+          if (draftFields.category)
+            setCategoriaDoRascunho(draftFields.category);
           setIsPromoActive(!!parsed.originalPrice);
           if (draftFields.variants.length > 0) {
             setChaveDasVariacoes((chave) => chave + 1);
@@ -1062,6 +1100,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 label: "Restaurar",
                 onClick: () => {
                   setFormData(draftFields);
+                  // A categoria que o rascunho trouxe e o produto já não tem: confere.
+                  if (
+                    draftFields.category &&
+                    !mesmaCategoria(draftFields.category, initialData.category)
+                  ) {
+                    setCategoriaDoRascunho(draftFields.category);
+                  }
                   setIsPromoActive(!!draftFields.originalPrice);
                   if (draftFields.variants.length > 0) {
                     setChaveDasVariacoes((chave) => chave + 1);
@@ -2636,10 +2681,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             });
                             setShowCategoryForm(false);
                             setNewCategoryName("");
-                          } catch {
-                            toast.error("Erro ao salvar categoria", {
-                              id: loadingId,
-                            });
+                          } catch (e) {
+                            toast.error(
+                              e instanceof ErroDeCategoria
+                                ? e.message
+                                : "Erro ao salvar categoria",
+                              { id: loadingId },
+                            );
                           }
                         }
                       }}
@@ -3914,6 +3962,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   <Layers className="size-5" />
                 </div>
               </div>
+              {categoriaDoRascunhoSumiu && formData.category === "" ? (
+                <p
+                  role="alert"
+                  data-testid="categoria-do-rascunho-sumiu"
+                  className="ml-1 text-xs font-bold text-amber-300"
+                >
+                  A categoria “{categoriaDoRascunhoSumiu}” do rascunho não
+                  existe mais. Escolha a categoria de novo.
+                </p>
+              ) : null}
             </div>
 
             {/* Preço de venda: sobe da antiga "Precificação" para o básico —

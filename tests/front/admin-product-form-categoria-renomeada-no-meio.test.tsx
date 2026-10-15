@@ -19,6 +19,7 @@ const rpcMock = vi.fn();
 const { categoriasDoBanco } = vi.hoisted(() => ({
   categoriasDoBanco: {
     lista: [] as Array<{ id: string; name: string; slug: string }>,
+    carregando: false,
   },
 }));
 
@@ -35,6 +36,7 @@ vi.mock("@/hooks/useProducts", () => ({
 vi.mock("@/hooks/useCategories", () => ({
   useCategories: () => ({
     categories: categoriasDoBanco.lista,
+    isLoading: categoriasDoBanco.carregando,
     addCategory: vi.fn(),
     renameCategory: vi.fn(),
     deleteCategory: vi.fn(),
@@ -116,6 +118,25 @@ function escolher(valor: string) {
 
 const espera = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * Espera até a afirmação passar (no máximo 8 s), dando ao React a chance de pintar entre as
+ * tentativas. Substitui a espera de tempo fixo: o que importa é o efeito, não quanto demorou.
+ */
+async function esperarAte(afirmacao: () => void, limiteMs = 8000) {
+  const fim = Date.now() + limiteMs;
+  for (;;) {
+    try {
+      afirmacao();
+      return;
+    } catch (erro) {
+      if (Date.now() > fim) throw erro;
+    }
+    await act(async () => {
+      await espera(20);
+    });
+  }
+}
+
 describe("AdminProductFormView — a categoria renomeada no meio da edição não volta ao nome antigo", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -138,6 +159,7 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
       { id: "cat-1", name: "Geral", slug: "geral" },
       { id: "cat-2", name: "Cama", slug: "cama" },
     ];
+    categoriasDoBanco.carregando = false;
     rpcMock.mockResolvedValue({ data: [], error: null });
     updateProduct.mockResolvedValue(undefined);
     fetchProduct.mockResolvedValue({
@@ -261,10 +283,102 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
     expect(rpcMock).not.toHaveBeenCalled();
     await act(async () => {
       escolher("MANAGE_CATEGORIES");
-      await espera(100);
     });
-    expect(rpcMock).toHaveBeenCalledWith("categorias_com_uso");
-    expect(document.body.textContent).toMatch(/Renomeie, esconda da vitrine/);
+    // A tela é baixada sob demanda (lazy): espera pelo que ela mostra, não por um tempo fixo.
+    await esperarAte(() => {
+      expect(rpcMock).toHaveBeenCalledWith("categorias_com_uso");
+      expect(document.body.textContent).toMatch(/Renomeie, esconda da vitrine/);
+    });
     expect(selectDaCategoria().value).toBe("Geral");
+  });
+
+  describe("rascunho de produto NOVO guardado no aparelho", () => {
+    const AVISO = '[data-testid="categoria-do-rascunho-sumiu"]';
+
+    async function guardarRascunho(categoria: string) {
+      const { chaveDoRascunhoDoProduto, serializarRascunhoDoProduto } =
+        await import("@/lib/rascunho-do-produto");
+      const chave = chaveDoRascunhoDoProduto("lojista-1");
+      if (!chave) throw new Error("sem chave de rascunho");
+      localStorage.setItem(
+        chave,
+        serializarRascunhoDoProduto({
+          name: "Vestido",
+          description: "Longo",
+          price: "50",
+          stock: "3",
+          category: categoria,
+        }),
+      );
+    }
+
+    async function montarProdutoNovo() {
+      const { AdminProductFormView } = await import(
+        "@/views/admin/AdminProductFormView"
+      );
+      await act(async () => {
+        raiz.render(
+          <AdminProductFormView
+            userId="lojista-1"
+            onNavigate={vi.fn()}
+            // função nova a cada chamada: o formulário é React.memo e precisa reler a lista de categorias
+            onSetDirty={vi.fn()}
+          />,
+        );
+      });
+      await act(async () => {
+        await espera(50);
+      });
+    }
+
+    it("categoria do rascunho que foi RENOMEADA/APAGADA: o campo esvazia e a lojista e' avisada de que precisa escolher de novo", async () => {
+      await guardarRascunho("Brinquedo");
+      await montarProdutoNovo();
+
+      expect(document.getElementById("product-name")).toBeTruthy();
+      expect(
+        (document.getElementById("product-name") as HTMLInputElement).value,
+      ).toBe("Vestido");
+      expect(selectDaCategoria().value).toBe("");
+      expect(document.querySelector(AVISO)?.textContent).toContain("Brinquedo");
+      const { toast } = await import("sonner");
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringContaining("Escolha a categoria de novo"),
+      );
+
+      // escolher outra tira o aviso e o campo fica com a escolha
+      await act(async () => {
+        escolher("Cama");
+      });
+      expect(selectDaCategoria().value).toBe("Cama");
+      expect(document.querySelector(AVISO)).toBeNull();
+    });
+
+    it("categoria do rascunho que AINDA existe fica como estava, sem aviso", async () => {
+      await guardarRascunho("Cama");
+      await montarProdutoNovo();
+
+      expect(selectDaCategoria().value).toBe("Cama");
+      expect(document.querySelector(AVISO)).toBeNull();
+      const { toast } = await import("sonner");
+      expect(toast.warning).not.toHaveBeenCalled();
+    });
+
+    it("com a lista de categorias ainda chegando nao conclui nada; quando chega, confere", async () => {
+      categoriasDoBanco.lista = [];
+      categoriasDoBanco.carregando = true;
+      await guardarRascunho("Brinquedo");
+      await montarProdutoNovo();
+      // lista ainda chegando: nada afirmado, nada avisado
+      const { toast } = await import("sonner");
+      expect(document.querySelector(AVISO)).toBeNull();
+      expect(toast.warning).not.toHaveBeenCalled();
+
+      categoriasDoBanco.lista = [{ id: "cat-2", name: "Cama", slug: "cama" }];
+      categoriasDoBanco.carregando = false;
+      await montarProdutoNovo();
+      expect(selectDaCategoria().value).toBe("");
+      expect(document.querySelector(AVISO)?.textContent).toContain("Brinquedo");
+    });
   });
 });
