@@ -954,7 +954,7 @@ export function ShippingCalculator({
         }}
         className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
           isSelected
-            ? "border-primary bg-primary text-white shadow-md shadow-black/10"
+            ? "border-primary bg-primary text-primary-foreground shadow-md shadow-black/10"
             : "border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
         }`}
       >
@@ -977,7 +977,7 @@ export function ShippingCalculator({
             <div
               className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
                 isSelected
-                  ? "border-white/20 bg-white/20 text-white"
+                  ? "border-white/20 bg-white/20 text-primary-foreground"
                   : "border-zinc-100 bg-zinc-50 text-zinc-500"
               }`}
             >
@@ -998,7 +998,7 @@ export function ShippingCalculator({
                     key={selo}
                     className={`rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${
                       isSelected
-                        ? "bg-white/20 text-white"
+                        ? "bg-white/20 text-primary-foreground"
                         : "bg-emerald-100 text-emerald-700"
                     }`}
                   >
@@ -1016,7 +1016,7 @@ export function ShippingCalculator({
             {(marca?.subtitulo || marca?.agregador) && (
               <span
                 className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[9px] leading-snug ${
-                  isSelected ? "text-zinc-200" : "text-zinc-500"
+                  isSelected ? "text-primary-foreground/80" : "text-zinc-500"
                 }`}
               >
                 {marca.subtitulo && <span>{marca.subtitulo}</span>}
@@ -1027,7 +1027,7 @@ export function ShippingCalculator({
                   <SeloDoAgregador
                     slug={marca.agregador.slug}
                     nome={marca.agregador.nome}
-                    className={`text-[9px] ${isSelected ? "text-zinc-200" : "text-zinc-500"}`}
+                    className={`text-[9px] ${isSelected ? "text-primary-foreground/80" : "text-zinc-500"}`}
                   />
                 )}
               </span>
@@ -1037,7 +1037,9 @@ export function ShippingCalculator({
                 {option.pickupAddress && (
                   <span
                     className={`mt-0.5 block text-[10px] leading-snug ${
-                      isSelected ? "text-zinc-200" : "text-zinc-500"
+                      isSelected
+                        ? "text-primary-foreground/80"
+                        : "text-zinc-500"
                     }`}
                   >
                     Retire em: {option.pickupAddress}
@@ -1045,7 +1047,7 @@ export function ShippingCalculator({
                 )}
                 <span
                   className={`mt-0.5 block text-[9px] leading-snug ${
-                    isSelected ? "text-zinc-300" : "text-zinc-400"
+                    isSelected ? "text-primary-foreground/70" : "text-zinc-400"
                   }`}
                 >
                   Aguarde a confirmação da loja para retirar
@@ -1054,7 +1056,7 @@ export function ShippingCalculator({
             ) : (
               <span
                 className={`mt-0.5 block text-[9px] leading-none ${
-                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                  isSelected ? "text-primary-foreground/70" : "text-zinc-400"
                 }`}
               >
                 {/* Prazo 0 (release 1.5.7, EMENDA R1-4): "no mesmo dia" —
@@ -1073,7 +1075,7 @@ export function ShippingCalculator({
             {naoBeneficiadaComAvisoDeAlcance && (
               <span
                 className={`mt-0.5 block text-[9px] leading-snug ${
-                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                  isSelected ? "text-primary-foreground/70" : "text-zinc-400"
                 }`}
               >
                 O benefício da loja vale só na opção mais barata.
@@ -1098,7 +1100,7 @@ export function ShippingCalculator({
             <div className="flex flex-col items-end">
               <span
                 className={`text-[9px] font-semibold leading-none line-through ${
-                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                  isSelected ? "text-primary-foreground/70" : "text-zinc-400"
                 }`}
               >
                 {formatCurrency(precoCheio as number)}
@@ -1108,7 +1110,7 @@ export function ShippingCalculator({
               </span>
               <span
                 className={`text-[8px] font-black uppercase tracking-wide ${
-                  isSelected ? "text-white/80" : "text-emerald-600"
+                  isSelected ? "text-primary-foreground/80" : "text-emerald-600"
                 }`}
               >
                 Desconto da loja

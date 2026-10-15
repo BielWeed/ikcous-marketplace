@@ -575,7 +575,7 @@ body.admin-mode :focus-visible {
   }
 
   .button-premium {
-    @apply relative overflow-hidden transition-all duration-300 active:scale-95 hover:shadow-lg hover:shadow-primary/20 bg-primary text-white font-bold rounded-xl;
+    @apply relative overflow-hidden transition-all duration-300 active:scale-95 hover:shadow-lg hover:shadow-primary/20 bg-primary text-primary-foreground font-bold rounded-xl;
   }
 
   .button-premium::after {

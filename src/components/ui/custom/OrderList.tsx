@@ -573,7 +573,7 @@ export const OrderList = memo(function OrderList({
                 <button
                   onClick={() => onNavigate("order-details", order.id)}
                   data-testid="order-card-open"
-                  className="group/btn flex h-8 flex-shrink-0 items-center justify-center gap-1 rounded-lg bg-primary px-3 text-[9px] font-black uppercase tracking-widest text-white shadow-sm transition-all after:absolute after:inset-0 after:rounded-2xl after:content-[''] hover:opacity-90 active:scale-[0.97]"
+                  className="group/btn flex h-8 flex-shrink-0 items-center justify-center gap-1 rounded-lg bg-primary px-3 text-[9px] font-black uppercase tracking-widest text-primary-foreground shadow-sm transition-all after:absolute after:inset-0 after:rounded-2xl after:content-[''] hover:opacity-90 active:scale-[0.97]"
                 >
                   <span>Ver Detalhes</span>
                   <ChevronRight className="size-3 transition-transform duration-200 group-hover/btn:translate-x-0.5" />

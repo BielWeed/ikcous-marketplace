@@ -183,7 +183,7 @@ export const FavoritesView = React.memo(function FavoritesView({
               >
                 <Heart
                   size={46}
-                  className="relative z-10 fill-white text-white drop-shadow-md"
+                  className="relative z-10 fill-primary-foreground text-primary-foreground drop-shadow-md"
                 />
               </motion.div>
 
@@ -231,19 +231,19 @@ export const FavoritesView = React.memo(function FavoritesView({
                 haptic.medium();
                 onNavigate("home");
               }}
-              className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl border border-primary/20 bg-primary px-5 text-white shadow-[0_12px_28px_-6px_rgba(24,24,27,0.4)] transition-all hover:scale-[1.02] active:scale-95"
+              className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl border border-primary/20 bg-primary px-5 text-primary-foreground shadow-[0_12px_28px_-6px_rgba(24,24,27,0.4)] transition-all hover:scale-[1.02] active:scale-95"
             >
               <div className="relative z-10 flex items-center gap-2.5">
                 <div className="flex size-7 items-center justify-center rounded-xl bg-white/15 text-secondary">
                   <Sparkles className="size-4 fill-secondary/30 text-secondary animate-pulse" />
                 </div>
-                <span className="text-[12px] font-black uppercase tracking-wider text-white">
+                <span className="text-[12px] font-black uppercase tracking-wider text-primary-foreground">
                   Explorar Produtos
                 </span>
               </div>
 
-              <div className="relative z-10 flex size-8 items-center justify-center rounded-xl bg-white/20 text-white backdrop-blur-sm transition-transform group-hover:translate-x-1">
-                <ArrowRight className="size-4 text-white" />
+              <div className="relative z-10 flex size-8 items-center justify-center rounded-xl bg-white/20 text-primary-foreground backdrop-blur-sm transition-transform group-hover:translate-x-1">
+                <ArrowRight className="size-4 text-primary-foreground" />
               </div>
 
               {/* Shimmer overlay */}

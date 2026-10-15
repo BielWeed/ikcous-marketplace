@@ -1,4 +1,4 @@
-import { hexToTailwindHsl } from "@/config/branding";
+import { aplicarCorDaLoja } from "@/config/branding";
 import {
   ContextoDoFreteDaLoja,
   contextoDaLojaParaFrete,
@@ -454,10 +454,7 @@ export function StoreProvider({
           // que é real e passa). Nada aplica valor cru por fora daqui.
           const corCache = corPrimariaEfetiva(merged);
           if (corCache) {
-            document.documentElement.style.setProperty(
-              "--primary",
-              hexToTailwindHsl(corCache),
-            );
+            aplicarCorDaLoja(corCache);
           }
           // ADMIN-100 (#102): a classe `dark` (e o atributo `data-theme-mode`)
           // NÃO é mexida aqui. App.tsx é o único dono — ele decide com base em
@@ -516,10 +513,7 @@ export function StoreProvider({
 
   const applyBranding = useCallback((primaryColor?: string | null) => {
     if (primaryColor) {
-      document.documentElement.style.setProperty(
-        "--primary",
-        hexToTailwindHsl(primaryColor),
-      );
+      aplicarCorDaLoja(primaryColor);
     }
   }, []);
 

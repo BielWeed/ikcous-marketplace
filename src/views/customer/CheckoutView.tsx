@@ -5194,7 +5194,7 @@ export function CheckoutViewDaConta({
           <div
             className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
           >
-            {isSelected && <Check className="size-3 text-white" />}
+            {isSelected && <Check className="size-3 text-primary-foreground" />}
           </div>
         )}
       </button>
@@ -5869,7 +5869,7 @@ export function CheckoutViewDaConta({
                       setEditingAddressId(null);
                       setIsAddressModalOpen(true);
                     }}
-                    className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
+                    className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-primary-foreground transition-all hover:opacity-90"
                   >
                     <Plus className="size-3" /> Novo
                   </Button>
@@ -6575,11 +6575,11 @@ export function CheckoutViewDaConta({
                           "h-12 px-3 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-1.5 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
                           botaoFinalizarDesabilitado
                             ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                            : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
+                            : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-black/10",
                         )}
                       >
                         {isSubmitting ? (
-                          <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                          <div className="size-4 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
                         ) : (
                           <>
                             <span>Finalizar</span>
@@ -6957,7 +6957,7 @@ function SuccessView({
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
         <button
           onClick={() => onNavigate("home")}
-          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-primary-foreground shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
         >
           Retornar à Vitrine
           <ArrowLeft className="size-5 rotate-180" />
@@ -7036,7 +7036,7 @@ function PagamentoConfirmadoView({
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
         <button
           onClick={() => onNavigate("orders")}
-          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-primary-foreground shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
         >
           Ver Meus Pedidos
         </button>
@@ -7188,11 +7188,11 @@ function AddressSelectionView({
           <div className="absolute bottom-0 left-0 -mb-12 -ml-12 size-24 rounded-full bg-white/5 blur-xl" />
 
           <div className="relative z-10 flex flex-col">
-            <h2 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-white">
+            <h2 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-primary-foreground">
               {editingAddressId ? "Editar Endereço" : "Novo Endereço"}
               <Sparkles className="size-4.5 animate-pulse text-amber-400" />
             </h2>
-            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-white/80">
+            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-primary-foreground/80">
               {editingAddressId
                 ? "Atualize os dados para entrega"
                 : "Onde entregaremos seu produto?"}
