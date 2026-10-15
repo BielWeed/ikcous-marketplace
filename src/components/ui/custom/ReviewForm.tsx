@@ -12,7 +12,7 @@ import { useReviews } from "@/hooks/useReviews";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Star } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -30,12 +30,16 @@ interface ReviewFormProps {
   // OrderDetailsView): quem toca numa estrela do cartão já chega aqui com a
   // nota escolhida — só preenche `defaultValues.rating`, nada mais muda.
   initialRating?: number;
+  // Quem fecha a folha precisa saber se há comentário escrito a perder: o
+  // formulário mantém esta ref em dia (true = tem texto digitado).
+  temTextoRef?: { current: boolean };
 }
 
 export function ReviewForm({
   productId,
   onSuccess,
   initialRating,
+  temTextoRef,
 }: ReviewFormProps) {
   const { addReview } = useReviews();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,6 +52,15 @@ export function ReviewForm({
       comment: "",
     },
   });
+
+  const temTexto = form.watch("comment").trim() !== "";
+  useEffect(() => {
+    if (!temTextoRef) return;
+    temTextoRef.current = temTexto;
+    return () => {
+      temTextoRef.current = false;
+    };
+  }, [temTexto, temTextoRef]);
 
   async function onSubmit(values: z.infer<typeof reviewSchema>) {
     setIsSubmitting(true);
