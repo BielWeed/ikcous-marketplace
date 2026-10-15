@@ -62,6 +62,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const {
+  desfazerReembolsoEmDuvidaNaTransacao,
+} = require("./reembolso-em-duvida-posterior.cjs");
+const {
   falhar,
   lerDatabaseUrlEfemera,
   anexarAoSummary,
@@ -1913,6 +1916,8 @@ PROVAS.push({
       // linha nasce NULL, e para o executor novo isso é LEGADO: tentativas > 1
       // = incerta, nunca recusada (R1-C4 no teste do cron). Aqui: o banco
       // mostra a linha NULL e a reserva viva depois do nao_cabe.
+      // A 20261241000000 (posterior: redefine o autorizar da 96 e o solicitar da 201) sai antes, se no ar.
+      await desfazerReembolsoEmDuvidaNaTransacao(cliente);
       await cliente.query(rollback201);
       assert.equal(await padrao(), null, "o rollback da 201 tira o DEFAULT");
       await pedido(cliente, O(150), { total: 100 });
@@ -2060,6 +2065,8 @@ PROVAS.push({
     }
     await cliente.query("BEGIN");
     try {
+      // A 20261241000000 (posterior: redefine o autorizar da 96) sai antes, se no ar.
+      await desfazerReembolsoEmDuvidaNaTransacao(cliente);
       await cliente.query(rollback201);
       // Aplicar DUAS vezes seguidas é no-op (as colunas, as funções).
       await cliente.query(sql);

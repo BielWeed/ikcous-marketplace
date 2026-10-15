@@ -396,8 +396,10 @@ Deno.test("a lista L8 de portas do visitante: so a funcao do lojista entra (loga
       new URL("tests/banco/portas-do-visitante-permitidas.json", DIR),
     ),
   );
+  // `admin_devolucao_reembolso_por_fora\(`: a saida dos 7 dias da 20261241000000
+  // (admin_devolucao_reembolso_por_fora_apos_espera) e' outra porta, de outra migration.
   const f = lista.funcoes.filter((x) =>
-    /admin_devolucao_reembolso_por_fora|registrar_diagnostico_do_estorno|reemitir_reembolso_da_devolucao/.test(
+    /admin_devolucao_reembolso_por_fora\(|registrar_diagnostico_do_estorno|reemitir_reembolso_da_devolucao/.test(
       x.funcao,
     ),
   );
@@ -410,10 +412,22 @@ Deno.test("a lista L8 de portas do visitante: so a funcao do lojista entra (loga
   assert.equal(f[0].situacao, "logado");
   assert.equal(f[0].secdef, true);
   assert.equal(f[0].tipo, "volatil");
+  // A antiga nao e' redefinida AQUI; quem a fecha ao logado (REVOKE do authenticated) e' a 20261241000000
+  // (o reembolso em duvida prende o saldo), e por isso ela SAIU da lista de portas.
   assert.ok(
-    lista.funcoes.some((x) =>
+    !lista.funcoes.some((x) =>
       x.funcao.startsWith("public.admin_devolucao_reemitir_reembolso("),
     ),
-    "a antiga continua na lista (nao e' redefinida aqui)",
+    "a antiga saiu da lista (a 20261241000000 fecha o EXECUTE do logado)",
+  );
+  assert.ok(
+    Deno.readTextFileSync(
+      new URL(
+        "supabase/migrations/20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql",
+        DIR,
+      ),
+    ).includes(
+      "REVOKE ALL ON FUNCTION public.admin_devolucao_reemitir_reembolso(uuid, boolean) FROM PUBLIC, anon, authenticated;",
+    ),
   );
 });

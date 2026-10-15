@@ -2127,7 +2127,20 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
       // conta produto com custo, get_admin_analytics_v2 ganha a SEGUNDA sucessora; 20261235: a venda
       // repetida do balcão, registrar_venda_presencial ganha a sua; 20261239: a identidade legal da loja,
       // upsert_store_config ganha a sua — e a 9a passa a provar o corpo dela).
+      // 15/10/2026: a 20261241000000 (o reembolso em dúvida prende o saldo) sucede QUATRO corpos que não
+      // são da 99 (autorizar_post_do_estorno da 96; solicitar_estorno e admin_devolucao_concluir da 97;
+      // pedido__saldo_a_estornar da 98).
       assertEquals([...sucessoras8e].sort(porFn), [
+        {
+          fn: "admin_devolucao_concluir",
+          h: "ebb901efff59a53082836a13e053cd1a",
+          versao: "20261241000000",
+        },
+        {
+          fn: "autorizar_post_do_estorno",
+          h: "c73e48294c08f34240abc3843aa7d1f1",
+          versao: "20261241000000",
+        },
         {
           fn: "crm_clientes",
           h: "9c4268178a50729b5f7b256b77882585",
@@ -2168,11 +2181,21 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "ad5620273997ba9266f240f272bf399b",
           versao: "20261228000000",
         },
+        {
+          fn: "pedido__saldo_a_estornar",
+          h: "ee7f8e6e7eb18d5a383f5634c61aa0c4",
+          versao: "20261241000000",
+        },
         // 14/10/2026: a venda repetida do balcão (trava pela chave de idempotência).
         {
           fn: "registrar_venda_presencial",
           h: "996caf02505ac16a8bded73bcf8900aa",
           versao: "20261235000000",
+        },
+        {
+          fn: "solicitar_estorno",
+          h: "840de50f44958fe43b55f5222691df9b",
+          versao: "20261241000000",
         },
         {
           fn: "upsert_store_config",
@@ -2197,23 +2220,28 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
       for await (const e of Deno.readDir(MIGRATIONS_DIR))
         if (e.isFile) todos.push(e.name);
       // A cadeia de cada função, em ordem de versão: o "vigente" de cada elo é o corpo do elo
-      // anterior (o da 99 para o primeiro).
+      // anterior (o `final` — o da última de 92..202 que a define — para o primeiro). Até a
+      // 20261239 todas as sucessoras eram de corpos da 99; a 20261241000000 (o reembolso em
+      // dúvida prende o saldo) é a primeira a suceder corpos da 96, da 97 e da 98
+      // (autorizar_post_do_estorno, solicitar_estorno, admin_devolucao_concluir e
+      // pedido__saldo_a_estornar), então a âncora é a ÚLTIMA de 92..202, não a 99.
       const anterior = new Map<string, string>();
       for (const s of [...sucessoras8e].sort((a, b) =>
         a.versao < b.versao ? -1 : 1,
       )) {
-        const h99 = final.get(s.fn);
-        const vigente = anterior.get(s.fn) ?? h99;
+        const hFinal = final.get(s.fn);
+        const vigente = anterior.get(s.fn) ?? hFinal;
         anterior.set(s.fn, s.h);
-        // a última de 92..202 que define a função é a 99, e o `final` é dela
-        const corpo99 = corpoNoTexto(m99, s.fn);
-        assert(corpo99 !== null, `${s.fn}: a 20261199 não a define`);
-        assertEquals(md5(corpo99), h99, `${s.fn}: o final não é o da 99`);
+        // o `final` é o corpo da última de 92..202 que define a função
         assertEquals(
           md5(corpoFinal(s.fn)),
-          h99,
-          `${s.fn}: a última de 92..202 não é a 99`,
+          hFinal,
+          `${s.fn}: o final não é o corpo da última de 92..202`,
         );
+        // as sucessoras dos corpos da 99 seguem amarradas a ela
+        const corpo99 = corpoNoTexto(m99, s.fn);
+        if (corpo99 !== null)
+          assertEquals(md5(corpo99), hFinal, `${s.fn}: o final não é o da 99`);
         assert(vigente !== s.h, `${s.fn}: a sucessora não muda o corpo`);
         const arq = todos.filter(
           (n) => n.startsWith(`${s.versao}_`) && n.endsWith(".sql"),
@@ -2269,8 +2297,10 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
         new Set(sucessoras8e.map((s) => `${s.fn}|${s.h}`)).size,
         sucessoras8e.length,
       );
+      // uma migration pode suceder VÁRIAS funções (a 20261241000000 sucede quatro), mas nunca a
+      // mesma função duas vezes
       assertEquals(
-        new Set(sucessoras8e.map((s) => s.versao)).size,
+        new Set(sucessoras8e.map((s) => `${s.fn}|${s.versao}`)).size,
         sucessoras8e.length,
       );
       assertStringIncludes(sql8e, "tests/ci_conferir_banco_test.ts");
@@ -13406,4 +13436,333 @@ Deno.test("41a/41b — o rpc-ci.yml roda as duas provas vivas do lote (comportam
         `${gatilho} sem o caminho ${arquivo}`,
       );
   }
+});
+
+// 43a/43b (15/10/2026) — a PROVA DE OBJETOS do lote da migration 20261241000000 (o reembolso em duvida prende o saldo:
+// a regra unica `order_refund__pode_ter_saido`, a espera unica `order_refund__liberavel_apos_espera`, a tabela de marcas
+// `order_refund_prova`, o saldo que desconta o "em duvida", as duas saidas dos 7 dias, a leitura do painel e a funcao
+// antiga fechada ao logado). A 43a e' a consulta do lote (DEPOIS: os doze corpos por md5, atributos, EXECUTE por papel,
+// a tabela so do servidor e dois marcadores); a 43b a de ausencia (ANTES: os objetos novos ausentes e os sete corpos
+// vigentes). As duas sao de ROL FECHADO (21 e 14 linhas) e so leem o catalogo. Estes testes medem o texto dos .sql
+// contra os ARQUIVOS desta arvore; a decisao de cada consulta num Postgres real fica com
+// tests/banco/reembolso-em-duvida-portao-viva.cjs.
+const NOME_43A = "43a-conferir-reembolso-em-duvida-aplicado";
+const NOME_43B = "43b-antes-reembolso-em-duvida-base-vigente";
+const MIGRACAO_241 = `${MIGRATIONS_DIR}/20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql`;
+
+for (const [nome, linhasDoRol, permitidos] of [
+  [
+    NOME_43A,
+    21,
+    [
+      "pg_proc",
+      "pg_namespace",
+      "pg_language",
+      "pg_class",
+      "pg_attribute",
+      "pg_policy",
+      "aclexplode",
+      "alvo",
+      "fn",
+      "antiga",
+      "tab",
+      "itens",
+    ],
+  ],
+  [
+    NOME_43B,
+    14,
+    [
+      "pg_proc",
+      "pg_namespace",
+      "pg_language",
+      "pg_trigger",
+      "alvo",
+      "fn",
+      "chamadas",
+      "novos",
+      "gat",
+      "itens",
+    ],
+  ],
+] as Array<[string, number, string[]]>) {
+  Deno.test(`${nome} — no menu, UM statement so leitura (WITH), rol fechado de ${linhasDoRol} itens, so catalogo e nenhuma linha de dado e lida`, async () => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const estrutura = semLiterais(sql);
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    assertStringIncludes(yaml, `- ${nome}\n`);
+    assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+    assert(/^\s*WITH\b/i.test(limpo), "comeca por WITH");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+        estrutura,
+      ),
+      "palavra de escrita fora de comentario/literal",
+    );
+    assert(
+      !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+        estrutura,
+      ),
+      "SQL dinamico (ou leitura de arquivo)",
+    );
+    assert(
+      /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+        limpo,
+      ),
+      "saida item/esperado/vivo/ok com as reprovadas primeiro",
+    );
+    const alvos = [
+      ...estrutura.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+    ].map((m) => m[1].toLowerCase());
+    assert(alvos.length > 0);
+    const ok = new Set(permitidos);
+    for (const alvo of alvos)
+      assert(ok.has(alvo), `le de "${alvo}", que nao e catalogo nem CTE`);
+    assert(
+      !/\b(?:FROM|JOIN)\s+(?:public\.|auth\.)?(?:devolucoes|order_refunds|order_refund_prova|order_refund_diagnostico|marketplace_orders|notificacoes|users|profiles)\b/i.test(
+        estrutura,
+      ),
+      "a consulta leu uma tabela de dados",
+    );
+    // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    assertEquals(rol.length, linhasDoRol);
+    assertEquals(new Set(rol).size, rol.length);
+    for (const item of rol)
+      assertStringIncludes(limpo, `'${item}'`, `item "${item}" fora do .sql`);
+    assertEquals(
+      [...limpo.matchAll(/SELECT '([^']+)',/g)].length,
+      rol.length,
+      "o .sql tem mais (ou menos) linhas que o rol",
+    );
+  });
+}
+
+Deno.test("43a/43b — os md5 da 43a sao os dos DOZE corpos que o arquivo da migration deixa (os mesmos do pre-voo e da conferencia final); os da 43b sao os dos SETE corpos vigentes, lidos dos arquivos das migrations que os deixaram (os mesmos do pre-voo e do rollback); a 43b nao mede ACL", async () => {
+  const { createHash } = require("node:crypto");
+  const md5 = (s: string) =>
+    createHash("md5").update(s.replace(/\r/g, "")).digest("hex");
+  /** Corpo (prosrc) da ULTIMA definicao de `fn` num texto: entre "AS $tag$" e "$tag$;". */
+  const corpoDe = (sql: string, fn: string) => {
+    const cabeca = `CREATE OR REPLACE FUNCTION public.${fn}(`;
+    const i = sql.lastIndexOf(cabeca);
+    assert(i >= 0, `${fn}: nao achada`);
+    const m = /\nAS (\$[A-Za-z_]*\$)/.exec(sql.slice(i));
+    assert(m, `${fn}: sem AS $tag$`);
+    const ini = i + m.index + m[0].length;
+    return sql.slice(ini, sql.indexOf(`${m[1]};`, ini));
+  };
+  const ler = (n: string) => Deno.readTextFile(`${MIGRATIONS_DIR}/${n}`);
+  const mig = await ler(
+    "20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql",
+  );
+  const rb = await ler(
+    "rollback-manual-20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql",
+  );
+  const DEPOIS: Record<string, string> = {
+    order_refund__pode_ter_saido: "bdbb28b3d91588c8b10283d57bfb73d6",
+    order_refund__liberavel_apos_espera: "cb37f24646fda24e1a51c8f01983e083",
+    pedido__saldo_a_estornar: "ee7f8e6e7eb18d5a383f5634c61aa0c4",
+    solicitar_estorno: "840de50f44958fe43b55f5222691df9b",
+    admin_devolucao_concluir: "ebb901efff59a53082836a13e053cd1a",
+    autorizar_post_do_estorno: "c73e48294c08f34240abc3843aa7d1f1",
+    reemitir_reembolso_da_devolucao: "fd5d79042efa68f9a17298fff1e950bd",
+    admin_devolucao_reembolso_por_fora: "76eaffb4f9438f7fe557961e1bdaad81",
+    devolucao_avisa_o_cliente: "56502b960dcf3e136c1d0d5c41091c20",
+    admin_devolucao_reembolso_por_fora_apos_espera:
+      "92dd1608d02ef5e9fd9fe34e0bd7c49f",
+    registrar_estorno_manual_apos_espera: "e1cc84a9471590abd34ce9368dd444e7",
+    pedido_reembolsos_e_saldo: "64cf09844a36503dcf9d355be1a452b8",
+  };
+  // De onde vem cada corpo VIGENTE (a ultima migration antes desta que o define).
+  const ANTES: Record<string, [string, string]> = {
+    pedido__saldo_a_estornar: [
+      "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
+      "9579d2b56b57cf948659936a928dd7dc",
+    ],
+    solicitar_estorno: [
+      "20261197000000_dinheiro_exige_admin_atual.sql",
+      "069c3d12a470cc4708099d909c57ca02",
+    ],
+    admin_devolucao_concluir: [
+      "20261197000000_dinheiro_exige_admin_atual.sql",
+      "26080db4aeb82bdfb9fcd0c6f7169ebb",
+    ],
+    autorizar_post_do_estorno: [
+      "20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql",
+      "e128f7ad54ebc82c97b97af4aa7baa08",
+    ],
+    reemitir_reembolso_da_devolucao: [
+      "20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql",
+      "872fcb1d2bac9816e2d2b1c7c2e868c0",
+    ],
+    admin_devolucao_reembolso_por_fora: [
+      "20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql",
+      "0a7e06d7004c3fb70897e87c4dfa8cf9",
+    ],
+    devolucao_avisa_o_cliente: [
+      "20261225000000_o_reembolso_da_devolucao_so_e_liberado_quando_o_dinheiro_sai.sql",
+      "2cd21f47021cafc15cae4ccd0c8c67e5",
+    ],
+  };
+  const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_43A}.sql`);
+  const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_43B}.sql`);
+  for (const [fn, h] of Object.entries(DEPOIS)) {
+    assertEquals(
+      md5(corpoDe(mig, fn)),
+      h,
+      `${fn}: o md5 novo nao e o do arquivo`,
+    );
+    // alvo (hash_desta) e a linha do corpo
+    assertEquals(a.split(`'${h}'`).length - 1, 2, `43a: md5 novo de ${fn}`);
+    assert(!b.includes(h), `43b nao cita corpo novo (${fn})`);
+    assertEquals(
+      mig.split(`'${h}'`).length - 1,
+      2,
+      `${fn}: pre-voo (hash_desta) e conferencia final`,
+    );
+    assertEquals(
+      rb.split(`'${h}'`).length - 1,
+      1,
+      `${fn}: o rollback cita o corpo novo so no pre-voo`,
+    );
+  }
+  for (const [fn, [arquivo, h]] of Object.entries(ANTES)) {
+    assertEquals(md5(corpoDe(await ler(arquivo), fn)), h, `${fn}: vigente`);
+    assertEquals(
+      md5(corpoDe(rb, fn)),
+      h,
+      `${fn}: o rollback nao devolve o corpo de antes`,
+    );
+    assertEquals(b.split(`'${h}'`).length - 1, 1, `43b: md5 vigente de ${fn}`);
+    assertEquals(
+      mig.split(`'${h}'`).length - 1,
+      1,
+      `${fn}: pre-voo (hash_vigente)`,
+    );
+    assertEquals(
+      rb.split(`'${h}'`).length - 1,
+      2,
+      `${fn}: o rollback cita o de antes no pre-voo e na conferencia final`,
+    );
+    // a 43a so cita o vigente se ele for aceito como sucessor por outra consulta: nunca
+    assert(!a.includes(h), `43a nao cita corpo vigente (${fn})`);
+  }
+  for (const [nome, sql] of [
+    [NOME_43A, a],
+    [NOME_43B, b],
+  ] as Array<[string, string]>)
+    assertStringIncludes(
+      sql,
+      "md5(replace(p.prosrc, chr(13), ''))",
+      `${nome}: o md5 e do corpo sem \\r`,
+    );
+  assert(
+    !/aclexplode|has_function_privilege|has_table_privilege/.test(
+      sqlSemComentarios(b),
+    ),
+    "a 43b nao mede ACL",
+  );
+  assertStringIncludes(
+    a,
+    "'PUBLIC=nao anon=nao authenticated=nao service_role=nao'",
+  );
+  assertStringIncludes(a, "'PUBLIC=nao anon=nao authenticated=sim'");
+  assertStringIncludes(a, "'PUBLIC=nao anon=nao authenticated=nao'");
+  assertStringIncludes(
+    a,
+    "'rls=sim politicas=0 anon=nao authenticated=nao service_role=nao'",
+  );
+});
+
+Deno.test("43a/43b — as consultas dos lotes 28, 29 e 8e aceitam o corpo da 20261241000000 como SUCESSOR (seguem POSITIVAS depois do apply) sem afrouxar o resto", async () => {
+  const a28 = await Deno.readTextFile(
+    `${CONSULTAS_DIR}/28a-conferir-reembolso-da-devolucao-so-liberado-com-dinheiro.sql`,
+  );
+  const a29 = await Deno.readTextFile(
+    `${CONSULTAS_DIR}/29a-conferir-reemissao-do-reembolso-consulta-o-mp-antes.sql`,
+  );
+  const limpo28 = sqlSemComentarios(a28).replace(/\s+/g, " ");
+  const limpo29 = sqlSemComentarios(a29).replace(/\s+/g, " ");
+  // 28a: avisa_o_cliente aceita o da 1225 OU o da 1241 e mostra o da 1225
+  assertStringIncludes(
+    limpo28,
+    "CASE WHEN f.m IN ('2cd21f47021cafc15cae4ccd0c8c67e5', '56502b960dcf3e136c1d0d5c41091c20') THEN '2cd21f47021cafc15cae4ccd0c8c67e5' ELSE f.m END FROM fn f WHERE f.chave = 'avisa'",
+  );
+  // 29a: reemitir e por fora, cada um com o PROPRIO sucessor
+  assertStringIncludes(
+    limpo29,
+    "CASE WHEN f.m IN ('872fcb1d2bac9816e2d2b1c7c2e868c0', 'fd5d79042efa68f9a17298fff1e950bd') THEN '872fcb1d2bac9816e2d2b1c7c2e868c0' ELSE f.m END FROM fn f WHERE f.chave = 'reemitir'",
+  );
+  assertStringIncludes(
+    limpo29,
+    "CASE WHEN f.m IN ('0a7e06d7004c3fb70897e87c4dfa8cf9', '76eaffb4f9438f7fe557961e1bdaad81') THEN '0a7e06d7004c3fb70897e87c4dfa8cf9' ELSE f.m END FROM fn f WHERE f.chave = 'porfora'",
+  );
+  // os outros corpos dessas consultas seguem exatos (nenhum IN a mais)
+  assertEquals((limpo28.match(/CASE WHEN f\.m IN \(/g) || []).length, 1);
+  assertEquals((limpo29.match(/CASE WHEN f\.m IN \(/g) || []).length, 2);
+});
+
+Deno.test("43a/43b — o rpc-ci.yml roda as duas provas vivas do lote (comportamento e portao) no job bloqueante, depois de aplica, e e' disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const linhas = bloqueante.split("\n");
+  for (const [prova, titulo] of [
+    [
+      "reembolso-em-duvida-viva",
+      "      - name: Prova viva do reembolso em duvida que prende o saldo (migration 20261241)",
+    ],
+    [
+      "reembolso-em-duvida-portao-viva",
+      "      - name: Prova viva do portao do reembolso em duvida (consultas 43a e 43b)",
+    ],
+  ]) {
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} nao esta no job bloqueante`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assertEquals(linhas[k - 2], titulo);
+    assert(
+      bloqueante.indexOf(`tests/banco/${prova}.cjs`) >
+        bloqueante.indexOf("id: aplica"),
+    );
+    assert(!yaml.slice(inicioInformacional).includes(`${prova}.cjs`));
+    assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+    assert(
+      (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+      `tests/banco/${prova}.cjs nao existe`,
+    );
+  }
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `nao achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      `scripts/publicacao/consultas/${NOME_43A}.sql`,
+      `scripts/publicacao/consultas/${NOME_43B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+  assert(MIGRACAO_241.endsWith(".sql"));
 });

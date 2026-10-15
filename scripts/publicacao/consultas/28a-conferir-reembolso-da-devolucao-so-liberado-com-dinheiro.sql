@@ -15,7 +15,11 @@
 -- `true` = o corte esta aplicado; qualquer `false` = PARE e leia a linha. Depois do rollback-manual reprovam
 -- SO as linhas dos corpos, da funcao nova e do gatilho.
 --
---   * corpo      -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF).
+--   * corpo      -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF). SUCESSORA (15/10/2026): a
+--                   20261241000000 (o reembolso em duvida prende o saldo) reescreve `devolucao_avisa_o_cliente` so
+--                   no texto do aviso em processamento ("a loja esta confirmando com o Mercado Pago"); a linha do
+--                   corpo dela aceita o md5 da 20261225000000 OU o da 20261241000000 (aceito, o `vivo` mostra o
+--                   `esperado`), para a 28a seguir POSITIVA depois do apply da sucessora. Corpo estranho reprova igual.
 --   * estado real -- 'sim' se o corpo de `devolucao_avisa_o_cliente` le o status do reembolso
 --                   (`SELECT r.status INTO v_estado`) e distingue 'reembolso_em_processamento' e
 --                   'reembolso_nao_liberado': leitura humana do mesmo fato do md5.
@@ -66,7 +70,10 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'devolucao_avisa_o_cliente: corpo e o da 20261225000000, com o aviso pelo estado real do reembolso (md5)',
          '2cd21f47021cafc15cae4ccd0c8c67e5',
-         COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'avisa'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m IN ('2cd21f47021cafc15cae4ccd0c8c67e5',
+                                            '56502b960dcf3e136c1d0d5c41091c20')
+                               THEN '2cd21f47021cafc15cae4ccd0c8c67e5' ELSE f.m END
+                     FROM fn f WHERE f.chave = 'avisa'), 'AUSENTE')
   UNION ALL
   SELECT 'devolucao_avisa_o_cliente: o aviso da conclusao segue o estado real do reembolso',
          'sim',

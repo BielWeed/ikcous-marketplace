@@ -70,6 +70,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const {
+  desfazerReembolsoEmDuvidaNaTransacao,
+} = require("./reembolso-em-duvida-posterior.cjs");
+const {
   falhar,
   lerDatabaseUrlEfemera,
   anexarAoSummary,
@@ -1672,6 +1675,9 @@ PROVAS.push({
     const sqlRollback = fs.readFileSync(CAMINHO_ROLLBACK_98, "utf8");
     await cliente.query("BEGIN");
     try {
+      // A 20261241000000 (posterior: redefine o pedido__saldo_a_estornar que a 98 criou) sai antes, se no ar —
+      // com ela no ar o pré-voo da 98 recusa o saldo de outro corpo (o comportamento certo).
+      await desfazerReembolsoEmDuvidaNaTransacao(cliente);
       // Reaplicar a 98 por cima dela mesma: idempotente.
       await cliente.query(sql98);
       assert.equal(await md5Vivo(cliente), HASH_98);

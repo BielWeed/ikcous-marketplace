@@ -22,7 +22,7 @@
 -- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
 -- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
 -- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
--- apply da sucessora. Hoje são sete funções (dez migrations), cada uma POR SI (função independente:
+-- apply da sucessora. Hoje são onze funções (onze migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
@@ -33,7 +33,11 @@
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento);
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita);
---   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento).
+--   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento);
+--   * `pedido__saldo_a_estornar`, `solicitar_estorno`, `admin_devolucao_concluir` e
+--     `autorizar_post_do_estorno` → 20261241000000 (o reembolso em dúvida prende o saldo). Estes quatro
+--     NÃO são corpos da 99 (são da 98, da 97 e da 96): o `final` de cada um é o da última de 92..202
+--     que o define, e a cadeia parte dele.
 -- CADEIA (decidido em 14/10/2026, quando `painel_inicio` ganhou a SEGUNDA sucessora, e repetida quando
 -- `get_admin_analytics_v2` e `crm_visao` ganharam a delas, a 20261234000000 e a 20261232000000): o CTE
 -- `sucessoras` guarda TODOS os corpos intermediários e o final de cada função (várias linhas por
@@ -134,7 +138,11 @@ WITH corpos AS (
     ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
     ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa', '20261235000000'),
-    ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000')), colunas(tabela, coluna) AS (VALUES
+    ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000'),
+    ('pedido__saldo_a_estornar', 'ee7f8e6e7eb18d5a383f5634c61aa0c4', '20261241000000'),
+    ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),
+    ('admin_devolucao_concluir', 'ebb901efff59a53082836a13e053cd1a', '20261241000000'),
+    ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
     ('order_refunds', 'mp_chargeback_valor_do_caso'),

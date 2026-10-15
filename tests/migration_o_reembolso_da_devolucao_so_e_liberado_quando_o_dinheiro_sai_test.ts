@@ -363,7 +363,10 @@ Deno.test("a lista L8 de portas do visitante NAO muda: as funcoes novas nascem f
     );
 });
 
-Deno.test("so a 20261175000000 e esta migration (e seus rollbacks) definem devolucao_avisa_o_cliente", () => {
+// A SUCESSORA conhecida: a 20261241000000 (o reembolso em duvida prende o saldo) troca o texto do aviso da
+// devolucao em processamento; o rollback dela devolve o corpo DESTA migration byte a byte.
+const SUCESSORA = "20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql";
+Deno.test("so a 20261175000000, esta migration e a sucessora 20261241000000 (e seus rollbacks) definem devolucao_avisa_o_cliente", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -377,6 +380,25 @@ Deno.test("so a 20261175000000 e esta migration (e seus rollbacks) definem devol
       definem.push(n);
   assert.deepEqual(
     definem.sort(),
-    [ANTIGA, NOME, `rollback-manual-${NOME}`].sort(),
+    [
+      ANTIGA,
+      NOME,
+      `rollback-manual-${NOME}`,
+      SUCESSORA,
+      `rollback-manual-${SUCESSORA}`,
+    ].sort(),
+  );
+  // e o rollback da sucessora devolve o corpo DESTA (o mesmo md5 que a conferencia daqui declara)
+  const daSucessora = ler(`rollback-manual-${SUCESSORA}`);
+  const a =
+    daSucessora.indexOf("AS $avisa_o_cliente$") + "AS $avisa_o_cliente$".length;
+  const corpoDevolvido = daSucessora.slice(
+    a,
+    daSucessora.indexOf("$avisa_o_cliente$;", a),
+  );
+  assert.equal(md5(corpoDevolvido), "2cd21f47021cafc15cae4ccd0c8c67e5");
+  assert.ok(
+    migration.includes("'2cd21f47021cafc15cae4ccd0c8c67e5'"),
+    "o md5 desta migration",
   );
 });

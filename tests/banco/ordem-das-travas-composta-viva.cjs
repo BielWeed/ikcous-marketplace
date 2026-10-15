@@ -72,6 +72,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const {
+  desfazerReembolsoEmDuvidaNaTransacao,
+} = require("./reembolso-em-duvida-posterior.cjs");
+const {
   falhar,
   lerDatabaseUrlEfemera,
   anexarAoSummary,
@@ -1274,6 +1277,9 @@ PROVAS.push({
     try {
       // Fora de ordem: a 97 por baixo da 98.
       await cliente.query("SAVEPOINT fora_de_ordem");
+      // A 20261241000000 redefine o solicitar_estorno que a 97 confere: com ela no ar, a recusa da 97 vem
+      // pelo corpo do solicitar, antes do reemitir. Ela sai (só neste SAVEPOINT) para medir a guarda da 98.
+      await desfazerReembolsoEmDuvidaNaTransacao(cliente);
       await assert.rejects(
         cliente.query(rollbackDe("20261197000000")),
         /B1_BASELINE_DIVERGENT[\s\S]*admin_devolucao_reemitir_reembolso/,

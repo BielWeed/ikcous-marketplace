@@ -632,6 +632,28 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   sobrecarga (corpo +1 byte, corpo que volta a citar o log de push, atributo, `EXECUTE` de PUBLIC/anon/authenticated,
   função ausente, terceira sobrecarga), mutantes do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`).
   **Não prova** a IKCOUS nem a Savy.
+- **o reembolso em dúvida prende o saldo (`reembolso-em-duvida-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261241000000` (DINHEIRO; lote R1 do plano reembolso-ab), com o fluxo REAL do painel (`admin_devolucao_concluir`,
+  `admin_devolucao_reembolso_por_fora`) e os papéis reais num Postgres efêmero. Cinco formas de pedido SEM linha em
+  dúvida têm o mesmo saldo antes (rollback na transação) e depois; o painel (`pedido_reembolsos_e_saldo`) devolve
+  exatamente os campos combinados e nenhum código do MP; a `falhou` legada marcada 2x prende o saldo e o novo pedido é
+  recusado (marcada 1x, não); a substituída por manual sai da conta; a espera dos 7 dias (devolução e pedido cancelado)
+  responde `aguarde` com 3 dias e com 7 dias menos 1 s, libera com exatamente 7 (o botão `por_fora_apos_espera_liberado`
+  segue a porta), exige a frase, marca a linha, não se usa duas vezes e o botão some com a marca; o
+  `autorizar_post_do_estorno` recusa a linha liberada por fora. CORRIDA de duas conexões nas duas ordens (saída ×
+  autorizar). ACL (anon e logado comum recusados; as duas regras fechadas até ao `service_role`). Aplicar 2x e em CRLF,
+  rollback idempotente que recusa com marca, pré-voo que recusa corpo divergente sem escrever. Seis mutantes ficam
+  VERMELHOS (sem a regra do legado, sem o filtro da substituída nos dois lugares e só na regra, o autorizar sem a marca,
+  a espera sem os 7 dias, a espera sem a marca). **Não prova** a IKCOUS nem a Savy.
+- **portão do reembolso em dúvida (`reembolso-em-duvida-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `43a-conferir-reembolso-em-duvida-aplicado` (DEPOIS, 21 linhas) e `43b-antes-reembolso-em-duvida-base-vigente`
+  (ANTES, 14 linhas) do lote `20261241000000`. Rol exato nos dois estados, um negativo por linha (cada um dos doze
+  corpos +1 linha, atributo, `EXECUTE` por papel, a função antiga reaberta, a tabela com policy/grant/sem RLS/coluna a
+  mais, a espera ausente, os marcadores), as sucessoras na `8e`, `28a` e `29a` antes e depois, mutantes do texto das
+  consultas e o veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **as provas que DESFAZEM corpos redefinidos pela `20261241000000`** (`pagamentos-rpc`, `admin-atual`,
+  `contestacao`, `cancelar-pedido`, `ordem-das-travas-composta`) a desfazem ANTES, na transação, por
+  `reembolso-em-duvida-posterior.cjs` (só se no ar): ela é a mais nova, e o pré-voo de cada rollback mais velho a recusa.
 - **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
   RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`) avisa "Pedido pronto para retirar" e

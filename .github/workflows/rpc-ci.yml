@@ -115,6 +115,8 @@ on:
       - "scripts/publicacao/consultas/41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado.sql"
       - "scripts/publicacao/consultas/41b-antes-pergunta-respondida-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/41m-medir-pergunta-respondida.sql"
+      - "scripts/publicacao/consultas/43a-conferir-reembolso-em-duvida-aplicado.sql"
+      - "scripts/publicacao/consultas/43b-antes-reembolso-em-duvida-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -199,6 +201,8 @@ on:
       - "scripts/publicacao/consultas/41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado.sql"
       - "scripts/publicacao/consultas/41b-antes-pergunta-respondida-corpos-vigentes.sql"
       - "scripts/publicacao/consultas/41m-medir-pergunta-respondida.sql"
+      - "scripts/publicacao/consultas/43a-conferir-reembolso-em-duvida-aplicado.sql"
+      - "scripts/publicacao/consultas/43b-antes-reembolso-em-duvida-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -786,6 +790,20 @@ jobs:
       - name: Prova viva do portao da pergunta respondida (consultas 41a e 41b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/pergunta-respondida-avisa-portao-viva.cjs
+      # O reembolso em duvida prende o saldo (migration 20261241, DINHEIRO; lote R1 do plano reembolso-ab de 15/10/2026): a
+      # linha de reembolso que PODE ter saido no Mercado Pago segura o saldo pela regra UNICA order_refund__pode_ter_saido (com a
+      # regra do legado), a linha substituida por manual o solta, as duas saidas de 7 dias (devolucao e pedido cancelado) leem a
+      # MESMA espera do painel (order_refund__liberavel_apos_espera), o autorizar_post_do_estorno recusa a linha liberada por fora,
+      # pedido_reembolsos_e_saldo entrega o contrato fixo. COMPORTAMENTO com as funcoes reais: saldo igual ao de antes em pedido
+      # sem linha em duvida, a falhou legada prende, a substituida solta, 7 dias antes e depois, corrida de duas conexoes (saida
+      # contra autorizar), aplicar 2x, rollback byte a byte, mutantes que TEM de cair. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do reembolso em duvida que prende o saldo (migration 20261241)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-em-duvida-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 43a (DEPOIS, 21 linhas) e 43b (ANTES, 14 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do reembolso em duvida (consultas 43a e 43b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-em-duvida-portao-viva.cjs
       # O sino do pedido de retirada (migration 20261233, dado de cliente; cacada de 14/10/2026): o pedido de RETIRADA na loja
       # (customer_data->>'shipping_option_id' = 'store-pickup') avisa "Pedido pronto para retirar" e "Pedido retirado" no sino, e
       # o resto fica byte a byte como era. COMPORTAMENTO com a trigger real: o fluxo de entrega e o de retirada, o cancelamento
