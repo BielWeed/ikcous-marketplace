@@ -92,6 +92,9 @@ on:
       - "scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql"
       - "scripts/publicacao/consultas/34b-antes-sino-da-retirada-corpo-vigente.sql"
       - "scripts/publicacao/consultas/34m-medir-sino-da-retirada.sql"
+      - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
+      - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -154,6 +157,9 @@ on:
       - "scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql"
       - "scripts/publicacao/consultas/34b-antes-sino-da-retirada-corpo-vigente.sql"
       - "scripts/publicacao/consultas/34m-medir-sino-da-retirada.sql"
+      - "scripts/publicacao/consultas/35a-conferir-lucro-so-com-custo-aplicado.sql"
+      - "scripts/publicacao/consultas/35b-antes-lucro-so-com-custo-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -683,6 +689,20 @@ jobs:
       - name: Prova viva do portao da busca de clientes (consultas 32a e 32b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/busca-de-clientes-portao-viva.cjs
+      # O lucro so conta produto com custo (migration 20261234, o numero que a lojista le; cacada de 14/10/2026): o grafico
+      # "Lucro acumulado" e o "Top 5 produtos mais lucrativos" do CRM > Visao geral deixam de tratar produto SEM custo como margem
+      # de 100%, e o JSON ganha `productsWithoutCost`. COMPORTAMENTO numa loja limpa com cinco produtos (com custo, sem custo, custo
+      # ZERO medido que CONTA, apagado sem custo, so em pedido que nao conta): lucro por dia e ranking antes (bug) e depois, a RECEITA
+      # igual, o produto com custo igual byte a byte, dia sem venda, pedido de 22h de Sao Paulo no dia certo, cancelado e estornado
+      # fora, comum e rebaixado recusados, nenhuma linha de dado muda, pre-voo que recusa sem escrever, rollback com o md5 da
+      # 20261214, leitura concorrente, mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do lucro so com custo (migration 20261234)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-so-com-custo-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 35a (DEPOIS, 6 linhas), 35b (ANTES, 5 linhas) e a medicao 35m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do lucro so com custo (consultas 35a e 35b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-so-com-custo-portao-viva.cjs
       # O sino do pedido de retirada (migration 20261233, dado de cliente; cacada de 14/10/2026): o pedido de RETIRADA na loja
       # (customer_data->>'shipping_option_id' = 'store-pickup') avisa "Pedido pronto para retirar" e "Pedido retirado" no sino, e
       # o resto fica byte a byte como era. COMPORTAMENTO com a trigger real: o fluxo de entrega e o de retirada, o cancelamento

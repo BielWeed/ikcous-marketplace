@@ -1774,6 +1774,30 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261234000000_o_lucro_so_conta_produto_com_custo.sql": [
+    {
+      // O lucro só conta produto com custo (14/10/2026): o lucro por dia e o top 5 do CRM deixam de tratar custo
+      // ausente (NULL) como margem de 100%, e o JSON ganha `productsWithoutCost`. Sem esta entrada a migration
+      // saía PULADA. Os marcadores contam no corpo VIVO (comentários incluídos): o filtro do lucro por dia, o
+      // filtro do ranking, a contagem do campo novo e a chave dele aparecem UMA vez cada; as duas travas de
+      // admin (is_admin e is_admin_atual, 20261199000000) seguem UMA vez cada.
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto: "FILTER (WHERE p.custo IS NOT NULL), 0) AS profit",
+          vezes: 1,
+        },
+        { texto: "AND p.custo IS NOT NULL", vezes: 1 },
+        { texto: "AND p.custo IS NULL;", vezes: 1 },
+        {
+          texto: "'productsWithoutCost', products_without_cost",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,
