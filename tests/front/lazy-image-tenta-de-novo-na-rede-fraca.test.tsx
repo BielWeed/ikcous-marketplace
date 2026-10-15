@@ -229,6 +229,18 @@ describe("LazyImage — rede fraca", () => {
     expect(imagem()?.className.split(/\s+/)).not.toContain("z-10");
   });
 
+  it("a raiz do LazyImage e uma camada ISOLADA (isolate): o z-10 do botao nao vaza para cima do coracao do card", async () => {
+    // Sem `isolate` a raiz (relative, z-index auto) nao forma camada propria, e o
+    // z-10 do botao de tentar de novo disputava com os irmaos do card: ficava
+    // ACIMA do coracao de favoritar (o clique refazia a foto e nao favoritava) e
+    // do texto/botao de acao do banner. Com `isolate` o z-10 vale so DENTRO da
+    // foto, e o que vem depois no DOM continua por cima. O jsdom nao calcula
+    // empilhamento; quem mede de verdade e o Chromium (elementFromPoint).
+    montar();
+    const raizDoLazyImage = hospedeiro.firstElementChild;
+    expect(raizDoLazyImage?.className.split(/\s+/)).toContain("isolate");
+  });
+
   it("o toque no botao nao navega (preventDefault), caso a foto more dentro de um link", async () => {
     montar();
     falhar(imagem());

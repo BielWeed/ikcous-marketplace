@@ -159,7 +159,10 @@ export function LazyImage({
   return (
     <div
       ref={imgRef}
-      className={`relative overflow-hidden bg-zinc-100 dark:bg-zinc-900/50 ${className}`}
+      // `isolate`: o `z-10` do botão de tentar de novo vale só DENTRO da foto.
+      // Sem isto a raiz (relative, z-index auto) não forma camada própria e o
+      // botão passava por cima do coração do card e do texto/botão do banner.
+      className={`relative isolate overflow-hidden bg-zinc-100 dark:bg-zinc-900/50 ${className}`}
       style={style}
     >
       {/* Placeholder skeleton */}
