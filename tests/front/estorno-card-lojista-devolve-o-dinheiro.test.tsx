@@ -68,6 +68,7 @@ function linhaDeExemplo(
     // os testes do R1 ligam `pode_ter_saido` explicitamente.
     pode_ter_saido: false,
     por_fora_liberado_em: null,
+    por_fora_apos_espera_liberado: false,
     eh_pix: false,
     ...extra,
   };
@@ -761,7 +762,7 @@ describe("EstornoCard — lote R1: linha que pode ter saído não se repete", ()
     expect(botaoComTexto("Tentar de novo")).toBeUndefined();
   });
 
-  it("R1-D: servidor liberou (por_fora_liberado_em) — botão dos 7 dias com aviso de dobro e frase obrigatória", async () => {
+  it("R1-D: servidor liberou (por_fora_apos_espera_liberado) — botão dos 7 dias com aviso de dobro e frase obrigatória", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({
         linhas: [
@@ -769,7 +770,7 @@ describe("EstornoCard — lote R1: linha que pode ter saído não se repete", ()
             id: "refund-velho",
             status: "falhou",
             pode_ter_saido: true,
-            por_fora_liberado_em: "2026-10-08T10:00:00.000Z",
+            por_fora_apos_espera_liberado: true,
           }),
         ],
       }),
@@ -810,7 +811,7 @@ describe("EstornoCard — lote R1: linha que pode ter saído não se repete", ()
             status: "em_processamento",
             tentativas: 5,
             pode_ter_saido: true,
-            por_fora_liberado_em: "2026-10-08T10:00:00.000Z",
+            por_fora_apos_espera_liberado: true,
           }),
         ],
       }),
@@ -823,7 +824,7 @@ describe("EstornoCard — lote R1: linha que pode ter saído não se repete", ()
     ).toBeDefined();
   });
 
-  it("R1-F: linha concluída nunca mostra saída por fora, mesmo com campo preenchido", async () => {
+  it("R1-F: linha concluída nunca mostra saída por fora, mesmo com o servidor liberando", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({
         linhas: [
@@ -831,7 +832,7 @@ describe("EstornoCard — lote R1: linha que pode ter saído não se repete", ()
             status: "concluido",
             concluido_em: "2026-09-02T10:00:00.000Z",
             pode_ter_saido: true,
-            por_fora_liberado_em: "2026-10-08T10:00:00.000Z",
+            por_fora_apos_espera_liberado: true,
           }),
         ],
       }),
@@ -839,6 +840,47 @@ describe("EstornoCard — lote R1: linha que pode ter saído não se repete", ()
     await montar();
 
     expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
+  });
+
+  it("R1-H: pode ter saído, há 7 dias, mas o servidor NÃO liberou (booleano false) — sem botão dos 7 dias", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            pode_ter_saido: true,
+            por_fora_apos_espera_liberado: false,
+            // Data antiga não decide nada: quem libera é o booleano.
+            created_at: "2026-01-01T10:00:00.000Z",
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
+    expect(texto()).toContain("não repita");
+  });
+
+  it("R1-I: saída já usada (por_fora_liberado_em) — não oferece o botão de novo e diz que já foi registrado", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        linhas: [
+          linhaDeExemplo({
+            status: "falhou",
+            pode_ter_saido: true,
+            // Mesmo com o booleano ainda verdadeiro, a marca de uso vence.
+            por_fora_apos_espera_liberado: true,
+            por_fora_liberado_em: "2026-10-16T10:00:00.000Z",
+          }),
+        ],
+      }),
+    );
+    await montar();
+
+    expect(botaoComTexto("Já devolvi por fora")).toBeUndefined();
+    expect(botaoComTexto("Tentar de novo")).toBeUndefined();
+    expect(texto()).toContain("Você já registrou que devolveu por fora.");
   });
 
   it("R1-G: o resumo mostra o valor 'Em confirmação' que o servidor prende", async () => {

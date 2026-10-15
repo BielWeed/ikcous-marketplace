@@ -138,6 +138,7 @@ function linha(extra: Record<string, unknown> = {}) {
     amount: 50,
     pode_ter_saido: false,
     por_fora_liberado_em: null,
+    por_fora_apos_espera_liberado: false,
     eh_pix: true,
     ...extra,
   };
@@ -195,39 +196,48 @@ async function montarBloco(d: DevolucaoDetalhe = detalhe()) {
 // ---------------------------------------------------------------------------
 describe("regras puras do contrato R1", () => {
   it("acoesDaLinha: só repete o que o servidor garante que não saiu", () => {
-    const base = { por_fora_liberado_em: null } as const;
-    expect(
-      acoesDaLinha({ ...base, status: "falhou", pode_ter_saido: false }),
-    ).toEqual({
-      podeRepetir: true,
+    const base = {
+      por_fora_liberado_em: null,
+      por_fora_apos_espera_liberado: false,
+    } as const;
+    const nada = {
+      podeRepetir: false,
       confirmando: false,
       porForaAposEspera: false,
-    });
+      jaPorFora: false,
+    };
+    expect(
+      acoesDaLinha({ ...base, status: "falhou", pode_ter_saido: false }),
+    ).toEqual({ ...nada, podeRepetir: true });
     expect(
       acoesDaLinha({ ...base, status: "falhou", pode_ter_saido: true }),
-    ).toEqual({
-      podeRepetir: false,
-      confirmando: true,
-      porForaAposEspera: false,
-    });
+    ).toEqual({ ...nada, confirmando: true });
+    // Só o booleano do servidor libera a saída dos 7 dias.
+    expect(
+      acoesDaLinha({
+        ...base,
+        status: "falhou",
+        pode_ter_saido: true,
+        por_fora_apos_espera_liberado: true,
+      }),
+    ).toEqual({ ...nada, confirmando: true, porForaAposEspera: true });
+    expect(
+      acoesDaLinha({
+        ...base,
+        status: "concluido",
+        pode_ter_saido: true,
+        por_fora_apos_espera_liberado: true,
+      }),
+    ).toEqual(nada);
+    // Marca de uso preenchida: nenhuma ação, só "já registrado".
     expect(
       acoesDaLinha({
         status: "falhou",
         pode_ter_saido: true,
-        por_fora_liberado_em: "2026-10-08T00:00:00Z",
-      }).porForaAposEspera,
-    ).toBe(true);
-    expect(
-      acoesDaLinha({
-        status: "concluido",
-        pode_ter_saido: true,
-        por_fora_liberado_em: "2026-10-08T00:00:00Z",
+        por_fora_apos_espera_liberado: true,
+        por_fora_liberado_em: "2026-10-16T00:00:00Z",
       }),
-    ).toEqual({
-      podeRepetir: false,
-      confirmando: false,
-      porForaAposEspera: false,
-    });
+    ).toEqual({ ...nada, jaPorFora: true });
     expect(
       acoesDaLinha({
         ...base,
@@ -252,6 +262,12 @@ describe("regras puras do contrato R1", () => {
       lerReembolsosESaldo({
         ...ok,
         linhas: [linha({ pode_ter_saido: "sim" })],
+      }),
+    ).toBeNull();
+    expect(
+      lerReembolsosESaldo({
+        ...ok,
+        linhas: [linha({ por_fora_apos_espera_liberado: undefined })],
       }),
     ).toBeNull();
     expect(lerReembolsosESaldo({ ...ok, em_duvida: null })).toBeNull();
@@ -336,7 +352,7 @@ describe("ReembolsoDaDevolucao — o painel ganha os botões que o servidor já 
   it("D4: servidor liberou os 7 dias — confirmação forte e RPC com a frase fixa", async () => {
     LINHA_DO_SALDO = linha({
       pode_ter_saido: true,
-      por_fora_liberado_em: "2026-10-08T10:00:00Z",
+      por_fora_apos_espera_liberado: true,
     });
     await montarBloco();
 
@@ -363,6 +379,21 @@ describe("ReembolsoDaDevolucao — o painel ganha os botões que o servidor já 
     ]);
     // Nenhum pedido ao Mercado Pago na saída por fora.
     expect(CHAMADAS.some((c) => c.tipo === "invoke")).toBe(false);
+  });
+
+  it("D4b: booleano do servidor false — sem saída dos 7 dias; marca de uso preenchida — só 'já registrado'", async () => {
+    LINHA_DO_SALDO = linha({ pode_ter_saido: true });
+    await montarBloco();
+    expect(botao("Já devolvi por fora")).toBeUndefined();
+
+    LINHA_DO_SALDO = linha({
+      pode_ter_saido: true,
+      por_fora_apos_espera_liberado: true,
+      por_fora_liberado_em: "2026-10-16T10:00:00Z",
+    });
+    await montarBloco(detalhe({ updated_at: "2026-10-16T10:00:00Z" }));
+    expect(texto()).toContain("Você já registrou que devolveu por fora.");
+    expect(hospedeiro.querySelectorAll("button")).toHaveLength(0);
   });
 
   it("D5: em andamento — só o texto, nenhum botão", async () => {

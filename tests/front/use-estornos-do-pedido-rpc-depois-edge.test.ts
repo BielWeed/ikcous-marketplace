@@ -280,6 +280,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
             amount: 20,
             pode_ter_saido: true,
             por_fora_liberado_em: null,
+            por_fora_apos_espera_liberado: false,
             eh_pix: false,
           },
           {
@@ -288,6 +289,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
             amount: 10,
             pode_ter_saido: true,
             por_fora_liberado_em: null,
+            por_fora_apos_espera_liberado: false,
             eh_pix: true,
           },
         ],
@@ -323,7 +325,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(segunda.atual().disponivel).toBe(0);
   });
 
-  it("R1: o veredito pode_ter_saido e por_fora_liberado_em chegam em cada linha", async () => {
+  it("R1: o veredito (pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado) chega em cada linha", async () => {
     RESPOSTA_LINHAS = {
       data: [
         { id: "r1", amount: 10, status: "falhou", solicitado_por: "lojista" },
@@ -343,6 +345,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
             amount: 10,
             pode_ter_saido: false,
             por_fora_liberado_em: null,
+            por_fora_apos_espera_liberado: false,
             eh_pix: false,
           },
           {
@@ -351,6 +354,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
             amount: 15,
             pode_ter_saido: true,
             por_fora_liberado_em: "2026-10-20T10:00:00Z",
+            por_fora_apos_espera_liberado: true,
             eh_pix: true,
           },
         ],
@@ -363,14 +367,21 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
       id: string;
       pode_ter_saido: boolean;
       por_fora_liberado_em: string | null;
+      por_fora_apos_espera_liberado: boolean;
     }>;
 
     expect(linhas.find((l) => l.id === "r1")?.pode_ter_saido).toBe(false);
     expect(linhas.find((l) => l.id === "r2")?.por_fora_liberado_em).toBe(
       "2026-10-20T10:00:00Z",
     );
-    // Sem veredito, fica do lado seguro: pode ter saído (nenhum "repetir").
-    expect(linhas.find((l) => l.id === "r3")?.pode_ter_saido).toBe(true);
+    expect(
+      linhas.find((l) => l.id === "r2")?.por_fora_apos_espera_liberado,
+    ).toBe(true);
+    // Sem veredito, fica do lado seguro: pode ter saído (nenhum "repetir") e
+    // a saída dos 7 dias não está liberada.
+    const semVeredito = linhas.find((l) => l.id === "r3");
+    expect(semVeredito?.pode_ter_saido).toBe(true);
+    expect(semVeredito?.por_fora_apos_espera_liberado).toBe(false);
   });
 
   it("R1: RPC do saldo com forma inesperada vira erro — nunca um número inventado", async () => {

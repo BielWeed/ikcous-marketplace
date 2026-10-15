@@ -36,15 +36,20 @@ export interface LinhaEstornoDoPedido {
   concluido_em: string | null;
   /** Veredito do SERVIDOR (lote R1): o envio pode ter chegado ao MP. */
   pode_ter_saido: boolean;
-  /** Preenchido pelo servidor quando a saída dos 7 dias está liberada. */
+  /** Marca do servidor: a saída dos 7 dias JÁ foi usada nesta linha. */
   por_fora_liberado_em: string | null;
+  /** Servidor: a saída dos 7 dias pode ser usada AGORA. */
+  por_fora_apos_espera_liberado: boolean;
   eh_pix: boolean;
 }
 
 /** Colunas de exibição lidas de `order_refunds` (texto da linha). */
 type DetalheDaLinha = Omit<
   LinhaEstornoDoPedido,
-  "pode_ter_saido" | "por_fora_liberado_em" | "eh_pix"
+  | "pode_ter_saido"
+  | "por_fora_liberado_em"
+  | "por_fora_apos_espera_liberado"
+  | "eh_pix"
 >;
 
 // Não exportada de propósito: nada fora deste arquivo importa o TIPO do
@@ -109,6 +114,9 @@ function juntar(
       ...d,
       pode_ter_saido: j ? j.pode_ter_saido : true,
       por_fora_liberado_em: j ? j.por_fora_liberado_em : null,
+      por_fora_apos_espera_liberado: j
+        ? j.por_fora_apos_espera_liberado
+        : false,
       eh_pix: j ? j.eh_pix : false,
     };
   });

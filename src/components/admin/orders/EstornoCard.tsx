@@ -9,6 +9,7 @@ import {
 import {
   BOTAO_POR_FORA_APOS_ESPERA,
   TEXTO_CONFIRMANDO,
+  TEXTO_JA_POR_FORA,
   acoesDaLinha,
   confirmouPorForaAposEspera,
 } from "@/lib/reembolso-em-duvida";
@@ -357,10 +358,11 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
           const { texto, podeTentarDeNovo } = textoDaLinha(linha);
           const podeTentarComSaldo =
             podeTentarDeNovo && disponivel >= linha.amount;
-          const { porForaAposEspera } = acoesDaLinha(linha);
+          const { porForaAposEspera, jaPorFora } = acoesDaLinha(linha);
           return (
             <p key={linha.id} className="text-xs font-medium text-zinc-300">
               {texto}
+              {jaPorFora && ` ${TEXTO_JA_POR_FORA}`}
               {podeTentarComSaldo && (
                 <Button
                   type="button"

@@ -81,6 +81,8 @@ export const TEXTO_CONFIRMANDO =
 export const BOTAO_POR_FORA_APOS_ESPERA =
   "Já devolvi por fora (depois de 7 dias)";
 
+export const TEXTO_JA_POR_FORA = "Você já registrou que devolveu por fora.";
+
 /**
  * Confirmação FORTE da saída dos 7 dias: mostra o risco de pagar em dobro e
  * exige digitar a frase fixa (diálogo nativo, o mesmo padrão do `confirm`
@@ -117,8 +119,10 @@ export interface LinhaDoSaldo {
   amount: number;
   /** Veredito do servidor: o envio desta linha pode ter chegado ao MP. */
   pode_ter_saido: boolean;
-  /** Preenchido pelo servidor quando a saída dos 7 dias está liberada. */
+  /** Marca gravada pelo servidor DEPOIS que a saída dos 7 dias foi usada. */
   por_fora_liberado_em: string | null;
+  /** Servidor: a saída dos 7 dias pode ser usada AGORA nesta linha. */
+  por_fora_apos_espera_liberado: boolean;
   eh_pix: boolean;
 }
 
@@ -156,6 +160,7 @@ function lerLinha(v: unknown): LinhaDoSaldo | null {
     amount !== null &&
     typeof v.pode_ter_saido === "boolean" &&
     typeof v.eh_pix === "boolean" &&
+    typeof v.por_fora_apos_espera_liberado === "boolean" &&
     (liberado === null || typeof liberado === "string");
   return ok
     ? ({ ...v, amount, por_fora_liberado_em: liberado } as LinhaDoSaldo)
@@ -199,28 +204,37 @@ interface AcoesDaLinha {
   podeRepetir: boolean;
   /** Parou e PODE ter saído: só o aviso "não repita". */
   confirmando: boolean;
-  /** O servidor liberou "Já devolvi por fora (depois de 7 dias)". */
+  /** O servidor liberou AGORA "Já devolvi por fora (depois de 7 dias)". */
   porForaAposEspera: boolean;
+  /** A saída por fora já foi usada nesta linha (`por_fora_liberado_em`). */
+  jaPorFora: boolean;
 }
 
 /**
  * Decide os botões de UMA linha a partir do veredito do servidor. A liberação
- * dos 7 dias é do servidor (`por_fora_liberado_em`): a tela não conta dias
- * com o relógio do aparelho. Linha concluída nunca tem ação.
+ * dos 7 dias é do servidor (`por_fora_apos_espera_liberado`): a tela não
+ * conta dias com o relógio do aparelho. Linha concluída nunca tem ação; linha
+ * já resolvida por fora (`por_fora_liberado_em`) também não — só o aviso.
  */
 export function acoesDaLinha(
   linha: Pick<
     LinhaDoSaldo,
-    "status" | "pode_ter_saido" | "por_fora_liberado_em"
+    | "status"
+    | "pode_ter_saido"
+    | "por_fora_liberado_em"
+    | "por_fora_apos_espera_liberado"
   >,
 ): AcoesDaLinha {
-  const parada = linha.status === "falhou" || linha.status === "recusado";
+  const jaPorFora = linha.por_fora_liberado_em !== null;
+  const parada =
+    !jaPorFora && (linha.status === "falhou" || linha.status === "recusado");
   return {
     podeRepetir: parada && !linha.pode_ter_saido,
     confirmando: parada && linha.pode_ter_saido,
     porForaAposEspera:
+      !jaPorFora &&
       linha.status !== "concluido" &&
-      linha.pode_ter_saido &&
-      linha.por_fora_liberado_em !== null,
+      linha.por_fora_apos_espera_liberado,
+    jaPorFora,
   };
 }

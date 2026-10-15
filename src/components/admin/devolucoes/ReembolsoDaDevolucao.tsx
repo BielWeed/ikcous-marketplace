@@ -12,6 +12,7 @@ import {
   type LinhaDoSaldo,
   RPC_DO_REEMBOLSO_R1,
   TEXTO_CONFIRMANDO,
+  TEXTO_JA_POR_FORA,
   acoesDaLinha,
   chamarRpcDoR1,
   confirmouPorForaAposEspera,
@@ -166,7 +167,8 @@ export function ReembolsoDaDevolucao({
   if (!linha || linha.status === "concluido") return null;
 
   const valor = formatarReais(linha.amount);
-  const { podeRepetir, confirmando, porForaAposEspera } = acoesDaLinha(linha);
+  const { podeRepetir, confirmando, porForaAposEspera, jaPorFora } =
+    acoesDaLinha(linha);
 
   const tentarDeNovo = () =>
     globalThis.confirm(
@@ -226,11 +228,13 @@ export function ReembolsoDaDevolucao({
       data-testid="reembolso-da-devolucao"
     >
       <p className="text-xs font-bold text-zinc-200">
-        {podeRepetir
-          ? `O reembolso de ${valor} não foi concluído pelo Mercado Pago.`
-          : confirmando
-            ? `O reembolso de ${valor} não teve resposta certa do Mercado Pago. ${TEXTO_CONFIRMANDO}`
-            : `Reembolso de ${valor} em andamento no Mercado Pago.`}
+        {jaPorFora
+          ? TEXTO_JA_POR_FORA
+          : podeRepetir
+            ? `O reembolso de ${valor} não foi concluído pelo Mercado Pago.`
+            : confirmando
+              ? `O reembolso de ${valor} não teve resposta certa do Mercado Pago. ${TEXTO_CONFIRMANDO}`
+              : `Reembolso de ${valor} em andamento no Mercado Pago.`}
       </p>
       {podeRepetir && (
         <div className="flex flex-wrap gap-2">

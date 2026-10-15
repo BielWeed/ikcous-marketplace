@@ -343,6 +343,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
         // Lote R1: veredito do servidor (contestação não é repetível).
         pode_ter_saido: true,
         por_fora_liberado_em: null,
+        por_fora_apos_espera_liberado: false,
         eh_pix: false,
       };
       useEstornosDoPedidoMock.mockReturnValue({
