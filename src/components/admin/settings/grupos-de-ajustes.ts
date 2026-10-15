@@ -5,6 +5,7 @@ import {
   type ConfigDosSeisPassos,
   type EstadoDoItem,
   entradaDosSeisPassos,
+  entregaComAlcanceCurto,
   estadoDaEntrega,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
@@ -113,7 +114,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
 // ESCOLHE qual passo fala por qual grupo e como o texto se escreve.
 //
 //   minha-loja  → marca + endereço + WhatsApp: "Falta: …" ou "Tudo preenchido"
-//   entrega     → o passo "entrega": "Falta: CEP da loja" ou o resumo da cidade e do país
+//   entrega     → o passo "entrega": "Falta: CEP da loja", "Falta: alcance da entrega" ou o resumo da cidade e do país
 //   pagamentos  → o passo "recebe": o que está ativo, ou "Falta: Como você recebe"
 //   aparencia, devolucao, ferramentas → sem passo próprio: sem subtítulo
 //
@@ -150,17 +151,24 @@ interface EntregaEmAjustes {
 }
 
 // O fato "entrega" dos seis passos vem de `estadoDaEntrega` (loja-pronta.ts),
-// a MESMA regra do cartão do Início: pronta = CEP completo da loja. O texto do
+// a MESMA regra do cartão do Início: pronta = CEP completo da loja E alcance
+// que cobre a cidade (o aviso da tela de Frete). O texto do
 // subtítulo, esse sim, usa o que Ajustes TEM em mãos (nenhuma chamada nova):
 // `statusDaEntrega` diz a cidade e o país. Sem transportadora o passo continua
 // feito (a entrega na cidade já funciona) e o texto avisa "Sem transportadora".
 function entregaEmAjustes(
-  config: ConfigDaEntrega,
+  config: ConfigDaEntrega & Pick<ConfigDosSeisPassos, "localCepRange">,
   nomesLigados: readonly string[] | null,
 ): EntregaEmAjustes {
   const estado = estadoDaEntrega(config, false);
   if (estado === "pendente") {
-    return { estado, texto: "Falta: CEP da loja" };
+    // Há CEP, mas o alcance é curto: falta ampliar, não cadastrar o CEP.
+    return {
+      estado,
+      texto: entregaComAlcanceCurto(config)
+        ? "Falta: alcance da entrega"
+        : "Falta: CEP da loja",
+    };
   }
   const soNaCidade = (config.shippingCoverage || "national") === "local";
   if (nomesLigados === null && !soNaCidade) {

@@ -136,7 +136,9 @@ export function LojaProntaEEstoqueBaixo({
   const proximo = proximoPasso(passos);
   const conferindo = passos.some((passo) => passo.estado === "carregando");
   const lojaPronta = feitos === total;
-  // Aviso, não passo: não entra na contagem nem trava "Loja pronta".
+  // O texto do aviso amarelo. Desde 15/10/2026 o MESMO aviso também deixa o
+  // passo "entrega" pendente (`estadoDaEntrega`), então ele nunca convive com
+  // "Loja pronta"; aqui ele só detalha o que o passo pede e leva ao Frete.
   const avisoDaFaixa = configCarregando ? null : avisoDaFaixaDeCep(config);
 
   return (
@@ -222,6 +224,12 @@ export function LojaProntaEEstoqueBaixo({
                 </span>
                 <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
               </button>
+            )}
+
+            {proximo?.explicacaoPendente && !conferindo && (
+              <p className="mt-2 text-xs text-zinc-400">
+                {proximo.explicacaoPendente}
+              </p>
             )}
 
             <button

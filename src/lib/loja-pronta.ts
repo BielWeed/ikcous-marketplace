@@ -30,13 +30,38 @@ function cepCompleto(cep: string | null | undefined): boolean {
  * entrega própria na cidade já funciona (não há interruptor dela, só a taxa; a
  * taxa 0 é "grátis na cidade"), que é exatamente o que a faixa do Frete diz em
  * "Na sua cidade". Enquanto a config carrega, "não sei".
+ *
+ * Com CEP, o passo ainda precisa do ALCANCE: o mesmo aviso amarelo que a tela
+ * de Frete mostra (`avisoDaFaixaDeCep`) deixa o passo pendente — CEP de rua com
+ * "Alcance por CEP" vazio só entrega para os mesmos 5 primeiros números do CEP
+ * (um pedaço de bairro), e cliente de outro bairro, sem conta, vai embora.
+ * É a MESMA função, nunca uma cópia da regra, para o cartão e a tela de Frete
+ * não divergirem. O caso que continua "pronto" é o CEP geral de cidade pequena
+ * (termina em "000"): ali o aviso é calado de propósito, e este passo só segue.
  */
 export function estadoDaEntrega(
-  config: { readonly originCep?: string | null },
+  config: {
+    readonly originCep?: string | null;
+    readonly localCepRange?: string | null;
+  },
   configCarregando: boolean,
 ): EstadoDoItem {
   if (configCarregando) return "carregando";
-  return cepCompleto(config.originCep) ? "feito" : "pendente";
+  if (!cepCompleto(config.originCep)) return "pendente";
+  return entregaComAlcanceCurto(config) ? "pendente" : "feito";
+}
+
+/**
+ * Há CEP completo e o "Alcance por CEP" não dá conta (curto demais, ou escrito
+ * num formato que o servidor não entende)? É o aviso da tela de Frete virado em
+ * sim/não — o motivo que distingue "falta o alcance" de "falta o CEP" no texto
+ * do passo (cartão do Início e subtítulo de Ajustes).
+ */
+export function entregaComAlcanceCurto(config: {
+  readonly originCep?: string | null;
+  readonly localCepRange?: string | null;
+}): boolean {
+  return cepCompleto(config.originCep) && avisoDaFaixaDeCep(config) !== null;
 }
 
 /**
@@ -128,6 +153,12 @@ export interface PassoDaLoja {
   readonly rotuloPendente: string;
   readonly estado: EstadoDoItem;
   readonly destino: View;
+  /**
+   * Uma frase para a lojista, só quando o passo está pendente e o motivo
+   * merece mais que o botão (hoje: "entrega" com alcance curto). Ausente =
+   * o rótulo basta.
+   */
+  readonly explicacaoPendente?: string;
 }
 
 /** Só o que os seis passos leem da config da loja. */
@@ -137,7 +168,7 @@ export interface ConfigDosSeisPassos {
   readonly originCep?: string | null;
   readonly storeAddress?: string | null;
   readonly whatsappNumber?: string | null;
-  /** Só o aviso da faixa de CEP (`avisoDaFaixaDeCep`) lê; não conta passo. */
+  /** O aviso da faixa de CEP (`avisoDaFaixaDeCep`) e o passo "entrega" leem. */
   readonly localCepRange?: string | null;
 }
 
@@ -152,7 +183,8 @@ export interface FatosDosSeisPassos {
   readonly produtosCarregando: boolean;
   /**
    * "Como você entrega" chega como FATO pronto. Por decisão, o passo é só a
-   * parte barata da entrega — o CEP completo da loja —, calculada por
+   * parte barata da entrega — o CEP completo da loja e o alcance que cobre a
+   * cidade —, calculada por
    * `estadoDaEntrega` (acima). Quem chama (Início, Ajustes) DEVE usá-la em vez
    * de calcular a própria régua, para as duas telas nunca divergirem. O
    * detalhe de transportadora (credenciais, provedores ligados) fica no texto
@@ -165,6 +197,12 @@ export interface EntradaDosSeisPassos {
   readonly estados: Readonly<Record<ChaveDosSeisPassos, EstadoDoItem>>;
   /** Só para o texto do "recebe": não diz "PIX" de quem só recebe na entrega. */
   readonly pixOk: boolean;
+  /**
+   * A entrega está pendente porque o ALCANCE é curto (há CEP, mas o aviso da
+   * tela de Frete dispara) — e não porque falta o CEP. Só muda o texto do
+   * passo "entrega"; ausente = falta o CEP (o texto de antes).
+   */
+  readonly entregaAlcanceCurto?: boolean;
 }
 
 function textoPreenchido(texto: string | null | undefined): boolean {
@@ -196,6 +234,10 @@ export function entradaDosSeisPassos(
 
   return {
     pixOk,
+    // `estados.entrega` é o fato que quem chama entregou (`estadoDaEntrega`);
+    // aqui só se descobre, com a MESMA função do aviso, QUAL é a pendência.
+    entregaAlcanceCurto:
+      fatos.entrega === "pendente" && entregaComAlcanceCurto(config),
     estados: {
       marca: daConfig(
         textoPreenchido(config.storeName) && textoPreenchido(config.logoUrl),
@@ -228,7 +270,7 @@ export function entradaDosSeisPassos(
 export function seisPassosDaLojaPronta(
   entrada: EntradaDosSeisPassos,
 ): readonly PassoDaLoja[] {
-  const { estados, pixOk } = entrada;
+  const { estados, pixOk, entregaAlcanceCurto = false } = entrada;
   return [
     {
       chave: "marca",
@@ -268,7 +310,15 @@ export function seisPassosDaLojaPronta(
       chave: "entrega",
       rotulo: "Como você entrega",
       rotuloFeito: "Entrega configurada",
-      rotuloPendente: "Configurar a entrega",
+      // Com CEP mas alcance curto, o que falta não é "configurar a entrega":
+      // é ampliar até onde ela vale (a tela de Frete, no "Alcance por CEP").
+      rotuloPendente: entregaAlcanceCurto
+        ? "Ampliar o alcance da entrega"
+        : "Configurar a entrega",
+      ...(entregaAlcanceCurto && {
+        explicacaoPendente:
+          "Clientes de outros bairros podem não conseguir comprar.",
+      }),
       estado: estados.entrega,
       destino: "admin-shipping",
     },

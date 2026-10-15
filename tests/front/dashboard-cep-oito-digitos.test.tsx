@@ -4,6 +4,11 @@
 // Desde o cartão dos seis passos, o endereço (CEP + número) é um passo à
 // parte; aqui a loja tem nome, logo, WhatsApp, PIX e produto, e só o CEP varia
 // — o que se observa é a linha "Como você entrega" da lista dos seis.
+//
+// O "Alcance por CEP" fica preenchido (cobre o país todo) de propósito: desde
+// 15/10/2026 CEP de rua com alcance vazio deixa a entrega pendente por outro
+// motivo (alcance curto, coberto em loja-pronta-entrega-alcance-curto.test.tsx),
+// e aqui só a completude do CEP está em jogo.
 import { LojaProntaEEstoqueBaixo } from "@/components/admin/dashboard/LojaProntaEEstoqueBaixo";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -53,6 +58,7 @@ describe("CEP de origem só conclui a entrega do cartão com oito dígitos", () 
             originCep: cep,
             storeAddress: null,
             whatsappNumber: "34999999999",
+            localCepRange: "00000-000, 99999-999",
           }}
           ligado={true}
           chaveOk={true}

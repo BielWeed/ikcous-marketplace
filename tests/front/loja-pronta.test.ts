@@ -280,6 +280,12 @@ describe("contagemDosPassos e proximoPasso", () => {
 // "grátis na cidade". As transportadoras do "fora da cidade" dependem de
 // credenciais (chamada de rede) e o Início não as pergunta.
 describe("estadoDaEntrega", () => {
+  // Estes casos são sobre o CEP estar COMPLETO, não sobre o alcance: o
+  // "Alcance por CEP" cobre o país todo para o alcance não entrar na conta. O
+  // alcance (CEP de rua com a faixa vazia) tem o próprio arquivo:
+  // loja-pronta-entrega-alcance-curto.test.tsx.
+  const ALCANCE_QUE_COBRE_TUDO = "00000-000, 99999-999";
+
   it.each([
     { cep: "01310100", estado: "feito" },
     { cep: "01310-100", estado: "feito" },
@@ -291,7 +297,12 @@ describe("estadoDaEntrega", () => {
     { cep: "1234-5678", estado: "pendente" },
     { cep: "abcdefgh", estado: "pendente" },
   ])("CEP $cep: $estado", ({ cep, estado }) => {
-    expect(estadoDaEntrega({ originCep: cep }, false)).toBe(estado);
+    expect(
+      estadoDaEntrega(
+        { originCep: cep, localCepRange: ALCANCE_QUE_COBRE_TUDO },
+        false,
+      ),
+    ).toBe(estado);
   });
 
   it("config carregando: carregando, mesmo com CEP (a config ainda não chegou)", () => {
@@ -314,9 +325,12 @@ describe("estadoDaEntrega", () => {
         credsErro: false,
         nomesLigados: [],
       });
-      expect(estadoDaEntrega({ originCep }, false)).toBe(
-        naSuaCidade.tom === "positivo" ? "feito" : "pendente",
-      );
+      expect(
+        estadoDaEntrega(
+          { originCep, localCepRange: ALCANCE_QUE_COBRE_TUDO },
+          false,
+        ),
+      ).toBe(naSuaCidade.tom === "positivo" ? "feito" : "pendente");
     }
   });
 
