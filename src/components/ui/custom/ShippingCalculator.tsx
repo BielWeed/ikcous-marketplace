@@ -17,6 +17,14 @@ import {
   codigoDoErroDeEdgeFunction,
   mensagemAmigavelErroEdgeFunction,
 } from "@/lib/mensagens-erro";
+import {
+  MENSAGEM_CONEXAO_LENTA,
+  PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+  PRAZO_DA_COTACAO_DO_FRETE_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
@@ -491,9 +499,16 @@ export function ShippingCalculator({
             const revisaoDoCache = (
               envelopeCru as Partial<EnvelopeDeCacheDeFrete>
             ).revisaoConfig;
+            // Rede pendurada: sem prazo, a confirmação nunca voltava e a tela
+            // girava para sempre. Estourar vira ERRO (com "Tentar de novo"),
+            // não "sem mudança" — o `catch` de baixo deixa o erro subir.
             const revisaoAtual = isOffline
               ? null
-              : await buscarRevisaoConfigFrete();
+              : await aguardarComPrazo(
+                  buscarRevisaoConfigFrete(),
+                  PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+                  erroDeConsultaSemResposta,
+                );
             // Lacre: uma chamada mais nova pode ter começado durante o
             // `await` acima.
             if (meuId !== reqRef.current) return;
@@ -512,6 +527,8 @@ export function ShippingCalculator({
             // acerto de cache nunca tivesse existido.
           }
         } catch (e) {
+          // O prazo estourado NÃO é cache ilegível: sobe para o erro da tela.
+          if (ehConsultaSemResposta(e)) throw e;
           console.error("Error parsing cached shipping options:", e);
         }
       }
@@ -521,9 +538,12 @@ export function ShippingCalculator({
         throw new Error(MENSAGEM_SEM_CONEXAO_FRETE);
       }
 
-      const { data, error: funcError } = await supabase.functions.invoke(
-        "calculate-shipping",
-        {
+      // Prazo na espera da tela (rede pendurada não pode deixar o frete
+      // girando para sempre). A resposta tardia da tentativa que estourou é
+      // ignorada: só o resultado da corrida segue adiante, e o lacre
+      // (`reqRef`) já descarta quem não é a rodada mais nova.
+      const { data, error: funcError } = await aguardarComPrazo(
+        supabase.functions.invoke("calculate-shipping", {
           // `aceitaRetirada`: o sinal de que ESTE app entende a retirada na
           // loja (nunca a auto-seleciona). Sem ele, a edge não a oferece — é
           // o que protege o app 1.5.2 ainda no ar.
@@ -536,7 +556,9 @@ export function ShippingCalculator({
             aceitaRetirada: true,
             contratoCliente: 3,
           },
-        },
+        }),
+        PRAZO_DA_COTACAO_DO_FRETE_MS,
+        erroDeConsultaSemResposta,
       );
 
       if (funcError) {
@@ -600,6 +622,7 @@ export function ShippingCalculator({
               mensagensSeguras: [
                 MENSAGEM_SEM_CONEXAO_FRETE,
                 MENSAGEM_FALHA_AO_COTAR,
+                MENSAGEM_CONEXAO_LENTA,
               ],
               mensagemGenerica:
                 "Não foi possível calcular o frete agora. Tente novamente em instantes.",
