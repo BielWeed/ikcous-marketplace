@@ -284,6 +284,11 @@ export function AccountSettingsView() {
   const [cpfOriginal, setCpfOriginal] = useState("");
   const [cpfErro, setCpfErro] = useState(false);
 
+  // Nome em branco não salva (14/10/2026): o `COALESCE(p_full_name, full_name)`
+  // do banco só protege contra NULL — '' passa e apagava o nome público dela
+  // com "sucesso". A recusa mora aqui, junto do campo.
+  const [nomeErro, setNomeErro] = useState(false);
+
   const [passwordData, setPasswordData] = useState({
     newPassword: "",
     confirmPassword: "",
@@ -369,6 +374,23 @@ export function AccountSettingsView() {
       return;
     }
 
+    // O nome é aparado antes de tudo: só espaços conta como vazio, e o que vai
+    // para o banco nunca leva espaço nas pontas. Vazio é recusado aqui — a RPC
+    // não é chamada e o aviso de sucesso não aparece.
+    const nomeAparado = profileData.name.trim();
+    if (!nomeAparado) {
+      setNomeErro(true);
+      // Quem rolou a tela até o botão não vê a mensagem inline: o aviso
+      // visível e o foco no campo levam a pessoa até ela (mesmo padrão do
+      // CPF, que também avisa por toast). Vale para o perfil antigo com
+      // nome vazio que só queria trocar o telefone — continua bloqueado,
+      // mas agora com aviso.
+      toast.error("Informe seu nome");
+      document.getElementById("full_name")?.focus();
+      return;
+    }
+    setNomeErro(false);
+
     // A validação só se aplica ao que a PESSOA digitou. Um WhatsApp inválido
     // que já estava salvo (dado legado) não pode travar a troca do nome —
     // ele nem vai ser reenviado (ver `p_whatsapp` abaixo).
@@ -409,12 +431,16 @@ export function AccountSettingsView() {
       const { error } = await (supabase as any).rpc(
         "update_my_profile_secure",
         {
-          p_full_name: profileData.name,
+          p_full_name: nomeAparado,
           p_whatsapp: whatsappEditado ? profileData.phone : null,
         },
       );
 
       if (error) throw error;
+
+      // O campo passa a mostrar o que foi gravado (já aparado) — mesmo que o
+      // CPF abaixo falhe, o nome já foi salvo.
+      setProfileData((p) => ({ ...p, name: nomeAparado }));
 
       if (cpfMudou) {
         const resultadoCpf = await gravarCpfDaConta(digitosCpfAtual);
@@ -700,15 +726,29 @@ export function AccountSettingsView() {
                         autoComplete="name"
                         value={profileData.name}
                         disabled={profileLoadState !== "loaded"}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setProfileData((p) => ({
                             ...p,
                             name: e.target.value,
-                          }))
+                          }));
+                          if (nomeErro) setNomeErro(false);
+                        }}
+                        aria-invalid={nomeErro}
+                        aria-describedby={
+                          nomeErro ? "full_name-erro" : undefined
                         }
                         className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
                       />
                     </div>
+                    {nomeErro && (
+                      <p
+                        id="full_name-erro"
+                        role="alert"
+                        className="ml-0.5 text-xs font-bold text-red-600"
+                      >
+                        Informe seu nome
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1">
