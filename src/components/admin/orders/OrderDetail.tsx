@@ -24,6 +24,7 @@ import {
 } from "@/lib/idade-do-pedido-pendente";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { cn } from "@/lib/utils";
@@ -230,6 +231,10 @@ interface OrderDetailProps {
 }
 
 const globalSkuCache: Record<string, string> = {};
+// Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
+// mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
+// quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
+const globalVariacaoCache: Record<string, string> = {};
 
 // Redesenho da ficha (08/10/2026, aprovado pelo dono): a MESMA linguagem do
 // card de pedido redesenhado em 07/10 (`AdminOrderCard`) — blocos
@@ -695,6 +700,7 @@ function OrderDeliveryCard({
 interface OrderItemsCardProps {
   order: Order;
   skus: Record<string, string>;
+  variacoes: Record<string, string>;
   loadingSkus: boolean;
 }
 
@@ -705,6 +711,7 @@ interface OrderItemsCardProps {
 function OrderItemsCard({
   order,
   skus,
+  variacoes,
   loadingSkus,
 }: Readonly<OrderItemsCardProps>) {
   const { items } = order;
@@ -723,6 +730,7 @@ function OrderItemsCard({
           const itemSku = item.variantId
             ? skus[`var-${item.variantId}`] || skus[`prod-${item.productId}`]
             : skus[`prod-${item.productId}`];
+          const variacao = item.variantId ? variacoes[item.variantId] : "";
 
           return (
             <div
@@ -740,6 +748,14 @@ function OrderItemsCard({
                 <p className="truncate text-sm font-medium text-white">
                   {item.name}
                 </p>
+                {variacao && (
+                  <p
+                    data-testid="variacao-do-item"
+                    className="mt-0.5 break-words text-xs font-medium text-zinc-200"
+                  >
+                    {variacao}
+                  </p>
+                )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-xs tabular-nums text-zinc-400">
                     {item.quantity} × R$ {formatarValor(item.price)}
@@ -1330,6 +1346,7 @@ export const OrderDetail = memo(function OrderDetail({
   const [isSavingNotes, setIsSavingNotes] = useState(false);
 
   const [skus, setSkus] = useState<Record<string, string>>({});
+  const [variacoes, setVariacoes] = useState<Record<string, string>>({});
   const [loadingSkus, setLoadingSkus] = useState(false);
 
   const [copiedAddress, setCopiedAddress] = useState(false);
@@ -1490,10 +1507,20 @@ export const OrderDetail = memo(function OrderDetail({
           (id) => !globalSkuCache[`prod-${id}`],
         );
         const missingVariantIds = variantIds.filter(
-          (id) => !globalSkuCache[`var-${id}`],
+          (id) =>
+            !globalSkuCache[`var-${id}`] ||
+            globalVariacaoCache[id] === undefined,
         );
+        const variacoesLidas = () => {
+          const lidas: Record<string, string> = {};
+          variantIds.forEach((id) => {
+            if (globalVariacaoCache[id]) lidas[id] = globalVariacaoCache[id];
+          });
+          return lidas;
+        };
 
         if (missingProductIds.length === 0 && missingVariantIds.length === 0) {
+          setVariacoes(variacoesLidas());
           const cachedSkus: Record<string, string> = {};
           productIds.forEach((id) => {
             cachedSkus[`prod-${id}`] = globalSkuCache[`prod-${id}`];
@@ -1520,12 +1547,14 @@ export const OrderDetail = memo(function OrderDetail({
         if (missingVariantIds.length > 0) {
           const { data: variantsData } = await supabase
             .from("product_variants")
-            .select("id, sku")
+            .select("id, sku, name, value")
             .in("id", missingVariantIds);
           variantsData?.forEach((v) => {
             if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
+            globalVariacaoCache[v.id] = rotuloDaVariacao(v.name, v.value);
           });
         }
+        setVariacoes(variacoesLidas());
 
         const resultSkus: Record<string, string> = {};
         productIds.forEach((id) => {
@@ -1763,7 +1792,12 @@ export const OrderDetail = memo(function OrderDetail({
           onWhatsAppDirect={handleWhatsAppDirect}
           whatsappUrl={whatsappUrl}
         />
-        <OrderItemsCard order={order} skus={skus} loadingSkus={loadingSkus} />
+        <OrderItemsCard
+          order={order}
+          skus={skus}
+          variacoes={variacoes}
+          loadingSkus={loadingSkus}
+        />
 
         {/* Envio em linhas simples, separadas por divisores: uma linha por
             assunto, e tocar abre/edita ali mesmo. */}
@@ -1829,7 +1863,11 @@ export const OrderDetail = memo(function OrderDetail({
         </section>
       </div>
 
-      <OrderReceipt order={order} storeName={storeName} />
+      <OrderReceipt
+        order={order}
+        storeName={storeName}
+        variacoes={variacoes}
+      />
 
       <AlertDialog
         open={pendingAdvance !== null}
