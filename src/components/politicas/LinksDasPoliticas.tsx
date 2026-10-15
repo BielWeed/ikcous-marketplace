@@ -1,14 +1,11 @@
 import { useState } from "react";
 
-import { PoliticaEmFolha } from "@/components/politicas/PoliticaEmFolha";
+import { PoliticaEmFolhaSobDemanda } from "@/components/politicas/PoliticaEmFolhaSobDemanda";
 import {
-  TIPOS_DE_POLITICA,
   type TipoDePolitica,
   nomeDaPolitica,
-  viewDaPolitica,
 } from "@/lib/textos-das-politicas";
 import { cn } from "@/lib/utils";
-import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
 
 // Link no meio de uma frase: o texto fica pequeno, mas a área de toque chega
@@ -66,7 +63,10 @@ export function FraseDeAceite({
         </button>
         .
       </p>
-      <PoliticaEmFolha tipo={aberta} onFechar={() => setAberta(null)} />
+      <PoliticaEmFolhaSobDemanda
+        tipo={aberta}
+        onFechar={() => setAberta(null)}
+      />
     </>
   );
 }
@@ -94,42 +94,10 @@ export function LinkDeTrocas({ className }: { readonly className?: string }) {
       >
         {nomeDaPolitica("trocas")}
       </button>
-      <PoliticaEmFolha
+      <PoliticaEmFolhaSobDemanda
         tipo={aberta ? "trocas" : null}
         onFechar={() => setAberta(false)}
       />
     </>
-  );
-}
-
-/**
- * Os três links no fim da vitrine. Aqui é navegação mesmo (a cliente não
- * está no meio de nada): leva à página, e o voltar do app traz de volta.
- */
-export function RodapeDasPoliticas({
-  onNavigate,
-}: {
-  readonly onNavigate: (view: View) => void;
-}) {
-  return (
-    <nav
-      aria-label="Políticas da loja"
-      data-testid="rodape-das-politicas"
-      className="relative z-10 mt-8 flex flex-wrap items-center justify-center gap-x-1 border-t border-border pt-2"
-    >
-      {TIPOS_DE_POLITICA.map((tipo) => (
-        <button
-          key={tipo}
-          type="button"
-          onClick={() => {
-            haptic.light();
-            onNavigate(viewDaPolitica(tipo));
-          }}
-          className="flex min-h-11 items-center px-2 text-xs font-semibold text-muted-foreground underline underline-offset-2"
-        >
-          {nomeDaPolitica(tipo)}
-        </button>
-      ))}
-    </nav>
   );
 }

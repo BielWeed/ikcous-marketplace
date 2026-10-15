@@ -65,6 +65,18 @@ describe("folha e links das políticas", () => {
     return achado as HTMLButtonElement;
   };
 
+  // A folha é carregada sob demanda (import dinâmico): espera ela aparecer.
+  async function aguardarFolha(): Promise<Element> {
+    for (let i = 0; i < 80; i++) {
+      const folha = document.querySelector('[data-testid="folha-politica"]');
+      if (folha) return folha;
+      await act(async () => {
+        await esperar(25);
+      });
+    }
+    throw new Error("a folha da política não abriu");
+  }
+
   it("frase de aceite: texto exato, com os dois links, sem caixa de marcar", async () => {
     const { FraseDeAceite } = await import(
       "@/components/politicas/LinksDasPoliticas"
@@ -100,13 +112,11 @@ describe("folha e links das políticas", () => {
     const campo = hospedeiro.querySelector("input") as HTMLInputElement;
     expect(campo.value).toBe("Maria da Silva");
 
+    // Antes de tocar, nada de folha: o peso dela só vem sob demanda.
+    expect(document.querySelector('[data-testid="folha-politica"]')).toBeNull();
     act(() => botaoPorTexto("Termos de uso").click());
-    await act(async () => {
-      await esperar();
-    });
-    const folha = document.querySelector('[data-testid="folha-politica"]');
-    expect(folha).not.toBeNull();
-    expect(folha?.textContent).toContain("Termos de uso");
+    const folha = await aguardarFolha();
+    expect(folha.textContent).toContain("Termos de uso");
     expect(folha?.textContent).toContain("Loja da Ana");
     // A tela de baixo continua montada, com o campo intacto.
     expect(hospedeiro.querySelector("input")).toBe(campo);
@@ -125,12 +135,7 @@ describe("folha e links das políticas", () => {
     expect(campo.value).toBe("Maria da Silva");
 
     act(() => botaoPorTexto("Política de Privacidade").click());
-    await act(async () => {
-      await esperar();
-    });
-    expect(
-      document.querySelector('[data-testid="folha-politica"]')?.textContent,
-    ).toContain("Que dados pedimos");
+    expect((await aguardarFolha()).textContent).toContain("Que dados pedimos");
   });
 
   it("link de trocas: abre a folha de Trocas e devoluções", async () => {
@@ -144,18 +149,15 @@ describe("folha e links das políticas", () => {
     expect(link.textContent).toBe("Trocas e devoluções");
     expect(document.querySelector('[data-testid="folha-politica"]')).toBeNull();
     act(() => link.click());
-    await act(async () => {
-      await esperar();
-    });
-    const folha = document.querySelector('[data-testid="folha-politica"]');
-    expect(folha?.textContent).toContain("Trocas e devoluções");
+    const folha = await aguardarFolha();
+    expect(folha.textContent).toContain("Trocas e devoluções");
     // Banco "fora do ar" no dublê: só o mínimo da lei, nunca prazo inventado.
-    expect(folha?.textContent).toContain("7 dias");
+    await vi.waitFor(() => expect(folha.textContent).toContain("7 dias"));
   });
 
   it("rodapé: três links, cada um navega para a sua página", async () => {
     const { RodapeDasPoliticas } = await import(
-      "@/components/politicas/LinksDasPoliticas"
+      "@/components/politicas/RodapeDasPoliticas"
     );
     const onNavigate = vi.fn();
     await renderizar(<RodapeDasPoliticas onNavigate={onNavigate} />);
