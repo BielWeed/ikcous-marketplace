@@ -1,4 +1,34 @@
 /**
+ * A bolinha so pode sair de um ponto que a cliente ENXERGA (14/10/2026).
+ *
+ * Relato do dono: dentro da folha de escolha de opcoes a bolinha boiava sobre
+ * o conteudo da folha e seguia para um carrinho que a propria folha cobre
+ * (folha z-130 acima da barra de baixo z-120). Quem solta a bolinha pergunta
+ * isto antes; "nao" significa nao voar (o aviso de "Salvo!" ja confirmou).
+ *
+ * Verdadeiro quando o elemento tem tamanho, o centro dele esta dentro da tela
+ * E o que esta por cima desse centro e do proprio `dono` (o card) — assim uma
+ * barra fixa, o topo da tela ou outra folha na frente reprovam. Sem
+ * `elementFromPoint` no ambiente (jsdom), vale so a geometria.
+ */
+export function pontoDeSaidaVisivel(
+  elemento: HTMLElement,
+  dono: HTMLElement,
+): boolean {
+  if (typeof window === "undefined") return false;
+  const r = elemento.getBoundingClientRect();
+  if (r.width <= 0 || r.height <= 0) return false;
+  const x = r.left + r.width / 2;
+  const y = r.top + r.height / 2;
+  if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+    return false;
+  }
+  if (typeof document.elementFromPoint !== "function") return true;
+  const porCima = document.elementFromPoint(x, y);
+  return porCima !== null && dono.contains(porCima);
+}
+
+/**
  * Triggers a premium 60fps flying thumbnail animation towards the cart target in the UI.
  *
  * O alvo e' SEMPRE `#bottom-nav-cart`, em qualquer largura. Ate 24/08/2026 ela
