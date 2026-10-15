@@ -234,6 +234,15 @@ describe("AdminOrdersView — botão de registrar pagamento recebido na entrega 
       await Promise.resolve();
     });
 
+    // 15/10/2026: "Desfazer" só pergunta; quem desfaz é o botão de confirmar.
+    expect(registrarPagamentoRecebidoMock).not.toHaveBeenCalled();
+    const confirmar = botaoComTexto(document.body, "Desfazer recebimento");
+    expect(confirmar).toBeTruthy();
+    await act(async () => {
+      confirmar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
     expect(registrarPagamentoRecebidoMock).toHaveBeenCalledTimes(1);
     // 🔴 O SEGUNDO ARGUMENTO é o que este caso existe para pegar: marcar e
     // desmarcar chamam a MESMA função — um teste que só confere "foi
@@ -283,6 +292,15 @@ describe("AdminOrdersView — botão de registrar pagamento recebido na entrega 
 
     await act(async () => {
       botaoDesfazer!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    // 15/10/2026: "Desfazer" só pergunta; quem desfaz é o botão de confirmar.
+    expect(registrarPagamentoRecebidoMock).not.toHaveBeenCalled();
+    const confirmar = botaoComTexto(document.body, "Desfazer recebimento");
+    expect(confirmar).toBeTruthy();
+    await act(async () => {
+      confirmar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
 

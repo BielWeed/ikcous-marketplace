@@ -7,10 +7,10 @@
 // baixado e, mesmo marcando como recebido de novo, a anulação é recusada para
 // sempre (a migration 20261204 recusa venda cujo recebimento já foi desfeito).
 //
-// Agora, SÓ para venda do balcão (canal "presencial"), "Desfazer" abre uma
-// pergunta com "Voltar" em foco; a RPC só roda em "Desfazer mesmo assim".
-// Pedido do site continua como estava: um toque (é o caminho de "o PIX não
-// entrou").
+// "Desfazer" abre uma pergunta com "Voltar" em foco em TODO pedido (15/10/2026:
+// no do site também, porque desmarcar tira o valor das vendas, do lucro e do
+// Financeiro e trava a devolução da cliente). A RPC só roda no botão de
+// confirmar: "Desfazer mesmo assim" no balcão, "Desfazer recebimento" no resto.
 import { AdminOrderCard } from "@/components/admin/orders/AdminOrderCard";
 import type { Order } from "@/types";
 import { act } from "react";
@@ -183,21 +183,63 @@ describe("Desfazer o recebimento de venda do balcão pede confirmação", () => 
       expect(pergunta()).toBeNull();
     });
 
-    it("pedido do site continua com um toque só, sem pergunta", async () => {
+    it("pedido do site: 'Desfazer' só pergunta — a RPC não roda", async () => {
       await montar(pedidoDoSite());
       await clicar(botao(hospedeiro, "Desfazer"));
 
-      expect(pergunta()).toBeNull();
-      expect(aoRegistrar).toHaveBeenCalledTimes(1);
-      expect(aoRegistrar).toHaveBeenCalledWith("ped-site-1", false);
+      expect(aoRegistrar).not.toHaveBeenCalled();
+      expect(pergunta()).not.toBeNull();
     });
 
-    it("pedido sem canal (antigo) também continua com um toque só", async () => {
+    it("pedido do site: 'Voltar' está em foco e não desfaz nada", async () => {
+      await montar(pedidoDoSite());
+      await clicar(botao(hospedeiro, "Desfazer"));
+
+      const voltar = botao(document.body, "Voltar");
+      expect(voltar).toBeTruthy();
+      expect(document.activeElement).toBe(voltar);
+
+      await clicar(voltar);
+      expect(pergunta()).toBeNull();
+      expect(aoRegistrar).not.toHaveBeenCalled();
+      expect(aoSelecionar).not.toHaveBeenCalled();
+    });
+
+    it("pedido do site: só 'Desfazer recebimento' desfaz, uma vez, para o pedido certo", async () => {
+      await montar(pedidoDoSite());
+      await clicar(botao(hospedeiro, "Desfazer"));
+      await clicar(botao(document.body, "Desfazer recebimento"));
+
+      expect(aoRegistrar).toHaveBeenCalledTimes(1);
+      expect(aoRegistrar).toHaveBeenCalledWith("ped-site-1", false);
+      expect(pergunta()).toBeNull();
+    });
+
+    it("pedido do site: a pergunta diz só o que o banco faz, sem falar de balcão", async () => {
+      await montar(pedidoDoSite());
+      await clicar(botao(hospedeiro, "Desfazer"));
+
+      const texto = pergunta()?.textContent ?? "";
+      expect(texto).toContain("Desfazer o recebimento deste pedido?");
+      // O pagamento volta a ficar em branco: sai das vendas, do lucro e do
+      // Financeiro (crm__vendas e fin__movimentos exigem pagamento marcado).
+      expect(texto).toContain("em branco");
+      expect(texto).toContain("vendas, do lucro e do Financeiro");
+      // A cliente não consegue pedir devolução (20261175/20261199).
+      expect(texto).toContain("não consegue pedir devolução");
+      // A venda conta no dia em que for marcada de novo (fin__movimentos).
+      expect(texto).toContain("no dia em que você marcar de novo");
+      // Nada de regra que só existe no balcão.
+      expect(texto).not.toContain("Anular");
+      expect(texto).not.toContain("estoque");
+    });
+
+    it("pedido sem canal (antigo) também pergunta antes", async () => {
       await montar(pedido({ id: "ped-antigo", canal: undefined }));
       await clicar(botao(hospedeiro, "Desfazer"));
 
-      expect(pergunta()).toBeNull();
-      expect(aoRegistrar).toHaveBeenCalledWith("ped-antigo", false);
+      expect(pergunta()).not.toBeNull();
+      expect(aoRegistrar).not.toHaveBeenCalled();
     });
 
     it("venda do balcão de OUTRO dia: pergunta, mas sem mandar 'usar Anular' (já não dá)", async () => {
