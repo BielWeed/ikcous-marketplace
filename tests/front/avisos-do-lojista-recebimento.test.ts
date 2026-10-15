@@ -41,7 +41,8 @@ describe("montarAvisos — recebimento por marcar", () => {
     expect(aviso).toEqual({
       id: `recebimento:${PEDIDO}`,
       tipo: "recebimento",
-      titulo: "Pedido #4F5A6B entregue: você já recebeu o pagamento?",
+      titulo:
+        "Pedido #4F5A6B de Maria Silva entregue: você já recebeu o pagamento?",
       detalhe: expect.stringContaining(
         "marque para a cliente poder pedir devolução",
       ),
@@ -112,6 +113,30 @@ describe("montarAvisos — recebimento por marcar", () => {
       "avaliacao",
       "estoque",
     ]);
+  });
+
+  it("nome da cliente ausente, nulo ou so espacos: titulo sem o 'de ...', sem 'de null' nem 'de  '", () => {
+    for (const nome of [null, "", "   "]) {
+      const [aviso] = montarAvisos({
+        ...VAZIO,
+        recebimentosPorMarcar: [recebimento({ customer_name: nome })],
+      });
+
+      expect(aviso.titulo).toBe(
+        "Pedido #4F5A6B entregue: você já recebeu o pagamento?",
+      );
+    }
+  });
+
+  it("nome com espacos nas pontas e aparado", () => {
+    const [aviso] = montarAvisos({
+      ...VAZIO,
+      recebimentosPorMarcar: [recebimento({ customer_name: "  Joana  " })],
+    });
+
+    expect(aviso.titulo).toBe(
+      "Pedido #4F5A6B de Joana entregue: você já recebeu o pagamento?",
+    );
   });
 
   it("total ausente nao quebra o titulo nem o detalhe", () => {

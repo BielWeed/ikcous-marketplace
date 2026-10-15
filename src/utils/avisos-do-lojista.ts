@@ -281,10 +281,13 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
   }
 
   for (const recebimento of entrada.recebimentosPorMarcar ?? []) {
+    // Como os outros avisos de pedido, traz o nome da cliente; sem nome, o
+    // titulo fica sem o "de ..." em vez de dizer "de cliente".
+    const nome = (recebimento.customer_name ?? "").trim();
     avisos.push({
       id: `recebimento:${recebimento.id}`,
       tipo: "recebimento",
-      titulo: `Pedido #${numeroDoPedido(recebimento.id)} entregue: você já recebeu o pagamento?`,
+      titulo: `Pedido #${numeroDoPedido(recebimento.id)}${nome ? ` de ${nome}` : ""} entregue: você já recebeu o pagamento?`,
       detalhe: `${formatarReais(recebimento.total)} — marque para a cliente poder pedir devolução`,
       quando: recebimento.updated_at,
       destino: { view: "admin-orders", id: recebimento.id },

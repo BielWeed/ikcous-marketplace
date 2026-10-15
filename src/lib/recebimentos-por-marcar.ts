@@ -23,9 +23,20 @@
  * Só o que entregou nos últimos 30 dias entra: sem janela, todo pedido antigo
  * nunca marcado ficaria na lista para sempre e o sino nunca zeraria.
  *
- * A data é `updated_at` (a coluna que a tela já lê), que muda quando o pedido
- * vira "entregue": para este pedido, que não recebe mais nada depois de
- * entregue, ela é a data da entrega.
+ * A data é `updated_at` (a coluna que a tela já lê), e é só uma APROXIMAÇÃO
+ * da data da entrega, com duas ressalvas honestas:
+ *   - O servidor (`devolucao__entregue_em`) usa a linha `new_status =
+ *     'delivered'` de `marketplace_order_history`. `updated_at` anda com
+ *     qualquer edição do pedido (marcar o recebimento, desfazer, cancelar) e
+ *     um update em massa futuro renovaria a data de todos de uma vez, trazendo
+ *     de volta para a lista pedido entregue há muito tempo. O pedido com o
+ *     recebimento marcado não tem mais pagamento em branco e sai da lista;
+ *     desfazer a marcação o devolve à lista, com a data renovada.
+ *   - A janela (30 dias) é MENOR que o prazo de vício padrão da política de
+ *     devolução (90 dias, `politica_devolucao.prazo_vicio_dias`): uma cliente
+ *     ainda dentro do prazo de devolução pode ter o pedido fora do aviso. É
+ *     escolha de produto para a lista não crescer sem fim, não cobertura do
+ *     prazo da cliente.
  */
 export const JANELA_DE_RECEBIMENTO_DIAS = 30;
 
