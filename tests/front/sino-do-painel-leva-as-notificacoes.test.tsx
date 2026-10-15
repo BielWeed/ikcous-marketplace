@@ -22,7 +22,10 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA } from "@/lib/recebimentos-por-marcar";
+import {
+  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+  inicioDaJanelaDeRecebimento,
+} from "@/lib/recebimentos-por-marcar";
 
 // Reatribuiveis por caso: cada contagem alimenta um degrau da escada antiga,
 // e e variando as tres que se prova que nenhum degrau sobrou.
@@ -42,6 +45,9 @@ const FILTROS_DA_PRIVACIDADE: Array<[string, unknown]> = [];
 // a consulta nova do sino, em `marketplace_orders`, distinguida da dos
 // pedidos pendentes pelo `.eq("status", "delivered")`.
 let RECEBIMENTOS_POR_MARCAR = 0;
+// Politica de devolucao da loja (15/10/2026): a janela do sino segue o prazo
+// dela. `null` = a leitura nao trouxe nada (cai em 90 dias).
+let POLITICA_DA_LOJA: unknown = null;
 const FILTROS_DE_RECEBIMENTO: Array<[string, ...unknown[]]> = [];
 
 /** Duble do query builder de contagem do Supabase (`head: true`). */
@@ -58,6 +64,9 @@ function criarContagemBuilder(contagem: number, tabela = "") {
       return builder;
     });
   builder.select = vi.fn(() => builder);
+  builder.maybeSingle = vi.fn(() =>
+    Promise.resolve({ data: POLITICA_DA_LOJA, error: null }),
+  );
   builder.in = vi.fn(() => builder);
   builder.or = passa("or");
   builder.is = passa("is");
@@ -203,6 +212,7 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     FALHA_PRIVACIDADE = null;
     FILTROS_DA_PRIVACIDADE.length = 0;
     RECEBIMENTOS_POR_MARCAR = 0;
+    POLITICA_DA_LOJA = null;
     FILTROS_DE_RECEBIMENTO.length = 0;
     vi.clearAllMocks();
     vi.stubGlobal(
@@ -407,11 +417,40 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     ]);
     const gte = FILTROS_DE_RECEBIMENTO.find((f) => f[0] === "gte");
     expect(gte?.[1]).toBe("updated_at");
-    expect(
-      Math.abs(
-        Date.now() - 30 * 24 * 3600 * 1000 - Date.parse(String(gte?.[2])),
-      ),
-    ).toBeLessThan(10_000);
+    // Sem configuracao da loja a janela e o padrao: 90 dias (era 30 fixos).
+    expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 90));
+  });
+
+  it("a janela da bolinha segue o prazo de devolucao que a loja configurou", async () => {
+    RECEBIMENTOS_POR_MARCAR = 2;
+    POLITICA_DA_LOJA = { prazo_vicio_dias: 180 };
+
+    const { sino } = await montarPainel();
+
+    await esperarAte(() => sino.querySelector("span") !== null);
+    const gte = FILTROS_DE_RECEBIMENTO.find((f) => f[0] === "gte");
+    expect(gte?.[1]).toBe("updated_at");
+    expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 180));
+  });
+
+  it("salvar outro prazo de devolucao recalcula o sino sem recarregar", async () => {
+    RECEBIMENTOS_POR_MARCAR = 2;
+    POLITICA_DA_LOJA = { prazo_vicio_dias: 90 };
+    const { sino } = await montarPainel();
+    await esperarAte(() => sino.querySelector("span") !== null);
+    const cortes = () =>
+      FILTROS_DE_RECEBIMENTO.filter((f) => f[0] === "gte").map((f) => f[2]);
+    expect(cortes().at(-1)).toBe(inicioDaJanelaDeRecebimento(Date.now(), 90));
+
+    // A lojista salva 30 dias em Configuracoes (o painel avisa por evento).
+    POLITICA_DA_LOJA = { prazo_vicio_dias: 30 };
+    await act(async () => {
+      window.dispatchEvent(new Event("admin:recontar-avisos"));
+    });
+    await esperarAte(
+      () => cortes().at(-1) === inicioDaJanelaDeRecebimento(Date.now(), 30),
+    );
+    expect(cortes().at(-1)).toBe(inicioDaJanelaDeRecebimento(Date.now(), 30));
   });
 
   it("com tudo zerado, a bolinha do sino fica APAGADA", async () => {

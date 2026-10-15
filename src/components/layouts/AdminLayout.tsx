@@ -25,7 +25,7 @@ import {
 } from "@/lib/pedidos-para-preparar";
 import {
   FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
-  inicioDaJanelaDeRecebimento,
+  inicioDaJanelaDoSino,
 } from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -116,6 +116,28 @@ interface AdminLayoutProps {
   currentView: View;
   onNavigate: (view: View) => void;
   onBack?: () => void;
+}
+
+/** Registra o fim anormal de um canal de avisos do painel (só log, sem efeito na tela). */
+function aoMudarOStatusDoCanal(nome: string) {
+  return (status: any, err?: any) => {
+    if (status !== "CHANNEL_ERROR") return;
+    const errMessage = err?.message || (typeof err === "string" ? err : "");
+    if (errMessage.includes("1000") || errMessage.includes("normal")) {
+      console.log(
+        `[AdminLayout] ${nome} badge channel closed normally (socket closed: 1000)`,
+      );
+    } else if (errMessage.includes("1006") || errMessage.includes("abnormal")) {
+      console.warn(
+        `[AdminLayout] ${nome} badge channel abnormally closed (socket closed: 1006). SDK will auto-reconnect.`,
+      );
+    } else {
+      console.error(
+        `[AdminLayout] ${nome} badge channel error:`,
+        err?.message || err,
+      );
+    }
+  };
 }
 
 export function AdminLayout({
@@ -304,7 +326,7 @@ export function AdminLayout({
             .eq("status", "delivered")
             .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
             .is("payment_status", null)
-            .gte("updated_at", inicioDaJanelaDeRecebimento());
+            .gte("updated_at", await inicioDaJanelaDoSino());
 
         if (recebimentosErr) {
           falhouAlgumaConsulta = true;
@@ -365,30 +387,7 @@ export function AdminLayout({
               bc?.postMessage({ type: "badge_update" });
             },
           )
-          .subscribe((status: any, err?: any) => {
-            if (status === "CHANNEL_ERROR") {
-              const errMessage =
-                err?.message || (typeof err === "string" ? err : "");
-              const isNormalClose =
-                errMessage.includes("1000") || errMessage.includes("normal");
-              const isAbnormalClose =
-                errMessage.includes("1006") || errMessage.includes("abnormal");
-              if (isNormalClose) {
-                console.log(
-                  "[AdminLayout] Orders badge channel closed normally (socket closed: 1000)",
-                );
-              } else if (isAbnormalClose) {
-                console.warn(
-                  "[AdminLayout] Orders badge channel abnormally closed (socket closed: 1006). SDK will auto-reconnect.",
-                );
-              } else {
-                console.error(
-                  "[AdminLayout] Orders badge channel error:",
-                  err?.message || err,
-                );
-              }
-            }
-          });
+          .subscribe(aoMudarOStatusDoCanal("Orders"));
 
         questionsChannel = supabase
           .channel("admin-layout-questions-badge")
@@ -408,30 +407,7 @@ export function AdminLayout({
               bc?.postMessage({ type: "badge_update" });
             },
           )
-          .subscribe((status: any, err?: any) => {
-            if (status === "CHANNEL_ERROR") {
-              const errMessage =
-                err?.message || (typeof err === "string" ? err : "");
-              const isNormalClose =
-                errMessage.includes("1000") || errMessage.includes("normal");
-              const isAbnormalClose =
-                errMessage.includes("1006") || errMessage.includes("abnormal");
-              if (isNormalClose) {
-                console.log(
-                  "[AdminLayout] Questions badge channel closed normally (socket closed: 1000)",
-                );
-              } else if (isAbnormalClose) {
-                console.warn(
-                  "[AdminLayout] Questions badge channel abnormally closed (socket closed: 1006). SDK will auto-reconnect.",
-                );
-              } else {
-                console.error(
-                  "[AdminLayout] Questions badge channel error:",
-                  err?.message || err,
-                );
-              }
-            }
-          });
+          .subscribe(aoMudarOStatusDoCanal("Questions"));
       } else {
         console.log(
           "[AdminLayout] Secondary tab listening to badge updates via BroadcastChannel...",
@@ -481,10 +457,16 @@ export function AdminLayout({
     }
 
     document.addEventListener("visibilitychange", handleVisibility);
+    // A lojista salvou outro prazo de devolução: o corte do sino muda.
+    window.addEventListener("admin:recontar-avisos", pedirConferenciaDeAvisos);
 
     return () => {
       isMounted = false;
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener(
+        "admin:recontar-avisos",
+        pedirConferenciaDeAvisos,
+      );
       unsubscribe();
       bc?.close();
       if (timeoutDeRetentativa) {

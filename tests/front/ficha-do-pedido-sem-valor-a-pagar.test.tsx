@@ -28,52 +28,91 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 
-vi.mock("@/components/ui/alert-dialog", () => ({
-  AlertDialog: ({
-    open,
-    children,
-  }: {
-    open: boolean;
-    children: ReactNode;
-  }) => (open ? <div>{children}</div> : null),
-  AlertDialogContent: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogHeader: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogFooter: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogTitle: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogDescription: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  AlertDialogAction: ({
-    children,
-    onClick,
-  }: {
-    children: ReactNode;
-    onClick?: () => void;
-  }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
-  AlertDialogCancel: ({
-    children,
-    onClick,
-  }: {
-    children: ReactNode;
-    onClick?: () => void;
-  }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
-}));
+vi.mock("@/components/ui/alert-dialog", async () => {
+  const { cloneElement, createContext, useContext, useState } = await import(
+    "react"
+  );
+  // 15/10/2026: `DesfazerRecebimento` usa o AlertDialog SEM `open` (aberto
+  // pelo `AlertDialogTrigger`); o das trocas de status é controlado por
+  // `open`. O mock atende os dois: com `open`, igual a antes; sem `open`, o
+  // gatilho abre e o conteúdo só aparece depois do toque.
+  const Estado = createContext<{
+    aberto: boolean;
+    abrir: () => void;
+  } | null>(null);
+  return {
+    AlertDialog: ({
+      open,
+      children,
+    }: {
+      open?: boolean;
+      children: ReactNode;
+    }) => {
+      const [interno, setInterno] = useState(false);
+      if (open !== undefined) return open ? <div>{children}</div> : null;
+      return (
+        <Estado.Provider
+          value={{ aberto: interno, abrir: () => setInterno(true) }}
+        >
+          {children}
+        </Estado.Provider>
+      );
+    },
+    AlertDialogTrigger: ({
+      children,
+    }: {
+      asChild?: boolean;
+      children: React.ReactElement<{ onClick?: (e: unknown) => void }>;
+    }) => {
+      const estado = useContext(Estado);
+      return cloneElement(children, {
+        onClick: (e: unknown) => {
+          children.props.onClick?.(e);
+          estado?.abrir();
+        },
+      });
+    },
+    AlertDialogContent: ({ children }: { children: ReactNode }) => {
+      const estado = useContext(Estado);
+      if (estado && !estado.aberto) return null;
+      return <div>{children}</div>;
+    },
+    AlertDialogHeader: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    AlertDialogFooter: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    AlertDialogTitle: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    AlertDialogDescription: ({ children }: { children: ReactNode }) => (
+      <div>{children}</div>
+    ),
+    AlertDialogAction: ({
+      children,
+      onClick,
+    }: {
+      children: ReactNode;
+      onClick?: () => void;
+    }) => (
+      <button type="button" onClick={onClick}>
+        {children}
+      </button>
+    ),
+    AlertDialogCancel: ({
+      children,
+      onClick,
+    }: {
+      children: ReactNode;
+      onClick?: () => void;
+    }) => (
+      <button type="button" onClick={onClick}>
+        {children}
+      </button>
+    ),
+  };
+});
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

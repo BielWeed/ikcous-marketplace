@@ -133,6 +133,16 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
         new MouseEvent("click", { bubbles: true }),
       );
     });
+    // 15/10/2026: "Desfazer" só pergunta; quem desfaz é o botão de confirmar.
+    expect(aoRegistrar).not.toHaveBeenCalled();
+    const confirmar = [...document.body.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Desfazer recebimento",
+    );
+    expect(confirmar).toBeTruthy();
+    act(() => {
+      confirmar?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(aoRegistrar).toHaveBeenCalledTimes(1);
     expect(aoRegistrar).toHaveBeenCalledWith(
       "aaaaaaaa-0000-0000-0000-000000eca2d5",
       false,

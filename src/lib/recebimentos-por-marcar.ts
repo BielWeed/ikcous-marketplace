@@ -1,3 +1,5 @@
+import { supabase } from "@/lib/supabase";
+
 /**
  * "Recebimento por marcar" — pedido ENTREGUE, pago na entrega ou na retirada
  * (não pelo site), em que a lojista ainda não marcou o recebimento. É o pedido
@@ -20,8 +22,18 @@
  */
 
 /**
- * Só o que entregou nos últimos 30 dias entra: sem janela, todo pedido antigo
- * nunca marcado ficaria na lista para sempre e o sino nunca zeraria.
+ * A janela do sino é o PRAZO DE DEVOLUÇÃO da loja (15/10/2026): a cliente só
+ * consegue pedir devolução depois que a lojista marca o recebimento, então o
+ * aviso tem de durar enquanto a cliente ainda pode pedir. Com a janela antiga
+ * (30 dias fixos), nos dias 31 a 90 a cliente tentava devolver, o servidor
+ * recusava e o sino já tinha esquecido o pedido. Sem janela nenhuma, todo
+ * pedido antigo nunca marcado ficaria na lista para sempre e o sino nunca
+ * zeraria.
+ *
+ * `JANELA_DE_RECEBIMENTO_DIAS` (90) é o PADRÃO: vale quando a configuração da
+ * loja ainda não carregou ou falhou — o aviso precisa SOBRAR, nunca sumir. O
+ * prazo da loja entra por `janelaDeRecebimentoDias` e vira o segundo
+ * argumento de `inicioDaJanelaDeRecebimento`.
  *
  * A data é `updated_at` (a coluna que a tela já lê), e é só uma APROXIMAÇÃO
  * da data da entrega, com duas ressalvas honestas:
@@ -32,13 +44,14 @@
  *     de volta para a lista pedido entregue há muito tempo. O pedido com o
  *     recebimento marcado não tem mais pagamento em branco e sai da lista;
  *     desfazer a marcação o devolve à lista, com a data renovada.
- *   - A janela (30 dias) é MENOR que o prazo de vício padrão da política de
- *     devolução (90 dias, `politica_devolucao.prazo_vicio_dias`): uma cliente
- *     ainda dentro do prazo de devolução pode ter o pedido fora do aviso. É
- *     escolha de produto para a lista não crescer sem fim, não cobertura do
- *     prazo da cliente.
+ *   - A janela é o prazo de devolução da loja (90 dias por padrão,
+ *     `politica_devolucao.prazo_vicio_dias`), medido a partir de `updated_at`
+ *     e não da entrega: um pedido mexido depois da entrega parece mais novo do
+ *     que é, e o prazo da cliente (contado da entrega) pode acabar antes de o
+ *     aviso sumir. É uma ajuda para a lojista, não a garantia do prazo da
+ *     cliente.
  */
-export const JANELA_DE_RECEBIMENTO_DIAS = 30;
+export const JANELA_DE_RECEBIMENTO_DIAS = 90;
 
 /** Teto da lista do sino: a tela é "o que falta fazer", não um relatório. */
 export const TETO_DE_RECEBIMENTOS = 100;
@@ -47,11 +60,42 @@ export const TETO_DE_RECEBIMENTOS = 100;
 export const FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA =
   "payment_method.is.null,payment_method.neq.online";
 
-/** O ISO do começo da janela, a partir de `agora` (injetável para o teste). */
+/**
+ * O ISO do começo da janela: o INÍCIO do dia de São Paulo que fica `dias` dias
+ * de calendário antes de hoje. É a semântica do servidor
+ * (`devolucao_elegibilidade`, 20261175000000): `v_dias = hoje(SP) - dia da
+ * entrega(SP)` e a devolução vale enquanto `v_dias <= prazo` — ou seja, o dia
+ * limite vale o dia INTEIRO, não 24 h × N contadas do instante de agora.
+ * `agora` é injetável para o teste. O -03:00 é fixo de propósito: o Brasil
+ * não tem horário de verão desde 2019, e o prazo (no máximo 365 dias) nunca
+ * olha para antes disso.
+ */
 export function inicioDaJanelaDeRecebimento(
   agora: number = Date.now(),
+  dias: number = JANELA_DE_RECEBIMENTO_DIAS,
 ): string {
-  return new Date(
-    agora - JANELA_DE_RECEBIMENTO_DIAS * 24 * 3600 * 1000,
-  ).toISOString();
+  return `${new Date(agora - dias * 86_400_000).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })}T00:00:00-03:00`;
+}
+
+/**
+ * O começo da janela do sino, já com o prazo da loja: o prazo de devolução por defeito que a
+ * loja configurou (`politica_devolucao.prazo_vicio_dias`, linha única). NUNCA
+ * lança e nunca devolve menos que o padrão por falha: erro, linha ausente,
+ * número torto ou rede caída viram 90 dias — o aviso precisa SOBRAR, e ler a
+ * configuração não é uma fonte de aviso (a falha dela não acende o "não
+ * consegui conferir" do sino).
+ */
+export async function inicioDaJanelaDoSino(): Promise<string> {
+  let dias = JANELA_DE_RECEBIMENTO_DIAS;
+  try {
+    const { data } = await supabase
+      .from("politica_devolucao")
+      .select("prazo_vicio_dias")
+      .eq("id", 1)
+      .maybeSingle();
+    dias = Number(data?.prazo_vicio_dias) || dias;
+  } catch {
+    // Sem configuração: o padrão (90) — o aviso sobra, nunca some.
+  }
+  return inicioDaJanelaDeRecebimento(Date.now(), dias);
 }

@@ -365,6 +365,8 @@ export function PoliticaDeDevolucaoSection({
         return;
       }
       aplicar(gravada);
+      // O sino do painel recalcula a janela dos recebimentos por marcar.
+      window.dispatchEvent(new Event("admin:recontar-avisos"));
       toast.success("Política de trocas e devoluções salva.");
     } catch (e) {
       toast.error(mensagemDoErro(e, "Não foi possível salvar a política."));
