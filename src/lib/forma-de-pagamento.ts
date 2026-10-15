@@ -20,6 +20,29 @@ export interface FormaDoPedido {
   readonly metodoOnline?: string | null;
   /** Ramifica por `presencial`, nunca por `online` — ausente é site. */
   readonly canal?: string | null;
+  /** `marketplace_orders.total`. Só decide o caso "sem valor a pagar"
+   * (`pedidoSemValorAPagar`); ausente = "não sei", e o rótulo é o de sempre. */
+  readonly total?: number | null;
+}
+
+/** O que as telas dizem no lugar da forma de pagamento quando a compra fechou
+ * em R$ 0,00 (cupom de 100%). Texto de exibição — o servidor segue gravando o
+ * pedido como "pagar na entrega" e isto não muda. */
+export const ROTULO_SEM_VALOR_A_PAGAR = "Sem valor a pagar";
+
+/**
+ * A ÚNICA decisão de "este pedido não tem nada a pagar" nas telas (decisão do
+ * dono, 15/10/2026). Em centavos: 0,004 de ponto flutuante é zero, 0,01 não.
+ * Total ausente, nulo ou que não é número NUNCA conta — na dúvida o pedido
+ * segue com o rótulo de antes, nunca vira "sem valor" por falta de dado.
+ */
+export function pedidoSemValorAPagar(pedido: {
+  readonly total?: number | null;
+}): boolean {
+  const { total } = pedido;
+  return typeof total === "number" && Number.isFinite(total)
+    ? Math.round(total * 100) === 0
+    : false;
 }
 
 function rotuloDoPagamentoPeloSite(metodoOnline: string | null | undefined) {
@@ -39,6 +62,7 @@ function rotuloDoPagamentoPeloSite(metodoOnline: string | null | undefined) {
 }
 
 export function rotuloDaFormaDoPedido(pedido: FormaDoPedido): string {
+  if (pedidoSemValorAPagar(pedido)) return ROTULO_SEM_VALOR_A_PAGAR;
   const noBalcao = pedido.canal === "presencial";
   switch (pedido.paymentMethod) {
     case "cash":
