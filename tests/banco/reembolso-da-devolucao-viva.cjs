@@ -38,6 +38,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+const {
+  desfazerReembolsoEmDuvidaNaTransacao,
+} = require("./reembolso-em-duvida-posterior.cjs");
 
 const MIGRATIONS = path.resolve(
   __dirname,
@@ -123,9 +126,19 @@ const hashDe = async (sig) =>
     )
   ).rows[0]?.h ?? null;
 
+/**
+ * Abre a transacao de um caso e, se a SUCESSORA 20261241000000 (o reembolso em duvida prende o saldo) estiver no
+ * ar, desfaz ela primeiro: ela reescreve o aviso e o concluir desta migration, e o pre-voo daqui (e do rollback daqui)
+ * recusa o corpo dela. Assim cada caso mede ESTA migration isolada, como antes da sucessora existir.
+ */
+async function comecarSem1241() {
+  await C.query("BEGIN");
+  await desfazerReembolsoEmDuvidaNaTransacao(C);
+}
+
 /** Uma transacao por caso, sempre desfeita, no estado DEPOIS (a migration aplicada, idempotente) ou ANTES (rollback). */
 async function emTransacao(fn, { estado = "depois" } = {}) {
-  await C.query("BEGIN");
+  await comecarSem1241();
   try {
     if (estado === "antes") {
       await C.query(ROLLBACK);
@@ -618,7 +631,7 @@ prova(
     await B.connect();
     let ids = null;
     try {
-      await C.query("BEGIN");
+      await comecarSem1241();
       await C.query(MIGRATION);
       await semearPessoas();
       const orderId = await pedido({
@@ -1015,7 +1028,7 @@ prova(
 
 /** Aplica o `CREATE OR REPLACE` de uma funcao com UMA troca de texto (que tem de existir) e roda o comportamento. */
 async function mutante(rotulo, tagDaFuncao, de, para, comportamento) {
-  await C.query("BEGIN");
+  await comecarSem1241();
   try {
     await C.query(MIGRATION);
     let sql = statementDe(tagDaFuncao);
@@ -1123,7 +1136,7 @@ prova("MUTANTES: cada guarda tirada deixa a prova vermelha", async () => {
     });
   }
   // o mutante de ACL: EXECUTE da auxiliar interna para authenticated (a prova "a auxiliar e interna" exige 42501)
-  await C.query("BEGIN");
+  await comecarSem1241();
   try {
     await C.query(MIGRATION);
     await C.query(

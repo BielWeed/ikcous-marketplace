@@ -48,6 +48,19 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+const {
+  desfazerReembolsoEmDuvidaNaTransacao,
+} = require("./reembolso-em-duvida-posterior.cjs");
+
+/**
+ * Abre a transacao no cliente principal e, se a SUCESSORA 20261241000000 (o reembolso em duvida prende o saldo)
+ * estiver no ar, desfaz ela primeiro: ela reescreve corpos desta migration, e o pre-voo daqui (e do rollback daqui)
+ * recusa o corpo dela. Assim cada caso mede ESTA migration isolada, como antes da sucessora existir.
+ */
+async function comecarSem1241() {
+  await C.query("BEGIN");
+  await desfazerReembolsoEmDuvidaNaTransacao(C);
+}
 
 const REPO = path.resolve(__dirname, "..", "..");
 const CONSULTAS = path.join(REPO, "scripts", "publicacao", "consultas");
@@ -120,7 +133,7 @@ let C;
 
 /** Monta o estado dentro de uma transacao, roda as consultas como o papel de leitura e desfaz tudo. */
 async function noEstado(montar, consultas, { comoDono = false } = {}) {
-  await C.query("BEGIN");
+  await comecarSem1241();
   try {
     if (montar) await montar(C);
     if (!comoDono) {

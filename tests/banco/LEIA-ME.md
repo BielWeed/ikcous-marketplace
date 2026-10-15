@@ -652,7 +652,8 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   mais, a espera ausente, os marcadores), as sucessoras na `8e`, `28a` e `29a` antes e depois, mutantes do texto das
   consultas e o veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
 - **as provas que DESFAZEM corpos redefinidos pela `20261241000000`** (`pagamentos-rpc`, `admin-atual`,
-  `contestacao`, `cancelar-pedido`, `ordem-das-travas-composta`) a desfazem ANTES, na transação, por
+  `contestacao`, `cancelar-pedido`, `ordem-das-travas-composta`, `reembolso-da-devolucao` e `reemissao-do-reembolso`,
+  com os portões delas) a desfazem ANTES, na transação, por
   `reembolso-em-duvida-posterior.cjs` (só se no ar): ela é a mais nova, e o pré-voo de cada rollback mais velho a recusa.
 - **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
