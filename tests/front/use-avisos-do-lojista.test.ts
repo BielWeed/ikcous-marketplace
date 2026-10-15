@@ -23,6 +23,11 @@ import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
+import {
+  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+  JANELA_DE_RECEBIMENTO_DIAS,
+  TETO_DE_RECEBIMENTOS,
+} from "@/lib/recebimentos-por-marcar";
 
 // Reatribuiveis e lidos no momento da consulta: e assim que um caso troca
 // uma fonte por uma que falha sem remontar o dible inteiro.
@@ -41,6 +46,11 @@ let RESPOSTA_AVALIACOES: unknown = { data: [], error: null };
 let RESPOSTA_CANCELAMENTOS: unknown = { data: [], error: null };
 let RESPOSTA_PERFIS: unknown = { data: [], error: null };
 const FILTROS_DO_HISTORICO: Array<[string, ...unknown[]]> = [];
+// Setima fonte (14/10/2026): pedidos entregues, pagos na entrega, sem
+// recebimento marcado. Lidos de `marketplace_orders` (a mesma tabela dos
+// pedidos pendentes), distinguidos pelo `.eq("status", "delivered")`.
+let RESPOSTA_RECEBIMENTOS: unknown = { data: [], error: null };
+const CONSULTAS_DE_PEDIDOS: Array<Array<[string, ...unknown[]]>> = [];
 
 // `loadProducts` do useProducts engole o erro e devolve `null`. `null` aqui
 // NAO e "zero produtos", e "nao sei" — e o hook tem de tratar como falha.
@@ -60,20 +70,36 @@ const { loadProductsFalso } = vi.hoisted(() => ({
 
 function criarBuilder(tabela: string) {
   const builder: Record<string, unknown> = {};
+  // Setima fonte (14/10/2026): pedidos ENTREGUES, pagos na entrega, sem
+  // recebimento marcado. E' uma consulta a `marketplace_orders` como a dos
+  // pedidos pendentes; o que a distingue e' o `.eq("status", "delivered")`.
+  // `calls` guarda todos os filtros DESTA consulta, na ordem.
+  const calls: Array<[string, ...unknown[]]> = [];
+  if (tabela === "marketplace_orders") CONSULTAS_DE_PEDIDOS.push(calls);
+  const ehRecebimento = () =>
+    calls.some(
+      (c) => c[0] === "eq" && c[1] === "status" && c[2] === "delivered",
+    );
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn((coluna: string, valores: readonly string[]) => {
+    calls.push(["in", coluna, valores]);
     CHAMADAS_DE_IN.push([coluna, [...valores]]);
     return builder;
   });
   let filtrouOPagamento = false;
   builder.or = vi.fn((filtro: string) => {
+    calls.push(["or", filtro]);
     CHAMADAS_DE_OR.push(filtro);
     if (filtro === FILTRO_POSTGREST_PARA_PREPARAR) filtrouOPagamento = true;
     return builder;
   });
-  builder.is = vi.fn(() => builder);
+  builder.is = vi.fn((...argumentos: unknown[]) => {
+    calls.push(["is", ...argumentos]);
+    return builder;
+  });
   const registrar = (nome: string) =>
     vi.fn((...argumentos: unknown[]) => {
+      calls.push([nome, ...argumentos]);
       if (tabela === "marketplace_order_history") {
         FILTROS_DO_HISTORICO.push([nome, ...argumentos]);
       }
@@ -101,7 +127,9 @@ function criarBuilder(tabela: string) {
           ? RESPOSTA_CANCELAMENTOS
           : tabela === "profiles"
             ? RESPOSTA_PERFIS
-            : respostaDosPedidos(),
+            : ehRecebimento()
+              ? RESPOSTA_RECEBIMENTOS
+              : respostaDosPedidos(),
     ).then(resolve as never, reject as never);
   return builder;
 }
@@ -213,6 +241,8 @@ beforeEach(() => {
   PIX_AGUARDANDO_NO_BANCO = [];
   tabelasConsultadas = [];
   FILTROS_DO_HISTORICO.length = 0;
+  CONSULTAS_DE_PEDIDOS.length = 0;
+  RESPOSTA_RECEBIMENTOS = { data: [], error: null };
   RESPOSTA_CANCELAMENTOS = { data: [], error: null };
   RESPOSTA_PERFIS = { data: [], error: null };
   RESPOSTA_PEDIDOS = { data: [pedidoDeExemplo()], error: null };
@@ -574,5 +604,94 @@ describe("useAvisosDoLojista — cancelamento do cliente", () => {
     await montarSonda();
 
     expect(tabelasConsultadas).not.toContain("profiles");
+  });
+});
+
+describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () => {
+  const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
+
+  function entregueSemRecebimento(extra: Record<string, unknown> = {}) {
+    return {
+      id: PEDIDO,
+      customer_name: "Maria Silva",
+      total: 90,
+      updated_at: "2026-10-12T15:00:00.000Z",
+      ...extra,
+    };
+  }
+
+  function consultaDeRecebimentos() {
+    return CONSULTAS_DE_PEDIDOS.find((calls) =>
+      calls.some((c) => c[0] === "eq" && c[2] === "delivered"),
+    );
+  }
+
+  it("entregue, pago na entrega, sem recebimento: o sino ganha o item, abre AQUELE pedido e CONTA no cracha", async () => {
+    RESPOSTA_RECEBIMENTOS = { data: [entregueSemRecebimento()], error: null };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "recebimento") as
+      | (AvisoLido & { destino?: { view: string; id?: string } })
+      | undefined;
+    expect(aviso?.titulo).toBe(
+      "Pedido #4F5A6B entregue: você já recebeu o pagamento?",
+    );
+    expect(aviso?.destino).toEqual({ view: "admin-orders", id: PEDIDO });
+    expect(aviso?.contaNoCracha).toBe(true);
+    expect(atual().fontesComFalha).toEqual([]);
+    // Pedido, pergunta, avaliacao e este: 4 no cracha (estoque fica de fora).
+    expect(atual().quantidadeNoCracha).toBe(4);
+  });
+
+  it("a consulta le SO entregue, nao-online, pagamento em branco, dos ultimos 30 dias, no maximo 100", async () => {
+    const antes = Date.now();
+
+    await montarSonda();
+
+    const calls = consultaDeRecebimentos();
+    expect(calls).toBeDefined();
+    // Entregue.
+    expect(calls).toContainEqual(["eq", "status", "delivered"]);
+    // Nao pago pelo site (a mesma definicao de `podeRegistrarPagamento`).
+    expect(calls).toContainEqual(["or", FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA]);
+    // Pagamento em branco.
+    expect(calls).toContainEqual(["is", "payment_status", null]);
+    // Janela de 30 dias, pela data da entrega.
+    const gte = calls?.find((c) => c[0] === "gte");
+    expect(gte?.[1]).toBe("updated_at");
+    const desde = Date.parse(String(gte?.[2]));
+    expect(Math.abs(antes - 30 * 24 * 3600 * 1000 - desde)).toBeLessThan(
+      10_000,
+    );
+    // Teto de 100.
+    expect(calls).toContainEqual(["limit", 100]);
+  });
+
+  it("o filtro de 'nao e online' e o do arquivo compartilhado, e a janela e de 30 dias", () => {
+    expect(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA).toBe(
+      "payment_method.is.null,payment_method.neq.online",
+    );
+    expect(JANELA_DE_RECEBIMENTO_DIAS).toBe(30);
+    expect(TETO_DE_RECEBIMENTOS).toBe(100);
+  });
+
+  it("leitura que falha marca a fonte como falha, nao vira lista vazia, e as outras seguem", async () => {
+    RESPOSTA_RECEBIMENTOS = { data: null, error: { message: "caiu" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["recebimento"]);
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("recebimento");
+    expect(new Set(atual().avisos.map((a) => a.tipo))).toEqual(
+      new Set(["pedido", "pergunta", "avaliacao", "estoque"]),
+    );
+  });
+
+  it("sem pedido nesse estado, nenhum aviso de recebimento", async () => {
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("recebimento");
+    expect(atual().fontesComFalha).toEqual([]);
   });
 });

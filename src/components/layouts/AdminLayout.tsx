@@ -23,6 +23,10 @@ import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
+import {
+  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+  inicioDaJanelaDeRecebimento,
+} from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -139,6 +143,8 @@ export function AdminLayout({
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
   const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
   const [devolucoesSolicitadasCount, setDevolucoesSolicitadasCount] =
+    React.useState(0);
+  const [recebimentosPorMarcarCount, setRecebimentosPorMarcarCount] =
     React.useState(0);
   // Defeito medido em 25/08/2026: quando uma das consultas abaixo
   // falhava, a contagem dela ficava parada em 0 e o sino apagava — a mesma
@@ -266,6 +272,26 @@ export function AdminLayout({
           setDevolucoesSolicitadasCount(
             contagemDe(devolucoes.contagem, "solicitada"),
           );
+        }
+
+        // Pedido entregue, pago na entrega, sem recebimento marcado (14/10):
+        // a cliente nao consegue pedir devolucao ate a lojista marcar, entao
+        // acende o sino. A MESMA regra da lista (`useAvisosDoLojista`), lida
+        // de `@/lib/recebimentos-por-marcar` — duas contagens diferentes para
+        // a mesma pergunta seria pior que nenhuma.
+        const { count: recebimentosCount, error: recebimentosErr } =
+          await supabase
+            .from("marketplace_orders")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "delivered")
+            .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
+            .is("payment_status", null)
+            .gte("updated_at", inicioDaJanelaDeRecebimento());
+
+        if (recebimentosErr) {
+          falhouAlgumaConsulta = true;
+        } else if (recebimentosCount !== null && podeGravar()) {
+          setRecebimentosPorMarcarCount(recebimentosCount);
         }
       } catch (err) {
         console.error("[AdminLayout] Error fetching initial counts:", err);
@@ -603,7 +629,8 @@ export function AdminLayout({
     pendingOrdersCount > 0 ||
     pendingQuestionsCount > 0 ||
     pendingReviewsCount > 0 ||
-    devolucoesSolicitadasCount > 0;
+    devolucoesSolicitadasCount > 0 ||
+    recebimentosPorMarcarCount > 0;
 
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);

@@ -77,12 +77,25 @@ function criarContagemBuilder(
   excecaoPadrao = false,
 ) {
   const builder: any = {};
+  // 14/10/2026: o sino tem uma consulta a mais em `marketplace_orders` — os
+  // pedidos ENTREGUES, pagos na entrega, sem recebimento marcado — que se
+  // distingue pelo `.eq("status", "delivered")`. Aqui ela responde zero (nada
+  // por marcar); as flags de falha desta suite seguem mirando as outras.
+  let ehRecebimento = false;
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
   builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
+  builder.gte = vi.fn(() => builder);
+  builder.eq = vi.fn((coluna: string, valor: string) => {
+    if (coluna === "status" && valor === "delivered") ehRecebimento = true;
+    return builder;
+  });
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão dos vizinhos deste diretório.
   builder.then = (resolve: any, reject?: any) => {
+    if (ehRecebimento) {
+      return Promise.resolve({ count: 0, error: null }).then(resolve, reject);
+    }
     if (tabela === "marketplace_orders" && ORDERS_DEFERRED) {
       const deferido = ORDERS_DEFERRED;
       ORDERS_DEFERRED = null;
