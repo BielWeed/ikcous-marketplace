@@ -7,12 +7,13 @@ import { act, createElement, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockInvoke, mockFrom } = vi.hoisted(() => ({
+const { mockInvoke, mockFrom, mockRpc } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
   mockFrom: vi.fn(),
+  mockRpc: vi.fn(),
 }));
 vi.mock("@/lib/supabase", () => ({
-  supabase: { functions: { invoke: mockInvoke }, from: mockFrom },
+  supabase: { functions: { invoke: mockInvoke }, from: mockFrom, rpc: mockRpc },
 }));
 
 /** Dublê de `supabase.from(tabela)...eq(coluna, id)`: a resposta sai de
@@ -34,6 +35,12 @@ function simularBanco(
     b.then = (ok: never, ko: never) => responder(tabela, id).then(ok, ko);
     return b;
   });
+  // Lote R1: o saldo do pedido vem da RPC `pedido_reembolsos_e_saldo`; o
+  // dublê responde por `rpc:<nome>` com o `p_order_id` como id.
+  mockRpc.mockImplementation(
+    (nome: string, argumentos: { p_order_id?: string }) =>
+      responder(`rpc:${nome}`, argumentos?.p_order_id ?? ""),
+  );
 }
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -144,19 +151,25 @@ describe("itens 2 e 3: useEstornosDoPedido", () => {
     };
   }
 
-  const pedido = (total: number) => ({
-    data: { total, valor_estornado: 0, payment_status: "pago" },
+  const saldo = (total: number) => ({
+    data: {
+      total,
+      valor_estornado: 0,
+      em_voo: 0,
+      em_duvida: 0,
+      manual: 0,
+      disponivel: total,
+      linhas: [],
+    },
     error: null,
   });
 
-  it("item 2: erro na leitura das devoluções manuais vira erro (não saldo superestimado)", async () => {
+  it("item 2 (lote R1): erro na RPC do saldo vira erro (nunca saldo inventado)", async () => {
     simularBanco((tabela) =>
       Promise.resolve(
-        tabela === "marketplace_orders"
-          ? pedido(100)
-          : tabela === "devolucoes"
-            ? { data: null, error: { message: "falhou" } }
-            : { data: [], error: null },
+        tabela === "rpc:pedido_reembolsos_e_saldo"
+          ? { data: null, error: { message: "falhou" } }
+          : { data: [], error: null },
       ),
     );
     const Sonda = await sonda();
@@ -173,7 +186,8 @@ describe("itens 2 e 3: useEstornosDoPedido", () => {
     });
     simularBanco(async (tabela, id) => {
       if (id === "A") await portaA;
-      if (tabela === "marketplace_orders") return pedido(id === "A" ? 100 : 50);
+      if (tabela === "rpc:pedido_reembolsos_e_saldo")
+        return saldo(id === "A" ? 100 : 50);
       return { data: [], error: null };
     });
     const Sonda = await sonda();

@@ -2,6 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import {
+  AVISO_DE_DOBRO,
+  type LinhaDoSaldo,
+  RPC_DO_REEMBOLSO_R1,
+  type ReembolsosESaldo,
+  chamarRpcDoR1,
+  lerReembolsosESaldo,
+  parametrosPorForaAposEspera,
+} from "@/lib/reembolso-em-duvida";
 import { supabase } from "@/lib/supabase";
 
 /** Status possíveis de uma linha de `order_refunds` (Task 1 do plano-mãe de
@@ -25,30 +34,43 @@ export interface LinhaEstornoDoPedido {
   motivo: string | null;
   created_at: string;
   concluido_em: string | null;
+  /** Veredito do SERVIDOR (lote R1): o envio pode ter chegado ao MP. */
+  pode_ter_saido: boolean;
+  /** Marca do servidor: a saída dos 7 dias JÁ foi usada nesta linha. */
+  por_fora_liberado_em: string | null;
+  /** Servidor: a saída dos 7 dias pode ser usada AGORA. */
+  por_fora_apos_espera_liberado: boolean;
+  eh_pix: boolean;
 }
+
+/** Colunas de exibição lidas de `order_refunds` (texto da linha). */
+type DetalheDaLinha = Omit<
+  LinhaEstornoDoPedido,
+  | "pode_ter_saido"
+  | "por_fora_liberado_em"
+  | "por_fora_apos_espera_liberado"
+  | "eh_pix"
+>;
 
 // Não exportada de propósito: nada fora deste arquivo importa o TIPO do
 // retorno por nome (quem consome o hook, ex. `EstornoCard`, só desestrutura
 // os campos) — exportá-la só criaria um export órfão para o `knip`.
 interface EstornosDoPedido {
   linhas: LinhaEstornoDoPedido[];
-  /** = `marketplace_orders.total`. */
+  /** = `total` do servidor. */
   pago: number;
-  /** = `marketplace_orders.valor_estornado`. */
+  /** = `valor_estornado` do servidor. */
   devolvido: number;
-  /** Soma das linhas ainda não concluídas (inclusive `sistema`, ex.:
-   * chargeback em análise) — é a mesma conta que a RPC `solicitar_estorno`
-   * faz para recusar um pedido maior que o saldo livre. */
+  /** = `em_voo` do servidor (linhas `solicitado`/`em_processamento`). */
   emCurso: number;
-  /** `pago - devolvido - emCurso - reembolso manual de devolução já concluída
-   * do mesmo pedido` (achado A3, rodada 3). */
+  /** = `em_duvida` do servidor: parou e PODE ter saído — o saldo prende. */
+  emDuvida: number;
+  /** = `disponivel` do servidor. A tela NUNCA recalcula (lote R1). */
   disponivel: number;
   carregando: boolean;
   /** O pedido já foi lido pelo menos uma vez. Distingue "ainda não sei o
    * saldo" (primeira carga, `false`) de "o saldo é zero" (`true` com
-   * `disponivel === 0`) — BLOQUEIA 2 do laudo 08/09: `pago`/`devolvido`/
-   * `disponivel` vêm zerados por default ANTES da primeira resposta do
-   * banco, e isso não pode se confundir com "tudo devolvido". */
+   * `disponivel === 0`) — BLOQUEIA 2 do laudo 08/09. */
   pedidoCarregado: boolean;
   /** A leitura falhou; `pago`/`devolvido`/`disponivel` não são confiáveis. */
   erro: boolean;
@@ -57,15 +79,11 @@ interface EstornosDoPedido {
     amount: number;
     motivo: string;
   }) => Promise<void>;
-  /** Uma chamada de `solicitarEstorno` está em voo. */
+  /** Saída dos 7 dias da linha `refundId` (frase já conferida na tela). */
+  registrarPorForaAposEspera: (refundId: string) => Promise<boolean>;
+  /** Uma ação (`solicitarEstorno` ou a saída dos 7 dias) está em voo. */
   enviando: boolean;
 }
-
-// Dinheiro sempre em CENTAVOS inteiros antes de somar/subtrair — `50 - 4.23`
-// em ponto flutuante dá `45.769999...`, não `45.77` (C1 do laudo do #438).
-// A fonte (`numeric(12,2)`) já garante no máximo 2 casas, então arredondar
-// para o inteiro mais próximo nunca perde centavo de verdade.
-const paraCentavos = (valor: number) => Math.round(valor * 100);
 
 const ESTADOS_EM_CURSO: readonly StatusEstorno[] = [
   "solicitado",
@@ -80,55 +98,59 @@ const INTERVALO_DE_RECARGA_MS = 15_000;
 const textoRegistradoCron = (numero: string) =>
   `Devolução do pedido #${numero} registrada; o Mercado Pago é acionado em até 10 minutos.`;
 
-interface SaldoDoPedido {
-  total: number;
-  valor_estornado: number;
-}
-
-// Achado A3 (revisão de 26/09/2026, rodada 3, baixa prioridade): mesmo
-// desconto que a RPC solicitar_estorno já faz no saldo dela — sem isto, o
-// "disponível" desta TELA prometia mais do que o clique de verdade aceitava
-// (reembolso manual de devolução já concluída do mesmo pedido é dinheiro
-// que já saiu por outro caminho). Só LEITURA/exibição: quem decide de
-// verdade continua sendo o servidor, que recusa se este número mentir.
-interface DevolucaoManualDoPedido {
-  valor_reembolso: number;
+/**
+ * Junta o texto de `order_refunds` ao veredito do servidor. Linha que o
+ * servidor não julgou (leituras em instantes diferentes) fica com o lado
+ * SEGURO: "pode ter saído" — nenhuma tela oferece repetir sem o veredito.
+ */
+function juntar(
+  detalhes: DetalheDaLinha[],
+  julgadas: readonly LinhaDoSaldo[],
+): LinhaEstornoDoPedido[] {
+  const porId = new Map(julgadas.map((l) => [l.id, l]));
+  return detalhes.map((d) => {
+    const j = porId.get(d.id);
+    return {
+      ...d,
+      pode_ter_saido: j ? j.pode_ter_saido : true,
+      por_fora_liberado_em: j ? j.por_fora_liberado_em : null,
+      por_fora_apos_espera_liberado: j
+        ? j.por_fora_apos_espera_liberado
+        : false,
+      eh_pix: j ? j.eh_pix : false,
+    };
+  });
 }
 
 /**
- * Lê o saldo e o histórico de devoluções de UM pedido (`order_refunds` +
- * `marketplace_orders.valor_estornado`) e expõe `solicitarEstorno`, que
- * grava o pedido no ledger (RPC `solicitar_estorno`) e SÓ DEPOIS aciona o
- * Mercado Pago (edge `estornar-pagamento`) — nessa ordem, sempre: a linha
- * é o ledger, o clique é apenas o gatilho de EXECUÇÃO dela (arquitetura de
- * "ledger primeiro, execução depois" do plano-mãe).
+ * Lê o saldo e o histórico de devoluções de UM pedido e expõe
+ * `solicitarEstorno`, que grava o pedido no ledger (RPC `solicitar_estorno`)
+ * e SÓ DEPOIS aciona o Mercado Pago (edge `estornar-pagamento`) — nessa
+ * ordem, sempre (arquitetura de "ledger primeiro, execução depois").
+ *
+ * Lote R1 (15/10/2026): o saldo vem PRONTO do servidor
+ * (`pedido_reembolsos_e_saldo`), com o "em dúvida" já descontado e o
+ * veredito `pode_ter_saido` por linha. Antes, esta tela copiava a conta
+ * (pago − devolvido − em curso − manual) e a cópia divergia do servidor.
+ * `order_refunds` continua lido só para o TEXTO da linha (erro, tentativas,
+ * contestação).
  *
  * SEM REALTIME, de propósito: `order_refunds` não está na publication
- * `supabase_realtime` (só `marketplace_orders`, migration `20261061000000`)
- * e ligar exigiria uma migration nova — fora do escopo desta tarefa. No
- * lugar: recarrega ao montar, depois de cada ação, e — ENQUANTO existir
- * linha em `solicitado`/`em_processamento` — a cada 15s; o intervalo some
- * sozinho quando a última linha ativa se resolve, e é limpo no unmount.
+ * `supabase_realtime`. Recarrega ao montar, depois de cada ação, e — ENQUANTO
+ * existir linha em `solicitado`/`em_processamento` — a cada 15s.
  */
 export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
-  const [linhas, setLinhas] = useState<LinhaEstornoDoPedido[]>([]);
-  const [pedido, setPedido] = useState<SaldoDoPedido | null>(null);
-  const [devolucoesManuais, setDevolucoesManuais] = useState<
-    DevolucaoManualDoPedido[]
-  >([]);
+  const [detalhes, setDetalhes] = useState<DetalheDaLinha[]>([]);
+  const [saldo, setSaldo] = useState<ReembolsosESaldo | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const ativoRef = useRef(true);
-  // Trava de clique duplo (ANOTADO do laudo 08/09): `enviando` (estado) só
-  // reflete no DOM depois do próximo render — duas chamadas de
-  // `solicitarEstorno` no MESMO tick (antes de qualquer render) passariam
-  // as duas pela checagem se ela lesse `enviando`. O ref é síncrono: a
-  // segunda chamada já encontra `true` antes de disparar a RPC.
+  // Trava de clique duplo (ANOTADO do laudo 08/09): o ref é síncrono, a
+  // segunda chamada no MESMO tick já encontra `true` antes de chamar a RPC.
   const enviandoRef = useRef(false);
 
-  // Rodada da leitura: o efeito reativa `ativoRef` ao trocar de pedido, então
-  // só ele não basta — a resposta do orderId antigo que chega depois da nova
+  // Rodada da leitura: a resposta do orderId antigo que chega depois da nova
   // não pinta a tela (mesmo padrão de useDevolucaoCliente).
   const rodadaRef = useRef(0);
 
@@ -137,50 +159,33 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
     const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     setCarregando(true);
     try {
-      const [respostaLinhas, respostaPedido, respostaDevolucoesManuais] =
-        await Promise.all([
-          supabase
-            .from("order_refunds")
-            .select(
-              "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em",
-            )
-            .eq("order_id", orderId)
-            .order("created_at", { ascending: true }),
-          supabase
-            .from("marketplace_orders")
-            .select("total, valor_estornado, payment_status")
-            .eq("id", orderId)
-            .single(),
-          supabase
-            .from("devolucoes")
-            .select("valor_reembolso")
-            .eq("order_id", orderId)
-            .eq("status", "concluida")
-            .eq("reembolso_manual", true),
-        ]);
+      const [respostaLinhas, respostaSaldo] = await Promise.all([
+        supabase
+          .from("order_refunds")
+          .select(
+            "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em",
+          )
+          .eq("order_id", orderId)
+          .order("created_at", { ascending: true }),
+        chamarRpcDoR1(supabase, RPC_DO_REEMBOLSO_R1.saldo, {
+          p_order_id: orderId,
+        }),
+      ]);
 
       if (!valeAinda()) return;
 
-      // Sem a lista de devoluções manuais o desconto some e `disponivel`
-      // fica SUPERESTIMADO — então o erro dela é erro de leitura também
-      // (varredura 12/10/2026), como os outros dois.
-      if (
-        respostaLinhas.error ||
-        respostaPedido.error ||
-        respostaDevolucoesManuais.error
-      ) {
+      // Saldo ilegível é erro de leitura: um número de dinheiro de forma
+      // inesperada não vai para a tela.
+      const lido = respostaSaldo.error
+        ? null
+        : lerReembolsosESaldo(respostaSaldo.data);
+      if (respostaLinhas.error || !lido) {
         setErro(true);
         return;
       }
 
-      setLinhas(
-        (respostaLinhas.data ?? []) as unknown as LinhaEstornoDoPedido[],
-      );
-      setPedido(respostaPedido.data as unknown as SaldoDoPedido);
-      setDevolucoesManuais(
-        (respostaDevolucoesManuais.data ??
-          []) as unknown as DevolucaoManualDoPedido[],
-      );
+      setDetalhes((respostaLinhas.data ?? []) as unknown as DetalheDaLinha[]);
+      setSaldo(lido);
       setErro(false);
     } catch {
       if (valeAinda()) setErro(true);
@@ -197,13 +202,12 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
     };
   }, [carregar]);
 
+  const linhas = juntar(detalhes, saldo?.linhas ?? []);
   const temLinhaAtiva = linhas.some((linha) =>
     ESTADOS_EM_CURSO.includes(linha.status),
   );
 
-  // O intervalo só existe enquanto houver linha ativa: pedido totalmente
-  // resolvido (tudo `concluido`/`falhou`/`recusado`) para de recarregar
-  // sozinho — não há nada em voo para confirmar a cada 15s.
+  // O intervalo só existe enquanto houver linha ativa.
   useEffect(() => {
     if (!temLinhaAtiva) return;
     const id = setInterval(() => {
@@ -212,28 +216,8 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
     return () => clearInterval(id);
   }, [temLinhaAtiva, carregar]);
 
-  const centavosPago = paraCentavos(pedido?.total ?? 0);
-  const centavosDevolvido = paraCentavos(pedido?.valor_estornado ?? 0);
-  const centavosEmCurso = linhas
-    .filter((linha) => ESTADOS_EM_CURSO.includes(linha.status))
-    .reduce((soma, linha) => soma + paraCentavos(linha.amount), 0);
-  // Achado A3 (rodada 3): mesmo desconto que solicitar_estorno já faz no
-  // saldo dela — reembolso manual de devolução já concluída do mesmo
-  // pedido é dinheiro que já saiu por outro caminho.
-  const centavosDevolucaoManual = devolucoesManuais.reduce(
-    (soma, d) => soma + paraCentavos(d.valor_reembolso),
-    0,
-  );
-  const centavosDisponivel =
-    centavosPago -
-    centavosDevolvido -
-    centavosEmCurso -
-    centavosDevolucaoManual;
-
   const solicitarEstorno = useCallback(
     async ({ amount, motivo }: { amount: number; motivo: string }) => {
-      // Clique duplo no mesmo tick: a segunda chamada já encontra a trava
-      // ligada (síncrona, antes de qualquer `await`) e sai sem tocar a RPC.
       if (enviandoRef.current) return;
       enviandoRef.current = true;
       setEnviando(true);
@@ -245,13 +229,11 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
           p_motivo: motivo,
         });
 
-        // A RPC já devolve mensagem leiga, escrita para o lojista na
-        // migration que a cria — não se traduz de novo aqui.
+        // A RPC já devolve mensagem leiga — não se traduz de novo aqui.
         if (error) {
           toast.error(`Devolução do pedido #${numero}: ${error.message}`);
           // AC 3 do laudo 08/09: a recusa prova que o snapshot em tela está
-          // velho (outra aba/sessão já mexeu no saldo) — recarrega mesmo no
-          // erro, senão o saldo errado e o botão continuam na tela.
+          // velho — recarrega mesmo no erro.
           await carregar();
           return;
         }
@@ -265,11 +247,9 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
           return;
         }
 
-        // A RPC deu certo: a linha já existe como `solicitado`. Se o
-        // `invoke` falhar agora (rede/401/409/5xx), NÃO é falha do pedido —
-        // o cron de reconciliação (`reconciliar-pagamentos`, ≤ 10 min) a
-        // executa depois, com a mesma chave de idempotência. Por isso este
-        // bloco nunca deixa o erro subir: ele só troca o aviso.
+        // A linha já existe como `solicitado`. Se o `invoke` falhar agora,
+        // NÃO é falha do pedido — o cron `reconciliar-pagamentos` (≤ 10 min)
+        // a executa depois, com a mesma chave de idempotência.
         try {
           const { error: erroDoInvoke } = await supabase.functions.invoke(
             "estornar-pagamento",
@@ -289,17 +269,55 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
     [orderId, carregar],
   );
 
+  const registrarPorForaAposEspera = useCallback(
+    async (refundId: string) => {
+      if (enviandoRef.current) return false;
+      enviandoRef.current = true;
+      setEnviando(true);
+      const numero = numeroDoPedido(orderId);
+      try {
+        const { error } = await chamarRpcDoR1(
+          supabase,
+          RPC_DO_REEMBOLSO_R1.porForaAposEsperaDoPedido,
+          parametrosPorForaAposEspera.pedido(orderId, refundId),
+        );
+        if (error) {
+          // A RPC fala com o leigo (mensagem da migration).
+          toast.error(`Devolução do pedido #${numero}: ${error.message}`);
+          await carregar();
+          return false;
+        }
+        toast.warning(
+          `Pedido #${numero}: registrado como devolvido por fora. ${AVISO_DE_DOBRO}`,
+        );
+        await carregar();
+        return true;
+      } catch {
+        toast.error(
+          `Não consegui registrar a devolução do pedido #${numero}. Tente de novo.`,
+        );
+        return false;
+      } finally {
+        enviandoRef.current = false;
+        setEnviando(false);
+      }
+    },
+    [orderId, carregar],
+  );
+
   return {
     linhas,
-    pago: centavosPago / 100,
-    devolvido: centavosDevolvido / 100,
-    emCurso: centavosEmCurso / 100,
-    disponivel: centavosDisponivel / 100,
+    pago: saldo?.total ?? 0,
+    devolvido: saldo?.valor_estornado ?? 0,
+    emCurso: saldo?.em_voo ?? 0,
+    emDuvida: saldo?.em_duvida ?? 0,
+    disponivel: saldo?.disponivel ?? 0,
     carregando,
-    pedidoCarregado: pedido !== null,
+    pedidoCarregado: saldo !== null,
     erro,
     recarregar: () => void carregar(),
     solicitarEstorno,
+    registrarPorForaAposEspera,
     enviando,
   };
 }
