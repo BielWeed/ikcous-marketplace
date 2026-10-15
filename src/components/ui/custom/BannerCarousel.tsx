@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
+import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
@@ -93,9 +94,10 @@ export const BannerCarousel = memo(function BannerCarousel({
     return () => clearInterval(timer);
   }, [autoPlay, pausado, menosMovimento, emblaApi, interval, banners.length]);
 
-  const handleNavigation = useCallback((link?: string) => {
-    if (!link) return;
-    if (link.startsWith("/") || !link.includes("://")) {
+  // `link` já passou por `destinoDoBanner`: só chega aqui um caminho do app
+  // ou um endereço http/https (nunca `javascript:`, `data:`, `//outro-site`).
+  const handleNavigation = useCallback((link: string) => {
+    if (link.startsWith("/")) {
       try {
         const origin =
           typeof window !== "undefined" ? window.location.origin : "";
@@ -127,6 +129,13 @@ export const BannerCarousel = memo(function BannerCarousel({
 
   if (validBanners.length === 0) return null;
 
+  // Banner antigo: `/produtos` (não existe) e categoria com nome cru.
+  // Link que o banner não pode abrir dá `null`: ele só aparece, não navega.
+  const slides = validBanners.map((banner) => ({
+    banner,
+    destino: destinoDoBanner(banner.link),
+  }));
+
   return (
     <div
       className="premium-shadow relative aspect-[2/1] w-full touch-pan-y overflow-hidden bg-zinc-100 md:aspect-[4/1]"
@@ -146,19 +155,29 @@ export const BannerCarousel = memo(function BannerCarousel({
       <div className="h-full overflow-hidden" ref={emblaRef}>
         {/* Container */}
         <div className="flex h-full">
-          {validBanners.map((banner, index) => (
+          {slides.map(({ banner, destino }, index) => (
             <div
               key={banner.id}
-              className="group relative h-full min-w-0 flex-[0_0_100%] cursor-pointer"
-              onClick={() => handleNavigation(banner.link)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleNavigation(banner.link);
-                }
-              }}
+              className={cn(
+                "group relative h-full min-w-0 flex-[0_0_100%]",
+                destino !== null && "cursor-pointer",
+              )}
+              onClick={
+                destino === null ? undefined : () => handleNavigation(destino)
+              }
+              role={destino === null ? "group" : "button"}
+              aria-roledescription={destino === null ? "slide" : undefined}
+              tabIndex={destino === null ? undefined : 0}
+              onKeyDown={
+                destino === null
+                  ? undefined
+                  : (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleNavigation(destino);
+                      }
+                    }
+              }
               aria-label={`${index + 1} de ${validBanners.length}: ${banner.title || ""}`}
             >
               <LazyImage

@@ -1,3 +1,4 @@
+import { PrivacidadeEMeusDados } from "@/components/account/PrivacidadeEMeusDados";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -284,6 +285,11 @@ export function AccountSettingsView() {
   const [cpfOriginal, setCpfOriginal] = useState("");
   const [cpfErro, setCpfErro] = useState(false);
 
+  // Nome em branco não salva (14/10/2026): o `COALESCE(p_full_name, full_name)`
+  // do banco só protege contra NULL — '' passa e apagava o nome público dela
+  // com "sucesso". A recusa mora aqui, junto do campo.
+  const [nomeErro, setNomeErro] = useState(false);
+
   const [passwordData, setPasswordData] = useState({
     newPassword: "",
     confirmPassword: "",
@@ -369,6 +375,23 @@ export function AccountSettingsView() {
       return;
     }
 
+    // O nome é aparado antes de tudo: só espaços conta como vazio, e o que vai
+    // para o banco nunca leva espaço nas pontas. Vazio é recusado aqui — a RPC
+    // não é chamada e o aviso de sucesso não aparece.
+    const nomeAparado = profileData.name.trim();
+    if (!nomeAparado) {
+      setNomeErro(true);
+      // Quem rolou a tela até o botão não vê a mensagem inline: o aviso
+      // visível e o foco no campo levam a pessoa até ela (mesmo padrão do
+      // CPF, que também avisa por toast). Vale para o perfil antigo com
+      // nome vazio que só queria trocar o telefone — continua bloqueado,
+      // mas agora com aviso.
+      toast.error("Informe seu nome");
+      document.getElementById("full_name")?.focus();
+      return;
+    }
+    setNomeErro(false);
+
     // A validação só se aplica ao que a PESSOA digitou. Um WhatsApp inválido
     // que já estava salvo (dado legado) não pode travar a troca do nome —
     // ele nem vai ser reenviado (ver `p_whatsapp` abaixo).
@@ -409,12 +432,16 @@ export function AccountSettingsView() {
       const { error } = await (supabase as any).rpc(
         "update_my_profile_secure",
         {
-          p_full_name: profileData.name,
+          p_full_name: nomeAparado,
           p_whatsapp: whatsappEditado ? profileData.phone : null,
         },
       );
 
       if (error) throw error;
+
+      // O campo passa a mostrar o que foi gravado (já aparado) — mesmo que o
+      // CPF abaixo falhe, o nome já foi salvo.
+      setProfileData((p) => ({ ...p, name: nomeAparado }));
 
       if (cpfMudou) {
         const resultadoCpf = await gravarCpfDaConta(digitosCpfAtual);
@@ -700,15 +727,29 @@ export function AccountSettingsView() {
                         autoComplete="name"
                         value={profileData.name}
                         disabled={profileLoadState !== "loaded"}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setProfileData((p) => ({
                             ...p,
                             name: e.target.value,
-                          }))
+                          }));
+                          if (nomeErro) setNomeErro(false);
+                        }}
+                        aria-invalid={nomeErro}
+                        aria-describedby={
+                          nomeErro ? "full_name-erro" : undefined
                         }
                         className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
                       />
                     </div>
+                    {nomeErro && (
+                      <p
+                        id="full_name-erro"
+                        role="alert"
+                        className="ml-0.5 text-xs font-bold text-red-600"
+                      >
+                        Informe seu nome
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1">
@@ -789,7 +830,7 @@ export function AccountSettingsView() {
                     <Button
                       onClick={handleUpdateProfile}
                       disabled={loading || profileLoadState !== "loaded"}
-                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {loading ? (
                         <Loader2 className="size-4 animate-spin" />
@@ -931,7 +972,7 @@ export function AccountSettingsView() {
                     <Button
                       type="submit"
                       disabled={updatingPassword}
-                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90"
+                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
                     >
                       {updatingPassword ? (
                         <Loader2 className="size-4 animate-spin" />
@@ -948,6 +989,10 @@ export function AccountSettingsView() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Privacidade e meus dados (LGPD): pedir a exclusão da conta ou a
+            correção do e-mail. O app só registra o pedido; a loja atende. */}
+        <PrivacidadeEMeusDados userId={user.id} emailAtual={user.email ?? ""} />
 
         {/* Footer simple info */}
         <motion.div
@@ -1132,7 +1177,7 @@ export function AccountSettingsView() {
                               className="size-full object-cover duration-300 animate-in fade-in"
                             />
                           </div>
-                          <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-primary text-white shadow-md transition-colors hover:bg-primary/90">
+                          <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-colors hover:bg-primary/90">
                             <label
                               htmlFor="account-avatar-upload-icon"
                               className="flex size-full cursor-pointer items-center justify-center"
@@ -1174,7 +1219,7 @@ export function AccountSettingsView() {
                               onChange={handlePhotoUpload}
                               disabled={isUpdatingAvatar}
                             />
-                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90 active:scale-95">
+                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95">
                               <Camera className="size-3.5" />
                               Escolher Outra Foto
                             </span>
@@ -1304,7 +1349,7 @@ export function AccountSettingsView() {
               }}
               className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
                 coverModalTab === "presets"
-                  ? "bg-primary text-white shadow-md"
+                  ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -1318,7 +1363,7 @@ export function AccountSettingsView() {
               }}
               className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
                 coverModalTab === "upload"
-                  ? "bg-primary text-white shadow-md"
+                  ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -1437,7 +1482,7 @@ export function AccountSettingsView() {
                     haptic.light();
                   }}
                   disabled={isUpdatingCover}
-                  className="flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[9px] font-black font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-primary/90"
+                  className="flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[9px] font-black font-bold uppercase tracking-wider text-primary-foreground shadow-md transition-all hover:bg-primary/90"
                 >
                   {isUpdatingCover ? (
                     <>

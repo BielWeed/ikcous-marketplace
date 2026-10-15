@@ -257,6 +257,11 @@ const POSTERIORES = SUCESSORAS_DA_99.filter(
 const POSTERIOR_DO_PAINEL = POSTERIORES.find(
   (s) => s.assinatura === F.painel.sig,
 );
+// E a 20261234 (o lucro só conta produto com custo), que SUCEDE a 14 em get_admin_analytics_v2: a 17a
+// a aceita ao lado da 14 (o mesmo desenho da 28 sobre a 12).
+const POSTERIOR_DO_ANALYTICS = POSTERIORES.find(
+  (s) => s.assinatura === F.analytics.sig,
+);
 const CHAVES = FUNCOES.map((f) => f.chave);
 const CONTROLE = "controle: funcoes de public visiveis a este papel";
 const COLUNAS = "produtos e product_variants: colunas que os corpos novos leem";
@@ -1135,8 +1140,10 @@ async function main() {
     "os doze sha256 sao distintos",
   );
   // as sucessoras da 99 DO LOTE sao exatamente a 20261212 (painel_inicio) e a 20261214 (analytics); as
-  // posteriores sao a 20261227 (crm_visao), a 20261228 (que sucede a 12 em painel_inicio) e a 20261232 (que sucede a
-  // 27 em crm_visao)
+  // posteriores sao a 20261227 (crm_visao), a 20261228 (que sucede a 12 em painel_inicio) e a 20261230 e a
+  // 20261231 (a busca de clientes: get_admin_customers_paged e crm_clientes, funcoes de fora destas tres),
+  // a 20261232 (que sucede a 27 em crm_visao), a 20261234 (que sucede a 14 em get_admin_analytics_v2) e a
+  // 20261239 (a identidade legal da loja: upsert_store_config, tambem fora destas tres)
   assert.deepEqual(
     SUCESSORAS_DO_LOTE.map((s) => [s.nome, s.assinatura, s.hashDesta]).sort(),
     [F.painel, F.analytics].map((f) => [f.arq, f.sig, f.md5.depois]).sort(),
@@ -1154,8 +1161,28 @@ async function main() {
         "public.painel_inicio()",
       ],
       [
+        "20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql",
+        "public.get_admin_customers_paged(text,text,text,integer,integer)",
+      ],
+      [
+        "20261231000000_a_busca_do_crm_ignora_acento.sql",
+        "public.crm_clientes(text,text,integer,integer)",
+      ],
+      [
         "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql",
         "public.crm_visao(date,date)",
+      ],
+      [
+        "20261234000000_o_lucro_so_conta_produto_com_custo.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
+      [
+        "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql",
+        "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)",
+      ],
+      [
+        "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql",
+        "public.upsert_store_config(jsonb)",
       ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
@@ -1164,6 +1191,11 @@ async function main() {
     POSTERIOR_DO_PAINEL.hashVigente,
     F.painel.md5.depois,
     "a sucessora do painel parte do corpo da 12",
+  );
+  assert.equal(
+    POSTERIOR_DO_ANALYTICS.hashVigente,
+    F.analytics.md5.depois,
+    "a sucessora do analytics parte do corpo da 14",
   );
   ok(
     "precondicao: 17a, 17b e 8e sao de ROL FECHADO no portao e no contrato unico; os rols batem com as linhas por funcao; os seis sha256 da 17a (DEPOIS) e os seis da 17b (ANTES), LF e CRLF, sao os dos ARQUIVOS; o md5 de cada corpo e' o par (vigente, desta) do pre-voo; cada rollback-manual devolve o corpo de antes byte a byte",
@@ -1348,6 +1380,52 @@ async function provar(cloneDepois, cloneAntes) {
   }
   ok(
     "a SUCESSORA do painel (20261228) por cima do lote: 17a POSITIVA e IGUAL linha a linha a arvore do lote, 17b NEGATIVA so nas 3 linhas de corpo, 8e POSITIVA e igual",
+  );
+  // A SUCESSORA do analytics (a 20261234) por cima do lote: o mesmo contrato.
+  const COM_SUCESSORA_ANALYTICS = em(DEPOIS, async (c) => {
+    await c.query(lerLF(POSTERIOR_DO_ANALYTICS.nome));
+    await guardar(
+      c,
+      "a sucessora do analytics no ar",
+      `${MD5_VIVO(F.analytics.sig)} = '${POSTERIOR_DO_ANALYTICS.hashDesta}'`,
+    );
+  });
+  {
+    const {
+      saidas: [ra, rb, r8],
+    } = await noEstado(COM_SUCESSORA_ANALYTICS, [A, B, E8]);
+    await exigirPositiva(A, "17a com a sucessora do analytics", ra);
+    assert.deepEqual(
+      ra,
+      depois.ra,
+      "17a com a sucessora do analytics: linha a linha IGUAL a arvore do lote",
+    );
+    await exigirReprovadas(
+      B,
+      "17b com a sucessora do analytics",
+      rb,
+      corposB(CHAVES),
+    );
+    await exigirPositiva(E8, "8e com a sucessora do analytics", r8);
+    assert.deepEqual(
+      r8,
+      depois.r8,
+      "a 8e responde IGUAL com a sucessora do analytics",
+    );
+    // o MUTANTE: sem o sha256 da sucessora a 17a deixa de aceitar o analytics
+    const corpoDaSucessoraAn = corpoDe(
+      lerLF(POSTERIOR_DO_ANALYTICS.nome),
+      "CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(",
+    );
+    await mutantePositivo(
+      "17a sem o sha256 da sucessora do analytics",
+      A,
+      [[sha(corpoDaSucessoraAn), "0".repeat(64)]],
+      COM_SUCESSORA_ANALYTICS,
+    );
+  }
+  ok(
+    "a SUCESSORA do analytics (20261234) por cima do lote: 17a POSITIVA e IGUAL linha a linha a arvore do lote, 17b NEGATIVA so nas 3 linhas de corpo, 8e POSITIVA e igual",
   );
   // a ida e volta em QUALQUER ordem devolve o antes
   for (const ordem of [

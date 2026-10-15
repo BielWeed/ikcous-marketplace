@@ -8,6 +8,7 @@ import {
 } from "@/components/admin/LocalBufferedInput";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
+import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCategories } from "@/hooks/useCategories";
 import {
   COLUNAS_DA_POLITICA,
@@ -20,6 +21,7 @@ import {
   mensagemDoErro,
   rotuloMetodo,
 } from "@/lib/devolucao";
+import { trocarNomeNaLista } from "@/lib/gestao-de-categorias";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { MetodoDevolucao, PoliticaDevolucao } from "@/types/devolucao";
@@ -152,14 +154,24 @@ export function PoliticaDeDevolucaoSection({
     enderecoAntesDaCaixaRef.current = novo.endereco_devolucao;
   }, []);
 
+  // Renomeações de categoria que a lojista fez ENQUANTO a política estava sendo
+  // lida: a leitura pode ter saído do banco antes da troca e chegar depois dela.
+  // `null` = nenhuma leitura em andamento.
+  const renomeadasNaLeituraRef = useRef<
+    { readonly de: string; readonly para: string }[] | null
+  >(null);
+
   const carregar = useCallback(async () => {
     setErroDeLeitura(false);
+    renomeadasNaLeituraRef.current = [];
     try {
       const { data, error } = await supabase
         .from("politica_devolucao")
         .select(COLUNAS_DA_POLITICA)
         .eq("id", 1)
         .maybeSingle();
+      const durante = renomeadasNaLeituraRef.current ?? [];
+      renomeadasNaLeituraRef.current = null;
       if (!ativoRef.current) return;
       if (error) {
         setErroDeLeitura(true);
@@ -170,11 +182,43 @@ export function PoliticaDeDevolucaoSection({
         setErroDeLeitura(true);
         return;
       }
-      aplicar(lida);
+      aplicar({
+        ...lida,
+        categorias_sem_troca: durante.reduce(
+          (lista, { de, para }) => trocarNomeNaLista(lista, de, para),
+          lida.categorias_sem_troca,
+        ),
+      });
     } catch {
+      renomeadasNaLeituraRef.current = null;
       if (ativoRef.current) setErroDeLeitura(true);
     }
   }, [aplicar]);
+
+  // A lojista renomeou uma categoria em "Gerenciar categorias" (a aba Ajustes
+  // fica montada por baixo): o banco já trocou o nome também na lista "sem
+  // troca por gosto". Esta tela guarda uma cópia dessa lista; se a cópia ficasse
+  // com o nome velho, o próximo "Salvar" regravaria a lista antiga e os
+  // produtos da categoria voltariam a aceitar troca por gosto, sem aviso.
+  useAoMudarCategoria((mudanca) => {
+    if (mudanca.tipo !== "renomeada") return;
+    const { de, para } = mudanca;
+    renomeadasNaLeituraRef.current?.push({ de, para });
+    setSalva((antes) => {
+      if (!antes) return antes;
+      const lista = trocarNomeNaLista(antes.categorias_sem_troca, de, para);
+      return lista === antes.categorias_sem_troca
+        ? antes
+        : { ...antes, categorias_sem_troca: lista };
+    });
+    setForm((antes) => {
+      if (!antes) return antes;
+      const lista = trocarNomeNaLista(antes.categorias_sem_troca, de, para);
+      return lista === antes.categorias_sem_troca
+        ? antes
+        : { ...antes, categorias_sem_troca: lista };
+    });
+  });
 
   useEffect(() => {
     ativoRef.current = true;

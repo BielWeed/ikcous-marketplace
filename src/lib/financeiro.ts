@@ -337,8 +337,15 @@ export function intervaloDoPeriodo(
   }
 }
 
-/** Máximo de dias de um período personalizado (5 anos). */
-const MAXIMO_DE_DIAS_DO_PERIODO = 366 * 5;
+/**
+ * Máximo de um período personalizado: o MESMO limite do banco. `fin_resumo`,
+ * `fin_extrato` e `fin_dre` recusam `p_fim - p_inicio > 400` com "Período
+ * inválido (até 400 dias)" (`supabase/migrations/20261199000000_portas_do_
+ * painel_exigem_admin_atual.sql`). A tela já validava até 5 anos: o lojista
+ * escolhia o período, tocava em Aplicar e só então a consulta voltava com
+ * erro. Aqui `diasEntre(inicio, fim)` é a mesma conta do banco (`fim - inicio`).
+ */
+export const MAXIMO_DE_DIAS_DO_PERIODO = 400;
 
 /** `null` quando o intervalo serve; senão a frase do erro. */
 export function validarIntervalo(inicio: string, fim: string): string | null {
@@ -346,7 +353,7 @@ export function validarIntervalo(inicio: string, fim: string): string | null {
   if (!ehDataIso(fim)) return "Informe a data de fim.";
   if (fim < inicio) return "A data de fim vem antes da data de início.";
   if (diasEntre(inicio, fim) > MAXIMO_DE_DIAS_DO_PERIODO) {
-    return "Escolha um período de até 5 anos.";
+    return `O período pode ter no máximo ${MAXIMO_DE_DIAS_DO_PERIODO} dias. Escolha datas mais próximas.`;
   }
   return null;
 }
@@ -430,7 +437,7 @@ export function mesesDoIntervalo(
 ): MesDoIntervalo[] {
   const meses: MesDoIntervalo[] = [];
   let cursor = inicioDoMes(intervalo.inicio);
-  // Trava contra laço sem fim com datas corrompidas (e contra 5 anos de colunas).
+  // Trava contra laço sem fim com datas corrompidas (e contra colunas demais).
   for (let volta = 0; volta < 120 && cursor <= intervalo.fim; volta += 1) {
     const inicio = cursor < intervalo.inicio ? intervalo.inicio : cursor;
     const fimDoCursor = fimDoMes(cursor);

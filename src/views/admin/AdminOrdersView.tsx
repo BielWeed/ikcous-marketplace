@@ -51,6 +51,7 @@ import {
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
 import { formatarInteiro } from "@/lib/crm";
 import { recorteDaListaDePedidos } from "@/lib/filtro-da-lista-de-pedidos";
 import {
@@ -575,7 +576,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         subValue: "PIX ou cartão ainda não pago",
       },
       {
-        label: "Em trânsito",
+        // A contagem é `status = 'shipping'`, que na retirada na loja se lê
+        // "Pronto para retirar" (`rotuloDoStatus`): o cartão diz as duas coisas.
+        // Até ~22 caracteres: o rótulo do cartão é `line-clamp-2` e, a 360 px,
+        // um texto maior perdia o final cortado pelo clamp.
+        label: "A caminho ou retirada",
         value: formatarInteiro(aCaminho),
         icon: Truck,
         accent: "text-indigo-500",
@@ -1399,6 +1404,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             targetUserId: alvo.userId,
             title,
             body,
+            // Sem `url` o toque no aviso caía na vitrine ("/").
+            url: caminhoDoPedidoNoAviso(orderId),
             data: { orderId, type: "order_status" },
           },
           headers: token
@@ -1448,7 +1455,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const rotuloDoStatusNaMensagem = statusConfig[order.status]
         ? rotuloDoStatus(order.status, order.retiradaNaLoja)
         : statusConfig.pending.label;
-      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${rotuloDoStatusNaMensagem}\n\nObrigado por comprar na ${branding.appName}!`;
+      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${rotuloDoStatusNaMensagem}\n\nObrigado por comprar na ${storeNameDaLoja}!`;
 
       // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
       // O util decide: sem link, o toque não abre janela nenhuma.
@@ -1457,7 +1464,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const url = `${link}?text=${encodeURIComponent(message)}`;
       abrirWhatsapp(url);
     },
-    [isOffline],
+    [isOffline, storeNameDaLoja],
   );
 
   // Removed early return loading block to prevent visual layout shifts

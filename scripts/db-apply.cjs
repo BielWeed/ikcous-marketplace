@@ -1723,6 +1723,295 @@ const VERIFICACOES = {
         ],
       },
     ],
+  "20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql": [
+    {
+      // A busca de clientes acha pelo número do WhatsApp (14/10/2026): o termo ganha os dígitos (com o corte do
+      // 55 do +55) e a busca por dígitos entra como um OR a mais. Sem esta entrada a migration saía PULADA (saída
+      // 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos): a
+      // variável, o cálculo dos dígitos, o corte do 55 e a cláusula nova aparecem UMA vez cada; as duas travas de
+      // admin (is_admin e is_admin_atual, 20261199000000) seguem UMA vez cada.
+      funcao: "get_admin_customers_paged",
+      esperado: [
+        { texto: "v_search_digitos TEXT;", vezes: 1 },
+        {
+          texto:
+            "v_search_digitos := regexp_replace(COALESCE(v_clean_search, ''), '[^0-9]', '', 'g');",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF length(v_search_digitos) IN (12, 13) AND left(v_search_digitos, 2) = '55' THEN",
+          vezes: 1,
+        },
+        { texto: "(length(v_search_digitos) >= 4 AND (", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261231000000_a_busca_do_crm_ignora_acento.sql": [
+    {
+      // A busca do CRM ignora acento (14/10/2026): nome e e-mail passam por f_unaccent nos dois lados. Sem esta
+      // entrada a migration saía PULADA. Os marcadores contam no corpo VIVO (comentários incluídos): cada
+      // comparação sem acento aparece UMA vez; o ramo do número (4 ou mais dígitos) e as duas travas de admin
+      // seguem UMA vez cada.
+      funcao: "crm_clientes",
+      esperado: [
+        {
+          texto:
+            "OR public.f_unaccent(COALESCE(nome_exibido, '')) ILIKE public.f_unaccent('%' || v_busca || '%')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "OR public.f_unaccent(COALESCE(email, '')) ILIKE public.f_unaccent('%' || v_busca || '%')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "OR (v_digitos IS NOT NULL AND length(v_digitos) >= 4 AND COALESCE(whatsapp, '') LIKE '%' || v_digitos || '%'))",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261233000000_o_sino_do_pedido_de_retirada_fala_de_retirada.sql": [
+    {
+      // O sino do pedido de retirada fala de retirada (14/10/2026): o pedido de retirada na loja ganha o texto
+      // "pronto para retirar" e "retirado" e o resto fica como era. Sem esta entrada a migration saía PULADA (saída
+      // 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos):
+      // o texto novo, o marcador da retirada e as frases da entrega (a troca SÓ soma o ramo da retirada) aparecem
+      // UMA vez cada, e as duas guardas (convidado e mudança real de status) também.
+      funcao: "notifica_cliente_de_mudanca_de_status",
+      esperado: [
+        { texto: "Pedido pronto para retirar", vezes: 1 },
+        { texto: "Pedido retirado", vezes: 1 },
+        {
+          texto:
+            "COALESCE(NEW.customer_data ->> 'shipping_option_id', '') = 'store-pickup'",
+          vezes: 1,
+        },
+        { texto: "Pedido em preparo", vezes: 1 },
+        { texto: "Pedido a caminho", vezes: 1 },
+        { texto: "Pedido entregue", vezes: 1 },
+        { texto: "Pedido cancelado", vezes: 1 },
+        { texto: "NEW.user_id IS NULL", vezes: 1 },
+        { texto: "OLD.status IS NOT DISTINCT FROM NEW.status", vezes: 1 },
+      ],
+    },
+  ],
+  "20261234000000_o_lucro_so_conta_produto_com_custo.sql": [
+    {
+      // O lucro só conta produto com custo (14/10/2026): o lucro por dia e o top 5 do CRM deixam de tratar custo
+      // ausente (NULL) como margem de 100%, e o JSON ganha `productsWithoutCost`. Sem esta entrada a migration
+      // saía PULADA. Os marcadores contam no corpo VIVO (comentários incluídos): o filtro do lucro por dia, o
+      // filtro do ranking, a contagem do campo novo e a chave dele aparecem UMA vez cada; as duas travas de
+      // admin (is_admin e is_admin_atual, 20261199000000) seguem UMA vez cada.
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto: "FILTER (WHERE p.custo IS NOT NULL), 0) AS profit",
+          vezes: 1,
+        },
+        { texto: "AND p.custo IS NOT NULL", vezes: 1 },
+        { texto: "AND p.custo IS NULL;", vezes: 1 },
+        {
+          texto: "'productsWithoutCost', products_without_cost",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql": [
+    {
+      // A venda repetida do balcão devolve a venda feita (14/10/2026): registrar_venda_presencial toma uma trava
+      // consultiva pela chave de idempotência ANTES de conferir a chave (a repetição que chega antes de a primeira
+      // commitar espera a primeira e devolve `ja_existia` com o MESMO pedido, em vez de "Estoque insuficiente"
+      // quando a primeira levou a última unidade). Sem esta entrada a migration saía PULADA. Os marcadores contam
+      // no corpo VIVO (comentários incluídos): a trava pela chave, as duas travas de admin (is_admin e
+      // is_admin_atual, 20261199000000) e a resposta idempotente seguem UMA vez cada.
+      funcao: "registrar_venda_presencial",
+      esperado: [
+        {
+          texto:
+            "hashtextextended('venda_presencial:' || p_idempotency_key::text, 0)",
+          vezes: 1,
+        },
+        { texto: "IF public.is_admin() IS DISTINCT FROM true THEN", vezes: 1 },
+        {
+          texto: "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+          vezes: 1,
+        },
+        { texto: "'ja_existia', v_ja_existia,", vezes: 1 },
+      ],
+    },
+  ],
+  "20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql": [
+    {
+      // A compra que dá R$ 0,00 não se paga pelo app (14/10/2026): o bloco 6-ter da v24 recusa o total
+      // calculado zero quando o meio é 'online', ANTES de reservar estoque e cupom. Sem esta entrada a migration
+      // saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef,
+      // comentários incluídos): a condição (só 'online', só o total do servidor) e o identificador estável da
+      // recusa aparecem UMA vez cada.
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0 THEN",
+          vezes: 1,
+        },
+        { texto: "pedido_sem_valor_a_pagar_pelo_app: subtotal", vezes: 1 },
+      ],
+    },
+  ],
+  "20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql":
+    [
+      {
+        // A lojista renomeia e apaga categoria sem deixar produto órfão (14/10/2026): três funções NOVAS do painel.
+        // Sem esta entrada a migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO
+        // (pg_get_functiondef, comentários incluídos): as duas travas de admin (a do JWT e a do papel de agora) e cada
+        // lugar onde o nome é trocado aparecem UMA vez — tirar um deles é exatamente o produto órfão que a função evita.
+        funcao: "renomear_categoria",
+        esperado: [
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          {
+            texto: "pg_advisory_xact_lock(hashtext('categorias:gestao'))",
+            vezes: 1,
+          },
+          { texto: "UPDATE public.categorias SET nome = v_novo", vezes: 1 },
+          { texto: "UPDATE public.produtos", vezes: 1 },
+          {
+            texto: "já está na lista de produtos que não aceitam troca",
+            vezes: 1,
+          },
+          {
+            texto: "que não são desta categoria. Renomear os misturaria",
+            vezes: 1,
+          },
+          { texto: "UPDATE public.banners", vezes: 1 },
+          { texto: "UPDATE public.politica_devolucao", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "apagar_categoria_vazia",
+        esperado: [
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          { texto: "public.categoria__usos(p_id)", vezes: 1 },
+          { texto: "DELETE FROM public.categorias WHERE id = p_id", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "categorias_com_uso",
+        esperado: [
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          { texto: "public.categoria__usos(c.id)", vezes: 1 },
+        ],
+      },
+    ],
+  "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql": [
+    {
+      // A cliente pede a exclusão da conta e a correção do e-mail (14/10/2026; DADO DE CLIENTE, LGPD): a migration
+      // NASCE a tabela public.pedidos_de_privacidade e a função do gatilho que carimba quem decidiu o pedido
+      // (CREATE FUNCTION, não CREATE OR REPLACE: o pré-voo recusa se ela já existe). Sem esta entrada a migration
+      // saía PULADA. O que importa no corpo VIVO e aparece UMA vez cada: a identidade do pedido imutável (id,
+      // user_id, tipo, e-mail novo e criado_em), a decisão final (pedido já decidido não muda), e o carimbo
+      // (quem e quando decidiu, vindos do servidor; pedido aberto não tem carimbo). O resto da migration (tabela,
+      // políticas, privilégios, índice) o próprio DO de conferência dela aborta o apply se divergir.
+      funcao: "pedidos_de_privacidade__carimbar",
+      esperado: [
+        { texto: "IF NEW.id IS DISTINCT FROM OLD.id", vezes: 1 },
+        {
+          texto: "OR NEW.criado_em IS DISTINCT FROM OLD.criado_em THEN",
+          vezes: 1,
+        },
+        { texto: "IF OLD.situacao <> 'aberto' THEN", vezes: 1 },
+        { texto: "IF NEW.situacao <> 'aberto' THEN", vezes: 1 },
+        { texto: "NEW.atendido_em := now();", vezes: 1 },
+        { texto: "NEW.atendido_por := auth.uid();", vezes: 1 },
+        { texto: "NEW.atendido_em := NULL;", vezes: 1 },
+        { texto: "NEW.atendido_por := NULL;", vezes: 1 },
+        { texto: "RETURN NEW;", vezes: 1 },
+      ],
+    },
+  ],
+  "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql": [
+    {
+      // A loja PODE declarar razão social, CNPJ/CPF e e-mail de atendimento (14/10/2026): três colunas novas e
+      // opcionais, gravadas pela upsert_store_config. Sem esta entrada a migration saía PULADA (saída 2: "ninguém
+      // verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos): o CASE de cada
+      // coluna (o coração do aceite "salvar um campo não apaga os outros") aparece UMA vez, e cada chave aparece
+      // DUAS (uma no INSERT sem COALESCE, uma no THEN do CASE); as duas travas de admin (20261199000000) e o CASE do
+      // endereço (20261167000000) seguem UMA vez cada.
+      funcao: "upsert_store_config",
+      esperado: [
+        {
+          texto:
+            "store_legal_name = CASE WHEN config_json ? 'store_legal_name'",
+          vezes: 1,
+        },
+        {
+          texto:
+            "store_legal_document = CASE WHEN config_json ? 'store_legal_document'",
+          vezes: 1,
+        },
+        {
+          texto:
+            "store_support_email = CASE WHEN config_json ? 'store_support_email'",
+          vezes: 1,
+        },
+        { texto: "config_json->>'store_legal_name'", vezes: 2 },
+        { texto: "config_json->>'store_legal_document'", vezes: 2 },
+        { texto: "config_json->>'store_support_email'", vezes: 2 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto: "store_address = CASE WHEN config_json ? 'store_address'",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  "20261240000000_a_cliente_e_avisada_quando_a_loja_responde_sua_pergunta.sql":
+    [
+      {
+        // A cliente é avisada quando a loja responde a pergunta dela (14/10/2026): as DUAS sobrecargas de
+        // answer_question_atomic trocam a linha falsa do log de push por UM aviso no sino da cliente. Sem esta entrada a
+        // migration saía PULADA (saída 2: "ninguém verificou"). buscarDef lê UMA das duas sobrecargas (a primeira que o
+        // catálogo devolver), então só entram marcadores que existem UMA vez em AMBOS os corpos (medido nas duas):
+        // o passo novo (comentário com a versão), o título do aviso, o destino que abre o produto, o BEGIN/EXCEPTION do
+        // best-effort (a falha do aviso nunca perde a resposta), a recusa a quem não é admin e o upsert da resposta.
+        // As guardas de admin DIFEREM entre as sobrecargas (auth.uid() contra is_admin()) e por isso só a mensagem de
+        // recusa, comum às duas, é conferida aqui; o ato de recusar é de tests/banco/pergunta-respondida-avisa-viva.cjs.
+        // NÃO reaplique a 20261064 nem a 20261065: elas recriam o corpo antigo e o marcador "A10: log honesto" delas
+        // deixou de existir em answer_question_atomic (segue valendo em reply_review_atomic).
+        funcao: "answer_question_atomic",
+        esperado: [
+          {
+            texto:
+              "-- 3. Aviso no sino da cliente que perguntou (20261240000000).",
+            vezes: 1,
+          },
+          { texto: "Sua pergunta foi respondida", vezes: 1 },
+          {
+            texto: "'/product-detail?id=' || v_product_id",
+            vezes: 1,
+          },
+          { texto: "EXCEPTION WHEN OTHERS THEN", vezes: 1 },
+          {
+            texto: "Unauthorized: Only admins can answer questions.",
+            vezes: 1,
+          },
+          { texto: "ON CONFLICT (question_id) DO UPDATE", vezes: 1 },
+        ],
+      },
+    ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

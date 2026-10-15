@@ -331,10 +331,21 @@ para isto:
 - **`salvar`** também TESTA a conexão na hora quando alguma credencial mudou (Access Token novo,
   Public Key diferente ou Chave de notificações nova) e só deixa `pagamento_online` ligado se o
   teste dessa credencial passou; carimba `pix_ligado_em` e `pix_ligado_por` (uid do admin) ao
-  ligar. `testar` grava o resultado e reconcilia (liga se tudo passou, desliga se falhou). Com
-  chave de TESTE liga e devolve o aviso "Chave de TESTE: o PIX não vai receber dinheiro de
-  verdade" — chave de sandbox conecta igualzinho à de produção, e quem não for avisado vai
-  achar que vendeu;
+  ligar. `testar` grava o resultado e reconcilia (liga se tudo passou, desliga se falhou). Chave
+  de conta de TESTE conecta igualzinho à de produção, então o teste lê as **marcas da conta** em
+  `GET /users/me` (que NÃO devolve `live_mode`): `tags` com `test_user`, e-mail `@testuser.com`
+  ou token `TEST-`. Sem `MP_SANDBOX_PAYER_EMAIL` (loja de verdade) conta de teste vira a falta
+  `chave_de_teste` em `faltando`: o PIX **não liga** — e **desliga** se estava ligado, na hora em
+  que alguém testa ou salva credencial nova —, retomar dá `409` com a falta, e o `aviso` diz
+  "Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO ... O PIX
+  fica desligado até lá." (motivo: com chave de teste e e-mail real o `criar-pagamento` recusa toda
+  cobrança). Com `MP_SANDBOX_PAYER_EMAIL` (modo de teste declarado, ex.: a loja de
+  desenvolvimento) nada muda: o PIX liga e fica o aviso curto "Chave de TESTE: o PIX não vai
+  receber dinheiro de verdade". **Só o reconhecimento positivo bloqueia:** produção, sem marca
+  (sem `tags`, formato inesperado) e modo declarado nunca viram falta, e `ler` nunca liga nem
+  desliga nada. **Antes de publicar:** loja que usa chave de teste de propósito precisa do segredo
+  `MP_SANDBOX_PAYER_EMAIL` no Supabase, senão perde o PIX na próxima vez que alguém testar ou
+  salvar as chaves. O e-mail devolvido pelo Mercado Pago não é guardado nem registrado em log;
 - **`ligar_pix`** virou **retomar**: tira a pausa e reconcilia; faltando qualquer chave ou o
   teste, `409` com o recado do que falta e nada gravado;
 - **`desligar_pix`** virou **pausar** e é sempre permitido (desligar é o lado seguro): apaga

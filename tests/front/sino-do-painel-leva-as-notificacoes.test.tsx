@@ -22,6 +22,8 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA } from "@/lib/recebimentos-por-marcar";
+
 // Reatribuiveis por caso: cada contagem alimenta um degrau da escada antiga,
 // e e variando as tres que se prova que nenhum degrau sobrou.
 let PEDIDOS_PENDENTES = 0;
@@ -30,17 +32,64 @@ let AVALIACOES_SEM_RESPOSTA = 0;
 let DEVOLUCOES_SOLICITADAS = 0;
 let DEVOLUCOES_EM_OUTROS_ESTADOS = 0;
 let FALHA_DEVOLUCOES: "erro" | "resposta-invalida" | null = null;
+// Pedidos de privacidade ainda abertos (14/10/2026): quinta fonte do sino.
+let PRIVACIDADE_ABERTOS = 0;
+let FALHA_PRIVACIDADE: "erro" | "sem-numero" | null = null;
+// Filtros pedidos à tabela de privacidade: a contagem tem de ser só dos ABERTOS.
+const FILTROS_DA_PRIVACIDADE: Array<[string, unknown]> = [];
+
+// Pedidos ENTREGUES, pagos na entrega, sem recebimento marcado (14/10/2026):
+// a consulta nova do sino, em `marketplace_orders`, distinguida da dos
+// pedidos pendentes pelo `.eq("status", "delivered")`.
+let RECEBIMENTOS_POR_MARCAR = 0;
+const FILTROS_DE_RECEBIMENTO: Array<[string, ...unknown[]]> = [];
 
 /** Duble do query builder de contagem do Supabase (`head: true`). */
-function criarContagemBuilder(contagem: number) {
+function criarContagemBuilder(contagem: number, tabela = "") {
   const builder: any = {};
+  const calls: Array<[string, ...unknown[]]> = [];
+  const ehRecebimento = () =>
+    calls.some(
+      (c) => c[0] === "eq" && c[1] === "status" && c[2] === "delivered",
+    );
+  const passa = (nome: string) =>
+    vi.fn((...args: unknown[]) => {
+      calls.push([nome, ...args]);
+      return builder;
+    });
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
-  builder.or = vi.fn(() => builder);
-  builder.is = vi.fn(() => builder);
+  builder.or = passa("or");
+  builder.is = passa("is");
+  builder.eq = vi.fn((coluna: string, valor: unknown) => {
+    calls.push(["eq", coluna, valor]);
+    if (tabela === "pedidos_de_privacidade") {
+      FILTROS_DA_PRIVACIDADE.push([coluna, valor]);
+    }
+    return builder;
+  });
+  builder.gte = passa("gte");
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão de dashboard-escuta-a-tabela-certa e admin-layout-cracha-pedidos-pendentes.
-  builder.then = (resolve: any, reject?: any) =>
-    Promise.resolve({ count: contagem, error: null }).then(resolve, reject);
+  builder.then = (resolve: any, reject?: any) => {
+    if (tabela === "pedidos_de_privacidade" && FALHA_PRIVACIDADE) {
+      return Promise.resolve(
+        FALHA_PRIVACIDADE === "erro"
+          ? { count: null, error: new Error("falha simulada") }
+          : { count: null, error: null },
+      ).then(resolve, reject);
+    }
+    if (ehRecebimento()) {
+      FILTROS_DE_RECEBIMENTO.push(...calls);
+      return Promise.resolve({
+        count: RECEBIMENTOS_POR_MARCAR,
+        error: null,
+      }).then(resolve, reject);
+    }
+    return Promise.resolve({ count: contagem, error: null }).then(
+      resolve,
+      reject,
+    );
+  };
   return builder;
 }
 
@@ -54,7 +103,12 @@ vi.mock("@/lib/supabase", () => ({
     // a contagem de pedidos e passaria com o codigo errado.
     from: vi.fn((tabela: string) =>
       criarContagemBuilder(
-        tabela === "reviews" ? AVALIACOES_SEM_RESPOSTA : PEDIDOS_PENDENTES,
+        tabela === "reviews"
+          ? AVALIACOES_SEM_RESPOSTA
+          : tabela === "pedidos_de_privacidade"
+            ? PRIVACIDADE_ABERTOS
+            : PEDIDOS_PENDENTES,
+        tabela,
       ),
     ),
     rpc: vi.fn((nome: string) =>
@@ -145,6 +199,11 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     DEVOLUCOES_SOLICITADAS = 0;
     DEVOLUCOES_EM_OUTROS_ESTADOS = 0;
     FALHA_DEVOLUCOES = null;
+    PRIVACIDADE_ABERTOS = 0;
+    FALHA_PRIVACIDADE = null;
+    FILTROS_DA_PRIVACIDADE.length = 0;
+    RECEBIMENTOS_POR_MARCAR = 0;
+    FILTROS_DE_RECEBIMENTO.length = 0;
     vi.clearAllMocks();
     vi.stubGlobal(
       "BroadcastChannel",
@@ -323,6 +382,38 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     expect(sino.querySelector("span")).toBeTruthy();
   });
 
+  it("só com pedido entregue sem recebimento marcado, a bolinha acende — e a consulta é a mesma regra da lista", async () => {
+    RECEBIMENTOS_POR_MARCAR = 2;
+
+    const { sino } = await montarPainel();
+
+    // Tudo mais em ZERO de proposito: se a bolinha nao olhasse a fonte nova,
+    // a lojista teria cliente impedida de pedir devolucao e o sino apagado.
+    await esperarAte(() => sino.querySelector("span") !== null);
+    expect(sino.querySelector("span")).toBeTruthy();
+    expect(FILTROS_DE_RECEBIMENTO).toContainEqual([
+      "eq",
+      "status",
+      "delivered",
+    ]);
+    expect(FILTROS_DE_RECEBIMENTO).toContainEqual([
+      "or",
+      FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+    ]);
+    expect(FILTROS_DE_RECEBIMENTO).toContainEqual([
+      "is",
+      "payment_status",
+      null,
+    ]);
+    const gte = FILTROS_DE_RECEBIMENTO.find((f) => f[0] === "gte");
+    expect(gte?.[1]).toBe("updated_at");
+    expect(
+      Math.abs(
+        Date.now() - 30 * 24 * 3600 * 1000 - Date.parse(String(gte?.[2])),
+      ),
+    ).toBeLessThan(10_000);
+  });
+
   it("com tudo zerado, a bolinha do sino fica APAGADA", async () => {
     const { sino } = await montarPainel();
     await esperarContagensChegarem();
@@ -366,6 +457,44 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
       expect(sino.querySelector("span")).not.toBeNull();
 
       FALHA_DEVOLUCOES = null;
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect(sino.querySelector("span")).toBeNull();
+    },
+  );
+
+  it("só com pedido de privacidade aberto, acende o sino e o aviso da barra lateral — contando só os ABERTOS", async () => {
+    PRIVACIDADE_ABERTOS = 2;
+    const { sino } = await montarPainel();
+    await esperarContagensChegarem();
+
+    expect(sino.querySelector("span")).not.toBeNull();
+    const porta = Array.from(hospedeiro.querySelectorAll("aside button")).find(
+      (b) => b.textContent?.includes("Notificações"),
+    );
+    expect(porta?.querySelector(".bg-red-500")).toBeTruthy();
+    // Sem este filtro a bolinha ficaria acesa para sempre depois de a loja
+    // responder todos os pedidos.
+    expect(FILTROS_DA_PRIVACIDADE).toContainEqual(["situacao", "aberto"]);
+  });
+
+  it("pedido de privacidade já respondido (zero abertos) não acende o sino", async () => {
+    PRIVACIDADE_ABERTOS = 0;
+    const { sino } = await montarPainel();
+    await esperarContagensChegarem();
+    expect(sino.querySelector("span")).toBeNull();
+  });
+
+  it.each(["erro", "sem-numero"] as const)(
+    "acende por dúvida quando a leitura dos pedidos de privacidade falha (%s) e apaga ao recuperar",
+    async (falha) => {
+      FALHA_PRIVACIDADE = falha;
+      const { sino } = await montarPainel();
+      await esperarContagensChegarem();
+      expect(sino.querySelector("span")).not.toBeNull();
+
+      FALHA_PRIVACIDADE = null;
       await act(async () => {
         document.dispatchEvent(new Event("visibilitychange"));
       });

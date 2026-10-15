@@ -8,6 +8,7 @@ import {
   CAMINHO_IDENTIDADE_JSON,
   FICHA_DA_LOJA_ID,
 } from "../config/fichaDaLojaContract";
+import { decidirToqueNoAviso } from "../lib/alvo-do-aviso";
 import {
   TIPO_PURGAR_ARQUIVOS_PRIVADOS,
   ehArquivoPublicoDoStorage,
@@ -199,6 +200,27 @@ function respostaEmManutencao(): Response {
   );
 }
 
+/**
+ * A página "Sem internet" (`public/offline.html`), guardada no precache. Só
+ * serve para o caso em que a REDE falhou: quando a rede responde (inclusive
+ * o 503 "sem ficha" do porteiro), a resposta passa como veio — mostrar "sem
+ * internet" com a internet funcionando e a loja fora do ar de verdade seria
+ * mentir para a cliente. É a mesma página para toda a frota: sem marca.
+ *
+ * Devolve `null` quando ela não está guardada (precache que falhou) ou o
+ * cache não responde; quem chama cai no 503 de manutenção, como sempre foi.
+ * Nunca rejeita: uma falha aqui viraria navegação sem resposta nenhuma.
+ */
+async function paginaSemInternet(): Promise<Response | null> {
+  try {
+    const pagina = await caches.match("/offline.html");
+    return pagina?.ok ? pagina : null;
+  } catch (e) {
+    console.warn("[SW] Falha ao ler a página offline do cache:", e);
+    return null;
+  }
+}
+
 sw.addEventListener("fetch", (event: any) => {
   const url = new URL(event.request.url);
 
@@ -327,7 +349,11 @@ sw.addEventListener("fetch", (event: any) => {
                 if (raiz && (await respostaTemFichaDaLoja(raiz))) {
                   return raiz;
                 }
-                return respostaEmManutencao();
+                // Chegou até aqui por REDE FORA DO AR (o `fetch` lançou) e
+                // nenhuma página guardada serve: a cliente está sem
+                // internet, não a loja sem ficha. "Em manutenção" aqui
+                // fazia a cliente achar que a loja fechou.
+                return (await paginaSemInternet()) ?? respostaEmManutencao();
               });
             });
           });
@@ -630,19 +656,32 @@ sw.addEventListener("notificationclick", (event: any) => {
         // manifest) e o alvo padrão é "/" — a comparação de URL inteira
         // nunca batia e TODO toque abria uma segunda janela da loja.
         // Comparar o CAMINHO (mesma origem) foca a janela que já existe.
-        for (const client of clientList) {
-          const clientUrl = new URL(client.url);
-          if (
-            clientUrl.origin === absoluteUrl.origin &&
-            clientUrl.pathname === absoluteUrl.pathname &&
-            "focus" in client
-          ) {
-            return client.focus();
-          }
+        // Aviso de pedido (`/order-details?id=X`): janela já nesse caminho mas
+        // com OUTRO pedido é navegada até o do aviso (só focar a deixava no
+        // pedido errado). A decisão pura mora em `alvo-do-aviso.ts`.
+        const janelas = clientList.filter((c: any) => "focus" in c);
+        const decisao = decidirToqueNoAviso(
+          absoluteUrl.href,
+          janelas.map((c: any) => c.url),
+        );
+        const abrirJanelaNova = () =>
+          sw.clients.openWindow
+            ? sw.clients.openWindow(absoluteUrl.href)
+            : undefined;
+        if (decisao.acao === "focar") {
+          return janelas[decisao.indice].focus();
         }
-        if (sw.clients.openWindow) {
-          return sw.clients.openWindow(absoluteUrl.href);
+        if (decisao.acao === "navegar") {
+          const client = janelas[decisao.indice];
+          if (typeof client.navigate !== "function") return abrirJanelaNova();
+          // `navigate` só vale para janela controlada por este SW; se
+          // rejeitar, cai na janela nova (o mesmo destino, nunca a vitrine).
+          return Promise.resolve(client.navigate(absoluteUrl.href)).then(
+            (navegada: any) => (navegada ?? client).focus(),
+            abrirJanelaNova,
+          );
         }
+        return abrirJanelaNova();
       }),
   );
 });

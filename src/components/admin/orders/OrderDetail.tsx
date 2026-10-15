@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
@@ -14,16 +15,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
-import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
+import {
+  DEPOIS_DO_DIA_COM_CLIENTE,
+  DEPOIS_DO_DIA_SEM_CLIENTE,
+  FRASE_ANULAR_SO_NO_MESMO_DIA,
+  podeAnularVendaDoBalcao,
+} from "@/lib/anulacao-do-balcao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
-import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import {
+  ROTULO_SEM_VALOR_A_PAGAR,
+  pedidoSemValorAPagar,
+  rotuloDaFormaDoPedido,
+} from "@/lib/forma-de-pagamento";
 import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { cn } from "@/lib/utils";
@@ -115,9 +126,13 @@ const getNextStatus = (current: OrderStatus): OrderStatus | null => {
 // rótulo da planilha e da lista (`rotuloDaFormaDoPedido`, defeito D4 de
 // 28/09): cartão no balcão é "na maquininha", no site é "na entrega", e
 // "online" nunca vira "Dinheiro" (quem lança o caixa a partir daqui não pode
-// ler dinheiro e cobrar de novo). O PIX segue curto, como a ficha já dizia.
+// ler dinheiro e cobrar de novo). O PIX segue curto, como a ficha já dizia —
+// menos na compra de R$ 0,00 (cupom de 100%), que não tem forma de pagamento:
+// ali vale o rótulo único ("Sem valor a pagar").
 const getPaymentMethodLabel = (order: Order) =>
-  order.paymentMethod === "pix" ? "PIX" : rotuloDaFormaDoPedido(order);
+  order.paymentMethod === "pix" && !pedidoSemValorAPagar(order)
+    ? "PIX"
+    : rotuloDaFormaDoPedido(order);
 
 // T3 (lote B, 12/09) — a frase-situação do dinheiro no cabeçalho da seção
 // Pagamento (emprestada da direção "Dinheiro primeiro"): a primeira dúvida
@@ -158,6 +173,12 @@ function fraseSituacaoDoPagamento(order: Order): string {
   // recebido" (`podeRegistrarPagamento`). `recebido_na_entrega` + cancelado
   // já caiu no ramo de atenção acima.
   if (order.paymentMethod !== "online") {
+    // Compra que fechou em R$ 0,00 (cupom de 100%): o servidor a grava como
+    // "pagar na entrega", mas não há o que receber — "Falta receber na
+    // entrega · R$ 0,00" mandaria a lojista cobrar de quem não deve nada.
+    if (pedidoSemValorAPagar(order)) {
+      return ROTULO_SEM_VALOR_A_PAGAR;
+    }
     // D1 (lote C4): o banco não ganhou canal como oitavo payment_status — a
     // venda de balcão grava o MESMO `recebido_na_entrega`/pagamento pendente
     // de sempre. Só a FRASE muda de "entrega" para "balcão" quando o canal
@@ -230,6 +251,10 @@ interface OrderDetailProps {
 }
 
 const globalSkuCache: Record<string, string> = {};
+// Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
+// mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
+// quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
+const globalVariacaoCache = new Map<string, string>();
 
 // Redesenho da ficha (08/10/2026, aprovado pelo dono): a MESMA linguagem do
 // card de pedido redesenhado em 07/10 (`AdminOrderCard`) — blocos
@@ -695,6 +720,7 @@ function OrderDeliveryCard({
 interface OrderItemsCardProps {
   order: Order;
   skus: Record<string, string>;
+  variacoes: Record<string, string>;
   loadingSkus: boolean;
 }
 
@@ -705,6 +731,7 @@ interface OrderItemsCardProps {
 function OrderItemsCard({
   order,
   skus,
+  variacoes,
   loadingSkus,
 }: Readonly<OrderItemsCardProps>) {
   const { items } = order;
@@ -723,6 +750,7 @@ function OrderItemsCard({
           const itemSku = item.variantId
             ? skus[`var-${item.variantId}`] || skus[`prod-${item.productId}`]
             : skus[`prod-${item.productId}`];
+          const variacao = item.variantId ? variacoes[item.variantId] : "";
 
           return (
             <div
@@ -740,6 +768,14 @@ function OrderItemsCard({
                 <p className="truncate text-sm font-medium text-white">
                   {item.name}
                 </p>
+                {variacao && (
+                  <p
+                    data-testid="variacao-do-item"
+                    className="mt-0.5 break-words text-xs font-medium text-zinc-200"
+                  >
+                    {variacao}
+                  </p>
+                )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-xs tabular-nums text-zinc-400">
                     {item.quantity} × R$ {formatarValor(item.price)}
@@ -813,20 +849,8 @@ interface OrderFinanceCardProps {
   registrandoPagamento?: boolean;
 }
 
-// F7 do painel simples — venda do balcão não se CANCELA (nasce entregue, e
-// "Cancelar pedido" não existe para entregue): o caminho é ANULAR, e só no
-// mesmo dia. A 1ª frase é a da recusa do banco (migration 20261204000000,
-// `anular_venda_presencial`); a 2ª da recusa ("registre uma devolução") NÃO
-// vale aqui: o lojista não abre devolução de balcão no painel
-// (`solicitar_devolucao` exige o cliente logado, `user_id = auth.uid()`).
-// No balcão não há arrependimento (ele exige canal 'online'): sobra troca ou
-// vício, pedidos pelo cliente — e só se a venda nasceu na conta dele
-// (`registrar_venda_presencial(p_cliente_user_id)`; não há vínculo depois).
-const FRASE_ANULAR_SO_NO_MESMO_DIA = "Só dá para anular no mesmo dia da venda.";
-const DEPOIS_DO_DIA_COM_CLIENTE =
-  "Depois disso, a troca ou o reparo de defeito só podem ser pedidos pelo cliente, no app, dentro do prazo da loja.";
-const DEPOIS_DO_DIA_SEM_CLIENTE =
-  "Esta venda não está na conta de nenhum cliente: o app não abre devolução para ela.";
+// As frases de "passou do dia" (F7) moram em `@/lib/anulacao-do-balcao`: o
+// recibo da tela Vender diz a MESMA coisa.
 
 /** A venda do balcão que só não se anula mais porque o dia passou: a MESMA
  * regra do botão, com o recebimento trazido para hoje. Não decide nada — só
@@ -894,6 +918,7 @@ function OrderFinanceCard({
   const situacaoPositiva =
     !situacao.includes("precisa de atenção") &&
     (situacao.startsWith("Pago no site") ||
+      situacao === ROTULO_SEM_VALOR_A_PAGAR ||
       situacao.startsWith("Recebido na entrega") ||
       situacao.startsWith("Recebido no balcão"));
 
@@ -953,14 +978,12 @@ function OrderFinanceCard({
                   { day: "2-digit", month: "short" },
                 )}
               </span>
-              <button
-                type="button"
-                onClick={() => onRegistrarPagamento(order.id, false)}
+              <DesfazerRecebimento
+                order={order}
+                aoDesfazer={() => onRegistrarPagamento(order.id, false)}
                 disabled={registrandoPagamento}
                 className="h-11 shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
-              >
-                Desfazer
-              </button>
+              />
             </>
           ) : (
             <button
@@ -1330,6 +1353,7 @@ export const OrderDetail = memo(function OrderDetail({
   const [isSavingNotes, setIsSavingNotes] = useState(false);
 
   const [skus, setSkus] = useState<Record<string, string>>({});
+  const [variacoes, setVariacoes] = useState<Record<string, string>>({});
   const [loadingSkus, setLoadingSkus] = useState(false);
 
   const [copiedAddress, setCopiedAddress] = useState(false);
@@ -1362,6 +1386,43 @@ export const OrderDetail = memo(function OrderDetail({
     }
   };
 
+  // 🔴 Task 4b — a ordem não se negocia: grava o dinheiro PRIMEIRO, avança o
+  // status DEPOIS, e SÓ SE a gravação não tiver lançado. `onRegistrarPagamento`
+  // já mostra o próprio toast de erro (ver `useOrders.registrarPagamentoRecebido`)
+  // — o catch aqui só ABORTA, sem chamar `handleStatusChange`: o pedido
+  // continua "em aberto" e o botão de registrar continua na tela, em vez de
+  // ficar "entregue" e sem registro nenhum — o dano silencioso que esta
+  // tarefa existe pra evitar.
+  //
+  // Trava de reentrada: duplo clique em "Avançar" (pedido de R$ 0, que não
+  // abre caixinha) chamaria o registro e a mudança de status duas vezes. Uma
+  // `ref` — não depende de re-render, vale já no segundo clique — fica presa
+  // até o fim do registro E do avanço, e sempre solta no `finally`, então
+  // depois de uma falha a lojista pode tentar de novo.
+  const registrandoEAvancandoRef = useRef(false);
+  const registrarRecebimentoEAvancar = async (
+    orderId: string,
+    status: OrderStatus,
+  ) => {
+    if (!onRegistrarPagamento) return;
+    if (registrandoEAvancandoRef.current) return;
+    registrandoEAvancandoRef.current = true;
+    try {
+      try {
+        await onRegistrarPagamento(orderId, true);
+      } catch (err) {
+        console.error(
+          "[OrderDetail] Erro ao registrar pagamento recebido antes de avançar:",
+          err,
+        );
+        return;
+      }
+      await handleStatusChange(orderId, status);
+    } finally {
+      registrandoEAvancandoRef.current = false;
+    }
+  };
+
   // Ponto de entrada exclusivo do botão "Avançar" — o botão de abortar chama
   // handleStatusChange direto com "cancelled" (ver onCancel no JSX abaixo),
   // então esta função nunca recebe "cancelled" e não precisa mais comparar
@@ -1378,6 +1439,22 @@ export const OrderDetail = memo(function OrderDetail({
         status: nextStatus,
         perguntaRecebimento: false,
       });
+      return;
+    }
+
+    // Compra que fechou em R$ 0,00 (cupom de 100%): não há dinheiro a trocar
+    // de mão, então NÃO pergunta "Recebeu R$ 0,00?" — a ficha registra o
+    // "Recebi" sozinha, pelo MESMO caminho do botão "Recebi" (dinheiro
+    // primeiro, status depois), e o pedido segue como pago para devolução e
+    // troca. Mesmas condições da pergunta abaixo; só muda quem responde.
+    if (
+      onRegistrarPagamento &&
+      nextStatus === "delivered" &&
+      !order.pagamentoRecebidoEm &&
+      podeRegistrarPagamento(order) &&
+      pedidoSemValorAPagar(order)
+    ) {
+      void registrarRecebimentoEAvancar(orderId, nextStatus);
       return;
     }
 
@@ -1415,27 +1492,12 @@ export const OrderDetail = memo(function OrderDetail({
     handleStatusChange(orderId, status);
   };
 
-  // 🔴 Task 4b — a ordem não se negocia: grava o dinheiro PRIMEIRO, avança o
-  // status DEPOIS, e SÓ SE a gravação não tiver lançado. `onRegistrarPagamento`
-  // já mostra o próprio toast de erro (ver `useOrders.registrarPagamentoRecebido`)
-  // — o catch aqui só ABORTA, sem chamar `handleStatusChange`: o pedido
-  // continua "em aberto" e o botão de registrar continua na tela, em vez de
-  // ficar "entregue" e sem registro nenhum — o dano silencioso que esta
-  // tarefa existe pra evitar.
+  // "Recebi" da pergunta: tira a caixinha da tela e segue o mesmo caminho.
   const confirmarRecebimentoEAvancar = async () => {
-    if (!pendingAdvance || !onRegistrarPagamento) return;
+    if (!pendingAdvance) return;
     const { orderId, status } = pendingAdvance;
     setPendingAdvance(null);
-    try {
-      await onRegistrarPagamento(orderId, true);
-    } catch (err) {
-      console.error(
-        "[OrderDetail] Erro ao registrar pagamento recebido antes de avançar:",
-        err,
-      );
-      return;
-    }
-    handleStatusChange(orderId, status);
+    await registrarRecebimentoEAvancar(orderId, status);
   };
 
   // Task 4b — botão "Marcar como recebido"/"Desfazer" DENTRO da ficha
@@ -1490,10 +1552,18 @@ export const OrderDetail = memo(function OrderDetail({
           (id) => !globalSkuCache[`prod-${id}`],
         );
         const missingVariantIds = variantIds.filter(
-          (id) => !globalSkuCache[`var-${id}`],
+          (id) => !globalSkuCache[`var-${id}`] || !globalVariacaoCache.has(id),
         );
+        const variacoesLidas = () =>
+          Object.fromEntries(
+            variantIds.flatMap((id) => {
+              const rotulo = globalVariacaoCache.get(id);
+              return rotulo ? [[id, rotulo] as const] : [];
+            }),
+          );
 
         if (missingProductIds.length === 0 && missingVariantIds.length === 0) {
+          setVariacoes(variacoesLidas());
           const cachedSkus: Record<string, string> = {};
           productIds.forEach((id) => {
             cachedSkus[`prod-${id}`] = globalSkuCache[`prod-${id}`];
@@ -1520,12 +1590,14 @@ export const OrderDetail = memo(function OrderDetail({
         if (missingVariantIds.length > 0) {
           const { data: variantsData } = await supabase
             .from("product_variants")
-            .select("id, sku")
+            .select("id, sku, name, value")
             .in("id", missingVariantIds);
           variantsData?.forEach((v) => {
             if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
+            globalVariacaoCache.set(v.id, rotuloDaVariacao(v.name, v.value));
           });
         }
+        setVariacoes(variacoesLidas());
 
         const resultSkus: Record<string, string> = {};
         productIds.forEach((id) => {
@@ -1763,7 +1835,12 @@ export const OrderDetail = memo(function OrderDetail({
           onWhatsAppDirect={handleWhatsAppDirect}
           whatsappUrl={whatsappUrl}
         />
-        <OrderItemsCard order={order} skus={skus} loadingSkus={loadingSkus} />
+        <OrderItemsCard
+          order={order}
+          skus={skus}
+          variacoes={variacoes}
+          loadingSkus={loadingSkus}
+        />
 
         {/* Envio em linhas simples, separadas por divisores: uma linha por
             assunto, e tocar abre/edita ali mesmo. */}
@@ -1829,7 +1906,7 @@ export const OrderDetail = memo(function OrderDetail({
         </section>
       </div>
 
-      <OrderReceipt order={order} storeName={storeName} />
+      <OrderReceipt order={order} storeName={storeName} variacoes={variacoes} />
 
       <AlertDialog
         open={pendingAdvance !== null}

@@ -12,6 +12,7 @@ import { VisaoGeralDoCrm } from "@/components/admin/crm/VisaoGeralDoCrm";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useCrmVisao, useDashboardClassico } from "@/hooks/useCrm";
+import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import {
@@ -85,7 +86,14 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
   const [mostrarAjuda, setMostrarAjuda] = useState(false);
   const abasRef = useRef(new Map<AbaDoCrm, HTMLButtonElement>());
 
-  const intervalo = useMemo(() => intervaloDoPeriodo(periodo), [periodo]);
+  // O intervalo de "Hoje"/"7 dias"/"30 dias"… é contado a partir do DIA de
+  // hoje, que acompanha o relógio: tela aberta (ou voltando do segundo plano)
+  // depois da meia-noite recalcula o intervalo e busca de novo.
+  const dia = useDiaDeSaoPaulo(ativo);
+  const intervalo = useMemo(
+    () => intervaloDoPeriodo(periodo, instanteDoDia(dia)),
+    [periodo, dia],
+  );
   const comparacao = comparacaoDoPeriodo(periodo, intervalo);
 
   const {

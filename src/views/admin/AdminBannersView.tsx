@@ -42,13 +42,25 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import {
+  MENSAGEM_FIM_ANTES_DO_INICIO,
+  fimDoBannerEmTexto,
+  problemaDasDatas,
+} from "@/lib/datas-do-banner";
+import {
+  AVISO_DE_LINK_RECUSADO,
+  LINK_DA_PAGINA_DA_LOJA,
+  avisoDoLinkDigitado,
+  linkDaCategoria,
+  linkDoBannerParaSalvar,
+} from "@/lib/destino-do-banner";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import {
   gravarModoDoEditor,
   lerModoDoEditor,
   modoAoAbrirOBanner,
 } from "@/lib/modo-do-editor-de-banner";
-import { cn, normalizeText } from "@/lib/utils";
+import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
@@ -724,6 +736,9 @@ export const AdminBannersView = memo(function AdminBannersView({
     id: string;
     imageUrl: string;
   } | null>(null);
+  // Fim da programação já passou: pede confirmação antes de salvar.
+  const [confirmarFimVencido, setConfirmarFimVencido] = useState(false);
+  const fimVencidoConfirmadoRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAction, setActiveAction] = useState<{
     id: string;
@@ -824,8 +839,9 @@ export const AdminBannersView = memo(function AdminBannersView({
   const dynamicRouteSuggestions = useMemo(() => {
     const base = [
       { label: "Sem Redirecionamento", path: "" },
-      { label: "Início", path: "/" },
-      { label: "Produtos", path: "/produtos" },
+      // Sem atalho "Produtos": a loja não tem `/produtos`; a lista de produtos
+      // é a própria Home ("Início").
+      { label: "Início", path: LINK_DA_PAGINA_DA_LOJA },
       { label: "Carrinho", path: "/checkout" },
       { label: "Perfil", path: "/profile" },
     ];
@@ -833,7 +849,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       .filter((c) => c.isActive)
       .map((c) => ({
         label: `Categoria: ${c.name}`,
-        path: `/?category=${c.name}`,
+        path: linkDaCategoria(c.name),
       }));
     return [...base, ...categoryChips];
   }, [categories]);
@@ -1039,8 +1055,15 @@ export const AdminBannersView = memo(function AdminBannersView({
       titleSuggestions.push(`FRETE GRÁTIS: ${selectedProduct.name}`);
     }
 
+    // Texto que vai para a vitrine: dinheiro com vírgula e espaço comum depois
+    // do "R$" (o Intl usa um espaço inquebrável, que não queremos gravado).
+    // O caractere dentro da regex abaixo é o espaço inquebrável (U+00A0) de
+    // propósito: é exatamente ele que o Intl coloca depois do "R$".
+    const dinheiro = (valor: number) =>
+      // eslint-disable-next-line no-irregular-whitespace
+      formatCurrency(Number(valor)).replace(/ /g, " ");
     const subtitleSuggestions = [
-      `Por apenas R$ ${Number(selectedProduct.price).toFixed(2)}`,
+      `Por apenas ${dinheiro(selectedProduct.price)}`,
       "Confira essa oferta especial na nossa loja!",
     ];
     if (
@@ -1048,9 +1071,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       selectedProduct.originalPrice > selectedProduct.price
     ) {
       subtitleSuggestions.push(
-        `De R$ ${Number(selectedProduct.originalPrice).toFixed(2)} por R$ ${Number(
+        `De ${dinheiro(selectedProduct.originalPrice)} por ${dinheiro(
           selectedProduct.price,
-        ).toFixed(2)}`,
+        )}`,
       );
     }
     if (selectedProduct.freeShipping) {
@@ -1190,11 +1213,18 @@ export const AdminBannersView = memo(function AdminBannersView({
   // banner (abre a partir de dentro dele, via openAdjuster), então é o
   // overlay mais no topo e precisa ser checado ANTES de isDialogOpen — senão
   // o Esc fecha o formulário inteiro (e apaga o upload) enquanto só o
-  // recorte deveria fechar.
+  // recorte deveria fechar. Mesma razão para a pergunta "Este banner já
+  // terminou...": ela abre POR CIMA do formulário, e o Esc fecha só ela.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (isAdjusterOpen) {
+        // O Radix já tratou este Esc (fechou a pergunta/diálogo e chamou
+        // preventDefault) antes de o ouvinte da janela rodar; sem esta guarda
+        // o mesmo Esc fecharia também o formulário de baixo.
+        if (e.defaultPrevented) return;
+        if (confirmarFimVencido) {
+          setConfirmarFimVencido(false);
+        } else if (isAdjusterOpen) {
           setIsAdjusterOpen(false);
         } else if (isDialogOpen) {
           handleOpenChange(false);
@@ -1205,7 +1235,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isDialogOpen, showHelpModal, isAdjusterOpen]);
+  }, [isDialogOpen, showHelpModal, isAdjusterOpen, confirmarFimVencido]);
 
   // Reset modal and adjuster states when active is false to prevent focus traps and scroll lock
   useEffect(() => {
@@ -1684,6 +1714,11 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleSubmit = async () => {
+    // A confirmação "Salvar mesmo assim" vale para ESTA chamada só: lida e
+    // zerada antes de qualquer retorno antecipado (offline, salvando...),
+    // senão sobraria `true` e pularia a pergunta no próximo banner vencido.
+    const jaConfirmouFimVencido = fimVencidoConfirmadoRef.current;
+    fimVencidoConfirmadoRef.current = false;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description:
@@ -1701,14 +1736,42 @@ export const AdminBannersView = memo(function AdminBannersView({
         return;
       }
 
-      let sanitizedLink = formData.link ? formData.link.trim() : "";
+      // Datas sem sentido não salvam em silêncio: fim antes do início
+      // bloqueia; fim que já passou (banner que nunca vai aparecer) pergunta.
+      // Banner que já estava vencido e continua com a mesma data de fim não
+      // pergunta de novo (a lojista não mexeu nas datas).
+      const problemaDeData = problemaDasDatas(
+        formData.startDate,
+        formData.endDate,
+      );
+      const fimMudou =
+        !editingBanner ||
+        (editingBanner.endDate ?? null) !== (formData.endDate ?? null);
       if (
-        sanitizedLink &&
-        !sanitizedLink.startsWith("/") &&
-        !sanitizedLink.startsWith("http://") &&
-        !sanitizedLink.startsWith("https://")
+        problemaDeData === "fim-antes-do-inicio" ||
+        (problemaDeData === "fim-ja-passou" &&
+          fimMudou &&
+          !jaConfirmouFimVencido)
       ) {
-        sanitizedLink = `/${sanitizedLink}`;
+        if (problemaDeData === "fim-antes-do-inicio") {
+          toast.error(MENSAGEM_FIM_ANTES_DO_INICIO);
+        } else {
+          setConfirmarFimVencido(true);
+        }
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      // Endereço de site sem https:// (`wa.me/55...`) ganha o https://; sem
+      // barra no começo ganha uma (como sempre foi); `javascript:`, `data:`,
+      // `//outro-site` e afins não passam: a loja abriria o link ao tocar.
+      const sanitizedLink = linkDoBannerParaSalvar(formData.link);
+      if (sanitizedLink === null) {
+        toast.error(AVISO_DE_LINK_RECUSADO);
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        return;
       }
 
       const dataToSubmit = {
@@ -4283,7 +4346,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                               ) {
                                 setFormData((prev) => ({
                                   ...prev,
-                                  link: "/produtos",
+                                  link: LINK_DA_PAGINA_DA_LOJA,
                                   productId: "",
                                 }));
                               }
@@ -4466,8 +4529,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     {selectedProduct.name}
                                   </h4>
                                   <p className="mt-0.5 font-mono text-[11px] font-black leading-none text-amber-500">
-                                    R${" "}
-                                    {Number(selectedProduct.price).toFixed(2)}
+                                    {formatCurrency(
+                                      Number(selectedProduct.price),
+                                    )}
                                   </p>
                                 </div>
                               </div>
@@ -4552,7 +4616,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     </div>
                                     <div className="flex shrink-0 items-center gap-1.5">
                                       <span className="font-mono text-[11px] font-black text-amber-500">
-                                        R$ {Number(p.price).toFixed(2)}
+                                        {formatCurrency(Number(p.price))}
                                       </span>
                                       <span className="rounded border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-400 transition-colors group-hover:text-white">
                                         Vincular
@@ -4615,8 +4679,21 @@ export const AdminBannersView = memo(function AdminBannersView({
                             name="link"
                             value={formData.link || ""}
                             onFlush={(val) =>
-                              setFormData((prev) => ({ ...prev, link: val }))
+                              setFormData((prev) => {
+                                // Endereço de site sem https:// ganha o
+                                // https:// já aqui: sem isso o painel o
+                                // tratava como "Página da Loja" e o campo
+                                // sumia da tela enquanto a lojista digitava.
+                                const gravado = linkDoBannerParaSalvar(val);
+                                return {
+                                  ...prev,
+                                  link: gravado?.startsWith("https://")
+                                    ? gravado
+                                    : val,
+                                };
+                              })
                             }
+                            validate={avisoDoLinkDigitado}
                             placeholder="Ex: https://wa.me/5511999999999 ou link externo"
                             useShadcn={true}
                             className="h-9 rounded-xl border-white/10 bg-zinc-900/90 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-sky-400 focus:ring-sky-400"
@@ -4744,15 +4821,23 @@ export const AdminBannersView = memo(function AdminBannersView({
                               />
                             </div>
 
-                            {formData.startDate &&
-                              formData.endDate &&
-                              new Date(formData.startDate) >
-                                new Date(formData.endDate) && (
-                                <div className="col-span-2 select-none rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-[11px] font-bold text-rose-400">
-                                  ⚠️ Atenção: A data de expiração deve ser
-                                  posterior à data de início.
-                                </div>
-                              )}
+                            {problemaDasDatas(
+                              formData.startDate,
+                              formData.endDate,
+                            ) === "fim-antes-do-inicio" ? (
+                              <div
+                                role="alert"
+                                className="col-span-2 select-none rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-[11px] font-bold text-rose-400"
+                              >
+                                ⚠️ {MENSAGEM_FIM_ANTES_DO_INICIO}
+                              </div>
+                            ) : (
+                              formData.endDate && (
+                                <p className="select-none text-[11px] font-bold text-amber-300 sm:col-span-2">
+                                  ⏱ {fimDoBannerEmTexto(formData.endDate)}
+                                </p>
+                              )
+                            )}
                           </div>
 
                           {/* Scheduling Sentinel - Campaign Overlap & Clutter Auditor */}
@@ -5062,6 +5147,38 @@ export const AdminBannersView = memo(function AdminBannersView({
           />
         )}
       </AnimatePresence>
+
+      {/* Confirmação: salvar banner cujo fim já passou (nunca vai aparecer) */}
+      <AlertDialog
+        open={confirmarFimVencido}
+        onOpenChange={(open) => !open && setConfirmarFimVencido(false)}
+      >
+        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
+              Banner já terminou
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-zinc-400">
+              Este banner já terminou e não vai aparecer. Salvar mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="rounded-xl border border-0 border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+              Voltar e ajustar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                fimVencidoConfirmadoRef.current = true;
+                setConfirmarFimVencido(false);
+                handleSubmit();
+              }}
+              className="rounded-xl border-0 bg-amber-500 px-4 py-2 text-xs font-bold text-black hover:bg-amber-400"
+            >
+              Salvar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Diálogo de Confirmação de Exclusão de Banner */}
       <AlertDialog

@@ -261,6 +261,28 @@ describe("Painel — o aviso ao cliente usa o número que ele vê (#3884BE)", ()
     expect(corpo).not.toContain("#3884be");
   });
 
+  it("push de 'status atualizado': tocar no aviso abre ESTE pedido, não a vitrine", async () => {
+    await montar(ID_DO_PEDIDO);
+
+    const avancar = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Avançar"),
+    );
+    expect(avancar).toBeTruthy();
+    await act(async () => {
+      avancar?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await esperar(20);
+    });
+
+    const chamada = invoke.mock.calls.find(([nome]) => nome === "send-push");
+    expect(chamada).toBeTruthy();
+    expect(chamada?.[1].body.url).toBe(`/order-details?id=${ID_DO_PEDIDO}`);
+    // O resto do aviso não muda.
+    expect(chamada?.[1].body.data).toEqual({
+      orderId: ID_DO_PEDIDO,
+      type: "order_status",
+    });
+  });
+
   it("WhatsApp do card da lista: a mensagem diz '#3884BE'", async () => {
     await montar();
 

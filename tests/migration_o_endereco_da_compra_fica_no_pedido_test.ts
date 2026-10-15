@@ -357,7 +357,12 @@ Deno.test("o cabecalho declara o que o dono precisa saber: sem backfill (decisao
     assert.ok(rollback.includes(trecho), trecho);
 });
 
-Deno.test("so a 20261174000000 define o corpo vivo de v23 e v24 antes deste par (nenhuma migration posterior a redefine); depois dele, so este par", () => {
+// A UNICA SUCESSORA (14/10/2026): a 20261236000000 redefine so a v24, em cima do corpo desta migration (a
+// recusa do total zero pelo app). As provas vivas desta migration desfazem a sucessora antes de medir.
+const SUCESSORA =
+  "20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql";
+
+Deno.test("so a 20261174000000 define o corpo vivo de v23 e v24 antes deste par (nenhuma migration posterior a redefine); depois dele, so este par e a sucessora da v24 (20261236000000)", () => {
   const dir = new URL("supabase/migrations/", DIR);
   const definem = [];
   for (const e of Deno.readDirSync(dir)) {
@@ -376,6 +381,7 @@ Deno.test("so a 20261174000000 define o corpo vivo de v23 e v24 antes deste par 
       `${ANTIGA}:${V24}`,
       `${NOME}:${V23}`,
       `${NOME}:${V24}`,
+      `${SUCESSORA}:${V24}`,
     ].sort(),
   );
 });

@@ -81,9 +81,11 @@ describe("achado 9 — recusas anunciadas: cupom e frete pendente", () => {
     // nada de visual mudou. O M3 do laudo 05/09 trocou de propósito o
     // override que apagava o anel de foco global pelo padrão do BottomNav
     // (anel visível só para teclado). O restante da classe segue igual — é
-    // isso que continua provado aqui.
+    // isso que continua provado aqui. O commit 9adf2e9b (iPhone dava zoom no
+    // campo) trocou só o tamanho do texto: text-sm virou text-base md:text-sm
+    // (16px no celular, 14px no desktop); o anel de foco segue intacto.
     expect(src).toContain(
-      'className="flex-1 rounded-md bg-transparent text-sm outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50"',
+      'className="flex-1 rounded-md bg-transparent text-base outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 md:text-sm"',
     );
     expect(src).toContain(
       'className="flex items-center gap-1 text-xs text-red-700"',

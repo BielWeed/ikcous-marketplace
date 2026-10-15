@@ -47,9 +47,23 @@ const NOMES = [
   // da 12, e desfazer em ordem inversa devolve cada corpo ao anterior).
   "20261227000000_o_crm_compara_o_que_e_comparavel.sql",
   "20261228000000_o_inicio_compara_ate_a_mesma_hora.sql",
+  // A busca de clientes (14/10/2026): get_admin_customers_paged (por número do WhatsApp) e
+  // crm_clientes (sem acento) sucedem, cada uma, o corpo da 99.
+  "20261230000000_a_busca_de_clientes_acha_pelo_numero_do_whatsapp.sql",
+  "20261231000000_a_busca_do_crm_ignora_acento.sql",
   // A grade do CRM (14/10/2026): crm_visao ganha a SEGUNDA sucessora (a CADEIA 99 → 27 → 32: o
   // `hashVigente` da 32 é o `hashDesta` da 27; desfazer em ordem inversa devolve cada corpo ao anterior).
   "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql",
+  // O lucro só conta produto com custo (14/10/2026): get_admin_analytics_v2 sucede o corpo da 14
+  // (a CADEIA 99 → 14 → 34: o `hashVigente` da 34 é o `hashDesta` da 14; desfazer em ordem inversa
+  // devolve cada corpo ao anterior).
+  "20261234000000_o_lucro_so_conta_produto_com_custo.sql",
+  // A venda repetida do balcão (14/10/2026): registrar_venda_presencial sucede o corpo da 99 (trava consultiva
+  // pela chave de idempotência antes de conferir a chave).
+  "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql",
+  // A identidade legal da loja (14/10/2026): upsert_store_config passa a gravar razão social, documento e e-mail
+  // de atendimento; sucede o corpo da 99 (hashVigente = o `hashDesta` da 99 para essa função).
+  "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql",
 ];
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

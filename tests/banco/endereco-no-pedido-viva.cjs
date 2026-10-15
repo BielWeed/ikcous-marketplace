@@ -69,6 +69,14 @@ const VIVA_174 = fs.readFileSync(
   path.join(MIGRATIONS, "20261174000000_formas_de_pagamento_por_loja.sql"),
   "utf8",
 );
+// A SUCESSORA da v24 (20261236000000: a recusa do total zero pelo app): so o rollback-manual dela entra aqui.
+const ROLLBACK_DA_SUCESSORA = fs.readFileSync(
+  path.join(
+    MIGRATIONS,
+    "rollback-manual-20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql",
+  ),
+  "utf8",
+);
 const emCRLF = (s) => s.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
 const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
@@ -1406,6 +1414,10 @@ async function main() {
   let ok = 0;
   const falhas = [];
   try {
+    // SUCESSORA: a 20261236000000 redefine a v24 em cima do corpo da 20261229. Esta prova mede a 20261229
+    // isolada, entao desfaz a sucessora (pelo rollback-manual dela, que so reescreve o corpo e aceita os dois
+    // corpos) no clone descartavel antes da primeira prova.
+    await C.query(ROLLBACK_DA_SUCESSORA);
     for (const { nome, corpo } of PROVAS) {
       try {
         await corpo();

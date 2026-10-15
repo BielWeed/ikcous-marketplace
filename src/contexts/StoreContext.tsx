@@ -1,4 +1,4 @@
-import { hexToTailwindHsl } from "@/config/branding";
+import { aplicarCorDaLoja } from "@/config/branding";
 import {
   ContextoDoFreteDaLoja,
   contextoDaLojaParaFrete,
@@ -152,6 +152,11 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   // desconhecida nunca fica "confirmada").
   ["store_address", "texto"],
   ["store_description", "texto"],
+  // 20261239000000: razão social, CNPJ/CPF e e-mail de atendimento — mesma
+  // razão: sem entrada aqui o save "grava" mas o comparador acusa falha.
+  ["store_legal_name", "texto"],
+  ["store_legal_document", "texto"],
+  ["store_support_email", "texto"],
   ["origin_cep", "texto"],
   ["shipping_provider", "texto"],
   ["enabled_shipping_methods", "texto_array"],
@@ -325,6 +330,15 @@ function componhaShareText(
 // existe laço. Toque manual em "Tentar de novo" zera a contagem.
 const ESPERAS_DO_CATALOGO_MS: readonly number[] = [2000, 5000, 10000];
 
+// Mesma ideia para a CONFIGURAÇÃO da loja (nome, WhatsApp, frete, cores): na
+// primeira visita com rede ruim a consulta falhava e a loja seguia com a
+// configuração de fábrica até a cliente recarregar a página. Espera crescente
+// e TETO de 3 -- o tamanho da lista é o limite. Rede que volta (`online`) ou
+// aba que volta a ficar visível também tentam de novo, com fôlego novo.
+const ESPERAS_DA_CONFIG_MS: readonly number[] = [1000, 2000, 4000];
+// Rajada de eventos de rede (sinal piscando, aba trocando) não vira rajada de pedidos.
+const MINIMO_ENTRE_RETOMADAS_DA_CONFIG_MS = 3000;
+
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -377,6 +391,23 @@ export function StoreProvider({
   const produtosNaTelaRef = useRef(0);
   const buscarProdutosRef = useRef<() => Promise<void>>(async () => {});
   const montadoRef = useRef(true);
+  // Configuração da loja com rede ruim (ver ESPERAS_DA_CONFIG_MS): `resolvida`
+  // é "já há configuração de verdade na tela" -- cópia do aparelho OU resposta
+  // do servidor (inclusive "ainda não há linha"); `falhou`, a última consulta
+  // não teve resposta (rede, servidor). Só quem falhou SEM nada na tela insiste.
+  const tentativasDaConfigRef = useRef(0);
+  const timerDaConfigRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const configResolvidaRef = useRef(false);
+  const configFalhouRef = useRef(false);
+  const consultasDaConfigEmVooRef = useRef(0);
+  const ultimaConsultaDaConfigEmRef = useRef(0);
+  const buscarConfigRef = useRef<() => Promise<void>>(async () => {});
+  const limparTimerDaConfig = useCallback(() => {
+    if (timerDaConfigRef.current) {
+      clearTimeout(timerDaConfigRef.current);
+      timerDaConfigRef.current = null;
+    }
+  }, []);
   useEffect(() => {
     montadoRef.current = true;
     return () => {
@@ -385,8 +416,9 @@ export function StoreProvider({
         clearTimeout(timerDoCatalogoRef.current);
         timerDoCatalogoRef.current = null;
       }
+      limparTimerDaConfig();
     };
-  }, []);
+  }, [limparTimerDaConfig]);
 
   // ── DataVault: Load config from IDB on mount (instant, <5ms) ──
   useEffect(() => {
@@ -410,6 +442,8 @@ export function StoreProvider({
           "singleton",
         );
         if (cachedConfig && !cancelled) {
+          // Já há configuração na tela: a rede ruim não deixa a loja "pelada".
+          configResolvidaRef.current = true;
           const { id: _id, ...configData } = cachedConfig;
           const merged = { ...defaultStoreConfig, ...configData };
           // shareText com nome efetivo — mesmo contrato do mapConfig (o
@@ -425,10 +459,7 @@ export function StoreProvider({
           // que é real e passa). Nada aplica valor cru por fora daqui.
           const corCache = corPrimariaEfetiva(merged);
           if (corCache) {
-            document.documentElement.style.setProperty(
-              "--primary",
-              hexToTailwindHsl(corCache),
-            );
+            aplicarCorDaLoja(corCache);
           }
           // ADMIN-100 (#102): a classe `dark` (e o atributo `data-theme-mode`)
           // NÃO é mexida aqui. App.tsx é o único dono — ele decide com base em
@@ -487,10 +518,7 @@ export function StoreProvider({
 
   const applyBranding = useCallback((primaryColor?: string | null) => {
     if (primaryColor) {
-      document.documentElement.style.setProperty(
-        "--primary",
-        hexToTailwindHsl(primaryColor),
-      );
+      aplicarCorDaLoja(primaryColor);
     }
   }, []);
 
@@ -648,6 +676,18 @@ export function StoreProvider({
         "storeDescription",
         undefined,
       ),
+      // 20261239000000: quem é a loja (opcional; ausente = a loja não disse).
+      storeLegalName: getVal("store_legal_name", "storeLegalName", undefined),
+      storeLegalDocument: getVal(
+        "store_legal_document",
+        "storeLegalDocument",
+        undefined,
+      ),
+      storeSupportEmail: getVal(
+        "store_support_email",
+        "storeSupportEmail",
+        undefined,
+      ),
       originCep: getVal("origin_cep", "originCep", undefined),
       shippingProvider: getVal(
         "shipping_provider",
@@ -711,6 +751,12 @@ export function StoreProvider({
   }, []);
 
   const fetchConfig = useCallback(async () => {
+    consultasDaConfigEmVooRef.current += 1;
+    ultimaConsultaDaConfigEmRef.current = Date.now();
+    // Sem resposta do servidor (rede, servidor fora): é o único caso em que a
+    // loja insiste. Resposta de verdade -- inclusive "ainda não há linha" --
+    // encerra a história.
+    let semResposta = false;
     try {
       const tableSource = isAdmin ? "store_config" : "v_store_config";
       const { data, error } = await supabase
@@ -720,6 +766,9 @@ export function StoreProvider({
 
       if (error) {
         console.error("[StoreContext] Config fetch error:", error);
+        // PGRST116 = "nenhuma linha": o servidor respondeu.
+        if (error.code === "PGRST116") configResolvidaRef.current = true;
+        else semResposta = true;
         if (isAdmin && error.code === "PGRST116") {
           // Initialize if missing (admin only)
           const dbInsert = {
@@ -800,13 +849,71 @@ export function StoreProvider({
           return mapped;
         });
         applyBranding(corPrimariaEfetiva(mapped));
+        configResolvidaRef.current = true;
       }
     } catch (err) {
       console.error("[StoreContext] Config error:", err);
+      semResposta = true;
     } finally {
+      consultasDaConfigEmVooRef.current -= 1;
       setIsLoaded(true);
     }
-  }, [isAdmin, mapConfig, applyBranding, configIgual]);
+
+    configFalhouRef.current = semResposta;
+    if (!semResposta) {
+      tentativasDaConfigRef.current = 0;
+      limparTimerDaConfig();
+      return;
+    }
+    // Falhou e não há nada na tela (nem cópia do aparelho): agenda a próxima
+    // tentativa, uma só por vez.
+    const espera = ESPERAS_DA_CONFIG_MS.at(tentativasDaConfigRef.current);
+    if (
+      espera !== undefined &&
+      montadoRef.current &&
+      !configResolvidaRef.current &&
+      !timerDaConfigRef.current
+    ) {
+      tentativasDaConfigRef.current += 1;
+      timerDaConfigRef.current = setTimeout(() => {
+        timerDaConfigRef.current = null;
+        // Chegou configuração nesse meio-tempo (cópia salva, outra consulta).
+        if (configResolvidaRef.current) return;
+        if (consultasDaConfigEmVooRef.current > 0) return;
+        void buscarConfigRef.current();
+      }, espera);
+    }
+  }, [isAdmin, mapConfig, applyBranding, configIgual, limparTimerDaConfig]);
+
+  useEffect(() => {
+    buscarConfigRef.current = fetchConfig;
+  }, [fetchConfig]);
+
+  // A rede voltou ou a aba voltou a ficar visível, e a configuração da loja
+  // ainda não chegou: tenta já, com fôlego novo -- mas só uma consulta por vez
+  // e no máximo uma a cada poucos segundos.
+  useEffect(() => {
+    const retomar = () => {
+      if (!configFalhouRef.current || configResolvidaRef.current) return;
+      if (document.visibilityState === "hidden") return;
+      if (consultasDaConfigEmVooRef.current > 0) return;
+      if (
+        Date.now() - ultimaConsultaDaConfigEmRef.current <
+        MINIMO_ENTRE_RETOMADAS_DA_CONFIG_MS
+      ) {
+        return;
+      }
+      limparTimerDaConfig();
+      tentativasDaConfigRef.current = 0;
+      void buscarConfigRef.current();
+    };
+    window.addEventListener("online", retomar);
+    document.addEventListener("visibilitychange", retomar);
+    return () => {
+      window.removeEventListener("online", retomar);
+      document.removeEventListener("visibilitychange", retomar);
+    };
+  }, [limparTimerDaConfig]);
 
   const buscarProdutos = useCallback(async () => {
     // Stale-While-Revalidate: IDB data already loaded in mount effect.
@@ -1047,6 +1154,14 @@ export function StoreProvider({
           dbUpdates.store_address = updates.storeAddress;
         if (updates.storeDescription !== undefined)
           dbUpdates.store_description = updates.storeDescription;
+        // 20261239000000: quem é a loja (razão social, CNPJ/CPF, e-mail de
+        // atendimento) — pela RPC genérica, fora do pacote de identidade.
+        if (updates.storeLegalName !== undefined)
+          dbUpdates.store_legal_name = updates.storeLegalName;
+        if (updates.storeLegalDocument !== undefined)
+          dbUpdates.store_legal_document = updates.storeLegalDocument;
+        if (updates.storeSupportEmail !== undefined)
+          dbUpdates.store_support_email = updates.storeSupportEmail;
         if (updates.originCep !== undefined)
           dbUpdates.origin_cep = updates.originCep;
         if (updates.shippingProvider !== undefined)

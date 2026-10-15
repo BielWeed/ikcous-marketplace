@@ -23,7 +23,12 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
-import { carregarChavesVapid, enviarParaInscritos, resumir } from "./webpush.ts";
+import {
+  carregarChavesVapid,
+  enviarParaInscritos,
+  OPCOES_DE_AVISO_AO_LOJISTA,
+  resumir,
+} from "./webpush.ts";
 
 type Supabase = ReturnType<typeof createClient>;
 export type Aviso = { title: string; body: string; url: string };
@@ -69,6 +74,10 @@ export async function dispararPushContadoReal(args: {
       inscricoes,
       mensagem: JSON.stringify(aviso),
       rotulo,
+      // Urgência alta: o lojista tem de ver já, mesmo com o aparelho em
+      // economia de bateria. SEM TTL curto, de propósito — ver o comentário
+      // de `OPCOES_DE_AVISO_AO_LOJISTA`.
+      opcoesDeEnvio: OPCOES_DE_AVISO_AO_LOJISTA,
       aoDetectarMorta: (endpoint: string) =>
         supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),
     });

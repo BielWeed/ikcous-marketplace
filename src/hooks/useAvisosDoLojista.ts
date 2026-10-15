@@ -6,6 +6,11 @@ import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
+import {
+  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+  TETO_DE_RECEBIMENTOS,
+  inicioDaJanelaDeRecebimento,
+} from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import {
@@ -16,6 +21,7 @@ import {
   type LinhaDeCancelamento,
   type PedidoPendente,
   type ProdutoComEstoque,
+  type RecebimentoPorMarcar,
   type TipoDeAviso,
   montarAvisos,
   selecionarCancelamentosDoCliente,
@@ -106,6 +112,22 @@ async function buscarDevolucoesSolicitadas(): Promise<number> {
   return contagemDe(lista.contagem, "solicitada");
 }
 
+// 14/10/2026: pedidos de privacidade (exclusao de conta, correcao de e-mail) que
+// a cliente abriu e a loja ainda nao respondeu. So conta (`head`, sem trazer
+// linha nenhuma); a RLS deixa o administrador ver os de todas. Resposta sem
+// numero e FALHA da fonte, nunca "zero pedido": o prazo legal corre.
+async function buscarPedidosDePrivacidadeAbertos(): Promise<number> {
+  const { count, error } = await supabase
+    .from("pedidos_de_privacidade")
+    .select("id", { count: "exact", head: true })
+    .eq("situacao", "aberto");
+  if (error) throw error;
+  if (typeof count !== "number") {
+    throw new Error("resposta inesperada de pedidos_de_privacidade");
+  }
+  return count;
+}
+
 // `.is(null)` e nao "null ou string vazia": o SQL do painel trata resposta em
 // branco como pendente, mas o app nunca grava uma — as duas telas de resposta
 // barram com `if (!replyText.trim()) return` (AdminReviewsView) antes de
@@ -121,7 +143,8 @@ async function buscarAvaliacoesSemResposta(): Promise<AvaliacaoCrua[]> {
   return (data ?? []) as unknown as AvaliacaoCrua[];
 }
 
-// 14/10/2026: o cliente cancelou um pedido que ja tinha pago. A fonte e o
+// 14/10/2026: o cliente cancelou um pedido que ja tinha pago, ou um pedido a
+// pagar na entrega/retirada que a loja ainda nao enviou. A fonte e o
 // HISTORICO do pedido (a `pedido__mudar_status`, ponto unico do cancelamento,
 // grava `created_by` = quem cancelou); o administrador le a linha de todos
 // pela politica de SELECT do historico. O papel dos autores vem de
@@ -168,6 +191,26 @@ async function buscarCancelamentosDoCliente(): Promise<
   return selecionarCancelamentosDoCliente(linhas, admins);
 }
 
+// 14/10/2026: pedido ENTREGUE, pago na entrega, em que a lojista ainda nao
+// marcou o recebimento — enquanto isso o servidor recusa a devolucao da
+// cliente. A regra (e o porque) mora em `@/lib/recebimentos-por-marcar`, lida
+// tambem pela bolinha do sino (`AdminLayout`). Falha de leitura LANCA: vira
+// falha da FONTE, nunca "nenhum pedido por marcar".
+async function buscarRecebimentosPorMarcar(): Promise<RecebimentoPorMarcar[]> {
+  const { data, error } = await supabase
+    .from("marketplace_orders")
+    .select("id, customer_name, total, updated_at")
+    .eq("status", "delivered")
+    .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
+    .is("payment_status", null)
+    .gte("updated_at", inicioDaJanelaDeRecebimento())
+    .order("updated_at", { ascending: false })
+    .limit(TETO_DE_RECEBIMENTOS);
+
+  if (error) throw error;
+  return (data ?? []) as unknown as RecebimentoPorMarcar[];
+}
+
 interface LeituraDeProdutos {
   produtos: ProdutoComEstoque[];
   /** O catalogo era maior que o teto: esta varredura NAO viu tudo. */
@@ -208,11 +251,12 @@ async function buscarProdutosComEstoqueBaixo(
 }
 
 /**
- * Junta as seis fontes de aviso do lojista numa lista so (a quinta,
+ * Junta as oito fontes de aviso do lojista numa lista so (a quinta,
  * devolucao, entrou com o plano 2026-09-26; a sexta, cancelamento do cliente,
- * em 14/10/2026).
+ * e a setima, pedido de privacidade, e a oitava, recebimento por marcar, em
+ * 14/10/2026).
  *
- * Falha parcial nao derruba a tela: as seis consultas correm em
+ * Falha parcial nao derruba a tela: as oito consultas correm em
  * `Promise.allSettled`, e a que cair entra em `fontesComFalha` enquanto as
  * outras seguem. Tela em branco por causa de uma consulta e pior que tela
  * incompleta e honesta.
@@ -244,6 +288,8 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rProdutos,
       rDevolucoes,
       rCancelamentos,
+      rPrivacidade,
+      rRecebimentos,
     ] = await Promise.allSettled([
       buscarPedidosPendentes(),
       buscarPerguntasPendentes(),
@@ -255,6 +301,8 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       ),
       buscarDevolucoesSolicitadas(),
       buscarCancelamentosDoCliente(),
+      buscarPedidosDePrivacidadeAbertos(),
+      buscarRecebimentosPorMarcar(),
     ]);
 
     // Componente desmontado, ou rodada atropelada por outra mais nova: em
@@ -277,6 +325,13 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     const cancelamentosDoCliente =
       rCancelamentos.status === "fulfilled" ? rCancelamentos.value : [];
     if (rCancelamentos.status === "rejected") falhas.push("cancelamento");
+
+    const pedidosDePrivacidadeAbertos =
+      rPrivacidade.status === "fulfilled" ? rPrivacidade.value : 0;
+    if (rPrivacidade.status === "rejected") falhas.push("privacidade");
+    const recebimentosPorMarcar =
+      rRecebimentos.status === "fulfilled" ? rRecebimentos.value : [];
+    if (rRecebimentos.status === "rejected") falhas.push("recebimento");
 
     const avaliacoesCruas =
       rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value : [];
@@ -313,6 +368,8 @@ export function useAvisosDoLojista(): AvisosDoLojista {
         produtos,
         devolucoesSolicitadas,
         cancelamentosDoCliente,
+        pedidosDePrivacidadeAbertos,
+        recebimentosPorMarcar,
       }),
     );
     setFontesComFalha(falhas);

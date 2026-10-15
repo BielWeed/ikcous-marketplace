@@ -8,7 +8,10 @@ import React, {
 
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { applyThemeColor, branding } from "@/config/branding";
-import { destinoPosLogin } from "@/lib/destinoPosLogin";
+import {
+  destinoPosLogin,
+  painelSemContaPedeEntrada,
+} from "@/lib/destinoPosLogin";
 import {
   CHAVE_MOTIVO_DE_RECARGA,
   atualizacaoTrocouDeBuild,
@@ -22,6 +25,7 @@ import {
   existeAlgumPedidoPendenteDoCheckout,
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
+import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
 
 // Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
 // fora dele (runner de teste), o app segue de pé.
@@ -162,11 +166,20 @@ function AdminAccessDenied({
   // passa por aqui com `adminStatus === "unknown"` (o pai só troca para
   // `<AdminArea>` quando `isAdmin` vira `true`) — expulsar nesse instante
   // era exatamente o piscar que a Parte B veio resolver.
-  const { adminStatus, loading } = useAuth();
+  const { adminStatus, loading, user } = useAuth();
 
   useEffect(() => {
     // If auth is still loading, wait.
     if (loading) return;
+
+    // SEM sessão não há veredito de permissão a dar: quem decide a rota é o
+    // `syncWithUrl` (painel sem conta pede a tela de entrada e guarda o
+    // pedido). Este efeito é de FILHO e roda antes do dele; expulsar aqui
+    // mandava para a vitrine, com "Acesso restrito", a lojista cuja sessão
+    // guardada o servidor acabou de derrubar (refresh token vencido) — e a
+    // transição terminava por cima do redirecionamento para a entrada. Quem
+    // TEM sessão e não é admin continua expulsa, com o aviso, como sempre.
+    if (!user) return;
 
     // Ainda verificando com o servidor — não expulsa, não redireciona.
     if (adminStatus === "unknown") return;
@@ -177,7 +190,7 @@ function AdminAccessDenied({
       toast.error("Acesso restrito a administradores.");
       onNavigate("home");
     }
-  }, [onNavigate, adminStatus, loading]);
+  }, [onNavigate, adminStatus, loading, user]);
 
   return <AdminRouteLoading />;
 }
@@ -258,6 +271,12 @@ const UserProfileView = lazyWithPreload(() =>
 const AboutStoreView = lazyWithPreload(() =>
   import("@/views/customer/AboutStoreView").then((m) => ({
     default: m.AboutStoreView,
+  })),
+);
+// Termos de uso, Privacidade e Trocas e devoluções: uma página só, três textos.
+const PoliticaDaLojaView = lazyWithPreload(() =>
+  import("@/views/customer/PoliticaDaLojaView").then((m) => ({
+    default: m.PoliticaDaLojaView,
   })),
 );
 
@@ -377,6 +396,9 @@ const VIEW_COMPONENTS = {
   "admin-login": AdminLogin,
   "user-profile": UserProfileView,
   "about-store": AboutStoreView,
+  terms: PoliticaDaLojaView,
+  privacy: PoliticaDaLojaView,
+  "returns-policy": PoliticaDaLojaView,
 };
 
 // F1 (glm-perf-1paint-0309): PushNotificationBanner usa framer-motion —
@@ -975,7 +997,16 @@ const AppContent = () => {
         targetView = "auth";
       }
 
+      // Painel pedido SEM sessão: vai para a tela de entrada (o `requested`
+      // gravado no pushState abaixo faz `handleAuthSuccess` devolvê-la ao
+      // painel) em vez de cair em silêncio na vitrine. É `else if` de
+      // propósito: a guarda de admin logo abaixo usa `view` e mandaria
+      // para a home também quem acabou de ser mandada ao login.
       if (
+        painelSemContaPedeEntrada(view, { authLoading: isAuthL, user: usr })
+      ) {
+        targetView = "auth";
+      } else if (
         view.startsWith("admin") &&
         view !== "admin-login" &&
         !isAuthL &&
@@ -1258,6 +1289,23 @@ const AppContent = () => {
     ],
   );
 
+  // Busca do topo (digitar, Enter, "Ver todos os resultados", sugestão). A
+  // barra aparece em quase toda tela, mas só a Home (e a /search, que é dona
+  // do próprio filtro) mostra a lista filtrada: buscar de outra tela leva a
+  // cliente à Home já com o termo. Isso acontece UMA vez — no primeiro termo
+  // a cliente já está na Home, e os seguintes só atualizam o termo, sem
+  // empurrar uma entrada de histórico por letra. Termo vazio só limpa.
+  const handleSearch = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      const telaAtual = currentViewRef.current;
+      if (query.trim() && telaAtual !== "home" && telaAtual !== "search") {
+        void handleNavigate("home");
+      }
+    },
+    [handleNavigate],
+  );
+
   useCacheWarmer();
   const { isSlow } = useNetworkAdaptive();
   const getFramerMotionDuration = useCallback(() => {
@@ -1519,6 +1567,16 @@ const AppContent = () => {
   const handleOrderDetailsBack = useCallback(() => {
     handleNavigate("orders");
   }, [handleNavigate]);
+
+  // "Retomar pagamento" a partir do cartão do pedido no Perfil — a mesma
+  // porta que o detalhe do pedido usa (`retomarPedidoId`, Frente 10).
+  const handleRetomarPagamentoDoPerfil = useCallback(
+    (pedidoId: string) =>
+      handleNavigate("checkout", undefined, false, {
+        retomarPedidoId: pedidoId,
+      }),
+    [handleNavigate],
+  );
 
   // ==============================
   // PWA Reload Reason Consumption — laudo #2 (P-1): o motivo descreve o que
@@ -1806,6 +1864,22 @@ const AppContent = () => {
           targetView = "auth";
           if (globalThis.location.pathname !== "/auth") {
             globalThis.history.replaceState({ view: "auth" }, "", "/auth");
+          }
+        }
+
+        // Painel pedido SEM sessão (o toque no aviso de "pedido novo" abre
+        // `/admin-orders` numa janela nova): tela de entrada com o pedido
+        // guardado, não a vitrine. Só olha a AUSÊNCIA de sessão — quem está
+        // logada e não é admin cai na guarda logo abaixo, como sempre caiu.
+        if (painelSemContaPedeEntrada(targetView, { authLoading, user })) {
+          const pedida = targetView;
+          targetView = "auth";
+          if (globalThis.location.pathname !== "/auth") {
+            globalThis.history.replaceState(
+              { view: "auth", requested: pedida },
+              "",
+              "/auth",
+            );
           }
         }
 
@@ -2174,9 +2248,27 @@ const AppContent = () => {
     saveCurrentScroll,
   ]);
 
-  // Clear search query when navigating to non-search views
+  // A busca é limpa quando a cliente TROCA de tela (sair da Home/da busca para
+  // outra), nunca a cada termo novo. Antes o efeito também olhava
+  // `searchQuery`: fora da Home, todo termo digitado era zerado na hora — o
+  // campo se esvaziava sozinho e nada acontecia. Quem busca fora da Home é
+  // levada à Home pelo `handleSearch`, que é onde a lista filtra.
   useEffect(() => {
-    if (currentView !== "search" && currentView !== "home" && searchQuery) {
+    if (currentView !== "search" && currentView !== "home") {
+      setSearchQuery("");
+    }
+  }, [currentView]);
+
+  // Só espaços fora da Home/da busca não é busca nem leva a lugar nenhum
+  // (`handleSearch` não navega): zera o campo, como sempre foi. Só toca em
+  // termo VAZIO de verdade — termo com letra nunca é apagado por aqui.
+  useEffect(() => {
+    if (
+      currentView !== "search" &&
+      currentView !== "home" &&
+      searchQuery &&
+      !searchQuery.trim()
+    ) {
       setSearchQuery("");
     }
   }, [currentView, searchQuery]);
@@ -2211,11 +2303,15 @@ const AppContent = () => {
         : null;
       if (!product) {
         // Só o caso "o produto de fato não existe" manda para a Home.
-        const redirecionarParaHome = () => {
+        const redirecionarParaHome = (avisar = false) => {
           if (!active) return;
           console.warn(
             "[App] Product detail view requested but product not found on network. Redirecting to home.",
           );
+          // Produto removido ou pausado: a cliente cai na Home e precisa saber
+          // por quê. Falha de rede NUNCA passa por aqui (vira "Não conseguimos
+          // carregar"), e link sem id nem é produto indisponível: sem aviso.
+          if (avisar) toast.info("Este produto não está mais disponível.");
           setCurrentView("home");
           // Sync URL back to home
           const caminhoDaHome = caminhoDaHomeRef.current();
@@ -2253,14 +2349,14 @@ const AppContent = () => {
                   "[App] verifyProduct: produto não existe:",
                   error,
                 );
-                redirecionarParaHome();
+                redirecionarParaHome(true);
                 return;
               }
               throw error;
             }
             if (!data) {
               console.error("[App] verifyProduct query returned no data");
-              redirecionarParaHome();
+              redirecionarParaHome(true);
               return;
             }
             // Product exists in database, do not redirect!
@@ -2500,6 +2596,24 @@ const AppContent = () => {
       case "about-store":
         return <PreloadedOrLazy component={AboutStoreView} props={{}} />;
 
+      case "terms":
+      case "privacy":
+      case "returns-policy":
+        return (
+          <PreloadedOrLazy
+            component={PoliticaDaLojaView}
+            props={{
+              tipo:
+                currentView === "terms"
+                  ? "termos"
+                  : currentView === "privacy"
+                    ? "privacidade"
+                    : "trocas",
+              onNavigate: handleNavigate,
+            }}
+          />
+        );
+
       case "order-details":
         return (
           <PreloadedOrLazy
@@ -2542,6 +2656,7 @@ const AppContent = () => {
               onBack: () => handleNavigate("home"),
               selectedProductId: selectedProductId || undefined,
               onQueryChange: setSearchQuery,
+              onAddToCart: handleAddToCart,
             }}
           />
         );
@@ -2694,6 +2809,7 @@ const AppContent = () => {
                       onToggleFavorite: handleToggleFavorite,
                       onProductClick: handleProductClick,
                       onNavigate: handleNavigate,
+                      onAddToCart: handleAddToCart,
                       selectedProductId: isMainTab
                         ? selectedProductId || undefined
                         : undefined,
@@ -2745,6 +2861,7 @@ const AppContent = () => {
                       key: user?.id ? `profile-${user.id}` : "profile-guest",
                       onNavigate: handleNavigate,
                       isActive: currentView === "profile",
+                      onRetomarPagamento: handleRetomarPagamentoDoPerfil,
                     }}
                   />
                 </DeferredTabContent>
@@ -2813,6 +2930,7 @@ const AppContent = () => {
                         onToggleFavorite: handleToggleFavorite,
                         onProductClick: handleProductClick,
                         onNavigate: handleNavigate,
+                        onAddToCart: handleAddToCart,
                         selectedProductId: selectedProductId || undefined,
                         isActive: currentView === "favorites",
                       }}
@@ -2863,6 +2981,7 @@ const AppContent = () => {
                         key: user?.id ? `profile-${user.id}` : "profile-guest",
                         onNavigate: handleNavigate,
                         isActive: currentView === "profile",
+                        onRetomarPagamento: handleRetomarPagamentoDoPerfil,
                       }}
                     />
                   </DeferredTabContent>
@@ -3024,7 +3143,7 @@ const AppContent = () => {
               // complemento já digitados.
               hideSearch={["address-form", "checkout"].includes(currentView)}
               searchQuery={searchQuery}
-              onSearch={setSearchQuery}
+              onSearch={handleSearch}
               scrollProgress={scrollProgress}
             />
           </React.Suspense>
@@ -3168,6 +3287,14 @@ const AppContent = () => {
             <AlertDialogAction
               onClick={() => {
                 setIsAdminDirty(false);
+                // "Descartar" é descartar: o rascunho do produto que ela está
+                // deixando sai do aparelho, senão voltaria como "Restaurar?".
+                if (currentView === "admin-product-form") {
+                  descartarRascunhoDoProduto(
+                    user?.id,
+                    selectedProductId || undefined,
+                  );
+                }
                 if (pendingNavigation) {
                   handleNavigate(
                     pendingNavigation.view,

@@ -109,6 +109,7 @@ export function LinhasDaGrade({
               id="grade-aplicar-preco"
               name="grade-aplicar-preco"
               mask="currency"
+              zeroVazio
               aria-label="Preço para todas as linhas"
               value={aplicarPreco}
               onFlush={onAplicarPreco}
@@ -222,6 +223,7 @@ export function LinhasDaGrade({
                 id={`grade-linha-preco-${i}`}
                 name={`grade-linha-preco-${i}`}
                 mask="currency"
+                zeroVazio
                 aria-label={`Preço de ${linha.value}`}
                 value={linha.preco}
                 onFlush={(val) => onMudarLinha(i, "preco", val)}

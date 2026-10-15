@@ -1,5 +1,11 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import {
+  geracaoAtualDoCache,
+  getReviewsCache,
+  updateReviewsCache,
+  updateReviewsCacheSeMesmaGeracao,
+} from "@/lib/cache-de-avaliacoes";
 import { supabase } from "@/lib/supabase";
 import type { Review } from "@/types";
 import { cachedReviewsData, setCachedReviewsData } from "@/utils/admin_cache";
@@ -12,44 +18,8 @@ export interface AdminReview extends Review {
   merchantReply?: string;
 }
 
-const REVIEWS_CACHE_KEY_PREFIX = "ikcous_reviews_cache_";
-const memoryReviewsCache = new Map<string, Review[]>();
-
-const getReviewsCache = (productId: string): Review[] | null => {
-  if (memoryReviewsCache.has(productId)) {
-    return memoryReviewsCache.get(productId)!;
-  }
-  if (typeof window !== "undefined") {
-    try {
-      const stored = localStorage.getItem(
-        `${REVIEWS_CACHE_KEY_PREFIX}${productId}`,
-      );
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        memoryReviewsCache.set(productId, parsed);
-        return parsed;
-      }
-    } catch (e) {
-      console.error("Failed to parse reviews cache", e);
-    }
-  }
-  return null;
-};
-
-const updateReviewsCache = (productId: string, newReviews: Review[]) => {
-  memoryReviewsCache.set(productId, newReviews);
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(
-        `${REVIEWS_CACHE_KEY_PREFIX}${productId}`,
-        JSON.stringify(newReviews),
-      );
-    } catch (e) {
-      console.error("Failed to update reviews cache", e);
-    }
-  }
-};
-
+// O cache de avaliações por produto mora em `@/lib/cache-de-avaliacoes` (o
+// `AuthContext` o esvazia no logout sem importar este hook).
 const bc =
   typeof window !== "undefined"
     ? new BroadcastChannel("ikcous_reviews_sync")
@@ -143,6 +113,9 @@ export function useReviews() {
   const getReviewsByProduct = useCallback(
     async (productId: string) => {
       latestProductIdRef.current = productId;
+      // Geração do cache ao COMEÇAR: se uma limpeza (Sair, troca de conta)
+      // acontecer enquanto a resposta viaja, ela não pode regravar a lista.
+      const geracao = geracaoAtualDoCache();
 
       // 1. SWR Cache Sync
       const cached = getReviewsCache(productId);
@@ -212,7 +185,7 @@ export function useReviews() {
         if (latestProductIdRef.current === productId) {
           setReviews(formattedReviews);
         }
-        updateReviewsCache(productId, formattedReviews);
+        updateReviewsCacheSeMesmaGeracao(productId, formattedReviews, geracao);
       } catch (error: any) {
         console.error("Error fetching reviews:", error);
         toast.error("Erro ao carregar avaliações.");
@@ -303,6 +276,10 @@ export function useReviews() {
           return false;
         }
 
+        // Geração do cache ao começar: a reversão (depois do await) não pode
+        // regravar o que o Sair/troca de conta apagou no meio do caminho.
+        const geracao = geracaoAtualDoCache();
+
         // Optimistic update
         let pId: string | undefined;
         setReviews((current) => {
@@ -334,7 +311,7 @@ export function useReviews() {
                 : review,
             );
             if (productId) {
-              updateReviewsCache(productId, reverted);
+              updateReviewsCacheSeMesmaGeracao(productId, reverted, geracao);
             }
             return reverted;
           });

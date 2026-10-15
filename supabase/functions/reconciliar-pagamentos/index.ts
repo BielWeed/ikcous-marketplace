@@ -106,6 +106,7 @@ import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import {
   aplicarDiagnosticoDoPost,
   autorizacaoPeloBanco,
+  cicloSemEnvioPorPrevoo,
   confirmarPorConsulta,
   consultarReembolsoDoPedido,
   consultarTransacaoDaOrder,
@@ -114,6 +115,7 @@ import {
   type LinhaEstorno,
   type PedidoParaEstorno,
   type ResultadoEstorno,
+  TETO_DE_TENTATIVAS_DO_POST,
 } from "../_shared/estorno.ts";
 // FASE 2 (04/10/2026): os efeitos do pagamento confirmado (push ao lojista,
 // comprovante ao cliente, aviso de pagamento atrasado) saem do módulo ÚNICO
@@ -133,7 +135,7 @@ export {
 /** Único texto do app que manda o lojista ao painel do MP (Restrições
  * globais do plano) — só depois de 5 tentativas sem confirmação. */
 const TEXTO_LIMITE_DE_TENTATIVAS =
-  "não consegui confirmar a devolução no Mercado Pago depois de 5 tentativas; confira no painel do MP";
+  `não consegui confirmar a devolução no Mercado Pago depois de ${TETO_DE_TENTATIVAS_DO_POST} tentativas; confira no painel do MP`;
 
 /** D4 (ANTES-DE-CRESCER 5, laudo rodada 2 do PR #440): texto leigo para quando
  * o MP CONFIRMOU o estorno mas a NOSSA escrita (RPC `concluir_estorno`)
@@ -267,6 +269,30 @@ async function gravarDesfechoDoEstorno(
     console.error("reconciliar-pagamentos: falha ao gravar o desfecho terminal do estorno", refundId, error);
   }
   return "falhou";
+}
+
+/**
+ * P1 do Codex no #888 (15/10/2026): o ciclo terminou só pela consulta antes do
+ * reenvio (nada saiu) — a tentativa marcada para ele não conta. Volta
+ * `tentativas` ao valor de antes da marca, CONDICIONADO ao valor que este ciclo
+ * gravou: se outro executor mexeu no meio, 0 linhas e nada é desfeito. Falha
+ * aqui só loga — o pior caso é o de antes (a tentativa conta), nunca um POST.
+ */
+async function desfazerTentativaSemEnvio(
+  supabase: ReturnType<typeof createClient>,
+  refundId: string,
+  tentativaMarcada: number,
+  tentativaAnterior: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("order_refunds")
+    .update({ tentativas: tentativaAnterior })
+    .eq("id", refundId)
+    .in("status", ["em_processamento"])
+    .eq("tentativas", tentativaMarcada);
+  if (error) {
+    console.error("reconciliar-pagamentos: falha ao desfazer a tentativa de um ciclo sem envio", refundId, error);
+  }
 }
 
 const json = (corpo: unknown, status = 200) =>
@@ -1124,6 +1150,9 @@ async function handler(
             resultado,
             linha.tentativas,
           );
+          if (cicloSemEnvioPorPrevoo(resultado)) {
+            await desfazerTentativaSemEnvio(supabase, String(refund.id), linha.tentativas, Number(refund.tentativas ?? 0));
+          }
           if (desfecho === "concluido") refundsConcluidos++;
           else if (desfecho === "adiado") refundsAdiados++;
           else refundsFalhos++;
@@ -1180,7 +1209,7 @@ async function handler(
         // `tentativas` para de subir aqui (não precisa passar de 5): quem
         // sobe é só o retry abaixo, que este ramo nunca alcança. `falhou`
         // fica reservado para veredito NEGATIVO explícito do MP.
-        if (tentativasAtuais >= 5) {
+        if (tentativasAtuais >= TETO_DE_TENTATIVAS_DO_POST) {
           // Correção da revisão Opus do #855: "tentativas" e "recusas nada saiu"
           // descasam (a tentativa sobe até quando a consulta cai antes do POST).
           // Toda linha travada passa por aqui: se o banco a trata como "nada
@@ -1259,6 +1288,11 @@ async function handler(
           resultadoRetry,
           tentativasAtuais + 1,
         );
+        // P1 do Codex no #888: ciclo que parou só na consulta antes do
+        // reenvio não gasta tentativa (senão a linha trava sem envio nenhum).
+        if (cicloSemEnvioPorPrevoo(resultadoRetry)) {
+          await desfazerTentativaSemEnvio(supabase, String(refund.id), tentativasAtuais + 1, tentativasAtuais);
+        }
         if (desfechoRetry === "concluido") refundsConcluidos++;
         else if (desfechoRetry === "adiado") refundsAdiados++;
         else refundsFalhos++;

@@ -20,6 +20,15 @@ interface FavoritesViewProps {
   onNavigate: (view: View) => void;
   selectedProductId?: string;
   isActive?: boolean;
+  /** O carrinho do App (mesma função que a Home recebe). Sem ela os cards
+   * ficam sem como adicionar: viram "Ver produto" em vez de fingir que
+   * adicionaram. */
+  onAddToCart?: (
+    product: Product,
+    quantity?: number,
+    variantId?: string,
+    variantNames?: string,
+  ) => void;
 }
 
 export const FavoritesView = React.memo(function FavoritesView({
@@ -30,6 +39,7 @@ export const FavoritesView = React.memo(function FavoritesView({
   onNavigate,
   selectedProductId,
   isActive = true,
+  onAddToCart,
 }: FavoritesViewProps) {
   const { config, products } = useStore();
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
@@ -58,6 +68,28 @@ export const FavoritesView = React.memo(function FavoritesView({
       onProductClick(productId);
     },
     [onProductClick],
+  );
+
+  // Mesmos dois caminhos da Home. O card chama `onAddToCart(produto, clique)`:
+  // o invólucro entrega só o produto — o clique no lugar de `quantity` viraria
+  // quantidade. Com opções (tamanho/cor), o card abre a folha e entrega
+  // variação + quantidade escolhidas.
+  const handleAddToCart = useCallback(
+    (product: Product) => {
+      onAddToCart?.(product);
+    },
+    [onAddToCart],
+  );
+  const handleAddToCartWithVariants = useCallback(
+    (
+      product: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity = 1,
+    ) => {
+      onAddToCart?.(product, quantity, variantId, variantNames);
+    },
+    [onAddToCart],
   );
 
   const handlePrefetchProductDetail = useCallback(() => {
@@ -151,7 +183,7 @@ export const FavoritesView = React.memo(function FavoritesView({
               >
                 <Heart
                   size={46}
-                  className="relative z-10 fill-white text-white drop-shadow-md"
+                  className="relative z-10 fill-primary-foreground text-primary-foreground drop-shadow-md"
                 />
               </motion.div>
 
@@ -199,19 +231,19 @@ export const FavoritesView = React.memo(function FavoritesView({
                 haptic.medium();
                 onNavigate("home");
               }}
-              className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl border border-primary/20 bg-primary px-5 text-white shadow-[0_12px_28px_-6px_rgba(24,24,27,0.4)] transition-all hover:scale-[1.02] active:scale-95"
+              className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl border border-primary/20 bg-primary px-5 text-primary-foreground shadow-[0_12px_28px_-6px_rgba(24,24,27,0.4)] transition-all hover:scale-[1.02] active:scale-95"
             >
               <div className="relative z-10 flex items-center gap-2.5">
                 <div className="flex size-7 items-center justify-center rounded-xl bg-white/15 text-secondary">
                   <Sparkles className="size-4 fill-secondary/30 text-secondary animate-pulse" />
                 </div>
-                <span className="text-[12px] font-black uppercase tracking-wider text-white">
+                <span className="text-[12px] font-black uppercase tracking-wider text-primary-foreground">
                   Explorar Produtos
                 </span>
               </div>
 
-              <div className="relative z-10 flex size-8 items-center justify-center rounded-xl bg-white/20 text-white backdrop-blur-sm transition-transform group-hover:translate-x-1">
-                <ArrowRight className="size-4 text-white" />
+              <div className="relative z-10 flex size-8 items-center justify-center rounded-xl bg-white/20 text-primary-foreground backdrop-blur-sm transition-transform group-hover:translate-x-1">
+                <ArrowRight className="size-4 text-primary-foreground" />
               </div>
 
               {/* Shimmer overlay */}
@@ -248,6 +280,10 @@ export const FavoritesView = React.memo(function FavoritesView({
                   isFavorite={false}
                   onToggleFavorite={handleToggleFavorite}
                   onClick={handleProductClick}
+                  onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                  onAddToCartWithVariants={
+                    onAddToCart ? handleAddToCartWithVariants : undefined
+                  }
                   showRating={config.enableReviews}
                   promessasDeFrete={promessasDaLoja}
                   onMouseEnter={handlePrefetchProductDetail}
@@ -304,6 +340,10 @@ export const FavoritesView = React.memo(function FavoritesView({
                   isFavorite={true}
                   onToggleFavorite={handleToggleFavorite}
                   onClick={handleProductClick}
+                  onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                  onAddToCartWithVariants={
+                    onAddToCart ? handleAddToCartWithVariants : undefined
+                  }
                   showRating={config.enableReviews}
                   promessasDeFrete={promessasDaLoja}
                   onMouseEnter={handlePrefetchProductDetail}

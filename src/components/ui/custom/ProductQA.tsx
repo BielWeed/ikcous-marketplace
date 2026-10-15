@@ -165,7 +165,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
             <button
               onClick={handleAsk}
               disabled={!newQuestion.trim()}
-              className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-xl bg-primary text-white shadow-sm transition-all duration-300 hover:opacity-90 hover:shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-20"
+              className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-all duration-300 hover:opacity-90 hover:shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-20"
               title="Enviar pergunta"
               aria-label="Enviar pergunta"
             >
@@ -192,7 +192,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
           </p>
           <button
             onClick={handleNavigateToAuth}
-            className="rounded-full bg-primary px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
+            className="rounded-full bg-primary px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-95"
           >
             Entrar na Conta
           </button>
@@ -352,7 +352,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                     >
                       <div className="flex-shrink-0">
                         <Avatar className="size-7 border border-zinc-950/10 shadow-sm">
-                          <AvatarFallback className="flex select-none items-center justify-center bg-primary text-[9px] font-black text-white">
+                          <AvatarFallback className="flex select-none items-center justify-center bg-primary text-[9px] font-black text-primary-foreground">
                             IK
                           </AvatarFallback>
                         </Avatar>
@@ -363,7 +363,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                             <span className="text-[9px] font-black uppercase tracking-wider text-zinc-900">
                               Resposta da Equipe
                             </span>
-                            <span className="flex size-3 select-none items-center justify-center rounded-full bg-primary text-[7px] font-bold text-white">
+                            <span className="flex size-3 select-none items-center justify-center rounded-full bg-primary text-[7px] font-bold text-primary-foreground">
                               ✓
                             </span>
                           </div>
@@ -417,7 +417,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                               ? "Salvar edição"
                               : "Enviar resposta"
                           }
-                          className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-lg bg-primary text-white transition-all hover:bg-primary/90 active:scale-95 disabled:opacity-20"
+                          className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-all hover:bg-primary/90 active:scale-95 disabled:opacity-20"
                         >
                           <Send className="size-3" />
                         </button>

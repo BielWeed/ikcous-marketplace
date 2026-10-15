@@ -23,6 +23,8 @@ import {
  * flag nem atalho de teste.
  */
 
+const AVISO_DA_CLIENTE = "Há uma versão nova do app.";
+
 test("deploy v1→v2: overlay aparece, instala e o app acorda na v2 sem pendurar", async ({
   page,
   request,
@@ -71,14 +73,17 @@ test("deploy v1→v2: overlay aparece, instala e o app acorda na v2 sem pendurar
     await registro?.update();
   });
 
-  // O overlay do app (UpdateNotification) aparece com a versão nova esperando.
+  // O aviso do app aparece com a versão nova esperando. Para a CLIENTE (a
+  // loja, onde este teste roda) ele é a faixa discreta de uma linha
+  // (AvisoDeAtualizacaoDiscreto, commit b3c52052); o cartão "Nova Versão
+  // Disponível" (UpdateNotification) ficou só para o painel do lojista.
   await expect(
-    page.getByText("Nova Versão Disponível"),
-    "o overlay de atualização nasceu do ciclo do service worker",
+    page.getByText(AVISO_DA_CLIENTE),
+    "o aviso de atualização nasceu do ciclo do service worker",
   ).toBeVisible({ timeout: 30_000 });
 
   // ── Instalação: o gesto do usuário no botão do app ────────────────────
-  await page.getByRole("button", { name: "Atualizar Agora" }).click();
+  await page.getByRole("button", { name: "Atualizar", exact: true }).click();
 
   // SKIP_WAITING → activate (purga o cache v1) → controllerchange → reload.
   // O app recarrega SOZINHO, sem toque do teste.
@@ -100,7 +105,7 @@ test("deploy v1→v2: overlay aparece, instala e o app acorda na v2 sem pendurar
     page.getByText("Atualizando o Aplicativo"),
     "a tela 'Atualizando o Aplicativo' não pode ficar eterna",
   ).toHaveCount(0);
-  await expect(page.getByText("Nova Versão Disponível")).toHaveCount(0);
+  await expect(page.getByText(AVISO_DA_CLIENTE)).toHaveCount(0);
 
   // E nenhum erro de página no caminho inteiro.
   expect(errosNoFim()).toEqual([]);

@@ -1,4 +1,6 @@
+import { PRAZO_DE_RESPOSTA_EM_DIAS } from "@/config/textos-de-privacidade";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 
 /**
@@ -15,6 +17,8 @@ export type TipoDeAviso =
   | "pedido"
   | "cancelamento"
   | "devolucao"
+  | "privacidade"
+  | "recebimento"
   | "pergunta"
   | "avaliacao"
   | "estoque";
@@ -37,9 +41,11 @@ export interface PedidoPendente {
 }
 
 /**
- * Um pedido que o CLIENTE cancelou depois de pagar (14/10/2026). Uma linha por
- * EVENTO de cancelamento (`id` e o da linha do historico do pedido), nao por
- * pedido: quem reativou e cancelou de novo gerou outro evento.
+ * Um pedido que o CLIENTE cancelou (14/10/2026): depois de pagar online, ou
+ * (desde o mesmo dia) um pedido a pagar na entrega/retirada que a loja ainda
+ * nao tinha enviado. Uma linha por EVENTO de cancelamento (`id` e o da linha
+ * do historico do pedido), nao por pedido: quem reativou e cancelou de novo
+ * gerou outro evento.
  *
  * `situacao` e o que o lojista precisa saber sobre o dinheiro, e cada valor
  * tem a sua frase — nenhuma promete o que o banco nao faz:
@@ -47,12 +53,17 @@ export interface PedidoPendente {
  *     rotina de 10 minutos a faz sozinha;
  *   - ja_saiu: o produto ja estava na rua; o reembolso e do lojista, depois
  *     que o produto voltar;
- *   - pago_depois: o pagamento entrou DEPOIS do cancelamento.
+ *   - pago_depois: o pagamento entrou DEPOIS do cancelamento;
+ *   - sem_pagamento_online: nao havia pagamento online (dinheiro/cartao na
+ *     entrega ou na retirada) e o produto nao tinha saido — nao ha dinheiro
+ *     para devolver; o aviso existe para a loja NAO separar nem enviar uma
+ *     mercadoria cancelada.
  */
 export type SituacaoDoCancelamento =
   | "reembolso_automatico"
   | "ja_saiu"
-  | "pago_depois";
+  | "pago_depois"
+  | "sem_pagamento_online";
 
 export interface CancelamentoDoCliente {
   id: string;
@@ -95,7 +106,16 @@ const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado"];
  * Das linhas de cancelamento do historico, fica so o que o CLIENTE cancelou:
  * o autor da linha e o proprio dono do pedido, nao e admin (`admins`: os ids
  * com papel admin entre os autores), nao e re-cancelamento, o pedido segue
- * cancelado e o pagamento entrou. Mesma regra do push da rotina de 10 minutos.
+ * cancelado e o pagamento entrou — OU o pedido nao tinha pagamento online
+ * (`payment_status` nulo ou vazio: dinheiro/cartao na entrega ou retirada, o
+ * mesmo "sem cobranca online" de `pedidos-para-preparar`) e o produto ainda
+ * nao tinha saido. Pedido com PIX/cartao online ainda nao pago (`aguardando`,
+ * `expirado`, `recusado`) continua de fora: ele nunca entrou em "para
+ * preparar", entao ninguem na loja esta separando nada.
+ *
+ * ATENCAO: so o ramo "pago" e' a mesma regra do push da rotina de 10 minutos
+ * (supabase/functions/_shared/aviso-de-cancelamento-do-cliente.ts); o ramo
+ * "sem pagamento online" existe so na TELA, o push ainda nao o conhece.
  *
  * Autor ausente de `admins` conta como nao-admin: so admin tem papel para
  * cancelar pedido de OUTRA pessoa, e o dono so cancela o que e dele.
@@ -113,36 +133,55 @@ export function selecionarCancelamentosDoCliente(
     if (linha.created_by !== pedido.user_id) continue;
     if (admins.has(linha.created_by)) continue;
     if (pedido.status !== "cancelled") continue;
-    if (
-      !pedido.payment_status ||
-      !PAGAMENTO_QUE_ENTROU.includes(pedido.payment_status)
-    ) {
-      continue;
-    }
     const jaSaiu =
       linha.old_status === "shipping" ||
       pedido.cancelled_after_shipping === true;
+    // `!payment_status` pega nulo E vazio, os dois "sem cobranca online".
+    const pagamento = pedido.payment_status;
+    if (!pagamento) {
+      // Sem dinheiro para devolver, o aviso so serve a quem ainda ia separar
+      // ou enviar: produto que ja saiu tem outro assunto (o transporte).
+      if (jaSaiu) continue;
+    } else if (!PAGAMENTO_QUE_ENTROU.includes(pagamento)) {
+      continue;
+    }
     escolhidos.push({
       id: linha.id,
       order_id: linha.order_id,
       customer_name: pedido.customer_name,
       total: pedido.total,
       created_at: linha.created_at,
-      situacao: jaSaiu
-        ? "ja_saiu"
-        : pedido.payment_status === "pago_apos_expirar"
-          ? "pago_depois"
-          : "reembolso_automatico",
+      situacao: !pagamento
+        ? "sem_pagamento_online"
+        : jaSaiu
+          ? "ja_saiu"
+          : pagamento === "pago_apos_expirar"
+            ? "pago_depois"
+            : "reembolso_automatico",
     });
   }
   return escolhidos;
 }
 
-const FRASE_DO_DINHEIRO: Record<SituacaoDoCancelamento, string> = {
+const FRASE_DO_DINHEIRO: Record<
+  Exclude<SituacaoDoCancelamento, "sem_pagamento_online">,
+  string
+> = {
   reembolso_automatico: "pago, o reembolso é automático",
   ja_saiu: "pago, o produto já saiu: avise o transporte",
   pago_depois: "pago depois do cancelamento: confira o pedido",
 };
+
+/**
+ * Pedido entregue, pago na entrega, sem recebimento marcado (ver
+ * `@/lib/recebimentos-por-marcar`). `updated_at` e a data da entrega.
+ */
+export interface RecebimentoPorMarcar {
+  id: string;
+  customer_name: string | null;
+  total: number | null;
+  updated_at: string;
+}
 
 export interface AvaliacaoSemResposta {
   id: string;
@@ -176,6 +215,17 @@ export interface EntradaDeAvisos {
    * fonte nao entrou nesta rodada.
    */
   cancelamentosDoCliente?: CancelamentoDoCliente[];
+  /**
+   * Pedidos de privacidade (exclusão de conta ou correção de e-mail) que a cliente
+   * abriu e a loja ainda não respondeu (20261238000000). A loja tem prazo de 15 dias
+   * para responder (LGPD). Opcional: ausente = a fonte não entrou nesta rodada.
+   */
+  pedidosDePrivacidadeAbertos?: number;
+  /**
+   * Pedidos entregues, pagos na entrega, sem recebimento marcado, dos ultimos
+   * 30 dias. Opcional: ausente = a fonte nao entrou nesta rodada.
+   */
+  recebimentosPorMarcar?: RecebimentoPorMarcar[];
 }
 
 /**
@@ -198,6 +248,11 @@ const ORDEM_DE_URGENCIA: TipoDeAviso[] = [
   // produto cujo dinheiro ja voltou.
   "cancelamento",
   "devolucao",
+  // Pedido de privacidade tem prazo legal (15 dias) correndo, como a devolucao.
+  "privacidade",
+  // Marcar o recebimento destrava a cliente que quer devolver: logo depois da
+  // devolucao, antes do que pode esperar.
+  "recebimento",
   "pergunta",
   "avaliacao",
   "estoque",
@@ -208,7 +263,7 @@ function maisRecentePrimeiro(a: Aviso, b: Aviso): number {
 }
 
 function formatarReais(valor: number | null): string {
-  return `R$ ${(valor ?? 0).toFixed(2).replace(".", ",")}`;
+  return formatCurrency(valor ?? 0);
 }
 
 export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
@@ -228,11 +283,20 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
 
   for (const cancelamento of entrada.cancelamentosDoCliente ?? []) {
     const nome = (cancelamento.customer_name ?? "").trim() || "Cliente";
+    const numero = numeroDoPedido(cancelamento.order_id);
     avisos.push({
       id: `cancelamento:${cancelamento.id}`,
       tipo: "cancelamento",
-      titulo: `${nome} cancelou o pedido #${numeroDoPedido(cancelamento.order_id)}`,
-      detalhe: `${formatarReais(cancelamento.total)} — ${FRASE_DO_DINHEIRO[cancelamento.situacao]}`,
+      // Sem pagamento online nao ha "dinheiro" para falar: o recado e' um so,
+      // e e' o que impede a loja de separar/enviar mercadoria cancelada.
+      titulo:
+        cancelamento.situacao === "sem_pagamento_online"
+          ? `Pedido #${numero} cancelado pela cliente`
+          : `${nome} cancelou o pedido #${numero}`,
+      detalhe:
+        cancelamento.situacao === "sem_pagamento_online"
+          ? "Não precisa separar nem enviar."
+          : `${formatarReais(cancelamento.total)} — ${FRASE_DO_DINHEIRO[cancelamento.situacao]}`,
       quando: cancelamento.created_at,
       destino: { view: "admin-orders", id: cancelamento.order_id },
       // NAO conta no cracha, como o estoque: o aviso nao tem "feito" que o
@@ -255,6 +319,42 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       detalhe: "Clientes pediram para devolver ou trocar produtos",
       quando: "",
       destino: { view: "admin-devolucoes" },
+      contaNoCracha: true,
+    });
+  }
+
+  const privacidade = entrada.pedidosDePrivacidadeAbertos ?? 0;
+  if (privacidade > 0) {
+    const um = privacidade === 1;
+    avisos.push({
+      id: "privacidade:abertos",
+      tipo: "privacidade",
+      titulo: um
+        ? "1 pedido de privacidade esperando resposta"
+        : `${privacidade} pedidos de privacidade esperando resposta`,
+      detalhe: `Exclusão de conta ou correção de e-mail. Abra Ajustes > Minha loja. Prazo: ${PRAZO_DE_RESPOSTA_EM_DIAS} dias`,
+      quando: "",
+      // A lista mora em Ajustes (seção "Pedidos de privacidade dos clientes").
+      destino: { view: "admin-settings" },
+      // Conta no cracha: tem "feito" (marcar o pedido como atendido) e prazo legal.
+      contaNoCracha: true,
+    });
+  }
+
+  for (const recebimento of entrada.recebimentosPorMarcar ?? []) {
+    // Como os outros avisos de pedido, traz o nome da cliente; sem nome, o
+    // titulo fica sem o "de ..." em vez de dizer "de cliente".
+    const nome = (recebimento.customer_name ?? "").trim();
+    avisos.push({
+      id: `recebimento:${recebimento.id}`,
+      tipo: "recebimento",
+      titulo: `Pedido #${numeroDoPedido(recebimento.id)}${nome ? ` de ${nome}` : ""} entregue: você já recebeu o pagamento?`,
+      detalhe: `${formatarReais(recebimento.total)} — marque para a cliente poder pedir devolução`,
+      quando: recebimento.updated_at,
+      destino: { view: "admin-orders", id: recebimento.id },
+      // CONTA no cracha, ao contrario do estoque e do cancelamento: marcar o
+      // recebimento e o ato que faz o aviso sumir (e o que destrava a cliente
+      // que quer devolver), e a janela de 30 dias limita o que fica parado.
       contaNoCracha: true,
     });
   }
@@ -298,7 +398,9 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       detalhe:
         produto.stock === 0
           ? "Sem nenhuma unidade"
-          : `${produto.stock} ${produto.stock === 1 ? "unidade" : "unidades"} restantes`,
+          : produto.stock === 1
+            ? "1 unidade restante"
+            : `${produto.stock} unidades restantes`,
       quando: produto.created_at,
       destino: { view: "admin-product-form", id: produto.id },
       // NAO conta no cracha, e isso e' deliberado: estoque baixo so' termina

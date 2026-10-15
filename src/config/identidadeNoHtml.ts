@@ -1,4 +1,5 @@
 import type { PublicStoreIdentity } from "../lib/storeIdentity";
+import { nomeCurtoDaLoja } from "./nomeCurtoDaLoja";
 
 /**
  * A parte PURA de `identityHtml` que pinta a identidade de uma loja num HTML
@@ -54,7 +55,8 @@ export function identityHtml(
     ["theme-color", identity.theme.primary],
     ["background-color", identity.theme.primary],
     ["application-name", identity.storeName],
-    ["apple-mobile-web-app-title", identity.storeName],
+    // O rótulo embaixo do ícone no iPhone — o mesmo nome curto do manifest.
+    ["apple-mobile-web-app-title", nomeCurtoDaLoja(identity.storeName)],
     ["og:title", identity.storeName],
     ["og:description", description],
     ["og:url", `${publicUrl}/`],

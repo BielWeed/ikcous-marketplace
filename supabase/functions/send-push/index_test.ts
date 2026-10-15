@@ -441,6 +441,64 @@ Deno.test("lote não perde nem embaralha inscrição", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Urgência e TTL no fio (RFC 8030) — aviso ao lojista × campanha para clientes
+// ---------------------------------------------------------------------------
+
+Deno.test("enviarParaInscritos sem opcoesDeEnvio (o padrão da FUNÇÃO): Urgency normal e TTL de 28 dias", async () => {
+  // Prova só o PADRÃO de `enviarParaInscritos`: chamada direta, sem passar pelo
+  // handler da `send-push`. Que a campanha de verdade o use sem opções é
+  // provado pelo teste do handler, no fim deste arquivo.
+  const service = pushServiceFalso({ "/p/ok": 201 });
+  try {
+    const servidor = await servidorDeAplicacao();
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes: [await inscricaoDeTeste(`${service.base}/p/ok`)],
+      mensagem: "{}",
+    });
+
+    assertEquals(itens[0].ok, true);
+    assertEquals(service.recebidas[0].headers.get("urgency"), "normal");
+    assertEquals(service.recebidas[0].headers.get("ttl"), "2419200");
+  } finally {
+    await service.encerrar();
+  }
+});
+
+Deno.test("opcoesDeEnvio chega ao push service como cabeçalhos Urgency e TTL; 410 continua apagando", async () => {
+  const service = pushServiceFalso({ "/p/ok": 201, "/p/morta": 410 });
+  const apagadas: string[] = [];
+  try {
+    const servidor = await servidorDeAplicacao();
+    const inscricoes = [
+      await inscricaoDeTeste(`${service.base}/p/ok`),
+      await inscricaoDeTeste(`${service.base}/p/morta`),
+    ];
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes,
+      mensagem: "{}",
+      opcoesDeEnvio: { urgency: webpush.Urgency.High, ttl: 3600 },
+      aoDetectarMorta: (endpoint: string) => {
+        apagadas.push(endpoint);
+        return Promise.resolve();
+      },
+    });
+
+    assertEquals(itens.map((i: any) => i.ok), [true, false]);
+    assertEquals(itens[1].status, 410);
+    assertEquals(apagadas, [inscricoes[1].endpoint]);
+    for (const recebida of service.recebidas) {
+      assertEquals(recebida.headers.get("urgency"), "high");
+      assertEquals(recebida.headers.get("ttl"), "3600");
+    }
+    assertEquals(service.recebidas.length, 2);
+  } finally {
+    await service.encerrar();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Paginação e orçamento de tempo (index-133)
 //
 // Sem isto, o broadcast fazia um `select('*')` sem `.limit()` e mandava TODOS
@@ -701,4 +759,63 @@ Deno.test("porta de admin: sem Authorization -> a mesma recusa de sempre, sem ch
   assertEquals(resposta.status, 400);
   assertEquals(await resposta.json(), { ok: false, error: "Missing Authorization header" });
   assertEquals(urls.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Campanha de verdade: o HANDLER, de ponta a ponta até o fio
+// ---------------------------------------------------------------------------
+
+Deno.test("handler da send-push: a campanha para clientes sai com Urgency normal e TTL de 28 dias (a urgência alta é só do aviso ao lojista)", async () => {
+  const service = pushServiceFalso({ "/p/ok": 201 });
+  const { base64url } = await parVapidDeTeste();
+  const anteriores = [
+    "SUPABASE_URL",
+    "SUPABASE_PUBLISHABLE_KEYS",
+    "SUPABASE_SECRET_KEYS",
+    "VAPID_PUBLIC_KEY",
+    "VAPID_PRIVATE_KEY",
+  ].map((chave) => [chave, Deno.env.get(chave)] as const);
+  Deno.env.set("SUPABASE_URL", URL_SUPA_TESTE);
+  Deno.env.set("SUPABASE_PUBLISHABLE_KEYS", JSON.stringify({ default: "anon-de-teste" }));
+  Deno.env.set("SUPABASE_SECRET_KEYS", JSON.stringify({ default: "service-role-de-teste" }));
+  Deno.env.set("VAPID_PUBLIC_KEY", base64url.publica);
+  Deno.env.set("VAPID_PRIVATE_KEY", base64url.privada);
+  // O Auth/profiles são falsos; só o que vai para o push service local passa
+  // para o `fetch` de verdade.
+  const rede = fetchDePapeis("admin", "admin");
+  const fetchReal = globalThis.fetch;
+  globalThis.fetch = ((entrada: any, opcoes?: any) => {
+    const url = String(entrada instanceof Request ? entrada.url : entrada);
+    return url.startsWith(service.base) ? fetchReal(entrada, opcoes) : rede.fn(entrada);
+  }) as any;
+  try {
+    const inscricao = await inscricaoDeTeste(`${service.base}/p/ok`);
+    const resposta = await handler(
+      new Request("http://local/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-de-teste" },
+        body: JSON.stringify({
+          title: "Promoção",
+          body: "texto",
+          tokens: [
+            { endpoint: inscricao.endpoint, keys: { p256dh: inscricao.p256dh, auth: inscricao.auth } },
+          ],
+        }),
+      }),
+    );
+
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.enviados, 1);
+    assertEquals(service.recebidas.length, 1);
+    assertEquals(service.recebidas[0].headers.get("urgency"), "normal");
+    assertEquals(service.recebidas[0].headers.get("ttl"), "2419200");
+  } finally {
+    globalThis.fetch = fetchReal;
+    for (const [chave, valor] of anteriores) {
+      if (valor === undefined) Deno.env.delete(chave);
+      else Deno.env.set(chave, valor);
+    }
+    await service.encerrar();
+  }
 });

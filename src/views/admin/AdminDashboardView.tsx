@@ -4,6 +4,7 @@ import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { LojaProntaEEstoqueBaixo } from "@/components/admin/dashboard/LojaProntaEEstoqueBaixo";
 import { AtalhosDoInicio } from "@/components/admin/inicio/AtalhosDoInicio";
 import { CartaoDaAssinatura } from "@/components/admin/inicio/CartaoDaAssinatura";
+import { CartaoDeAvisosDoAparelho } from "@/components/admin/inicio/CartaoDeAvisosDoAparelho";
 import { HojeNaLoja } from "@/components/admin/inicio/HojeNaLoja";
 import { NumerosDoMes } from "@/components/admin/inicio/NumerosDoMes";
 import { ParaFazer } from "@/components/admin/inicio/ParaFazer";
@@ -26,7 +27,7 @@ import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { AlertCircle, HelpCircle, RefreshCw } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AdminDashboardViewProps {
@@ -149,6 +150,20 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     estavaOfflineRef.current = isOffline;
   }, [isOffline, ativo, atualizar]);
 
+  // O cartão de avisos se fecha com o foco do teclado dentro dele: o foco vai
+  // para o título do Início, e não para o corpo da página.
+  const focarNoTitulo = useCallback(() => {
+    const titulo = viewRef.current?.querySelector("h1");
+    if (titulo instanceof HTMLElement) {
+      titulo.tabIndex = -1;
+      // Título já à vista: o foco não deve rolar a página (um pulo à toa). Fora
+      // da tela, deixa o navegador trazê-lo para onde a pessoa possa ver.
+      const caixa = titulo.getBoundingClientRect();
+      const aVista = caixa.top >= 0 && caixa.bottom <= window.innerHeight;
+      titulo.focus(aVista ? { preventScroll: true } : undefined);
+    }
+  }, [viewRef]);
+
   const semNumeros = carregando && !painel;
 
   return (
@@ -230,6 +245,16 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           </div>
         ) : null}
 
+        {/* Só com o Início à vista: a aba fica montada ao trocar de tela, e o
+            cartão lê o navegador ao montar — assim ele confere de novo (e
+            some sozinho, se ligaram os avisos em outra tela) toda vez que a
+            lojista volta ao Início. */}
+        {ativo ? (
+          <LocalErrorBoundary>
+            <CartaoDeAvisosDoAparelho aoFechar={focarNoTitulo} />
+          </LocalErrorBoundary>
+        ) : null}
+
         {/* Celular: uma coluna na ordem de leitura (Hoje → botões → mês →
             pendências → 14 dias → assinatura). Computador: duas colunas
             alinhadas por linha — a ordem do DOM continua a de leitura. */}
@@ -268,6 +293,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
               <SerieDe14Dias
                 serie={painel?.serie14d ?? []}
                 carregando={semNumeros}
+                falhou={painel === null && erro !== null}
               />
             </LocalErrorBoundary>
           </div>

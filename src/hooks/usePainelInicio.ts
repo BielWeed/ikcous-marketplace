@@ -1,9 +1,11 @@
 import { useAuth } from "@/hooks/useAuth";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   lerAssinaturaDaLoja,
   lerPainelInicio,
   mensagemDeErroDoPainel,
 } from "@/lib/crm";
+import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { supabase } from "@/lib/supabase";
 import type { AssinaturaDaLoja, PainelInicio } from "@/types/painel";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -18,7 +20,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *   atrás das outras abas).
  * - Tempo real: um canal em `marketplace_orders` enquanto a tela está ativa;
  *   rajada de eventos vira UMA recarga (espera de 1,5 s), e aba escondida só
- *   marca "sujo" — recarrega quando volta a ficar visível.
+ *   marca "sujo" — recarrega quando volta a ficar visível. Sem evento, voltar
+ *   a ficar visível também recarrega se o retrato tem mais de 30 s (o "Hoje"
+ *   de uma tela aberta de um dia para o outro).
+ * - O "Hoje" não envelhece: um retrato lido em OUTRO dia de São Paulo nunca é
+ *   fresco (mesmo com menos de 30 s de idade, ao cruzar a meia-noite), voltar
+ *   a ver o app (visível/foco/restaurado da memória) revalida pelo cache, e a
+ *   virada do dia com a tela aberta recarrega sozinha.
  */
 
 interface RetratoDoPainel {
@@ -36,11 +44,34 @@ const ESPERA_DO_TEMPO_REAL_MS = 1500;
 const ESPERA_DA_ABERTURA_MS = 200;
 
 let retratoEmCache: RetratoDoPainel | null = null;
+
+/** O dia de São Paulo (`YYYY-MM-DD`) em que o retrato foi lido. */
+function diaDaLeitura(retrato: RetratoDoPainel): string {
+  return hojeEmSaoPaulo(new Date(retrato.lidoEm));
+}
+
+/**
+ * Fresco = lido há menos de 30 s E no DIA de hoje de São Paulo. Os números do
+ * painel são "de hoje": um retrato de ontem não vale nem com 1 s de idade.
+ */
+function retratoFresco(retrato: RetratoDoPainel | null): boolean {
+  return (
+    retrato !== null &&
+    Date.now() - retrato.lidoEm < FRESCOR_MS &&
+    diaDaLeitura(retrato) === hojeEmSaoPaulo()
+  );
+}
 let buscaEmVoo: Promise<RetratoDoPainel> | null = null;
 // Recarga FORÇADA pedida com uma busca em voo: roda uma busca depois dela.
 let buscaForcadaSeguinte: Promise<RetratoDoPainel> | null = null;
 
-async function buscarRetrato(): Promise<RetratoDoPainel> {
+/**
+ * `iniciadaEm` é o instante em que a busca SAIU, não o em que voltou: os
+ * números refletem o servidor naquele momento. Uma busca que sai às 23:59:59 e
+ * volta depois da meia-noite traz números de ontem — carimbada com a hora do
+ * fim, ela passaria por fresca de hoje e o "Hoje" ficaria com eles.
+ */
+async function buscarRetrato(iniciadaEm: number): Promise<RetratoDoPainel> {
   const [respostaPainel, respostaAssinatura] = await Promise.all([
     supabase.rpc("painel_inicio"),
     supabase.rpc("assinatura_da_loja_ler"),
@@ -86,7 +117,7 @@ async function buscarRetrato(): Promise<RetratoDoPainel> {
     assinatura,
     assinaturaLida: erroAssinatura === null,
     erroAssinatura,
-    lidoEm: Date.now(),
+    lidoEm: iniciadaEm,
   };
 }
 
@@ -111,7 +142,8 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
     }
     return buscaForcadaSeguinte;
   }
-  const busca = buscarRetrato()
+  const iniciadaEm = Date.now();
+  const busca = buscarRetrato(iniciadaEm)
     .catch((erro: unknown): RetratoDoPainel => {
       console.error("[usePainelInicio] busca falhou:", erro);
       const mensagem = mensagemDeErroDoPainel(erro, "carregar o Início");
@@ -121,14 +153,20 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
         assinatura: null,
         assinaturaLida: false,
         erroAssinatura: mensagem,
-        lidoEm: Date.now(),
+        lidoEm: iniciadaEm,
       };
     })
     .then((retrato) => {
       // Falha não apaga o último retrato bom: os números anteriores ficam
-      // na tela, com o aviso de erro por cima.
+      // na tela, com o aviso de erro por cima — mas só os DE HOJE: o "Hoje"
+      // de ontem nunca fica na tela como se fosse o de agora.
+      const anteriorDeHoje =
+        retratoEmCache !== null &&
+        diaDaLeitura(retratoEmCache) === diaDaLeitura(retrato)
+          ? retratoEmCache
+          : null;
       retratoEmCache = {
-        painel: retrato.painel ?? retratoEmCache?.painel ?? null,
+        painel: retrato.painel ?? anteriorDeHoje?.painel ?? null,
         erroPainel: retrato.erroPainel,
         assinatura: retrato.assinaturaLida
           ? retrato.assinatura
@@ -149,7 +187,7 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
 
 /** Aquece o cache no hover da barra — não faz nada se ele ainda está fresco. */
 export function prefetchPainelInicio(): void {
-  if (retratoEmCache && Date.now() - retratoEmCache.lidoEm < FRESCOR_MS) return;
+  if (retratoFresco(retratoEmCache)) return;
   void buscarCoalescido();
 }
 
@@ -179,21 +217,43 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     };
   }, []);
 
-  const carregar = useCallback(async (forcar: boolean) => {
-    if (
-      !forcar &&
-      retratoEmCache &&
-      Date.now() - retratoEmCache.lidoEm < FRESCOR_MS
-    ) {
+  // `silenciosa`: leitura de fundo que ninguém pediu (voltar a ficar visível).
+  // Se falhar e já houver números DE HOJE em mãos, não fala com a lojista: o
+  // celular saindo da tela bloqueada ainda pode estar sem rede, e a faixa
+  // vermelha por cima de números bons seria alerta falso. O retrato bom volta
+  // para o cache com a idade de antes, então a próxima volta tenta de novo.
+  // Sem nada em mãos (ou só com números de ontem, que nunca valem como
+  // "Hoje"), a falha aparece como sempre.
+  const carregar = useCallback(async (forcar: boolean, silenciosa = false) => {
+    if (!forcar && retratoEmCache && retratoFresco(retratoEmCache)) {
       setRetrato(retratoEmCache);
       return;
     }
-    setCarregando(true);
+    const anterior = retratoEmCache;
+    if (!silenciosa) setCarregando(true);
     try {
-      const novo = await buscarCoalescido(forcar);
+      let novo = await buscarCoalescido(forcar);
+      // A busca saiu num dia e voltou em outro (virou a meia-noite durante o
+      // voo): o retrato é de ontem. Refaz UMA vez — a nova já sai no dia de
+      // hoje — em vez de deixar a tela em esqueleto até alguém mexer. Sem
+      // `forcar`: quem esperava a mesma busca entra na MESMA busca nova.
+      if (diaDaLeitura(novo) !== hojeEmSaoPaulo()) {
+        novo = await buscarCoalescido();
+      }
+      // Só o painel decide: com o painel novo bom, ele entra mesmo que a
+      // assinatura tenha falhado (o erro dela segue o caminho de sempre).
+      if (
+        silenciosa &&
+        anterior?.painel &&
+        diaDaLeitura(anterior) === hojeEmSaoPaulo() &&
+        novo.erroPainel !== null
+      ) {
+        if (retratoEmCache === novo) retratoEmCache = anterior;
+        return;
+      }
       if (montadoRef.current) setRetrato(novo);
     } finally {
-      if (montadoRef.current) setCarregando(false);
+      if (!silenciosa && montadoRef.current) setCarregando(false);
     }
   }, []);
 
@@ -235,10 +295,19 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     };
 
     const aoMudarVisibilidade = () => {
-      if (document.visibilityState === "visible" && sujoEscondido) {
+      if (document.visibilityState !== "visible") return;
+      if (sujoEscondido) {
+        // Chegou pedido enquanto estava escondida: uma recarga forçada só.
         sujoEscondido = false;
         recarregarJa();
+        return;
       }
+      // Sem evento de pedido, a tela aberta de manhã ainda mostra o "Hoje" de
+      // ontem. Voltar a ficar visível busca de novo se o retrato é velho
+      // (`carregar(false)` respeita o frescor de 30 s e a busca em voo), a
+      // menos que uma recarga por evento já esteja marcada. Silenciosa: ver
+      // `carregar`.
+      if (!espera) void carregar(false, true);
     };
 
     const canal = supabase
@@ -258,13 +327,49 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     };
   }, [active, temSessao, carregar]);
 
+  // Voltou a ver o app (foco ou restaurado da memória; o "ficou visível" já é
+  // tratado no efeito do tempo real, acima): revalida pelo cache — não busca
+  // se o retrato é fresco E de hoje, busca se passou de 30 s ou se o dia de
+  // São Paulo virou. Sem isto, abrir o app de manhã mostrava os números de
+  // ontem como "Hoje" até chegar um pedido novo. Silenciosa, como lá.
+  useEffect(() => {
+    if (!active || !temSessao) return;
+    const aoVoltar = () => {
+      if (document.visibilityState === "visible") void carregar(false, true);
+    };
+    window.addEventListener("focus", aoVoltar);
+    window.addEventListener("pageshow", aoVoltar);
+    return () => {
+      window.removeEventListener("focus", aoVoltar);
+      window.removeEventListener("pageshow", aoVoltar);
+    };
+  }, [active, temSessao, carregar]);
+
+  // O dia virou com a tela aberta (meia-noite de São Paulo, sem ninguém
+  // mexer): recarrega sozinha — o retrato de ontem já não é fresco.
+  const dia = useDiaDeSaoPaulo(active && temSessao);
+  const diaVistoRef = useRef(dia);
+  useEffect(() => {
+    if (diaVistoRef.current === dia) return;
+    diaVistoRef.current = dia;
+    if (active && temSessao) void carregar(false);
+  }, [dia, active, temSessao, carregar]);
+
+  // Retrato lido em outro dia nunca aparece como "Hoje": enquanto a recarga
+  // não chega, a tela mostra o esqueleto em vez dos números de ontem. O dia é
+  // lido do relógio NA HORA do desenho (não do `dia` do estado): com a tela
+  // inativa a noite toda, esse estado fica velho até o efeito de ativação
+  // rodar, e o primeiro desenho da manhã mostraria o número de ontem.
+  const retratoDeHoje =
+    retrato && diaDaLeitura(retrato) === hojeEmSaoPaulo() ? retrato : null;
+
   return {
-    painel: retrato?.painel ?? null,
+    painel: retratoDeHoje?.painel ?? null,
     assinatura: retrato?.assinatura ?? null,
     assinaturaLida: retrato?.assinaturaLida ?? false,
     // "Carregando" de verdade é não ter número nenhum ainda: com retrato em
     // mãos, a revalidação acontece por baixo sem esqueleto.
-    carregando: carregando || (retrato === null && active && temSessao),
+    carregando: carregando || (retratoDeHoje === null && active && temSessao),
     erro: retrato?.erroPainel ?? null,
     erroAssinatura: retrato?.erroAssinatura ?? null,
     atualizar,

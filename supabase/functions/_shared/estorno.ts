@@ -84,7 +84,16 @@ export type ResultadoEstorno =
   // Guarda recusou ANTES de qualquer chamada ao MP: nada foi gasto.
   | { tipo: "recusado"; motivo: string }
   // 429/5xx/rede/resposta não reconhecida: o cron re-tenta com a MESMA chave.
-  | { tipo: "tentar_depois"; motivo: string; retryAfterS?: number; diagnostico?: DiagnosticoDoPost };
+  // `semEnvioPorPrevoo` (P1 do Codex no #888): o ÚNICO desfecho do ciclo foi a
+  // consulta antes do reenvio sem resposta clara — nada foi enviado e a
+  // tentativa marcada para este ciclo NÃO deve contar (ver `conferirAntesDoReenvio`).
+  | {
+    tipo: "tentar_depois";
+    motivo: string;
+    retryAfterS?: number;
+    diagnostico?: DiagnosticoDoPost;
+    semEnvioPorPrevoo?: true;
+  };
 
 /**
  * O que o POST de refund de UMA linha deixou para o diagnóstico (tabela
@@ -186,6 +195,36 @@ export function linhaPodeJaTerChegadoAoMp(linha: LinhaEstorno): boolean {
   if (typeof linha.mp_refund_id === "string" && linha.mp_refund_id !== "") return true;
   return linha.criada_sob_autorizacao !== true && Number(linha.tentativas ?? 0) > 1;
 }
+
+/**
+ * O teto de `tentativas` a partir do qual a linha é TRAVADA: o robô
+ * (`reconciliar-pagamentos`) para de POSTar e só consulta o MP, e o clique do
+ * lojista (`estornar-pagamento`) recusa reenviar. Um número, dois chamadores.
+ */
+export const TETO_DE_TENTATIVAS_DO_POST = 5;
+
+/**
+ * A linha JÁ TEVE ENVIO? (A1 do crítico do reembolso A/B, 15/10/2026.) Recebe a
+ * linha COMO O EXECUTOR A RECEBE — os dois chamadores (clique e robô) somam a
+ * marca DESTE ciclo em `tentativas` antes de chamar `executarEstorno`. Já teve
+ * envio se pode ter chegado ao MP (`linhaPodeJaTerChegadoAoMp`: carimbo de POST
+ * autorizado, id do MP, legado) OU se houve marca de um ciclo ANTERIOR
+ * (`tentativas > 1`), mesmo sem carimbo: mais conservador que o critério de
+ * incerteza — o preço é um GET a mais, nunca um POST a mais.
+ */
+export function linhaJaTeveEnvio(linha: LinhaEstorno): boolean {
+  return linhaPodeJaTerChegadoAoMp(linha) || Number(linha.tentativas ?? 0) > 1;
+}
+
+/** Texto leigo (`ultimo_erro`, a cliente lê) quando a consulta antes do reenvio
+ * não respondeu com clareza: nada novo saiu. */
+export const MOTIVO_REENVIO_SEM_CONSULTA =
+  "uma tentativa anterior desta devolução pode já ter chegado ao Mercado Pago e a conferência com ele não respondeu com clareza — nada novo foi enviado e o valor segue reservado; a loja confere de novo em instantes";
+
+/** Texto leigo quando o MP já mostra o reembolso desta devolução, mas a
+ * confirmação ainda não fechou: nada novo saiu. */
+export const MOTIVO_REENVIO_JA_NO_MP =
+  "o Mercado Pago já mostra esta devolução — nada novo foi enviado; a confirmação é registrada na próxima conferência";
 
 type ChamarRpc = (
   nome: string,
@@ -1561,6 +1600,14 @@ const STATUS_REFUND_MORTO = new Set(["rejected", "cancelled", "canceled", "faile
  *     estranha, reembolso em andamento, reembolso de outro valor (a devolução
  *     do painel em parcelas: o dinheiro saiu e ninguém o explica).
  * `idsJaReivindicados` = `mp_refund_id` das OUTRAS linhas do pedido.
+ *
+ * `idProprio` (opcional; B1 da revisão Opus do #888, 15/10/2026): o
+ * `mp_refund_id` que ESTA linha já tem gravado. Com ele, a lista do MP só prova
+ * alguma coisa se esse id APARECER nela: ausente é `indeterminado` (o reembolso
+ * PIX em contingência, por exemplo, pode não ser listado na consulta do
+ * pagamento). Presente e morto, segue a regra normal (pode dar `nao_achou`);
+ * presente e vivo, a regra normal já dá `achou` ou `indeterminado`. Quem não
+ * passa o parâmetro tem o comportamento de antes.
  */
 export async function consultarReembolsoDoPedido(args: {
   buscar: typeof fetch;
@@ -1568,6 +1615,7 @@ export async function consultarReembolsoDoPedido(args: {
   pedido: PedidoParaEstorno;
   valor: number;
   idsJaReivindicados: string[];
+  idProprio?: string | null;
 }): Promise<ConsultaDoReembolso> {
   const { buscar, token, pedido } = args;
   const indeterminado = (motivo: string): ConsultaDoReembolso => ({ resultado: "indeterminado", motivo });
@@ -1617,6 +1665,18 @@ export async function consultarReembolsoDoPedido(args: {
     const dizReembolsada = corpo.status === "refunded" || corpo.status_detail === "partially_refunded";
     if (dizReembolsada && !refunds.some((r) => r.status === statusTerminal)) {
       return indeterminado("a cobrança consta como devolvida, mas nenhum reembolso aparece");
+    }
+  }
+
+  // B1 (revisão Opus do #888): a linha já tem id do MP — a lista só vale como
+  // prova se mostrar esse id (e ele não puder ser de outra linha).
+  const idProprio = typeof args.idProprio === "string" ? args.idProprio.trim() : "";
+  if (idProprio !== "") {
+    if (!refunds.some((r) => idComoString(r.id) === idProprio)) {
+      return indeterminado("o reembolso já registrado desta devolução não aparece na consulta");
+    }
+    if (reivindicados.has(idProprio)) {
+      return indeterminado("o reembolso desta devolução consta também em outra devolução do pedido");
     }
   }
 
@@ -1761,6 +1821,84 @@ export async function consultarTransacaoDaOrder(args: {
 }
 
 /**
+ * A PERGUNTA ANTES DO REENVIO (A1 do crítico do reembolso A/B, 15/10/2026).
+ *
+ * A chave de idempotência (`X-Idempotency-Key` = id da linha) só vale 24 h no
+ * MP. Uma linha que já teve envio (`linhaJaTeveEnvio`) pode ter criado o
+ * reembolso sem a resposta chegar; repetir o POST depois de 24 h cria um
+ * SEGUNDO reembolso e a cliente recebe em dobro. Por isso o POST de reenvio só
+ * sai quando `consultarReembolsoDoPedido` (um GET, nunca POST) responde
+ * `nao_achou`. Devolve `null` = pode enviar; qualquer outro valor é o desfecho,
+ * SEM POST:
+ *   * `achou` — o MP já fez o reembolso desta linha: adota pela confirmação de
+ *     sempre (`confirmarPorConsulta`, o único produtor de `concluido` por
+ *     consulta, com a guarda do acumulado); se ela ainda não fechar,
+ *     `tentar_depois` — nunca POST;
+ *   * `indeterminado`, consulta que lança, ou `idsJaReivindicados` ausente (sem
+ *     ele não se sabe de quem é cada reembolso do pedido) — `tentar_depois`.
+ * Nenhum desfecho aqui leva diagnóstico de POST: nada foi enviado.
+ *
+ * Fica ANTES do GET da transação e da autorização do banco: consulta que não
+ * libera não gasta a pergunta ao banco nem renova o carimbo `post_autorizado_em`.
+ * A janela entre esta consulta e o POST é de segundos — muito dentro das 24 h da
+ * chave, então um envio concorrente (clique × robô) é deduplicado pelo MP.
+ */
+async function conferirAntesDoReenvio(args: {
+  buscar: typeof fetch;
+  token: string;
+  linha: LinhaEstorno;
+  pedido: PedidoParaEstorno;
+  idsJaReivindicados: string[] | undefined;
+}): Promise<ResultadoEstorno | null> {
+  const { buscar, token, linha, pedido, idsJaReivindicados } = args;
+  if (!Array.isArray(idsJaReivindicados)) {
+    console.error("estorno: reenvio sem a lista de ids já reivindicados — nada enviado", linha.id);
+    return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_SEM_CONSULTA };
+  }
+  let consulta: ConsultaDoReembolso;
+  try {
+    consulta = await consultarReembolsoDoPedido({
+      buscar,
+      token,
+      pedido,
+      valor: linha.amount,
+      idsJaReivindicados,
+      // B1 (revisão Opus do #888): linha com id do MP só reenvia se a lista
+      // mostrar esse id morto.
+      idProprio: linha.mp_refund_id,
+    });
+  } catch (err) {
+    console.error("estorno: a consulta antes do reenvio lançou", nomeDoErro(err));
+    consulta = { resultado: "indeterminado", motivo: "a consulta lançou" };
+  }
+  if (consulta.resultado === "nao_achou") return null;
+  // P1 do Codex no #888: daqui para baixo o ciclo termina SÓ por causa da
+  // consulta (nada saiu, nada foi perguntado ao banco) — `semEnvioPorPrevoo`
+  // avisa os chamadores para não contarem a tentativa deste ciclo. Sem isso,
+  // quatro ciclos de MP confuso levavam a linha ao teto sem envio nenhum, e o
+  // ramo travado do robô nunca mais a devolvia ao executor. Consultar para
+  // sempre sem contar é inofensivo (só GET). A lista de ids ausente (acima) NÃO
+  // leva o sinal: é defeito do chamador, não resposta do MP, e deve travar.
+  if (consulta.resultado === "achou") {
+    const confirmacao = await confirmarPorConsulta({ buscar, token, linha, pedido, idsJaReivindicados });
+    if (confirmacao.tipo === "concluido") return confirmacao;
+    console.error("estorno: o MP mostra o reembolso desta linha, mas a confirmação não fechou — nada enviado", linha.id);
+    return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_JA_NO_MP, semEnvioPorPrevoo: true };
+  }
+  console.error("estorno: consulta antes do reenvio sem resposta clara — nada enviado", linha.id, consulta.motivo);
+  return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_SEM_CONSULTA, semEnvioPorPrevoo: true };
+}
+
+/**
+ * P1 do Codex no #888: o ciclo terminou só pela consulta antes do reenvio (nada
+ * saiu)? Os chamadores (clique e robô) desfazem então a marca de `tentativas`
+ * deste ciclo, com UPDATE condicionado ao valor que eles mesmos gravaram.
+ */
+export function cicloSemEnvioPorPrevoo(resultado: ResultadoEstorno): boolean {
+  return resultado.tipo === "tentar_depois" && resultado.semEnvioPorPrevoo === true;
+}
+
+/**
  * Fluxo completo: guarda → (Orders: acha a transação) → POST → interpreta →
  * (se a tabela manda consultar) GET de confirmação. NUNCA lança: toda falha
  * de rede/timeout/ilegível vira `tentar_depois` (E19), e guarda recusada não
@@ -1805,6 +1943,19 @@ export async function executarEstorno(args: {
       return { tipo: "tentar_depois", motivo: `${guarda.motivo}; ${MOTIVO_LINHA_INCERTA}` };
     }
     return { tipo: "recusado", motivo: guarda.motivo };
+  }
+
+  // A1 do crítico do reembolso A/B (15/10/2026): o REENVIO só sai depois de
+  // perguntar ao MP. Ver `conferirAntesDoReenvio`. Linha nova não passa aqui.
+  if (linhaJaTeveEnvio(linha)) {
+    const bloqueio = await conferirAntesDoReenvio({
+      buscar,
+      token,
+      linha,
+      pedido,
+      idsJaReivindicados: args.idsJaReivindicados,
+    });
+    if (bloqueio) return bloqueio;
   }
 
   let transacaoDaOrder: string | null | undefined;

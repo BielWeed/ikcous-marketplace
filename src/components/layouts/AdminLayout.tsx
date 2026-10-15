@@ -23,6 +23,10 @@ import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
+import {
+  FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+  inicioDaJanelaDeRecebimento,
+} from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -139,6 +143,12 @@ export function AdminLayout({
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
   const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
   const [devolucoesSolicitadasCount, setDevolucoesSolicitadasCount] =
+    React.useState(0);
+  // Pedidos de privacidade (exclusão de conta, correção de e-mail) que a loja
+  // ainda não respondeu: têm prazo legal de 15 dias, então também acendem o sino.
+  const [privacidadeAbertosCount, setPrivacidadeAbertosCount] =
+    React.useState(0);
+  const [recebimentosPorMarcarCount, setRecebimentosPorMarcarCount] =
     React.useState(0);
   // Defeito medido em 25/08/2026: quando uma das consultas abaixo
   // falhava, a contagem dela ficava parada em 0 e o sino apagava — a mesma
@@ -267,6 +277,40 @@ export function AdminLayout({
             contagemDe(devolucoes.contagem, "solicitada"),
           );
         }
+
+        // Mesmo critério da lista em useAvisosDoLojista: só `aberto` espera a
+        // loja. Resposta sem número (nem erro) é falha da fonte, nunca "zero":
+        // o prazo legal corre e a dúvida acende o sino como nas outras fontes.
+        const { count: privacidadeCount, error: privacidadeErr } =
+          await supabase
+            .from("pedidos_de_privacidade")
+            .select("id", { count: "exact", head: true })
+            .eq("situacao", "aberto");
+        if (privacidadeErr || typeof privacidadeCount !== "number") {
+          falhouAlgumaConsulta = true;
+        } else if (podeGravar()) {
+          setPrivacidadeAbertosCount(privacidadeCount);
+        }
+
+        // Pedido entregue, pago na entrega, sem recebimento marcado (14/10):
+        // a cliente nao consegue pedir devolucao ate a lojista marcar, entao
+        // acende o sino. A MESMA regra da lista (`useAvisosDoLojista`), lida
+        // de `@/lib/recebimentos-por-marcar` — duas contagens diferentes para
+        // a mesma pergunta seria pior que nenhuma.
+        const { count: recebimentosCount, error: recebimentosErr } =
+          await supabase
+            .from("marketplace_orders")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "delivered")
+            .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
+            .is("payment_status", null)
+            .gte("updated_at", inicioDaJanelaDeRecebimento());
+
+        if (recebimentosErr) {
+          falhouAlgumaConsulta = true;
+        } else if (recebimentosCount !== null && podeGravar()) {
+          setRecebimentosPorMarcarCount(recebimentosCount);
+        }
       } catch (err) {
         console.error("[AdminLayout] Error fetching initial counts:", err);
         falhouAlgumaConsulta = true;
@@ -299,7 +343,8 @@ export function AdminLayout({
     };
 
     // LIMITACAO CONHECIDA, de proposito: nao ha canal de tempo real para
-    // `reviews` nem `devolucoes`. Essas contagens são lidas na busca
+    // `reviews`, `devolucoes` nem `pedidos_de_privacidade` (os pedidos de
+    // privacidade dos clientes). Essas contagens são lidas na busca
     // inicial e nas revalidacoes de `visibilitychange` — uma pendência que
     // chegue com o painel aberto so acende a bolinha na proxima vez que a
     // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
@@ -603,14 +648,21 @@ export function AdminLayout({
     pendingOrdersCount > 0 ||
     pendingQuestionsCount > 0 ||
     pendingReviewsCount > 0 ||
-    devolucoesSolicitadasCount > 0;
+    devolucoesSolicitadasCount > 0 ||
+    privacidadeAbertosCount > 0 ||
+    recebimentosPorMarcarCount > 0;
 
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
   const prevOfflineRef = React.useRef(isOffline);
+  // Lida DENTRO do efeito, sem entrar nas deps: sair de "sem internet" para
+  // "lenta" não sincronizou nada — o flash "Sincronizado" só vale para a volta
+  // a uma conexão que responde.
+  const qualityRef = React.useRef(quality);
+  qualityRef.current = quality;
 
   React.useEffect(() => {
-    if (prevOfflineRef.current && !isOffline) {
+    if (prevOfflineRef.current && !isOffline && qualityRef.current !== "slow") {
       setShowSyncFlash(true);
       const timer = setTimeout(() => {
         setShowSyncFlash(false);
@@ -768,6 +820,10 @@ export function AdminLayout({
       className="flex size-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-50 lg:flex-row"
       style={
         {
+          // iPhone instalado: o app desenha por baixo da barra de status/notch
+          // (`black-translucent`); sem esta folga o cabeçalho do painel ficava
+          // por baixo dela. Vale 0 fora disso.
+          paddingTop: "var(--safe-area-top)",
           "--admin-tab-pb": isStandalone
             ? "calc(6.25rem + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
             : `calc(6.25rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))`,

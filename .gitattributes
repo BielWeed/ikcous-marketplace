@@ -31,6 +31,8 @@
 # deve ser tocado.
 *.png binary
 *.ico binary
+# A Inter hospedada na loja (src/assets/fonts) é o único woff2 versionado.
+*.woff2 binary
 
 # Exceção deliberada: `.bat` fica em CRLF. Precaução, não reprodução: nesta
 # máquina (Windows 11, build 26200) um `.bat` com `@echo off`, bloco

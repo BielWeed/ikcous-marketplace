@@ -484,6 +484,33 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `31b-antes-endereco-da-compra-so-no-ponteiro` (ANTES, 7 linhas; **não mede a ACL**, que é da 31a), a "prova de
   objetos" do lote `20261229000000`. Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por
   linha, mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
+- **a compra que dá R$ 0,00 não se paga pelo app
+  (`a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261236000000` (a `create_marketplace_order_v24` recusa, ANTES de reservar estoque e de gastar a vaga do
+  cupom, o pedido de pagamento pelo app cujo total calculado pelo servidor é zero; **sucessora da 20261229000000**,
+  só a v24). O controle parte do estado ANTES (o rollback-manual, conferido byte a byte contra o corpo da
+  `20261229000000`) e prova o defeito (o pedido de R$ 0,00 pelo app nasce `aguardando`, baixa estoque e gasta o
+  cupom de uso único). Depois: zero + app recusa com a frase e o identificador no DETAIL (conta, retirada, cupom de
+  100%, convidada) e **nada é reservado nem gasto, provado por uma sequência movida por gatilhos** no INSERT do
+  pedido, na baixa do estoque e no uso do cupom (sequência não é desfeita por rollback: sem ela, recusar depois de
+  reservar passaria despercebido); zero + pagar na retirada/entrega (v23 cash/pix e a v24 chamada direto com cash)
+  nasce como hoje; positivo + app nasce como hoje, na borda de R$ 0,01 e com o total do SERVIDOR (R$ 0,04) quando
+  o cliente manda R$ 0,00; o cupom de uso único não é gasto na recusa e ainda compra, uma vez, na retirada; total
+  divergente recebe a recusa antiga; a retentativa de pedido que já nasceu devolve o pedido. O mesmo roteiro de
+  compras grava linhas idênticas antes e depois, só o corpo da v24 muda (a v23, a ACL e os dados ficam), reaplicar
+  2x e CRLF = mesmo estado, o rollback devolve o `prosrc` idêntico, o pré-voo recusa sem escrever (inclusive a
+  loja ainda no corpo da 20261174), a conferência reprovando desfaz a troca, e 6 mutantes (sem a recusa, recusa
+  depois de reservar, recusa também na entrega, limite R$ 0,01, total do cliente, só quem tem conta) ficam
+  vermelhos. **As provas da 20261229 (`endereco-no-pedido-viva.cjs` e `endereco-no-pedido-portao-viva.cjs`)
+  desfazem esta sucessora antes de medir** (como as da 20261199 fazem com as dela). **Não prova** a IKCOUS nem a
+  Savy.
+- **portão da compra que dá R$ 0,00 não se paga pelo app
+  (`a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado` (DEPOIS, 6 linhas) e
+  `37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente` (ANTES, 5 linhas; **não mede a ACL**, que é da
+  37a) do lote `20261236000000`. Rol exato nos estados (depois, antes, corpo da 20261174), um negativo por linha
+  (inclusive o EXECUTE de anon, authenticated, service_role e PUBLIC), mutantes do texto das consultas, veredito do
+  `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
 - **reembolso da devolução só "liberado" com o dinheiro (`reembolso-da-devolucao-viva.cjs`, via
   `rodar-isolado.cjs`)**: a migration `20261225000000` (o gatilho de aviso da devolução lê o estado REAL do
   reembolso; um gatilho novo em `order_refunds` avisa "liberado" quando `concluir_estorno` confirma o dinheiro) com
@@ -529,6 +556,163 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   lote `20261226000000`. Mesmo desenho do portão 27: rol exato nos dois estados, um negativo por linha (1 byte a
   mais em cada corpo, STABLE, SECURITY INVOKER, ACL por papel, tabela com policy/grant/sem RLS, objeto ausente ou
   já presente). **Não prova** a IKCOUS nem a Savy.
+- **busca de clientes (`busca-de-clientes-viva.cjs`, via `rodar-isolado.cjs`)**: as migrations `20261230000000`
+  (`get_admin_customers_paged`: a tela Clientes, o balcão e o cupom exclusivo acham pelos DÍGITOS do WhatsApp, com o
+  corte do 55 do +55) e `20261231000000` (`crm_clientes`: a aba Clientes do CRM ignora acento), com os papéis reais num
+  Postgres efêmero. Oito clientes de fixture (WhatsApp mascarado, gravado com 55, fixo, DDD 55, sem WhatsApp, e-mail
+  acentuado, uma compradora). Sete formas de digitar o mesmo número acham a mesma cliente; BORDAS: 3 dígitos não viram
+  busca por dígitos e 4 viram, 12/13 dígitos que começam por 55 perdem o 55 mas DDD 55 (11 dígitos) e 12 dígitos fora do 55
+  não, vazio/só espaço devolve todos, só símbolos não quebra, cliente sem WhatsApp não é achada nem quebra. O JSON (dados,
+  total, estatísticas, ordenação, paginação) é IGUAL ao do corpo antigo nas buscas que o conserto não toca; o corpo
+  ANTIGO (rollback numa transação desfeita) reprova as provas do defeito; comum, admin rebaixado e visitante recusados;
+  ACL, atributos e dono intactos; reaplicar 2x e aplicar-desfazer-aplicar voltam idênticos; o pré-voo recusa sem
+  escrever (corpo divergente, ACL aberta, atributo trocado, coluna ou função ausente) e uma troca interrompida não
+  deixa nada; leitura concorrente nunca vê estado misto; mutantes (cada guarda tirada) ficam vermelhos. **Não prova** a
+  IKCOUS nem a Savy.
+- **portão da busca de clientes (`busca-de-clientes-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `32a-conferir-busca-de-clientes-aplicado` (DEPOIS, 9 linhas) e `32b-antes-busca-de-clientes-corpos-vigentes` (ANTES, 7
+  linhas; **não mede a ACL**, que é da 32a), a "prova de objetos" do lote `20261230000000` + `20261231000000`. Mesmo
+  desenho do portão 26: rol exato nos estados (antes, depois, só uma das duas), um negativo por linha em CADA função, o
+  veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **o lucro só conta produto com custo (`lucro-so-com-custo-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261234000000` (`get_admin_analytics_v2`: o lucro diário e o "Top 5 produtos mais lucrativos" do CRM > Visão geral
+  só somam item de produto com custo informado; produto sem custo fica na receita e fora do lucro, e o campo novo
+  `productsWithoutCost` conta quantos ficaram de fora), num Postgres efêmero, loja LIMPA. Produtos: com custo, custo
+  NULL, custo 0 (zero medido, CONTA) e um apagado; dia sem venda, cancelado/estornado/aguardando fora, 22h de São Paulo
+  no dia certo. O corpo ANTIGO (rollback numa transação desfeita) reproduz o defeito (lucro 230 onde é 120, Brinco em
+  1º) e a receita, os pedidos, o custo vendido e o produto-controle saem IGUAIS byte a byte; a única chave nova do
+  JSON é `productsWithoutCost`. Porta (cliente e admin rebaixado recusados, anon sem EXECUTE), dados intactos, reaplicar
+  2x e aplicar-desfazer-aplicar idênticos, pré-voo recusa sem escrever (corpo divergente, corpo da 20261199, ACL
+  aberta), rollback idempotente, leitura concorrente nunca vê estado misto, cinco mutantes ficam vermelhos.
+  `LUCRO_SO=comportamento` roda só o comportamento. **Não prova** a IKCOUS nem a Savy.
+- **portão do lucro só com custo (`lucro-so-com-custo-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `35a-conferir-lucro-so-com-custo-aplicado` (DEPOIS, 6 linhas) e `35b-antes-lucro-so-com-custo-corpo-vigente` (ANTES, 5
+  linhas) do lote `20261234000000`. Rol exato nos estados (depois, antes, corpo da 99), um negativo por linha, mutantes
+  do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **a venda repetida do balcão devolve a venda feita (`venda-balcao-mesma-chave-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261235000000` (`registrar_venda_presencial`, a RPC do PDV: trava consultiva pela chave de idempotência
+  antes de conferir a chave), com **duas conexões reais** num Postgres efêmero. A repetição da MESMA chave que chega
+  antes de a primeira commitar espera a primeira e devolve `ja_existia` com o MESMO pedido (nunca "Estoque
+  insuficiente" por causa da última unidade que a própria venda levou); o CONTROLE com o corpo antigo reproduz o defeito;
+  estoque sobrando, chaves diferentes, venda sem chave, outro balconista e outro canal (23505), permissão e o gate antes
+  da trava, rollback com o md5 da 20261199, pré-voo que recusa sem escrever e mutantes. **Não prova** a IKCOUS nem a Savy.
+- **portão da venda repetida do balcão (`venda-balcao-mesma-chave-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `36a-conferir-venda-repetida-do-balcao-aplicado` (DEPOIS, 6 linhas) e
+  `36b-antes-venda-repetida-do-balcao-corpo-vigente` (ANTES, 5 linhas; **não mede a ACL**, que é da 36a) do lote
+  `20261235000000`. Rol exato nos estados (depois, antes), um negativo por linha, mutantes do texto das consultas,
+  veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **a loja declara razão social, CNPJ/CPF e e-mail (`loja-declara-quem-e-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261239000000` (`upsert_store_config`, as três colunas novas de `store_config` e a `v_store_config`),
+  com os papéis de verdade: salvar um dos três não apaga os outros nem os demais campos da loja, as CHECK de forma,
+  só o admin atual grava, o visitante lê e não escreve, ida e volta com o corpo da 99 e o ACL da view iguais, o
+  rollback que recusa com dado da loja, pré-voo que recusa sem escrever, mutantes. **Não prova** a IKCOUS nem a Savy.
+- **portão da identidade legal da loja (`loja-declara-quem-e-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `40a-conferir-identidade-legal-da-loja-aplicado` (DEPOIS, 11 linhas) e
+  `40b-antes-identidade-legal-da-loja-base-vigente` (ANTES, 10 linhas) do lote `20261239000000`. Rol exato nos estados
+  (depois, antes), um negativo por linha (inclusive o ACL, o dono e as opções da view, que o rollback recria por DROP
+  VIEW + CREATE VIEW + GRANT ALL), mutantes do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`).
+- **a cliente é avisada quando a loja responde a pergunta (`pergunta-respondida-avisa-viva.cjs`, via
+  `rodar-isolado.cjs`)**: a migration `20261240000000` (`answer_question_atomic`, as DUAS sobrecargas: a de 2 argumentos,
+  que o app usa, e a de 3), num Postgres efêmero. O corpo ANTIGO (rollback numa transação desfeita) reproduz o defeito
+  (resposta gravada, nenhum aviso para a cliente, uma linha falsa em `push_notifications_log`); o corpo novo cria UM
+  aviso em `notificacoes` só para quem perguntou (tipo, título, nome do produto, destino que abre o produto, não lido) e
+  nenhuma linha no log de push, nas duas sobrecargas. Resposta repetida ou editada não duplica; dispensado o aviso, a
+  edição avisa de novo; pergunta antiga não ganha aviso em massa. Quem não é admin é recusado sem escrever, o visitante
+  não executa, ACL e atributos iguais antes e depois; o aviso que falha nunca perde a resposta; duas lojistas
+  respondendo a MESMA pergunta (duas conexões reais) geram UM aviso. Aplicar 2x e em CRLF = mesmo estado, o rollback
+  devolve os corpos de antes byte a byte, o pré-voo recusa sem escrever (corpo divergente, sobrecarga extra, índice
+  único ausente), o rollback tem pré-voo (recusa corpo alheio em qualquer das duas, sobrecarga extra ou ausente, sem
+  escrever; aceita o corpo desta migration e o de antes) e conferência final (recusa corpo que não voltou), seis
+  mutantes ficam vermelhos e o ENSAIO (um bloco `DO` que termina em `RAISE EXCEPTION`) serve a uma
+  loja real. **Não prova** a IKCOUS nem a Savy.
+- **portão da pergunta respondida (`pergunta-respondida-avisa-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado` (DEPOIS, 10 linhas) e
+  `41b-antes-pergunta-respondida-corpos-vigentes` (ANTES, 8 linhas) do lote `20261240000000`. Rol exato nos estados
+  (depois, antes e a loja PELA METADE, com só a sobrecarga de 3 argumentos de volta), um negativo por linha em CADA
+  sobrecarga (corpo +1 byte, corpo que volta a citar o log de push, atributo, `EXECUTE` de PUBLIC/anon/authenticated,
+  função ausente, terceira sobrecarga), mutantes do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`).
+  **Não prova** a IKCOUS nem a Savy.
+- **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
+  RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`) avisa "Pedido pronto para retirar" e
+  "Pedido retirado" no sino, com a trigger real e os papéis reais num Postgres efêmero; o resto fica byte a byte como era.
+  Fluxo de entrega e de retirada, cancelamento nos dois, 19 formas de `customer_data` que NÃO são retirada (id com espaço,
+  sufixo, caixa, lista, objeto, `null`, só o endereço da loja), o mesmo status de novo (quatro jeitos) sem duplicar,
+  convidado sem aviso, UPDATE de várias linhas (cada uma com o seu texto), status e dados mudando juntos (vale o NEW),
+  falha de aviso que não derruba o pedido, e o aviso que JÁ existia antes da migration, que fica como está. O corpo
+  ANTIGO (rollback numa transação desfeita) reprova a prova da retirada e IGUALA o novo em tudo o que não é retirada;
+  mutantes do corpo ficam vermelhos; ACL, atributos e dono iguais; aplicar 2x = 1x; o pré-voo recusa sem escrever (corpo,
+  ACL, atributo, trigger fora do lugar, coluna, sobrecarga); troca interrompida; leitura concorrente. **Não prova** a
+  IKCOUS nem a Savy.
+- **portão do sino da retirada (`o-sino-do-pedido-de-retirada-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `34a-conferir-sino-da-retirada-aplicado` (DEPOIS, 7 linhas) e `34b-antes-sino-da-retirada-corpo-vigente` (ANTES, 6
+  linhas) e a medição `34m-medir-sino-da-retirada` (rol aberto, só contagens), a "prova de objetos" do lote
+  `20261233000000`. Mesmo desenho do portão 26: rol exato nos estados, um negativo por linha, o veredito do
+  `conferir-banco.cjs` (`rol=ok`), a 34m por diferença contra os pedidos montados. **Não prova** a IKCOUS nem a Savy.
+- **gestão de categorias sem produto órfão (`categorias-gestao-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261237000000` (14/10/2026; permissão + regra de devolução) cria `renomear_categoria`, `apagar_categoria_vazia`,
+  `categorias_com_uso` e oito auxiliares `categoria__*`. A categoria do produto é guardada pelo NOME (texto, sem chave
+  estrangeira) e o nome aparece em quatro lugares: a linha de `categorias`, `produtos.categoria`, o link do banner
+  (`/?category=<nome>`, codificado ou cru) e a lista `categorias_sem_troca` da política de devolução. A prova roda com os
+  papéis reais num Postgres efêmero: renomear troca os QUATRO lugares numa transação e conta cada um (com a chave da
+  vitrine: maiúscula e espaço nas pontas; nome PARECIDO e outra categoria ficam; banner inativo também; os outros
+  parâmetros do link ficam; a lista da política só troca o item que é a categoria, guarda a ordem e as repetições dos
+  outros itens, e o nome novo não se repete; produto e item da lista mantêm o espaço que tinham nas pontas, para a
+  regra de devolução, que compara `lower()` sem tirar espaço, dar o MESMO "aceita troca?" de cada produto antes e depois
+  da troca, numa matriz de espaços, caixas e itens); falha injetada no banner ou na
+  política não deixa NADA trocado (com o controle sem a falha); nome repetido (maiúscula, acento, pontuação, espaço),
+  vazio, só símbolos e acima de 80 letras recusam sem escrever; duas linhas quase iguais recusam renomear (ninguém é
+  adivinhado); apagar recusa com o motivo e as contagens enquanto houver produto, banner (ativo ou não) ou regra de
+  devolução, e vazia apaga só ela; `anon` sem EXECUTE, logado comum, admin rebaixado (JWT velho) e admin só numa das duas
+  fontes recebem "Acesso negado" sem escrever (com o controle de que SÓ a segunda guarda os barra), service_role passa e as
+  auxiliares são fechadas; a codificação do nome é a de `encodeURIComponent` (inclusive emoji) e a leitura do link a de
+  `destino-do-banner.ts`; o rollback apaga as onze funções e só elas e reaplicar devolve o mesmo corpo e a mesma ACL;
+  o pré-voo recusa sem escrever. "Escondida da vitrine" é a coluna `ativo` que já existia (o front a respeita): esta
+  migration não cria outra. **Não prova** a IKCOUS nem a Savy; **não cobre** link de banner com endereço completo
+  escrito à mão nem a corrida entre renomear e salvar um produto com a tela velha.
+- **portão da gestão de categorias (`categorias-gestao-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `38a-conferir-gestao-de-categorias-aplicado` (DEPOIS, 8 linhas) e `38b-antes-gestao-de-categorias-funcoes-ausentes`
+  (ANTES, 6 linhas), a "prova de objetos" do lote `20261237000000`. Mesmo desenho do portão 34: rol exato nos estados,
+  um negativo por linha (byte a mais em cada corpo, atributo, EXECUTE aberto ou fechado demais, auxiliar aberta ou
+  ausente ou trocada por uma sobrecarga de outra assinatura, gatilho, coluna e função de que a migration depende), o
+  veredito do `conferir-banco.cjs` (`rol=ok`).
+  **Não prova** a IKCOUS nem a Savy.
+- **pedidos de privacidade da cliente (`pedidos-de-privacidade-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261238000000` — a tabela `pedidos_de_privacidade` (excluir conta / corrigir e-mail, atendida à mão). Com a RLS real:
+  a cliente lê e insere só o dela (leitura cruzada e inserção em nome de outra recusadas), não decide nem escreve
+  situação/carimbos/observação, um aberto por (cliente, tipo) (23505), anon fechado, o admin atual atende com carimbo
+  do servidor e a decisão é final, o admin rebaixado com JWT velho não lê nem decide, **ninguém apaga** (DELETE e
+  TRUNCATE recusados para anon, cliente, admin e service_role; sem grant e sem política de DELETE), forma do e-mail e
+  chave estrangeira sem cascata, estrutura (RLS, políticas, índice, colunas de INSERT/UPDATE), rollback que RECUSA com
+  pedido registrado. **Não prova** a IKCOUS nem a Savy.
+- **ensaio da anonimização de conta (`anonimizar-conta-ensaio-viva.cjs`, via `rodar-isolado.cjs`)**: sem migration. O SQL
+  é LIDO dos blocos do roteiro `docs/runbooks/atender-pedido-de-privacidade.md` e roda contra uma cliente de mentira e
+  uma vizinha. O ensaio (`v_confirmar := false`) não grava; valendo, o dado pessoal sai (perfil, endereços, favoritos,
+  carrinho, avisos, push, códigos, texto livre e endereço dos pedidos, texto da devolução), os pedidos **continuam** com
+  os mesmos valores, o login **não é apagado** (fica bloqueado, com e-mail sem identidade), a vizinha e o registro do
+  pedido de privacidade ficam intactos; uma varredura independente não acha mais nome/e-mail/telefone/CPF e a "busca de
+  sobras" do roteiro acha só a resposta da loja que cita o nome; as travas (pedido ou devolução em andamento, foto no
+  Storage, sem pedido aberto) recusam sem mudar nada. Do login do Supabase o roteiro também limpa a troca pendente de
+  e-mail/telefone e os códigos de `auth.users`, apaga as linhas dela de `auth.one_time_tokens` e `auth.mfa_factors` e
+  deixa o `auth.audit_log_entries` sem IP e sem dado pessoal (a linha fica); do pedido só passa a lista de permitidos
+  (forma de entrega, endereço da loja, canal), provada com chave de endereço de nome inesperado. A prova (g) tira UM
+  passo por vez (7 mutantes + o do IP) e a varredura tem de achar dado dela. O esquema `auth` é **emulado** por esta
+  prova (colunas e tabelas que o roteiro toca, com os tipos do GoTrue); o que só um Supabase real prova está marcado
+  `[CONFERIR EM LOJA DE TESTE]` no roteiro. **Não prova** a IKCOUS nem a Savy.
+- **portão dos pedidos de privacidade (`pedidos-de-privacidade-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `39a-conferir-pedidos-de-privacidade-aplicado` (DEPOIS do apply, 19 linhas) e `39b-antes-pedidos-de-privacidade-objetos-ausentes`
+  (ANTES, 9 linhas, com o `REFERENCES` do papel `postgres` em `auth.users`) e a medição
+  `39m-medir-privilegios-do-roteiro-de-privacidade` (rol aberto, só catálogo), a "prova de objetos" do lote `20261238000000`.
+  Rol exato em todos os estados (depois, antes, ida e volta, o arquivo em CRLF), a migration que **não é reaplicável**
+  recusada no pré-voo, um defeito por vez reprovando SÓ a sua linha (coluna, CHECK trocada ou com valor a mais, chave com
+  cascata, índice sem o filtro, RLS desligada, política a menos, a mais, para outro papel ou com a expressão frouxa, cada
+  privilégio a mais ou a menos para PUBLIC, anon, authenticated e service_role, corpo com 1 byte, atributos, `EXECUTE`
+  aberto, outra sobrecarga, gatilho desligado, de outro tipo, a mais ou com `WHEN`; e, no ANTES, o resto de uma meia
+  migration e cada dependência que falta), o `REFERENCES` provado trocando o papel alvo por um papel de teste (o
+  `postgres` local é superusuário), a 39m lida certa por tabela com um papel de teste, o papel sem `USAGE` em `auth`
+  fazendo a consulta ERRAR (nunca virar positiva) e o veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS
+  nem a Savy, nem o `REFERENCES` do `postgres` real (só a `39b` rodada na loja). O roteiro manual de anonimização **não
+  roda aqui**: ele apaga dado real de login e fica com o dono, caso a caso.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
@@ -538,7 +722,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   desfeita, para provar grants/RLS/view — o admin grava
   `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
 - **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
-  `20261199000000` (20261212, 20261214, 20261227, 20261228) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261234, 20261235, 20261239) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
   reprova se aparecer uma sucessora que não esteja na lista.
 - **função nova não nasce aberta (`portas-do-visitante-so-as-permitidas-viva.cjs`, via `rodar-isolado.cjs`)**: L8 da
   auditoria de 12/10, sem migration. Com todas as migrations aplicadas, toda função de `public` que anon,

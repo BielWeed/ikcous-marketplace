@@ -32,6 +32,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCategories } from "@/hooks/useCategories";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
@@ -40,8 +41,21 @@ import { useProducts } from "@/hooks/useProducts";
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
-import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
-import { cn } from "@/lib/utils";
+import { soFotosReais } from "@/lib/foto-do-produto";
+import {
+  ErroDeCategoria,
+  categoriaExisteNaLista,
+  mesmaCategoria,
+} from "@/lib/gestao-de-categorias";
+import {
+  AVISO_ESTOQUE_NAO_RESTAURADO,
+  chaveDoRascunhoDoProduto,
+  estoqueDoRascunhoDifereDoBanco,
+  lerRascunhoVigenteDoProduto,
+  serializarRascunhoDoProduto,
+  variacoesDoRascunhoComEstoqueDoBanco,
+} from "@/lib/rascunho-do-produto";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
@@ -57,6 +71,8 @@ import {
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
 } from "@/utils/motivo-do-bloqueio-do-produto";
+import { precoProprioDaVariacao } from "@/utils/preco-da-variacao";
+import { avisarProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import {
   gruposDeVariacao,
   temGrupoDemais,
@@ -122,6 +138,13 @@ function normalizarCodigoBarras(valor: string): string {
   return valor.trim().replace(/\s+/g, "");
 }
 
+/** O campo "Preço diferente nesta variação" está com um valor, e esse valor é
+ * zero ("0,00", "0.00", "0"). Vazio NÃO conta: vazio é "use o preço do
+ * produto". Olha só os algarismos, sem interpretar vírgula ou ponto. */
+function precoDaVariacaoEhZero(texto: string): boolean {
+  return /\d/.test(texto) && !/[1-9]/.test(texto);
+}
+
 /** Percentual com 1 casa, em pt-BR ("33,3%", nunca "33.3%") — a mesma grafia
  * da lista de produtos. */
 function percentualComUmaCasa(valor: number): string {
@@ -140,6 +163,14 @@ const LeitorDeCodigo = lazy(() =>
   import("@/components/admin/pdv/LeitorDeCodigo").then((modulo) => ({
     default: modulo.LeitorDeCodigo,
   })),
+);
+
+// A tela "Gerenciar categorias" só é baixada quando a lojista a abre (pelo
+// mesmo motivo do leitor acima): fora dela o formulário não precisa dela.
+const GerenciarCategorias = lazy(() =>
+  import("@/components/admin/categorias/GerenciarCategorias").then(
+    (modulo) => ({ default: modulo.GerenciarCategorias }),
+  ),
 );
 
 // C5.3 — sem câmera (desktop sem webcam, navegador sem suporte) o botão
@@ -289,20 +320,6 @@ interface AdminProductFormViewProps {
   userId?: string;
 }
 
-/** L10 — a chave do rascunho DO USUÁRIO (`null` sem uid). */
-function chaveDoRascunhoDoProduto(
-  userId: string | undefined,
-  productId?: string,
-): string | null {
-  if (!userId) return null;
-  return chaveDoUsuario(
-    productId
-      ? `ikcous_product_form_draft_edit_${productId}`
-      : "ikcous_product_form_draft",
-    userId,
-  );
-}
-
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
@@ -361,7 +378,9 @@ function camposDoFormularioDoProduto(product: Product): ProductFormFields {
     estoqueMinimo:
       product.estoqueMinimo == null ? "" : String(product.estoqueMinimo),
     category: product.category,
-    images: product.images,
+    // Só fotos de verdade: o "Sem Imagem" que a exibição inventa para produto
+    // sem foto não entra no formulário (nem, por ele, no banco).
+    images: soFotosReais(product.images),
     freeShipping: product.freeShipping,
     isBestseller: product.isBestseller,
     isActive: product.isActive,
@@ -491,7 +510,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       ),
     [products],
   );
-  const { categories: dbCategories, addCategory } = useCategories();
+  const {
+    categories: dbCategories,
+    addCategory,
+    isLoading: carregandoCategorias,
+  } = useCategories();
   const isOffline = useOnlineStatus();
   const { config } = useStore();
   const isLocalShipping = config?.shippingCoverage === "local";
@@ -585,7 +608,54 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   });
   const [currentProduct, setCurrentProduct] = useState<any>(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  // A lojista renomeou ou apagou a categoria que está escolhida AQUI: o campo
+  // acompanha. O banco já trocou o nome no produto salvo; sem isto, salvar com o
+  // nome velho no campo devolveria o produto à categoria que não existe mais.
+  useAoMudarCategoria((mudanca) => {
+    if (mudanca.tipo === "renomeada") {
+      setFormData((prev) =>
+        mesmaCategoria(prev.category ?? "", mudanca.de)
+          ? { ...prev, category: mudanca.para }
+          : prev,
+      );
+    } else if (mudanca.tipo === "apagada") {
+      setFormData((prev) =>
+        mesmaCategoria(prev.category ?? "", mudanca.nome)
+          ? { ...prev, category: "" }
+          : prev,
+      );
+    }
+  });
+  // A categoria que um RASCUNHO restaurado trouxe, ainda por conferir. O rascunho
+  // fica guardado no aparelho por até 7 dias; nesse tempo a lojista pode ter
+  // renomeado ou apagado a categoria (em "Gerenciar categorias" ou em outro
+  // aparelho), e salvar com o nome velho deixaria o produto órfão da vitrine.
+  // Depois que a lista de categorias chega, o nome que não existe mais sai do
+  // campo e a lojista é avisada de que precisa escolher de novo.
+  const [categoriaDoRascunho, setCategoriaDoRascunho] = useState<string | null>(
+    null,
+  );
+  const [categoriaDoRascunhoSumiu, setCategoriaDoRascunhoSumiu] = useState<
+    string | null
+  >(null);
+  useEffect(() => {
+    if (categoriaDoRascunho === null) return;
+    // Lista ainda chegando (ou vazia por falha de leitura): não dá para afirmar nada.
+    if (carregandoCategorias || dbCategories.length === 0) return;
+    setCategoriaDoRascunho(null);
+    if (categoriaExisteNaLista(categoriaDoRascunho, dbCategories)) return;
+    setCategoriaDoRascunhoSumiu(categoriaDoRascunho);
+    setFormData((prev) =>
+      mesmaCategoria(prev.category ?? "", categoriaDoRascunho)
+        ? { ...prev, category: "" }
+        : prev,
+    );
+    toast.warning(
+      `A categoria “${categoriaDoRascunho}” do rascunho não existe mais. Escolha a categoria de novo.`,
+    );
+  }, [categoriaDoRascunho, carregandoCategorias, dbCategories]);
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
@@ -880,8 +950,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   useEffect(() => {
     if (!productId) {
       const chaveDoRascunho = chaveDoRascunhoDoProduto(userId);
+      // Rascunho com mais de 7 dias já sai daqui descartado (vira `null`).
       const savedDraft = chaveDoRascunho
-        ? localStorage.getItem(chaveDoRascunho)
+        ? lerRascunhoVigenteDoProduto(chaveDoRascunho)
         : null;
       if (savedDraft && chaveDoRascunho) {
         try {
@@ -895,7 +966,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             stock: parsed.stock || "",
             estoqueMinimo: parsed.estoqueMinimo || "",
             category: parsed.category || "",
-            images: parsed.images || [],
+            images: soFotosReais(parsed.images),
             freeShipping: !!parsed.freeShipping,
             isBestseller: !!parsed.isBestseller,
             isActive: parsed.isActive !== false,
@@ -911,6 +982,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           };
           setFormData(draftFields);
           setInitialData(draftFields);
+          if (draftFields.category)
+            setCategoriaDoRascunho(draftFields.category);
           setIsPromoActive(!!parsed.originalPrice);
           if (draftFields.variants.length > 0) {
             setChaveDasVariacoes((chave) => chave + 1);
@@ -966,10 +1039,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   useEffect(() => {
     if (productId && !isLoading) {
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
-      const savedDraft = draftKey ? localStorage.getItem(draftKey) : null;
+      // Rascunho com mais de 7 dias já sai daqui descartado (vira `null`).
+      const savedDraft = draftKey
+        ? lerRascunhoVigenteDoProduto(draftKey)
+        : null;
       if (savedDraft && draftKey) {
         try {
           const parsed = JSON.parse(savedDraft);
+
+          // ESTOQUE NÃO SE RESTAURA. O número de estoque (do produto e de cada
+          // variação) que o rascunho guardou ficou velho no dia em que uma
+          // venda o descontou no banco; restaurá-lo e salvar devolvia a peça
+          // vendida à prateleira. O estoque vem sempre de `initialData` (o
+          // banco de hoje); o resto do rascunho volta. Variação NOVA (`temp-…`)
+          // mantém o que foi digitado — não há estoque de banco para ela.
+          const estoqueDoRascunhoDiferia = estoqueDoRascunhoDifereDoBanco(
+            parsed,
+            initialData,
+          );
 
           // Only prompt if the draft actually contains modified data compared to DB (initialData)
           const draftFields = {
@@ -978,10 +1065,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             price: parsed.price ?? initialData.price,
             costPrice: parsed.costPrice ?? initialData.costPrice,
             originalPrice: parsed.originalPrice ?? initialData.originalPrice,
-            stock: parsed.stock ?? initialData.stock,
+            stock: initialData.stock,
             estoqueMinimo: parsed.estoqueMinimo ?? initialData.estoqueMinimo,
             category: parsed.category ?? initialData.category,
-            images: parsed.images ?? initialData.images,
+            images: soFotosReais(parsed.images ?? initialData.images),
             freeShipping:
               parsed.freeShipping !== undefined
                 ? !!parsed.freeShipping
@@ -999,7 +1086,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               parsed.metaDescription ?? initialData.metaDescription,
             sku: parsed.sku ?? initialData.sku,
             codigoBarras: parsed.codigoBarras ?? initialData.codigoBarras,
-            variants: parsed.variants ?? initialData.variants,
+            variants: Array.isArray(parsed.variants)
+              ? variacoesDoRascunhoComEstoqueDoBanco(
+                  parsed.variants,
+                  initialData.variants,
+                )
+              : initialData.variants,
             weightKg: parsed.weightKg ?? initialData.weightKg,
             widthCm: parsed.widthCm ?? initialData.widthCm,
             heightCm: parsed.heightCm ?? initialData.heightCm,
@@ -1010,17 +1102,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
           if (isDraftDifferent) {
             toast.info("Rascunho não salvo encontrado para este produto", {
-              description:
-                "Deseja restaurar as alterações que você fez anteriormente?",
+              description: estoqueDoRascunhoDiferia
+                ? `Deseja restaurar as alterações que você fez anteriormente? ${AVISO_ESTOQUE_NAO_RESTAURADO}`
+                : "Deseja restaurar as alterações que você fez anteriormente?",
               action: {
                 label: "Restaurar",
                 onClick: () => {
                   setFormData(draftFields);
+                  // A categoria que o rascunho trouxe e o produto já não tem: confere.
+                  if (
+                    draftFields.category &&
+                    !mesmaCategoria(draftFields.category, initialData.category)
+                  ) {
+                    setCategoriaDoRascunho(draftFields.category);
+                  }
                   setIsPromoActive(!!draftFields.originalPrice);
                   if (draftFields.variants.length > 0) {
                     setChaveDasVariacoes((chave) => chave + 1);
                   }
-                  toast.success("Rascunho restaurado!");
+                  toast.success(
+                    "Rascunho restaurado!",
+                    estoqueDoRascunhoDiferia
+                      ? { description: AVISO_ESTOQUE_NAO_RESTAURADO }
+                      : undefined,
+                  );
                 },
               },
               cancel: {
@@ -1365,7 +1470,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       if (isDirty && draftKey) {
-        localStorage.setItem(draftKey, JSON.stringify(formData));
+        // Com o carimbo de quando foi guardado: o rascunho vence em 7 dias.
+        localStorage.setItem(draftKey, serializarRascunhoDoProduto(formData));
       }
     }, 1000);
 
@@ -1527,11 +1633,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
+      // Lê os arquivos ANTES de esvaziar o campo, e esvazia sempre: se o campo
+      // guarda a escolha, escolher o MESMO arquivo de novo (apagou a foto e
+      // quer reenviar) não dispara `change` no Chrome e nada acontece.
+      const input = e.currentTarget;
+      const files = Array.from(input.files || []);
+      input.value = "";
       if (isOffline) {
         toast.error("Não é possível enviar imagens em modo offline.");
         return;
       }
-      const files = Array.from(e.target.files || []);
       await processAndUploadImages(files);
     },
     [processAndUploadImages, isOffline],
@@ -1543,6 +1654,38 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       images: prev.images.filter((_, i) => i !== index),
     }));
   }, []);
+
+  // `images[0]` é a foto do cartão da vitrine (e vira `imagem_url` ao salvar),
+  // então "principal" é só "primeira do array". A foto sai do lugar e vai para
+  // o começo; as outras mantêm a ordem entre si. Nada é reenviado: as URLs são
+  // as mesmas, só a ordem muda.
+  const carrosselDeFotosRef = useRef<HTMLDivElement>(null);
+  const focarNaCapaRef = useRef(false);
+  const tornarPrincipal = useCallback((index: number) => {
+    if (index <= 0) return;
+    focarNaCapaRef.current = true;
+    setFormData((prev) => {
+      const [escolhida] = prev.images.slice(index, index + 1);
+      if (!escolhida) return prev;
+      return {
+        ...prev,
+        images: [escolhida, ...prev.images.filter((_, i) => i !== index)],
+      };
+    });
+    toast.success(`Foto ${index + 1} agora é a principal.`);
+  }, []);
+  // O botão tocado some da tela (a foto virou a capa e não tem mais "Tornar
+  // principal"): sem isto o foco cairia no <body> e quem usa teclado ou leitor
+  // de tela perderia o lugar.
+  useEffect(() => {
+    // Roda quando a ordem muda (`formData.images`); só age se foi "Tornar
+    // principal" quem mudou.
+    if (!focarNaCapaRef.current) return;
+    focarNaCapaRef.current = false;
+    carrosselDeFotosRef.current
+      ?.querySelector<HTMLElement>("[data-foto-principal] button")
+      ?.focus();
+  }, [formData.images]);
 
   const atualizarParDeAtributo = (
     indice: number,
@@ -1612,9 +1755,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const sanitizedVarPrice = cleanNumberString(variantFormData.priceOverride);
     const sanitizedVarStock = variantFormData.stockIncrement.replace(/\D/g, "");
 
-    const parsedPriceOverride = sanitizedVarPrice
-      ? Number.parseFloat(sanitizedVarPrice)
-      : undefined;
+    // Zero não é preço próprio (a máscara de moeda nunca esvazia: o campo
+    // apagado chega como "0.00" e a loja cobraria R$ 0,00). Só a variação que
+    // já estava salva com zero mantém o zero. Ver `preco-da-variacao.ts`.
+    const parsedPriceOverride = precoProprioDaVariacao(
+      sanitizedVarPrice,
+      editingVariant?.priceOverride === 0,
+    );
     const sanitizedVarSku = variantFormData.sku
       ? variantFormData.sku.trim().toUpperCase().replace(/\s+/g, "-")
       : undefined;
@@ -1654,10 +1801,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       sku: sanitizedVarSku || undefined,
       codigoBarras: sanitizedVarCodigoBarras || undefined,
       stockIncrement: Number.parseInt(sanitizedVarStock) || 0,
-      priceOverride:
-        parsedPriceOverride !== undefined
-          ? Math.max(0, parsedPriceOverride)
-          : undefined,
+      priceOverride: parsedPriceOverride,
       active: variantFormData.active,
       imageUrl: variantFormData.imageUrl || undefined,
     };
@@ -2032,7 +2176,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // Texto inválido já bloqueou o salvar acima, então aqui nunca é NaN.
       estoqueMinimo: lerEstoqueMinimo(formData.estoqueMinimo).valor,
       category: formData.category,
-      images: formData.images,
+      // Nunca o marcador "Sem Imagem" (placehold.co): a vitrine mostra
+      // `images[0]`, e foto de verdade não pode ficar atrás dele. Sem foto, a
+      // lista vai vazia e a exibição põe o marcador por conta própria.
+      images: soFotosReais(formData.images),
       freeShipping: formData.freeShipping,
       isBestseller: formData.isBestseller,
       isActive: formData.isActive,
@@ -2216,6 +2363,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           sold: 0,
           variants: variantsWithSanitizedSku,
         });
+        // A lista de produtos lembra busca, categoria e página: avisa que há um
+        // produto novo para ela abrir na página 1, sem filtro, e mostrá-lo.
+        if (criado) avisarProdutoNovoCadastrado();
 
         // O produto foi criado mas a grade NÃO gravou (o hook já avisou por
         // toast). Dar "Salvo" e sair para a lista esconderia isso -- e ficar
@@ -2231,7 +2381,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           try {
             const chaveDeEdicao = chaveDoRascunhoDoProduto(userId, criado.id);
             if (chaveDeEdicao) {
-              localStorage.setItem(chaveDeEdicao, JSON.stringify(formData));
+              localStorage.setItem(
+                chaveDeEdicao,
+                serializarRascunhoDoProduto(formData),
+              );
             }
           } catch (erroDeCota) {
             // Sem rascunho a lojista perde só a digitação da grade; com a chave
@@ -2475,6 +2628,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         <div className="absolute bottom-0 left-0 h-[500px] w-[500px] rounded-full bg-blue-500/5 blur-[120px]" />
       </div>
 
+      {gerenciandoCategorias && (
+        <Suspense fallback={null}>
+          <GerenciarCategorias
+            aberta
+            onFechar={() => setGerenciandoCategorias(false)}
+          />
+        </Suspense>
+      )}
+
       {typeof document !== "undefined" &&
         createPortal(
           <AnimatePresence>
@@ -2569,10 +2731,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             });
                             setShowCategoryForm(false);
                             setNewCategoryName("");
-                          } catch {
-                            toast.error("Erro ao salvar categoria", {
-                              id: loadingId,
-                            });
+                          } catch (e) {
+                            toast.error(
+                              e instanceof ErroDeCategoria
+                                ? e.message
+                                : "Erro ao salvar categoria",
+                              { id: loadingId },
+                            );
                           }
                         }
                       }}
@@ -2922,6 +3087,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             id="variant-price"
                             name="variant-price"
                             mask="currency"
+                            zeroVazio
                             value={variantFormData.priceOverride}
                             onFlush={(val) =>
                               setVariantFormData((p) => ({
@@ -2935,7 +3101,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         </div>
                         <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                           Deixe em branco para usar o preço padrão.
+                          {editingVariant?.priceOverride === 0 &&
+                            " Esta variação está salva a R$ 0,00 (de graça na loja): apague o campo para voltar ao preço padrão."}
                         </span>
+                        {/* O 0 é gravado como preço próprio e vale no lugar do
+                            preço do produto: a variação sai de graça. Só
+                            avisa; não bloqueia nem muda o valor gravado. */}
+                        {precoDaVariacaoEhZero(
+                          variantFormData.priceOverride,
+                        ) && (
+                          <span
+                            data-testid="aviso-variacao-de-graca"
+                            className="ml-1 mt-1 block text-[11px] font-bold leading-tight text-amber-400"
+                          >
+                            Com R$ 0,00 esta variação será vendida de graça.
+                            Para usar o preço do produto, deixe o campo vazio.
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -3414,7 +3596,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             ) : (
               <div className="relative w-full">
                 {/* Single horizontal scroll carousel for ALL images */}
-                <div className="flex flex-row gap-4 overflow-x-auto px-2 pb-4 pt-2 snap-x scroll-smooth scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+                <div
+                  ref={carrosselDeFotosRef}
+                  className="flex flex-row gap-4 overflow-x-auto px-2 pb-4 pt-2 snap-x scroll-smooth scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
+                >
                   <AnimatePresence>
                     {formData.images.map((image, index) => {
                       const meta = imageMetadata[image];
@@ -3422,6 +3607,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       return (
                         <motion.div
                           key={image}
+                          data-foto-principal={isCover ? "" : undefined}
                           initial={{ scale: 0.8, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
                           exit={{ scale: 0.8, opacity: 0 }}
@@ -3439,7 +3625,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             />
 
                             {/* Actions Overlay */}
-                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/35 to-transparent opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100 duration-300">
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/35 to-transparent opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100 hover-hover:focus-within:opacity-100 duration-300">
                               <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
@@ -3460,6 +3646,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               </div>
                             </div>
                           </div>
+
+                          {/* "Tornar principal": a capa é `images[0]`. Fica
+                              travado enquanto alguma foto sobe, como o resto
+                              dos botões de foto. */}
+                          {!isCover && (
+                            <button
+                              type="button"
+                              onClick={() => tornarPrincipal(index)}
+                              disabled={isImageUploading || isSubmitting}
+                              aria-label={`Tornar principal: foto ${index + 1} de ${formData.images.length}`}
+                              className="absolute left-2 top-2 z-20 min-h-11 rounded-lg border border-white/10 bg-black/70 px-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-lg backdrop-blur-md transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                            >
+                              Tornar principal
+                            </button>
+                          )}
 
                           {/* Status Warning Badge */}
                           {meta && meta.status !== "loading" && (
@@ -3801,6 +4002,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   onValueChange={async (val) => {
                     if (val === "NEW_CATEGORY") {
                       setShowCategoryForm(true);
+                    } else if (val === "MANAGE_CATEGORIES") {
+                      setGerenciandoCategorias(true);
                     } else {
                       setFormData((prev) => ({ ...prev, category: val }));
                     }
@@ -3831,12 +4034,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         ➕ CRIAR NOVA CATEGORIA
                       </span>
                     </SelectItem>
+                    <SelectItem
+                      value="MANAGE_CATEGORIES"
+                      className="cursor-pointer rounded-lg px-4 py-3 font-black text-zinc-300 focus:bg-white/5 focus:text-white"
+                    >
+                      <span className="flex items-center gap-2">
+                        ✏️ RENOMEAR, ESCONDER OU APAGAR
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 text-zinc-600 transition-colors group-hover:text-emerald-500">
                   <Layers className="size-5" />
                 </div>
               </div>
+              {categoriaDoRascunhoSumiu && formData.category === "" ? (
+                <p
+                  role="alert"
+                  data-testid="categoria-do-rascunho-sumiu"
+                  className="ml-1 text-xs font-bold text-amber-300"
+                >
+                  A categoria “{categoriaDoRascunhoSumiu}” do rascunho não
+                  existe mais. Escolha a categoria de novo.
+                </p>
+              ) : null}
             </div>
 
             {/* Preço de venda: sobe da antiga "Precificação" para o básico —
@@ -5057,10 +5278,22 @@ const VariantItem = React.memo(function VariantItem({
                 {variant.stockIncrement} UND
               </span>
             </span>
-            {variant.priceOverride && (
-              <span className="flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-emerald-500">
+            {/* `!= null`, não verdade: o 0 é um preço próprio (brinde) e
+                `{0 && ...}` desenharia só o algarismo solto. */}
+            {variant.priceOverride != null && (
+              <span
+                data-testid="preco-proprio-da-variacao"
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md border px-2 py-1",
+                  variant.priceOverride === 0
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                    : "border-emerald-500/20 bg-emerald-500/10 text-emerald-500",
+                )}
+              >
                 <DollarSign className="size-3" />
-                R$ {Number(variant.priceOverride).toFixed(2)}
+                {variant.priceOverride === 0
+                  ? "R$ 0,00 — de graça na loja"
+                  : formatCurrency(Number(variant.priceOverride))}
               </span>
             )}
           </div>

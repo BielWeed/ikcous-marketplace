@@ -1,4 +1,10 @@
 import { pedirAoSwPurgarArquivosPrivados } from "@/lib/arquivo-publico-do-storage";
+import { esquecerAdiamentoDosAvisos } from "@/lib/avisos-do-aparelho";
+import {
+  REVIEWS_CACHE_KEY_PREFIX,
+  esquecerAvaliacoesGuardadas,
+  esvaziarAvaliacoesEmMemoria,
+} from "@/lib/cache-de-avaliacoes";
 import { cpfValido } from "@/lib/cpf";
 import { gravarCpfDaConta } from "@/lib/cpf-da-conta";
 import {
@@ -10,6 +16,10 @@ import {
   enderecoSemOErroDoLink,
   enderecoTrazErroDeLink,
 } from "@/lib/erro-no-endereco-do-link";
+import {
+  cancelarInscricaoDaConta,
+  soltarInscricaoDoAparelho,
+} from "@/lib/inscricao-de-push-da-conta";
 import {
   type LoginAudience,
   MENSAGEM_ERRO_LOGIN_GENERICA,
@@ -153,11 +163,26 @@ function clearLocalUserData() {
   // `window`, e assim continua valendo em qualquer ambiente que chame esta
   // função.
   limparCachesDeAdmin();
+  // As avaliações guardadas por produto (mapa em memória; as chaves do
+  // `localStorage` caem na varredura abaixo) podem trazer avaliações ainda não
+  // aprovadas, com o nome do autor, e sobreviviam ao "Sair".
+  esvaziarAvaliacoesEmMemoria();
   // R12 (04/10/2026) — a gaveta de imagens do service worker pode ter
   // guardado endereço ASSINADO de bucket privado (foto de devolução) antes
   // da correção: pede ao SW que jogue fora o que não é público. Disparar-e-
   // esquecer, nunca lança — o logout não espera o SW nem depende dele.
   pedirAoSwPurgarArquivosPrivados();
+  // A inscrição de push é do APARELHO e está no nome de quem saiu: sem
+  // sessão (outra aba saiu, a sessão venceu) não há como apagar a linha dele
+  // no servidor, mas desinscrever o navegador basta para o push parar de
+  // chegar neste aparelho. O "Sair" feito aqui já cancelou antes (com
+  // servidor); isto cobre o resto. Disparar-e-esquecer, nunca lança.
+  void soltarInscricaoDoAparelho();
+  // O "Agora não" do cartão de avisos do Início é do APARELHO no nome de quem
+  // o tocou. Aparelho descadastrado + adiamento vivo = o alarme que existe
+  // para pegar exatamente este caso (Sair e Entrar) ficaria calado por até 7
+  // dias. Nunca lança.
+  esquecerAdiamentoDosAvisos();
   // Recarga do checkout (04/10/2026): o id do pedido em pagamento que a aba
   // guarda para o PIX sobreviver ao F5 (src/lib/pedido-pendente-do-checkout.ts)
   // é da sessão de quem saiu. Mora no `sessionStorage`, não no
@@ -193,6 +218,7 @@ function clearLocalUserData() {
       key?.startsWith("ikcous_orders_cache_") ||
       key?.startsWith("ikcous_addresses_cache_") ||
       key?.startsWith("ikcous_shipping_cache_") ||
+      key?.startsWith(REVIEWS_CACHE_KEY_PREFIX) ||
       // L10 — rascunho de edição de produto de ANTES do desenho por usuário
       // (`…_edit_<id>`, sem `:<uid>`; o id é um UUID, nunca tem `:`).
       (key?.startsWith("ikcous_product_form_draft_edit_") && !key.includes(":"))
@@ -241,6 +267,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [adminStatus, setAdminStatus] = useState<AdminStatus>(
     cachedSession?.user ? "unknown" : "not-admin",
   );
+  // Rede lenta não rebaixa quem o servidor já confirmou (14/10/2026): o id de
+  // quem o servidor confirmou como admin NESTA sessão (resposta bem-sucedida
+  // dizendo `true`, nunca texto em cache). Só serve para uma recheca de
+  // FUNDO (SIGNED_IN reanunciado ao voltar ao app, TOKEN_REFRESHED) não
+  // rebaixar por estouro de tempo ou erro de rede/HTTP — só um "não" REAL
+  // rebaixa. Vive só em memória: nunca nasce do `localStorage`. Só
+  // `applyResult` a preenche, e o ramo "manter" nunca PROMOVE ninguém: só
+  // deixa de rebaixar. Esquece-se num "não" real e quando a pessoa ativa
+  // muda (troca de conta, saída).
+  const adminConfirmadoRef = useRef<string | null>(null);
   const isAdmin = adminStatus === "admin";
   // Link de "esqueci a senha" VENCIDO ou já usado: o servidor devolve a pessoa
   // com o erro no endereço (`error_code=otp_expired`, no hash ou na query) e o
@@ -346,8 +382,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setAdminStatus(isAdminResult ? "admin" : "not-admin");
       if (verified) {
         localStorage.setItem(cacheKey, isAdminResult ? "true" : "false");
+        // Só um VEREDITO do servidor (`verified`) confirma — e só ele
+        // rebaixa: um "não" real esquece a confirmação.
+        adminConfirmadoRef.current = isAdminResult ? userId : null;
       }
     };
+
+    // Recheca de FUNDO de quem o servidor já confirmou admin nesta sessão:
+    // estouro de tempo ou erro de rede/HTTP não é "não" — o painel aberto
+    // (cadastro em andamento, foto subindo) não pode ser trocado por "Acesso
+    // restrito" por causa de uma resposta que não chegou. A guarda do
+    // usuário ativo continua valendo (troca de conta no meio da checagem).
+    const jaConfirmadoNestaSessao = () => adminConfirmadoRef.current === userId;
 
     // #123 — a sessão local é texto que o usuário edita no DevTools; o
     // supabase-js não valida a assinatura do JWT no cliente. `app_metadata`
@@ -356,7 +402,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Fast Path 2: Local Cache (Immediate return for confirmed customers, keyed by user ID)
     const cachedAdmin = localStorage.getItem(cacheKey);
-    if (cachedAdmin === "false") {
+    // Quem o servidor já confirmou nesta sessão não toma o atalho: um "false"
+    // no aparelho (de outra aba, de antes) não rebaixa antes de a rede falar.
+    if (cachedAdmin === "false" && !jaConfirmadoNestaSessao()) {
       setAdminStatus("not-admin");
       // Run background check to sync with potential admin status updates without blocking initial load
       networkCheck()
@@ -396,7 +444,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             .eq("id", userId)
             .single();
 
-          return !profileError && profile?.role === "admin";
+          // Erro aqui (401, rede, linha invisível) NÃO é "não é dona": é a
+          // ausência de resposta. Vira não-veredito (rejeita) — antes
+          // devolvia `false` como se o servidor tivesse negado, e isso
+          // rebaixava a dona e gravava "false" no aparelho (o Fast Path 2
+          // lê no próximo abrir). Só uma resposta bem-sucedida decide.
+          if (profileError) {
+            throw new Error("Admin check inconclusive (profiles fallback)");
+          }
+          return profile?.role === "admin";
         })();
 
         // Add a resilient 3-second timeout limit to the network query
@@ -430,6 +486,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       applyResult(result, true);
     } catch (err) {
       console.error("[Auth] Error/Timeout checking admin status:", err);
+      if (jaConfirmadoNestaSessao()) {
+        // Recheca de fundo que não obteve resposta: segue admin, sem tocar
+        // no estado nem no aparelho. Um "sim" atrasado já não muda nada; um
+        // "não" REAL na próxima recheca rebaixa (applyResult acima).
+        return;
+      }
       // Não-veredito (Achado 2): trata como não-admin SÓ nesta carga, sem
       // persistir no localStorage.
       applyResult(false, false);
@@ -782,6 +844,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const previousUserId = activeUserIdRef.current;
       const currentUserId = session?.user?.id || null;
       activeUserIdRef.current = currentUserId;
+      // Outra pessoa (ou ninguém) no lugar: a confirmação de admin era da
+      // anterior. Quem voltar depois entra como primeiro login.
+      if (previousUserId !== currentUserId) adminConfirmadoRef.current = null;
 
       // admin_cache-17 — troca de conta na MESMA aba sem passar por
       // SIGNED_OUT explícito (ex.: sessão expira e outra pessoa loga em
@@ -802,9 +867,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (previousUserId && currentUserId && previousUserId !== currentUserId) {
         limparCachesDeAdmin();
+        // Avaliações guardadas (inclui as não aprovadas, com nome do autor):
+        // memória e chaves do `localStorage`, pois esta troca não passa por
+        // `clearLocalUserData`.
+        esquecerAvaliacoesGuardadas();
         // R12 — mesma troca uid→uid: o que a conta anterior abriu por
         // endereço assinado não pode ficar na gaveta do SW para a próxima.
         pedirAoSwPurgarArquivosPrivados();
+        // E a inscrição de push do aparelho era da anterior: a sessão agora é
+        // da nova, que não pode apagar a linha dela — só soltar o navegador.
+        void soltarInscricaoDoAparelho();
+        // E o "Agora não" do cartão de avisos era da conta anterior.
+        esquecerAdiamentoDosAvisos();
       }
 
       // Only set loading screen for explicit critical transitions (login/logout).
@@ -1092,6 +1166,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const logout = useCallback(async () => {
+    // A inscrição de push deste aparelho está no nome de quem sai. Só a
+    // PRÓPRIA conta pode apagar a linha dela (RLS), então isto vem ANTES do
+    // `signOut`, com prazo curto: rede ruim ou erro aqui nunca seguram o Sair.
+    const idDeQuemSai = activeUserIdRef.current;
+    if (idDeQuemSai) {
+      try {
+        await cancelarInscricaoDaConta(idDeQuemSai);
+      } catch {
+        // O módulo não lança; o catch é só o cinto de segurança do Sair.
+      }
+    }
     const { error } = await supabase.auth.signOut();
     if (error) {
       // #122 — `signOut()` devolvendo erro (rede caída, por exemplo) não

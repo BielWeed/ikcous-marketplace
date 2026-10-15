@@ -144,7 +144,9 @@ vi.mock("sonner", () => ({
   toast: Object.assign(() => {}, {
     error: () => {},
     success: () => {},
-    info: () => {},
+    info: (texto: string) => {
+      catalogo.avisos.push(texto);
+    },
     warning: () => {},
     message: () => {},
     loading: () => {},
@@ -212,6 +214,8 @@ const catalogo = vi.hoisted(() => ({
     error: null as unknown,
   } as { data: unknown; error: unknown },
   consultasDoProduto: 0,
+  // Textos que o App mandou para `toast.info` (o aviso que a cliente vê).
+  avisos: [] as string[],
 }));
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
@@ -326,6 +330,7 @@ describe("link de produto aberto sem rede nao vai para a Home", () => {
     catalogo.products = [{ id: "produto-A" }];
     catalogo.fetchProducts = () => {};
     catalogo.consultasDoProduto = 0;
+    catalogo.avisos = [];
     catalogo.respostaDoProduto = { data: null, error: PGRST116 };
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -454,6 +459,64 @@ describe("link de produto aberto sem rede nao vai para a Home", () => {
 
     expect(caminho()).toBe("/");
     expect(container?.textContent).not.toContain("Não conseguimos carregar");
+  });
+
+  const AVISO_REMOVIDO = "Este produto não está mais disponível.";
+
+  it("produto removido ou pausado (PGRST116): vai para a Home COM o aviso, uma vez só", async () => {
+    await abrir();
+    await clicar("produto-inexistente");
+    await assentar(20);
+
+    expect(caminho()).toBe("/");
+    expect(catalogo.avisos).toEqual([AVISO_REMOVIDO]);
+  });
+
+  it("link com código malformado (22P02) e consulta sem linha também avisam", async () => {
+    catalogo.respostaDoProduto = {
+      data: null,
+      error: { message: "invalid input syntax for type uuid", code: "22P02" },
+    };
+    await abrir();
+    await clicar("produto-inexistente");
+    await assentar(20);
+    expect(catalogo.avisos).toEqual([AVISO_REMOVIDO]);
+
+    catalogo.avisos = [];
+    catalogo.respostaDoProduto = { data: null, error: null };
+    await clicar("produto-inexistente");
+    await assentar(20);
+    expect(catalogo.avisos).toEqual([AVISO_REMOVIDO]);
+  });
+
+  it("falha de REDE nunca diz 'não está mais disponível'", async () => {
+    catalogo.respostaDoProduto = { data: null, error: FALHA_DE_REDE };
+    await abrir();
+    await clicar("produto-inexistente");
+    await assentar(20);
+
+    expect(catalogo.avisos).toEqual([]);
+    expect(container?.textContent).toContain("Não conseguimos carregar");
+    expect(container?.textContent).not.toContain("não está mais disponível");
+  });
+
+  it("produto que existe na rede: nenhum aviso e ninguém é redirecionado", async () => {
+    catalogo.respostaDoProduto = { data: { id: "produto-Z" }, error: null };
+    await abrir();
+    await clicar("produto-inexistente");
+    await assentar(20);
+
+    expect(catalogo.avisos).toEqual([]);
+    expect(caminho()).toContain("produto-Z");
+  });
+
+  it("voltar para a Home pela navegação normal não avisa nada", async () => {
+    await abrir();
+    await clicar("produto");
+    await clicar("inicio");
+    await assentar(20);
+
+    expect(catalogo.avisos).toEqual([]);
   });
 
   it("'Tentar de novo' consulta o catálogo e, voltando a rede, abre o produto", async () => {

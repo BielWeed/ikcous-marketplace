@@ -4,6 +4,8 @@
 // WhatsApp some da loja); preenchido, vale DDD + número (10 ou 11 dígitos) e o
 // +55 do Brasil entra sozinho na hora de gravar.
 
+import { limparTelefoneBrasileiro } from "@/lib/telefone-br";
+
 /** Só os dígitos do que foi digitado ou salvo. */
 export function soDigitos(valor: string | null | undefined): string {
   return (valor ?? "").replace(/\D/g, "");
@@ -15,11 +17,7 @@ export function soDigitos(valor: string | null | undefined): string {
  * RS) sem país não pode perder os dois primeiros dígitos.
  */
 export function numeroParaOCampo(valor: string | null | undefined): string {
-  const digitos = soDigitos(valor);
-  return digitos.startsWith("55") &&
-    (digitos.length === 12 || digitos.length === 13)
-    ? digitos.slice(2)
-    : digitos;
+  return limparTelefoneBrasileiro(valor);
 }
 
 /** A forma gravada: 10 ou 11 dígitos ganham o 55; o resto fica como está. */
@@ -38,7 +36,9 @@ export type WhatsappParaGravar =
 export function whatsappParaGravar(
   digitado: string | null | undefined,
 ): WhatsappParaGravar {
-  const digitos = soDigitos(digitado);
+  // Mesma limpeza do campo (zero na frente, +55): o que se grava é o que a
+  // máscara mostra, mesmo se o valor chegar cru (preenchimento automático).
+  const digitos = limparTelefoneBrasileiro(digitado);
   if (digitos.length > 0 && digitos.length < 10) return { valido: false };
   return { valido: true, valor: numeroComPais(digitos) || null };
 }

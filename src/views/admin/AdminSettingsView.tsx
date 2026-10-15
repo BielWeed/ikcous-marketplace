@@ -13,6 +13,7 @@ import {
   Palette,
   RefreshCw,
   RotateCcw,
+  ShieldCheck,
   Store,
   Truck,
   Wifi,
@@ -61,7 +62,8 @@ import type { View } from "@/types";
 // (src/config/configuracaoDaLoja.ts), lida do banco de cada loja pelo
 // porteiro. `null`/`false` é o "não configurada".
 interface AdminSettingsViewProps {
-  onNavigate: (view: View) => void;
+  // `id` opcional: a seção de privacidade abre a ficha da cliente (admin-user-detail).
+  onNavigate: (view: View, id?: string) => void;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
 }
@@ -83,6 +85,18 @@ const EmailDaLojaSection = lazy(() =>
   import("@/components/admin/settings/EmailDaLojaSection").then((module) => ({
     default: module.EmailDaLojaSection,
   })),
+);
+
+// Pedidos de privacidade dos clientes (14/10/2026, LGPD): exclusão de conta e
+// correção de e-mail pedidas pelo app e atendidas à mão pela loja. Carregada sob
+// demanda, como o E-mail da loja: só é baixada (e só lê o banco) quando a seção
+// é aberta. O sino do painel já avisa quando há pedido esperando.
+const PrivacidadeDosClientesSection = lazy(() =>
+  import("@/components/admin/settings/PrivacidadeDosClientesSection").then(
+    (module) => ({
+      default: module.PrivacidadeDosClientesSection,
+    }),
+  ),
 );
 
 // ==========================================
@@ -677,6 +691,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // E-mail da loja (14/10/2026): Gmail ou senha de app digitados e não salvos
   // não somem num clique no cabeçalho da seção.
   const [emailPendente, setEmailPendente] = useState(false);
+  // Pedidos de privacidade (14/10/2026): nota de resposta digitada e não salva.
+  const [privacidadePendente, setPrivacidadePendente] = useState(false);
   // Contador que só CRESCE: o botão "Configurar credenciais" da seção nova
   // incrementa para abrir a seção Mercado Pago de fora (SecaoColapsavel
   // continua dona do próprio fechar).
@@ -699,7 +715,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
         pagamentosPendente ||
           formasPagamentoPendente ||
           politicaDevolucaoPendente ||
-          emailPendente,
+          emailPendente ||
+          privacidadePendente,
       );
   }, [
     active,
@@ -707,6 +724,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
     formasPagamentoPendente,
     politicaDevolucaoPendente,
     emailPendente,
+    privacidadePendente,
     onSetDirty,
   ]);
 
@@ -921,6 +939,29 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   }
                 >
                   <EmailDaLojaSection onDirtyMudou={setEmailPendente} />
+                </Suspense>
+              </SecaoColapsavel>
+              {/* Pedidos de privacidade dos clientes (14/10/2026, LGPD): a
+                  cliente pede, pelo app, a exclusão da conta ou a correção do
+                  e-mail; a loja atende à mão e marca aqui. SEM botão de apagar.
+                  Nascida FECHADA; com nota digitada e não salva, não fecha. */}
+              <SecaoColapsavel
+                titulo="Pedidos de privacidade dos clientes"
+                subtitulo="Exclusão de conta e correção de e-mail pedidas pelo app"
+                icone={ShieldCheck}
+                comPendencia={privacidadePendente}
+              >
+                <Suspense
+                  fallback={
+                    <p className="text-sm text-zinc-400">
+                      Carregando os pedidos…
+                    </p>
+                  }
+                >
+                  <PrivacidadeDosClientesSection
+                    onNavigate={onNavigate}
+                    onDirtyMudou={setPrivacidadePendente}
+                  />
                 </Suspense>
               </SecaoColapsavel>
             </GrupoDeAjustes>

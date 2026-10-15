@@ -17,6 +17,14 @@ import {
   codigoDoErroDeEdgeFunction,
   mensagemAmigavelErroEdgeFunction,
 } from "@/lib/mensagens-erro";
+import {
+  MENSAGEM_CONEXAO_LENTA,
+  PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+  PRAZO_DA_COTACAO_DO_FRETE_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
@@ -491,9 +499,16 @@ export function ShippingCalculator({
             const revisaoDoCache = (
               envelopeCru as Partial<EnvelopeDeCacheDeFrete>
             ).revisaoConfig;
+            // Rede pendurada: sem prazo, a confirmação nunca voltava e a tela
+            // girava para sempre. Estourar vira ERRO (com "Tentar de novo"),
+            // não "sem mudança" — o `catch` de baixo deixa o erro subir.
             const revisaoAtual = isOffline
               ? null
-              : await buscarRevisaoConfigFrete();
+              : await aguardarComPrazo(
+                  buscarRevisaoConfigFrete(),
+                  PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+                  erroDeConsultaSemResposta,
+                );
             // Lacre: uma chamada mais nova pode ter começado durante o
             // `await` acima.
             if (meuId !== reqRef.current) return;
@@ -512,6 +527,8 @@ export function ShippingCalculator({
             // acerto de cache nunca tivesse existido.
           }
         } catch (e) {
+          // O prazo estourado NÃO é cache ilegível: sobe para o erro da tela.
+          if (ehConsultaSemResposta(e)) throw e;
           console.error("Error parsing cached shipping options:", e);
         }
       }
@@ -521,9 +538,12 @@ export function ShippingCalculator({
         throw new Error(MENSAGEM_SEM_CONEXAO_FRETE);
       }
 
-      const { data, error: funcError } = await supabase.functions.invoke(
-        "calculate-shipping",
-        {
+      // Prazo na espera da tela (rede pendurada não pode deixar o frete
+      // girando para sempre). A resposta tardia da tentativa que estourou é
+      // ignorada: só o resultado da corrida segue adiante, e o lacre
+      // (`reqRef`) já descarta quem não é a rodada mais nova.
+      const { data, error: funcError } = await aguardarComPrazo(
+        supabase.functions.invoke("calculate-shipping", {
           // `aceitaRetirada`: o sinal de que ESTE app entende a retirada na
           // loja (nunca a auto-seleciona). Sem ele, a edge não a oferece — é
           // o que protege o app 1.5.2 ainda no ar.
@@ -536,7 +556,9 @@ export function ShippingCalculator({
             aceitaRetirada: true,
             contratoCliente: 3,
           },
-        },
+        }),
+        PRAZO_DA_COTACAO_DO_FRETE_MS,
+        erroDeConsultaSemResposta,
       );
 
       if (funcError) {
@@ -600,6 +622,7 @@ export function ShippingCalculator({
               mensagensSeguras: [
                 MENSAGEM_SEM_CONEXAO_FRETE,
                 MENSAGEM_FALHA_AO_COTAR,
+                MENSAGEM_CONEXAO_LENTA,
               ],
               mensagemGenerica:
                 "Não foi possível calcular o frete agora. Tente novamente em instantes.",
@@ -931,7 +954,7 @@ export function ShippingCalculator({
         }}
         className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
           isSelected
-            ? "border-primary bg-primary text-white shadow-md shadow-black/10"
+            ? "border-primary bg-primary text-primary-foreground shadow-md shadow-black/10"
             : "border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
         }`}
       >
@@ -954,7 +977,7 @@ export function ShippingCalculator({
             <div
               className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
                 isSelected
-                  ? "border-white/20 bg-white/20 text-white"
+                  ? "border-white/20 bg-white/20 text-primary-foreground"
                   : "border-zinc-100 bg-zinc-50 text-zinc-500"
               }`}
             >
@@ -975,7 +998,7 @@ export function ShippingCalculator({
                     key={selo}
                     className={`rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${
                       isSelected
-                        ? "bg-white/20 text-white"
+                        ? "bg-white/20 text-primary-foreground"
                         : "bg-emerald-100 text-emerald-700"
                     }`}
                   >
@@ -993,7 +1016,7 @@ export function ShippingCalculator({
             {(marca?.subtitulo || marca?.agregador) && (
               <span
                 className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[9px] leading-snug ${
-                  isSelected ? "text-zinc-200" : "text-zinc-500"
+                  isSelected ? "text-primary-foreground/80" : "text-zinc-500"
                 }`}
               >
                 {marca.subtitulo && <span>{marca.subtitulo}</span>}
@@ -1004,7 +1027,7 @@ export function ShippingCalculator({
                   <SeloDoAgregador
                     slug={marca.agregador.slug}
                     nome={marca.agregador.nome}
-                    className={`text-[9px] ${isSelected ? "text-zinc-200" : "text-zinc-500"}`}
+                    className={`text-[9px] ${isSelected ? "text-primary-foreground/80" : "text-zinc-500"}`}
                   />
                 )}
               </span>
@@ -1014,7 +1037,9 @@ export function ShippingCalculator({
                 {option.pickupAddress && (
                   <span
                     className={`mt-0.5 block text-[10px] leading-snug ${
-                      isSelected ? "text-zinc-200" : "text-zinc-500"
+                      isSelected
+                        ? "text-primary-foreground/80"
+                        : "text-zinc-500"
                     }`}
                   >
                     Retire em: {option.pickupAddress}
@@ -1022,7 +1047,7 @@ export function ShippingCalculator({
                 )}
                 <span
                   className={`mt-0.5 block text-[9px] leading-snug ${
-                    isSelected ? "text-zinc-300" : "text-zinc-400"
+                    isSelected ? "text-primary-foreground/70" : "text-zinc-400"
                   }`}
                 >
                   Aguarde a confirmação da loja para retirar
@@ -1031,7 +1056,7 @@ export function ShippingCalculator({
             ) : (
               <span
                 className={`mt-0.5 block text-[9px] leading-none ${
-                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                  isSelected ? "text-primary-foreground/70" : "text-zinc-400"
                 }`}
               >
                 {/* Prazo 0 (release 1.5.7, EMENDA R1-4): "no mesmo dia" —
@@ -1050,7 +1075,7 @@ export function ShippingCalculator({
             {naoBeneficiadaComAvisoDeAlcance && (
               <span
                 className={`mt-0.5 block text-[9px] leading-snug ${
-                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                  isSelected ? "text-primary-foreground/70" : "text-zinc-400"
                 }`}
               >
                 O benefício da loja vale só na opção mais barata.
@@ -1075,7 +1100,7 @@ export function ShippingCalculator({
             <div className="flex flex-col items-end">
               <span
                 className={`text-[9px] font-semibold leading-none line-through ${
-                  isSelected ? "text-zinc-300" : "text-zinc-400"
+                  isSelected ? "text-primary-foreground/70" : "text-zinc-400"
                 }`}
               >
                 {formatCurrency(precoCheio as number)}
@@ -1085,7 +1110,7 @@ export function ShippingCalculator({
               </span>
               <span
                 className={`text-[8px] font-black uppercase tracking-wide ${
-                  isSelected ? "text-white/80" : "text-emerald-600"
+                  isSelected ? "text-primary-foreground/80" : "text-emerald-600"
                 }`}
               >
                 Desconto da loja

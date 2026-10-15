@@ -933,7 +933,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                         "
                       </div>
                       <p className="text-lg font-medium leading-relaxed tracking-tight text-zinc-200 lg:pr-12">
-                        {review.comment}
+                        {review.comment || "Avaliação só com estrelas."}
                       </p>
                     </div>
 
@@ -1230,7 +1230,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                       {/* Comment */}
                       <p className="mb-4 line-clamp-3 text-xs font-medium italic leading-relaxed text-zinc-400">
-                        "{review.comment}"
+                        {review.comment
+                          ? `"${review.comment}"`
+                          : "Avaliação só com estrelas."}
                       </p>
 
                       {/* Merchant Reply Indicator */}

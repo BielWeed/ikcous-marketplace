@@ -1,7 +1,18 @@
 import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
 import { DevolucaoDoPedidoCard } from "@/components/devolucao/DevolucaoDoPedidoCard";
 import { SolicitarDevolucaoSheet } from "@/components/devolucao/SolicitarDevolucaoSheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
+import { FotoDoItemDoPedido } from "@/components/ui/custom/FotoDoItemDoPedido";
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,12 +21,19 @@ import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
-import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import {
+  pedidoSemValorAPagar,
+  rotuloDaFormaDoPedido,
+} from "@/lib/forma-de-pagamento";
+import { manterItensEEnderecoDaTela } from "@/lib/fundir-pedido-do-hook";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
+import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import { supabase } from "@/lib/supabase";
+import { motivoDaDevolucaoIndisponivel } from "@/lib/texto-devolucao-indisponivel";
 import {
   type LinhaDevolucaoDoCliente,
   desfechoDaDevolucao,
@@ -23,6 +41,7 @@ import {
   textoDevolucao,
 } from "@/lib/texto-estorno-do-cliente";
 import { cn, formatCurrency } from "@/lib/utils";
+import { escolherVersaoDoPedido } from "@/lib/versao-do-pedido";
 import type {
   Order,
   OrderItem,
@@ -188,14 +207,46 @@ const TIMELINE_STEPS: Array<{
  * `paymentStatusKey` (a ÚNICA fonte que decide "null vira sem_cobranca"),
  * não um segundo emaranhado de `if` dentro de `statusConfig`.
  *
- * `aguardando` e `sem_cobranca` caem no `default`: devolvem o texto que já
- * estava certo, sem mudar uma vírgula.
+ * `aguardando` cai no `default`: devolve o texto que já estava certo, sem
+ * mudar uma vírgula.
+ *
+ * `sem_cobranca` NÃO é "falta pagar": a compra "na entrega" grava
+ * `payment_status` nulo (RPC v23, sem cobrança online nenhuma), e a frase de
+ * "aguardando confirmação de pagamento" mandava a cliente achar que devia
+ * algo ao app. Só vale para forma de pagamento que não é `online` — um
+ * pedido online sem status é dado incompleto, e esse continua com o texto
+ * de sempre em vez de afirmar "você paga na entrega". Sem prazo inventado:
+ * a loja é quem separa e confirma.
+ *
+ * Compra que fechou em R$ 0,00 (cupom de 100%, `pedidoSemValorAPagar`): o
+ * servidor a grava como "pagar na entrega", mas não há nada a pagar — a frase
+ * diz isso em vez de mandar a cliente pagar.
  */
 function pendingDescription(
   paymentStatus: PaymentStatus | null | undefined,
+  forma: {
+    paymentMethod: Order["paymentMethod"];
+    retiradaNaLoja?: boolean;
+    total?: number | null;
+    subtotal?: number | null;
+    discount?: number | null;
+    shipping?: number | null;
+  },
 ): string {
   const key = paymentStatusKey(paymentStatus);
   switch (key) {
+    case "sem_cobranca":
+      if (forma.paymentMethod === "online") {
+        return statusConfig.pending.description;
+      }
+      if (pedidoSemValorAPagar(forma)) {
+        return forma.retiradaNaLoja === true
+          ? "Recebemos seu pedido. A loja vai separar e você não paga nada na retirada."
+          : "Recebemos seu pedido. A loja vai separar e você não paga nada.";
+      }
+      return forma.retiradaNaLoja === true
+        ? "Recebemos seu pedido. A loja vai separar e você paga na loja, na hora de retirar."
+        : "Recebemos seu pedido. A loja vai separar e você paga na entrega.";
     case "pago":
     case "pago_apos_expirar":
     case "recebido_na_entrega":
@@ -213,6 +264,19 @@ function pendingDescription(
       return statusConfig.pending.description;
   }
 }
+
+/**
+ * Estado da consulta da devolução de um pedido cancelado e pago: ainda
+ * conferindo (carregando, ou erro com nova tentativa a caminho), não deu para
+ * conferir (desistiu) ou lida (a partir daí valem as frases de sempre).
+ */
+type LeituraDaDevolucao = "conferindo" | "falhou" | "lida";
+
+const PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO =
+  "Este pedido foi cancelado, mas o seu pagamento foi recebido.";
+const TEXTO_CONFERINDO_DEVOLUCAO = "Conferindo sua devolução…";
+const TEXTO_NAO_CONSEGUI_CONFERIR =
+  "Não consegui conferir agora. Tente de novo mais tarde ou fale com a loja.";
 
 /**
  * `cancelled` (esteira) quase sempre significa "não seguirá para entrega",
@@ -270,6 +334,7 @@ function pendingDescription(
 function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
   linhasDevolucao: LinhaDevolucaoDoCliente[],
+  leituraDaDevolucao: LeituraDaDevolucao = "lida",
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -294,6 +359,16 @@ function cancelledDescription(
     // convidado por rastreio (a RPC de OTP não carrega
     // `cancelled_after_shipping`), pedido legado sem `paid_at`, cache velho
     // do `localStorage` sem a chave nova, e o automático que desistiu.
+    // 14/10/2026: ANTES de a consulta da devolução voltar, `linhasDevolucao`
+    // é `[]` — e `[]` é exatamente o "sem devolução automática" que manda
+    // "fale com a loja". "Ainda não sei" não pode se passar por "sei que não
+    // há": enquanto a leitura não deu certo, a tela só diz o que já é fato.
+    if (leituraDaDevolucao === "conferindo") {
+      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} ${TEXTO_CONFERINDO_DEVOLUCAO}`;
+    }
+    if (leituraDaDevolucao === "falhou") {
+      return `${PAGAMENTO_RECEBIDO_PEDIDO_CANCELADO} ${TEXTO_NAO_CONSEGUI_CONFERIR}`;
+    }
     const desfecho = desfechoDaDevolucao(linhasDevolucao);
     if (desfecho === "em_curso") {
       return "Este pedido foi cancelado, mas o seu pagamento foi recebido. O dinheiro volta sozinho para você: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).";
@@ -306,13 +381,26 @@ function cancelledDescription(
   if (key === "aguardando") {
     return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
   }
+  // 14/10/2026: o cron que vence a reserva de 30 minutos grava
+  // `status='cancelled'` + `payment_status='expirado'` (migration
+  // 20261186000000, `expirar_pedidos_vencidos`). A frase genérica de baixo
+  // ("não seguirá para entrega") não dizia POR QUÊ: quem só demorou para pagar
+  // achava que a loja cancelou. A tela não sabe se a cobrança era PIX ou
+  // cartão (`metodo_online` não chega ao app), então o texto não nomeia o
+  // meio — "pagamento", que vale para os dois.
+  if (key === "expirado") {
+    // Pagou no fim do prazo e o vencimento passou antes da confirmação do
+    // Mercado Pago: o pedido fica minutos como `expirado` e só depois vira
+    // `pago_apos_expirar`. Comprar de novo na hora seria pagar duas vezes.
+    return "O prazo do pagamento terminou e o pedido foi cancelado. Se você já pagou, aguarde alguns minutos antes de comprar de novo. Se não pagou, é só comprar de novo.";
+  }
   return statusConfig.cancelled.description;
 }
 
 export function OrderDetailsView({
   orderId,
   onBack,
-  onNavigate: _onNavigate,
+  onNavigate,
   onRetomarPagamento,
 }: OrderDetailsViewProps) {
   const { orders, fetchUserOrders, updateOrderStatus, reenviarComprovante } =
@@ -322,6 +410,13 @@ export function OrderDetailsView({
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  // Espelho de `isCancelling` para o efeito que acompanha a lista (ele não
+  // pode depender do estado: religar o efeito ao terminar o cancelamento
+  // reaplicaria uma versão da lista que talvez ainda não tenha o desfecho).
+  const cancelandoRef = useRef(false);
+  // A última versão deste pedido que a lista emitiu ENQUANTO o cancelamento
+  // durava (o efeito que acompanha a lista a guarda aqui em vez de aplicar).
+  const emitidoDuranteOCancelamentoRef = useRef<Order | null>(null);
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [reviewedProductIds, setReviewedProductIds] = useState<Set<string>>(
     new Set(),
@@ -342,6 +437,19 @@ export function OrderDetailsView({
     setReviewingItem(null);
     avaliarTriggerRef.current?.focus();
   }, []);
+  // Fechar a folha desmonta o formulário e apaga o comentário escrito: com
+  // texto digitado (o formulário avisa por `avaliacaoTemTextoRef`), fechar por
+  // toque fora, Esc ou X vira uma pergunta. Publicar com sucesso fecha direto.
+  const avaliacaoTemTextoRef = useRef(false);
+  const [confirmandoDescarteAvaliacao, setConfirmandoDescarteAvaliacao] =
+    useState(false);
+  const fecharAvaliacaoPerguntando = useCallback(() => {
+    if (avaliacaoTemTextoRef.current) {
+      setConfirmandoDescarteAvaliacao(true);
+      return;
+    }
+    fecharAvaliacao();
+  }, [fecharAvaliacao]);
   // Rodada 2 (Codex, 08/09, item 1): o foco continuava no botão "Avaliar"
   // de fora depois de abrir a folha — Esc não chegava a ela e o Tab
   // seguia percorrendo o fundo apesar do aria-modal. A folha agora se
@@ -371,8 +479,8 @@ export function OrderDetailsView({
     // continua dependendo de alguém é o caso oposto: pedido JÁ ENVIADO,
     // onde a loja só devolve o dinheiro depois que o PRODUTO físico voltar.
     // `textoConfirmarCancelamento` (texto-estorno-do-cliente.ts) é a fonte
-    // única dos quatro textos possíveis (não pago / pago não enviado / pago
-    // já enviado / pago na entrega).
+    // única dos textos possíveis (não pago / pago não enviado / pago já
+    // enviado / pago na entrega / pago com retirada pronta).
     // `===` e nao `.includes()`: o array seria inferido como `string[]` e
     // aceitaria qualquer coisa, entao um rename futuro de `PaymentStatus`
     // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
@@ -383,16 +491,25 @@ export function OrderDetailsView({
       chavePagamento === "pago" ||
       chavePagamento === "pago_apos_expirar" ||
       chavePagamento === "recebido_na_entrega";
-    const jaFoiEnviado = order.status === "shipping";
+    // Retirada na loja pronta (`shipping` + `retiradaNaLoja`, mesmo critério de
+    // `prontoParaRetirar` mais abaixo e de OrderList): ninguém enviou nada e a
+    // cliente não tem produto para devolver — só o texto muda, a regra de
+    // cancelar é a mesma.
+    const retiradaPronta =
+      order.retiradaNaLoja === true && order.status === "shipping";
+    const jaFoiEnviado = order.status === "shipping" && !retiradaPronta;
     const pagamentoNaEntrega = chavePagamento === "recebido_na_entrega";
     const textoConfirm = textoConfirmarCancelamento({
       pagamentoJaEntrou,
       jaFoiEnviado,
+      retiradaPronta,
       pagamentoNaEntrega,
     });
     const confirmCancel = globalThis.confirm(textoConfirm);
     if (!confirmCancel) return;
 
+    cancelandoRef.current = true;
+    emitidoDuranteOCancelamentoRef.current = null;
     setIsCancelling(true);
     haptic.medium();
     try {
@@ -412,7 +529,43 @@ export function OrderDetailsView({
         void loadOrder();
       }
     } finally {
+      cancelandoRef.current = false;
       setIsCancelling(false);
+      // O que a lista emitiu DURANTE o cancelamento ficou guardado (o efeito
+      // que acompanha a lista não mexe na tela enquanto ele dura, e não roda
+      // de novo ao terminar). Pior caso: o pagamento é confirmado e o eco do
+      // cancelamento chega dentro da janela — sem isto a tela ficava em
+      // "cancelado, se o pagamento ainda estiver aberto não pague" com o
+      // dinheiro já dentro, até a próxima mudança na lista. Aplica-se só o
+      // que de fato foi emitido (lista parada = nada muda: uma lista que
+      // ainda não refletiu o cancelamento não desfaz o `cancelled` que acabou
+      // de ser gravado) e pela MESMA regra de versão do efeito: mais velha
+      // nunca ganha, sem nova busca.
+      // (O `as` é porque o TypeScript lembra do `= null` do começo da função e
+      // não enxerga que o efeito pode ter gravado outra coisa no meio.)
+      const emitidoNoMeio =
+        emitidoDuranteOCancelamentoRef.current as Order | null;
+      emitidoDuranteOCancelamentoRef.current = null;
+      // Aqui a regra é MAIS ESTRITA que a do efeito: só vale versão com
+      // `updatedAt` ESTRITAMENTE mais novo que o da tela. A atualização
+      // otimista do hook (cancelado na lista, mesma data) e uma busca velha
+      // (pendente, mesma data) emitidas no meio têm a data da tela — "mesma
+      // data, conteúdo diferente ganha" (a regra do efeito, que serve ao
+      // cancelamento otimista e ao desfazer dele) faria a busca velha
+      // regredir a tela de "cancelado" para pedido aberto, e a otimista
+      // sozinha mostraria "cancelado" depois de um cancelamento que falhou.
+      // O eco REAL do servidor sempre avança a data
+      // (`update_order_status_atomic` grava `updated_at = NOW()`). Data
+      // ausente ou ilegível dá NaN, e `NaN >` nunca é verdade: não aplica.
+      if (emitidoNoMeio) {
+        setOrder((prev) =>
+          prev &&
+          prev.id === emitidoNoMeio.id &&
+          Date.parse(emitidoNoMeio.updatedAt) > Date.parse(prev.updatedAt)
+            ? escolherVersaoDoPedido(prev, emitidoNoMeio)
+            : prev,
+        );
+      }
     }
   };
 
@@ -438,9 +591,16 @@ export function OrderDetailsView({
   const loadOrder = useCallback(async () => {
     // 1. Pinta com o que já está em memória (vem do cache do localStorage),
     //    para a tela não ficar branca enquanto a rede responde.
+    //
+    //    Todo `setOrder` que traz uma versão de FORA (esta, e a do passo 2)
+    //    passa por `escolherVersaoDoPedido`: a tela pode já ter recebido uma
+    //    versão mais nova pela lista do tempo real (efeito logo abaixo), e a
+    //    resposta de uma busca que nasceu antes do pagamento não a desfaz.
     const emMemoria = ordersRef.current.find((o) => o.id === orderId);
     if (emMemoria) {
-      setOrder(emMemoria);
+      setOrder((prev) =>
+        prev ? escolherVersaoDoPedido(prev, emMemoria) : emMemoria,
+      );
       setLoading(false);
     }
 
@@ -470,13 +630,61 @@ export function OrderDetailsView({
     // Se a revalidação não achou nada mas havia algo em memória, mantém o que
     // está na tela: melhor um dado de um segundo atrás do que piscar para
     // "pedido não encontrado" por causa de uma resposta abortada.
-    if (encontrado || !emMemoria) setOrder(encontrado || null);
+    if (encontrado || !emMemoria) {
+      const novo = encontrado ?? null;
+      setOrder((prev) =>
+        novo && prev ? escolherVersaoDoPedido(prev, novo) : novo,
+      );
+    }
     setLoading(false);
   }, [orderId, fetchUserOrders]);
 
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+
+  // A tela acompanha o pedido enquanto ele está aberto. A cliente paga o PIX
+  // no app do banco e volta aqui: o tempo real já atualizou o pedido na lista
+  // `orders`, mas a tela só lia a lista na abertura (`loadOrder`) e ficava em
+  // "Aguardando pagamento", com o "Retomar pagamento", até sair e voltar.
+  //
+  // O efeito depende da REFERÊNCIA do pedido na lista, não da lista: o
+  // `setOrders` do hook mantém a mesma referência de quem não mudou quando a
+  // mudança vem do tempo real, então só dispara quando ESTE pedido mudou —
+  // outro pedido mudando não mexe aqui. Nem toda atualização é assim: o
+  // `fetchUserOrders` troca a lista INTEIRA (objetos novos para todo mundo), e
+  // aí o efeito dispara com conteúdo igual; quem absorve isso é o comparador
+  // por conteúdo de `escolherVersaoDoPedido`, que devolve a mesma referência e
+  // não deixa o React refazer nada. Nenhuma busca nova é feita (nada de laço)
+  // e a tela não volta ao carregamento: é um `setOrder` funcional, e o
+  // comparador também descarta versão mais velha.
+  //
+  // Durante o cancelamento (`cancelandoRef`) a lista não mexe na tela: o hook
+  // aplica o cancelamento na lista de forma otimista e, se o servidor recusar,
+  // desfaz — quem decide o que a tela mostra nesse intervalo é o
+  // `handleCancelOrder`, que no fim grava `cancelled`, relê o servidor e
+  // aplica o que a lista emitiu no meio (guardado em
+  // `emitidoDuranteOCancelamentoRef`).
+  const doPedidoNaLista = orders.find((o) => o.id === orderId);
+  useEffect(() => {
+    if (!doPedidoNaLista) return;
+    if (cancelandoRef.current) {
+      emitidoDuranteOCancelamentoRef.current = doPedidoNaLista;
+      return;
+    }
+    setOrder((prev) => {
+      if (!prev || prev.id !== doPedidoNaLista.id) return prev;
+      const escolhida = escolherVersaoDoPedido(prev, doPedidoNaLista);
+      if (escolhida !== doPedidoNaLista) return escolhida;
+      // A linha do tempo real não traz itens nem endereço: o que só a
+      // abertura do pedido trouxe não some da tela. Se, com isso, o conteúdo
+      // fica igual ao da tela, o comparador devolve a mesma referência.
+      return escolherVersaoDoPedido(
+        prev,
+        manterItensEEnderecoDaTela(prev, doPedidoNaLista),
+      );
+    });
+  }, [doPedidoNaLista]);
 
   // Outro pedido na tela = outras avaliações: o conjunto do anterior não pode
   // aparecer como "Avaliado" no novo. Reseta pelo ID (e não pelo objeto), senão
@@ -622,10 +830,16 @@ export function OrderDetailsView({
   const mostrarDevolucao =
     order?.status === "cancelled" &&
     (chaveDoPagamento === "pago" || chaveDoPagamento === "pago_apos_expirar");
-  const { linhas: linhasDevolucao } = useDevolucaoDoPedidoCliente(
-    orderId,
-    mostrarDevolucao,
-  );
+  const {
+    linhas: linhasDevolucao,
+    lido: devolucaoLida,
+    desistiu: devolucaoDesistiu,
+  } = useDevolucaoDoPedidoCliente(orderId, mostrarDevolucao);
+  const leituraDaDevolucao: LeituraDaDevolucao = devolucaoLida
+    ? "lida"
+    : devolucaoDesistiu
+      ? "falhou"
+      : "conferindo";
 
   // Devolução/troca de produto ENTREGUE (plano 2026-09-26, seção
   // "Devoluções") — outro assunto que a devolução de DINHEIRO de pedido
@@ -688,17 +902,33 @@ export function OrderDetailsView({
   const StatusIcon = currentStatus.icon;
   const statusDescription =
     order.status === "pending"
-      ? pendingDescription(order.paymentStatus)
+      ? pendingDescription(order.paymentStatus, {
+          paymentMethod: order.paymentMethod,
+          retiradaNaLoja: order.retiradaNaLoja,
+          total: order.total,
+          subtotal: order.subtotal,
+          discount: order.discount,
+          shipping: order.shipping,
+        })
       : order.status === "cancelled"
-        ? cancelledDescription(order.paymentStatus, linhasDevolucao)
+        ? cancelledDescription(
+            order.paymentStatus,
+            linhasDevolucao,
+            leituraDaDevolucao,
+          )
         : currentStatus.description;
-  const textoDaDevolucao = mostrarDevolucao
-    ? textoDevolucao({
-        linhas: linhasDevolucao,
-        cancelledAfterShipping: order.cancelledAfterShipping,
-        returnedToSellerAt: order.returnedToSellerAt,
-      })
-    : null;
+  const textoDaDevolucao = !mostrarDevolucao
+    ? null
+    : leituraDaDevolucao === "conferindo"
+      ? TEXTO_CONFERINDO_DEVOLUCAO
+      : leituraDaDevolucao === "falhou"
+        ? TEXTO_NAO_CONSEGUI_CONFERIR
+        : textoDevolucao({
+            linhas: linhasDevolucao,
+            cancelledAfterShipping: order.cancelledAfterShipping,
+            returnedToSellerAt: order.returnedToSellerAt,
+            retiradaNaLoja: order.retiradaNaLoja === true,
+          });
 
   // Cartão "O que achou da compra?" (redesenho 25/09/2026) — mesma trava de
   // sempre (ADMIN-090, #101): sem `enableReviews`, sem `user`, ou fora de
@@ -778,10 +1008,11 @@ export function OrderDetailsView({
             devolve o MESMO QR se a cobrança vive, cria outra com chave nova
             se a anterior morreu, e 409 terminal se o pedido não é mais
             cobrável — nunca cobrança duplicada. */}
-        {order.status === "pending" &&
-          (paymentStatusKey(order.paymentStatus) === "aguardando" ||
-            paymentStatusKey(order.paymentStatus) === "recusado") &&
-          user &&
+        {podeRetomarPagamento({
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          logado: !!user,
+        }) &&
           onRetomarPagamento && (
             <button
               onClick={() => onRetomarPagamento(order.id)}
@@ -963,6 +1194,20 @@ export function OrderDetailsView({
             </div>
           )}
 
+          {/* Venceu o prazo do pagamento: o caminho para comprar de novo é a
+              vitrine (a mesma porta `home` que as outras telas de fim de
+              compra usam — nenhum fluxo novo). */}
+          {order.status === "cancelled" && chaveDoPagamento === "expirado" && (
+            <button
+              type="button"
+              onClick={() => onNavigate("home")}
+              className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-95"
+            >
+              <Store className="size-4" aria-hidden="true" />
+              Voltar para a loja
+            </button>
+          )}
+
           {/* Rastreio (PEDIDO-060, #105).
               Só aparece quando existe código de verdade — ver `codigoDeRastreio`.
               Fica DENTRO do cartão de status porque é a resposta à única
@@ -1062,12 +1307,8 @@ export function OrderDetailsView({
                 const avaliado = reviewedProductIds.has(item.productId);
                 return (
                   <div key={item.productId} className="flex items-start gap-3">
-                    <div className="size-14 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="size-full object-cover"
-                      />
+                    <div className="flex size-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                      <FotoDoItemDoPedido src={item.image} alt={item.name} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold text-zinc-900">
@@ -1169,11 +1410,11 @@ export function OrderDetailsView({
                   order.status === "cancelled" && "opacity-60",
                 )}
               >
-                <div className="relative size-14 flex-shrink-0 overflow-hidden rounded-2xl border border-zinc-100 bg-zinc-50">
-                  <img
+                <div className="relative flex size-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-100 bg-zinc-50">
+                  <FotoDoItemDoPedido
                     src={item.image}
                     alt={item.name}
-                    className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="transition-transform duration-500 group-hover:scale-105"
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
@@ -1367,22 +1608,28 @@ export function OrderDetailsView({
           {/* Laudo 0109 (B2): segunda chance do comprovante — ver o
               comentário do handleResendReceipt. Fora do bloco do cancelar
               de propósito: o reenvio faz sentido em QUALQUER estágio do
-              pedido, inclusive entregue ou cancelado. */}
-          <button
-            onClick={handleResendReceipt}
-            disabled={isResendingReceipt}
-            className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100 disabled:opacity-50"
-          >
-            <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
-              {isResendingReceipt ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Mail className="size-4" />
-              )}
-            </span>
-            {isResendingReceipt ? "Reenviando…" : "Reenviar comprovante"}
-            <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
-          </button>
+              pedido, inclusive entregue ou cancelado — MAS só quando o
+              e-mail que a edge mandaria é o comprovante de verdade (ver
+              `podeReenviarComprovante`): com PIX online ainda aguardando,
+              o toque gastava a única vaga de e-mail do pedido com o texto
+              de "aguardando" e o de "pago" nunca mais saía. */}
+          {podeReenviarComprovante(order) && (
+            <button
+              onClick={handleResendReceipt}
+              disabled={isResendingReceipt}
+              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100 disabled:opacity-50"
+            >
+              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+                {isResendingReceipt ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Mail className="size-4" />
+                )}
+              </span>
+              {isResendingReceipt ? "Reenviando…" : "Reenviar comprovante"}
+              <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
+            </button>
+          )}
 
           {/* Devolução ou troca (CDC art. 49 e Decreto 7.962/2013: o cliente
               desiste pelo MESMO canal da compra). A linha só existe quando o
@@ -1423,7 +1670,10 @@ export function OrderDetailsView({
                     Devolução ou troca
                   </span>
                   <span className="block text-xs leading-snug text-zinc-500">
-                    {devolucaoDoProduto.elegibilidade.motivo_bloqueio}
+                    {motivoDaDevolucaoIndisponivel(
+                      devolucaoDoProduto.elegibilidade.motivo_bloqueio,
+                      order,
+                    )}
                   </span>
                 </span>
               </div>
@@ -1480,13 +1730,13 @@ export function OrderDetailsView({
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
             <div
               className="fixed inset-0"
-              onClick={fecharAvaliacao}
+              onClick={fecharAvaliacaoPerguntando}
               role="button"
               aria-label="Fechar avaliacao"
               tabIndex={-1}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
-                  fecharAvaliacao();
+                  fecharAvaliacaoPerguntando();
                 }
               }}
             />
@@ -1507,7 +1757,7 @@ export function OrderDetailsView({
               // fundo da tela apesar do aria-modal.
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
-                  fecharAvaliacao();
+                  fecharAvaliacaoPerguntando();
                   return;
                 }
                 if (e.key === "Tab") {
@@ -1542,7 +1792,7 @@ export function OrderDetailsView({
                   </h3>
                 </div>
                 <button
-                  onClick={fecharAvaliacao}
+                  onClick={fecharAvaliacaoPerguntando}
                   // Laudo 05/09, M5: o nome acessível era "✕" — agora diz
                   // o que fecha.
                   aria-label="Fechar avaliação"
@@ -1555,6 +1805,7 @@ export function OrderDetailsView({
               <ReviewForm
                 productId={reviewingItem.productId}
                 initialRating={reviewingItem.rating}
+                temTextoRef={avaliacaoTemTextoRef}
                 onSuccess={() => {
                   setReviewedProductIds((prev) => {
                     const next = new Set(prev);
@@ -1568,6 +1819,32 @@ export function OrderDetailsView({
           </div>,
           document.body,
         )}
+
+      <AlertDialog
+        open={confirmandoDescarteAvaliacao}
+        onOpenChange={setConfirmandoDescarteAvaliacao}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar o que você escreveu?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se sair agora, o comentário que você escreveu será perdido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continuar escrevendo</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                avaliacaoTemTextoRef.current = false;
+                setConfirmandoDescarteAvaliacao(false);
+                fecharAvaliacao();
+              }}
+            >
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

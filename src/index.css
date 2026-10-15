@@ -1,3 +1,31 @@
+/*
+ * Inter hospedada na própria loja (antes vinha do Google Fonts).
+ *
+ * Folha de estilo de outro site no <head> TRAVA a primeira pintura: com o
+ * Google 3 s mais lento a tela saía em ~3,2 s (contra ~0,24 s) e com o Google
+ * pendurado não pintava nada. Aqui o arquivo sai do mesmo lugar do app e entra
+ * no precache do service worker. Sem preload no index.html (de propósito: em
+ * 3G ele atrasava a primeira pintura; ver o comentário lá).
+ *
+ * Arquivo: inter-latin-wght-normal.woff2, do pacote @fontsource-variable/inter
+ * 5.3.0 (Inter 4, licença OFL em ./assets/fonts/OFL.txt). Uma fonte variável
+ * cobre todos os pesos (100–900) — os mesmos 400–900 que o link do Google
+ * trazia. Só o subconjunto "latin" (U+0000-00FF cobre todo o português); um
+ * caractere fora dele cai na fonte do sistema, só naquele caractere.
+ * `font-display: swap`: o texto aparece na hora com a fonte do sistema.
+ */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin-wght-normal.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -547,7 +575,7 @@ body.admin-mode :focus-visible {
   }
 
   .button-premium {
-    @apply relative overflow-hidden transition-all duration-300 active:scale-95 hover:shadow-lg hover:shadow-primary/20 bg-primary text-white font-bold rounded-xl;
+    @apply relative overflow-hidden transition-all duration-300 active:scale-95 hover:shadow-lg hover:shadow-primary/20 bg-primary text-primary-foreground font-bold rounded-xl;
   }
 
   .button-premium::after {
@@ -1287,6 +1315,25 @@ body.admin-modal-open .active-scroll-container {
   }
 }
 
+/* App instalado no iPhone: a barra de status é `black-translucent` (o app
+   desenha por baixo dela) e o texto dela é SEMPRE branco. O cabeçalho do
+   cliente é branco: hora e bateria sumiam. Esta faixa preta tem exatamente a
+   altura da barra (`safe-area-inset-top` vale 0 no navegador, no Android e no
+   iPhone deitado — aí a faixa tem altura zero e não aparece). */
+@media (display-mode: standalone) {
+  html::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top, 0);
+    background: #000;
+    pointer-events: none;
+    z-index: 2147483647;
+  }
+}
+
 /* Top Anchored Toast Notification System */
 [data-sonner-toaster][data-position^="top"] {
   top: calc(var(--safe-area-top, 0px) + 64px) !important;
@@ -1343,5 +1390,31 @@ body.admin-modal-open .active-scroll-container {
 @media (max-width: 640px) {
   body:not(.admin-mode) [data-sonner-toaster] {
     display: none !important;
+  }
+}
+
+/* iPhone: o Safari amplia a página inteira quando o cliente toca num campo de
+   texto com letra menor que 16px (checkout, busca, cupom, rastrear pedido,
+   login). Como `html` e `body` têm `overflow: hidden`, a página ampliada não
+   volta sozinha. O `!important` e a lista de `:not` existem para vencer as
+   classes `text-sm`/`text-xs`/`text-[11px]` dos campos; o `@supports` limita a
+   regra ao iOS/iPadOS, então Android e computador não mudam de aparência.
+   Caixa de marcar, botão de escolha, arquivo e campo oculto ficam de fora. */
+@supports (-webkit-touch-callout: none) {
+  input:not(
+      [type="checkbox"],
+      [type="radio"],
+      [type="range"],
+      [type="file"],
+      [type="hidden"],
+      [type="button"],
+      [type="submit"],
+      [type="reset"],
+      [type="image"],
+      [type="color"]
+    ),
+  textarea,
+  select {
+    font-size: 16px !important;
   }
 }

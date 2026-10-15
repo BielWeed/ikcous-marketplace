@@ -32,12 +32,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCategories } from "@/hooks/useCategories";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { soFotosReais } from "@/lib/foto-do-produto";
+import { mesmaCategoria } from "@/lib/gestao-de-categorias";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
@@ -45,6 +48,7 @@ import {
   precisaDeReposicao,
 } from "@/utils/avisos-do-lojista";
 import { haptic } from "@/utils/haptic";
+import { consumirProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -73,7 +77,16 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 let cachedProductsTotal = 0;
@@ -110,6 +123,13 @@ function percentualComUmaCasa(valor: number): string {
     maximumFractionDigits: 1,
   })}%`;
 }
+
+// A tela "Gerenciar categorias" só é baixada quando a lojista a abre.
+const GerenciarCategorias = lazy(() =>
+  import("@/components/admin/categorias/GerenciarCategorias").then(
+    (modulo) => ({ default: modulo.GerenciarCategorias }),
+  ),
+);
 
 interface AdminProductsViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -190,6 +210,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     "admin_products_filter_category",
     "all",
   );
+  const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   const [totalProducts, setTotalProducts] = useState(() => cachedProductsTotal);
   const [currentPage, setCurrentPage] = useLocalStorage<number>(
     "admin_products_current_page",
@@ -250,6 +271,20 @@ export const AdminProductsView = memo(function AdminProductsView({
   const effectiveLoading = loading || !hasLoadedOnce;
   const shouldScrollToTop = useRef(false);
 
+  // Logo depois de CADASTRAR um produto novo, a lista abre na página 1 e sem
+  // busca nem categoria: o produto novo é o mais recente, e com o filtro ou a
+  // página de antes a lojista não o veria. Qualquer outra abertura continua
+  // lembrando o estado guardado no aparelho. O aviso vem do formulário e vale
+  // uma vez só (`consumirProdutoNovoCadastrado`).
+  useEffect(() => {
+    if (!active) return;
+    if (!consumirProdutoNovoCadastrado()) return;
+    setSearchTerm("");
+    setFilterCategory("all");
+    setCurrentPage(0);
+    shouldScrollToTop.current = true;
+  }, [active, setSearchTerm, setFilterCategory, setCurrentPage]);
+
   useEffect(() => {
     if (shouldScrollToTop.current) {
       const mainEl =
@@ -302,6 +337,27 @@ export const AdminProductsView = memo(function AdminProductsView({
     return () => clearTimeout(timer);
   }, [currentPage, searchTerm, filterCategory, active, loadData]);
 
+  // Renomear ou apagar categoria mexe nos produtos (o banco troca o nome neles).
+  // O filtro lembrado no aparelho (`admin_products_filter_category`) guarda o
+  // NOME: se ele era a categoria que mudou, acompanha, senão a lista ficaria
+  // vazia com um chip que não existe mais.
+  // Vale de onde quer que a tela "Gerenciar categorias" tenha sido aberta
+  // (daqui ou do formulário do produto, que fica por baixo desta lista).
+  useAoMudarCategoria((mudanca) => {
+    if (mudanca.tipo === "renomeada") {
+      if (mesmaCategoria(filterCategory, mudanca.de)) {
+        setFilterCategory(mudanca.para); // o efeito acima recarrega a lista
+        return;
+      }
+    } else if (mudanca.tipo === "apagada") {
+      if (mesmaCategoria(filterCategory, mudanca.nome)) {
+        setFilterCategory("all");
+        return;
+      }
+    }
+    if (active) void loadData(currentPage);
+  });
+
   const simulatorMetrics = useMemo(() => {
     const cost = Number.parseFloat(simCost) || 0;
     const price = Number.parseFloat(simPrice) || 0;
@@ -347,6 +403,22 @@ export const AdminProductsView = memo(function AdminProductsView({
   };
 
   const totalPages = Math.ceil(totalProducts / pageSize);
+
+  // "Nenhum produto" com busca ou categoria escolhida é o filtro que não achou
+  // nada — não o catálogo vazio. A tela diz o que está filtrado e oferece sair.
+  const temBuscaOuFiltro = !!searchTerm || filterCategory !== "all";
+  const descricaoDoFiltro = [
+    searchTerm ? `a busca "${searchTerm}"` : null,
+    filterCategory !== "all" ? `a categoria "${filterCategory}"` : null,
+  ]
+    .filter(Boolean)
+    .join(" e ");
+  const limparBuscaEFiltros = () => {
+    setSearchTerm("");
+    setFilterCategory("all");
+    setCurrentPage(0);
+    shouldScrollToTop.current = true;
+  };
 
   // Lógica de cálculo financeiro global (SWR / Server-Side)
   const financialStats = useMemo(() => {
@@ -414,15 +486,20 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "produtos-cadastrados",
         label: "Produtos no Catálogo",
-        value: `${totalProducts} itens`,
+        value: `${totalProducts} ${totalProducts === 1 ? "item" : "itens"}`,
         icon: Package,
         accent: "text-purple-500",
         // PAINEL-09: o número é o total FILTRADO (total_count da RPC com
-        // busca), não o catálogo geral — o subtítulo mentia.
-        subValue: searchTerm ? "Resultados da busca" : "Catálogo Geral",
+        // busca), não o catálogo geral — o subtítulo mentia. Vale também para
+        // o filtro de categoria, não só para a busca.
+        subValue: searchTerm
+          ? "Resultados da busca"
+          : filterCategory !== "all"
+            ? "Só desta categoria"
+            : "Catálogo Geral",
       },
     ],
-    [financialStats, totalProducts, searchTerm], // C2 da 1a revisao: +1 warning sem esta dep
+    [financialStats, totalProducts, searchTerm, filterCategory], // C2 da 1a revisao: +1 warning sem esta dep
   );
 
   // Achado 7 da auditoria de 20/08/2026
@@ -573,7 +650,8 @@ export const AdminProductsView = memo(function AdminProductsView({
       // cai no catch de baixo: melhor não duplicar do que duplicar
       // compartilhando arquivo de novo.
       const imagens = await Promise.all(
-        (productToDuplicate.images || []).map((img: string) =>
+        // Sem o marcador "Sem Imagem": produto sem foto duplica sem foto.
+        soFotosReais(productToDuplicate.images).map((img: string) =>
           copiarImagemParaDuplicacao(img),
         ),
       );
@@ -830,7 +908,23 @@ export const AdminProductsView = memo(function AdminProductsView({
                 {cat === "all" ? "Todas as Categorias" : cat}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setGerenciandoCategorias(true)}
+              className="relative isolate flex h-11 shrink-0 snap-center items-center gap-1.5 rounded-lg px-3 text-[11px] font-black uppercase tracking-wider text-admin-gold transition-all before:absolute before:inset-x-0 before:inset-y-[6px] before:-z-10 before:rounded-lg before:border before:border-admin-gold/40 before:bg-transparent before:transition-all before:content-[''] hover:before:bg-admin-gold/10"
+            >
+              <Layers aria-hidden="true" className="size-3.5" />
+              Gerenciar categorias
+            </button>
           </div>
+          {gerenciandoCategorias && (
+            <Suspense fallback={null}>
+              <GerenciarCategorias
+                aberta
+                onFechar={() => setGerenciandoCategorias(false)}
+              />
+            </Suspense>
+          )}
         </div>
 
         {/* Grid view of Products as Assets */}
@@ -951,8 +1045,27 @@ export const AdminProductsView = memo(function AdminProductsView({
               <Package className="size-6 text-zinc-600" />
             </div>
             <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-              Nenhum produto cadastrado
+              {temBuscaOuFiltro
+                ? "Nenhum produto encontrado"
+                : "Nenhum produto cadastrado"}
             </h3>
+            {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
+                diz o que está filtrado e dá a saída. */}
+            {temBuscaOuFiltro && (
+              <>
+                <p className="relative z-10 mt-2 text-xs font-medium text-zinc-500">
+                  Nada combina com {descricaoDoFiltro}. Seus produtos continuam
+                  cadastrados.
+                </p>
+                <button
+                  type="button"
+                  onClick={limparBuscaEFiltros}
+                  className="relative z-10 mt-4 min-h-11 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-wider text-black"
+                >
+                  Limpar busca e filtros
+                </button>
+              </>
+            )}
           </div>
         )}
 

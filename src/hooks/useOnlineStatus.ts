@@ -36,6 +36,9 @@ export interface Diagnostics {
   quality: "excellent" | "good" | "slow" | "offline";
 }
 
+/** Prazo de cada sonda ao banco; estourar vira "lento", nunca "offline". */
+const PRAZO_DA_SONDA_MS = 3500;
+
 function computeInitialDiagnostics(): Diagnostics {
   const temNavigator = typeof navigator !== "undefined";
   const online = temNavigator ? navigator.onLine : true;
@@ -59,6 +62,9 @@ let generation = 0;
 let checkingGen: number | null = null;
 let heartbeatId: ReturnType<typeof setInterval> | null = null;
 let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+// A sonda que está no ar agora (se houver): `stop()` a aborta, para que o
+// prazo e a requisição não sobrevivam à última tela que saiu.
+let sondaEmVoo: AbortController | null = null;
 
 function publish(next: Diagnostics): void {
   currentDiagnostics = next;
@@ -80,6 +86,16 @@ async function verifyConnection(gen: number, isRetry = false): Promise<void> {
     return;
   }
 
+  // `true` só quando o NOSSO prazo abortou a sonda. É o que separa as duas
+  // falhas: estourar o prazo prova LENTIDÃO (a rede existe, só demora —
+  // 3G fraco); a requisição REJEITAR por conta própria (`TypeError: Failed to
+  // fetch`) é falha de rede de verdade. Só a segunda vira "offline": antes as
+  // duas viravam, e a cliente no 3G lento lia "Sem conexão com a internet"
+  // numa tela que nem tentava chamar o servidor.
+  const prazo = { estourou: false };
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let controllerDaSonda: AbortController | null = null;
+
   try {
     const url = lerSupabaseUrl();
     const anonKey = lerChaveSupabase();
@@ -89,7 +105,12 @@ async function verifyConnection(gen: number, isRetry = false): Promise<void> {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    controllerDaSonda = controller;
+    sondaEmVoo = controller;
+    timeoutId = setTimeout(() => {
+      prazo.estourou = true;
+      controller.abort();
+    }, PRAZO_DA_SONDA_MS);
 
     const startTime = Date.now();
     const res = await fetch(`${url}/rest/v1/banners?select=id&limit=1`, {
@@ -102,7 +123,6 @@ async function verifyConnection(gen: number, isRetry = false): Promise<void> {
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
     const latency = Date.now() - startTime;
 
     if (gen !== generation) return;
@@ -145,8 +165,22 @@ async function verifyConnection(gen: number, isRetry = false): Promise<void> {
       }, 1500);
       return;
     }
+    // A confirmação também estourou o prazo: a rede está LENTA, não ausente.
+    // `isOffline` continua `false` (quem consome tenta a operação, que tem o
+    // próprio prazo); `quality: "slow"` já alimenta o selo "Lenta" do painel.
+    // O relógio de 15s segue ligado e a próxima sonda que responder desfaz.
+    if (prazo.estourou) {
+      publish({
+        isOffline: false,
+        latency: PRAZO_DA_SONDA_MS,
+        quality: "slow",
+      });
+      return;
+    }
     publish({ isOffline: true, latency: 0, quality: "offline" });
   } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+    if (sondaEmVoo === controllerDaSonda) sondaEmVoo = null;
     releaseChecking(gen);
   }
 }
@@ -210,6 +244,12 @@ function stop(): void {
   if (retryTimeoutId !== null) {
     clearTimeout(retryTimeoutId);
     retryTimeoutId = null;
+  }
+  if (sondaEmVoo !== null) {
+    // A geração já foi invalidada acima: o `catch` da sonda abortada vira
+    // no-op e o `finally` dela limpa o prazo.
+    sondaEmVoo.abort();
+    sondaEmVoo = null;
   }
 }
 

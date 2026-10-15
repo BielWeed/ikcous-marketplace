@@ -4,7 +4,10 @@
 //
 // A regra "o que e cancelamento do cliente" mora em DOIS lugares que nao se
 // enxergam: aqui (a tela) e la (o push). A tabela de casos abaixo e a mesma do
-// teste de la — mexeu numa, mexa nas duas.
+// teste de la — mexeu numa, mexa nas duas. UMA diferenca, de proposito e
+// declarada: o pedido SEM pagamento online (a pagar na entrega/retirada) que a
+// cliente cancela antes do envio so' avisa na TELA; o push da rotina ainda nao
+// o conhece (ver o segundo bloco `describe`).
 import { describe, expect, it } from "vitest";
 
 import {
@@ -126,8 +129,8 @@ describe("selecionarCancelamentosDoCliente — so o que o CLIENTE cancelou e ja 
     ).toEqual([]);
   });
 
-  it("pedido nao pago (aguardando, recusado, expirado, nulo): nao entra", () => {
-    for (const payment_status of ["aguardando", "recusado", "expirado", null]) {
+  it("pedido com pagamento ONLINE nao concluido (aguardando, recusado, expirado): nao entra", () => {
+    for (const payment_status of ["aguardando", "recusado", "expirado"]) {
       expect(
         selecionarCancelamentosDoCliente(
           [linha({}, { payment_status })],
@@ -135,6 +138,15 @@ describe("selecionarCancelamentosDoCliente — so o que o CLIENTE cancelou e ja 
         ),
       ).toEqual([]);
     }
+  });
+
+  it("venda ja recebida na mao (recebido_na_entrega): nao entra, e outro assunto", () => {
+    expect(
+      selecionarCancelamentosDoCliente(
+        [linha({}, { payment_status: "recebido_na_entrega" })],
+        SEM_ADMIN,
+      ),
+    ).toEqual([]);
   });
 
   it("pedido que a loja reativou (nao esta mais cancelado): nao entra", () => {
@@ -180,6 +192,104 @@ describe("selecionarCancelamentosDoCliente — so o que o CLIENTE cancelou e ja 
   });
 });
 
+// A loja nao e avisada so do que e' dinheiro: pedido a pagar na entrega ou na
+// retirada (sem pagamento online) que a cliente cancela antes do envio faria a
+// loja separar e enviar mercadoria cancelada. So a TELA conhece este ramo.
+describe("selecionarCancelamentosDoCliente — pedido sem pagamento online, ainda nao enviado", () => {
+  const SEM_PAGAMENTO = [null, ""];
+
+  it("a cliente cancelou pedido sem pagamento online (nulo ou vazio) e nao enviado: entra, com a situacao propria", () => {
+    for (const payment_status of SEM_PAGAMENTO) {
+      const [c] = selecionarCancelamentosDoCliente(
+        [linha({}, { payment_status })],
+        SEM_ADMIN,
+      );
+      expect(c).toEqual<CancelamentoDoCliente>({
+        id: "h1",
+        order_id: PEDIDO,
+        customer_name: "Maria Silva",
+        total: 149.9,
+        created_at: "2026-10-14T11:57:00.000Z",
+        situacao: "sem_pagamento_online",
+      });
+    }
+  });
+
+  it("cancelamento feito pela PROPRIA LOJA (admin) nao avisa a loja dela mesma", () => {
+    // Admin cancelando pedido de cliente: cai no "autor nao e o dono".
+    expect(
+      selecionarCancelamentosDoCliente(
+        [linha({ created_by: ADMIN }, { payment_status: null })],
+        COM_ADMIN,
+      ),
+    ).toEqual([]);
+    // Admin cancelando o PROPRIO pedido (autor = dono): so o papel o barra.
+    expect(
+      selecionarCancelamentosDoCliente(
+        [
+          linha(
+            { created_by: ADMIN },
+            { user_id: ADMIN, payment_status: null },
+          ),
+        ],
+        COM_ADMIN,
+      ),
+    ).toEqual([]);
+    // Autor que nao e o dono nem admin (ex.: conta alheia): tambem nao.
+    expect(
+      selecionarCancelamentosDoCliente(
+        [linha({ created_by: OUTRO }, { payment_status: null })],
+        SEM_ADMIN,
+      ),
+    ).toEqual([]);
+  });
+
+  it("cancelamento sem autor (rotina do servidor) nao avisa", () => {
+    expect(
+      selecionarCancelamentosDoCliente(
+        [linha({ created_by: null }, { payment_status: null })],
+        SEM_ADMIN,
+      ),
+    ).toEqual([]);
+  });
+
+  it("produto que ja tinha saido (shipping) nao entra por este ramo", () => {
+    expect(
+      selecionarCancelamentosDoCliente(
+        [linha({ old_status: "shipping" }, { payment_status: null })],
+        SEM_ADMIN,
+      ),
+    ).toEqual([]);
+    expect(
+      selecionarCancelamentosDoCliente(
+        [linha({}, { payment_status: null, cancelled_after_shipping: true })],
+        SEM_ADMIN,
+      ),
+    ).toEqual([]);
+  });
+
+  it("pedido que a loja reativou, ou re-cancelamento, nao entra", () => {
+    expect(
+      selecionarCancelamentosDoCliente(
+        [linha({}, { payment_status: null, status: "processing" })],
+        SEM_ADMIN,
+      ),
+    ).toEqual([]);
+    expect(
+      selecionarCancelamentosDoCliente(
+        [linha({ old_status: "cancelled" }, { payment_status: null })],
+        SEM_ADMIN,
+      ),
+    ).toEqual([]);
+  });
+
+  it("pedido PAGO nao duplica: continua uma situacao so, a de dinheiro (sem 'sem_pagamento_online')", () => {
+    const pago = selecionarCancelamentosDoCliente([linha()], SEM_ADMIN);
+    expect(pago).toHaveLength(1);
+    expect(pago[0].situacao).toBe("reembolso_automatico");
+  });
+});
+
 describe("montarAvisos — cancelamento do cliente", () => {
   const cancelamento = (
     extra: Partial<CancelamentoDoCliente> = {},
@@ -203,7 +313,7 @@ describe("montarAvisos — cancelamento do cliente", () => {
       id: "cancelamento:h1",
       tipo: "cancelamento",
       titulo: "Maria Silva cancelou o pedido #4F5A6B",
-      detalhe: "R$ 149,90 — pago, o reembolso é automático",
+      detalhe: "R$ 149,90 — pago, o reembolso é automático",
       quando: "2026-10-14T11:57:00.000Z",
       destino: { view: "admin-orders", id: PEDIDO },
     });
@@ -220,6 +330,28 @@ describe("montarAvisos — cancelamento do cliente", () => {
     expect(frase("pago_depois")).toContain("pago depois do cancelamento");
     expect(frase("ja_saiu")).not.toContain("automático");
     expect(frase("pago_depois")).not.toContain("automático");
+  });
+
+  it("sem pagamento online: 'Pedido #N cancelado pela cliente' + 'Nao precisa separar nem enviar', sem falar de dinheiro", () => {
+    const avisos = montarAvisos({
+      ...VAZIO,
+      cancelamentosDoCliente: [
+        cancelamento({ situacao: "sem_pagamento_online" }),
+      ],
+    });
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]).toMatchObject({
+      id: "cancelamento:h1",
+      tipo: "cancelamento",
+      titulo: "Pedido #4F5A6B cancelado pela cliente",
+      detalhe: "Não precisa separar nem enviar.",
+      destino: { view: "admin-orders", id: PEDIDO },
+      contaNoCracha: false,
+    });
+    expect(`${avisos[0].titulo}. ${avisos[0].detalhe}`).toBe(
+      "Pedido #4F5A6B cancelado pela cliente. Não precisa separar nem enviar.",
+    );
+    expect(avisos[0].detalhe).not.toContain("reembolso");
   });
 
   it("nao conta no cracha (como o estoque): a bolinha so acende pelo que o lojista resolve e some", () => {

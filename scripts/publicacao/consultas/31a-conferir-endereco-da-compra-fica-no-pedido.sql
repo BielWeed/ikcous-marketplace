@@ -20,6 +20,13 @@
 --   * EXECUTE -- PUBLIC e' medido por aclexplode(coalesce(proacl, acldefault('f', dono))), porque has_function_privilege
 --                nao tem o pseudo-papel PUBLIC; anon, authenticated e service_role por has_function_privilege.
 --
+-- JA DECIDIDO PARA `create_marketplace_order_v24` (14/10/2026): a 20261236000000 (a compra que da R$ 0,00 nao se paga
+-- pelo app) a redefine depois deste lote, em cima do corpo da 20261229000000 (o mesmo corpo mais o bloco 6-ter, que o
+-- `copia` abaixo continua enxergando: a copia do endereco vem antes do INSERT do pedido). A linha
+-- `create_marketplace_order_v24: corpo e o da 20261229000000` aceita o corpo da 20261229000000 OU o da 20261236000000 (o rol e os rotulos do rol
+-- nao mudam): uma loja que ja recebeu a 20261236000000 nao deixa o portao vermelho no lote da 31a. Os dois hashes aceitos valem so para a
+-- v24; a `create_marketplace_order_v23` segue exata.
+--
 -- md5 recalculado dos ARQUIVOS das migrations por tests/ci_conferir_banco_test.ts, e
 -- tests/banco/endereco-no-pedido-portao-viva.cjs roda esta consulta num Postgres real (positiva depois do apply,
 -- negativa depois do rollback, um negativo por linha). LIMITES: nao prova o COMPORTAMENTO (isso e' de
@@ -60,7 +67,12 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo e o da 20261229000000, com a copia do endereco (md5)',
          'b1ee9337105f442511c13a75977911b7',
-         COALESCE((SELECT f.m FROM fn f WHERE f.nome = 'create_marketplace_order_v24'), 'AUSENTE')
+         -- 2 hashes aceitos: o corpo da 20261229000000 OU o da SUCESSORA dele, a 20261236000000 (a compra que da
+         -- R$ 0,00 nao se paga pelo app: o mesmo corpo mais o bloco 6-ter). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN f.m IN ('b1ee9337105f442511c13a75977911b7', '6002fc8db6c1d402bc704f018a0c2621')
+                               THEN 'b1ee9337105f442511c13a75977911b7'
+                               ELSE f.m END
+                     FROM fn f WHERE f.nome = 'create_marketplace_order_v24'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v23: o corpo copia o endereco da conta antes de gravar o pedido',
          'sim',

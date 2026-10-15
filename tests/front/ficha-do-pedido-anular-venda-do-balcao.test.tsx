@@ -208,9 +208,9 @@ describe("ficha do pedido — Anular venda do balcão", () => {
     await act(async () => {
       botao(hospedeiro, "Confirmar anulação")?.click();
     });
-    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
-      "registre uma devolução",
-    );
+    const alerta = hospedeiro.querySelector('[role="alert"]')?.textContent;
+    expect(alerta).toContain("Só dá para anular no mesmo dia da venda.");
+    expect(alerta).not.toContain("registre uma devolução");
     expect(hospedeiro.textContent).not.toContain("Venda anulada");
   });
 

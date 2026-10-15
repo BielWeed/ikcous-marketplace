@@ -3,6 +3,8 @@ import {
   CONTAINER_DO_COMPUTADOR,
   ROTULO_NO_COMPUTADOR,
 } from "@/components/desktop/medidas";
+import { LinkDeTrocas } from "@/components/politicas/LinksDasPoliticas";
+import { GaleriaDoProduto } from "@/components/ui/custom/GaleriaDoProduto";
 import { MarkdownRenderer } from "@/components/ui/custom/MarkdownRenderer";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
@@ -19,8 +21,6 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
-import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
-import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
@@ -31,11 +31,7 @@ import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
-import {
-  conjuntoDeImagens,
-  imagemRedimensionada,
-  usarImagemOriginal,
-} from "@/lib/imageUrl";
+import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -44,7 +40,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Flame,
   Heart,
@@ -186,15 +181,18 @@ const CompactVariantDropdown = React.memo(function CompactVariantDropdown({
                 <button
                   key={v.id}
                   type="button"
+                  // Esgotada não se escolhe (igual aos botões da página).
+                  disabled={variantStock <= 0 && !isSelected}
                   onClick={(e) => {
                     e.stopPropagation();
                     onChange(v.value);
                     onToggle();
                   }}
                   className={cn(
+                    "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-zinc-700",
                     "w-full text-left px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-between gap-2 select-none",
                     isSelected
-                      ? "bg-primary text-white font-extrabold shadow-sm"
+                      ? "bg-primary text-primary-foreground font-extrabold shadow-sm"
                       : "text-zinc-700 hover:bg-zinc-50 hover:text-primary",
                   )}
                 >
@@ -203,14 +201,16 @@ const CompactVariantDropdown = React.memo(function CompactVariantDropdown({
                     <span
                       className={cn(
                         "text-[8px] font-semibold opacity-60",
-                        isSelected ? "text-white/60" : "text-zinc-400",
+                        isSelected
+                          ? "text-primary-foreground/60"
+                          : "text-zinc-400",
                       )}
                     >
                       ({variantStock > 0 ? `${variantStock} un.` : "Esgotado"})
                     </span>
                   </div>
                   {isSelected && (
-                    <Check className="size-2.5 flex-shrink-0 text-white duration-200 animate-in zoom-in-50" />
+                    <Check className="size-2.5 flex-shrink-0 text-primary-foreground duration-200 animate-in zoom-in-50" />
                   )}
                 </button>
               );
@@ -254,7 +254,6 @@ export const ProductView = React.memo(function ProductView({
   onQuickBuy,
   onNavigate,
 }: ProductViewProps) {
-  const computador = useTelaDeComputador();
   const isReady = useDeferredRender(220);
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -309,8 +308,13 @@ export const ProductView = React.memo(function ProductView({
   // Card inteligente (02/09): os relacionados também escolhem opções no
   // próprio card — a escolha vai para o addToCart global via prop do App.
   const handleAddToCartWithVariantsFromCard = useCallback(
-    (p: Product, variantId: string | undefined, variantNames: string) => {
-      onAddToCartProduct?.(p, 1, variantId, variantNames);
+    (
+      p: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity = 1,
+    ) => {
+      onAddToCartProduct?.(p, quantity, variantId, variantNames);
     },
     [onAddToCartProduct],
   );
@@ -565,15 +569,88 @@ export const ProductView = React.memo(function ProductView({
     (acc, v) => v?.priceOverride ?? acc,
     product.price,
   );
-  const currentStock =
-    Object.entries(variantGroups).length > 0
-      ? selectedVariantObjects.length > 0
-        ? Math.min(...selectedVariantObjects.map((v) => v?.stockIncrement || 0))
-        : product.stock
+  // Estoque que a cliente pode levar com UMA escolha de variações (o menor
+  // entre as escolhidas; sem escolha, o do produto). Separado de `currentStock`
+  // para a troca de variação conferir a escolha NOVA antes de renderizar.
+  const variantesDaEscolha = (escolha: Record<string, string>) =>
+    Object.entries(escolha)
+      .map(([name, value]) =>
+        product.variants?.find((v) => v.name === name && v.value === value),
+      )
+      .filter(Boolean) as ProductVariant[];
+  const estoqueDaEscolha = (escolha: Record<string, string>): number => {
+    if (Object.keys(variantGroups).length === 0) return product.stock;
+    const escolhidas = variantesDaEscolha(escolha);
+    return escolhidas.length > 0
+      ? Math.min(...escolhidas.map((v) => v.stockIncrement || 0))
       : product.stock;
+  };
+  const currentStock = estoqueDaEscolha(selectedVariants);
+
+  // As fotos da galeria: as do produto e, se uma variação escolhida aponta
+  // uma foto que o produto não tem mais, essa foto no fim. A variação com
+  // foto NÃO esconde as outras -- só leva a galeria até a dela.
+  const fotosDaEscolha = (escolha: Record<string, string>): string[] => {
+    const doProduto = product.images ?? [];
+    const extras = variantesDaEscolha(escolha)
+      .map((v) => v.imageUrl)
+      .filter((url): url is string => !!url && !doProduto.includes(url));
+    return [...doProduto, ...new Set(extras)];
+  };
+  const fotosDaGaleria = fotosDaEscolha(selectedVariants);
+  // A faixa pode encolher (foto extra some ao desmarcar a variação).
+  const indiceDaFoto = Math.min(
+    currentImageIndex,
+    Math.max(fotosDaGaleria.length - 1, 0),
+  );
+
+  // ESCOLHER uma variação (usado pelos botões da página e pelo menu da barra
+  // fixa de baixo). A quantidade já escolhida nunca passa do estoque da
+  // combinação nova: a cliente que pediu 5 do vermelho (10) e troca para o
+  // azul (2) fica com 2 e é avisada, em vez de a tela mostrar 5 e o carrinho
+  // cortar depois. Se a variação tem foto, a galeria anda até ela.
+  const escolherVariante = (grupo: string, valor: string) => {
+    const proxima = { ...selectedVariants, [grupo]: valor };
+    setSelectedVariants(proxima);
+    const fotoDaVariante = product.variants?.find(
+      (v) => v.name === grupo && v.value === valor,
+    )?.imageUrl;
+    if (fotoDaVariante) {
+      const posicao = fotosDaEscolha(proxima).indexOf(fotoDaVariante);
+      if (posicao >= 0) setCurrentImageIndex(posicao);
+    }
+    const estoque = estoqueDaEscolha(proxima);
+    if (estoque > 0 && quantity > estoque) {
+      setQuantity(estoque);
+      toast.warning(`Só restam ${estoque}`, {
+        description: `Ajustamos a quantidade para ${estoque}.`,
+      });
+    }
+  };
+  // Só os botões da página desmarcam ao tocar de novo na escolhida; o menu da
+  // barra fixa nunca desmarcou e continua só escolhendo (`escolherVariante`).
+  const alternarVariante = (grupo: string, valor: string) => {
+    if (selectedVariants[grupo] !== valor) {
+      escolherVariante(grupo, valor);
+      return;
+    }
+    setSelectedVariants(
+      Object.fromEntries(
+        Object.entries(selectedVariants).filter(([nome]) => nome !== grupo),
+      ),
+    );
+  };
   const variantImage = selectedVariantObjects.find(
     (v) => v?.imageUrl,
   )?.imageUrl;
+
+  // A quantidade nunca passa do estoque da variação VIVA: 5 num tamanho com
+  // 10, trocar para um com 2, tem que descer para 2 -- sem isso o "+" trava
+  // em 5, a página diz "Adicionado" e o carrinho recusa ("Apenas 2
+  // unidades"). Mesma regra do card (ProductCard). Só desce, nunca sobe.
+  useEffect(() => {
+    setQuantity((atual) => Math.min(atual, Math.max(currentStock, 1)));
+  }, [currentStock]);
 
   const isLowStock = currentStock <= 3 && currentStock > 0;
   const isOutOfStock = currentStock === 0;
@@ -658,10 +735,18 @@ export const ProductView = React.memo(function ProductView({
     // e é essa URL que falta colar no fim, no caminho do clipboard.
     const temMarcadorDeLink = /\[link\]/i.test(config.shareText);
     const textoDoShare = temMarcador
-      ? config.shareText
-          .replace(/\[nome\]/gi, product.name)
-          .replace(/\[preco\]/gi, reais(product.price))
-          .replace(/\[link\]/gi, globalThis.location.href)
+      ? // Uma passada só, com FUNÇÃO: string no lugar do valor faria "$&"/"$1"
+        // do nome virarem padrão de substituição, e o nome com "[preco]"
+        // seria trocado de novo pela etapa seguinte.
+        config.shareText.replace(
+          /\[(nome|preco|link)\]/gi,
+          (_marcador, qual: string) => {
+            const tipo = qual.toLowerCase();
+            if (tipo === "nome") return product.name;
+            if (tipo === "preco") return reais(product.price);
+            return globalThis.location.href;
+          },
+        )
       : `${config.shareText} ${product.name} por ${reais(product.price)}`;
     const shareData = {
       title: product.name,
@@ -671,7 +756,16 @@ export const ProductView = React.memo(function ProductView({
 
     if (navigator.share) {
       try {
-        await navigator.share(shareData);
+        // O menu de compartilhar do celular (WhatsApp no Android, por
+        // exemplo) costuma juntar `text` e `url` numa mensagem só. Quando o
+        // modelo da lojista já trouxe [link], a URL está dentro do texto —
+        // mandá-la também no campo `url` a repetiria. Sem [link], o texto
+        // não tem URL e ela segue no campo `url`, uma vez só.
+        await navigator.share(
+          temMarcadorDeLink
+            ? { title: shareData.title, text: shareData.text }
+            : shareData,
+        );
       } catch {
         console.log("Share cancelled");
       }
@@ -721,18 +815,6 @@ export const ProductView = React.memo(function ProductView({
     }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     abrirWhatsapp(url);
-  };
-
-  const nextImage = () => {
-    if (!product.images?.length) return;
-    setCurrentImageIndex((prev) => (prev + 1) % product.images.length);
-  };
-
-  const prevImage = () => {
-    if (!product.images?.length) return;
-    setCurrentImageIndex(
-      (prev) => (prev - 1 + product.images.length) % product.images.length,
-    );
   };
 
   // Schema.org JSON-LD
@@ -817,211 +899,47 @@ export const ProductView = React.memo(function ProductView({
       >
         {/* Image Gallery */}
         <div className="lg:col-start-1 lg:row-start-1 lg:min-w-0">
-          <div
-            className={cn(
-              "group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3]",
-              "lg:aspect-square lg:max-h-[calc(100dvh-var(--header-height)-220px)] lg:rounded-3xl",
-              // Ring sutil de definição: a caixa #F8F9FA sobre página branca
-              // "sumia" no desktop (achado da prévia de 29/09) -- o traço
-              // quase invisível separa a galeria do fundo sem virar cartão.
-              "lg:ring-1 lg:ring-zinc-950/5",
-            )}
-          >
-            <div className="relative flex size-full items-center justify-center overflow-hidden">
-              <AnimatePresence mode="popLayout" initial={false}>
-                <motion.img
-                  key={currentImageIndex}
-                  src={imagemRedimensionada(
-                    variantImage || product.images?.[currentImageIndex] || "",
-                    { width: 960, quality: 80 },
-                  )}
-                  srcSet={
-                    conjuntoDeImagens(
-                      variantImage || product.images?.[currentImageIndex] || "",
-                      [480, 640, 960, 1280],
-                      80,
-                    ) || undefined
-                  }
-                  // Ocupa a largura toda no celular; a partir do desktop fica limitada pela altura.
-                  sizes="(min-width: 1024px) 720px, 100vw"
-                  alt={product.name}
-                  onError={(event) =>
-                    usarImagemOriginal(
-                      event.currentTarget,
-                      variantImage || product.images?.at(currentImageIndex),
-                    )
-                  }
-                  className="main-product-image h-full w-auto max-w-full object-contain"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  style={
-                    (isViewTransitionSupported &&
-                    currentImageIndex === 0 &&
-                    !variantImage
-                      ? { viewTransitionName: "product-image" }
-                      : undefined) as React.CSSProperties
-                  }
-                />
-              </AnimatePresence>
-            </div>
-
-            {/* Navigation Arrows */}
-            {(product.images?.length || 0) > 1 && !variantImage && (
-              <div
-                className={cn(
-                  "pointer-events-none absolute inset-0 flex items-center justify-between px-4 opacity-100 transition-opacity duration-300 hover-hover:opacity-0 hover-hover:group-hover:opacity-100",
-                  "lg:!opacity-100",
-                )}
-              >
+          <GaleriaDoProduto
+            fotos={fotosDaGaleria}
+            nome={product.name}
+            indice={indiceDaFoto}
+            onMudarIndice={setCurrentImageIndex}
+            acoes={
+              <div className="absolute right-4 top-4 z-10 flex gap-2">
                 <button
-                  onClick={prevImage}
-                  // Laudo de acessibilidade 03/09, achado 2: botões de ícone sem
-                  // nome nenhum para o leitor de tela.
-                  aria-label="Foto anterior"
-                  // Laudo 05/09, M4: `after:-inset-1.5` amplia o alvo de toque
-                  // de 32px para 44px (recomendado mobile) sem mudar o visual.
-                  className={cn(
-                    "pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95",
-                    // Setas maiores no desktop: no leitor de 27" o alvo de
-                    // 32px flutuava pequeno demais dentro da foto quadrada.
-                    "lg:size-10",
-                  )}
-                >
-                  <ChevronLeft className="size-4" />
-                </button>
-                <button
-                  onClick={nextImage}
-                  aria-label="Próxima foto"
-                  className={cn(
-                    "pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95",
-                    // Setas maiores no desktop: no leitor de 27" o alvo de
-                    // 32px flutuava pequeno demais dentro da foto quadrada.
-                    "lg:size-10",
-                  )}
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-              </div>
-            )}
-
-            {/* Image Indicators - Glass Pill */}
-            {(product.images?.length || 0) > 1 && !variantImage && (
-              <div
-                className={cn(
-                  "absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 shadow-2xl backdrop-blur-xl",
-                  "lg:hidden",
-                )}
-              >
-                {product.images?.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentImageIndex(index)}
-                    // Laudo de acessibilidade 03/09, achado 2: as bolinhas eram
-                    // "botão, botão, botão" — agora dizem qual foto abrem e qual
-                    // é a atual (`aria-current`).
-                    aria-label={`Foto ${index + 1} de ${product.images?.length ?? 0}`}
-                    aria-current={
-                      index === currentImageIndex ? "true" : undefined
-                    }
-                    // Laudo 05/09, M4: bolinha de 4px (h-1) era alvo de toque
-                    // abaixo do mínimo WCAG de 24px — pseudo-elemento invisível
-                    // amplia a área SEM mudar o visual. Laudo Opus 07/09 (C1):
-                    // o inset é 10px só na VERTICAL (4+20 = 24px); na horizontal
-                    // fica em 3px porque as bolinhas ficam a 6px uma da outra
-                    // (gap-1.5) — o inset quadrado de 10px fazia a área da
-                    // bolinha seguinte cobrir a anterior e ROUBAR o toque
-                    // (regressão medida no preview do PR #437). Alvo de 24px de
-                    // LARGURA exige aumentar o gap — decisão visual do dono.
-                    className={`relative h-1 rounded-full transition-all duration-500 after:absolute after:-inset-y-2.5 after:inset-x-[-3px] after:content-[''] ${
-                      index === currentImageIndex
-                        ? "w-6 bg-white"
-                        : "w-1.5 bg-white/30 hover:bg-white/50"
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="absolute right-4 top-4 z-10 flex gap-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavorite();
-                }}
-                // Laudo de acessibilidade 03/09, achado 2: sem nome, favoritar
-                // era impossível por leitor de tela (o "Compartilhar" ao lado já
-                // tinha `aria-label` — este é o padrão da casa).
-                aria-label={
-                  isFavorite
-                    ? "Remover dos favoritos"
-                    : "Adicionar aos favoritos"
-                }
-                className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
-              >
-                <Heart
-                  className={cn(
-                    "size-4.5 transition-colors",
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFavorite();
+                  }}
+                  // Laudo de acessibilidade 03/09, achado 2: sem nome, favoritar
+                  // era impossível por leitor de tela (o "Compartilhar" ao lado já
+                  // tinha `aria-label` — este é o padrão da casa).
+                  aria-label={
                     isFavorite
-                      ? "fill-red-500 text-red-500 animate-heart-pop"
-                      : "text-zinc-600",
-                  )}
-                />
-              </button>
-              <button
-                onClick={handleShare}
-                aria-label="Compartilhar"
-                className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
-              >
-                <Share2 className="size-4.5 text-zinc-600" />
-              </button>
-            </div>
-          </div>
-
-          {computador && (product.images?.length || 0) > 1 && !variantImage && (
-            <div
-              className="lg:mt-4 lg:flex lg:flex-wrap lg:gap-3"
-              role="group"
-              aria-label="Fotos do produto"
-            >
-              {product.images.map((foto, index) => (
-                <button
-                  key={`${foto}-${index}`}
-                  type="button"
-                  aria-label={`Ver foto ${index + 1} de ${product.images.length}`}
-                  aria-current={
-                    index === currentImageIndex ? "true" : undefined
+                      ? "Remover dos favoritos"
+                      : "Adicionar aos favoritos"
                   }
-                  onClick={() => setCurrentImageIndex(index)}
-                  className={cn(
-                    "lg:size-[72px] lg:overflow-hidden lg:rounded-xl lg:border-2 lg:bg-zinc-50 lg:p-1 lg:transition-colors lg:focus-visible:outline-none lg:focus-visible:ring-2 lg:focus-visible:ring-primary lg:focus-visible:ring-offset-2 lg:shadow-sm",
-                    index === currentImageIndex
-                      ? "lg:border-primary"
-                      : "lg:border-zinc-200 lg:hover:border-zinc-400",
-                  )}
+                  className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
                 >
-                  <img
-                    src={imagemRedimensionada(foto, {
-                      width: 200,
-                      quality: 80,
-                    })}
-                    alt=""
-                    onError={(event) =>
-                      usarImagemOriginal(event.currentTarget, foto)
-                    }
-                    loading="lazy"
-                    decoding="async"
-                    className="lg:size-full lg:object-contain"
+                  <Heart
+                    className={cn(
+                      "size-4.5 transition-colors",
+                      isFavorite
+                        ? "fill-red-500 text-red-500 animate-heart-pop"
+                        : "text-zinc-600",
+                    )}
                   />
                 </button>
-              ))}
-            </div>
-          )}
+                <button
+                  onClick={handleShare}
+                  aria-label="Compartilhar"
+                  className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
+                >
+                  <Share2 className="size-4.5 text-zinc-600" />
+                </button>
+              </div>
+            }
+          />
         </div>
         {/* Product Info */}
         <div className={cn("px-5 py-4", "lg:contents")}>
@@ -1250,17 +1168,17 @@ export const ProductView = React.memo(function ProductView({
                                 // borda — `aria-pressed` anuncia o estado (padrão do
                                 // CategoryFilter).
                                 aria-pressed={isSelected}
-                                onClick={() =>
-                                  setSelectedVariants((prev) => ({
-                                    ...prev,
-                                    [name]: v.value,
-                                  }))
-                                }
+                                // Esgotada não se escolhe (o card da vitrine já
+                                // faz igual). A já escolhida continua tocável:
+                                // é por ela que se desmarca.
+                                disabled={variantStock <= 0 && !isSelected}
+                                onClick={() => alternarVariante(name, v.value)}
                                 className={cn(
                                   "px-3 py-1.5 text-xs font-bold rounded-xl border transition-all duration-300 active:scale-95 flex items-center gap-1.5 select-none",
                                   isSelected
-                                    ? "border-primary bg-primary text-white shadow-md shadow-black/10"
+                                    ? "border-primary bg-primary text-primary-foreground shadow-md shadow-black/10"
                                     : "border-zinc-200 bg-zinc-50/50 text-zinc-500 hover:border-zinc-300 hover:text-primary hover:bg-zinc-50",
+                                  "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-zinc-200 disabled:hover:bg-zinc-50/50 disabled:hover:text-zinc-500 disabled:active:scale-100",
                                 )}
                               >
                                 {v.imageUrl && (
@@ -1372,7 +1290,7 @@ export const ProductView = React.memo(function ProductView({
                   !isOutOfStock && cartStatus !== "idle" ? true : undefined
                 }
                 className={cn(
-                  "flex-1 h-11 text-white text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
+                  "flex-1 h-11 text-primary-foreground text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
                   // lg:basis-full: no desktop o CTA não divide a linha com
                   // nada -- largura inteira do cartão, rótulo nunca cortado
                   // (a jornada C12 a 1280 exige "Adicionar ao Carrinho" visível).
@@ -1380,8 +1298,10 @@ export const ProductView = React.memo(function ProductView({
                   cartStatus === "idle"
                     ? "bg-primary hover:bg-primary/90 shadow-lg shadow-black/10 active:scale-[0.98]"
                     : "bg-primary/80 shadow-none",
+                  // "Adicionado" pinta de verde (não é a cor da loja): o texto
+                  // sobre o verde é branco, não o da cor da loja.
                   cartStatus === "success" &&
-                    "bg-emerald-600 shadow-emerald-200",
+                    "bg-emerald-600 text-white shadow-emerald-200",
                   isOutOfStock &&
                     "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
                 )}
@@ -1392,7 +1312,7 @@ export const ProductView = React.memo(function ProductView({
                   <>
                     <span
                       aria-hidden="true"
-                      className="size-4 flex-shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                      className="size-4 flex-shrink-0 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
                     />
                     <span className="sr-only">Adicionando…</span>
                   </>
@@ -1428,6 +1348,10 @@ export const ProductView = React.memo(function ProductView({
                   : ""}
               </span>
             </div>
+            {/* A cliente que vai comprar acha as regras de troca AQUI, sem
+                sair da página: abre em folha, então o tamanho e a cor que
+                ela escolheu ficam como estão. Discreto de propósito. */}
+            <LinkDeTrocas />
           </div>
           <div
             className={cn(
@@ -1893,12 +1817,7 @@ export const ProductView = React.memo(function ProductView({
                         name={name}
                         values={values!}
                         selectedValue={selectedVariants[name] || ""}
-                        onChange={(val) =>
-                          setSelectedVariants((prev) => ({
-                            ...prev,
-                            [name]: val,
-                          }))
-                        }
+                        onChange={(val) => escolherVariante(name, val)}
                         isOpen={activeDropdown === name}
                         onToggle={() =>
                           setActiveDropdown((prev) =>
@@ -1933,12 +1852,12 @@ export const ProductView = React.memo(function ProductView({
                     !isOutOfStock && cartStatus !== "idle" ? true : undefined
                   }
                   className={cn(
-                    "h-9 px-3.5 text-white text-[9px] font-black uppercase tracking-[0.15em] rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[82px] flex-shrink-0 active:scale-95 aria-disabled:active:scale-100",
+                    "h-9 px-3.5 text-primary-foreground text-[9px] font-black uppercase tracking-[0.15em] rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[82px] flex-shrink-0 active:scale-95 aria-disabled:active:scale-100",
                     cartStatus === "idle"
                       ? "bg-primary hover:bg-primary/90 shadow-md shadow-black/10"
                       : "bg-primary/80 shadow-none",
                     cartStatus === "success" &&
-                      "bg-emerald-600 shadow-emerald-200/30",
+                      "bg-emerald-600 text-white shadow-emerald-200/30",
                     isOutOfStock &&
                       "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
                   )}
@@ -1949,7 +1868,7 @@ export const ProductView = React.memo(function ProductView({
                     <>
                       <span
                         aria-hidden="true"
-                        className="size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                        className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
                       />
                       <span className="sr-only">Adicionando…</span>
                     </>

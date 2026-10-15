@@ -167,14 +167,14 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
 
       <Linha
         nome="Alcance por CEP"
-        dica={`Quais CEPs contam como "cidade" (${dicaDaFaixaVazia(cepDaLoja)}). CEP fora da faixa não recebe a entrega local — vê o frete nacional.`}
+        dica={`Quais CEPs contam como "cidade" (${dicaDaFaixaVazia(cepDaLoja)}). Para uma faixa, escreva o primeiro e o último CEP — dois CEPs separados por vírgula. CEP fora da faixa não recebe a entrega local — vê o frete nacional.`}
       >
         <input
           id="local-cep-range"
           type="text"
           value={faixa}
           onChange={(e) => onFaixa(e.target.value)}
-          placeholder="Ex: 38500-000, 38500-999"
+          placeholder="Ex: 38500-000, 38509-999"
           disabled={desabilitado}
           className="h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
         />

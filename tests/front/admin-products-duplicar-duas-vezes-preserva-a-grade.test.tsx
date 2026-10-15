@@ -290,6 +290,22 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
     }
   });
 
+  it("duplicar produto sem foto (a exibição o chama de 'Sem Imagem') não grava o marcador na cópia", async () => {
+    const fotosDeOrigem = produtoTeste.images;
+    // O que o mapper entrega para produto sem foto.
+    produtoTeste.images = ["https://placehold.co/600x400?text=Sem+Imagem"];
+    try {
+      await montar();
+      await duplicar();
+    } finally {
+      produtoTeste.images = fotosDeOrigem;
+    }
+
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    expect(addProduct.mock.calls[0][0].images).toEqual([]);
+    expect(copiarImagemParaDuplicacao).not.toHaveBeenCalled();
+  });
+
   it("duplicar o MESMO produto duas vezes: os SKUs de variante enviados nas duas duplicações nunca colidem", async () => {
     await montar();
 

@@ -188,7 +188,7 @@ describe("Início do painel", () => {
       "Vendas pagas no mês",
       "Lucro estimado",
       "Saldo em contas",
-      "A receber em 7 dias",
+      "A receber (vencidas + próximos 7 dias)",
     ]) {
       expect(pagina).toContain(rotulo);
     }
@@ -200,7 +200,7 @@ describe("Início do painel", () => {
     expect(pagina).toContain("App");
     expect(pagina).toContain("Balcão");
     expect(pagina).toContain("+25%");
-    // Receita do mês +23,5% vs. mês anterior (12345,67 / 10000).
+    // Receita do mês +23,5% vs. os mesmos dias do mês anterior (12345,67 / 10000).
     expect(pagina).toContain("+23,5%");
     // Identidade da loja vinda do config e do perfil.
     expect(pagina).toContain("Loja do Gabriel");

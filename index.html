@@ -44,13 +44,15 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
   <!-- Preconnect & DNS-Prefetch for critical resources -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://images.unsplash.com" />
   <link rel="preconnect" href="https://cafkrminfnokvgjqtkle.supabase.co" crossorigin />
 
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-    rel="stylesheet" />
+  <!-- A Inter mora na própria loja: o @font-face está em src/index.css. Antes
+       era uma folha de estilo do Google no <head>, que travava a primeira
+       pintura quando o Google estava lento. SEM <link rel="preload"> de
+       propósito: medido em 3G, o preload de 48 KB disputa banda com o CSS que
+       destrava a pintura e atrasa a primeira pintura em 0,35 s a 0,6 s; sem
+       ele ela fica igual a antes e a fonte entra por troca (swap). -->
 
   <title>IKCOUS Marketplace</title>
 

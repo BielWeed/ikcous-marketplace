@@ -135,3 +135,55 @@ export function validaCorDaLoja(valor: string): ResultadoValidacaoCor {
   }
   return { ok: true, cor };
 }
+
+// ── O TEXTO QUE FICA SOBRE A COR DA LOJA ──
+// A validação acima NÃO proíbe cor clara (amarelo, rosa claro, dourado são
+// escolhas legítimas). Em compensação, o texto sobre `bg-primary` não pode
+// ser sempre branco: em cor clara o botão principal da compra ficava quase
+// sem texto legível. `--primary-foreground` passa a sair do contraste WCAG.
+//
+// Os dois tokens são os que o index.css já usa (--primary-foreground do tema
+// claro e do escuro), em HSL do Tailwind. Os hexadecimais abaixo são os
+// MESMOS dois tons, só para a conta de contraste.
+export const TEXTO_CLARO_SOBRE_A_COR_DA_LOJA = "0 0% 98%";
+export const TEXTO_ESCURO_SOBRE_A_COR_DA_LOJA = "240 5.9% 10%";
+const HEX_DO_TEXTO_CLARO = "#fafafa";
+const HEX_DO_TEXTO_ESCURO = "#18181b";
+// WCAG 2.x, texto normal: o mínimo de contraste para ser legível.
+const CONTRASTE_MINIMO_DO_TEXTO = 4.5;
+
+// Luminância relativa do WCAG. Valor que não é #RGB/#RRGGBB cai em preto —
+// o mesmo que `hexToTailwindHsl` já faz com cor inválida ("0 0% 0%").
+function luminanciaRelativa(hex: string): number {
+  let limpo = hex.trim().replace(/^#/, "").toLowerCase();
+  if (/^[0-9a-f]{3}$/.test(limpo)) {
+    limpo = `${limpo[0]}${limpo[0]}${limpo[1]}${limpo[1]}${limpo[2]}${limpo[2]}`;
+  }
+  if (!/^[0-9a-f]{6}$/.test(limpo)) return 0;
+  const canal = (inicio: number): number => {
+    const c = Number.parseInt(limpo.slice(inicio, inicio + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * canal(0) + 0.7152 * canal(2) + 0.0722 * canal(4);
+}
+
+export function razaoDeContraste(corA: string, corB: string): number {
+  const a = luminanciaRelativa(corA);
+  const b = luminanciaRelativa(corB);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+// Devolve o token HSL (formato Tailwind) do texto que fica sobre `corDaLoja`:
+// o branco de sempre quando ele chega a 4,5:1 — por isso toda loja de cor
+// escura fica idêntica —, senão o escuro. Na faixa do meio, onde nenhum dos
+// dois chega a 4,5:1, vence o de maior contraste.
+export function textoSobreACorDaLoja(corDaLoja: string): string {
+  const contrasteDoClaro = razaoDeContraste(HEX_DO_TEXTO_CLARO, corDaLoja);
+  if (contrasteDoClaro >= CONTRASTE_MINIMO_DO_TEXTO) {
+    return TEXTO_CLARO_SOBRE_A_COR_DA_LOJA;
+  }
+  const contrasteDoEscuro = razaoDeContraste(HEX_DO_TEXTO_ESCURO, corDaLoja);
+  return contrasteDoClaro >= contrasteDoEscuro
+    ? TEXTO_CLARO_SOBRE_A_COR_DA_LOJA
+    : TEXTO_ESCURO_SOBRE_A_COR_DA_LOJA;
+}
