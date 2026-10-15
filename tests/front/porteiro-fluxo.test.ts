@@ -567,6 +567,8 @@ describe("atenderPorteiro — /identidade.json e /manifest.webmanifest", () => {
     const manifest = await resp.json();
     expect(manifest.name).toBe("Loja A");
     expect(manifest.short_name).toBe("Loja A");
+    // O app instalado não trava a orientação (a lojista usa o PDV deitada).
+    expect(manifest.orientation).toBe("any");
     expect(manifest.theme_color).toBe("#111111");
     expect(manifest.icons).toHaveLength(3);
     expect(
