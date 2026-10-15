@@ -1440,7 +1440,7 @@ export const ProductView = React.memo(function ProductView({
             {/* A cliente que vai comprar acha as regras de troca AQUI, sem
                 sair da página: abre em folha, então o tamanho e a cor que
                 ela escolheu ficam como estão. Discreto de propósito. */}
-            <LinkDeTrocas className="-mt-3" />
+            <LinkDeTrocas />
           </div>
           <div
             className={cn(

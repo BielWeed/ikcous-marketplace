@@ -4,6 +4,7 @@
 // concorda com…" (checkout e cadastro), o link "Trocas e devoluções" (produto)
 // e os três links do rodapé da vitrine. A promessa central: o que abre por
 // cima de uma tela em andamento é FOLHA — a tela de baixo não sai do lugar.
+import { readFileSync } from "node:fs";
 import { act, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -88,6 +89,134 @@ describe("folha e links das políticas", () => {
     );
     expect(hospedeiro.querySelector('input[type="checkbox"]')).toBeNull();
     expect(frase?.querySelectorAll("button")).toHaveLength(2);
+  });
+
+  it("alvo de toque de 44px com caixa REAL: sem margem negativa, sem remendo de padding, links na mesma linha", async () => {
+    const { FraseDeAceite, LinkDeTrocas } = await import(
+      "@/components/politicas/LinksDasPoliticas"
+    );
+    await renderizar(
+      <>
+        <FraseDeAceite acao="finalizar" />
+        <LinkDeTrocas />
+      </>,
+    );
+    const frase = hospedeiro.querySelector(
+      '[data-testid="frase-de-aceite"]',
+    ) as HTMLElement;
+    const todos = [frase, ...frase.querySelectorAll("*")].concat([
+      ...hospedeiro.querySelectorAll(
+        '[data-testid="link-trocas-e-devolucoes"]',
+      ),
+    ]);
+    for (const el of todos) {
+      const classes = (el.getAttribute("class") ?? "").split(/\s+/);
+      // Margem negativa faz a área de toque invadir o vizinho (o botão
+      // Finalizar fica a 6px da frase): proibida.
+      expect(
+        classes.filter((c) => /^-m[trblxy]?-/.test(c)),
+        `margem negativa em <${el.tagName.toLowerCase()}>`,
+      ).toEqual([]);
+    }
+    const botoes = [...frase.querySelectorAll("button")];
+    expect(botoes).toHaveLength(2);
+    for (const b of botoes) {
+      const classes = (b.getAttribute("class") ?? "").split(/\s+/);
+      // A altura de 44px é da própria caixa do botão, não de padding que
+      // vaza para fora dela.
+      expect(classes).toContain("min-h-11");
+      expect(classes.filter((c) => /^py-/.test(c))).toEqual([]);
+    }
+    // O link do produto também tem caixa de 44px.
+    const trocas = hospedeiro.querySelector(
+      '[data-testid="link-trocas-e-devolucoes"]',
+    ) as HTMLElement;
+    expect(trocas.getAttribute("class")).toContain("min-h-11");
+    // Os dois links da frase dividem a MESMA linha: uma quebra de linha só,
+    // ANTES do primeiro, e nenhuma entre eles (senão uma linha de 44px viraria
+    // duas, e a frase cresceria no checkout).
+    const filhos = [...(botoes[0].parentElement?.childNodes ?? [])];
+    const posicao = (n: Node) => filhos.indexOf(n as ChildNode);
+    const quebras = filhos.filter((n) => n.nodeName === "BR");
+    expect(quebras).toHaveLength(1);
+    expect(posicao(quebras[0])).toBeLessThan(posicao(botoes[0]));
+    expect(botoes[1].parentElement).toBe(botoes[0].parentElement);
+  });
+
+  it("nenhum lugar de uso empurra o link para cima do vizinho com margem negativa", () => {
+    for (const arquivo of [
+      "../../src/views/customer/ProductView.tsx",
+      "../../src/views/customer/CheckoutView.tsx",
+      "../../src/views/shared/AuthView.tsx",
+    ]) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminhos fixos do proprio repositorio
+      const fonte = readFileSync(new URL(arquivo, import.meta.url), "utf8");
+      const usos = fonte.match(/<(LinkDeTrocas|FraseDeAceite)\b[^>]*>/g) ?? [];
+      expect(usos.length, arquivo).toBeGreaterThan(0);
+      for (const uso of usos) {
+        expect(uso, arquivo).not.toMatch(/className="([^"]*\s)?-m[trblxy]?-/);
+      }
+    }
+  });
+
+  it("a folha tem fundo OPACO do tema (no modo glass o --background é transparente) e contraste AA nos dois temas", async () => {
+    // Tokens REAIS de src/index.css. Caminho relativo à raiz (no jsdom o `URL`
+    // global é o do jsdom e o `fs` recusa endereço `file:` dele).
+    const css = readFileSync("src/index.css", "utf8").replace(/\r\n/g, "\n");
+    const { PoliticaEmFolha } = await import(
+      "@/components/politicas/PoliticaEmFolha"
+    );
+    await renderizar(<PoliticaEmFolha tipo="termos" onFechar={() => {}} />);
+    const folha = await aguardarFolha();
+    const classes = (folha.getAttribute("class") ?? "").split(/\s+/);
+    expect(classes).toContain("bg-card");
+    expect(classes).not.toContain("bg-background");
+    expect(classes).toContain("text-card-foreground");
+
+    const bloco = (seletor: string): string => {
+      const i = css.indexOf(`${seletor} {`);
+      expect(i, `bloco ${seletor}`).toBeGreaterThan(-1);
+      return css.slice(i, css.indexOf("}", i));
+    };
+    const token = (b: string, nome: string): [number, number, number] => {
+      const m = new RegExp(
+        `--${nome}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`,
+      ).exec(b);
+      expect(m, `--${nome}`).not.toBeNull();
+      return [Number(m?.[1]), Number(m?.[2]), Number(m?.[3])];
+    };
+    const luz = ([h, s, l]: [number, number, number]): number => {
+      const S = s / 100;
+      const L = l / 100;
+      const k = (n: number) => (n + h / 30) % 12;
+      const a = S * Math.min(L, 1 - L);
+      const f = (n: number) =>
+        L - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+      const lin = (c: number) =>
+        c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      return 0.2126 * lin(f(0)) + 0.7152 * lin(f(8)) + 0.0722 * lin(f(4));
+    };
+    const razao = (a: number, b: number) =>
+      (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+
+    for (const tema of [":root", ".dark"]) {
+      const b = bloco(tema);
+      const fundo = luz(token(b, "card"));
+      // No claro o `.dark` herda o resto do :root; aqui só interessam os
+      // tokens que o tema define (todos os três existem nos dois blocos).
+      for (const frente of [
+        "card-foreground",
+        "foreground",
+        "muted-foreground",
+      ]) {
+        expect(
+          razao(fundo, luz(token(b, frente))),
+          `${tema}: ${frente} sobre card`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+    // O modo glass só zera o --background: --card segue opaco.
+    expect(bloco('[data-theme-mode="glass"]')).not.toMatch(/--card:/);
   });
 
   it("os links abrem a política por cima e fechar devolve a tela intacta", async () => {

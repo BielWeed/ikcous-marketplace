@@ -5871,19 +5871,20 @@ export function CheckoutView({
 
           14/10/2026: a barra ganhou a frase "Ao finalizar você concorda com os
           Termos de uso e a Política de Privacidade" (`FraseDeAceite`): 6px de
-          margem + até 2 linhas de 11px (leading-snug = ~15px) = 36px no pior
-          caso (a 375px a frase quebra em 2 linhas). Reserva somada por CONTA,
-          não por medida no navegador: 196→232px no celular, 200→236px no
-          computador. Falta REMEDIR no aparelho (fim do último card menos o
-          `top` da barra, no scroll máximo) — se sobrar folga grande, aperte. */}
+          margem + 1ª linha de 11px (~15px) + 2ª linha só com os dois links, cuja
+          caixa tem 44px de verdade (alvo de toque sem invadir o botão
+          Finalizar) = ~65px. Reserva somada por CONTA, não por medida no
+          navegador: 196→264px no celular, 200→268px no computador. Falta
+          REMEDIR no aparelho (fim do último card menos o `top` da barra, no
+          scroll máximo) — se sobrar folga grande, aperte. */}
       <div
         className="hidden md:block"
-        style={{ height: "236px" }}
+        style={{ height: "268px" }}
         aria-hidden="true"
       />
       <div
         className="block md:hidden"
-        style={{ height: "calc(232px + var(--safe-area-bottom, 0px))" }}
+        style={{ height: "calc(264px + var(--safe-area-bottom, 0px))" }}
         aria-hidden="true"
       />
 
