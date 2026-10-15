@@ -93,6 +93,18 @@ export function codigosDeCupomCitados(...textos: readonly string[]): string[] {
   return [...achados];
 }
 
+/**
+ * Filtro `or` do PostgREST que traz os cupons citados SEM diferenciar maiúscula
+ * de minúscula, como o checkout faz (`UPPER(code) = UPPER(...)`). Um código
+ * antigo guardado como "Verao10" não pode virar "cupom não existe" só porque o
+ * texto cita "VERAO10". O `_` do código vira curinga no `ilike` e pode trazer
+ * linha a mais; a conferência final (`problemaDoCupom`) compara exato, então
+ * a linha a mais não muda o resultado.
+ */
+export function filtroDosCodigosCitados(codigos: readonly string[]): string {
+  return codigos.map((codigo) => `code.ilike.${codigo}`).join(",");
+}
+
 /** Só as colunas de `coupons` que a conferência lê. */
 export interface CupomDaLoja {
   readonly code: string;

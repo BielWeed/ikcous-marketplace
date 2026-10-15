@@ -10,6 +10,7 @@ import {
   MARCADOR_DO_CUPOM,
   MODELOS_DE_CAMPANHA,
   codigosDeCupomCitados,
+  filtroDosCodigosCitados,
   mensagemDoProblemaDoCupom,
   problemaDoCupom,
   temMarcadorPendente,
@@ -98,6 +99,29 @@ describe("codigosDeCupomCitados", () => {
 
   it("não sai por código curto demais", () => {
     expect(codigosDeCupomCitados("cupom AB")).toEqual([]);
+  });
+});
+
+describe("filtroDosCodigosCitados", () => {
+  it("pede cada código sem diferenciar maiúscula de minúscula", () => {
+    expect(filtroDosCodigosCitados(["VERAO10"])).toBe("code.ilike.VERAO10");
+    expect(filtroDosCodigosCitados(["VERAO10", "BEMVINDO"])).toBe(
+      "code.ilike.VERAO10,code.ilike.BEMVINDO",
+    );
+  });
+
+  it("cupom antigo guardado em caixa mista ainda é achado e conferido", () => {
+    // A linha que o filtro traz para "VERAO10" pode estar guardada "Verao10"
+    // (o painel preserva códigos antigos); a conferência não pode dizer que
+    // o cupom não existe.
+    const antigo: CupomDaLoja = {
+      code: "Verao10",
+      active: true,
+      valid_until: null,
+      usage_limit: null,
+      usage_count: 0,
+    };
+    expect(problemaDoCupom("VERAO10", [antigo], new Date())).toBeNull();
   });
 });
 
