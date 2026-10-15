@@ -266,6 +266,18 @@ export function CupomDaVenda({
       setBuscando(false);
       return;
     }
+    // O campo entrega o texto de novo quando PERDE O FOCO. No celular o toque
+    // em "Mostrar mais" tira o foco do campo antes do clique: refazer aqui a
+    // busca do termo que já está na tela (ou a caminho) travava o botão no
+    // meio do toque e o primeiro toque morria. Termo que falhou continua
+    // podendo ser buscado de novo.
+    if (
+      termoLimpo === termoBuscado &&
+      (buscaRespondeu || buscando) &&
+      !falhaDaBusca
+    ) {
+      return;
+    }
     await buscarPagina(termoLimpo, 0);
   }
 
@@ -318,7 +330,10 @@ export function CupomDaVenda({
   // O cupom esvaziou por outro caminho (tirou o último item, por exemplo)
   // com a pergunta aberta: ela some junto — senão voltaria sozinha na venda
   // seguinte, perguntando por uma venda que não existe mais.
-  if (confirmandoCancelamento && !temVendaParaCancelar) {
+  // O mesmo vale se a venda começa a ser GRAVADA com a pergunta aberta
+  // (foi a "Fechar venda" e "Registrar venda"): o "Sim" zeraria a tela com a
+  // venda no ar.
+  if (confirmandoCancelamento && (!temVendaParaCancelar || estado.enviando)) {
     setConfirmandoCancelamento(false);
   }
   // O foco cai no "Voltar": o gesto automático de quem toca duas vezes por
@@ -604,6 +619,7 @@ export function CupomDaVenda({
               type="button"
               variant="outline"
               size="sm"
+              className="h-11 shrink-0"
               onClick={() =>
                 void buscarPagina(termoBuscado, falhaDaBusca.pagina)
               }
@@ -674,6 +690,7 @@ export function CupomDaVenda({
                 type="button"
                 variant="outline"
                 size="sm"
+                className="h-11 shrink-0"
                 disabled={buscando}
                 onClick={() =>
                   void buscarPagina(termoBuscado, paginaCarregada + 1)
@@ -721,7 +738,7 @@ export function CupomDaVenda({
           // Com a venda sendo gravada no banco não dá para desistir: limpar
           // agora deixaria a tela zerada e a venda feita.
           disabled={estado.enviando}
-          className="self-center text-zinc-500 hover:text-red-300"
+          className="h-11 self-center text-zinc-500 hover:text-red-300"
           onClick={() => setConfirmandoCancelamento(true)}
         >
           <XCircle aria-hidden="true" className="mr-1.5 size-4" />
@@ -739,21 +756,25 @@ export function CupomDaVenda({
           </p>
           <p className="text-xs text-zinc-400">
             Os itens e o cliente escolhido serão limpos, e o caixa volta ao
-            começo. Nada é registrado.
+            começo.{" "}
+            {estado.erro
+              ? "Se a venda chegou a ser gravada, ela está em Pedidos."
+              : "Nada é registrado."}
           </p>
           <div className="flex gap-2">
             <Button
               ref={voltarDoCancelamentoRef}
               type="button"
               variant="outline"
-              className="flex-1"
+              className="h-11 flex-1"
               onClick={() => setConfirmandoCancelamento(false)}
             >
               Voltar
             </Button>
             <Button
               type="button"
-              className="flex-1 bg-red-700 text-white hover:bg-red-600"
+              disabled={estado.enviando}
+              className="h-11 flex-1 bg-red-700 text-white hover:bg-red-600"
               onClick={() => {
                 setConfirmandoCancelamento(false);
                 limparCupom();

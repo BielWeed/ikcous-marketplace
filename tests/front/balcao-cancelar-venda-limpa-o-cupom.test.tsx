@@ -293,6 +293,89 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     expect(botao(hospedeiro, "Cancelar venda")!.disabled).toBe(true);
   });
 
+  it("com a pergunta já aberta, começar a gravar a venda fecha a pergunta e a tela não é zerada", async () => {
+    let resolverVenda: (v: unknown) => void = () => {};
+    registrarImplRef.atual = () =>
+      new Promise((resolver) => {
+        resolverVenda = resolver as (v: unknown) => void;
+      });
+    await montar();
+    await bipar();
+    await clicar("Cancelar venda");
+    expect(hospedeiro.textContent).toContain("Cancelar esta venda?");
+
+    await clicar("Fechar venda");
+    await clicar("Dinheiro");
+    await clicar("Registrar venda");
+
+    // A venda está no ar: nada de "Sim, cancelar" para zerar a tela por cima.
+    expect(botao(hospedeiro, "Sim, cancelar venda")).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Cancelar esta venda?");
+    expect(hospedeiro.textContent).toContain("Camiseta Lisa");
+
+    await act(async () => {
+      resolverVenda({
+        data: {
+          ja_existia: false,
+          order: {
+            id: "11111111-1111-1111-1111-111111111111",
+            created_at: "2026-10-14T12:00:00.000Z",
+            total: 39.9,
+            subtotal: 39.9,
+            discount: 0,
+            payment_method: "cash",
+            user_id: null,
+            customer_name: "Venda no balcão",
+            customer_data: {},
+          },
+          items: [
+            {
+              product_id: "produto-1",
+              variant_id: null,
+              quantity: 1,
+              price: 39.9,
+              product_name: "Camiseta Lisa",
+            },
+          ],
+        },
+        error: null,
+      });
+    });
+    await avancar();
+    expect(hospedeiro.textContent).toContain("Compra na loja");
+  });
+
+  it("a pergunta só diz 'Nada é registrado' quando não houve falha de envio", async () => {
+    await montar();
+    await bipar();
+    await clicar("Cancelar venda");
+    expect(hospedeiro.textContent).toContain("Nada é registrado");
+    expect(hospedeiro.textContent).not.toContain(
+      "Se a venda chegou a ser gravada",
+    );
+  });
+
+  it("depois de uma falha de rede no envio, a pergunta não jura que nada foi registrado", async () => {
+    registrarImplRef.atual = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    await montar();
+    await bipar();
+    await clicar("Fechar venda");
+    await clicar("Dinheiro");
+    await clicar("Registrar venda");
+    expect(hospedeiro.textContent).toContain(
+      "Não consegui falar com o servidor",
+    );
+
+    await clicar("Cancelar venda");
+
+    expect(hospedeiro.textContent).toContain(
+      "Se a venda chegou a ser gravada, ela está em Pedidos.",
+    );
+    expect(hospedeiro.textContent).not.toContain("Nada é registrado");
+  });
+
   it("depois de CONCLUIR uma venda, a seguinte não herda o cliente nem a forma de pagamento", async () => {
     registrarImplRef.atual = async () => ({
       data: {
