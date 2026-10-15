@@ -13,6 +13,7 @@ import {
   lerResultadoDoRenome,
   mensagemDaFalhaDeCategoria,
   mesmaCategoria,
+  trocarNomeNaLista,
 } from "@/lib/gestao-de-categorias";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -219,5 +220,30 @@ describe("mensagemDaFalhaDeCategoria", () => {
     expect(e.message).toBe("Já existe.");
     expect(e.code).toBe("23505");
     expect(e).toBeInstanceOf(Error);
+  });
+});
+
+describe("trocarNomeNaLista (a copia da regra de devolucao acompanha a renomeacao)", () => {
+  it("troca pela regua da vitrine, mantem a ordem e o resto", () => {
+    expect(
+      trocarNomeNaLista(
+        ["Calçados", "  brinquedo ", "Moda"],
+        "Brinquedo",
+        "Brinquedos",
+      ),
+    ).toEqual(["Calçados", "Brinquedos", "Moda"]);
+  });
+
+  it("tira o que ficou repetido e devolve a MESMA lista quando nada muda", () => {
+    expect(
+      trocarNomeNaLista(["Brinquedo", "Brinquedos"], "Brinquedo", "Brinquedos"),
+    ).toEqual(["Brinquedos"]);
+    const lista = ["Calçados"];
+    expect(trocarNomeNaLista(lista, "Brinquedo", "Brinquedos")).toBe(lista);
+  });
+
+  it("nao tira acento: 'Intimos' nao e 'Íntimos'", () => {
+    const lista = ["Íntimos"];
+    expect(trocarNomeNaLista(lista, "Intimos", "Lingerie")).toBe(lista);
   });
 });

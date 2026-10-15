@@ -145,6 +145,23 @@ export function mesmaCategoria(a: string, b: string): boolean {
   return chaveDaCategoria(a) === chaveDaCategoria(b);
 }
 
+/**
+ * Troca o nome antigo pelo novo numa lista de nomes de categoria (a "sem troca
+ * por gosto" da política de devolução), do mesmo jeito que o banco faz ao
+ * renomear: quem é a mesma categoria pela régua da vitrine passa a ter o nome
+ * novo, a ordem fica e o que ficou repetido é tirado. Devolve a MESMA lista
+ * (mesma referência) quando nada mudou.
+ */
+export function trocarNomeNaLista(
+  lista: readonly string[],
+  de: string,
+  para: string,
+): string[] {
+  if (!lista.some((item) => mesmaCategoria(item, de))) return lista as string[];
+  const trocada = lista.map((item) => (mesmaCategoria(item, de) ? para : item));
+  return trocada.filter((item, i) => trocada.indexOf(item) === i);
+}
+
 /** A categoria está em uso: produto, banner ou regra de devolução aponta para ela. */
 export function categoriaEmUso(c: {
   readonly produtos: number;
