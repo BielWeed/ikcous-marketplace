@@ -1818,6 +1818,15 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
   linhas em duvida de pedido com reembolso manual. **Ler a linha `controle` primeiro:** com a RLS valendo em
   `order_refund_diagnostico`, toda linha `falhou` parece "legado sem diagnostico" e o numero sai INFLADO; nas
   outras tabelas, sai baixo. `divergencias` tem de ser 0. Nao e portao: quem decide e quem le.
+- **`44m-medir-pedidos-de-zero-e-desconto`** (15/10/2026): mede se vale corrigir os numeros do painel por causa
+  de pedido de R$ 0,00 (cupom que zera a compra) e de desconto em geral, ANTES de qualquer migration. Rodar nas
+  duas lojas assinantes (IKCOUS e Savy) pelo `conferir-banco-da-loja.yml`, uma loja por run. So contagens, somas
+  e porcentagens, nenhum dado pessoal: pedidos de R$ 0 por janela (90 dias e total), por `payment_status` e por
+  canal; clientes do CRM cuja unica compra e de R$ 0 e cujo PRIMEIRO pedido e de R$ 0; a superestimacao do lucro
+  do painel (desconto concedido, inteiro e rateado aos itens com custo, sobre o lucro de `get_admin_analytics_v2`,
+  com o filtro de status/`payment_status` IDENTICO ao da funcao) em 30 dias, 90 dias e total; e os pedidos de R$ 0
+  entregues com `payment_status` nulo. **Ler a linha `controle` primeiro:** com a RLS valendo em qualquer das tres
+  tabelas o numero sai baixo; a coerencia do desconto diz se a coluna `discount` e confiavel. Nao e portao.
 
 ## Fora da release, de proposito
 
