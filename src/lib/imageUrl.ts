@@ -87,6 +87,32 @@ export function conjuntoDeImagens(
     .join(", ");
 }
 
+/**
+ * Marca uma URL de imagem como "nova tentativa N" (`_r=N`), para o navegador e
+ * a CDN não devolverem de novo uma falha guardada. Só mexe em http(s): `data:`
+ * e `blob:` voltam intactos (um `?` no meio deles corromperia a imagem), e a
+ * tentativa 0 -- o pedido original -- nunca é marcada.
+ */
+export function comMarcaDeTentativa(url: string, tentativa: number): string {
+  if (tentativa <= 0 || !/^https?:\/\//i.test(url)) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}_r=${tentativa}`;
+}
+
+/** O mesmo, para cada candidata de um `srcSet` ("url 320w, url 640w"). */
+export function conjuntoComMarcaDeTentativa(
+  srcSet: string | undefined,
+  tentativa: number,
+): string | undefined {
+  if (!srcSet || tentativa <= 0) return srcSet;
+  return srcSet
+    .split(",")
+    .map((candidata) => {
+      const [url, ...descritor] = candidata.trim().split(/\s+/);
+      return [comMarcaDeTentativa(url, tentativa), ...descritor].join(" ");
+    })
+    .join(", ");
+}
+
 /** Atributos compartilhados entre a imagem exibida e seu pré-carregamento. */
 export function atributosDeImagem(
   url: string,
