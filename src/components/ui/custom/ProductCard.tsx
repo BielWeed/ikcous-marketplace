@@ -871,15 +871,20 @@ export const ProductCard = memo(function ProductCard({
             // foi removido) tentaria focar um nó que já não existe.
             onCloseAutoFocus={(evento) => {
               evento.preventDefault();
-              const botao = botaoDeAcaoRef.current;
-              if (botao?.isConnected) botao.focus();
               // A folha TERMINOU de sair (o Radix só avisa depois da animação
               // de saída, com a folha já fora do DOM): é a hora da bolinha
               // anotada no "Adicionar". Vale uma vez — o anotado é limpo
               // antes de qualquer saída, e reabrir/fechar depois não repete.
+              // A bolinha sai ANTES de devolver o foco: `focus()` rola a
+              // página até o botão (no pé do card) e, em grade larga com foto
+              // alta, o centro da foto já teria saído da tela quando
+              // `pontoDeSaidaVisivel` perguntasse (medido no Chromium,
+              // 15/10/2026) — sobrava só o "Salvo!".
               const imgSrc = vooPendenteRef.current;
               vooPendenteRef.current = null;
               soltarVooDoCard(imgSrc, fotoDoCardRef.current, cardRef.current);
+              const botao = botaoDeAcaoRef.current;
+              if (botao?.isConnected) botao.focus();
             }}
           >
             {/* Alça que FECHA (peça 03, 13/09 — pedido do dono ao vivo):

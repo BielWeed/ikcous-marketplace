@@ -778,6 +778,35 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
       expect(voos()).toHaveLength(1);
       expect(document.activeElement).toBe(botaoDeAcao());
     });
+
+    it("a bolinha sai ANTES de o foco voltar ao botão do card (focar rola a página e tira a foto da tela)", async () => {
+      // Medido no Chromium (1024px, 2 colunas, foto de ~600px, card
+      // parcialmente rolado): `botao.focus()` rola a página para mostrar o
+      // botão, que fica no pé do card. Com a ordem antiga (foco, depois voo) o
+      // centro da foto já tinha saído da tela quando `pontoDeSaidaVisivel`
+      // perguntava, e só aparecia o "Salvo!". Aqui o foco registra QUANTAS
+      // bolinhas já existiam no instante em que foi chamado.
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants: vi.fn(),
+      });
+      fotoDoCardVisivel();
+      const bolinhasNoInstanteDoFoco: number[] = [];
+      const focarDeVerdade = HTMLElement.prototype.focus;
+      const botao = botaoDeAcao();
+      vi.spyOn(botao, "focus").mockImplementation(function (
+        this: HTMLElement,
+        opcoes?: FocusOptions,
+      ) {
+        bolinhasNoInstanteDoFoco.push(voos().length);
+        focarDeVerdade.call(this, opcoes);
+      });
+      await escolherMEAdicionar();
+      await esperarAFolhaFechar();
+
+      expect(bolinhasNoInstanteDoFoco).toEqual([1]);
+      expect(voos()).toHaveLength(1);
+      expect(document.activeElement).toBe(botao);
+    });
   });
 
   it("card SEM variação: o voo continua saindo na hora, do botão do card (caminho direto preservado)", async () => {
