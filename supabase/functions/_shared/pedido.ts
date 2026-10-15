@@ -119,15 +119,65 @@ const ROTULO_PAGAMENTO_NO_BALCAO = new Map<string, string>([
 ]);
 
 /**
+ * O que o comprovante diz no lugar da forma de pagamento quando a compra
+ * fechou em R$ 0,00 (cupom de 100%). Mesmo texto das telas
+ * (`ROTULO_SEM_VALOR_A_PAGAR`, `src/lib/forma-de-pagamento.ts`). So' texto: o
+ * pedido segue gravado como "pagar na entrega" (decisao do dono, 15/10/2026).
+ */
+export const ROTULO_SEM_VALOR_A_PAGAR = "Sem valor a pagar";
+
+/**
+ * A MESMA regra do front (`pedidoSemValorAPagar`), reescrita aqui porque a
+ * edge e' outro runtime e nao importa de `src/`. A paridade e' provada por
+ * `pedido_sem_valor_a_pagar_test.ts`, que repete os casos do teste do front.
+ *
+ * Em centavos: 0,004 de ponto flutuante e' zero, 0,01 nao. Total ausente,
+ * nulo, negativo ou que nao e' NUMERO nunca conta — na duvida o pedido segue
+ * com o rotulo de antes. Quando subtotal, desconto e frete existem, a conta
+ * subtotal - desconto + frete tem de fechar em zero tambem; se algum faltar,
+ * nao ha o que conferir e vale o total.
+ */
+export function pedidoSemValorAPagar(
+  pedido: {
+    total?: unknown;
+    subtotal?: unknown;
+    discount?: unknown;
+    shipping?: unknown;
+  } | null | undefined,
+): boolean {
+  const centavos = (valor: unknown): number | null =>
+    typeof valor === "number" && Number.isFinite(valor)
+      ? Math.round(valor * 100)
+      : null;
+  if (centavos(pedido?.total) !== 0) return false;
+  const subtotal = centavos(pedido?.subtotal);
+  const desconto = centavos(pedido?.discount);
+  const frete = centavos(pedido?.shipping);
+  if (subtotal === null || desconto === null || frete === null) return true;
+  return subtotal - desconto + frete === 0;
+}
+
+/**
  * `canal` e' opcional de proposito: os chamadores que nao o passam
  * (`send-order-whatsapp`, hoje) continuam com o texto de sempre. So' o valor
  * exato "presencial" muda o texto — mesmo contrato do `htmlDoPedido`.
+ *
+ * `valores` (opcional) e' o dinheiro do pedido: so' ele decide o caso "sem
+ * valor a pagar". Ausente = "nao sei", e o rotulo e' o de sempre, byte a byte.
+ * Esse caso vem ANTES de tudo, ate' do metodo desconhecido — igual as telas.
  */
 export function rotuloDoPagamento(
   metodo: unknown,
   metodoOnline?: unknown,
   canal?: unknown,
+  valores?: {
+    total?: unknown;
+    subtotal?: unknown;
+    discount?: unknown;
+    shipping?: unknown;
+  } | null,
 ): string {
+  if (pedidoSemValorAPagar(valores)) return ROTULO_SEM_VALOR_A_PAGAR;
   const chave = String(metodo ?? "").toLowerCase();
   if (canal === "presencial") {
     const noBalcao = ROTULO_PAGAMENTO_NO_BALCAO.get(chave);

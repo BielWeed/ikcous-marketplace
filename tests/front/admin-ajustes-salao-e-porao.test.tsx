@@ -120,9 +120,25 @@ vi.mock("@/hooks/useAuth", () => ({
 vi.mock("@/lib/env-valores", () => ({
   lerSupabaseUrl: () => "https://abcdefghijklmnopqrst.supabase.co",
 }));
+// `from` só existe para provar que a seção "Pedidos de privacidade dos clientes"
+// (14/10/2026) não lê o banco enquanto está fechada: devolve uma lista vazia.
+const tabelasLidas: string[] = [];
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     functions: { invoke: (...args: unknown[]) => invokeFrete(...args) },
+    from: (tabela: string) => {
+      tabelasLidas.push(tabela);
+      const lista = { data: [], error: null };
+      const cadeia = {
+        select: () => cadeia,
+        eq: () => cadeia,
+        neq: () => cadeia,
+        order: () => cadeia,
+        limit: () => Promise.resolve(lista),
+        in: () => Promise.resolve(lista),
+      };
+      return cadeia;
+    },
   },
 }));
 vi.mock("sonner", () => ({
@@ -733,7 +749,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // Pagamentos desde H6: a linha está à vista, o diagnóstico dele fechado.
     // O sexto é o E-mail da loja (14/10/2026), no grupo Minha loja: também
     // nasce fechado (e só fala com o servidor quando a lojista o abre).
-    expect(cabecalhos.length).toBe(6);
+    // O sétimo é "Pedidos de privacidade dos clientes" (14/10/2026), também em
+    // Minha loja, fechado e sem ler nada do banco até a lojista abrir.
+    expect(cabecalhos.length).toBe(7);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }
@@ -818,6 +836,39 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     expect(
       cabecalhoDaSecao("E-mail da loja")?.getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+
+  it("Pedidos de privacidade dos clientes (14/10/2026): mora em Minha loja, nasce fechado e só lê o banco quando a lojista o abre", async () => {
+    tabelasLidas.length = 0;
+    await renderizar();
+    const minhaLoja = () =>
+      hospedeiro.querySelector("#grupo-de-ajustes-minha-loja");
+    expect(minhaLoja()?.textContent).toContain(
+      "Pedidos de privacidade dos clientes",
+    );
+    expect(
+      cabecalhoDaSecao("Pedidos de privacidade dos clientes")?.getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("false");
+    expect(tabelasLidas).not.toContain("pedidos_de_privacidade");
+
+    await act(async () => {
+      cabecalhoDaSecao("Pedidos de privacidade dos clientes")?.click();
+    });
+    for (
+      let i = 0;
+      i < 50 && !tabelasLidas.includes("pedidos_de_privacidade");
+      i++
+    ) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    }
+    expect(tabelasLidas).toContain("pedidos_de_privacidade");
+    expect(minhaLoja()?.textContent).toContain(
+      "Nenhum pedido de privacidade por enquanto.",
+    );
   });
 
   it("o estado do frete é o subtítulo do grupo, sem acordeão de Transportadoras (H5)", async () => {

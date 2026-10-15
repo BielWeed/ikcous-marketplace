@@ -51,7 +51,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "minha-loja",
     titulo: NOMES_DO_PAINEL["admin-about-store"],
     ajuda:
-      "Nome, logo, cores, endereço, horário de atendimento e a descrição da loja — tudo editado numa única tela. Aqui também fica o E-mail da loja: o Gmail que envia os e-mails do pedido, com o passo a passo para cadastrá-lo.",
+      "Nome, logo, cores, endereço, horário de atendimento e a descrição da loja — tudo editado numa única tela. Aqui também fica o E-mail da loja: o Gmail que envia os e-mails do pedido, com o passo a passo para cadastrá-lo. E os Pedidos de privacidade dos clientes: exclusão de conta e correção de e-mail pedidas pelo app, que a loja atende e marca aqui.",
     portas: [
       {
         tela: "admin-about-store",

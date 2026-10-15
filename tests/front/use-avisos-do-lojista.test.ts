@@ -46,6 +46,9 @@ let RESPOSTA_AVALIACOES: unknown = { data: [], error: null };
 let RESPOSTA_CANCELAMENTOS: unknown = { data: [], error: null };
 let RESPOSTA_PERFIS: unknown = { data: [], error: null };
 const FILTROS_DO_HISTORICO: Array<[string, ...unknown[]]> = [];
+// Setima fonte (14/10/2026): quantos pedidos de privacidade seguem abertos —
+// uma consulta `head` que so devolve `count`.
+let RESPOSTA_PRIVACIDADE: unknown = { data: null, count: 0, error: null };
 // Setima fonte (14/10/2026): pedidos entregues, pagos na entrega, sem
 // recebimento marcado. Lidos de `marketplace_orders` (a mesma tabela dos
 // pedidos pendentes), distinguidos pelo `.eq("status", "delivered")`.
@@ -127,9 +130,11 @@ function criarBuilder(tabela: string) {
           ? RESPOSTA_CANCELAMENTOS
           : tabela === "profiles"
             ? RESPOSTA_PERFIS
-            : ehRecebimento()
-              ? RESPOSTA_RECEBIMENTOS
-              : respostaDosPedidos(),
+            : tabela === "pedidos_de_privacidade"
+              ? RESPOSTA_PRIVACIDADE
+              : ehRecebimento()
+                ? RESPOSTA_RECEBIMENTOS
+                : respostaDosPedidos(),
     ).then(resolve as never, reject as never);
   return builder;
 }
@@ -245,6 +250,7 @@ beforeEach(() => {
   RESPOSTA_RECEBIMENTOS = { data: [], error: null };
   RESPOSTA_CANCELAMENTOS = { data: [], error: null };
   RESPOSTA_PERFIS = { data: [], error: null };
+  RESPOSTA_PRIVACIDADE = { data: null, count: 0, error: null };
   RESPOSTA_PEDIDOS = { data: [pedidoDeExemplo()], error: null };
   RESPOSTA_PERGUNTAS = { data: { total_count: 3 }, error: null };
   RESPOSTA_AVALIACOES = { data: [avaliacaoDeExemplo()], error: null };
@@ -348,6 +354,7 @@ describe("useAvisosDoLojista", () => {
     RESPOSTA_PRODUTOS = null;
     RESPOSTA_DEVOLUCOES = { data: null, error: { message: "caiu" } };
     RESPOSTA_CANCELAMENTOS = { data: null, error: { message: "caiu" } };
+    RESPOSTA_PRIVACIDADE = { data: null, count: null, error: { message: "x" } };
 
     const { atual } = await montarSonda();
 
@@ -362,8 +369,49 @@ describe("useAvisosDoLojista", () => {
         "estoque",
         "devolucao",
         "cancelamento",
+        "privacidade",
       ]),
     );
+  });
+
+  it("pedido de privacidade aberto vira aviso que conta no cracha", async () => {
+    RESPOSTA_PRIVACIDADE = { data: null, count: 2, error: null };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "privacidade");
+    expect(aviso).toBeDefined();
+    expect(aviso?.contaNoCracha).toBe(true);
+    expect(aviso?.titulo).toContain("2");
+    expect(tabelasConsultadas).toContain("pedidos_de_privacidade");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("sem pedido de privacidade aberto nao ha aviso, e a fonte nao falha", async () => {
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("privacidade");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("so a fonte de privacidade cai: as outras seguem e ela entra em fontesComFalha", async () => {
+    RESPOSTA_PRIVACIDADE = { data: null, count: null, error: { message: "x" } };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["privacidade"]);
+    expect(new Set(atual().avisos.map((a) => a.tipo))).toEqual(
+      new Set(["pedido", "pergunta", "avaliacao", "estoque"]),
+    );
+  });
+
+  it("resposta sem numero na privacidade e falha da fonte, nunca 'zero pedido'", async () => {
+    RESPOSTA_PRIVACIDADE = { data: null, count: null, error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["privacidade"]);
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("privacidade");
   });
 
   it("devolucao solicitada vira aviso que conta no cracha e abre a tela de Devolucoes", async () => {

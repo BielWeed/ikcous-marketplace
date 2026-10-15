@@ -299,6 +299,21 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
       /^Esta forma de pagamento não está disponível nesta loja\. Escolha outra\.$/,
     acao: "trocar_pagamento",
   },
+  // A COMPRA QUE DÁ R$ 0,00 NÃO SE PAGA PELO APP (14/10/2026 — migration
+  // 20261236000000, só a `create_marketplace_order_v24`): um cupom que zera a
+  // compra (com frete zero) deixava o pedido nascer "aguardando" pelo app, mas
+  // `criar-pagamento` não cobra R$ 0,00 — beco sem saída que segurava estoque e
+  // a vaga do cupom por 30 minutos. A RPC agora recusa ANTES de reservar nada
+  // (o identificador estável `pedido_sem_valor_a_pagar_pelo_app` vai no DETAIL;
+  // o `message` é a frase em português, sem prefixo, como as demais recusas).
+  // A saída é a MESMA de "forma de pagamento desligada": o pedido provadamente
+  // não nasceu e a pessoa precisa escolher OUTRA forma (a retirada/entrega, que
+  // aceita total zero), nunca "tentar de novo" o mesmo pagamento pelo app.
+  {
+    padrao:
+      /^Este pedido não tem valor a pagar pelo app\. Escolha pagar na retirada ou na entrega, ou fale com a loja\.$/,
+    acao: "trocar_pagamento",
+  },
   {
     padrao: /^Endereço inválido ou não pertence ao usuário\.$/,
     acao: "trocar_endereco",
