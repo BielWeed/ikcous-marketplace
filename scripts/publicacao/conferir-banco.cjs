@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 39a, 39b, 40a, 40b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 39a, 39b, 40a, 40b, 41a, 41b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1948,6 +1948,40 @@ const ROL_DA_40B = [
   "v_store_config: opcoes de sempre (security_invoker=on)",
   "v_store_config: ACL que o rollback devolve (anon, authenticated e service_role com ALL, dono postgres, ninguem mais)",
 ];
+/** O rol da 41a (a prova de objetos da migration 20261240000000, a cliente e avisada quando a loja responde a pergunta dela:
+ * `answer_question_atomic` cria UM aviso no sino `notificacoes` de quem perguntou e deixa de gravar a linha falsa em
+ * `push_notifications_log`): as 10 linhas que scripts/publicacao/consultas/41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha): o controle,
+ * as DUAS sobrecargas e, em CADA uma, o corpo vivo e o NOVO (md5), ele avisa no sino e nao grava mais no log de push, os atributos
+ * de sempre e o EXECUTE segue FECHADO ao visitante. `reply_review_atomic` NAO e medida (fica de fora da migration).
+ * tests/banco/pergunta-respondida-avisa-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_41A = [
+  "controle: funcoes de public visiveis a este papel",
+  "answer_question_atomic: sobrecargas",
+  "answer_question_atomic(uuid,text): corpo e o da 20261240000000, com o aviso no sino da cliente (md5)",
+  "answer_question_atomic(uuid,text): o corpo avisa no sino e nao grava mais no log de push",
+  "answer_question_atomic(uuid,text): atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, void)",
+  "answer_question_atomic(uuid,text): EXECUTE fechado para anon (authenticated sim)",
+  "answer_question_atomic(uuid,text,uuid): corpo e o da 20261240000000, com o aviso no sino da cliente (md5)",
+  "answer_question_atomic(uuid,text,uuid): o corpo avisa no sino e nao grava mais no log de push",
+  "answer_question_atomic(uuid,text,uuid): atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, void)",
+  "answer_question_atomic(uuid,text,uuid): EXECUTE fechado para anon (authenticated sim)",
+];
+/** O rol da 41b (a consulta de AUSENCIA do lote da pergunta respondida; `ausenciaConfirmadaPor`): as 8 linhas que
+ * scripts/publicacao/consultas/41b-antes-pergunta-respondida-corpos-vigentes.sql devolve - a base de antes: as DUAS sobrecargas, cada
+ * uma com o corpo vigente (md5: o da 20261065000000 na de 2 argumentos, o da 20261064000000 na de 3), sem gravar no sino da cliente e
+ * com os atributos de sempre. NAO mede a ACL. Uma loja que ja tem o aviso novo reprova aqui de proposito, nas linhas do corpo e do
+ * marcador da funcao. */
+const ROL_DA_41B = [
+  "controle: funcoes de public visiveis a este papel",
+  "answer_question_atomic: sobrecargas",
+  "answer_question_atomic(uuid,text): corpo e o da 20261065000000, sem o aviso no sino da cliente (md5)",
+  "answer_question_atomic(uuid,text): o corpo ainda NAO grava no sino da cliente",
+  "answer_question_atomic(uuid,text): atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, void)",
+  "answer_question_atomic(uuid,text,uuid): corpo e o da 20261064000000, sem o aviso no sino da cliente (md5)",
+  "answer_question_atomic(uuid,text,uuid): o corpo ainda NAO grava no sino da cliente",
+  "answer_question_atomic(uuid,text,uuid): atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, void)",
+];
 /** O rol da 34a (a prova de objetos da migration 20261233000000, o sino do pedido de retirada fala de retirada): as 7 linhas que
  * scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado do
  * banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de notifica_cliente_de_mudanca_de_status e o NOVO (md5), ele traz
@@ -2037,6 +2071,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "39b-antes-pedidos-de-privacidade-objetos-ausentes": ROL_DA_39B,
   "40a-conferir-identidade-legal-da-loja-aplicado": ROL_DA_40A,
   "40b-antes-identidade-legal-da-loja-base-vigente": ROL_DA_40B,
+  "41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado": ROL_DA_41A,
+  "41b-antes-pergunta-respondida-corpos-vigentes": ROL_DA_41B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2637,6 +2673,8 @@ module.exports = {
   ROL_DA_39B,
   ROL_DA_40A,
   ROL_DA_40B,
+  ROL_DA_41A,
+  ROL_DA_41B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

@@ -1297,7 +1297,7 @@ export const AdminQAView = memo(function AdminQAView({
                     <div className="pointer-events-none absolute bottom-4 right-6 flex items-center gap-2 opacity-40">
                       <Send className="size-4 text-emerald-400" />
                       <span className="text-[11px] font-bold uppercase tracking-widest text-white">
-                        Notificar Cliente
+                        Avisa a cliente no app
                       </span>
                     </div>
                   </div>

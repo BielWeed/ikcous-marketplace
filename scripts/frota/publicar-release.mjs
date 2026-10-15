@@ -452,6 +452,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "39b-antes-pedidos-de-privacidade-objetos-ausentes",
   "40a-conferir-identidade-legal-da-loja-aplicado",
   "40b-antes-identidade-legal-da-loja-base-vigente",
+  "41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado",
+  "41b-antes-pergunta-respondida-corpos-vigentes",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

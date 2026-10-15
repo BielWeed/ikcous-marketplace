@@ -1903,6 +1903,40 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261240000000_a_cliente_e_avisada_quando_a_loja_responde_sua_pergunta.sql":
+    [
+      {
+        // A cliente é avisada quando a loja responde a pergunta dela (14/10/2026): as DUAS sobrecargas de
+        // answer_question_atomic trocam a linha falsa do log de push por UM aviso no sino da cliente. Sem esta entrada a
+        // migration saía PULADA (saída 2: "ninguém verificou"). buscarDef lê UMA das duas sobrecargas (a primeira que o
+        // catálogo devolver), então só entram marcadores que existem UMA vez em AMBOS os corpos (medido nas duas):
+        // o passo novo (comentário com a versão), o título do aviso, o destino que abre o produto, o BEGIN/EXCEPTION do
+        // best-effort (a falha do aviso nunca perde a resposta), a recusa a quem não é admin e o upsert da resposta.
+        // As guardas de admin DIFEREM entre as sobrecargas (auth.uid() contra is_admin()) e por isso só a mensagem de
+        // recusa, comum às duas, é conferida aqui; o ato de recusar é de tests/banco/pergunta-respondida-avisa-viva.cjs.
+        // NÃO reaplique a 20261064 nem a 20261065: elas recriam o corpo antigo e o marcador "A10: log honesto" delas
+        // deixou de existir em answer_question_atomic (segue valendo em reply_review_atomic).
+        funcao: "answer_question_atomic",
+        esperado: [
+          {
+            texto:
+              "-- 3. Aviso no sino da cliente que perguntou (20261240000000).",
+            vezes: 1,
+          },
+          { texto: "Sua pergunta foi respondida", vezes: 1 },
+          {
+            texto: "'/product-detail?id=' || v_product_id",
+            vezes: 1,
+          },
+          { texto: "EXCEPTION WHEN OTHERS THEN", vezes: 1 },
+          {
+            texto: "Unauthorized: Only admins can answer questions.",
+            vezes: 1,
+          },
+          { texto: "ON CONFLICT (question_id) DO UPDATE", vezes: 1 },
+        ],
+      },
+    ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

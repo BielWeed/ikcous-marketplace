@@ -12463,3 +12463,273 @@ Deno.test("29a/29b — o rpc-ci.yml roda as duas provas vivas do lote (comportam
       );
   }
 });
+
+// 41a/41b/41m (15/10/2026) — a PROVA DE OBJETOS do lote da migration 20261240000000 (a cliente e avisada quando a loja
+// responde a pergunta dela: as DUAS sobrecargas de `answer_question_atomic` criam UM aviso no sino `notificacoes` e
+// deixam de gravar a linha falsa em `push_notifications_log`). A 41a e' a consulta do lote (DEPOIS: os dois corpos novos
+// por md5, o aviso no sino sem o log de push, atributos e EXECUTE por papel); a 41b a de ausencia (ANTES: as duas
+// sobrecargas com os corpos vigentes das 20261065000000 e 20261064000000). As duas sao de ROL FECHADO (10 e 8 linhas) e
+// so leem o catalogo; a 41m e' a medicao de rol aberto (so contagens). Estes testes medem o texto dos .sql contra os
+// ARQUIVOS desta arvore; a decisao de cada consulta num Postgres real fica com
+// tests/banco/pergunta-respondida-avisa-portao-viva.cjs.
+const NOME_41A = "41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado";
+const NOME_41B = "41b-antes-pergunta-respondida-corpos-vigentes";
+const NOME_41M = "41m-medir-pergunta-respondida";
+const MIGRACAO_240 = `${MIGRATIONS_DIR}/20261240000000_a_cliente_e_avisada_quando_a_loja_responde_sua_pergunta.sql`;
+
+for (const [nome, linhasDoRol] of [
+  [NOME_41A, 10],
+  [NOME_41B, 8],
+] as Array<[string, number]>) {
+  Deno.test(`${nome} — no menu, UM statement so leitura (WITH), rol fechado de ${linhasDoRol} itens, so catalogo e nenhuma linha de dado e lida`, async () => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const estrutura = semLiterais(sql);
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    assertStringIncludes(yaml, `- ${nome}\n`);
+    assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+    assert(/^\s*WITH\b/i.test(limpo), "comeca por WITH");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+        estrutura,
+      ),
+      "palavra de escrita fora de comentario/literal",
+    );
+    assert(
+      !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+        estrutura,
+      ),
+      "SQL dinamico (ou leitura de arquivo)",
+    );
+    assert(
+      /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+        limpo,
+      ),
+      "saida item/esperado/vivo/ok com as reprovadas primeiro",
+    );
+    const alvos = [
+      ...estrutura.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+    ].map((m) => m[1].toLowerCase());
+    assert(alvos.length > 0);
+    const permitidos = new Set([
+      "pg_proc",
+      "pg_namespace",
+      "pg_language",
+      "aclexplode",
+      "alvo",
+      "fn",
+      "itens",
+    ]);
+    for (const alvo of alvos)
+      assert(
+        permitidos.has(alvo),
+        `le de "${alvo}", que nao e catalogo nem CTE`,
+      );
+    // eslint-disable-next-line security/detect-object-injection -- `nome` vem do array literal de duas consultas deste teste.
+    const rol = ROL_FECHADO_POR_CONSULTA[nome];
+    assertEquals(rol.length, linhasDoRol);
+    assertEquals(new Set(rol).size, rol.length);
+    for (const item of rol)
+      assertStringIncludes(limpo, `'${item}'`, `item "${item}" fora do .sql`);
+    assertEquals(
+      [...limpo.matchAll(/SELECT '([^']+)',/g)].length,
+      rol.length,
+      "o .sql tem mais (ou menos) linhas que o rol",
+    );
+  });
+}
+
+Deno.test("41m-medir-pergunta-respondida — no menu, UM SELECT so leitura de rol aberto (sem coluna ok), so contagens, nenhum dado de pessoa, texto nem id, e nunca portao", async () => {
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_41M}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const estrutura = semLiterais(sql);
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  assertStringIncludes(yaml, `- ${NOME_41M}\n`);
+  assertEquals(contarStatements(sql), 1, "exatamente 1 statement");
+  assert(/^\s*WITH\b/i.test(limpo), "comeca por WITH");
+  assert(
+    !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+      estrutura,
+    ),
+    "palavra de escrita fora de comentario/literal",
+  );
+  assert(!/\bAS\s+ok\b/i.test(estrutura), "rol aberto: sem coluna ok");
+  assertEquals(ROL_FECHADO_POR_CONSULTA[NOME_41M], undefined);
+  assertEquals(
+    [
+      ...new Set(
+        [...estrutura.matchAll(/\b(?:FROM|JOIN)\s+public\.(\w+)/gi)].map(
+          (m) => m[1],
+        ),
+      ),
+    ].sort(),
+    ["answers", "notificacoes", "push_notifications_log", "questions"],
+  );
+  // Nenhum texto nem pessoa na saida: as colunas de texto e de dono das tabelas nunca aparecem na estrutura.
+  assert(
+    !/\b(question|answer|mensagem|titulo|body|usuario_id|created_by)\b/i.test(
+      estrutura,
+    ),
+    "a medicao toca coluna de texto ou de pessoa",
+  );
+  assertStringIncludes(limpo, "'Sua pergunta foi respondida!'");
+  assertStringIncludes(limpo, "n.dados ->> 'question_id' = q.id::text");
+});
+
+Deno.test("41a/41b — os md5 da 41a sao os dos DOIS corpos NOVOS que o arquivo da migration carrega (o mesmo do pre-voo e da conferencia final); os da 41b sao os dos corpos VIGENTES (20261065 na de 2 args, 20261064 na de 3, o mesmo do pre-voo e do rollback); a 41b nao mede ACL", async () => {
+  const { createHash } = require("node:crypto");
+  const md5 = (s: string) =>
+    createHash("md5").update(s.replace(/\r/g, "")).digest("hex");
+  const corpoDe = (sql: string, assinatura: string) => {
+    const cabeca = `CREATE OR REPLACE FUNCTION public.answer_question_atomic(${assinatura})`;
+    const i = sql.indexOf(cabeca);
+    assert(i >= 0, `${assinatura}: nao achada`);
+    const a = sql.indexOf("AS $function$", i) + "AS $function$".length;
+    return sql.slice(a, sql.indexOf("$function$;", a));
+  };
+  const DOIS = "p_question_id uuid, p_answer text";
+  const TRES = "p_question_id uuid, p_answer text, p_admin_id uuid";
+  const mig = await Deno.readTextFile(MIGRACAO_240);
+  const rb = await Deno.readTextFile(rollbackDe(MIGRACAO_240));
+  const m65 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261065000000_a_sobrecarga_que_o_app_usa_tambem_nasce_honesta.sql`,
+  );
+  const m64 = await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261064000000_o_log_de_push_nasce_honesto.sql`,
+  );
+  const novos = [md5(corpoDe(mig, DOIS)), md5(corpoDe(mig, TRES))];
+  const antes = [md5(corpoDe(m65, DOIS)), md5(corpoDe(m64, TRES))];
+  assertEquals(novos, [
+    "1268df6cb364dfb46b5c535e007bb2d0",
+    "b62a4186ff8d58955973f53d6c0f302b",
+  ]);
+  assertEquals(antes, [
+    "8cf000b6c9ed27f482906752469f08ff",
+    "ad99d54575ac95445103ea5b78e4a1e8",
+  ]);
+  // O rollback devolve os corpos de ANTES byte a byte.
+  assertEquals(
+    [md5(corpoDe(rb, DOIS)), md5(corpoDe(rb, TRES))],
+    antes,
+    "o rollback nao devolve os corpos de antes",
+  );
+  const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_41A}.sql`);
+  const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_41B}.sql`);
+  for (const h of novos) {
+    assertEquals(a.split(`'${h}'`).length - 1, 1, "41a: md5 de corpo novo");
+    assert(!b.includes(h), "41b nao cita corpo novo");
+    assertEquals(
+      mig.split(`'${h}'`).length - 1,
+      2,
+      "pre-voo (hash_desta) e conferencia final",
+    );
+    // o pre-voo do rollback cita o corpo NOVO uma vez (hash_desta: e o que ele aceita desfazer); a conferencia final nunca
+    assertEquals(
+      rb.split(`'${h}'`).length - 1,
+      1,
+      "o rollback cita o corpo novo so no pre-voo (hash_desta)",
+    );
+  }
+  for (const h of antes) {
+    assertEquals(
+      rb.split(`'${h}'`).length - 1,
+      2,
+      "o rollback cita o corpo de antes no pre-voo (hash_antes) e na conferencia final",
+    );
+    assertEquals(b.split(`'${h}'`).length - 1, 1, "41b: md5 de corpo vigente");
+    assert(!a.includes(h), "41a nao cita corpo vigente");
+    assertEquals(mig.split(`'${h}'`).length - 1, 1, "pre-voo (hash_vigente)");
+  }
+  for (const [nome, sql] of [
+    [NOME_41A, a],
+    [NOME_41B, b],
+  ] as Array<[string, string]>)
+    assertStringIncludes(
+      sql,
+      "md5(replace(p.prosrc, chr(13), ''))",
+      `${nome}: o md5 e do corpo sem \\r`,
+    );
+  // a 41a espera a ACL de sempre (so authenticated executa), nas duas funcoes; a 41b nem a mede
+  assertEquals(
+    a.split("'PUBLIC=nao anon=nao authenticated=sim'").length - 1,
+    2,
+  );
+  assert(
+    !/aclexplode|has_function_privilege|has_table_privilege/.test(
+      sqlSemComentarios(b),
+    ),
+  );
+  // as DUAS assinaturas que a migration troca sao as que as duas consultas medem
+  for (const sql of [a, b])
+    for (const assinatura of [
+      "public.answer_question_atomic(uuid,text)",
+      "public.answer_question_atomic(uuid,text,uuid)",
+    ])
+      assertStringIncludes(sql, assinatura);
+  // a migration nao toca a funcao da avaliacao (a 27m usa a linha do log dela)
+  assert(!sqlSemComentarios(mig).includes("reply_review_atomic"));
+});
+
+Deno.test("41a/41b — o rpc-ci.yml roda as duas provas vivas do lote (comportamento e portao) no job bloqueante, depois de aplica, e e' disparado pelas tres consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const linhas = bloqueante.split("\n");
+  for (const [prova, titulo] of [
+    [
+      "pergunta-respondida-avisa-viva",
+      "      - name: Prova viva da pergunta respondida que avisa a cliente (migration 20261240)",
+    ],
+    [
+      "pergunta-respondida-avisa-portao-viva",
+      "      - name: Prova viva do portao da pergunta respondida (consultas 41a e 41b)",
+    ],
+  ]) {
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} nao esta no job bloqueante`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assertEquals(linhas[k - 2], titulo);
+    assert(
+      bloqueante.indexOf(`tests/banco/${prova}.cjs`) >
+        bloqueante.indexOf("id: aplica"),
+    );
+    assert(!yaml.slice(inicioInformacional).includes(`${prova}.cjs`));
+    assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+    assert(
+      (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+      `tests/banco/${prova}.cjs nao existe`,
+    );
+  }
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `nao achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      `scripts/publicacao/consultas/${NOME_41A}.sql`,
+      `scripts/publicacao/consultas/${NOME_41B}.sql`,
+      `scripts/publicacao/consultas/${NOME_41M}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});
