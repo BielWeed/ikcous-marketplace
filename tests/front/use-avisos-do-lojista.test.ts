@@ -507,6 +507,42 @@ describe("useAvisosDoLojista — cancelamento do cliente", () => {
     expect(atual().quantidadeNoCracha).toBe(3);
   });
 
+  it("cliente cancelou pedido a pagar na entrega (sem pagamento online): o sino avisa 'Nao precisa separar nem enviar', sem consulta extra", async () => {
+    RESPOSTA_CANCELAMENTOS = {
+      data: [
+        linhaDoHistorico({
+          marketplace_orders: {
+            id: PEDIDO,
+            user_id: CLIENTE,
+            customer_name: "Maria Silva",
+            total: 149.9,
+            payment_status: null,
+            status: "cancelled",
+            cancelled_after_shipping: false,
+          },
+        }),
+      ],
+      error: null,
+    };
+    RESPOSTA_PERFIS = {
+      data: [{ id: CLIENTE, role: "customer" }],
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "cancelamento") as
+      | (AvisoLido & { detalhe?: string })
+      | undefined;
+    expect(aviso?.titulo).toBe("Pedido #4F5A6B cancelado pela cliente");
+    expect(aviso?.detalhe).toBe("Não precisa separar nem enviar.");
+    expect(atual().fontesComFalha).toEqual([]);
+    // A mesma leitura do historico serve aos dois ramos: nada de tabela nova.
+    expect(
+      tabelasConsultadas.filter((t) => t === "marketplace_order_history"),
+    ).toHaveLength(1);
+  });
+
   it("a consulta le SO cancelamentos das ultimas 24 h, com autor, e os papeis dos autores", async () => {
     RESPOSTA_CANCELAMENTOS = { data: [linhaDoHistorico()], error: null };
     RESPOSTA_PERFIS = {
