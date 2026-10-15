@@ -15,7 +15,7 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useSearch } from "@/hooks/useSearch";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
-import type { View } from "@/types";
+import type { Product, View } from "@/types";
 import {
   ArrowLeft,
   PackageSearch,
@@ -40,6 +40,15 @@ interface SearchViewProps {
    * segura a cópia "dona" do termo (a barra do Header) nunca fica sabendo
    * que o "Limpar Tudo" do estado vazio zerou a busca aqui dentro. */
   onQueryChange?: (query: string) => void;
+  /** O carrinho do App (mesma função que a Home recebe). Sem ela os cards
+   * ficam sem como adicionar: viram "Ver produto" em vez de fingir que
+   * adicionaram. */
+  onAddToCart?: (
+    product: Product,
+    quantity?: number,
+    variantId?: string,
+    variantNames?: string,
+  ) => void;
 }
 
 interface SearchInputProps {
@@ -85,6 +94,7 @@ export const SearchView = React.memo(function SearchView({
   onBack,
   selectedProductId,
   onQueryChange,
+  onAddToCart,
 }: SearchViewProps) {
   const { config } = useStore();
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
@@ -114,6 +124,28 @@ export const SearchView = React.memo(function SearchView({
       onNavigate("product-detail", id);
     },
     [onNavigate],
+  );
+
+  // Mesmos dois caminhos da Home. O card chama `onAddToCart(produto, clique)`:
+  // o invólucro entrega só o produto — o clique no lugar de `quantity` viraria
+  // quantidade. Com opções (tamanho/cor), o card abre a folha e entrega
+  // variação + quantidade escolhidas.
+  const handleAddToCart = useCallback(
+    (product: Product) => {
+      onAddToCart?.(product);
+    },
+    [onAddToCart],
+  );
+  const handleAddToCartWithVariants = useCallback(
+    (
+      product: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity = 1,
+    ) => {
+      onAddToCart?.(product, quantity, variantId, variantNames);
+    },
+    [onAddToCart],
   );
 
   const handlePrefetchProductDetail = useCallback(() => {
@@ -371,6 +403,10 @@ export const SearchView = React.memo(function SearchView({
                     isFavorite={isFavorite(product.id)}
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
+                    onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                    onAddToCartWithVariants={
+                      onAddToCart ? handleAddToCartWithVariants : undefined
+                    }
                     showRating={config.enableReviews}
                     promessasDeFrete={promessasDaLoja}
                     onMouseEnter={handlePrefetchProductDetail}
@@ -436,6 +472,10 @@ export const SearchView = React.memo(function SearchView({
                     isFavorite={isFavorite(product.id)}
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
+                    onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                    onAddToCartWithVariants={
+                      onAddToCart ? handleAddToCartWithVariants : undefined
+                    }
                     showRating={config.enableReviews}
                     promessasDeFrete={promessasDaLoja}
                     onMouseEnter={handlePrefetchProductDetail}

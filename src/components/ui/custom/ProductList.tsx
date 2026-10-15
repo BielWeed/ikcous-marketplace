@@ -28,6 +28,7 @@ interface ProductListProps {
     product: Product,
     variantId: string | undefined,
     variantNames: string,
+    quantity?: number,
   ) => void;
   onQuickBuy?: (product: Product) => void;
   selectedProductId?: string;
@@ -120,9 +121,16 @@ export const ProductList = React.memo(function ProductList({
   );
 
   const handleAddToCartWithVariants = useCallback(
-    (product: Product, variantId: string | undefined, variantNames: string) => {
+    (
+      product: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity?: number,
+    ) => {
       haptic.success();
-      onAddToCartWithVariants?.(product, variantId, variantNames);
+      // A quantidade escolhida na folha de opções segue até o carrinho
+      // (antes era descartada aqui e entrava sempre 1).
+      onAddToCartWithVariants?.(product, variantId, variantNames, quantity);
     },
     [onAddToCartWithVariants],
   );

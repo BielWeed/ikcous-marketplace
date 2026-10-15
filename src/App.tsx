@@ -2619,6 +2619,7 @@ const AppContent = () => {
               onBack: () => handleNavigate("home"),
               selectedProductId: selectedProductId || undefined,
               onQueryChange: setSearchQuery,
+              onAddToCart: handleAddToCart,
             }}
           />
         );
@@ -2771,6 +2772,7 @@ const AppContent = () => {
                       onToggleFavorite: handleToggleFavorite,
                       onProductClick: handleProductClick,
                       onNavigate: handleNavigate,
+                      onAddToCart: handleAddToCart,
                       selectedProductId: isMainTab
                         ? selectedProductId || undefined
                         : undefined,
@@ -2890,6 +2892,7 @@ const AppContent = () => {
                         onToggleFavorite: handleToggleFavorite,
                         onProductClick: handleProductClick,
                         onNavigate: handleNavigate,
+                        onAddToCart: handleAddToCart,
                         selectedProductId: selectedProductId || undefined,
                         isActive: currentView === "favorites",
                       }}

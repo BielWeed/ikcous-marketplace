@@ -340,6 +340,15 @@ export const ProductCard = memo(function ProductCard({
   // `produtos.estoque`, nunca a variação escolhida.
   const hasActiveVariant = product.variants?.some((v) => v.active) ?? false;
 
+  // Defesa (caçada de 14/10/2026): sem `onAddToCart` não há ninguém para
+  // adicionar. Antes o botão rodava o ciclo inteiro ("Salvando..." -> "Salvo!"
+  // verde, bolinha voando) e NADA entrava no carrinho — Busca e Favoritos
+  // montavam o card assim. Sem como adicionar, o botão não confirma em falso:
+  // faz o que faz a peça que "pode ter tamanho/cor" — abre a página do
+  // produto, onde a compra acontece de verdade.
+  const soAbreAPagina =
+    !hasActiveVariant && (!!product.variantsUnavailable || !onAddToCart);
+
   // Nome acessível do botão do card (leitor de tela). Na vitrine são dezenas
   // de botões; o rótulo visível ("Carrinho", "Escolher opções"...) sozinho os
   // deixava IGUAIS. Cada nome CONTÉM o rótulo visível (WCAG 2.5.3, "rótulo no
@@ -353,7 +362,7 @@ export const ProductCard = memo(function ProductCard({
         ? `${product.name} esgotado`
         : hasActiveVariant
           ? `Escolher opções de ${product.name}`
-          : product.variantsUnavailable
+          : soAbreAPagina
             ? `Ver produto ${product.name}`
             : `Adicionar ${product.name} ao carrinho`;
 
@@ -390,8 +399,9 @@ export const ProductCard = memo(function ProductCard({
 
     // `variantsUnavailable`: a leitura das variações falhou (faixa de
     // recomendações) — não se sabe se a peça tem tamanho/cor, então ela
-    // também só abre a página, onde a escolha é obrigatória.
-    if (hasActiveVariant || product.variantsUnavailable) {
+    // também só abre a página, onde a escolha é obrigatória. Sem
+    // `onAddToCart` (ver `soAbreAPagina`) também: nada a confirmar.
+    if (hasActiveVariant || soAbreAPagina) {
       onClick(product.id);
       return;
     }
@@ -400,9 +410,7 @@ export const ProductCard = memo(function ProductCard({
 
     setCartStatus("loading");
 
-    if (onAddToCart) {
-      onAddToCart(product, e);
-    }
+    onAddToCart?.(product, e);
 
     const startEl = (e.currentTarget as HTMLElement) || document.body;
     triggerFlyingCartAnimation(startEl, product.images[0]);
@@ -813,7 +821,7 @@ export const ProductCard = memo(function ProductCard({
                 ? "Esgotado"
                 : hasActiveVariant
                   ? "Escolher opções"
-                  : product.variantsUnavailable
+                  : soAbreAPagina
                     ? "Ver produto"
                     : cartStatus === "idle"
                       ? "Carrinho"
