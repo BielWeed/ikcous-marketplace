@@ -58,22 +58,23 @@ function importsDoFonte(fonte: string): string[] {
   // Os padrões abaixo são ancorados no começo da linha e limitados por aspas
   // ou chaves, sobre o fonte do próprio repositório: sem entrada hostil.
   // import "x";  (efeito colateral)
-  // eslint-disable-next-line security/detect-unsafe-regex -- fonte do proprio repositorio
   const efeitoColateral = /^import\s*["']([^"']+)["']/gm;
   for (const m of fonte.matchAll(efeitoColateral)) achados.push(m[1]);
   // import x, { a } from "x";  /  import * as x from "x";
-  // eslint-disable-next-line security/detect-unsafe-regex -- fonte do proprio repositorio
+  /* eslint-disable security/detect-unsafe-regex -- fonte do proprio repositorio, ancorado e limitado por aspas */
   const comBinding =
     /^import\s+(type\s+(?!from\b))?([^;"']*?)\s*from\s*["']([^"']+)["']/gms;
+  /* eslint-enable security/detect-unsafe-regex */
   for (const m of fonte.matchAll(comBinding)) {
     if (m[1]) continue; // import type
     if (soTipos(m[2])) continue;
     achados.push(m[3]);
   }
   // export { a } from "x";  /  export * from "x";  /  export * as x from "x";
-  // eslint-disable-next-line security/detect-unsafe-regex -- fonte do proprio repositorio
+  /* eslint-disable security/detect-unsafe-regex -- fonte do proprio repositorio, ancorado e limitado por aspas */
   const reexporta =
     /^export\s+(type\s+(?=[{*]))?(\{[^}]*\}|\*(?:\s+as\s+[\w$]+)?)\s*from\s*["']([^"']+)["']/gms;
+  /* eslint-enable security/detect-unsafe-regex */
   for (const m of fonte.matchAll(reexporta)) {
     if (m[1]) continue; // export type
     if (soTipos(m[2])) continue;
