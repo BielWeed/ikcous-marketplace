@@ -258,6 +258,42 @@ describe("usePainelInicio — o Hoje de ontem não fica na tela", () => {
     expect(desenhosDaAtivacao[0]).toBeNull();
   });
 
+  // `lidoEm` é o INSTANTE EM QUE A BUSCA COMEÇOU: uma busca que sai às 23:59:59
+  // e volta depois da meia-noite traz números de ontem; carimbada com a hora
+  // do FIM ela passaria por fresca de hoje e o "Hoje" ficaria com eles.
+  it("busca que começa antes da meia-noite e termina depois: o retrato é de ontem e a busca se refaz", async () => {
+    h.adiar = true;
+    const { saida } = await montar(true, "2026-10-14T02:59:59.500Z");
+    expect(h.chamadasPainel).toBe(1); // saiu às 23:59:59.7 de 13/10
+    await avancar(2000); // meia-noite passa com a busca ainda no ar
+    expect(h.chamadasPainel).toBe(1); // o gatilho da virada pegou a busca em voo
+    await act(async () => {
+      h.pendentes[0]();
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    // A resposta 1 é de ontem: não vale como "Hoje" e uma busca nova sai.
+    expect(h.chamadasPainel).toBe(2);
+    expect(saida.atual?.painel).toBeNull();
+    await act(async () => {
+      h.pendentes[1]();
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(saida.atual?.painel).toEqual({ leitura: 2 });
+    expect(saida.atual?.carregando).toBe(false);
+    expect(h.chamadasPainel).toBe(2);
+  });
+
+  it("controle: busca que começa e termina no mesmo dia não se repete", async () => {
+    h.adiar = true;
+    const { saida } = await montar(true, MEIO_DIA);
+    await act(async () => {
+      h.pendentes[0]();
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(h.chamadasPainel).toBe(1);
+    expect(saida.atual?.painel).toEqual({ leitura: 1 });
+  });
+
   it("tela inativa (atrás de outra aba) não registra nada", async () => {
     await montar(false);
     voltarAVer("visibilitychange");

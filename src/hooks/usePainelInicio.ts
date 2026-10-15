@@ -63,7 +63,13 @@ let buscaEmVoo: Promise<RetratoDoPainel> | null = null;
 // Recarga FORÇADA pedida com uma busca em voo: roda uma busca depois dela.
 let buscaForcadaSeguinte: Promise<RetratoDoPainel> | null = null;
 
-async function buscarRetrato(): Promise<RetratoDoPainel> {
+/**
+ * `iniciadaEm` é o instante em que a busca SAIU, não o em que voltou: os
+ * números refletem o servidor naquele momento. Uma busca que sai às 23:59:59 e
+ * volta depois da meia-noite traz números de ontem — carimbada com a hora do
+ * fim, ela passaria por fresca de hoje e o "Hoje" ficaria com eles.
+ */
+async function buscarRetrato(iniciadaEm: number): Promise<RetratoDoPainel> {
   const [respostaPainel, respostaAssinatura] = await Promise.all([
     supabase.rpc("painel_inicio"),
     supabase.rpc("assinatura_da_loja_ler"),
@@ -109,7 +115,7 @@ async function buscarRetrato(): Promise<RetratoDoPainel> {
     assinatura,
     assinaturaLida: erroAssinatura === null,
     erroAssinatura,
-    lidoEm: Date.now(),
+    lidoEm: iniciadaEm,
   };
 }
 
@@ -134,7 +140,8 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
     }
     return buscaForcadaSeguinte;
   }
-  const busca = buscarRetrato()
+  const iniciadaEm = Date.now();
+  const busca = buscarRetrato(iniciadaEm)
     .catch((erro: unknown): RetratoDoPainel => {
       console.error("[usePainelInicio] busca falhou:", erro);
       const mensagem = mensagemDeErroDoPainel(erro, "carregar o Início");
@@ -144,7 +151,7 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
         assinatura: null,
         assinaturaLida: false,
         erroAssinatura: mensagem,
-        lidoEm: Date.now(),
+        lidoEm: iniciadaEm,
       };
     })
     .then((retrato) => {
@@ -215,7 +222,14 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     }
     setCarregando(true);
     try {
-      const novo = await buscarCoalescido(forcar);
+      let novo = await buscarCoalescido(forcar);
+      // A busca saiu num dia e voltou em outro (virou a meia-noite durante o
+      // voo): o retrato é de ontem. Refaz UMA vez — a nova já sai no dia de
+      // hoje — em vez de deixar a tela em esqueleto até alguém mexer. Sem
+      // `forcar`: quem esperava a mesma busca entra na MESMA busca nova.
+      if (diaDaLeitura(novo) !== hojeEmSaoPaulo()) {
+        novo = await buscarCoalescido();
+      }
       if (montadoRef.current) setRetrato(novo);
     } finally {
       if (montadoRef.current) setCarregando(false);
