@@ -1,8 +1,9 @@
 // A Vercel do plano gratuito aceita 100 deploys a cada 24 h. Cada push em branch de PR criava uma
-// prévia que ninguém usa (nenhum teste do CI depende dela) e, em 15/10/2026, isso comeu as vagas e a
-// Vercel recusou o candidato da release 1.5.29. `git.deploymentEnabled` desliga a prévia dos PRs
-// (`claude/*`) e mantém a branch principal e a `production`. Regra da doc: se a branch bate em mais
-// de um padrão e algum é `true`, ela faz deploy.
+// prévia automática e, em 15/10/2026, isso comeu as vagas e a Vercel recusou o candidato da release
+// 1.5.29. `git.deploymentEnabled` desliga a prévia das famílias de branch de PR e mantém a branch
+// principal, a `production`, a `main`, a `develop`, `release/*` e `hotfix/*`. Regra da doc: se a
+// branch bate em mais de um padrão e algum é `true`, ela faz deploy; branch que não bate em nenhum
+// padrão faz deploy (padrão da Vercel). Preview de PR passa a ser sob demanda (DEFINITION-OF-DONE, item 4).
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -12,22 +13,29 @@ const config = JSON.parse(readFileSync("vercel.json", "utf8")) as {
 };
 const regras = config.git?.deploymentEnabled;
 
-// Só o que o vercel.json usa: nenhum `*` (nome exato) ou um `*` = texto dentro de um trecho do caminho
-// (minimatch). Dois `*` ou outro curinga reprovam aqui em vez de virar aproximação em silêncio.
+// Só o que o vercel.json usa: nome exato, `prefixo/*` (um trecho) e `prefixo/**` (qualquer profundidade).
+// Outro curinga reprova aqui em vez de virar aproximação em silêncio.
 function casa(padrao: string, branch: string) {
-  const partes = padrao.split("*");
-  if (partes.length > 2 || /[?[\]{}()!]/.test(padrao)) {
+  if (/[?[\]{}()!]/.test(padrao)) {
     throw new Error(
       `padrão de branch fora do que este teste entende: ${padrao}`,
     );
   }
-  if (partes.length === 1) return padrao === branch;
-  const [prefixo, sufixo] = partes;
-  if (!branch.startsWith(prefixo) || !branch.endsWith(sufixo)) return false;
-  if (branch.length < prefixo.length + sufixo.length) return false;
-  return !branch
-    .slice(prefixo.length, branch.length - sufixo.length)
-    .includes("/");
+  if (padrao.endsWith("/**")) return branch.startsWith(padrao.slice(0, -2));
+  if (padrao.endsWith("/*")) {
+    const prefixo = padrao.slice(0, -1);
+    return (
+      branch.startsWith(prefixo) &&
+      branch.length > prefixo.length &&
+      !branch.slice(prefixo.length).includes("/")
+    );
+  }
+  if (padrao.includes("*")) {
+    throw new Error(
+      `padrão de branch fora do que este teste entende: ${padrao}`,
+    );
+  }
+  return padrao === branch;
 }
 
 function fazDeploy(branch: string) {
@@ -38,15 +46,33 @@ function fazDeploy(branch: string) {
 }
 
 describe("vercel.json — só constrói o que vai ao ar", () => {
-  it("a branch principal e a production seguem fazendo deploy", () => {
-    expect(fazDeploy(BRANCH_PRINCIPAL)).toBe(true);
-    expect(fazDeploy("production")).toBe(true);
-    expect(fazDeploy("main")).toBe(true);
+  it("a branch principal e as de integração seguem fazendo deploy", () => {
+    for (const branch of [
+      BRANCH_PRINCIPAL,
+      "production",
+      "main",
+      "develop",
+      "release/1.6.0",
+      "hotfix/frete-zerado",
+    ]) {
+      expect(fazDeploy(branch), branch).toBe(true);
+    }
   });
 
-  it("branch de PR (claude/…) não gera prévia", () => {
-    expect(fazDeploy("claude/painel-mais-leve-20261015")).toBe(false);
-    expect(fazDeploy("claude/custo-do-dia-em-cada-venda-20261015")).toBe(false);
+  it("toda família de branch de PR deixa de gerar prévia, mesmo com barras dentro", () => {
+    for (const branch of [
+      "claude/painel-mais-leve-20261015",
+      "claude/custo-do-dia-em-cada-venda-20261015",
+      "feat/carrinho",
+      "fix/frete",
+      "fix/frete/cep-invertido",
+      "chore/deps",
+      "docs/runbook",
+      "refactor/pedidos",
+      "dependabot/npm_and_yarn/vite-7.3.7",
+    ]) {
+      expect(fazDeploy(branch), branch).toBe(false);
+    }
   });
 
   it("o desligamento é por padrão de branch, nunca global", () => {
