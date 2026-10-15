@@ -27,7 +27,7 @@ const { fetchUserOrders, updateOrderStatus, rpc, respostas } = vi.hoisted(
 
 const FRASE_DO_SERVIDOR = "Este pedido não tem pagamento a devolver.";
 const FRASE_NOVA =
-  "A loja ainda não registrou o pagamento deste pedido. Peça a ela para registrar e a devolução ou troca é liberada aqui.";
+  "A loja ainda não marcou este pagamento como recebido. Peça a ela para marcar; depois abra o pedido de novo para ver se a devolução ou troca está disponível.";
 
 const pedidoNaEntrega: Order = {
   id: "pedido-dev",
@@ -267,6 +267,10 @@ describe("OrderDetailsView — devolução indisponível de pedido pago na entre
 
     expect(aviso()).toContain(FRASE_NOVA);
     expect(aviso()).not.toContain("não tem pagamento a devolver");
+    // Nao promete: o servidor ainda pode recusar por prazo depois que a loja
+    // marcar, e a tela so relê ao abrir de novo.
+    expect(aviso()).not.toMatch(/liberad/);
+    expect(aviso()).toContain("abra o pedido de novo");
   });
 
   it("pago online com pagamento aguardando: continua a frase do servidor", async () => {
