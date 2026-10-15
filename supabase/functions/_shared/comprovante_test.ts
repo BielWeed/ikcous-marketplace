@@ -439,6 +439,7 @@ Deno.test("pedido com canal 'presencial' no banco -> o e-mail abre com 'Compra n
 async function htmlDoComprovante(
   paymentMethod: string,
   canal: string | undefined,
+  valores: Record<string, unknown> = {},
 ): Promise<string> {
   const pedido: Record<string, unknown> = {
     id: UUID_PEDIDO,
@@ -447,6 +448,7 @@ async function htmlDoComprovante(
     total: 100,
     payment_method: paymentMethod,
     payment_status: "recebido_na_entrega",
+    ...valores,
   };
   if (canal !== undefined) pedido.canal = canal;
   const enviados: Array<{ para: string; assunto: string; html: string }> = [];
@@ -489,6 +491,48 @@ Deno.test("e-mail do SITE (não presencial) segue com o texto de sempre: 'na ent
   assertStringIncludes(await htmlDoComprovante("cash", "online"), "Dinheiro na entrega");
   assertStringIncludes(await htmlDoComprovante("pix", "online"), "PIX na entrega");
   assertStringIncludes(await htmlDoComprovante("card", "online"), "Cartão na entrega");
+});
+
+// --- Cupom de 100%: pedido de R$ 0,00 diz "Sem valor a pagar" (15/10/2026) ----
+//
+// Mesma regra das telas. O pedido segue gravado como "pagar na entrega"; só o
+// TEXTO do comprovante muda.
+
+Deno.test("e-mail de pedido de R$ 0,00 (cupom de 100%) diz 'Sem valor a pagar', nunca 'Dinheiro na entrega'", async () => {
+  const zerado = { subtotal: 100, discount: 100, shipping: 0, total: 0 };
+  for (const [metodo, canal] of [
+    ["cash", undefined],
+    ["pix", undefined],
+    ["card", "online"],
+    ["online", undefined],
+    ["cash", "presencial"],
+  ] as const) {
+    const html = await htmlDoComprovante(metodo, canal, zerado);
+    assertStringIncludes(html, "Forma de pagamento");
+    assertStringIncludes(html, ">Sem valor a pagar<");
+    assertEquals(html.toLowerCase().includes("na entrega"), false);
+    assertEquals(html.includes("Dinheiro"), false);
+  }
+});
+
+Deno.test("CONTROLE do e-mail: o mesmo pedido com total 10 e 100 mantém o texto de antes", async () => {
+  assertStringIncludes(
+    await htmlDoComprovante("cash", undefined, { subtotal: 10, total: 10 }),
+    "Dinheiro na entrega",
+  );
+  assertStringIncludes(
+    await htmlDoComprovante("cash", undefined, {}),
+    "Dinheiro na entrega",
+  );
+  assertEquals(
+    (await htmlDoComprovante("cash", undefined, { subtotal: 10, total: 10 })).includes("Sem valor a pagar"),
+    false,
+  );
+  // Linha com total 0 mas a conta não fecha (150 - 0 + 20): NÃO é sem valor.
+  assertStringIncludes(
+    await htmlDoComprovante("cash", undefined, { subtotal: 150, discount: 0, shipping: 20, total: 0 }),
+    "Dinheiro na entrega",
+  );
 });
 
 // --- PIX pelo site: a abertura do e-mail depende do STATUS, não só do MÉTODO

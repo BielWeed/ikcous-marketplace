@@ -90,6 +90,38 @@ Deno.test("pagamento na entrega mantém o rótulo comum (cartão e dinheiro)", (
   );
 });
 
+Deno.test("pedido de R$ 0,00 (cupom de 100%) diz 'Sem valor a pagar' no WhatsApp; com valor, o texto é o de sempre", () => {
+  const base = {
+    orderId: ID_DO_PEDIDO,
+    customerName: "Maria",
+    itemsList: "- Sanduíche (2x)",
+  };
+  const zerado = montarMensagem({
+    ...base,
+    totalPrice: 0,
+    paymentMethod: "cash",
+    valores: { total: 0, subtotal: 100, discount: 100, shipping: 0 },
+  });
+  assertStringIncludes(zerado, "*Pagamento:* Sem valor a pagar");
+  assertEquals(zerado.includes("Dinheiro"), false);
+  assertEquals(zerado.includes("entrega"), false);
+
+  for (const total of [10, 100]) {
+    const comValor = montarMensagem({
+      ...base,
+      totalPrice: total,
+      paymentMethod: "cash",
+      valores: { total, subtotal: total, discount: 0, shipping: 0 },
+    });
+    assertStringIncludes(comValor, "*Pagamento:* Dinheiro na entrega");
+    // Idêntico, byte a byte, ao de um chamador que nem passa `valores`.
+    assertEquals(
+      comValor,
+      montarMensagem({ ...base, totalPrice: total, paymentMethod: "cash" }),
+    );
+  }
+});
+
 Deno.test("forma desconhecida ou ausente sai como 'Não informado', nunca como um rótulo falso", () => {
   const base = {
     orderId: ID_DO_PEDIDO,
@@ -239,6 +271,48 @@ async function rodar(
   });
   return { resposta, banco, evolution };
 }
+
+// Cupom de 100%: o pedido que sai do BANCO (e não o corpo) decide o texto.
+Deno.test("processar: pedido do banco com total 0 e conta fechada manda 'Sem valor a pagar'; com valor manda o de sempre", async () => {
+  async function textoEnviadoPara(pedido: Record<string, unknown>) {
+    const evolution = evolutionFalsa();
+    const resposta = await processar(
+      requisicao(`Bearer ${CHAVE_DE_SERVICO}`, { order_id: ID_REAL }),
+      {
+        supabase: bancoFalso(pedido),
+        fetchImpl: evolution.fetchImpl,
+        chavesDeServico: [CHAVE_DE_SERVICO],
+        configDaEvolution: configInjetada,
+      },
+    );
+    assertEquals(resposta.status, 200);
+    assertEquals(evolution.chamadas.length, 1);
+    return JSON.parse(String(evolution.chamadas[0].init.body)).text as string;
+  }
+
+  const zerado = await textoEnviadoPara({
+    ...PEDIDO_DO_BANCO,
+    payment_method: "cash",
+    metodo_online: null,
+    subtotal: 100,
+    discount: 100,
+    shipping: 0,
+    total: 0,
+  });
+  assertStringIncludes(zerado, "*Pagamento:* Sem valor a pagar");
+  assertEquals(zerado.includes("Dinheiro"), false);
+
+  const comValor = await textoEnviadoPara({
+    ...PEDIDO_DO_BANCO,
+    payment_method: "cash",
+    metodo_online: null,
+    subtotal: 10,
+    discount: 0,
+    shipping: 0,
+    total: 10,
+  });
+  assertStringIncludes(comValor, "*Pagamento:* Dinheiro na entrega");
+});
 
 const REGISTRO_FORJADO = {
   type: "INSERT",

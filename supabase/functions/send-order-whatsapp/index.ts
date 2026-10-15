@@ -15,6 +15,9 @@ interface DadosDaMensagem {
     totalPrice: number | string
     paymentMethod?: string | null
     metodoOnline?: string | null
+    // O dinheiro do pedido, como veio do banco: so decide o caso "sem valor a
+    // pagar" (cupom de 100%). Ausente = o texto de sempre.
+    valores?: { total?: unknown; subtotal?: unknown; discount?: unknown; shipping?: unknown } | null
 }
 
 // Texto que o cliente recebe no WhatsApp. Separado do handler para o teste
@@ -23,8 +26,8 @@ interface DadosDaMensagem {
 // A forma de pagamento sai pelo rótulo comum da casa (`rotuloDoPagamento`, o
 // mesmo do comprovante por e-mail): `online` diz a forma de verdade em
 // `metodo_online`. Forma desconhecida vira "Não informado" — nunca um palpite.
-export function montarMensagem({ orderId, customerName, itemsList, totalPrice, paymentMethod, metodoOnline }: DadosDaMensagem): string {
-    const paymentLabel = rotuloDoPagamento(paymentMethod, metodoOnline) || 'Não informado'
+export function montarMensagem({ orderId, customerName, itemsList, totalPrice, paymentMethod, metodoOnline, valores }: DadosDaMensagem): string {
+    const paymentLabel = rotuloDoPagamento(paymentMethod, metodoOnline, undefined, valores) || 'Não informado'
 
     return `*Pedido Confirmado!* 🛍️\n\n` +
         `Olá *${customerName}*, recebemos seu pedido *${numeroDoPedido(orderId)}* com sucesso!\n\n` +
@@ -130,7 +133,7 @@ export async function processar(req: Request, deps: Dependencias): Promise<Respo
 
         const { data: pedido, error: pedidoError } = await supabaseClient
             .from('marketplace_orders')
-            .select('id, customer_name, customer_data, total, payment_method, metodo_online')
+            .select('id, customer_name, customer_data, subtotal, shipping, discount, total, payment_method, metodo_online')
             .eq('id', orderId)
             .maybeSingle()
 
@@ -171,6 +174,12 @@ export async function processar(req: Request, deps: Dependencias): Promise<Respo
             totalPrice: pedido.total,
             paymentMethod: pedido.payment_method,
             metodoOnline: pedido.metodo_online,
+            valores: {
+                total: pedido.total,
+                subtotal: pedido.subtotal,
+                discount: pedido.discount,
+                shipping: pedido.shipping,
+            },
         })
 
         // 6. Enviar para a Evolution API
