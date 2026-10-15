@@ -565,12 +565,42 @@ export const ProductView = React.memo(function ProductView({
     (acc, v) => v?.priceOverride ?? acc,
     product.price,
   );
-  const currentStock =
-    Object.entries(variantGroups).length > 0
-      ? selectedVariantObjects.length > 0
-        ? Math.min(...selectedVariantObjects.map((v) => v?.stockIncrement || 0))
-        : product.stock
+  // Estoque que a cliente pode levar com UMA escolha de variações (o menor
+  // entre as escolhidas; sem escolha, o do produto). Separado de `currentStock`
+  // para a troca de variação conferir a escolha NOVA antes de renderizar.
+  const estoqueDaEscolha = (escolha: Record<string, string>): number => {
+    if (Object.keys(variantGroups).length === 0) return product.stock;
+    const escolhidas = Object.entries(escolha)
+      .map(([name, value]) =>
+        product.variants?.find((v) => v.name === name && v.value === value),
+      )
+      .filter(Boolean) as ProductVariant[];
+    return escolhidas.length > 0
+      ? Math.min(...escolhidas.map((v) => v.stockIncrement || 0))
       : product.stock;
+  };
+  const currentStock = estoqueDaEscolha(selectedVariants);
+
+  // Tocar numa variação escolhe; tocar de novo na mesma desmarca. A quantidade
+  // já escolhida nunca passa do estoque da combinação nova: a cliente que
+  // pediu 5 do vermelho (10) e troca para o azul (2) fica com 2 e é avisada,
+  // em vez de a tela mostrar 5 e o carrinho cortar depois.
+  const alternarVariante = (grupo: string, valor: string) => {
+    const proxima =
+      selectedVariants[grupo] === valor
+        ? Object.fromEntries(
+            Object.entries(selectedVariants).filter(([nome]) => nome !== grupo),
+          )
+        : { ...selectedVariants, [grupo]: valor };
+    setSelectedVariants(proxima);
+    const estoque = estoqueDaEscolha(proxima);
+    if (estoque > 0 && quantity > estoque) {
+      setQuantity(estoque);
+      toast.warning(`Só restam ${estoque}`, {
+        description: `Ajustamos a quantidade para ${estoque}.`,
+      });
+    }
+  };
   const variantImage = selectedVariantObjects.find(
     (v) => v?.imageUrl,
   )?.imageUrl;
@@ -1258,17 +1288,17 @@ export const ProductView = React.memo(function ProductView({
                                 // borda — `aria-pressed` anuncia o estado (padrão do
                                 // CategoryFilter).
                                 aria-pressed={isSelected}
-                                onClick={() =>
-                                  setSelectedVariants((prev) => ({
-                                    ...prev,
-                                    [name]: v.value,
-                                  }))
-                                }
+                                // Esgotada não se escolhe (o card da vitrine já
+                                // faz igual). A já escolhida continua tocável:
+                                // é por ela que se desmarca.
+                                disabled={variantStock <= 0 && !isSelected}
+                                onClick={() => alternarVariante(name, v.value)}
                                 className={cn(
                                   "px-3 py-1.5 text-xs font-bold rounded-xl border transition-all duration-300 active:scale-95 flex items-center gap-1.5 select-none",
                                   isSelected
                                     ? "border-primary bg-primary text-white shadow-md shadow-black/10"
                                     : "border-zinc-200 bg-zinc-50/50 text-zinc-500 hover:border-zinc-300 hover:text-primary hover:bg-zinc-50",
+                                  "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-zinc-200 disabled:hover:bg-zinc-50/50 disabled:hover:text-zinc-500 disabled:active:scale-100",
                                 )}
                               >
                                 {v.imageUrl && (
