@@ -21,7 +21,10 @@ import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
-import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import {
+  pedidoSemValorAPagar,
+  rotuloDaFormaDoPedido,
+} from "@/lib/forma-de-pagamento";
 import { manterItensEEnderecoDaTela } from "@/lib/fundir-pedido-do-hook";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
@@ -214,16 +217,32 @@ const TIMELINE_STEPS: Array<{
  * pedido online sem status é dado incompleto, e esse continua com o texto
  * de sempre em vez de afirmar "você paga na entrega". Sem prazo inventado:
  * a loja é quem separa e confirma.
+ *
+ * Compra que fechou em R$ 0,00 (cupom de 100%, `pedidoSemValorAPagar`): o
+ * servidor a grava como "pagar na entrega", mas não há nada a pagar — a frase
+ * diz isso em vez de mandar a cliente pagar.
  */
 function pendingDescription(
   paymentStatus: PaymentStatus | null | undefined,
-  forma: { paymentMethod: Order["paymentMethod"]; retiradaNaLoja?: boolean },
+  forma: {
+    paymentMethod: Order["paymentMethod"];
+    retiradaNaLoja?: boolean;
+    total?: number | null;
+    subtotal?: number | null;
+    discount?: number | null;
+    shipping?: number | null;
+  },
 ): string {
   const key = paymentStatusKey(paymentStatus);
   switch (key) {
     case "sem_cobranca":
       if (forma.paymentMethod === "online") {
         return statusConfig.pending.description;
+      }
+      if (pedidoSemValorAPagar(forma)) {
+        return forma.retiradaNaLoja === true
+          ? "Recebemos seu pedido. A loja vai separar e você não paga nada na retirada."
+          : "Recebemos seu pedido. A loja vai separar e você não paga nada.";
       }
       return forma.retiradaNaLoja === true
         ? "Recebemos seu pedido. A loja vai separar e você paga na loja, na hora de retirar."
@@ -886,6 +905,10 @@ export function OrderDetailsView({
       ? pendingDescription(order.paymentStatus, {
           paymentMethod: order.paymentMethod,
           retiradaNaLoja: order.retiradaNaLoja,
+          total: order.total,
+          subtotal: order.subtotal,
+          discount: order.discount,
+          shipping: order.shipping,
         })
       : order.status === "cancelled"
         ? cancelledDescription(
