@@ -8,7 +8,7 @@ import {
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { supabase } from "@/lib/supabase";
 import type { AssinaturaDaLoja, PainelInicio } from "@/types/painel";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Números do Início do painel: `painel_inicio()` + `assinatura_da_loja_ler()`.
@@ -313,11 +313,12 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
   }, [dia, active, temSessao, carregar]);
 
   // Retrato lido em outro dia nunca aparece como "Hoje": enquanto a recarga
-  // não chega, a tela mostra o esqueleto em vez dos números de ontem.
-  const retratoDeHoje = useMemo(
-    () => (retrato && diaDaLeitura(retrato) === dia ? retrato : null),
-    [retrato, dia],
-  );
+  // não chega, a tela mostra o esqueleto em vez dos números de ontem. O dia é
+  // lido do relógio NA HORA do desenho (não do `dia` do estado): com a tela
+  // inativa a noite toda, esse estado fica velho até o efeito de ativação
+  // rodar, e o primeiro desenho da manhã mostraria o número de ontem.
+  const retratoDeHoje =
+    retrato && diaDaLeitura(retrato) === hojeEmSaoPaulo() ? retrato : null;
 
   return {
     painel: retratoDeHoje?.painel ?? null,

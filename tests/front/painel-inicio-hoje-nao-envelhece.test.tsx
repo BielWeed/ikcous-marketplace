@@ -105,11 +105,14 @@ describe("usePainelInicio — o Hoje de ontem não fica na tela", () => {
   async function montar(ativo = true, inicio = ANTES_DA_MEIA_NOITE) {
     vi.setSystemTime(new Date(inicio));
     const mod = await import("@/hooks/usePainelInicio");
-    const saida: { atual: ReturnType<typeof mod.usePainelInicio> | null } = {
-      atual: null,
-    };
+    const saida: {
+      atual: ReturnType<typeof mod.usePainelInicio> | null;
+      /** O `painel` de CADA desenho, na ordem — o primeiro também conta. */
+      desenhos: unknown[];
+    } = { atual: null, desenhos: [] };
     function Sonda({ ativa }: Readonly<{ ativa: boolean }>) {
       const estado = mod.usePainelInicio(ativa);
+      saida.desenhos.push(estado.painel);
       useEffect(() => {
         saida.atual = estado;
       });
@@ -118,7 +121,9 @@ describe("usePainelInicio — o Hoje de ontem não fica na tela", () => {
     await act(async () => raiz.render(<Sonda ativa={ativo} />));
     // A abertura espera 200 ms antes de ir à rede.
     await avancar(250);
-    return { saida };
+    const redesenhar = (ativa: boolean) =>
+      act(async () => raiz.render(<Sonda ativa={ativa} />));
+    return { saida, redesenhar };
   }
 
   function voltarAVer(evento: "visibilitychange" | "focus" | "pageshow") {
@@ -235,6 +240,22 @@ describe("usePainelInicio — o Hoje de ontem não fica na tela", () => {
     voltarAVer("pageshow");
     await avancar(2 * 3_600_000);
     expect(h.chamadasPainel).toBe(1);
+  });
+
+  it("Início inativo a noite toda e ativado de manhã: o PRIMEIRO desenho já sai em esqueleto, nunca com o número de ontem", async () => {
+    const { saida, redesenhar } = await montar(true, MEIO_DIA);
+    expect(saida.atual?.painel).toEqual({ leitura: 1 });
+    // A lojista sai do Início e deixa o app parado a noite toda.
+    await redesenhar(false);
+    await irPara("2026-10-15T11:00:00Z"); // 15/10, 08:00 em São Paulo
+    h.adiar = true; // a busca da manhã fica no ar: o que aparece é o que havia
+    const antes = saida.desenhos.length;
+    await redesenhar(true);
+    const desenhosDaAtivacao = saida.desenhos.slice(antes);
+    expect(desenhosDaAtivacao.length).toBeGreaterThan(0);
+    // Nenhum desenho da ativação — nem o primeiro — traz a leitura de ontem.
+    expect(desenhosDaAtivacao).not.toContainEqual({ leitura: 1 });
+    expect(desenhosDaAtivacao[0]).toBeNull();
   });
 
   it("tela inativa (atrás de outra aba) não registra nada", async () => {
