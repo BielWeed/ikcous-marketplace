@@ -22,6 +22,16 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
 import { destinoDaUrl, urlDoDestino } from "@/lib/destino-do-aviso";
+import {
+  type CupomDaLoja,
+  MARCADOR_DO_CUPOM,
+  MODELOS_DE_CAMPANHA,
+  codigosDeCupomCitados,
+  filtroDosCodigosCitados,
+  mensagemDoProblemaDoCupom,
+  problemaDoCupom,
+  temMarcadorPendente,
+} from "@/lib/modelos-de-campanha";
 import { supabase } from "@/lib/supabase";
 import { normalizeText } from "@/lib/utils";
 import type { View } from "@/types";
@@ -52,7 +62,7 @@ import {
   Wifi,
   Zap,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -302,6 +312,34 @@ function PreviaNoCelular({
 // guardada segue intacta; religar = trocar para `true` quando o recurso existir.
 const MOSTRAR_AVISOS_DE_COMPRAS: boolean = false;
 
+/**
+ * Confere na tabela de cupons da loja os códigos que o texto cita. Devolve as
+ * frases de problema (uma por código) — lista vazia = tudo certo. Se a
+ * consulta falhar, o desconhecido NÃO vira "tudo certo": devolve um aviso de
+ * que não deu para conferir (a tela deixa a lojista decidir, nunca envia
+ * calada). Só roda quando o texto cita um código; sem citação, nem consulta.
+ */
+async function avisosDosCuponsCitados(codigos: string[]): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from("coupons")
+      .select("code, active, valid_until, usage_limit, usage_count")
+      .or(filtroDosCodigosCitados(codigos));
+    if (error) throw error;
+    const cupons = (data ?? []) as CupomDaLoja[];
+    const agora = new Date();
+    const avisos: string[] = [];
+    for (const codigo of codigos) {
+      const problema = problemaDoCupom(codigo, cupons, agora);
+      if (problema) avisos.push(mensagemDoProblemaDoCupom(codigo, problema));
+    }
+    return avisos;
+  } catch (err) {
+    console.error("Erro ao conferir os cupons citados:", err);
+    return ["Não consegui conferir se o cupom citado existe na sua loja"];
+  }
+}
+
 export const AdminPushView = memo(function AdminPushView({
   onNavigate,
   targetUserId,
@@ -338,6 +376,10 @@ export const AdminPushView = memo(function AdminPushView({
     }
   };
   const [loading, setLoading] = useState(false);
+  // Texto (título + corpo) para o qual a tela JÁ avisou que o cupom citado não
+  // confere. O segundo toque no enviar, com o mesmo texto, segue: quem insiste
+  // sabe o que faz (o aviso é de apoio, a leitura do texto é heurística).
+  const textoJaAvisadoDeCupom = useRef<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   // O quarto contador (achado do revisor sobre o commit 6e406b4, em
   // 20/08/2026): nascia em `useState(0)` e o `if (!error) setSubCount(...)`
@@ -677,10 +719,42 @@ export const AdminPushView = memo(function AdminPushView({
       toast.error("Preencha título e mensagem");
       return;
     }
+    // O botão já fica travado com o marcador no texto; esta guarda cobre o
+    // caminho em que o clique chega mesmo assim. "[CÓDIGO DO SEU CUPOM]" nunca
+    // vai para o celular de cliente.
+    if (temMarcadorPendente(notification.title, notification.body)) {
+      toast.error("Troque o marcador pelo código do seu cupom", {
+        description: `Troque ${MARCADOR_DO_CUPOM} pelo código do cupom que você criou em Cupons.`,
+      });
+      return;
+    }
 
     setLoading(true);
     try {
       if (!user) throw new Error("Administrador não autenticado");
+
+      // Promessa de cupom: se o texto cita um código, a loja precisa ter esse
+      // cupom ativo — senão a cliente digita e lê "O cupom X não existe".
+      const codigosCitados = codigosDeCupomCitados(
+        notification.title,
+        notification.body,
+      );
+      const chaveDoTexto = `${notification.title}\n${notification.body}`;
+      if (
+        codigosCitados.length > 0 &&
+        textoJaAvisadoDeCupom.current !== chaveDoTexto
+      ) {
+        const avisos = await avisosDosCuponsCitados(codigosCitados);
+        if (avisos.length > 0) {
+          textoJaAvisadoDeCupom.current = chaveDoTexto;
+          toast.error(avisos.join(". "), {
+            description:
+              "Crie ou ative o cupom em Cupons, ou troque o código no texto. Se está tudo certo, toque em enviar de novo.",
+            duration: 10000,
+          });
+          return;
+        }
+      }
 
       const { data: targets, error: targetError } = await (supabase.rpc as any)(
         "get_segmented_push_targets",
@@ -972,9 +1046,16 @@ export const AdminPushView = memo(function AdminPushView({
   // nenhum. Só essa porta abre; todo o resto continua fechado como antes.
   const reachDesconhecido = reachExibido === null;
   const podeGravarAvisoSemPush = Boolean(targetUserId) && reachExibido === 0;
+  // O texto ainda tem o marcador do modelo pronto no lugar do código do cupom:
+  // enviar mandaria "[CÓDIGO DO SEU CUPOM]" para os clientes.
+  const marcadorDoCupomPendente = temMarcadorPendente(
+    notification.title,
+    notification.body,
+  );
   const botaoEnviarDesabilitado =
     loading ||
     isOffline ||
+    marcadorDoCupomPendente ||
     reachDesconhecido ||
     (effectiveReach === 0 && !podeGravarAvisoSemPush);
 
@@ -1092,25 +1173,14 @@ export const AdminPushView = memo(function AdminPushView({
                 de antes: o preenchimento, o registro VOR e o toast não mudam —
                 só a forma (cartão grande → pílula de um clique). */}
             <div className="flex flex-wrap gap-2">
+              {/* Os textos dos modelos moram em `lib/modelos-de-campanha.ts`:
+                  nenhum traz código de cupom, percentual, valor ou prazo
+                  inventado — onde vai o cupom da lojista fica o MARCADOR, e o
+                  envio trava até ela trocá-lo. */}
               {[
-                {
-                  id: "fomo",
-                  Icone: Zap,
-                  title: "Desconto Relâmpago",
-                  desc: "Preenche oferta de 10% OFF",
-                },
-                {
-                  id: "auth",
-                  Icone: ShoppingCart,
-                  title: "Lembrete de Carrinho",
-                  desc: "Lembrar de finalizar compra",
-                },
-                {
-                  id: "value",
-                  Icone: Gift,
-                  title: "Cupom de R$20",
-                  desc: "Cupom de desconto especial",
-                },
+                { Icone: Zap, ...MODELOS_DE_CAMPANHA.fomo },
+                { Icone: ShoppingCart, ...MODELOS_DE_CAMPANHA.auth },
+                { Icone: Gift, ...MODELOS_DE_CAMPANHA.value },
               ].map((arch) => (
                 <button
                   key={arch.id}
@@ -1118,25 +1188,7 @@ export const AdminPushView = memo(function AdminPushView({
                   title={arch.desc}
                   className="group flex items-center gap-2 rounded-full border border-white/10 bg-black/35 py-1.5 pl-1.5 pr-3.5 text-[11px] font-bold text-zinc-300 transition-all duration-200 hover:border-admin-gold/45 hover:bg-admin-gold/5 hover:text-white active:scale-[0.98]"
                   onClick={() => {
-                    if (arch.id === "fomo") {
-                      setNotification({
-                        title: "Cupom Relâmpago: 10% OFF ativo por 1 hora! ⚡",
-                        body: "Aproveite o desconto exclusivo nos produtos da loja. Garanta o seu antes que acabe!",
-                        url: "/search",
-                      });
-                    } else if (arch.id === "auth") {
-                      setNotification({
-                        title: "Seu carrinho de compras está te esperando! 🛒",
-                        body: "Finalize seu pedido agora e garanta seus produtos com rapidez. Não perca!",
-                        url: "/cart",
-                      });
-                    } else {
-                      setNotification({
-                        title: "Presente para você: Cupom de R$20! 🎁",
-                        body: "Use o cupom BEMVINDO e garanta um desconto especial na sua próxima compra na loja.",
-                        url: "/profile",
-                      });
-                    }
+                    setNotification({ ...arch.mensagem });
 
                     recordAction(
                       "CAMPAIGN_TEMPLATE_LOAD",
@@ -1148,7 +1200,12 @@ export const AdminPushView = memo(function AdminPushView({
                     );
 
                     toast.success(
-                      `Mensagem pronta "${arch.title}" preenchida!`,
+                      temMarcadorPendente(
+                        arch.mensagem.title,
+                        arch.mensagem.body,
+                      )
+                        ? `Mensagem pronta "${arch.title}" preenchida — troque ${MARCADOR_DO_CUPOM} pelo cupom que você criou em Cupons`
+                        : `Mensagem pronta "${arch.title}" preenchida!`,
                     );
                   }}
                 >
@@ -1247,6 +1304,24 @@ export const AdminPushView = memo(function AdminPushView({
                   className="resize-none rounded-lg border-white/10 bg-black/50 p-2.5 text-xs font-medium text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 placeholder:text-zinc-600 disabled:opacity-40"
                 />
               </div>
+
+              {/* Marcador do modelo pronto ainda no texto: o envio está
+                  travado e o motivo fica na cara, com o que fazer. */}
+              {marcadorDoCupomPendente && (
+                <div
+                  data-testid="aviso-codigo-pendente"
+                  role="alert"
+                  className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-300 animate-in fade-in"
+                >
+                  <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                  <p className="text-[11px] font-medium leading-tight">
+                    Falta o cupom: troque{" "}
+                    <strong className="font-black">{MARCADOR_DO_CUPOM}</strong>{" "}
+                    pelo código do cupom que você criou em Cupons. O envio fica
+                    travado enquanto esse marcador estiver no texto.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Prévia no celular — a notificação EXATAMENTE como chega, ao

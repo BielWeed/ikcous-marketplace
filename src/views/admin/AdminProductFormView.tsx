@@ -1550,11 +1550,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
+      // Lê os arquivos ANTES de esvaziar o campo, e esvazia sempre: se o campo
+      // guarda a escolha, escolher o MESMO arquivo de novo (apagou a foto e
+      // quer reenviar) não dispara `change` no Chrome e nada acontece.
+      const input = e.currentTarget;
+      const files = Array.from(input.files || []);
+      input.value = "";
       if (isOffline) {
         toast.error("Não é possível enviar imagens em modo offline.");
         return;
       }
-      const files = Array.from(e.target.files || []);
       await processAndUploadImages(files);
     },
     [processAndUploadImages, isOffline],
@@ -1566,6 +1571,38 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       images: prev.images.filter((_, i) => i !== index),
     }));
   }, []);
+
+  // `images[0]` é a foto do cartão da vitrine (e vira `imagem_url` ao salvar),
+  // então "principal" é só "primeira do array". A foto sai do lugar e vai para
+  // o começo; as outras mantêm a ordem entre si. Nada é reenviado: as URLs são
+  // as mesmas, só a ordem muda.
+  const carrosselDeFotosRef = useRef<HTMLDivElement>(null);
+  const focarNaCapaRef = useRef(false);
+  const tornarPrincipal = useCallback((index: number) => {
+    if (index <= 0) return;
+    focarNaCapaRef.current = true;
+    setFormData((prev) => {
+      const [escolhida] = prev.images.slice(index, index + 1);
+      if (!escolhida) return prev;
+      return {
+        ...prev,
+        images: [escolhida, ...prev.images.filter((_, i) => i !== index)],
+      };
+    });
+    toast.success(`Foto ${index + 1} agora é a principal.`);
+  }, []);
+  // O botão tocado some da tela (a foto virou a capa e não tem mais "Tornar
+  // principal"): sem isto o foco cairia no <body> e quem usa teclado ou leitor
+  // de tela perderia o lugar.
+  useEffect(() => {
+    // Roda quando a ordem muda (`formData.images`); só age se foi "Tornar
+    // principal" quem mudou.
+    if (!focarNaCapaRef.current) return;
+    focarNaCapaRef.current = false;
+    carrosselDeFotosRef.current
+      ?.querySelector<HTMLElement>("[data-foto-principal] button")
+      ?.focus();
+  }, [formData.images]);
 
   const atualizarParDeAtributo = (
     indice: number,
@@ -3443,7 +3480,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             ) : (
               <div className="relative w-full">
                 {/* Single horizontal scroll carousel for ALL images */}
-                <div className="flex flex-row gap-4 overflow-x-auto px-2 pb-4 pt-2 snap-x scroll-smooth scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+                <div
+                  ref={carrosselDeFotosRef}
+                  className="flex flex-row gap-4 overflow-x-auto px-2 pb-4 pt-2 snap-x scroll-smooth scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
+                >
                   <AnimatePresence>
                     {formData.images.map((image, index) => {
                       const meta = imageMetadata[image];
@@ -3451,6 +3491,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       return (
                         <motion.div
                           key={image}
+                          data-foto-principal={isCover ? "" : undefined}
                           initial={{ scale: 0.8, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
                           exit={{ scale: 0.8, opacity: 0 }}
@@ -3468,7 +3509,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             />
 
                             {/* Actions Overlay */}
-                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/35 to-transparent opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100 duration-300">
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/35 to-transparent opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100 hover-hover:focus-within:opacity-100 duration-300">
                               <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
@@ -3489,6 +3530,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               </div>
                             </div>
                           </div>
+
+                          {/* "Tornar principal": a capa é `images[0]`. Fica
+                              travado enquanto alguma foto sobe, como o resto
+                              dos botões de foto. */}
+                          {!isCover && (
+                            <button
+                              type="button"
+                              onClick={() => tornarPrincipal(index)}
+                              disabled={isImageUploading || isSubmitting}
+                              aria-label={`Tornar principal: foto ${index + 1} de ${formData.images.length}`}
+                              className="absolute left-2 top-2 z-20 min-h-11 rounded-lg border border-white/10 bg-black/70 px-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-lg backdrop-blur-md transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                            >
+                              Tornar principal
+                            </button>
+                          )}
 
                           {/* Status Warning Badge */}
                           {meta && meta.status !== "loading" && (

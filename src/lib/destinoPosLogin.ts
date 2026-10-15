@@ -14,13 +14,50 @@ import type { View } from "@/types";
  * (a pessoa não é redirecionada), mas esquecer este aqui falha em silêncio:
  * a pessoa volta ao perfil depois de logar em vez de ir para a view nova
  * (foi o que aconteceu com "user-profile" no #561, corrigido em 13/09/2026).
+ *
+ * `admin-orders` (14/10/2026) é a exceção que NÃO passa por aquele `if`: o
+ * painel sem conta é tratado por `painelSemContaPedeEntrada` (abaixo), usada
+ * nos dois pontos de `App.tsx` (leitura do endereço e `handleNavigate`). Ela
+ * está aqui porque é a única tela do painel que um aviso (push de "pedido
+ * novo") abre — a lojista que toca nele sem sessão entra e volta para os
+ * pedidos. NÃO é uma permissão: quem entra e não é admin continua barrada
+ * pelo portão de admin do App (`adminStatus`) e pelo servidor (`is_admin`).
+ * A lista continua FECHADA: as demais telas do painel pedem entrada, mas não
+ * viram destino (cairiam em telas que dependem de `id` ou de formulário).
  */
 const VIEWS_REDIRECIONAVEIS = new Set<string>([
   "user-profile",
   "profile",
   "account-settings",
   "address-form",
+  "admin-orders",
 ]);
+
+/**
+ * O painel (`admin*`, menos a entrada própria `admin-login`) foi pedido por
+ * quem NÃO tem sessão? Então ela precisa de uma tela de entrada, não da
+ * vitrine: sem isto o app a mandava para a home em silêncio (só um
+ * `console.warn`), e quem tocava no aviso de "pedido novo" sem estar logada
+ * não via login nenhum.
+ *
+ * Só olha para a AUSÊNCIA de sessão: com sessão (logada não-admin, ou admin
+ * ainda sendo confirmado pelo servidor) devolve `false` e as guardas de admin
+ * de `App.tsx` seguem exatamente como eram. Durante `authLoading` também
+ * devolve `false` — a sessão em cache ainda está sendo verificada, e mandar um
+ * admin legítimo ao login nesse instante seria o piscar que o `adminStatus`
+ * "unknown" existe para evitar.
+ */
+export function painelSemContaPedeEntrada(
+  view: string,
+  sessao: { readonly authLoading: boolean; readonly user: unknown },
+): boolean {
+  return (
+    view.startsWith("admin") &&
+    view !== "admin-login" &&
+    !sessao.authLoading &&
+    !sessao.user
+  );
+}
 
 function comoRegistro(valor: unknown): Record<string, unknown> | null {
   return typeof valor === "object" && valor !== null

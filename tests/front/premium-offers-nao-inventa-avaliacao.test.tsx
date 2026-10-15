@@ -90,7 +90,7 @@ describe("PremiumOffers/HeroOfferCard — não inventa avaliação sem reviewCou
     vi.unstubAllGlobals();
   });
 
-  it("reviewCount=0: nem estrela, nem contagem, nem separador -- 'Alta Procura' continua sozinho", async () => {
+  it("reviewCount=0: nem estrela, nem contagem, nem separador, e nenhum selo inventado no lugar", async () => {
     const { PremiumOffers } = await import(
       "@/components/ui/custom/PremiumOffers"
     );
@@ -108,7 +108,7 @@ describe("PremiumOffers/HeroOfferCard — não inventa avaliação sem reviewCou
 
     expect(hospedeiro.querySelectorAll("svg.lucide-star").length).toBe(0);
     expect(hospedeiro.textContent).not.toContain("(0)");
-    expect(hospedeiro.textContent).toContain("Alta Procura");
+    expect(hospedeiro.textContent).not.toContain("Alta Procura");
   });
 
   it("reviewCount>0: a estrela e a contagem continuam aparecendo (não regride o caso avaliado)", async () => {

@@ -206,15 +206,18 @@ export const RECADO_DE_SEGURANCA =
  * Textos do bloco "Cartão pelo app" (FormasDePagamentoCard.tsx). Fatos da
  * spec `2026-09-26-cartao-online-design.md`: nasce desligado (decisão 7 — o
  * Brick monta iframes do Mercado Pago que ainda não foram provados em
- * produção; a lojista liga depois de um pedido de teste), débito é o que o
+ * produção; a lojista liga e confere com uma compra pequena), débito é o que o
  * Mercado Pago liberar para a conta (decisão 5 — no Brasil, hoje, em geral
  * só Elo) e os juros do parcelamento são do comprador (decisão 6).
  */
 export const CARTAO_PELO_APP = {
   titulo: "Cartão pelo app",
   subtitulo: "Crédito e débito pagos na hora, pelo Mercado Pago",
+  // O interruptor liga o cartão para a loja INTEIRA, e com a chave de produção
+  // o Mercado Pago recusa cartão de teste: mandar "fazer um pedido de teste com
+  // cartão de teste" antes de ligar faria o cartão parecer quebrado.
   testeAntes:
-    "Antes de ligar para os clientes, faça um pedido de teste com um cartão de teste do Mercado Pago.",
+    "Ao ligar, o cartão já aparece para todos os clientes. Para conferir, faça uma compra de valor baixo com um cartão seu e devolva o valor depois, no Mercado Pago. Cartão de teste só funciona com a chave de teste; com a chave de produção ele é recusado.",
   semPix:
     "Deixe o pagamento pelo app liberado antes (seção Mercado Pago: as três chaves salvas e testadas): o cartão usa as mesmas chaves e só aparece para o cliente com o pagamento pelo app ligado.",
   leituraFalhou:

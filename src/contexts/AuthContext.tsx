@@ -1,4 +1,9 @@
 import { pedirAoSwPurgarArquivosPrivados } from "@/lib/arquivo-publico-do-storage";
+import {
+  REVIEWS_CACHE_KEY_PREFIX,
+  esquecerAvaliacoesGuardadas,
+  esvaziarAvaliacoesEmMemoria,
+} from "@/lib/cache-de-avaliacoes";
 import { cpfValido } from "@/lib/cpf";
 import { gravarCpfDaConta } from "@/lib/cpf-da-conta";
 import {
@@ -153,6 +158,10 @@ function clearLocalUserData() {
   // `window`, e assim continua valendo em qualquer ambiente que chame esta
   // função.
   limparCachesDeAdmin();
+  // As avaliações guardadas por produto (mapa em memória; as chaves do
+  // `localStorage` caem na varredura abaixo) podem trazer avaliações ainda não
+  // aprovadas, com o nome do autor, e sobreviviam ao "Sair".
+  esvaziarAvaliacoesEmMemoria();
   // R12 (04/10/2026) — a gaveta de imagens do service worker pode ter
   // guardado endereço ASSINADO de bucket privado (foto de devolução) antes
   // da correção: pede ao SW que jogue fora o que não é público. Disparar-e-
@@ -193,6 +202,7 @@ function clearLocalUserData() {
       key?.startsWith("ikcous_orders_cache_") ||
       key?.startsWith("ikcous_addresses_cache_") ||
       key?.startsWith("ikcous_shipping_cache_") ||
+      key?.startsWith(REVIEWS_CACHE_KEY_PREFIX) ||
       // L10 — rascunho de edição de produto de ANTES do desenho por usuário
       // (`…_edit_<id>`, sem `:<uid>`; o id é um UUID, nunca tem `:`).
       (key?.startsWith("ikcous_product_form_draft_edit_") && !key.includes(":"))
@@ -841,6 +851,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (previousUserId && currentUserId && previousUserId !== currentUserId) {
         limparCachesDeAdmin();
+        // Avaliações guardadas (inclui as não aprovadas, com nome do autor):
+        // memória e chaves do `localStorage`, pois esta troca não passa por
+        // `clearLocalUserData`.
+        esquecerAvaliacoesGuardadas();
         // R12 — mesma troca uid→uid: o que a conta anterior abriu por
         // endereço assinado não pode ficar na gaveta do SW para a próxima.
         pedirAoSwPurgarArquivosPrivados();

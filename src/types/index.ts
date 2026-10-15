@@ -523,7 +523,7 @@ export type View =
   | "user-profile"
   | "about-store";
 
-export type SortOption = "default" | "price-asc" | "price-desc" | "sold";
+export type SortOption = "default" | "price-asc" | "price-desc";
 
 export interface DashboardSummary {
   today: {

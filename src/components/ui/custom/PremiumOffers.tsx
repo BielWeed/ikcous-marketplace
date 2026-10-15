@@ -128,8 +128,17 @@ export const PremiumOffers = React.memo(function PremiumOffers({
     return { product: p, discount };
   });
 
-  // Sort by discount descending to find the Hero
-  const sortedOffers = [...offerItems].sort((a, b) => b.discount - a.discount);
+  // Disponível ANTES de esgotado (a Home já entrega assim, e a faixa não pode
+  // desfazer: uma oferta esgotada com desconto maior abriria a faixa antes
+  // das que a cliente consegue comprar); dentro de cada grupo, maior desconto
+  // primeiro. `Array.prototype.sort` é estável: empate mantém a ordem recebida
+  // (a que a lojista escolheu à mão no painel).
+  const sortedOffers = [...offerItems].sort((a, b) => {
+    const aDisponivel = a.product.stock > 0 ? 1 : 0;
+    const bDisponivel = b.product.stock > 0 ? 1 : 0;
+    if (aDisponivel !== bDisponivel) return bDisponivel - aDisponivel;
+    return b.discount - a.discount;
+  });
 
   return (
     <div className="relative overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6">
@@ -255,13 +264,6 @@ function HeroOfferCard({
     "idle",
   );
 
-  // Scarcity progress calculations
-  const totalSimulated = (product.sold || 3) + product.stock;
-  const pctSold = Math.min(
-    95,
-    Math.max(60, Math.round(((product.sold || 3) / totalSimulated) * 100)),
-  );
-
   const handleCardClick = () => {
     haptic.light();
     onProductClick(product.id);
@@ -317,6 +319,11 @@ function HeroOfferCard({
   const savings = product.originalPrice
     ? product.originalPrice - product.price
     : 0;
+  // Mesma condição do ProductCard: "De" só vale se for maior que o atual.
+  const precoAntigo =
+    product.originalPrice && product.originalPrice > product.price
+      ? product.originalPrice
+      : null;
 
   return (
     // B3 (laudo de acessibilidade, 08/09): mesmo raciocínio do ProductCard --
@@ -431,37 +438,29 @@ function HeroOfferCard({
               </button>
             </h3>
 
-            <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
-              {/* LOJA-01 (auditoria 26/08/2026): mesmo raciocínio de
-                  ProductCard.tsx -- `produtos.rating` nasce com DEFAULT 5 e
-                  nunca é recalculado, então só `reviewCount > 0` diz se
-                  existe avaliação de verdade por trás do número. */}
-              {showRating && (product.reviewCount ?? 0) > 0 && (
-                <>
-                  <StarRating rating={product.rating ?? 0} size={12} />
-                  <span className="text-[11px] font-bold text-slate-400">
-                    ({product.reviewCount})
-                  </span>
-                  {/* Separador só faz sentido com a estrela antes dele --
-                      some junto (ADMIN-091, #202). O selo "Alta Procura"
-                      abaixo é um sinal de demanda que a loja já tinha,
-                      independente de avaliação, e continua sozinho na
-                      linha sem deixar buraco. */}
-                  <span className="text-xs text-slate-200">|</span>
-                </>
-              )}
-              <span className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-700 transition-transform duration-300 group-hover:scale-105">
-                <Flame className="size-2.5 animate-pulse fill-amber-500 text-amber-500" />
-                Alta Procura
-              </span>
-            </div>
+            {/* LOJA-01 (auditoria 26/08/2026): mesmo raciocínio de
+                ProductCard.tsx -- `produtos.rating` nasce com DEFAULT 5 e
+                nunca é recalculado, então só `reviewCount > 0` diz se
+                existe avaliação de verdade por trás do número. ADMIN-091
+                (#202): o interruptor de Avaliações da loja manda aqui.
+                O selo "Alta Procura" que ficava ao lado saiu (14/10/2026):
+                era fixo em TODO cartão, sem nenhum dado de demanda atrás --
+                afirmava à cliente algo que a loja não sabe. */}
+            {showRating && (product.reviewCount ?? 0) > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <StarRating rating={product.rating ?? 0} size={12} />
+                <span className="text-[11px] font-bold text-slate-400">
+                  ({product.reviewCount})
+                </span>
+              </div>
+            )}
 
             {/* Price details with absolute premium styling */}
             <div className="mb-3.5 flex flex-wrap items-end gap-3">
-              {product.originalPrice && (
+              {precoAntigo ? (
                 <div className="flex flex-col">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 line-through">
-                    De: {formatCurrency(product.originalPrice)}
+                    De: {formatCurrency(precoAntigo)}
                   </span>
                   <span
                     className={cn(
@@ -472,6 +471,15 @@ function HeroOfferCard({
                     Por: {formatCurrency(product.price)}
                   </span>
                 </div>
+              ) : (
+                // Produto escolhido à mão na vitrine SEM preço promocional (ou
+                // com "De" que não é maior que o atual): sem "De"/riscado --
+                // não há preço antigo a mostrar --, só o preço atual, no
+                // tamanho do "Por:" acima e na cor do preço simples do
+                // ProductCard (verde é sinal de promoção, e aqui não há).
+                <span className="text-xl font-black leading-none tracking-tighter text-slate-900 sm:text-2xl">
+                  {formatCurrency(product.price)}
+                </span>
               )}
               {savings > 0 && (
                 <div className="mb-0.5 rounded-md border border-emerald-200/30 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold uppercase text-emerald-700">
@@ -480,27 +488,17 @@ function HeroOfferCard({
               )}
             </div>
 
-            {/* Scarcity meter progress bar */}
-            <div className="mb-4 max-w-sm space-y-1">
-              <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
-                <span className="flex items-center gap-1 text-primary">
-                  <Flame className="size-2.5 animate-pulse fill-primary" />
-                  {pctSold}% VENDIDO
-                </span>
-                <span>
-                  {product.stock <= 0
-                    ? "Sem estoque"
-                    : product.stock === 1
-                      ? "Só resta 1!"
-                      : `Apenas ${product.stock} restantes`}
-                </span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-100/70">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-primary to-amber-500 transition-all duration-1000 ease-out"
-                  style={{ width: `${pctSold}%` }}
-                />
-              </div>
+            {/* Só o estoque REAL. A barra "X% VENDIDO" que ficava aqui
+                saiu (14/10/2026): `produtos.sold` é 0 em toda loja (nada o
+                atualiza) e a conta fingia 3 vendas e prendia o resultado
+                entre 60% e 95% -- porcentagem inventada, publicidade
+                enganosa (CDC art. 37). */}
+            <div className="mb-4 max-w-sm text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
+              {product.stock <= 0
+                ? "Sem estoque"
+                : product.stock === 1
+                  ? "Só resta 1!"
+                  : `Apenas ${product.stock} restantes`}
             </div>
           </div>
 

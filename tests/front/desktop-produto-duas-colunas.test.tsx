@@ -301,7 +301,7 @@ describe("F3 — produto no computador e celular preservado", () => {
     expect(miniatura.getAttribute("aria-current")).toBe("true");
   });
 
-  it("F3.3 não mostra miniaturas para foto única nem variação com imagem própria", async () => {
+  it("F3.3 não mostra miniaturas para foto única; variação com imagem própria destaca a foto dela sem esconder as miniaturas", async () => {
     vi.stubGlobal("matchMedia", (q: string) => ({
       matches: q === "(min-width: 1024px)",
     }));
@@ -326,10 +326,18 @@ describe("F3 — produto no computador e celular preservado", () => {
     )!;
     expect(tamanho).toBeDefined();
     await act(async () => tamanho.click());
-    expect(host.querySelector("button[aria-label^='Ver foto']")).toBeNull();
-    expect(elemento(".main-product-image").getAttribute("src")).toContain(
-      "foto-m.png",
-    );
+    // Antes (defeito): as miniaturas sumiam e as outras fotos só voltavam
+    // recarregando. Agora seguem a um toque, e a principal mostra a da variação.
+    expect(
+      host.querySelectorAll("button[aria-label^='Ver foto']").length,
+    ).toBeGreaterThan(1);
+    // A troca é com fade: a foto antiga ainda pode estar saindo (no jsdom a
+    // animação não termina), então basta alguma principal mostrar a da variação.
+    expect(
+      [...host.querySelectorAll(".main-product-image")].some((img) =>
+        (img.getAttribute("src") ?? "").includes("foto-m.png"),
+      ),
+    ).toBe(true);
   });
 
   it("mostra a foto original da IKCOUS sem pedir transformação indisponível", async () => {
