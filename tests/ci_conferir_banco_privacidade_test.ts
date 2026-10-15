@@ -459,7 +459,9 @@ Deno.test("39a/39b — o rpc-ci.yml roda a prova viva do portao do lote no job b
 
 Deno.test("39a/39b — a entrada de db-apply.cjs para a funcao do gatilho existe (sem ela o apply sai PULADA) e cada marcador aparece UMA vez no corpo da migration", async () => {
   const { VERIFICACOES, conferirMarcador } = require("../scripts/db-apply.cjs");
-  const entrada = VERIFICACOES[ARQUIVO_238];
+  const entrada = Object.entries(VERIFICACOES).find(
+    ([nome]) => nome === ARQUIVO_238,
+  )?.[1];
   assert(entrada, "a migration nao tem entrada em VERIFICACOES");
   const checagens = Array.isArray(entrada) ? entrada : [entrada];
   assertEquals(checagens.length, 1);

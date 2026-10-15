@@ -31,14 +31,10 @@ const md5 = (s) => createHash("md5").update(s).digest("hex");
 // Escritos por extenso: o teste nunca os lê do arquivo que está provando.
 const F2 = "public.answer_question_atomic(uuid,text)";
 const F3 = "public.answer_question_atomic(uuid,text,uuid)";
-const ANTES = {
-  [F2]: "8cf000b6c9ed27f482906752469f08ff",
-  [F3]: "ad99d54575ac95445103ea5b78e4a1e8",
-};
-const DEPOIS = {
-  [F2]: "1268df6cb364dfb46b5c535e007bb2d0",
-  [F3]: "b62a4186ff8d58955973f53d6c0f302b",
-};
+const ANTES_F2 = "8cf000b6c9ed27f482906752469f08ff";
+const ANTES_F3 = "ad99d54575ac95445103ea5b78e4a1e8";
+const DEPOIS_F2 = "1268df6cb364dfb46b5c535e007bb2d0";
+const DEPOIS_F3 = "b62a4186ff8d58955973f53d6c0f302b";
 
 /** Os dois corpos (entre `$function$`) do arquivo, na ordem: 2 argumentos e 3 argumentos. */
 function corpos(sql) {
@@ -49,11 +45,11 @@ function corpos(sql) {
 
 Deno.test("os corpos das duas funcoes seguem os de hash conhecido: a migration (depois) e o rollback (antes); so texto FORA do corpo mudou", () => {
   const [m2, m3] = corpos(migration);
-  assert.equal(md5(m2), DEPOIS[F2]);
-  assert.equal(md5(m3), DEPOIS[F3]);
+  assert.equal(md5(m2), DEPOIS_F2);
+  assert.equal(md5(m3), DEPOIS_F3);
   const [r2, r3] = corpos(rollback);
-  assert.equal(md5(r2), ANTES[F2]);
-  assert.equal(md5(r3), ANTES[F3]);
+  assert.equal(md5(r2), ANTES_F2);
+  assert.equal(md5(r3), ANTES_F3);
 });
 
 Deno.test("o rollback tem PRE-VOO antes da troca: exatamente 2 assinaturas e corpo vivo = o desta migration OU o de antes (idempotente); qualquer outro recusa", () => {
@@ -65,8 +61,8 @@ Deno.test("o rollback tem PRE-VOO antes da troca: exatamente 2 assinaturas e cor
   assert.ok(pre.includes("END $preflight_rollback_20261240$;"));
   for (const trecho of [
     "p.proname = 'answer_question_atomic') <> 2",
-    `('${F2}', '${DEPOIS[F2]}', '${ANTES[F2]}')`,
-    `('${F3}', '${DEPOIS[F3]}', '${ANTES[F3]}')`,
+    `('${F2}', '${DEPOIS_F2}', '${ANTES_F2}')`,
+    `('${F3}', '${DEPOIS_F3}', '${ANTES_F3}')`,
     "md5(replace(p.prosrc, E'\\r', ''))",
     "to_regprocedure(r.assinatura)",
     "v_hash IS NULL OR v_hash NOT IN (r.hash_desta, r.hash_antes)",
@@ -84,15 +80,15 @@ Deno.test("o rollback tem CONFERENCIA FINAL depois da troca: exatamente 2 assina
   assert.ok(conf.includes("END $conferencia_rollback_20261240$;"));
   for (const trecho of [
     "p.proname = 'answer_question_atomic') <> 2",
-    `('${F2}', '${ANTES[F2]}')`,
-    `('${F3}', '${ANTES[F3]}')`,
+    `('${F2}', '${ANTES_F2}')`,
+    `('${F3}', '${ANTES_F3}')`,
     "md5(replace(p.prosrc, E'\\r', ''))",
     "v_hash IS DISTINCT FROM r.hash_antes",
     "RAISE EXCEPTION 'conferencia rollback 20261240:",
   ])
     assert.ok(conf.includes(trecho), trecho);
   // a conferencia nao aceita o corpo desta migration como valido
-  assert.ok(!conf.includes(DEPOIS[F2]) && !conf.includes(DEPOIS[F3]));
+  assert.ok(!conf.includes(DEPOIS_F2) && !conf.includes(DEPOIS_F3));
 });
 
 Deno.test("o rollback e a migration seguem sem BEGIN/COMMIT de nivel superior e o rollback nunca mexe em ACL", () => {

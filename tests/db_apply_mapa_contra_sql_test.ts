@@ -109,8 +109,10 @@ function corposDeFuncao(sql) {
   // security/detect-non-literal-regexp, e um literal reavaliado a cada chamada
   // já nasce com `lastIndex` zerado.
   // `CREATE FUNCTION` puro tambem conta (20261238000000 NASCE a funcao do gatilho; o pre-voo recusa se ela ja existe).
+  // (Duas alternativas em vez de um grupo opcional: o grupo opcional com `\s+` dentro dá altura de estrela 2 e o
+  // security/detect-unsafe-regex o acusa; a alternância casa o mesmo texto.)
   const abertura =
-    /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(\w+)/gi;
+    /(?:CREATE\s+OR\s+REPLACE|CREATE)\s+FUNCTION\s+(?:public\.)?(\w+)/gi;
   let cabecalho = abertura.exec(texto);
   while (cabecalho) {
     const rotulo = /\$\w*\$/g;
@@ -174,12 +176,14 @@ function corpoDaMigration(arquivo, funcao) {
 function corposDaMigration(arquivo, funcao) {
   const definicoes = corposDeFuncao(lerMigration(arquivo)).get(funcao) ?? [];
   if (definicoes.length > 1) {
-    const assinaturas = definicoes.map((d) => d.slice(0, d.indexOf(")") + 1));
-    if (new Set(assinaturas).size === definicoes.length) {
-      return definicoes.map((corpo, i) => ({
-        corpo,
-        assinatura: assinaturas[i],
-      }));
+    const sobrecargas = definicoes.map((corpo) => ({
+      corpo,
+      assinatura: corpo.slice(0, corpo.indexOf(")") + 1),
+    }));
+    if (
+      new Set(sobrecargas.map((o) => o.assinatura)).size === sobrecargas.length
+    ) {
+      return sobrecargas;
     }
   }
   return [{ corpo: corpoDaMigration(arquivo, funcao), assinatura: null }];

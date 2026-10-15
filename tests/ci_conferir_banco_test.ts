@@ -11939,7 +11939,7 @@ Deno.test("31a/31b — a 31a aceita, so em create_marketplace_order_v24, o corpo
   assertStringIncludes(sa, `THEN '${v24da229}'`);
   // o sucessor so vale para a v24: o corpo da v23 segue exato e nenhum hash da 236 entra na linha da v23
   assertEquals(
-    [...sa.matchAll(new RegExp(v24da236, "g"))].length,
+    sa.split(v24da236).length - 1,
     1,
     "31a: o hash da 20261236000000 aparece uma vez so (a linha da v24)",
   );
@@ -12556,7 +12556,10 @@ Deno.test("41m-medir-pergunta-respondida — no menu, UM SELECT so leitura de ro
     "palavra de escrita fora de comentario/literal",
   );
   assert(!/\bAS\s+ok\b/i.test(estrutura), "rol aberto: sem coluna ok");
-  assertEquals(ROL_FECHADO_POR_CONSULTA[NOME_41M], undefined);
+  assertEquals(
+    Object.entries(ROL_FECHADO_POR_CONSULTA).find(([n]) => n === NOME_41M)?.[1],
+    undefined,
+  );
   assertEquals(
     [
       ...new Set(
