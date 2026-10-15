@@ -1616,6 +1616,42 @@ export type Database = {
           },
         ];
       };
+      pedidos_de_privacidade: {
+        Row: {
+          atendido_em: string | null;
+          atendido_por: string | null;
+          criado_em: string;
+          email_novo: string | null;
+          id: string;
+          observacao: string | null;
+          situacao: string;
+          tipo: string;
+          user_id: string;
+        };
+        Insert: {
+          atendido_em?: string | null;
+          atendido_por?: string | null;
+          criado_em?: string;
+          email_novo?: string | null;
+          id?: string;
+          observacao?: string | null;
+          situacao?: string;
+          tipo: string;
+          user_id: string;
+        };
+        Update: {
+          atendido_em?: string | null;
+          atendido_por?: string | null;
+          criado_em?: string;
+          email_novo?: string | null;
+          id?: string;
+          observacao?: string | null;
+          situacao?: string;
+          tipo?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       politica_devolucao: {
         Row: {
           aceita_troca: boolean;
@@ -2265,6 +2301,9 @@ export type Database = {
           store_name: string | null;
           store_state: string | null;
           store_description: string | null;
+          store_legal_name: string | null;
+          store_legal_document: string | null;
+          store_support_email: string | null;
           theme_mode: string | null;
           updated_at: string | null;
           vapid_public_key: string | null;
@@ -2308,6 +2347,9 @@ export type Database = {
           store_name?: string | null;
           store_state?: string | null;
           store_description?: string | null;
+          store_legal_name?: string | null;
+          store_legal_document?: string | null;
+          store_support_email?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -2351,6 +2393,9 @@ export type Database = {
           store_name?: string | null;
           store_state?: string | null;
           store_description?: string | null;
+          store_legal_name?: string | null;
+          store_legal_document?: string | null;
+          store_support_email?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -2507,6 +2552,9 @@ export type Database = {
           real_time_sales_alerts: boolean | null;
           store_address: string | null;
           store_description: string | null;
+          store_legal_name: string | null;
+          store_legal_document: string | null;
+          store_support_email: string | null;
           share_text: string | null;
           shipping_coverage: string | null;
           shipping_fee: number | null;
@@ -3024,6 +3072,18 @@ export type Database = {
       };
       anular_venda_presencial: {
         Args: { p_motivo: string; p_order_id: string };
+        Returns: Json;
+      };
+      apagar_categoria_vazia: {
+        Args: { p_id: string };
+        Returns: Json;
+      };
+      categorias_com_uso: {
+        Args: never;
+        Returns: Json;
+      };
+      renomear_categoria: {
+        Args: { p_id: string; p_novo_nome: string };
         Returns: Json;
       };
       assinatura_da_loja_ler: {

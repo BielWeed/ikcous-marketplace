@@ -1,3 +1,4 @@
+import { FraseDeAceite } from "@/components/politicas/LinksDasPoliticas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { branding } from "@/config/branding";
@@ -853,6 +854,17 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     </div>
                   )}
                 </motion.div>
+              )}
+
+              {/* Termos e Privacidade junto de quem entra ou cria conta
+                  (LGPD/CDC). Só texto e links — não é caixa de marcar e não
+                  trava o botão. Os links abrem uma FOLHA por cima: o que a
+                  pessoa já digitou no cadastro continua no formulário. */}
+              {(viewMode === "login" || viewMode === "signup") && (
+                <FraseDeAceite
+                  acao={viewMode === "signup" ? "criar sua conta" : "entrar"}
+                  className="mt-2 text-center"
+                />
               )}
 
               <motion.button

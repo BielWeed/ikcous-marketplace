@@ -22,7 +22,7 @@
 -- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
 -- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
 -- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
--- apply da sucessora. Hoje são cinco funções (sete migrations), cada uma POR SI (função independente:
+-- apply da sucessora. Hoje são sete funções (nove migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
@@ -30,7 +30,9 @@
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo);
 --   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp);
---   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento).
+--   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento);
+--   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita);
+--   * `upsert_store_config`    → 20261239000000 (a loja declara razão social, CNPJ/CPF e e-mail de atendimento).
 -- CADEIA (decidido em 14/10/2026, quando `painel_inicio` ganhou a SEGUNDA sucessora, e repetida quando
 -- `get_admin_analytics_v2` ganhou a dela, a 20261234000000): o CTE
 -- `sucessoras` guarda TODOS os corpos intermediários e o final de cada função (várias linhas por
@@ -42,7 +44,7 @@
 -- `sucessoras`); aceito, o `vivo` mostra o `esperado`. O rollback-manual de cada
 -- sucessora devolve o corpo da anterior na cadeia (o da 99 para a primeira), que segue aceito. Nada mais foi afrouxado:
 -- corpo estranho (vivo = o md5 dele), função AUSENTE e sobrecarga múltipla
--- (vivo = os md5 separados por vírgula) reprovam igual, e as outras 56 seguem
+-- (vivo = os md5 separados por vírgula) reprovam igual, e as outras 54 seguem
 -- exatas. tests/ci_conferir_banco_test.ts confere os hashes aceitos contra os
 -- arquivos (sucessoras = as migrations depois da 202 que redefinem uma das 61,
 -- com o md5 do corpo; o preflight delas e o rollback-manual citam os dois) e
@@ -128,7 +130,9 @@ WITH corpos AS (
     ('painel_inicio', 'ad5620273997ba9266f240f272bf399b', '20261228000000'),
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
-    ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000')), colunas(tabela, coluna) AS (VALUES
+    ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
+    ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa', '20261235000000'),
+    ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
     ('order_refunds', 'mp_chargeback_valor_do_caso'),

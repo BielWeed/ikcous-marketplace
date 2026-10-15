@@ -19,7 +19,10 @@
 // texto que o próprio sistema escreveu em português para o lojista:
 //   - a recusa de negócio do servidor (SQLSTATE 22023) em AdminOrdersView;
 //   - a mensagem já curada por `salvarConfigDoCartao` (src/lib/config-do-cartao.ts)
-//     em FormasDePagamentoCard.
+//     em FormasDePagamentoCard;
+//   - a mensagem de `ErroDeCategoria` (src/lib/gestao-de-categorias.ts) no
+//     "Criar setor" de AdminProductFormView: a classe só carrega frase fixa
+//     nossa ou a que `mensagemDaFalhaDeCategoria` curou.
 // NÃO trocar `useOrders.ts` (`description: err?.message`): as RPCs de pedido
 // levantam frases em português com P0001 ("Pedido cancelado não recebe
 // pagamento.") e `mensagemDeErroDoPainel` as esconderia; está fora das pastas
@@ -73,6 +76,13 @@ const EXCECOES: Excecao[] = [
     contexto: /salvarConfigDoCartao/,
     motivo:
       "O erro vem de salvarConfigDoCartao (src/lib/config-do-cartao.ts), que lança só frases curadas em português ('Só o administrador da loja pode mudar o cartão pelo app.'); o texto cru do Postgres fica no console lá.",
+  },
+  {
+    arquivo: "src/views/admin/AdminProductFormView.tsx",
+    chamadaContem: "e instanceof ErroDeCategoria",
+    contexto: /await addCategory\(/,
+    motivo:
+      "O ramo só mostra e.message quando o erro é ErroDeCategoria (src/lib/gestao-de-categorias.ts), classe que só nasce com frase em português escrita para a lojista (nome reservado, 'Não foi possível mudar a categoria…' ou mensagemDaFalhaDeCategoria, que troca o texto cru do Postgres por frase nossa); qualquer outro erro cai na frase fixa 'Erro ao salvar categoria'.",
   },
 ];
 
@@ -381,6 +391,36 @@ describe("painel sem erro cru — toast não mostra error.message", () => {
       ).toEqual([]);
       expect(
         acharErroCru(curada, "src/components/admin/settings/OutroCard.tsx"),
+      ).toHaveLength(1);
+    });
+
+    it("a mensagem de ErroDeCategoria passa no Criar setor; em outro arquivo, não", () => {
+      const criarSetor = `
+        try {
+          await addCategory({ name: nome, description: "", isActive: true }, true);
+        } catch (e) {
+          toast.error(
+            e instanceof ErroDeCategoria
+              ? e.message
+              : "Erro ao salvar categoria",
+            { id: loadingId },
+          );
+        }`;
+      expect(
+        acharErroCru(criarSetor, "src/views/admin/AdminProductFormView.tsx"),
+      ).toEqual([]);
+      expect(
+        acharErroCru(criarSetor, "src/views/admin/AdminOutraView.tsx"),
+      ).toHaveLength(1);
+    });
+
+    it("em AdminProductFormView, um toast com o erro cru de outro tipo ainda é pego", () => {
+      const solto = `
+        try { await addCategory(x, true); } catch (e) {
+          toast.error(e.message);
+        }`;
+      expect(
+        acharErroCru(solto, "src/views/admin/AdminProductFormView.tsx"),
       ).toHaveLength(1);
     });
 

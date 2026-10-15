@@ -152,6 +152,11 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   // desconhecida nunca fica "confirmada").
   ["store_address", "texto"],
   ["store_description", "texto"],
+  // 20261239000000: razão social, CNPJ/CPF e e-mail de atendimento — mesma
+  // razão: sem entrada aqui o save "grava" mas o comparador acusa falha.
+  ["store_legal_name", "texto"],
+  ["store_legal_document", "texto"],
+  ["store_support_email", "texto"],
   ["origin_cep", "texto"],
   ["shipping_provider", "texto"],
   ["enabled_shipping_methods", "texto_array"],
@@ -671,6 +676,18 @@ export function StoreProvider({
         "storeDescription",
         undefined,
       ),
+      // 20261239000000: quem é a loja (opcional; ausente = a loja não disse).
+      storeLegalName: getVal("store_legal_name", "storeLegalName", undefined),
+      storeLegalDocument: getVal(
+        "store_legal_document",
+        "storeLegalDocument",
+        undefined,
+      ),
+      storeSupportEmail: getVal(
+        "store_support_email",
+        "storeSupportEmail",
+        undefined,
+      ),
       originCep: getVal("origin_cep", "originCep", undefined),
       shippingProvider: getVal(
         "shipping_provider",
@@ -1137,6 +1154,14 @@ export function StoreProvider({
           dbUpdates.store_address = updates.storeAddress;
         if (updates.storeDescription !== undefined)
           dbUpdates.store_description = updates.storeDescription;
+        // 20261239000000: quem é a loja (razão social, CNPJ/CPF, e-mail de
+        // atendimento) — pela RPC genérica, fora do pacote de identidade.
+        if (updates.storeLegalName !== undefined)
+          dbUpdates.store_legal_name = updates.storeLegalName;
+        if (updates.storeLegalDocument !== undefined)
+          dbUpdates.store_legal_document = updates.storeLegalDocument;
+        if (updates.storeSupportEmail !== undefined)
+          dbUpdates.store_support_email = updates.storeSupportEmail;
         if (updates.originCep !== undefined)
           dbUpdates.origin_cep = updates.originCep;
         if (updates.shippingProvider !== undefined)

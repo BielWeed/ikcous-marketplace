@@ -11,6 +11,7 @@ import {
   Package,
   RefreshCw,
   RotateCcw,
+  ShieldCheck,
   ShoppingBag,
   Star,
   TriangleAlert,
@@ -47,6 +48,11 @@ const APARENCIA: Record<
     cor: "border-violet-500/20 bg-violet-500/10 text-violet-400",
     rotulo: "Devolução",
   },
+  privacidade: {
+    Icone: ShieldCheck,
+    cor: "border-teal-500/20 bg-teal-500/10 text-teal-400",
+    rotulo: "Privacidade",
+  },
   recebimento: {
     Icone: Wallet,
     cor: "border-teal-500/20 bg-teal-500/10 text-teal-400",
@@ -74,6 +80,7 @@ const NOME_DA_FONTE = new Map<TipoDeAviso, string>([
   ["pedido", "pedidos"],
   ["cancelamento", "cancelamentos de clientes"],
   ["devolucao", "devoluções"],
+  ["privacidade", "pedidos de privacidade"],
   ["recebimento", "pagamentos por marcar"],
   ["pergunta", "perguntas"],
   ["avaliacao", "avaliações"],

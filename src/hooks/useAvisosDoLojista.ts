@@ -112,6 +112,22 @@ async function buscarDevolucoesSolicitadas(): Promise<number> {
   return contagemDe(lista.contagem, "solicitada");
 }
 
+// 14/10/2026: pedidos de privacidade (exclusao de conta, correcao de e-mail) que
+// a cliente abriu e a loja ainda nao respondeu. So conta (`head`, sem trazer
+// linha nenhuma); a RLS deixa o administrador ver os de todas. Resposta sem
+// numero e FALHA da fonte, nunca "zero pedido": o prazo legal corre.
+async function buscarPedidosDePrivacidadeAbertos(): Promise<number> {
+  const { count, error } = await supabase
+    .from("pedidos_de_privacidade")
+    .select("id", { count: "exact", head: true })
+    .eq("situacao", "aberto");
+  if (error) throw error;
+  if (typeof count !== "number") {
+    throw new Error("resposta inesperada de pedidos_de_privacidade");
+  }
+  return count;
+}
+
 // `.is(null)` e nao "null ou string vazia": o SQL do painel trata resposta em
 // branco como pendente, mas o app nunca grava uma — as duas telas de resposta
 // barram com `if (!replyText.trim()) return` (AdminReviewsView) antes de
@@ -235,11 +251,12 @@ async function buscarProdutosComEstoqueBaixo(
 }
 
 /**
- * Junta as sete fontes de aviso do lojista numa lista so (a quinta,
+ * Junta as oito fontes de aviso do lojista numa lista so (a quinta,
  * devolucao, entrou com o plano 2026-09-26; a sexta, cancelamento do cliente,
- * e a setima, recebimento por marcar, em 14/10/2026).
+ * e a setima, pedido de privacidade, e a oitava, recebimento por marcar, em
+ * 14/10/2026).
  *
- * Falha parcial nao derruba a tela: as sete consultas correm em
+ * Falha parcial nao derruba a tela: as oito consultas correm em
  * `Promise.allSettled`, e a que cair entra em `fontesComFalha` enquanto as
  * outras seguem. Tela em branco por causa de uma consulta e pior que tela
  * incompleta e honesta.
@@ -271,6 +288,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rProdutos,
       rDevolucoes,
       rCancelamentos,
+      rPrivacidade,
       rRecebimentos,
     ] = await Promise.allSettled([
       buscarPedidosPendentes(),
@@ -283,6 +301,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       ),
       buscarDevolucoesSolicitadas(),
       buscarCancelamentosDoCliente(),
+      buscarPedidosDePrivacidadeAbertos(),
       buscarRecebimentosPorMarcar(),
     ]);
 
@@ -307,6 +326,9 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rCancelamentos.status === "fulfilled" ? rCancelamentos.value : [];
     if (rCancelamentos.status === "rejected") falhas.push("cancelamento");
 
+    const pedidosDePrivacidadeAbertos =
+      rPrivacidade.status === "fulfilled" ? rPrivacidade.value : 0;
+    if (rPrivacidade.status === "rejected") falhas.push("privacidade");
     const recebimentosPorMarcar =
       rRecebimentos.status === "fulfilled" ? rRecebimentos.value : [];
     if (rRecebimentos.status === "rejected") falhas.push("recebimento");
@@ -346,6 +368,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
         produtos,
         devolucoesSolicitadas,
         cancelamentosDoCliente,
+        pedidosDePrivacidadeAbertos,
         recebimentosPorMarcar,
       }),
     );

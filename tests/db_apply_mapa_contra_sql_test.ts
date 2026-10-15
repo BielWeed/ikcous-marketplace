@@ -108,7 +108,11 @@ function corposDeFuncao(sql) {
   // Literais dentro da função de propósito: `new RegExp` acorda o
   // security/detect-non-literal-regexp, e um literal reavaliado a cada chamada
   // já nasce com `lastIndex` zerado.
-  const abertura = /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+(?:public\.)?(\w+)/gi;
+  // `CREATE FUNCTION` puro tambem conta (20261238000000 NASCE a funcao do gatilho; o pre-voo recusa se ela ja existe).
+  // (Duas alternativas em vez de um grupo opcional: o grupo opcional com `\s+` dentro dá altura de estrela 2 e o
+  // security/detect-unsafe-regex o acusa; a alternância casa o mesmo texto.)
+  const abertura =
+    /(?:CREATE\s+OR\s+REPLACE|CREATE)\s+FUNCTION\s+(?:public\.)?(\w+)/gi;
   let cabecalho = abertura.exec(texto);
   while (cabecalho) {
     const rotulo = /\$\w*\$/g;
@@ -157,9 +161,32 @@ function corpoDaMigration(arquivo, funcao) {
   assertEquals(
     definicoes.length,
     1,
-    `${arquivo}: esperava exatamente 1 CREATE OR REPLACE FUNCTION de ${funcao}, achei ${definicoes.length}. Este arquivo cria: ${[...corpos.keys()].join(", ") || "nenhuma função"}`,
+    `${arquivo}: esperava exatamente 1 CREATE [OR REPLACE] FUNCTION de ${funcao}, achei ${definicoes.length}. Este arquivo cria: ${[...corpos.keys()].join(", ") || "nenhuma função"}`,
   );
   return definicoes[0];
+}
+
+/**
+ * Como `corpoDaMigration`, mas aceita SOBRECARGAS: a migration que troca o corpo de DUAS assinaturas da MESMA função
+ * (20261240000000: `answer_question_atomic(uuid,text)` e `(uuid,text,uuid)`) tem dois `CREATE OR REPLACE` do mesmo nome.
+ * Só vale quando as assinaturas são DISTINTAS; a mesma função criada duas vezes com a mesma assinatura continua
+ * reprovando, pela mensagem de `corpoDaMigration`. O db-apply lê UMA das sobrecargas (a primeira que o catálogo devolve),
+ * então cada marcador do mapa tem de casar na contagem declarada em CADA uma delas — é isso que esta varredura exige.
+ */
+function corposDaMigration(arquivo, funcao) {
+  const definicoes = corposDeFuncao(lerMigration(arquivo)).get(funcao) ?? [];
+  if (definicoes.length > 1) {
+    const sobrecargas = definicoes.map((corpo) => ({
+      corpo,
+      assinatura: corpo.slice(0, corpo.indexOf(")") + 1),
+    }));
+    if (
+      new Set(sobrecargas.map((o) => o.assinatura)).size === sobrecargas.length
+    ) {
+      return sobrecargas;
+    }
+  }
+  return [{ corpo: corpoDaMigration(arquivo, funcao), assinatura: null }];
 }
 
 const SQL_SINTETICO = `-- Rascunho velho, fora de qualquer funcao: SELECT ANTIGO FROM x;
@@ -279,15 +306,20 @@ Deno.test("cada marcador do mapa casa no .sql da própria migration, na contagem
         checagemBemFormada(checagem),
         `${arquivo}: entrada malformada no mapa — o db-apply a trataria como "sem verificação"`,
       );
-      const corpo = corpoDaMigration(arquivo, checagem.funcao);
+      const definicoes = corposDaMigration(arquivo, checagem.funcao);
       checagensConferidas += 1;
       for (const marcador of checagem.esperado) {
         marcadoresConferidos += 1;
-        const r = conferirMarcador(corpo, marcador);
-        if (r.ok) continue;
-        divergencias.push(
-          `${arquivo} / ${checagem.funcao}: aparece ${r.achou}x no corpo da função, o mapa declara ${r.esperado}x — ${JSON.stringify(r.texto.slice(0, 70))}`,
-        );
+        for (const { corpo, assinatura } of definicoes) {
+          const r = conferirMarcador(corpo, marcador);
+          if (r.ok) continue;
+          const sobrecarga = assinatura
+            ? ` [${assinatura.slice(assinatura.indexOf("("))}]`
+            : "";
+          divergencias.push(
+            `${arquivo} / ${checagem.funcao}${sobrecarga}: aparece ${r.achou}x no corpo da função, o mapa declara ${r.esperado}x — ${JSON.stringify(r.texto.slice(0, 70))}`,
+          );
+        }
       }
     }
   }

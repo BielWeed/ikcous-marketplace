@@ -282,6 +282,8 @@ export function htmlDoPedido(dados: {
     pedido?.payment_method,
     pedido?.metodo_online,
     canal,
+    // Cupom de 100%: o comprovante diz "Sem valor a pagar", nao "na entrega".
+    { total, subtotal: pedido?.subtotal, discount: pedido?.discount, shipping: frete },
   );
   const loja = String(nomeDaLoja ?? "").trim();
 
