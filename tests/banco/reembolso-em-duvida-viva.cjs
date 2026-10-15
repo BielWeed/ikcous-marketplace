@@ -22,6 +22,9 @@
  *               outras linhas e o valor dela segue no saldo como "por fora" mesmo depois que a linha fecha; duas
  *               parciais somam. O painel nunca devolve disponível negativo, diz se a linha foi substituída, e a
  *               reemissão (corpo novo) recusa a linha que pode ter saído e reemite a que provadamente não saiu.
+ *  MARCAS (R2)  (dívida do #890) registro em order_refund_prova com as duas marcas NULL não tira a falhou da conta
+ *               em dúvida nem reserva a linha viva; a 'concluido' com concluido_em NULL e a marca por fora fica
+ *               reservada, a já somada não.
  *  CORRIDA B    linha nova nasce enquanto a saída do pedido cancelado espera o pedido: a re-trava das linhas faz
  *               a marca da edge esperar e achar 0 linha (sem ela, um em_processamento fantasma num estornado).
  *  ACL          o painel e as saídas: anon sem EXECUTE, logado comum recusado (42501); as duas regras só do servidor.
@@ -29,7 +32,8 @@
  *               pré-voo recusa corpo divergente SEM escrever.
  *  MUTANTES     o mesmo comportamento esperado, rodado sobre corpos sabotados, FICA VERMELHO: sem a regra do legado,
  *               sem o filtro da substituída (nos dois lugares, e só na regra), sem a marca no autorizar, sem os 7
- *               dias na espera, sem a marca na espera.
+ *               dias na espera, sem a marca na espera, o reservado sem o filtro da marca ou sem o ramo da concluída
+ *               não somada, o em dúvida (painel e saldo) tirando a linha só por ter registro de marcas.
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-em-duvida-viva.cjs
  */
@@ -911,6 +915,87 @@ async function parcialPorForaNaoFicaEmDuvida() {
   assert.equal(Number(p.reservado_por_fora), 0, "falhou não está viva no MP");
 }
 
+/**
+ * (R2 do revisor do #890) Registro em order_refund_prova SEM a marca por fora (as duas marcas NULL: nenhuma porta
+ * grava esse estado hoje, mas os filtros têm de tratar). Quem decide é a MARCA, não a existência do registro: a
+ * linha viva NÃO fica reservada por fora e a falhou que pode ter saído SEGUE em dúvida.
+ */
+async function registroSemMarcaNaoEPorFora() {
+  await semearPessoas();
+  const o = await pedido({ total: 300, status: "cancelled" });
+  const viva = await linha(o, {
+    status: "em_processamento",
+    valor: 100,
+    postEm: new Date(),
+  });
+  const duvida = await linha(o, { status: "falhou", valor: 50, tentativas: 1 });
+  await C.query(
+    "INSERT INTO public.order_refund_prova (refund_id, substituida_por_manual_em, por_fora_liberado_em) VALUES ($1, NULL, NULL), ($2, NULL, NULL)",
+    [viva, duvida],
+  );
+  assert.equal(
+    await pode(duvida),
+    true,
+    "falhou sem diagnóstico pode ter saído",
+  );
+  const p = await painel(o);
+  assert.equal(Number(p.em_voo), 100);
+  assert.equal(
+    Number(p.em_duvida),
+    50,
+    "o registro SEM a marca por fora tirou a linha da conta em dúvida",
+  );
+  assert.equal(
+    Number(p.reservado_por_fora),
+    0,
+    "o registro SEM a marca por fora reservou a linha viva",
+  );
+  assert.equal(Number(p.manual), 0);
+  assert.equal(Number(p.disponivel), 150, "300 − 100 em voo − 50 em dúvida");
+  assert.equal(await saldo(o), 150, "o saldo contou diferente do painel");
+}
+
+/**
+ * (R2 do revisor do #890) A linha 'concluido' com concluido_em NULL (o MP respondeu, o valor ainda não foi somado
+ * a valor_estornado) e com a marca por fora segue RESERVADA, como a viva. A concluída JÁ somada (concluido_em
+ * preenchido), com a mesma marca, não é reservada (o controle).
+ */
+async function concluidaNaoSomadaSegueReservada() {
+  await semearPessoas();
+  const o = await pedido({
+    total: 300,
+    status: "cancelled",
+    valorEstornado: 40,
+  });
+  const naoSomada = await linha(o, {
+    status: "concluido",
+    valor: 100,
+    concluidoEm: null,
+    mp: `MP-41-NS-${SEQ}`,
+  });
+  const somada = await linha(o, {
+    status: "concluido",
+    valor: 40,
+    concluidoEm: new Date(),
+    mp: `MP-41-S-${SEQ}`,
+  });
+  await C.query(
+    "INSERT INTO public.order_refund_prova (refund_id, por_fora_liberado_em) VALUES ($1, now()), ($2, now())",
+    [naoSomada, somada],
+  );
+  const p = await painel(o);
+  assert.equal(Number(p.em_voo), 100, "a concluída não somada está em voo");
+  assert.equal(
+    Number(p.reservado_por_fora),
+    100,
+    "a concluída AINDA NÃO SOMADA com a marca por fora não ficou reservada (ou a já somada entrou)",
+  );
+  assert.equal(Number(p.em_duvida), 0);
+  assert.equal(Number(p.manual), 140, "o por fora conta em qualquer status");
+  assert.equal(Number(p.disponivel), 20, "300 − 40 − 100 em voo − 140 manual");
+  assert.equal(await saldo(o), 20, "o saldo contou diferente do painel");
+}
+
 /** DISPONÍVEL nunca negativo no painel (achado C): 100 − 100 em voo − 100 manual. */
 async function disponivelNuncaNegativo() {
   const { orderId, dev, refund } = await devolucaoConcluida({
@@ -1025,6 +1110,14 @@ prova(
 prova(
   "PARCIAL POR FORA (R2): a única linha, falhou e que pode ter saído, resolvida pela saída parcial -> o painel diz em_duvida = 0",
   () => emTransacao(parcialPorForaNaoFicaEmDuvida),
+);
+prova(
+  "REGISTRO SEM MARCA (R2 do #890): order_refund_prova com as duas marcas NULL -> a viva não é reservada, a falhou que pode ter saído segue em dúvida",
+  () => emTransacao(registroSemMarcaNaoEPorFora),
+);
+prova(
+  "CONCLUÍDA NÃO SOMADA (R2 do #890): 'concluido' com concluido_em NULL e a marca por fora fica reservada; a já somada não",
+  () => emTransacao(concluidaNaoSomadaSegueReservada),
 );
 prova(
   "DISPONÍVEL (C): 100 − 100 em voo − 100 manual = −100 na conta crua; o painel devolve 0",
@@ -1517,6 +1610,51 @@ const MUTANTES = [
         ["'reservado_por_fora', v_reservado,", "'reservado_por_fora', 0,"],
       ]),
     morre: [parcialNaoEstorna, disponivelNuncaNegativo],
+  },
+  {
+    // (R2 do #890) o reservado conta toda linha viva com registro de marcas, com ou sem a marca por fora
+    nome: "o RESERVADO do painel sem o filtro da marca por fora",
+    sabotar: () =>
+      sabotar(SIG.painel, [
+        ["     AND pr.por_fora_liberado_em IS NOT NULL\n", ""],
+      ]),
+    morre: [registroSemMarcaNaoEPorFora],
+  },
+  {
+    // (R2 do #890) o reservado esquece a concluída ainda não somada
+    nome: "o RESERVADO do painel sem o ramo 'concluido AND concluido_em IS NULL'",
+    sabotar: () =>
+      sabotar(SIG.painel, [
+        [
+          "AND pr.por_fora_liberado_em IS NOT NULL\n     AND (r.status IN ('solicitado', 'em_processamento')\n          OR (r.status = 'concluido' AND r.concluido_em IS NULL));",
+          "AND pr.por_fora_liberado_em IS NOT NULL\n     AND (r.status IN ('solicitado', 'em_processamento'));",
+        ],
+      ]),
+    morre: [concluidaNaoSomadaSegueReservada],
+  },
+  {
+    // (R2 do #890) o em dúvida do painel tira a linha só por ter registro de marcas (sem olhar a marca por fora)
+    nome: "o em_duvida do painel com o filtro por fora SEM a condição da marca",
+    sabotar: () =>
+      sabotar(SIG.painel, [
+        [
+          "                        AND pf.por_fora_liberado_em IS NOT NULL)\n     AND public.order_refund__pode_ter_saido(r.id);",
+          ")\n     AND public.order_refund__pode_ter_saido(r.id);",
+        ],
+      ]),
+    morre: [registroSemMarcaNaoEPorFora],
+  },
+  {
+    // (R2 do #890) o mesmo defeito no saldo (a fonte do disponível)
+    nome: "o saldo com o filtro por fora do em dúvida SEM a condição da marca",
+    sabotar: () =>
+      sabotar(SIG.saldo, [
+        [
+          "                                           AND pf.por_fora_liberado_em IS NOT NULL)\n                        AND public.order_refund__pode_ter_saido(r.id)), 0)",
+          ")\n                        AND public.order_refund__pode_ter_saido(r.id)), 0)",
+        ],
+      ]),
+    morre: [registroSemMarcaNaoEPorFora],
   },
   {
     nome: "o painel sem o GREATEST (disponível negativo)",
