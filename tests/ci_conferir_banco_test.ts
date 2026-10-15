@@ -13124,10 +13124,11 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
       // e ficam FORA desta guarda). Se um dia o `r` precisar de um id num JOIN/WHERE, esta guarda barra de proposito:
       // a pessoa tem de provar que ele nao sai no log. Contagens `count(x.pedido)` e `count(x.linha)` sao permitidas.
       const semCountEstrela = semContagem.replace(/count\(\*\)/gi, "count()");
+      // `tem_mp_refund_id` e a unica coluna *_id legitima do bloco `r`: um BOOLEANO calculado na CTE `lin`
+      // (mp_refund_id IS NOT NULL), nunca o id. Sai antes da regra generica de sufixo `_id`.
+      const semBooleano = semCountEstrela.replace(/\btem_mp_refund_id\b/g, "");
       assert(
-        !/\b(?:id|pedido|linha|user_id|order_id|refund_id|mp_refund_id|payment_id|gateway_payment_id)\b/i.test(
-          semCountEstrela,
-        ),
+        !/\b(?:id|pedido|linha|\w+_id)\b/i.test(semBooleano),
         "identificador individual (id, o.id, r.id, pedido, linha, *_id) aparece na saida da 42m",
       );
       assert(
