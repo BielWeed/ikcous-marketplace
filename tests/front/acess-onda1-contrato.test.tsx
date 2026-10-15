@@ -128,7 +128,9 @@ describe("achado 2 — página de produto e cupom: botões de ícone com nome", 
     expect(src).toContain('aria-label="Foto anterior"');
     expect(src).toContain('aria-label="Próxima foto"');
     expect(src).toContain("aria-label={`Foto ${index + 1} de");
-    expect(src).toMatch(/aria-current=\{\s*index === currentImageIndex/);
+    // A bolinha atual segue `indiceAtivo` (a foto da variação, ou a do índice
+    // navegado) -- antes era direto `currentImageIndex`.
+    expect(src).toMatch(/aria-current=\{\s*index === indiceAtivo/);
   });
 
   it("coração de favoritar nomeado nos dois estados", () => {
