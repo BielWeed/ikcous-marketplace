@@ -6,6 +6,7 @@ import { defineConfig, loadEnv } from "vite";
 import type { UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
+import { escalasEnxutasDoGrafico } from "./scripts/escalasEnxutasDoGrafico";
 import { portaoDividido } from "./scripts/portaoDividido";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
 // Endereço público de CADA loja — MESMO corpo de `resolverEnderecoPublico`
@@ -136,6 +137,10 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     },
     plugins: [
       identity.plugin,
+      // O recharts mantém o d3-scale INTEIRO por um acesso dinâmico; os gráficos
+      // do painel só usam 3 escalas (~6 kB brotli). Detalhes e a trava que
+      // protege o caso `scale="time"` em scripts/escalasEnxutasDoGrafico.ts.
+      escalasEnxutasDoGrafico(),
       ...(process.env.ANALYZE === "true"
         ? [
             visualizer({
