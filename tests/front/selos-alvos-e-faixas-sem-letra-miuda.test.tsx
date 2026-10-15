@@ -229,15 +229,29 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
     }
 
     it("'Desfazer' da ficha do pedido tem 44px (h-11)", () => {
-      const fonte = semComentarios(
+      // O botão mora em `DesfazerRecebimento` (mesmo botão da lista e da
+      // ficha); a ficha passa a altura pelo `className` e a peça aplica esse
+      // `className` em TODOS os botões "Desfazer" que renderiza.
+      const ficha = semComentarios(
         lerFonte("src/components/admin/orders/OrderDetail.tsx"),
       );
-      const texto = /\n\s*Desfazer\s*\n/.exec(fonte);
-      expect(texto, "o botão Desfazer precisa existir na ficha").not.toBeNull();
-      const abertura = fonte.lastIndexOf("<button", texto?.index ?? 0);
-      const tag = tagQueContem(fonte, abertura + 1);
+      const abertura = ficha.indexOf("<DesfazerRecebimento");
+      expect(
+        abertura,
+        "a ficha precisa usar o botão Desfazer",
+      ).toBeGreaterThanOrEqual(0);
+      const tag = tagQueContem(ficha, abertura + 1);
       expect(tag).toContain("h-11");
       expect(tag).not.toContain("h-10");
+
+      const peca = semComentarios(
+        lerFonte("src/components/admin/orders/DesfazerRecebimento.tsx"),
+      );
+      const botoes = peca.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+      expect(botoes.length).toBeGreaterThan(0);
+      for (const botao of botoes) {
+        expect(botao).toContain("className={className}");
+      }
     });
 
     it.each([
