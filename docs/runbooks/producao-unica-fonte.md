@@ -1215,8 +1215,8 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
 
   33. **Lote de UMA migration, de apply normal: `20261232000000` (a grade do CRM mede a recencia do mesmo
       instante da lista; numeros do painel, sem permissao nova).** **So pode ser APLICADO DEPOIS da
-      20261227000000 (item 27), que ainda espera a decisao do dono porque muda o significado da taxa de
-      devolucao:** o pre-voo recusa (`B1_BASELINE_DIVERGENT`) com o corpo da `20261199000000` no ar, e a `33b`
+      20261227000000 (item 27), aplicada em 15/10/2026 (IKCOUS e Savy; runs 38680605921 e 38680852644):** o
+      pre-voo recusa (`B1_BASELINE_DIVERGENT`) com o corpo da `20261199000000` no ar, e a `33b`
       reprova na linha do corpo. Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e
       Savy). Troca o corpo de UMA funcao (`crm_visao`) por `CREATE OR REPLACE`, com o corpo da `20261227000000` e UMA
       linha diferente (a ancora do periodo), sem tocar dado, assinatura, tipo de retorno, SECURITY DEFINER, STABLE,
