@@ -180,12 +180,15 @@ const CompactVariantDropdown = React.memo(function CompactVariantDropdown({
                 <button
                   key={v.id}
                   type="button"
+                  // Esgotada não se escolhe (igual aos botões da página).
+                  disabled={variantStock <= 0 && !isSelected}
                   onClick={(e) => {
                     e.stopPropagation();
                     onChange(v.value);
                     onToggle();
                   }}
                   className={cn(
+                    "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-zinc-700",
                     "w-full text-left px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-between gap-2 select-none",
                     isSelected
                       ? "bg-primary text-white font-extrabold shadow-sm"
@@ -593,23 +596,17 @@ export const ProductView = React.memo(function ProductView({
     Math.max(fotosDaGaleria.length - 1, 0),
   );
 
-  // Tocar numa variação escolhe; tocar de novo na mesma desmarca. A quantidade
-  // já escolhida nunca passa do estoque da combinação nova: a cliente que
-  // pediu 5 do vermelho (10) e troca para o azul (2) fica com 2 e é avisada,
-  // em vez de a tela mostrar 5 e o carrinho cortar depois.
-  const alternarVariante = (grupo: string, valor: string) => {
-    const desmarcando = selectedVariants[grupo] === valor;
-    const proxima = desmarcando
-      ? Object.fromEntries(
-          Object.entries(selectedVariants).filter(([nome]) => nome !== grupo),
-        )
-      : { ...selectedVariants, [grupo]: valor };
+  // ESCOLHER uma variação (usado pelos botões da página e pelo menu da barra
+  // fixa de baixo). A quantidade já escolhida nunca passa do estoque da
+  // combinação nova: a cliente que pediu 5 do vermelho (10) e troca para o
+  // azul (2) fica com 2 e é avisada, em vez de a tela mostrar 5 e o carrinho
+  // cortar depois. Se a variação tem foto, a galeria anda até ela.
+  const escolherVariante = (grupo: string, valor: string) => {
+    const proxima = { ...selectedVariants, [grupo]: valor };
     setSelectedVariants(proxima);
-    // Escolher uma variação que tem foto leva a galeria até a foto dela.
-    const fotoDaVariante = desmarcando
-      ? undefined
-      : product.variants?.find((v) => v.name === grupo && v.value === valor)
-          ?.imageUrl;
+    const fotoDaVariante = product.variants?.find(
+      (v) => v.name === grupo && v.value === valor,
+    )?.imageUrl;
     if (fotoDaVariante) {
       const posicao = fotosDaEscolha(proxima).indexOf(fotoDaVariante);
       if (posicao >= 0) setCurrentImageIndex(posicao);
@@ -621,6 +618,19 @@ export const ProductView = React.memo(function ProductView({
         description: `Ajustamos a quantidade para ${estoque}.`,
       });
     }
+  };
+  // Só os botões da página desmarcam ao tocar de novo na escolhida; o menu da
+  // barra fixa nunca desmarcou e continua só escolhendo (`escolherVariante`).
+  const alternarVariante = (grupo: string, valor: string) => {
+    if (selectedVariants[grupo] !== valor) {
+      escolherVariante(grupo, valor);
+      return;
+    }
+    setSelectedVariants(
+      Object.fromEntries(
+        Object.entries(selectedVariants).filter(([nome]) => nome !== grupo),
+      ),
+    );
   };
   const variantImage = selectedVariantObjects.find(
     (v) => v?.imageUrl,
@@ -1776,12 +1786,7 @@ export const ProductView = React.memo(function ProductView({
                         name={name}
                         values={values!}
                         selectedValue={selectedVariants[name] || ""}
-                        onChange={(val) =>
-                          setSelectedVariants((prev) => ({
-                            ...prev,
-                            [name]: val,
-                          }))
-                        }
+                        onChange={(val) => escolherVariante(name, val)}
                         isOpen={activeDropdown === name}
                         onToggle={() =>
                           setActiveDropdown((prev) =>
