@@ -135,6 +135,7 @@ describe("aviso de versão nova: faixa discreta para a cliente, cartão só no p
       "auth",
       "login",
       "product-detail",
+      "favorites",
     ]) {
       montar(view);
       expect(texto(), view).not.toContain(FAIXA);

@@ -74,9 +74,11 @@ const TELAS_DE_COMPRA: ReadonlySet<View> = new Set([
 
 // A faixa da cliente também não nasce na página do produto: a barra de comprar
 // fica colada em cima da navegação, exatamente onde a faixa mora. Fica armada
-// e aparece na próxima tela segura (o mesmo motivo do convite de push).
+// e aparece na próxima tela segura (o mesmo motivo do convite de push). Favoritos
+// entra pelo mesmo motivo: o botão "Descobrir Mais" mora no mesmo lugar.
 const TELAS_SEM_FAIXA_DA_CLIENTE: ReadonlySet<View> = new Set([
   "product-detail",
+  "favorites",
 ]);
 
 // Viveu dentro do App.tsx até 04/09/2026; ganhou arquivo próprio para a
