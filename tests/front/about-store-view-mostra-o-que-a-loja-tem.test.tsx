@@ -296,9 +296,7 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     const svg = ancora.querySelector("svg")!;
     // O vértice de baixo do corpo (o `M x,y` do caminho) encosta no fundo
     // do viewBox, no meio da largura — nenhuma sobra entre a ponta e a base.
-    const ponta = /^M([\d.]+),([\d.]+)/.exec(
-      corpo.getAttribute("d") ?? "",
-    );
+    const ponta = /^M([\d.]+),([\d.]+)/.exec(corpo.getAttribute("d") ?? "");
     expect(ponta).not.toBeNull();
     expect(Number(ponta![1])).toBe(Number(svg.getAttribute("width")) / 2);
     expect(Number(ponta![2])).toBe(Number(svg.getAttribute("height")));
