@@ -316,10 +316,43 @@ export function resumir(itens: any[]) {
 }
 
 /**
+ * URGÊNCIA E VALIDADE DO PUSH (RFC 8030, cabeçalhos `Urgency` e `TTL`).
+ *
+ * `pushTextMessage(mensagem, {})` — o que `enviarParaInscritos` sempre fez —
+ * deixa a biblioteca (`@negrel/webpush@0.3.0`, `subscriber.ts`) assumir
+ * `Urgency: normal` e `TTL: 2419200` (28 dias). Num Android em economia de
+ * bateria (Doze), aviso `normal` pode esperar o aparelho "acordar" — o
+ * lojista via o "Pedido novo" horas depois. `high` (valor definido no RFC
+ * 8030 §5.3) pede ao serviço de push que entregue sem esperar.
+ *
+ * `OPCOES_DE_AVISO_AO_LOJISTA` vale para TODO aviso ao lojista — pedido novo,
+ * pedido pago, cancelamento, contestação, cobrança de cartão duplicada,
+ * estorno sem registro, devolução para conferir, cartão órfão. Só a urgência
+ * sobe; o TTL fica no padrão da biblioteca (28 dias), de propósito: vários
+ * desses avisos são o ÚNICO sinal do caso (cartão duplicado, estorno sem
+ * registro, devolução, contestação e cartão órfão não existem no painel de
+ * pedidos, só no console/no extrato do Mercado Pago), e `avisarAdminUmaVez`
+ * dá o aviso por entregue assim que o push service responde 201. Um TTL curto
+ * faria um aparelho desligado perder esse sinal para sempre, em troca de
+ * evitar um "Pedido novo" velho — o defeito aqui era ATRASO, e a urgência o
+ * resolve.
+ *
+ * A campanha para clientes (`send-push`) não passa nada: continua `normal` /
+ * 28 dias, como sempre.
+ */
+export const OPCOES_DE_AVISO_AO_LOJISTA = {
+  urgency: webpush.Urgency.High,
+} as const;
+
+/**
  * Envia em lotes de 100 e devolve UM item por inscrição, na ordem de entrada.
  *
  * `aoDetectarMorta` é injetado para o teste conseguir observar a remoção sem
  * banco. Em produção é o DELETE em push_subscriptions.
+ *
+ * `opcoesDeEnvio` ({ urgency, ttl, topic }) vai direto para `pushTextMessage`.
+ * Ausente, o envio é byte a byte o de antes (`{}`: urgência normal, TTL de 28
+ * dias) — é o caso da campanha para clientes. Ver `OPCOES_DE_AVISO_AO_LOJISTA`.
  */
 export async function enviarParaInscritos({
   servidor,
@@ -328,6 +361,7 @@ export async function enviarParaInscritos({
   aoDetectarMorta,
   tamanhoDoLote = 100,
   rotulo = "push",
+  opcoesDeEnvio = {},
 }: any) {
   const itens: any[] = [];
 
@@ -346,7 +380,7 @@ export async function enviarParaInscritos({
               endpoint: sub.endpoint,
               keys: { p256dh: sub.p256dh, auth: sub.auth },
             })
-            .pushTextMessage(mensagem, {});
+            .pushTextMessage(mensagem, opcoesDeEnvio);
           return { sub, erro: null };
         } catch (erro) {
           return { sub, erro };
