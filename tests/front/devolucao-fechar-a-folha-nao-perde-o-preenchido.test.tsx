@@ -3,9 +3,16 @@
 // Fechar a folha de devolução/troca apagava TUDO o que a cliente tinha
 // preenchido (itens, motivo, texto, fotos) sem perguntar: o conteúdo da folha
 // é desmontado ao fechar, por toque fora, Esc ou o X. Agora, havendo algo
-// preenchido, fechar pede confirmação ("Descartar o que você preencheu?"); sem
-// nada preenchido, fecha direto, como sempre.
-import { act } from "react";
+// preenchido, fechar pede confirmação ("Descartar o que você preencheu?");
+// sem nada preenchido, fecha direto, como sempre.
+//
+// A pergunta é um painel DENTRO do conteúdo da folha, nunca um AlertDialog em
+// portal: no navegador real o AlertDialog (z-50) ficava ATRÁS da folha
+// (z-[130]) e o "guardião do clique pós-fecho" do sheet.tsx engolia o clique
+// dos botões do portal — a tela travava. Por isso os cliques aqui são de
+// verdade (pointerdown + pointerup + click) e os botões da pergunta têm de
+// estar dentro de [data-slot="sheet-content"].
+import { act, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -65,8 +72,15 @@ const ELEGIBILIDADE: ElegibilidadeDevolucao = {
   },
 };
 
+// Um item só, com uma unidade: já vem marcado.
+const ELEGIBILIDADE_UMA_UNIDADE: ElegibilidadeDevolucao = {
+  ...ELEGIBILIDADE,
+  itens: [{ ...ELEGIBILIDADE.itens[0], quantidade: 1, disponivel: 1 }],
+};
+
 const solicitar = vi.fn();
 const enviarFoto = vi.fn();
+const descartarFotos = vi.fn();
 const onAbertoMudou = vi.fn();
 
 let raiz: Root;
@@ -75,6 +89,8 @@ let hospedeiro: HTMLDivElement;
 beforeEach(() => {
   solicitar.mockReset();
   enviarFoto.mockReset();
+  descartarFotos.mockReset();
+  descartarFotos.mockResolvedValue(undefined);
   onAbertoMudou.mockReset();
   solicitar.mockResolvedValue({
     ok: true,
@@ -96,23 +112,32 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function montar() {
+// Dono do `aberto`, como a tela do pedido: fechar de verdade desmonta a folha.
+async function montar(elegibilidade = ELEGIBILIDADE) {
   const { SolicitarDevolucaoSheet } = await import(
     "@/components/devolucao/SolicitarDevolucaoSheet"
   );
-  await act(async () => {
-    raiz.render(
+  function Dono() {
+    const [aberto, setAberto] = useState(true);
+    return (
       <SolicitarDevolucaoSheet
-        aberto
-        onAbertoMudou={onAbertoMudou}
-        elegibilidade={ELEGIBILIDADE}
+        aberto={aberto}
+        onAbertoMudou={(valor) => {
+          onAbertoMudou(valor);
+          setAberto(valor);
+        }}
+        elegibilidade={elegibilidade}
         userId="u-1"
         enderecoDaLoja="Rua A, 10"
         horarioDaLoja="Seg a Sex, 9h às 18h"
         solicitar={solicitar}
         enviarFoto={enviarFoto}
-      />,
+        descartarFotos={descartarFotos}
+      />
     );
+  }
+  await act(async () => {
+    raiz.render(<Dono />);
   });
 }
 
@@ -130,9 +155,13 @@ function botao(
   );
 }
 
+// Toque de verdade: o guardião do sheet.tsx arma no pointerdown/pointerup de
+// quem está FORA do conteúdo da folha e engole o click seguinte.
 async function clicar(el: HTMLElement | null | undefined) {
   expect(el).toBeTruthy();
   await act(async () => {
+    el?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    el?.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
     el?.click();
     for (let i = 0; i < 10; i++) await Promise.resolve();
   });
@@ -141,13 +170,18 @@ async function clicar(el: HTMLElement | null | undefined) {
 async function apertarEsc() {
   await act(async () => {
     document.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      // `cancelable` como o teclado de verdade: sem ele `preventDefault` é nulo.
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
     );
     for (let i = 0; i < 10; i++) await Promise.resolve();
   });
 }
 
-const fecharPeloX = () => clicar(botao("Close", folha()));
+const fecharPeloX = () => clicar(botao("Fechar", folha()));
 
 async function escolherFoto() {
   const entrada = folha()?.querySelector<HTMLInputElement>(
@@ -169,6 +203,17 @@ const radio = (valor: string) =>
     `input[type="radio"][value="${valor}"]`,
   );
 
+async function ateARevisao(motivo: string, resolucao: string, metodo: string) {
+  await clicar(botao("Aumentar Tênis", folha()));
+  await clicar(botao("Continuar", folha()));
+  await clicar(radio(motivo));
+  if (motivo === "defeito") await escolherFoto();
+  await clicar(botao("Continuar", folha()));
+  await clicar(radio(resolucao));
+  await clicar(radio(metodo));
+  await clicar(botao("Continuar", folha()));
+}
+
 describe("SolicitarDevolucaoSheet — fechar não joga fora o que foi preenchido", () => {
   it("nada preenchido: o X fecha direto, sem pergunta", async () => {
     await montar();
@@ -188,13 +233,40 @@ describe("SolicitarDevolucaoSheet — fechar não joga fora o que foi preenchido
     expect(folha()).not.toBeNull();
   });
 
-  it("'Continuar preenchendo' mantém a folha e o que estava marcado", async () => {
+  it("a pergunta e os dois botões ficam DENTRO da folha (nada em portal)", async () => {
+    await montar();
+    await clicar(botao("Aumentar Tênis", folha()));
+    await fecharPeloX();
+
+    const dentro = (el: Element | null | undefined) =>
+      el?.closest('[data-slot="sheet-content"]') ?? null;
+    expect(dentro(aviso())).not.toBeNull();
+    expect(dentro(botao("Continuar preenchendo", aviso()))).not.toBeNull();
+    expect(dentro(botao("Descartar", aviso()))).not.toBeNull();
+    // E nenhum AlertDialog do Radix (portal no body) foi aberto.
+    expect(
+      document.querySelector('[data-slot="alert-dialog-content"]'),
+    ).toBeNull();
+  });
+
+  it("o foco inicial da pergunta é o 'Continuar preenchendo'", async () => {
+    await montar();
+    await clicar(botao("Aumentar Tênis", folha()));
+    await fecharPeloX();
+
+    expect(document.activeElement).toBe(
+      botao("Continuar preenchendo", aviso()),
+    );
+  });
+
+  it("'Continuar preenchendo' mantém a folha e o que estava marcado, e nada é apagado", async () => {
     await montar();
     await clicar(botao("Aumentar Tênis", folha()));
     await fecharPeloX();
     await clicar(botao("Continuar preenchendo", aviso()));
 
     expect(onAbertoMudou).not.toHaveBeenCalled();
+    expect(descartarFotos).not.toHaveBeenCalled();
     expect(aviso()).toBeNull();
     // A quantidade marcada continua lá: o passo 1 ainda deixa avançar.
     await clicar(botao("Continuar", folha()));
@@ -211,15 +283,21 @@ describe("SolicitarDevolucaoSheet — fechar não joga fora o que foi preenchido
 
     expect(onAbertoMudou).toHaveBeenCalledTimes(1);
     expect(onAbertoMudou).toHaveBeenCalledWith(false);
+    expect(folha()).toBeNull();
   });
 
-  it("Esc com algo preenchido também pergunta", async () => {
+  it("Esc com algo preenchido pergunta; Esc dentro da pergunta volta a preencher", async () => {
     await montar();
     await clicar(botao("Aumentar Tênis", folha()));
     await apertarEsc();
 
     expect(onAbertoMudou).not.toHaveBeenCalled();
     expect(aviso()?.textContent).toContain("Descartar o que você preencheu?");
+
+    await apertarEsc();
+    expect(aviso()).toBeNull();
+    expect(onAbertoMudou).not.toHaveBeenCalled();
+    expect(folha()).not.toBeNull();
   });
 
   it("motivo escolhido e foto anexada pedem confirmação", async () => {
@@ -234,15 +312,63 @@ describe("SolicitarDevolucaoSheet — fechar não joga fora o que foi preenchido
     expect(aviso()?.textContent).toContain("fotos");
   });
 
+  it("foto já enviada: 'Continuar' não apaga nada; 'Descartar' apaga uma vez só", async () => {
+    enviarFoto.mockResolvedValue({ ok: true, valor: "u-1/oi/abc.jpg" });
+    solicitar.mockResolvedValue({ ok: false, erro: "O servidor recusou." });
+    await montar();
+    await ateARevisao("defeito", "troca", "etiqueta_reversa");
+    await clicar(botao("Confirmar devolução", folha()));
+    expect(enviarFoto).toHaveBeenCalledTimes(1);
+    expect(folha()).not.toBeNull();
+
+    await fecharPeloX();
+    await clicar(botao("Continuar preenchendo", aviso()));
+    expect(descartarFotos).not.toHaveBeenCalled();
+
+    await fecharPeloX();
+    await clicar(botao("Descartar", aviso()));
+    expect(folha()).toBeNull();
+    expect(descartarFotos).toHaveBeenCalledTimes(1);
+    expect(descartarFotos).toHaveBeenCalledWith(["u-1/oi/abc.jpg"]);
+  });
+
+  it("desmarcar o item que já vinha marcado não conta como preenchido", async () => {
+    await montar(ELEGIBILIDADE_UMA_UNIDADE);
+    await clicar(botao("Diminuir Tênis", folha()));
+    await fecharPeloX();
+
+    expect(onAbertoMudou).toHaveBeenCalledWith(false);
+    expect(aviso()).toBeNull();
+  });
+
+  it("com o item que já vinha marcado e nada mais, fecha direto", async () => {
+    await montar(ELEGIBILIDADE_UMA_UNIDADE);
+    await fecharPeloX();
+
+    expect(onAbertoMudou).toHaveBeenCalledWith(false);
+    expect(aviso()).toBeNull();
+  });
+
+  it("enviando o pedido: fechar não oferece 'Descartar' e não fecha", async () => {
+    solicitar.mockReturnValue(new Promise(() => {}));
+    await montar();
+    await ateARevisao("tamanho_pequeno", "reembolso", "envio_proprio");
+    await clicar(botao("Confirmar devolução", folha()));
+    expect(solicitar).toHaveBeenCalledTimes(1);
+
+    await fecharPeloX();
+
+    expect(onAbertoMudou).not.toHaveBeenCalled();
+    expect(aviso()?.textContent).toContain("enviando");
+    expect(botao("Descartar", aviso())).toBeUndefined();
+    await clicar(botao("Aguardar", aviso()));
+    expect(aviso()).toBeNull();
+    expect(onAbertoMudou).not.toHaveBeenCalled();
+  });
+
   it("pedido enviado (protocolo na tela): fecha direto, nada a perder", async () => {
     await montar();
-    await clicar(botao("Aumentar Tênis", folha()));
-    await clicar(botao("Continuar", folha()));
-    await clicar(radio("tamanho_pequeno"));
-    await clicar(botao("Continuar", folha()));
-    await clicar(radio("reembolso"));
-    await clicar(radio("envio_proprio"));
-    await clicar(botao("Continuar", folha()));
+    await ateARevisao("tamanho_pequeno", "reembolso", "envio_proprio");
     await clicar(botao("Confirmar devolução", folha()));
     expect(
       document.querySelector('[data-testid="devolucao-sucesso"]'),
@@ -252,5 +378,6 @@ describe("SolicitarDevolucaoSheet — fechar não joga fora o que foi preenchido
 
     expect(onAbertoMudou).toHaveBeenCalledWith(false);
     expect(aviso()).toBeNull();
+    expect(descartarFotos).not.toHaveBeenCalled();
   });
 });
