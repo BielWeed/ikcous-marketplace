@@ -26,6 +26,7 @@ import {
   type ConfigDosSeisPassos,
   avisoDaFaixaDeCep,
   entradaDosSeisPassos,
+  entregaComAlcanceCurto,
   estadoDaEntrega,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
@@ -81,13 +82,28 @@ describe("estadoDaEntrega: o alcance entra na conta", () => {
     );
   });
 
-  it("alcance escrito num formato que o servidor não entende (nem o CEP da loja entra) -> pendente, como o aviso da tela de Frete", () => {
-    expect(
-      estadoDaEntrega(
-        { originCep: CEP_DE_RUA, localCepRange: "30000-000 a 31999-999" },
+  // O aviso do ramo "faixa PREENCHIDA em que nem o CEP da loja entra" é só
+  // aviso amarelo na tela de Frete: uma faixa legítima pode deixar o CEP da
+  // loja de fora (ex.: a loja atende só uma região da cidade, ou o CEP da loja
+  // fica em outro bairro). Quem escolheu uma faixa NÃO fica para sempre em 5/6.
+  it("faixa preenchida e legítima que deixa o CEP da loja de fora -> FEITO (o aviso amarelo segue só na tela de Frete)", () => {
+    const configs = [
+      // Faixa legítima de uma região, formato que o servidor entende.
+      { originCep: CEP_DE_RUA, localCepRange: "31000-000, 31999-999" },
+      // Formato que o servidor não entende: continua só aviso, não bloqueia.
+      { originCep: CEP_DE_RUA, localCepRange: "30000-000 a 31999-999" },
+    ];
+    for (const config of configs) {
+      // O aviso existe (a tela de Frete o mostra)...
+      expect(avisoDaFaixaDeCep(config), JSON.stringify(config)).not.toBeNull();
+      // ...mas não trava o cartão.
+      expect(estadoDaEntrega(config, false), JSON.stringify(config)).toBe(
+        "feito",
+      );
+      expect(entregaComAlcanceCurto(config), JSON.stringify(config)).toBe(
         false,
-      ),
-    ).toBe("pendente");
+      );
+    }
   });
 
   it("sem CEP completo continua pendente, com ou sem alcance; carregando continua carregando", () => {
@@ -105,19 +121,26 @@ describe("estadoDaEntrega: o alcance entra na conta", () => {
     ).toBe("carregando");
   });
 
-  it("é a MESMA função do aviso da tela de Frete: o passo só está feito quando avisoDaFaixaDeCep devolve null", () => {
-    const configs = [
+  it("é a MESMA função do aviso da tela de Frete: com a faixa vazia, o passo só está feito quando avisoDaFaixaDeCep devolve null; com a faixa preenchida, o aviso nunca o trava", () => {
+    const vazias = [
       { originCep: CEP_DE_RUA, localCepRange: "" },
-      { originCep: CEP_DE_RUA, localCepRange: ALCANCE_DA_CIDADE },
-      { originCep: CEP_DE_RUA, localCepRange: "30000-000 a 31999-999" },
       { originCep: CEP_GERAL_DE_CIDADE, localCepRange: "" },
-      { originCep: CEP_GERAL_DE_CIDADE, localCepRange: "38500-000, 38509-999" },
       { originCep: "01310100", localCepRange: undefined },
-      { originCep: "01310100", localCepRange: "01310-000, 01310-999" },
     ];
-    for (const config of configs) {
+    for (const config of vazias) {
       expect(estadoDaEntrega(config, false), JSON.stringify(config)).toBe(
         avisoDaFaixaDeCep(config) === null ? "feito" : "pendente",
+      );
+    }
+    const preenchidas = [
+      { originCep: CEP_DE_RUA, localCepRange: ALCANCE_DA_CIDADE },
+      { originCep: CEP_DE_RUA, localCepRange: "31000-000, 31999-999" },
+      { originCep: CEP_DE_RUA, localCepRange: "30000-000 a 31999-999" },
+      { originCep: CEP_GERAL_DE_CIDADE, localCepRange: "38500-000, 38509-999" },
+    ];
+    for (const config of preenchidas) {
+      expect(estadoDaEntrega(config, false), JSON.stringify(config)).toBe(
+        "feito",
       );
     }
   });
@@ -258,6 +281,41 @@ describe("o cartão do Início", () => {
     expect(texto).not.toContain("de 6 prontos");
     expect(texto).not.toMatch(/outros bairros/i);
     expect(texto).not.toContain("só vale para CEPs que começam com");
+  });
+
+  it("faixa preenchida que deixa o CEP da loja de fora: 'Loja pronta para vender' e o aviso amarelo continua no cartão e na tela de Frete", async () => {
+    const cfg = config({ localCepRange: "31000-000, 31999-999" });
+    const aviso = avisoDaFaixaDeCep(cfg);
+    expect(aviso).not.toBeNull();
+
+    await montar({ config: cfg });
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toContain("Loja pronta para vender");
+    expect(texto).not.toContain("de 6 prontos");
+    expect(texto).not.toMatch(/outros bairros/i);
+    expect(texto).toContain(aviso as string);
+
+    const hospedeiroDoFrete = document.createElement("div");
+    document.body.appendChild(hospedeiroDoFrete);
+    const raizDoFrete = createRoot(hospedeiroDoFrete);
+    await act(async () => {
+      raizDoFrete.render(
+        <FreteLocalBloco
+          valor={0}
+          onValor={() => {}}
+          faixa={cfg.localCepRange ?? ""}
+          onFaixa={() => {}}
+          coverage="national"
+          onCoverage={() => {}}
+          cidade="Belo Horizonte"
+          uf="MG"
+          cepDaLoja={cfg.originCep}
+        />,
+      );
+    });
+    expect(hospedeiroDoFrete.textContent).toContain(aviso as string);
+    await act(async () => raizDoFrete.unmount());
+    hospedeiroDoFrete.remove();
   });
 
   it("CEP geral da cidade (000) + alcance vazio: comportamento de antes, 'Loja pronta para vender'", async () => {

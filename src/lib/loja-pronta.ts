@@ -31,13 +31,17 @@ function cepCompleto(cep: string | null | undefined): boolean {
  * taxa 0 é "grátis na cidade"), que é exatamente o que a faixa do Frete diz em
  * "Na sua cidade". Enquanto a config carrega, "não sei".
  *
- * Com CEP, o passo ainda precisa do ALCANCE: o mesmo aviso amarelo que a tela
- * de Frete mostra (`avisoDaFaixaDeCep`) deixa o passo pendente — CEP de rua com
- * "Alcance por CEP" vazio só entrega para os mesmos 5 primeiros números do CEP
- * (um pedaço de bairro), e cliente de outro bairro, sem conta, vai embora.
- * É a MESMA função, nunca uma cópia da regra, para o cartão e a tela de Frete
- * não divergirem. O caso que continua "pronto" é o CEP geral de cidade pequena
- * (termina em "000"): ali o aviso é calado de propósito, e este passo só segue.
+ * Com CEP, o passo ainda precisa do ALCANCE: o aviso amarelo da tela de Frete
+ * (`avisoDaFaixaDeCep`) deixa o passo pendente SÓ no ramo da faixa VAZIA — CEP
+ * de rua com "Alcance por CEP" vazio só entrega para os mesmos 5 primeiros
+ * números do CEP (um pedaço de bairro), e cliente de outro bairro, sem conta,
+ * vai embora. É a MESMA função, nunca uma cópia da regra (nem da heurística do
+ * "000"), para o cartão e a tela de Frete não divergirem.
+ *
+ * Continuam "pronto": o CEP geral de cidade pequena (termina em "000"; ali o
+ * aviso é calado de propósito) e QUALQUER faixa preenchida. O aviso do ramo da
+ * faixa preenchida ("nem o CEP da loja entra") é só aviso na tela de Frete —
+ * uma faixa legítima pode deixar o CEP da loja de fora — e nunca trava o passo.
  */
 export function estadoDaEntrega(
   config: {
@@ -52,16 +56,23 @@ export function estadoDaEntrega(
 }
 
 /**
- * Há CEP completo e o "Alcance por CEP" não dá conta (curto demais, ou escrito
- * num formato que o servidor não entende)? É o aviso da tela de Frete virado em
- * sim/não — o motivo que distingue "falta o alcance" de "falta o CEP" no texto
- * do passo (cartão do Início e subtítulo de Ajustes).
+ * Há CEP completo, o "Alcance por CEP" está VAZIO e o aviso da tela de Frete
+ * dispara ("Sua entrega local só vale para CEPs que começam com …")? É esse
+ * aviso virado em sim/não — o motivo que distingue "falta o alcance" de "falta
+ * o CEP" no texto do passo (cartão do Início e subtítulo de Ajustes).
+ *
+ * Faixa preenchida nunca entra: o outro aviso de `avisoDaFaixaDeCep` (faixa
+ * que não inclui o CEP da loja) é só aviso e não bloqueia nada.
  */
 export function entregaComAlcanceCurto(config: {
   readonly originCep?: string | null;
   readonly localCepRange?: string | null;
 }): boolean {
-  return cepCompleto(config.originCep) && avisoDaFaixaDeCep(config) !== null;
+  return (
+    cepCompleto(config.originCep) &&
+    (config.localCepRange ?? "").trim() === "" &&
+    avisoDaFaixaDeCep(config) !== null
+  );
 }
 
 /**
