@@ -43,6 +43,9 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const {
+  devolverAoEstadoAnteriorAoCustoDoDia,
+} = require("./sucessoras-da-99.cjs");
 
 const DIR_MIGRATIONS = path.join(
   __dirname,
@@ -213,6 +216,8 @@ PROVAS.push({
          ($1, 'Admin Inventário', 'admin'), ($2, 'Cliente Inventário', 'customer')`,
       [U_ADMIN, U_CLIENTE],
     );
+    // A 20261242000000 (o custo do dia) sucede a 34: devolve o clone ao estado anterior a ela primeiro.
+    await devolverAoEstadoAnteriorAoCustoDoDia(c);
     // A 20261234000000 (o lucro só conta produto com custo) sucede a 14 no mesmo corpo: o clone volta ao
     // corpo da 14 antes de medir (o rollback da 34 tem preflight próprio).
     if ((await catalogo(c, ANALYTICS)).hash === H34.desta) {

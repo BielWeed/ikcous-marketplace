@@ -1085,6 +1085,32 @@ export type Database = {
           },
         ];
       };
+      marketplace_order_item_custo: {
+        Row: {
+          custo: number;
+          item_id: string;
+          registrado_em: string;
+        };
+        Insert: {
+          custo: number;
+          item_id: string;
+          registrado_em?: string;
+        };
+        Update: {
+          custo?: number;
+          item_id?: string;
+          registrado_em?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_order_item_custo_item_id_fkey";
+            columns: ["item_id"];
+            isOneToOne: true;
+            referencedRelation: "marketplace_order_items";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       marketplace_order_items: {
         Row: {
           created_at: string | null;

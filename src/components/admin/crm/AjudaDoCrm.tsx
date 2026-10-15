@@ -87,14 +87,16 @@ export function AjudaDoCrm({
             <li>
               <strong className="text-white">Produtos Mais Lucrativos:</strong>{" "}
               Os cinco produtos com maior lucro (preço de venda menos o custo
-              cadastrado) em pedidos válidos de todo o período. Produto sem
-              custo cadastrado fica fora da conta do lucro, e a tela avisa
-              quantos produtos ficaram de fora. Para achar quais são, abra
-              Produtos, toque no botão ao lado da busca ("Mostrar em lista com
-              detalhes") e procure o selo "Sem Custo Cadastrado"; cadastre o
-              custo para ele entrar. O lucro usa o custo de hoje de cada
-              produto: se você mudar o custo, o lucro das vendas antigas muda
-              junto.
+              cadastrado) em pedidos válidos de todo o período. Venda sem custo
+              (nem guardado no dia, nem cadastrado hoje) fica fora da conta do
+              lucro, e a tela avisa quantos produtos ficaram de fora. Para achar
+              os sem custo hoje, abra Produtos, toque no botão ao lado da busca
+              ("Mostrar em lista com detalhes") e procure o selo "Sem Custo
+              Cadastrado"; cadastre o custo para ele entrar. A venda de um
+              produto que já tinha custo guarda o custo do dia: mudar o custo
+              depois não altera o lucro dela. As vendas feitas sem custo
+              cadastrado, e as feitas antes de o app passar a guardar o custo do
+              dia, usam o custo de hoje.
             </li>
           </ul>
         </div>

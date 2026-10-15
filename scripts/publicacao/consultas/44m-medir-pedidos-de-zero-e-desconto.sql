@@ -5,13 +5,17 @@
 -- Quem decide e a pessoa que le a tabela. Rodar nas duas lojas assinantes (IKCOUS e Savy), uma loja por run, por
 -- conferir-banco-da-loja.yml (papel `supabase_read_only_user`).
 --
--- REGRA DO PAINEL (texto IDENTICO ao de `get_admin_analytics_v2`, corpo vigente da 20261234000000, linhas 359-366;
+-- REGRA DO PAINEL (texto IDENTICO ao de `get_admin_analytics_v2`, corpo da 20261234000000 (o da 20261242000000 so troca a fonte do custo);
 -- tests/ci_conferir_banco_test.ts prende os dois textos):
 --   pedido no painel = o.status NOT IN ('cancelled', 'returned')
 --                      AND (o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'));
 --   lucro do painel  = SUM(oi.quantity * (oi.price - p.custo)) FILTER (WHERE p.custo IS NOT NULL), itens ligados por
 --                      JOIN em produtos (sem filtro de produto apagado, como o grafico); o desconto do pedido NAO e
 --                      rateado: o lucro e calculado no preco de lista do item.
+-- CUSTO (20261242000000): depois dessa migration o grafico le o custo do DIA da venda (tabela marketplace_order_item_custo,
+-- com o custo de hoje como reserva) e a 44m segue medindo com o custo de HOJE (p.custo): ela precisa rodar ANTES do apply
+-- dessa migration e em lojas que ainda nao tem a tabela, e o que ela mede e o desconto, nao o custo. A diferenca so existe
+-- em venda feita depois do apply e so no custo; a regra do painel (filtro, juncao, janela) e a mesma.
 -- SUPERESTIMACAO = o desconto que o pedido concedeu (LEAST(discount, subtotal), o mesmo teto da
 -- create_marketplace_order_v24), somado nos pedidos do painel com desconto > 0, sobre o lucro do painel. Sai em duas
 -- leituras: o desconto INTEIRO (teto) e o desconto RATEADO so aos itens com custo (o que de fato sai do lucro, porque

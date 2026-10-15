@@ -79,10 +79,18 @@ const { pathToFileURL } = require("node:url");
 const { Client } = require("pg");
 const { falhar, lerDatabaseUrlEfemera } = require("./efemero.cjs");
 const {
-  SUCESSORAS_DA_99,
+  SUCESSORAS_DA_99: TODAS_AS_SUCESSORAS_DA_99,
+  NOME_CUSTO_DO_DIA,
   conferirLista,
   desfazerSucessorasDa99,
+  devolverAoEstadoAnteriorAoCustoDoDia,
 } = require("./sucessoras-da-99.cjs");
+// Esta prova mede as sucessoras ATÉ a 20261241 (as dez de antes). A 20261242000000 (o custo do dia: sucessora de
+// get_admin_analytics_v2 e a primeira de fin_dre) tem a PROVA PRÓPRIA do que a 8e faz com ela em
+// tests/banco/custo-do-dia-portao-viva.cjs (item 8); aqui `noEstado` devolve o clone ao estado anterior a ela.
+const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
+  (s) => s.nome !== NOME_CUSTO_DO_DIA,
+);
 
 const REPO = path.resolve(__dirname, "..", "..");
 process.chdir(REPO);
@@ -221,6 +229,7 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    await devolverAoEstadoAnteriorAoCustoDoDia(C);
     const montado = montar ? await montar(C) : undefined;
     await C.query(`SET LOCAL ROLE ${RO}`);
     await C.query("SET LOCAL transaction_read_only = on");

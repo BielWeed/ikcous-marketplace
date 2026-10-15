@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 33a, 33b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b, 43a, 43b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 33a, 33b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b, 43a, 43b, 45a, 45b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -2114,6 +2114,42 @@ const ROL_DA_38B = [
   "is_admin(), is_admin_atual() e f_unaccent(text) existem (a migration as chama)",
   "produtos: o gatilho set_ultima_atualizacao (avisa a vitrine do produto trocado) esta ligado",
 ];
+/** O rol da 45a (a prova de objetos da migration 20261242000000, o lucro usa o custo do dia da venda: a tabela lateral so do
+ * servidor, o gatilho que copia o custo do produto para cada item que nasce e os dois relatorios do lojista que passam a ler esse
+ * custo): as 13 linhas que scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql devolve, cada uma UMA vez, as mesmas
+ * em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): o controle, o corpo NOVO (md5) das tres funcoes, os
+ * atributos delas, o EXECUTE de cada papel (os dois relatorios so do authenticated, a funcao do gatilho fechada a todos), a tabela
+ * so do servidor com as tres colunas, a chave primaria e a estrangeira em cascata, o gatilho ligado AFTER INSERT por linha, o
+ * marcador de que os relatorios leem o custo do dia e caem no de hoje, e a tabela fora do realtime.
+ * tests/banco/custo-do-dia-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_45A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: corpo e o da 20261242000000, com o custo do dia da venda (md5)",
+  "fin_dre: corpo e o da 20261242000000, com o custo do dia da venda (md5)",
+  "marketplace_order_item__guarda_o_custo_do_dia: corpo e o da 20261242000000, o gatilho que nunca derruba a compra (md5)",
+  "as tres funcoes: atributos do desenho (SECURITY DEFINER, search_path=public, linguagem, volatilidade, retorno e uma assinatura so)",
+  "get_admin_analytics_v2 e fin_dre: EXECUTE so do authenticated (PUBLIC e anon nao)",
+  "marketplace_order_item__guarda_o_custo_do_dia: EXECUTE fechado a todos (PUBLIC, anon, authenticated e service_role)",
+  "marketplace_order_item_custo: so do servidor (RLS ligada, nenhuma policy, nenhum acesso de anon, authenticated e service_role)",
+  "marketplace_order_item_custo: as tres colunas do desenho (custo, item_id, registrado_em)",
+  "marketplace_order_item_custo: item_id e a chave primaria e acompanha o item (chave estrangeira com ON DELETE CASCADE)",
+  "tr_marketplace_order_items_guarda_o_custo_do_dia: ligado, AFTER INSERT por linha, apontando para a funcao do gatilho",
+  "get_admin_analytics_v2 e fin_dre: leem o custo do dia e caem no custo de hoje (COALESCE(oic.custo, p.custo))",
+  "marketplace_order_item_custo: fora da publicacao do realtime (o custo do lojista nunca vai ao navegador)",
+];
+/** O rol da 45b (a consulta de AUSENCIA do lote do custo do dia; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/45b-antes-custo-do-dia-base-vigente.sql devolve - a base de antes: a funcao do gatilho e o gatilho
+ * ainda NAO existem (a tabela lateral pode ficar de um rollback-manual); as DUAS funcoes que a migration reescreve existem com o
+ * corpo vigente (md5) e os atributos de sempre; as 12 colunas que os corpos novos leem existem. NAO mede a ACL. Uma loja que ja tem
+ * a migration reprova aqui de proposito. */
+const ROL_DA_45B = [
+  "controle: funcoes de public visiveis a este papel",
+  "a funcao do gatilho e o gatilho ainda NAO existem (a tabela lateral pode ficar de um rollback-manual)",
+  "get_admin_analytics_v2: corpo e o vigente da 20261234000000, sem o custo do dia (md5)",
+  "fin_dre: corpo e o vigente da 20261199000000, sem o custo do dia (md5)",
+  "as duas funcoes: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, linguagem, volatilidade e retorno)",
+  "as 12 colunas que os corpos novos leem existem (itens do pedido, produtos e itens da devolucao)",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -2185,6 +2221,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "41b-antes-pergunta-respondida-corpos-vigentes": ROL_DA_41B,
   "43a-conferir-reembolso-em-duvida-aplicado": ROL_DA_43A,
   "43b-antes-reembolso-em-duvida-base-vigente": ROL_DA_43B,
+  "45a-conferir-custo-do-dia-aplicado": ROL_DA_45A,
+  "45b-antes-custo-do-dia-base-vigente": ROL_DA_45B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2793,6 +2831,8 @@ module.exports = {
   ROL_DA_41B,
   ROL_DA_43A,
   ROL_DA_43B,
+  ROL_DA_45A,
+  ROL_DA_45B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

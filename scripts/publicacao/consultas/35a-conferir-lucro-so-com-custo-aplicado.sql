@@ -27,6 +27,9 @@
 -- CADEIA: o corpo desta consulta e' o SUCESSOR da 20261214000000 (lote 17: o lucro do estoque so conta produto
 -- com custo). Depois desta migration a 17a (lote 17) e a 8e (lote 92-202) continuam POSITIVAS: as duas aceitam
 -- este corpo ao lado do da 20261214000000.
+-- JA DECIDIDO (15/10/2026): a 20261242000000 (o lucro usa o custo do dia da venda) redefine o corpo DEPOIS desta
+-- migration. A linha do md5 aceita o corpo da 34 OU o da 42 (o rol e os rotulos nao mudam) e o marcador aceita as
+-- duas formas do filtro do lucro: uma loja que ja recebeu a 42 nao deixa o portao do lote 35 vermelho.
 --
 -- md5 recalculado dos ARQUIVOS das migrations por tests/ci_conferir_banco_test.ts e pelo teste estatico
 -- tests/migration_o_lucro_so_conta_produto_com_custo_test.ts; tests/banco/lucro-so-com-custo-portao-viva.cjs roda esta
@@ -40,7 +43,8 @@ WITH alvo(assinatura) AS (
          (SELECT count(*) FROM pg_proc q JOIN pg_namespace n ON n.oid = q.pronamespace
            WHERE n.nspname = 'public' AND q.proname = 'get_admin_analytics_v2') AS sobrecargas,
          md5(replace(p.prosrc, chr(13), '')) AS m,
-         CASE WHEN position('FILTER (WHERE p.custo IS NOT NULL), 0) AS profit' IN p.prosrc) > 0
+         CASE WHEN (position('FILTER (WHERE p.custo IS NOT NULL), 0) AS profit' IN p.prosrc) > 0
+                    OR position('FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit' IN p.prosrc) > 0)
                    AND position('''productsWithoutCost'', products_without_cost' IN p.prosrc) > 0
               THEN 'sim' ELSE 'nao' END AS marcador,
          CASE WHEN p.prosecdef AND l.lanname = 'plpgsql' AND p.provolatile = 'v'
@@ -68,7 +72,10 @@ WITH alvo(assinatura) AS (
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo e o da 20261234000000, com o lucro so de produto com custo (md5)',
          '05eac70f6bd4360c1f71fd373747ad0e',
-         COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
+         -- aceita tambem o corpo da SUCESSORA 20261242000000 (o lucro usa o custo do dia da venda): o `vivo` mostra o esperado
+         COALESCE((SELECT CASE WHEN f.m IN ('05eac70f6bd4360c1f71fd373747ad0e', 'dceb62881ebf8fa404ba3ac295041691')
+                               THEN '05eac70f6bd4360c1f71fd373747ad0e' ELSE f.m END
+                     FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: o corpo so soma lucro de produto com custo e conta os sem custo',
          'sim',

@@ -59,6 +59,9 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const {
+  devolverAoEstadoAnteriorAoCustoDoDia,
+} = require("./sucessoras-da-99.cjs");
 
 const DIR_MIGRATIONS = path.join(
   __dirname,
@@ -835,6 +838,9 @@ async function main() {
   const linhas = [];
   const titulo = "Prova viva do lucro só com custo (rpc-ci)";
   try {
+    // A 20261242000000 (o custo do dia) sucede a 34 no mesmo corpo e o rollback da 34 recusa com ela no ar:
+    // esta prova mede o estado "34 no ar", então devolve o clone descartável a ele antes (idempotente).
+    await devolverAoEstadoAnteriorAoCustoDoDia(cliente);
     if (!SO_COMPORTAMENTO) {
       // Cadeia 99 -> 14 -> 34, lida dos PREFLIGHTS (a prova de texto amarra cada um ao md5 real).
       const h14 = hashesDoPreflight(ler(NOME_14), ANALYTICS);

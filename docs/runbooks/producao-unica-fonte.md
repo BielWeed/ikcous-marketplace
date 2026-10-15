@@ -1768,6 +1768,57 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
 
+  45. **Lote de UMA migration, de apply normal: `20261242000000` (o lucro usa o custo do dia da venda; DINHEIRO e
+      DADO DE CLIENTE; decisao do dono de 15/10/2026).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas
+      lojas assinantes (IKCOUS e Savy). ADITIVA: uma tabela nova VAZIA (`marketplace_order_item_custo`, so do
+      servidor), uma funcao de gatilho e o gatilho novos, e dois corpos trocados por `CREATE OR REPLACE`
+      (`get_admin_analytics_v2` e `fin_dre`; assinatura, dono, ACL e atributos preservados):
+      - **O que muda:** cada item que NASCE (loja, balcao, qualquer porta) ganha uma linha com o custo que o produto
+        tinha naquele dia. O lucro do CRM, o Top 5 e o CMV da DRE leem esse custo e, se nao existe, o custo de hoje.
+        A devolucao na DRE usa o custo do item ORIGINAL (juncao por `order_item_id`; nada e copiado para as tabelas
+        da devolucao). O valor de ESTOQUE (inventario e alertas) segue com o custo de hoje. `cmv_estimado` deixa de
+        ser constante: e `true` so quando algum item do periodo usou o custo de hoje.
+      - **O que NAO muda no apply:** nenhum dado existente e lido nem reescrito (SEM backfill). Toda venda feita
+        ANTES do apply, e toda venda feita com o produto SEM custo, segue com o custo de hoje: os numeros dos
+        relatorios, com a tabela vazia, sao os mesmos de antes. So as vendas DEPOIS ganham o custo do dia.
+      - **O gatilho nunca derruba a compra:** um erro vira aviso so com o `SQLSTATE` e o id do item (nunca o valor).
+        Custo medido do bloco de tratamento de erro: uma venda de 200 itens gasta ~475 ms contra ~434 ms sem o
+        gatilho (203 contra 3 transacoes internas), aceito de proposito. A `45m` (so leitura, rol aberto, NAO e
+        portao) conta os itens nascidos depois do apply que ficaram SEM linha apesar de o produto ter custo: e o
+        unico modo de saber se o gatilho esta falhando em silencio.
+      - **APLICAR FORA DO HORARIO DE PICO.** A migration pega a trava de `marketplace_order_items` SEM entrar na fila
+        (`LOCK ... NOWAIT` em laco, 4 s, com `lock_timeout` e `statement_timeout`): uma venda nova nunca espera por
+        ela; se uma venda segura a tabela, o apply recusa (`55P03`) e basta repetir.
+      - Duas consultas, so leitura, so catalogo, de ROL FECHADO (13 e 6 linhas, so valem com `rol=ok`):
+        - **`45a-conferir-custo-do-dia-aplicado`** (a consulta do lote) prova DEPOIS do apply os tres corpos (md5),
+          os atributos, o `EXECUTE` por papel (o gatilho fechado a todos), a tabela so do servidor (RLS ligada,
+          sem `FORCE`, sem politica, sem acesso a PUBLIC/anon/authenticated/service_role), o gatilho ligado e a
+          tabela fora do realtime.
+        - **`45b-antes-custo-do-dia-base-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: os dois corpos vigentes
+          (da `20261234000000` e da `20261199000000`) e o gatilho ausente. Rode a `45b` em CADA loja ANTES do apply.
+      - **Caminho, uma loja por vez (IKCOUS, depois Savy):** `45a` (sai NEGATIVA) -> `45b` MAIS NOVA e POSITIVA ->
+        UM comando `aplicar-migrations.yml` com a migration -> o ensaio pede a `45a` DE NOVO, que tem de sair
+        POSITIVA. A `8e`, a `35a` e a `17a` seguem POSITIVAS depois do apply (os corpos novos entram como
+        sucessores conhecidos delas).
+      - **ORDEM: o banco de CADA loja ANTES do front desta mudanca** (o front so troca textos de ajuda).
+      - **Desfazer, EM DOIS DEGRAUS (decisao do DONO, nunca automatica):**
+        1. `rollback-manual-20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql` devolve os dois corpos byte a
+           byte e tira o gatilho e a funcao dele, mas DEIXA a tabela e os registros (o custo do dia nao se
+           reconstroi: o custo do produto muda e o de ontem se perde). Reaplicar a migration depois aceita a tabela
+           presente e os registros voltam a valer.
+        2. `rollback-manual-destrutivo-20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql` APAGA a tabela. SO COM
+           O DONO, num psql, depois de guardar uma copia dos registros, e SO depois do primeiro degrau: exige
+           `SET app.confirmo_apagar_o_custo_do_dia = 'APAGAR'` e recusa se o gatilho ou alguma funcao ainda cita a
+           tabela.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `35a`, a
+        `17a`, a `45a` e a `45b` DE NOVO.
+      - **Limites declarados (anotados, nao resolvidos):** custo errado congelado no dia (nao ha "ajuste de custo");
+        venda feita sem custo no dia segue com o custo de hoje; carga em massa de itens passa pelo gatilho (para
+        carregar sem ele, `session_replication_role = replica`, so o dono); o admin pode trocar o `product_id` do
+        item (a linha segue com o custo do produto de antes); a DRE trata custo desconhecido como 0.
+      - **Provas:** `tests/banco/custo-do-dia-viva.cjs` (comportamento) e `tests/banco/custo-do-dia-portao-viva.cjs`
+        (as consultas), num Postgres 17 efemero; nao provam o Postgres da Supabase nem o corpo vivo de cada loja.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
