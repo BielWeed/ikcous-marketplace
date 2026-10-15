@@ -70,7 +70,7 @@ describe("toque no aviso (notificationclick)", () => {
   }
 
   it("aviso de pedido com a cliente em OUTRO pedido: a janela navega até o pedido do aviso e ganha foco", async () => {
-    const alvo = `/order-details?id=A`;
+    const alvo = "/order-details?id=A";
     const navegarPara = vi.fn();
     const aberta = janela(`${ORIGEM}/order-details?id=B`, navegarPara);
     navegarPara.mockResolvedValue(aberta);
@@ -106,7 +106,9 @@ describe("toque no aviso (notificationclick)", () => {
   });
 
   it("janela que não aceita navegar (rejeita): abre o pedido em janela nova", async () => {
-    const navegarPara = vi.fn().mockRejectedValue(new TypeError("sem controle"));
+    const navegarPara = vi
+      .fn()
+      .mockRejectedValue(new TypeError("sem controle"));
     const aberta = janela(`${ORIGEM}/order-details?id=B`, navegarPara);
     const { clique, openWindow } = await importar([aberta]);
 
