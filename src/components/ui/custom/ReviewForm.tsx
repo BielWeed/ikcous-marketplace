@@ -18,7 +18,9 @@ import { z } from "zod";
 
 const reviewSchema = z.object({
   rating: z.number().min(1, "Selecione uma nota de 1 a 5."),
-  comment: z.string().min(3, "O comentário deve ter pelo menos 3 caracteres."),
+  // As estrelas bastam: o banco aceita avaliação sem texto (reviews.comment é
+  // nullable, sem CHECK nem trigger). Só espaços conta como vazio (trim no envio).
+  comment: z.string(),
 });
 
 interface ReviewFormProps {
@@ -53,7 +55,7 @@ export function ReviewForm({
       const result = await addReview({
         productId,
         rating: values.rating,
-        comment: values.comment,
+        comment: values.comment.trim(),
       });
 
       if (result) {
@@ -116,7 +118,7 @@ export function ReviewForm({
             render={({ field }) => (
               <FormItem className="space-y-2">
                 <FormLabel className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                  Detalhes da Experiência
+                  Detalhes da Experiência (Opcional)
                 </FormLabel>
                 <FormControl>
                   <Textarea

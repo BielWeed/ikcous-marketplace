@@ -131,15 +131,17 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
         </span>
       </div>
 
-      {/* Comment */}
-      <p
-        className={cn(
-          "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
-          "lg:text-sm",
-        )}
-      >
-        {review.comment}
-      </p>
+      {/* Comment (opcional: avaliação só com estrelas não leva parágrafo) */}
+      {review.comment && (
+        <p
+          className={cn(
+            "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
+            "lg:text-sm",
+          )}
+        >
+          {review.comment}
+        </p>
+      )}
 
       {/* Images */}
       {review.images && review.images.length > 0 && (
