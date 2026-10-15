@@ -65,6 +65,8 @@ import {
     autorizacaoPeloBanco,
     type AutorizacaoDoPost,
     type DiagnosticoDoPost,
+    // A1 (15/10/2026): o MESMO teto que o robô usa para travar a linha.
+    TETO_DE_TENTATIVAS_DO_POST,
 } from "../_shared/estorno.ts"
 // 14/10/2026: a ação `reemitir` (consulta o MP e entrega ao banco, que decide).
 import { reemitirReembolsoDaDevolucao } from "../_shared/reemissao-do-reembolso.ts"
@@ -126,6 +128,9 @@ export type ExecutorEstorno = (args: {
 
 /** Texto EXATO do plano (T3) para 202 — o lojista sabe quem confere e quando. */
 const TEXTO_EM_PROCESSAMENTO = 'O Mercado Pago ainda está processando; eu confiro de novo em até 10 minutos.'
+
+/** 409 da linha travada (A1, 15/10/2026): o que a lojista lê. */
+export const TEXTO_LINHA_TRAVADA = 'Esta devolução está sendo conferida com o Mercado Pago; não dá para reenviar agora.'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -259,6 +264,15 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         //     (Missão pagamentos, 29/09/2026 — achado de dupla saída.)
         if (linha.solicitado_por === 'sistema') {
             return json({ erro: 'estorno_de_sistema', status: linha.status }, 409)
+        }
+
+        // 2c. Linha TRAVADA (A1 do crítico do reembolso A/B, 15/10/2026): com
+        //     `tentativas` no teto o robô parou de reenviar e só CONSULTA o MP
+        //     (pode haver um reembolso feito lá cuja resposta se perdeu, e a
+        //     chave de idempotência só vale 24 h). O clique não fura essa
+        //     trava: nada é marcado, nada é lido do MP, nenhum POST.
+        if (Number(linha.tentativas ?? 0) >= TETO_DE_TENTATIVAS_DO_POST) {
+            return json({ erro: 'estorno_em_conferencia', status: linha.status, texto: TEXTO_LINHA_TRAVADA }, 409)
         }
 
         // 3. O pedido da linha (o executor valida pagamento/prazo/saldo).

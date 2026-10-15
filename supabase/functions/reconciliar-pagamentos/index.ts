@@ -114,6 +114,7 @@ import {
   type LinhaEstorno,
   type PedidoParaEstorno,
   type ResultadoEstorno,
+  TETO_DE_TENTATIVAS_DO_POST,
 } from "../_shared/estorno.ts";
 // FASE 2 (04/10/2026): os efeitos do pagamento confirmado (push ao lojista,
 // comprovante ao cliente, aviso de pagamento atrasado) saem do módulo ÚNICO
@@ -133,7 +134,7 @@ export {
 /** Único texto do app que manda o lojista ao painel do MP (Restrições
  * globais do plano) — só depois de 5 tentativas sem confirmação. */
 const TEXTO_LIMITE_DE_TENTATIVAS =
-  "não consegui confirmar a devolução no Mercado Pago depois de 5 tentativas; confira no painel do MP";
+  `não consegui confirmar a devolução no Mercado Pago depois de ${TETO_DE_TENTATIVAS_DO_POST} tentativas; confira no painel do MP`;
 
 /** D4 (ANTES-DE-CRESCER 5, laudo rodada 2 do PR #440): texto leigo para quando
  * o MP CONFIRMOU o estorno mas a NOSSA escrita (RPC `concluir_estorno`)
@@ -1180,7 +1181,7 @@ async function handler(
         // `tentativas` para de subir aqui (não precisa passar de 5): quem
         // sobe é só o retry abaixo, que este ramo nunca alcança. `falhou`
         // fica reservado para veredito NEGATIVO explícito do MP.
-        if (tentativasAtuais >= 5) {
+        if (tentativasAtuais >= TETO_DE_TENTATIVAS_DO_POST) {
           // Correção da revisão Opus do #855: "tentativas" e "recusas nada saiu"
           // descasam (a tentativa sobe até quando a consulta cai antes do POST).
           // Toda linha travada passa por aqui: se o banco a trata como "nada

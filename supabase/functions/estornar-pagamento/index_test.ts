@@ -132,8 +132,14 @@ const AUTH_JWT_VELHO_ADMIN = "Bearer " + [
 ].join(".")
 
 globalThis.fetch = fetchAdminFalso
-const { handler } = await import("./index.ts")
-const { MOTIVO_LINHA_INCERTA, MOTIVO_SALDO_MUDOU_ANTES_DO_POST, MOTIVO_SALDO_NAO_COBRE_MAIS } = await import("../_shared/estorno.ts")
+const { handler, TEXTO_LINHA_TRAVADA } = await import("./index.ts")
+const {
+    MOTIVO_LINHA_INCERTA,
+    MOTIVO_REENVIO_SEM_CONSULTA,
+    MOTIVO_SALDO_MUDOU_ANTES_DO_POST,
+    MOTIVO_SALDO_NAO_COBRE_MAIS,
+    TETO_DE_TENTATIVAS_DO_POST,
+} = await import("../_shared/estorno.ts")
 globalThis.fetch = fetchNativo
 
 async function comFetch(fetchFalso: any, executar: () => Promise<any>): Promise<any> {
@@ -1320,7 +1326,9 @@ Deno.test("LEASE-E1b - a MESMA situação numa linha com POST autorizado antes (
     assertEquals(resposta.status, 202)
     assertEquals((await resposta.json()).status, "em_processamento")
     assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "POST").length, 0, "nenhum POST saiu")
-    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "GET").length, 1, "o GET da transação veio ANTES da pergunta")
+    // A1 (15/10/2026): a linha já teve envio — a consulta do reenvio (sem
+    // reembolso) e o GET da transação vêm ANTES da pergunta ao banco.
+    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "GET").length, 2, "consulta do reenvio + GET da transação, ANTES da pergunta")
     assertEquals(registro.autorizacoes, [{ p_refund_id: REFUND_ID, p_valor: 20 }])
     assertEquals(registro.finais.length, 0, "nada terminal")
     assertEquals(registro.rpcs.length, 0, "nada concluído")
@@ -1550,6 +1558,141 @@ Deno.test("G6 (D5) - 'em andamento' (refund_in_progress): 202, carimbo gravado, 
     assertEquals(registro.diagnosticos[0].p_post_incerto, true)
     assertEquals(registro.diagnosticos[0].p_transitorio, false)
     assertEquals(registro.finais.length, 0)
+})
+
+// ── A1 do crítico do reembolso A/B (15/10/2026): o clique não reenvia sem
+// perguntar ao MP, e não fura a trava do robô. A chave de idempotência do MP
+// vale 24 h: reenviar depois disso uma linha cujo POST anterior criou o
+// reembolso (resposta perdida) cria o SEGUNDO — a cliente recebe em dobro. O MP
+// dublado REPROVA: todo POST de reembolso num cenário proibido é violação
+// registrada (e respondida 201, como o MP de verdade). Módulo REAL do executor.
+
+function mpQueVigiaOPost(gets: Array<{ status: number; corpo: unknown }>, opts: { postProibido: boolean }) {
+    const registro = { chamadas: [] as Array<{ url: string; metodo: string; chave?: string }>, violacoes: [] as string[] }
+    let i = 0
+    const buscar = ((input: any, init?: any) => {
+        const url = String(input instanceof Request ? input.url : input)
+        const metodo = String(init?.method ?? "GET").toUpperCase()
+        registro.chamadas.push({ url, metodo, chave: init?.headers?.["X-Idempotency-Key"] })
+        if (metodo === "POST") {
+            if (opts.postProibido) registro.violacoes.push(url)
+            return Promise.resolve(new Response(JSON.stringify({ id: 9999, status: "approved", amount: 50 }), { status: 201 }))
+        }
+        const r = gets[Math.min(i, gets.length - 1)]
+        i++
+        return Promise.resolve(new Response(typeof r.corpo === "string" ? r.corpo : JSON.stringify(r.corpo), { status: r.status }))
+    }) as any
+    return { buscar, registro }
+}
+
+/** A linha do dia 3: um POST no dia 1 (carimbado) cuja resposta se perdeu. */
+const LINHA_JA_ENVIADA = {
+    ...LINHA_SOLICITADA,
+    amount: 50,
+    status: "em_processamento",
+    tentativas: 1,
+    criada_sob_autorizacao: true,
+    post_autorizado_em: "2026-10-12T10:00:00.000Z",
+}
+const PEDIDO_DE_200 = { ...PEDIDO_PAGO, total: 200, status: "delivered" }
+const MP_SEM_REEMBOLSO = { id: 123456789, status: "approved", transaction_amount_refunded: 0, refunds: [] }
+const MP_COM_REF1 = {
+    id: 123456789,
+    status: "approved",
+    transaction_amount_refunded: 50,
+    refunds: [{ id: 7001, status: "approved", amount: 50, date_created: "2026-10-12T10:00:05.000Z" }],
+}
+
+async function cliqueComMp(linha: any, mp: ReturnType<typeof mpQueVigiaOPost>, extras: any = {}) {
+    const { cliente, registro } = clienteSupaFalso({ linha, pedido: PEDIDO_DE_200, projetarColunas: true, ...extras })
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    return { resposta, registro }
+}
+
+Deno.test("A1-E1 - clique numa linha JÁ enviada + o MP prova que nada voltou: consulta ANTES, 1 POST com a mesma chave, concluído", async () => {
+    const mp = mpQueVigiaOPost([{ status: 200, corpo: MP_SEM_REEMBOLSO }], { postProibido: false })
+    const { resposta, registro } = await cliqueComMp(LINHA_JA_ENVIADA, mp)
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "concluido")
+    assertEquals(mp.registro.chamadas.map((c) => c.metodo), ["GET", "POST"])
+    assertEquals(mp.registro.chamadas[1].chave, REFUND_ID)
+    assertEquals(registro.rpcs.length, 1, "concluir_estorno")
+})
+
+Deno.test("A1-E2 - clique numa linha JÁ enviada + o MP JÁ fez o reembolso (REF1): ZERO POST, adota o REF1 e conclui", async () => {
+    const mp = mpQueVigiaOPost([{ status: 200, corpo: MP_COM_REF1 }], { postProibido: true })
+    const { resposta, registro } = await cliqueComMp(LINHA_JA_ENVIADA, mp)
+    assertEquals(mp.registro.violacoes, [], "nenhum POST: seria o REF2, dinheiro em dobro")
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "concluido")
+    assertEquals(registro.rpcs.length, 1)
+    assertEquals(registro.rpcs[0].nome, "concluir_estorno")
+    assertEquals(registro.rpcs[0].args.p_mp_refund_id, "7001")
+    assertEquals(registro.autorizacoes.length, 0, "o banco nem é perguntado: nada vai sair")
+})
+
+for (const [nome, get] of [
+    ["GET 500", { status: 500, corpo: { message: "erro" } }],
+    ["corpo ilegível", { status: 200, corpo: "<html>gateway</html>" }],
+    ["acumulado ausente", { status: 200, corpo: { id: 123456789, status: "approved" } }],
+] as Array<[string, { status: number; corpo: unknown }]>) {
+    Deno.test(`A1-E3 - clique numa linha JÁ enviada + consulta indeterminada (${nome}): 202, ZERO POST, nada terminal, motivo leigo`, async () => {
+        const mp = mpQueVigiaOPost([get], { postProibido: true })
+        const { resposta, registro } = await cliqueComMp(LINHA_JA_ENVIADA, mp)
+        assertEquals(mp.registro.violacoes, [])
+        assertEquals(resposta.status, 202)
+        assertEquals(await resposta.json(), { status: "em_processamento", texto: TEXTO_202 })
+        assertEquals(registro.finais.length, 0)
+        assertEquals(registro.autorizacoes.length, 0)
+        assertEquals(registro.diagnosticos.length, 0, "nada foi enviado: nenhum diagnóstico de POST")
+        const adiamento = registro.atualizacoes.find((u: any) => u.valores && "ultimo_erro" in u.valores)
+        assertEquals(adiamento?.valores.ultimo_erro, MOTIVO_REENVIO_SEM_CONSULTA)
+    })
+}
+
+Deno.test("A1-E4 - clique numa linha TRAVADA (tentativas no teto do robô): 409 com texto leigo, NADA marcado, ZERO chamada ao MP, executor nunca chamado", async () => {
+    const executor = executorFalso({ tipo: "concluido", mp_refund_id: "x", mp_status: "approved", mp_status_detail: null, valor: 50 }, { chamarMp: true })
+    const mp = mpQueVigiaOPost([{ status: 200, corpo: MP_SEM_REEMBOLSO }], { postProibido: true })
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_JA_ENVIADA, tentativas: TETO_DE_TENTATIVAS_DO_POST },
+        pedido: PEDIDO_DE_200,
+    })
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                buscar: mp.buscar,
+                executarEstorno: executor.fn,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 409)
+    assertEquals(await resposta.json(), { erro: "estorno_em_conferencia", status: "em_processamento", texto: TEXTO_LINHA_TRAVADA })
+    assertEquals(TEXTO_LINHA_TRAVADA, "Esta devolução está sendo conferida com o Mercado Pago; não dá para reenviar agora.")
+    assertEquals(mp.registro.chamadas.length, 0, "zero chamada ao MP")
+    assertEquals(executor.registro.chamadas.length, 0)
+    assertEquals(registro.marcas.length, 0, "a linha não é marcada")
+    assertEquals(registro.leiturasRegistroMp, 0, "nem a credencial é lida")
+    assertEquals(registro.autorizacoes.length, 0)
+})
+
+Deno.test("A1-E4b (controle) - uma tentativa ABAIXO do teto ainda passa pela porta (e segue para a consulta antes do reenvio)", async () => {
+    const mp = mpQueVigiaOPost([{ status: 200, corpo: MP_SEM_REEMBOLSO }], { postProibido: false })
+    const { resposta } = await cliqueComMp({ ...LINHA_JA_ENVIADA, tentativas: TETO_DE_TENTATIVAS_DO_POST - 1 }, mp)
+    assertEquals(resposta.status, 200)
+    assertEquals(mp.registro.chamadas.map((c) => c.metodo), ["GET", "POST"])
+})
+
+Deno.test("A1-E5 (controle) - linha NOVA (solicitado, tentativas 0): POST direto, ZERO GET — o primeiro envio não fica mais lento", async () => {
+    const mp = mpQueVigiaOPost([{ status: 500, corpo: {} }], { postProibido: false })
+    const { resposta } = await cliqueComMp({ ...LINHA_SOLICITADA, amount: 50 }, mp)
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "concluido")
+    assertEquals(mp.registro.chamadas.map((c) => c.metodo), ["POST"])
 })
 
 // ── acao 'reemitir' ─────────────────────────────────────────────────────────

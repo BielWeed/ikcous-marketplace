@@ -3209,9 +3209,27 @@ for (const t of [2, 3, 4, 5, 9]) {
   });
 }
 
+/**
+ * A1 do reembolso A/B (15/10/2026): linha que já teve envio só chega à pergunta
+ * ao banco depois de a consulta ao MP dizer `nao_achou` (`estorno_reenvio_test.ts`).
+ * Os testes R1 abaixo são sobre o que o BANCO decide depois disso: o MP dublado
+ * responde a consulta com a order paga e nenhum reembolso.
+ */
+const GET_ORDER_SEM_REEMBOLSO: RotaDuble = {
+  metodo: "GET",
+  trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
+  status: 200,
+  corpo: {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "processed",
+    status_detail: "accredited",
+    transactions: { payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }], refunds: [] },
+  },
+};
+
 Deno.test("R1 (controle) - a MESMA linha com post_autorizado_em: guarda e nao_cabe dão tentar_depois, reserva mantida, ZERO POST", async () => {
   const carimbada = linhaNovaSemPost({ tentativas: 2, post_autorizado_em: "2026-10-04T10:00:00Z" });
-  const mp = fetchDuble([POST_ORDERS_OK]);
+  const mp = fetchDuble([POST_ORDERS_OK, GET_ORDER_SEM_REEMBOLSO]);
   // Pela guarda de entrada (retrato já com os 70).
   const pelaGuarda = await executarEstornoReal({
     linha: carimbada,
@@ -3223,27 +3241,32 @@ Deno.test("R1 (controle) - a MESMA linha com post_autorizado_em: guarda e nao_ca
   });
   assertEquals(pelaGuarda.tipo, "tentar_depois");
   assertStringIncludes((pelaGuarda as { motivo: string }).motivo, MOTIVO_LINHA_INCERTA);
-  // Pelo nao_cabe do banco (retrato velho, a guarda passa).
+  assertEquals(mp.chamadas.length, 0, "a guarda recusa antes de qualquer chamada");
+  // Pelo nao_cabe do banco (retrato velho, a guarda passa; a consulta do
+  // reenvio não acha nada e a pergunta chega ao banco).
   const peloBanco = await executarEstornoReal({
     linha: carimbada,
     pedido: pedidoOrder({ valor_estornado: 0 }),
     token: TOKEN,
     buscar: mp.f,
     consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    idsJaReivindicados: [],
     autorizarAntesDoPost: () => Promise.resolve({ decisao: "nao_cabe", disponivel: 30 }),
   });
   assertEquals(peloBanco.tipo, "tentar_depois");
   assertStringIncludes((peloBanco as { motivo: string }).motivo, MOTIVO_LINHA_INCERTA);
-  assertEquals(mp.chamadas.length, 0);
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0);
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"], "só a consulta do reenvio");
 });
 
 Deno.test("R1 (legado) - linha anterior à migration (sem criada_sob_autorizacao) com tentativas 2: continua incerta — tentar_depois; a mesma linha nascida depois (true): recusado", async () => {
-  const mp = fetchDuble([POST_ORDERS_OK]);
+  const mp = fetchDuble([POST_ORDERS_OK, GET_ORDER_SEM_REEMBOLSO]);
   const args = {
     pedido: pedidoOrder({ valor_estornado: 0 }),
     token: TOKEN,
     buscar: mp.f,
     consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    idsJaReivindicados: [] as string[],
     autorizarAntesDoPost: () => Promise.resolve({ decisao: "nao_cabe", disponivel: 30 } as AutorizacaoDoPost),
   };
   const legado = await executarEstornoReal({ ...args, linha: linhaCom({ amount: 50, status: "em_processamento", tentativas: 2 }) });
@@ -3255,5 +3278,8 @@ Deno.test("R1 (legado) - linha anterior à migration (sem criada_sob_autorizacao
   assertEquals(legadoNulo.tipo, "tentar_depois");
   const nova = await executarEstornoReal({ ...args, linha: linhaNovaSemPost({ tentativas: 2 }) });
   assertEquals(nova.tipo, "recusado");
-  assertEquals(mp.chamadas.length, 0);
+  // Tentativas 2 = marca anterior: as três passam pela consulta do reenvio
+  // (A1, 15/10/2026) e nenhuma manda POST.
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0);
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET", "GET", "GET"]);
 });

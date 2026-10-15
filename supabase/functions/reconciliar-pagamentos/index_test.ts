@@ -23,6 +23,7 @@ import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 import {
   MOTIVO_LINHA_INCERTA,
+  MOTIVO_REENVIO_SEM_CONSULTA,
   MOTIVO_SALDO_MUDOU_ANTES_DO_POST,
   MOTIVO_SALDO_NAO_COBRE_MAIS,
 } from "../_shared/estorno.ts";
@@ -1474,8 +1475,15 @@ Deno.test("R3 - consulta sem refund e tentativas=2 -> repete o POST com a MESMA 
     resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
   });
   const mp = fetchDubleReconciliacao([
-    // GET da confirmação direta: sem transaction_amount_refunded -> "não sei".
-    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    // GET da confirmação direta e da consulta do reenvio (A1, 15/10/2026): o
+    // MP prova que NADA foi devolvido (acumulado 0, lista vazia) — só assim o
+    // reenvio sai.
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: { id: 123456789, status: "approved", transaction_amount_refunded: 0, refunds: [] },
+    },
     // POST do retry: em_process (PIX em contingência) — não conclui, mas
     // prova que o retry aconteceu com a MESMA chave.
     { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "in_process" } },
@@ -1485,10 +1493,9 @@ Deno.test("R3 - consulta sem refund e tentativas=2 -> repete o POST com a MESMA 
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
-  assertEquals(mp.chamadas.length, 2);
-  assertEquals(mp.chamadas[0].metodo, "GET");
-  assertEquals(mp.chamadas[1].metodo, "POST");
-  assertEquals(mp.chamadas[1].chave, "r3");
+  // confirmação (GET), consulta do reenvio (GET) e só então o POST.
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET", "GET", "POST"]);
+  assertEquals(mp.chamadas[2].chave, "r3");
   assertEquals(corpo.estornos.concluidos, 0);
   assertEquals(corpo.estornos.adiados, 1);
   // tentativas foi incrementada ANTES do retry (marca da nova tentativa).
@@ -1496,6 +1503,137 @@ Deno.test("R3 - consulta sem refund e tentativas=2 -> repete o POST com a MESMA 
     registro.atualizacoesOrderRefunds.some((a) => a.id === "r3" && a.valores.tentativas === 3),
     true,
   );
+});
+
+// ── A1 do crítico do reembolso A/B (15/10/2026): o robô não reenvia sem a
+// consulta dizer `nao_achou`. A chave de idempotência do MP vale 24 h; depois
+// dela, o reenvio de uma linha que já criou o reembolso no MP (resposta perdida)
+// cria o SEGUNDO. Os dublês abaixo REPROVAM qualquer POST de reembolso: cada um
+// é uma violação registrada (e respondida 201, como o MP responderia).
+
+function mpQueReprovaPost(gets: Array<{ status: number; corpo: unknown }>) {
+  const chamadas: Array<{ url: string; metodo: string; chave?: string }> = [];
+  const violacoes: string[] = [];
+  let i = 0;
+  const f = (entrada: string | URL | Request, init?: RequestInit) => {
+    const url = typeof entrada === "string" ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+    const metodo = (init?.method ?? "GET").toUpperCase();
+    chamadas.push({ url, metodo, chave: ((init?.headers ?? {}) as Record<string, string>)["X-Idempotency-Key"] });
+    if (metodo === "POST") {
+      violacoes.push(url);
+      return Promise.resolve(new Response(JSON.stringify({ id: 9999, status: "approved", amount: 20 }), { status: 201 }));
+    }
+    const r = gets[Math.min(i, gets.length - 1)];
+    i++;
+    return Promise.resolve(
+      new Response(typeof r.corpo === "string" ? r.corpo : JSON.stringify(r.corpo), { status: r.status }),
+    );
+  };
+  return { f, chamadas, violacoes };
+}
+
+function cenarioDeReenvio(extras: Record<string, unknown> = {}) {
+  const registro = registroDoReenvio();
+  const pedido = pedidoFrescoPara({ total: 200, valor_estornado: 0 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [{
+      id: "rr1",
+      order_id: pedido.id,
+      amount: 20,
+      status: "em_processamento",
+      // Um envio anterior, carimbado (o POST do dia 1 cuja resposta se perdeu).
+      tentativas: 1,
+      criada_sob_autorizacao: true,
+      post_autorizado_em: "2026-10-12T10:00:00.000Z",
+      mp_refund_id: null,
+      ...extras,
+    }],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  return { registro, supabase };
+}
+
+function registroDoReenvio() {
+  return {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    chamadasAutorizarPost: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+}
+
+const PAGAMENTO_SEM_ACUMULADO = { id: 123456789, status: "approved" };
+const PAGAMENTO_SEM_REEMBOLSO = { id: 123456789, status: "approved", transaction_amount_refunded: 0, refunds: [] };
+const PAGAMENTO_COM_REF1 = {
+  id: 123456789,
+  status: "approved",
+  transaction_amount_refunded: 20,
+  refunds: [{ id: 7001, status: "approved", amount: 20, date_created: "2026-10-12T10:00:05.000Z" }],
+};
+
+Deno.test("R3b (A1) - robô: consulta que NÃO sabe quanto já voltou (acumulado ausente) -> ZERO POST, linha adiada, motivo leigo", async () => {
+  const { registro, supabase } = cenarioDeReenvio();
+  const mp = mpQueReprovaPost([{ status: 200, corpo: PAGAMENTO_SEM_ACUMULADO }]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.violacoes, [], "nenhum POST de reembolso");
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET", "GET"], "confirmação + consulta do reenvio");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasAutorizarPost.length, 0, "o banco nem é perguntado: o carimbo não se renova");
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.id === "rr1" && a.valores.ultimo_erro === MOTIVO_REENVIO_SEM_CONSULTA),
+    true,
+  );
+});
+
+for (const [nome, get] of [
+  ["GET 500", { status: 500, corpo: { message: "erro" } }],
+  ["corpo ilegível", { status: 200, corpo: "<html>gateway</html>" }],
+] as Array<[string, { status: number; corpo: unknown }]>) {
+  Deno.test(`R3c (A1) - robô: consulta indeterminada (${nome}) -> ZERO POST, adiada`, async () => {
+    const { supabase } = cenarioDeReenvio();
+    const mp = mpQueReprovaPost([get]);
+    const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f })).json();
+    assertEquals(mp.violacoes, []);
+    assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  });
+}
+
+Deno.test("R3d (A1) - robô: a confirmação não fechou, mas a consulta do reenvio ACHA o REF1 do MP -> ZERO POST, adota o REF1 e conclui", async () => {
+  const { registro, supabase } = cenarioDeReenvio();
+  // 1º GET (confirmação): o MP ainda não lista nada; 2º (consulta do reenvio)
+  // e 3º (confirmação da adoção): o REF1 aparece — a consistência eventual do MP.
+  const mp = mpQueReprovaPost([
+    { status: 200, corpo: PAGAMENTO_SEM_REEMBOLSO },
+    { status: 200, corpo: PAGAMENTO_COM_REF1 },
+  ]);
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f })).json();
+
+  assertEquals(mp.violacoes, [], "nenhum POST: seria o REF2, dinheiro em dobro");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "rr1");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "7001");
+});
+
+Deno.test("R3e (A1, controle) - robô: linha NOVA (solicitado, tentativas 0) envia como antes — POST direto, ZERO GET", async () => {
+  const { registro, supabase } = cenarioDeReenvio({ status: "solicitado", tentativas: 0, post_autorizado_em: null });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 999, status: "approved", amount: 20 } },
+  ]);
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f })).json();
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["POST"]);
+  assertEquals(mp.chamadas[0].chave, "rr1");
+  assertEquals(corpo.estornos.concluidos, 1);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
 });
 
 Deno.test("R4 - tentativas=5 -> continua em_processamento (saldo reservado), SEM novo POST, ultimo_erro com o texto do teto (D2/BLOQUEIA-2)", async () => {
@@ -1775,9 +1913,14 @@ Deno.test("R9 - retry em_processamento de pedido PIX (gateway_payment_id de ORDE
       metodo: "GET",
       trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01",
       status: 200,
+      // A1 (15/10/2026): a order paga SEM reembolso nenhum — o mesmo GET
+      // serve à consulta do reenvio, que precisa provar `nao_achou` para o
+      // POST sair (antes o corpo dizia `status: "refunded"` com a lista vazia,
+      // contradição que a consulta do reenvio lê como "não sei").
       corpo: {
         id: "ORD01ABCDEFOLUIMWQKDXYZ01",
-        status: "refunded",
+        status: "processed",
+        status_detail: "accredited",
         transactions: {
           payments: [{ id: "PAY_RETRY", status: "processed" }],
           refunds: [],
@@ -1977,17 +2120,18 @@ Deno.test("R12 - experimento do laudo ponta a ponta: com a ordenação tentativa
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
-  // b (avaliada primeiro) NÃO conclui: nem com o dinheiro de a (achado 1),
-  // nem sem POST — o POST com a chave DELA saiu (`mp.chamadas` abaixo) e o
-  // resultado é "em_processamento" (adiada). a conclui SEM POST, pela
-  // consulta, com o refund que é exatamente do valor dela.
+  // b (avaliada primeiro) NÃO conclui com o dinheiro de a (achado 1) e fica
+  // adiada. a conclui SEM POST, pela consulta, com o refund que é exatamente
+  // do valor dela.
   assertEquals(corpo.estornos, { vistos: 2, concluidos: 1, adiados: 1, falhos: 0 });
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "a");
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "ref-a");
-  // O POST de b saiu com a chave DELA (idempotência por linha) — nunca a de a.
-  const postDeB = mp.chamadas.find((c) => c.metodo === "POST");
-  assertEquals(postDeB?.chave, "b");
+  // A1 (15/10/2026): b já teve envio e, quando é avaliada, o MP mostra um
+  // reembolso (o de a) que nenhuma linha reivindicou ainda — a consulta do
+  // reenvio não sabe de quem é, então NENHUM POST sai neste ciclo (antes saía o
+  // POST de b). No ciclo seguinte a já gravou o id dela e b volta a poder enviar.
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0);
 });
 
 Deno.test("R13 - idsJaReivindicados: duas linhas do MESMO valor no mesmo lote — a 1ª conclui com o refund, a 2ª (vendo o id já gravado) NÃO conclui", async () => {
@@ -3040,14 +3184,16 @@ Deno.test("LEASE-C2 - retry da em_processamento (consulta sem refund): o banco d
     autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 10 }, error: null }),
   });
   const mp = fetchDubleReconciliacao([
-    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    // A1 (15/10/2026): o MP prova que nada foi devolvido — a pergunta ao banco
+    // só acontece depois da consulta do reenvio dizer `nao_achou`.
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: PAGAMENTO_SEM_REEMBOLSO },
     { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 20 } },
   ]);
 
   const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
   const corpo = await resposta.json();
 
-  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"], "só a consulta; nenhum POST");
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET", "GET"], "confirmação + consulta do reenvio; nenhum POST");
   assertEquals(corpo.estornos.adiados, 1);
   assertEquals(registro.chamadasAutorizarPost.map((c) => c.args), [{ p_refund_id: "rl2", p_valor: 20 }]);
   // Linha LEGADA (sem criada_sob_autorizacao) com tentativas 2: incerta —
@@ -3075,7 +3221,9 @@ Deno.test("LEASE-C3 - autorizado: os dois caminhos perguntam ao banco UMA vez ca
     resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
   });
   const mp = fetchDubleReconciliacao([
-    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    // A1 (15/10/2026): rl4 já teve envio — sem a prova de que nada foi
+    // devolvido, o POST dela não sairia.
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: PAGAMENTO_SEM_REEMBOLSO },
     { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "in_process" } },
   ]);
 

@@ -187,6 +187,36 @@ export function linhaPodeJaTerChegadoAoMp(linha: LinhaEstorno): boolean {
   return linha.criada_sob_autorizacao !== true && Number(linha.tentativas ?? 0) > 1;
 }
 
+/**
+ * O teto de `tentativas` a partir do qual a linha é TRAVADA: o robô
+ * (`reconciliar-pagamentos`) para de POSTar e só consulta o MP, e o clique do
+ * lojista (`estornar-pagamento`) recusa reenviar. Um número, dois chamadores.
+ */
+export const TETO_DE_TENTATIVAS_DO_POST = 5;
+
+/**
+ * A linha JÁ TEVE ENVIO? (A1 do crítico do reembolso A/B, 15/10/2026.) Recebe a
+ * linha COMO O EXECUTOR A RECEBE — os dois chamadores (clique e robô) somam a
+ * marca DESTE ciclo em `tentativas` antes de chamar `executarEstorno`. Já teve
+ * envio se pode ter chegado ao MP (`linhaPodeJaTerChegadoAoMp`: carimbo de POST
+ * autorizado, id do MP, legado) OU se houve marca de um ciclo ANTERIOR
+ * (`tentativas > 1`), mesmo sem carimbo: mais conservador que o critério de
+ * incerteza — o preço é um GET a mais, nunca um POST a mais.
+ */
+export function linhaJaTeveEnvio(linha: LinhaEstorno): boolean {
+  return linhaPodeJaTerChegadoAoMp(linha) || Number(linha.tentativas ?? 0) > 1;
+}
+
+/** Texto leigo (`ultimo_erro`, a cliente lê) quando a consulta antes do reenvio
+ * não respondeu com clareza: nada novo saiu. */
+export const MOTIVO_REENVIO_SEM_CONSULTA =
+  "uma tentativa anterior desta devolução pode já ter chegado ao Mercado Pago e a conferência com ele não respondeu com clareza — nada novo foi enviado e o valor segue reservado; a loja confere de novo em instantes";
+
+/** Texto leigo quando o MP já mostra o reembolso desta devolução, mas a
+ * confirmação ainda não fechou: nada novo saiu. */
+export const MOTIVO_REENVIO_JA_NO_MP =
+  "o Mercado Pago já mostra esta devolução — nada novo foi enviado; a confirmação é registrada na próxima conferência";
+
 type ChamarRpc = (
   nome: string,
   args: Record<string, unknown>,
@@ -1761,6 +1791,65 @@ export async function consultarTransacaoDaOrder(args: {
 }
 
 /**
+ * A PERGUNTA ANTES DO REENVIO (A1 do crítico do reembolso A/B, 15/10/2026).
+ *
+ * A chave de idempotência (`X-Idempotency-Key` = id da linha) só vale 24 h no
+ * MP. Uma linha que já teve envio (`linhaJaTeveEnvio`) pode ter criado o
+ * reembolso sem a resposta chegar; repetir o POST depois de 24 h cria um
+ * SEGUNDO reembolso e a cliente recebe em dobro. Por isso o POST de reenvio só
+ * sai quando `consultarReembolsoDoPedido` (um GET, nunca POST) responde
+ * `nao_achou`. Devolve `null` = pode enviar; qualquer outro valor é o desfecho,
+ * SEM POST:
+ *   * `achou` — o MP já fez o reembolso desta linha: adota pela confirmação de
+ *     sempre (`confirmarPorConsulta`, o único produtor de `concluido` por
+ *     consulta, com a guarda do acumulado); se ela ainda não fechar,
+ *     `tentar_depois` — nunca POST;
+ *   * `indeterminado`, consulta que lança, ou `idsJaReivindicados` ausente (sem
+ *     ele não se sabe de quem é cada reembolso do pedido) — `tentar_depois`.
+ * Nenhum desfecho aqui leva diagnóstico de POST: nada foi enviado.
+ *
+ * Fica ANTES do GET da transação e da autorização do banco: consulta que não
+ * libera não gasta a pergunta ao banco nem renova o carimbo `post_autorizado_em`.
+ * A janela entre esta consulta e o POST é de segundos — muito dentro das 24 h da
+ * chave, então um envio concorrente (clique × robô) é deduplicado pelo MP.
+ */
+async function conferirAntesDoReenvio(args: {
+  buscar: typeof fetch;
+  token: string;
+  linha: LinhaEstorno;
+  pedido: PedidoParaEstorno;
+  idsJaReivindicados: string[] | undefined;
+}): Promise<ResultadoEstorno | null> {
+  const { buscar, token, linha, pedido, idsJaReivindicados } = args;
+  if (!Array.isArray(idsJaReivindicados)) {
+    console.error("estorno: reenvio sem a lista de ids já reivindicados — nada enviado", linha.id);
+    return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_SEM_CONSULTA };
+  }
+  let consulta: ConsultaDoReembolso;
+  try {
+    consulta = await consultarReembolsoDoPedido({
+      buscar,
+      token,
+      pedido,
+      valor: linha.amount,
+      idsJaReivindicados,
+    });
+  } catch (err) {
+    console.error("estorno: a consulta antes do reenvio lançou", nomeDoErro(err));
+    consulta = { resultado: "indeterminado", motivo: "a consulta lançou" };
+  }
+  if (consulta.resultado === "nao_achou") return null;
+  if (consulta.resultado === "achou") {
+    const confirmacao = await confirmarPorConsulta({ buscar, token, linha, pedido, idsJaReivindicados });
+    if (confirmacao.tipo === "concluido") return confirmacao;
+    console.error("estorno: o MP mostra o reembolso desta linha, mas a confirmação não fechou — nada enviado", linha.id);
+    return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_JA_NO_MP };
+  }
+  console.error("estorno: consulta antes do reenvio sem resposta clara — nada enviado", linha.id, consulta.motivo);
+  return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_SEM_CONSULTA };
+}
+
+/**
  * Fluxo completo: guarda → (Orders: acha a transação) → POST → interpreta →
  * (se a tabela manda consultar) GET de confirmação. NUNCA lança: toda falha
  * de rede/timeout/ilegível vira `tentar_depois` (E19), e guarda recusada não
@@ -1805,6 +1894,19 @@ export async function executarEstorno(args: {
       return { tipo: "tentar_depois", motivo: `${guarda.motivo}; ${MOTIVO_LINHA_INCERTA}` };
     }
     return { tipo: "recusado", motivo: guarda.motivo };
+  }
+
+  // A1 do crítico do reembolso A/B (15/10/2026): o REENVIO só sai depois de
+  // perguntar ao MP. Ver `conferirAntesDoReenvio`. Linha nova não passa aqui.
+  if (linhaJaTeveEnvio(linha)) {
+    const bloqueio = await conferirAntesDoReenvio({
+      buscar,
+      token,
+      linha,
+      pedido,
+      idsJaReivindicados: args.idsJaReivindicados,
+    });
+    if (bloqueio) return bloqueio;
   }
 
   let transacaoDaOrder: string | null | undefined;
