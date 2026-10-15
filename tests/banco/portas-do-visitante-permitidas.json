@@ -115,6 +115,14 @@
       "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
     },
     {
+      "funcao": "public.apagar_categoria_vazia(p_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Gestao de categorias do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL e so apaga categoria sem produto, banner nem regra de devolucao (migration 20261237000000); o visitante nao a executa."
+    },
+    {
       "funcao": "public.assinatura_da_loja_ler()",
       "executa": ["authenticated"],
       "tipo": "leitura",
@@ -161,6 +169,14 @@
       "secdef": true,
       "situacao": "logado",
       "porque": "Devolucao do pedido pelo cliente logado (ou pelo admin): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
+    },
+    {
+      "funcao": "public.categorias_com_uso()",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Gestao de categorias do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (migration 20261237000000); o visitante nao a executa."
     },
     {
       "funcao": "public.confirmar_retorno_do_produto(p_order_id uuid)",
@@ -689,6 +705,14 @@
       "secdef": true,
       "situacao": "logado",
       "porque": "Financeiro, venda presencial e pagamentos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.renomear_categoria(p_id uuid, p_novo_nome text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Gestao de categorias do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL e troca o nome nos produtos, nos links de banner e na regra de devolucao numa transacao so (migration 20261237000000); o visitante nao a executa."
     },
     {
       "funcao": "public.reorder_banners_atomic(p_position text, p_banner_id_1 uuid, p_banner_id_2 uuid)",

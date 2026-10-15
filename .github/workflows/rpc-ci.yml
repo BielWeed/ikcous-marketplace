@@ -101,6 +101,8 @@ on:
       - "scripts/publicacao/consultas/36b-antes-venda-repetida-do-balcao-corpo-vigente.sql"
       - "scripts/publicacao/consultas/37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado.sql"
       - "scripts/publicacao/consultas/37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/38a-conferir-gestao-de-categorias-aplicado.sql"
+      - "scripts/publicacao/consultas/38b-antes-gestao-de-categorias-funcoes-ausentes.sql"
       - "scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql"
       - "scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql"
       - "scripts/publicacao/consultas/39m-medir-privilegios-do-roteiro-de-privacidade.sql"
@@ -180,6 +182,8 @@ on:
       - "scripts/publicacao/consultas/36b-antes-venda-repetida-do-balcao-corpo-vigente.sql"
       - "scripts/publicacao/consultas/37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado.sql"
       - "scripts/publicacao/consultas/37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/38a-conferir-gestao-de-categorias-aplicado.sql"
+      - "scripts/publicacao/consultas/38b-antes-gestao-de-categorias-funcoes-ausentes.sql"
       - "scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql"
       - "scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql"
       - "scripts/publicacao/consultas/39m-medir-privilegios-do-roteiro-de-privacidade.sql"
@@ -788,6 +792,20 @@ jobs:
       - name: Prova viva do portao da venda repetida do balcao (consultas 36a e 36b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/venda-balcao-mesma-chave-portao-viva.cjs
+      # A lojista renomeia e apaga categoria sem deixar produto orfao (migration 20261237, 14/10/2026; permissao + regra de
+      # devolucao). A categoria do produto e' guardada pelo NOME: renomear_categoria troca o nome nos QUATRO lugares (a linha, os
+      # produtos, os links de banner nos dois formatos e a lista "sem troca" da politica de devolucao) numa transacao so e conta
+      # cada um; falha no meio nao deixa nada trocado; nome repetido (maiuscula, acento, pontuacao) e vazio recusam;
+      # apagar_categoria_vazia recusa com o motivo enquanto houver produto, banner ou regra apontando; anon sem EXECUTE, logado
+      # comum e admin rebaixado (JWT velho) recusados sem escrever; a codificacao do link e' a de encodeURIComponent; o rollback
+      # apaga as onze funcoes e so elas. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da gestao de categorias sem produto orfao (migration 20261237)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-gestao-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 38a (DEPOIS, 8 linhas) e 38b (ANTES, 6 linhas). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da gestao de categorias (consultas 38a e 38b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-gestao-portao-viva.cjs
       # Pedidos de privacidade da cliente (migration 20261238, dado de cliente + permissao): exclusao de conta e correcao de
       # e-mail pedidas pelo app e atendidas a mao. COMPORTAMENTO com a RLS real: a cliente le e insere so o dela, nao decide,
       # um aberto por (cliente, tipo), anon fechado, admin atual atende com carimbo do servidor, rebaixado nao, NINGUEM apaga

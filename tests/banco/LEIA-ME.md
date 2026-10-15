@@ -630,6 +630,34 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   linhas) e a medição `34m-medir-sino-da-retirada` (rol aberto, só contagens), a "prova de objetos" do lote
   `20261233000000`. Mesmo desenho do portão 26: rol exato nos estados, um negativo por linha, o veredito do
   `conferir-banco.cjs` (`rol=ok`), a 34m por diferença contra os pedidos montados. **Não prova** a IKCOUS nem a Savy.
+- **gestão de categorias sem produto órfão (`categorias-gestao-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261237000000` (14/10/2026; permissão + regra de devolução) cria `renomear_categoria`, `apagar_categoria_vazia`,
+  `categorias_com_uso` e oito auxiliares `categoria__*`. A categoria do produto é guardada pelo NOME (texto, sem chave
+  estrangeira) e o nome aparece em quatro lugares: a linha de `categorias`, `produtos.categoria`, o link do banner
+  (`/?category=<nome>`, codificado ou cru) e a lista `categorias_sem_troca` da política de devolução. A prova roda com os
+  papéis reais num Postgres efêmero: renomear troca os QUATRO lugares numa transação e conta cada um (com a chave da
+  vitrine: maiúscula e espaço nas pontas; nome PARECIDO e outra categoria ficam; banner inativo também; os outros
+  parâmetros do link ficam; a lista da política só troca o item que é a categoria, guarda a ordem e as repetições dos
+  outros itens, e o nome novo não se repete; produto e item da lista mantêm o espaço que tinham nas pontas, para a
+  regra de devolução, que compara `lower()` sem tirar espaço, dar o MESMO "aceita troca?" de cada produto antes e depois
+  da troca, numa matriz de espaços, caixas e itens); falha injetada no banner ou na
+  política não deixa NADA trocado (com o controle sem a falha); nome repetido (maiúscula, acento, pontuação, espaço),
+  vazio, só símbolos e acima de 80 letras recusam sem escrever; duas linhas quase iguais recusam renomear (ninguém é
+  adivinhado); apagar recusa com o motivo e as contagens enquanto houver produto, banner (ativo ou não) ou regra de
+  devolução, e vazia apaga só ela; `anon` sem EXECUTE, logado comum, admin rebaixado (JWT velho) e admin só numa das duas
+  fontes recebem "Acesso negado" sem escrever (com o controle de que SÓ a segunda guarda os barra), service_role passa e as
+  auxiliares são fechadas; a codificação do nome é a de `encodeURIComponent` (inclusive emoji) e a leitura do link a de
+  `destino-do-banner.ts`; o rollback apaga as onze funções e só elas e reaplicar devolve o mesmo corpo e a mesma ACL;
+  o pré-voo recusa sem escrever. "Escondida da vitrine" é a coluna `ativo` que já existia (o front a respeita): esta
+  migration não cria outra. **Não prova** a IKCOUS nem a Savy; **não cobre** link de banner com endereço completo
+  escrito à mão nem a corrida entre renomear e salvar um produto com a tela velha.
+- **portão da gestão de categorias (`categorias-gestao-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `38a-conferir-gestao-de-categorias-aplicado` (DEPOIS, 8 linhas) e `38b-antes-gestao-de-categorias-funcoes-ausentes`
+  (ANTES, 6 linhas), a "prova de objetos" do lote `20261237000000`. Mesmo desenho do portão 34: rol exato nos estados,
+  um negativo por linha (byte a mais em cada corpo, atributo, EXECUTE aberto ou fechado demais, auxiliar aberta ou
+  ausente ou trocada por uma sobrecarga de outra assinatura, gatilho, coluna e função de que a migration depende), o
+  veredito do `conferir-banco.cjs` (`rol=ok`).
+  **Não prova** a IKCOUS nem a Savy.
 - **pedidos de privacidade da cliente (`pedidos-de-privacidade-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261238000000` — a tabela `pedidos_de_privacidade` (excluir conta / corrigir e-mail, atendida à mão). Com a RLS real:
   a cliente lê e insere só o dela (leitura cruzada e inserção em nome de outra recusadas), não decide nem escreve

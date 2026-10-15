@@ -3074,6 +3074,18 @@ export type Database = {
         Args: { p_motivo: string; p_order_id: string };
         Returns: Json;
       };
+      apagar_categoria_vazia: {
+        Args: { p_id: string };
+        Returns: Json;
+      };
+      categorias_com_uso: {
+        Args: never;
+        Returns: Json;
+      };
+      renomear_categoria: {
+        Args: { p_id: string; p_novo_nome: string };
+        Returns: Json;
+      };
       assinatura_da_loja_ler: {
         Args: never;
         Returns: Json;

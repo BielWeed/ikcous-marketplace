@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 39a, 39b, 40a, 40b, 41a, 41b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -2008,6 +2008,35 @@ const ROL_DA_34B = [
   "tr_pedido_avisa_o_cliente: ligada a funcao (AFTER UPDATE OF status, por linha)",
   "notifica_cliente_de_mudanca_de_status: EXECUTE como hoje (aberto por heranca do PUBLIC)",
 ];
+/** O rol da 38a (a prova de objetos da migration 20261237000000, a lojista renomeia e apaga categoria sem deixar produto orfao): as 8
+ * linhas que scripts/publicacao/consultas/38a-conferir-gestao-de-categorias-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer
+ * estado do banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de cada uma das TRES portas (renomear_categoria,
+ * apagar_categoria_vazia, categorias_com_uso) e o NOVO (md5), os atributos das tres, o EXECUTE so de authenticated e service_role, as
+ * oito auxiliares categoria__* existem e estao FECHADAS e o gatilho que avisa a vitrine do produto trocado segue ligado.
+ * tests/banco/categorias-gestao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_38A = [
+  "controle: funcoes de public visiveis a este papel",
+  "renomear_categoria: corpo e o da 20261237000000 (md5)",
+  "apagar_categoria_vazia: corpo e o da 20261237000000 (md5)",
+  "categorias_com_uso: corpo e o da 20261237000000 (md5)",
+  "as tres portas: atributos de sempre (SECURITY DEFINER, plpgsql, search_path=public, jsonb; apagar e renomear VOLATILE, categorias_com_uso STABLE)",
+  "as tres portas: EXECUTE so para authenticated e service_role (PUBLIC e anon nao)",
+  "as oito auxiliares categoria__*: existem e estao fechadas (nenhum papel de fora as executa)",
+  "produtos: o gatilho set_ultima_atualizacao (avisa a vitrine do produto trocado) segue ligado",
+];
+/** O rol da 38b (a consulta de AUSENCIA do lote da gestao de categorias; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/38b-antes-gestao-de-categorias-funcoes-ausentes.sql devolve - a base de antes: as tres portas e as oito
+ * auxiliares ainda ausentes, as tabelas e colunas de que a migration depende de pe, as funcoes de papel e de acento que ela chama
+ * existindo e o gatilho do produto ligado. Uma loja que ja tem a migration reprova aqui de proposito, nas linhas das portas e das
+ * auxiliares. */
+const ROL_DA_38B = [
+  "controle: funcoes de public visiveis a este papel",
+  "as tres portas (renomear_categoria, apagar_categoria_vazia, categorias_com_uso) ainda NAO existem",
+  "as oito auxiliares categoria__* ainda NAO existem",
+  "as tabelas e colunas de que a migration depende estao de pe (categorias, produtos, banners, politica_devolucao)",
+  "is_admin(), is_admin_atual() e f_unaccent(text) existem (a migration as chama)",
+  "produtos: o gatilho set_ultima_atualizacao (avisa a vitrine do produto trocado) esta ligado",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -2067,6 +2096,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado": ROL_DA_37A,
   "37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente":
     ROL_DA_37B,
+  "38a-conferir-gestao-de-categorias-aplicado": ROL_DA_38A,
+  "38b-antes-gestao-de-categorias-funcoes-ausentes": ROL_DA_38B,
   "39a-conferir-pedidos-de-privacidade-aplicado": ROL_DA_39A,
   "39b-antes-pedidos-de-privacidade-objetos-ausentes": ROL_DA_39B,
   "40a-conferir-identidade-legal-da-loja-aplicado": ROL_DA_40A,
@@ -2669,6 +2700,8 @@ module.exports = {
   ROL_DA_36B,
   ROL_DA_37A,
   ROL_DA_37B,
+  ROL_DA_38A,
+  ROL_DA_38B,
   ROL_DA_39A,
   ROL_DA_39B,
   ROL_DA_40A,

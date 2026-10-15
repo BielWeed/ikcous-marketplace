@@ -1308,7 +1308,6 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `tests/banco/lucro-so-com-custo-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
-
   36. **Lote de UMA migration, de apply normal: `20261235000000` (a venda repetida do balcao devolve a venda
       feita; DINHEIRO E ESTOQUE, nao muda dado).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
       assinantes (IKCOUS e Savy). Troca o corpo de `registrar_venda_presencial` (a RPC do PDV) por
@@ -1416,6 +1415,63 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs` prova a decisao das duas
         consultas, num Postgres 17 efemero. Nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de
         cada loja nem o corpo vivo delas.
+  38. **Migration de apply normal: `20261237000000` (a lojista renomeia e apaga categoria sem deixar produto
+      orfao; PERMISSAO e REGRA DE DEVOLUCAO, nada se abre e nada se apaga no apply).** Sem `backfillLedger` e sem
+      `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). So CRIA funcoes (`CREATE OR REPLACE`): as
+      tres portas do painel, `renomear_categoria`, `apagar_categoria_vazia` e `categorias_com_uso`, e oito
+      auxiliares internas `categoria__*`. Nenhuma tabela, coluna, politica de RLS, gatilho ou linha de dado muda
+      no apply; so a lojista, usando a tela "Gerenciar categorias", troca dado:
+      - **O defeito:** a categoria do produto e guardada pelo NOME, em quatro lugares (a linha de `categorias`,
+        `produtos.categoria`, `banners.link` nos formatos codificado e cru, e `politica_devolucao.categorias_sem_troca`).
+        Trocar o nome so na linha deixava o produto sumido da vitrine, o banner apontando para pagina vazia e a
+        regra de "sem troca" apontando para um nome que nao existe mais (o produto voltava a ser trocavel).
+      - **Agora:** `renomear_categoria` troca os quatro lugares numa transacao so (falha no meio nao deixa nada
+        trocado), com a trava de admin ATUAL (`is_admin()` e `is_admin_atual()`), recusa nome repetido (maiuscula,
+        acento ou pontuacao a mais) e vazio, e devolve quantos produtos, banners e regras trocou;
+        `apagar_categoria_vazia` recusa com o motivo enquanto houver produto, banner ou regra apontando.
+        "Esconder da vitrine" e a coluna `categorias.ativo`, que ja existia e que a vitrine ja respeita.
+      - **Quem quebra:** ninguem (so a tela nova chama as funcoes). **ORDEM: o banco de CADA loja ANTES do front**,
+        porque front novo contra banco sem as portas deixa a lojista sem renomear nem apagar categoria.
+      - **Duas consultas**, so leitura, so catalogo, de ROL FECHADO (8 e 6 linhas, so valem com `rol=ok`):
+        - **`38a-conferir-gestao-de-categorias-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo (md5)
+          de cada uma das tres portas, os atributos, o EXECUTE so de `authenticated` e `service_role`, as oito
+          auxiliares fechadas e o gatilho `set_ultima_atualizacao` do produto ligado.
+        - **`38b-antes-gestao-de-categorias-funcoes-ausentes`** (`ausenciaConfirmadaPor`) prova o ANTES: as onze
+          funcoes ainda ausentes, as colunas de que a migration depende de pe, `is_admin`, `is_admin_atual` e
+          `f_unaccent` existindo e o gatilho do produto ligado. **Rode a `38b` em CADA loja ANTES do apply**
+          (a migration tambem recusa, `B1_BASELINE_DIVERGENT`, se faltar dependencia).
+      - **Caminho, uma loja por vez:** `38a` (sai NEGATIVA) -> `38b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `38a` DE NOVO, que tem de sair POSITIVA. `38a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql` apaga as
+        onze funcoes e so elas. **Nao desfaz nenhum renome ja feito:** os dados trocados ficam como estao (sao
+        dado da lojista). Depois dele a `38b` volta a ser POSITIVA e a `38a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `38a` e a `38b`
+        DE NOVO.
+      - **Limites:** `tests/banco/categorias-gestao-viva.cjs` prova o comportamento (os quatro lugares, nome
+        repetido, apagar com e sem uso, permissao de anon, logado comum e admin rebaixado, a codificacao do link,
+        rollback, mutantes) e `tests/banco/categorias-gestao-portao-viva.cjs` prova a decisao das duas consultas,
+        num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja
+        nem o corpo vivo delas. **Corrida conhecida:** uma aba de produto aberta ANTES de um renome, salva
+        DEPOIS, grava o nome antigo no produto. O produto volta a ficar com um nome que nao existe mais na tabela
+        `categorias`; a tela "Gerenciar categorias" NAO o mostra (la so existem as linhas de `categorias`, e esta
+        nao tem linha), ele continua aparecendo em "Todas" na vitrine mas some do filtro da categoria. A lojista
+        so o acha pela lista de produtos e corrige abrindo o produto e escolhendo a categoria de novo.
+      - **Em aberto, declarado (nao e desta migration):**
+        - **R5 (`UPDATE` e `DELETE` direto em `categorias`):** as politicas de RLS de `UPDATE` e de `DELETE` da tabela
+          `categorias` ainda usam `is_admin()` (papel do JWT), nao o admin ATUAL. Por PostgREST um admin consegue
+          trocar `nome` (deixa o produto orfao) e APAGAR a linha mesmo com produto, banner ou regra (o
+          `apagar_categoria_vazia` so protege quem passa por ele). Tarefa separada: `rls_admin_atual` nas duas
+          politicas, como a `20261202000000` fez nas do pedido.
+        - **R6 (link de banner):** link com ENDERECO COMPLETO escrito a mao (`https://<loja>/?category=X`) e link
+          sem a barra (`?category=X`) nao sao reconhecidos: renomear nao os troca (so `/?category=X`, o que o painel
+          grava). O banner antigo continua abrindo uma pagina vazia ate a lojista trocar o link.
+        - **Produto excluido:** conta como "em uso" e a lojista nao o ve nem o move; a categoria so pode ser apagada
+          depois que ele sai dela (hoje, com ajuda do suporte). Se isso deve liberar o apagar, e decisao de produto.
+        - **Nome "Todas"/"all":** recusado ao renomear (banco) e ao criar pela tela; o `INSERT` direto em
+          `categorias` nao e barrado (pediria gatilho/`CHECK`, que muda o contrato da tabela).
+
   39. **Lote de UMA migration, de apply normal: `20261238000000` (a cliente pede a exclusao da conta e a correcao
       do e-mail; DADO DE CLIENTE e PERMISSAO (LGPD), ADITIVA: cria uma tabela e nao muda nada que ja exista).** Sem
       `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). A migration NASCE
