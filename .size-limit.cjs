@@ -124,7 +124,9 @@ module.exports = [
     // acima. Sem duplicata nem dependência nova; `import()` não ajuda porque o
     // portão SOMA todos os chunks do painel. Cliente 540,36/550 kB, sem mudança.
     //
-    // 15/10/2026 — teto 464,5 -> 466 kB (decisão técnica da hub, lote R1 do
+    // 15/10/2026 — teto 464,5 -> 466 kB (decisão do dono, delegada à hub em
+    // 15/10/2026 ("você escolhe a melhor opção por mim"), registrada aqui; o
+    // dono pode vetar e voltar a 464,5; lote R1 do
     // reembolso): +1,5 kB: bloco de reembolso em dúvida no painel, risco de
     // pagamento em dobro. Medido 465,17 kB (base 462,83; +2,34 do R1 já
     // compactado: contrato do saldo do servidor, bloco da devolução, saída dos
