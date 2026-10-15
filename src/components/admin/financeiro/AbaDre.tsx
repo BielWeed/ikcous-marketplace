@@ -47,7 +47,9 @@ function RotuloDaLinha({
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span>{linha.rotulo}</span>
       {estimado ? (
-        <Etiqueta tom="aviso">Estimado pelo custo atual dos produtos</Etiqueta>
+        <Etiqueta tom="aviso">
+          Parte estimada pelo custo atual dos produtos
+        </Etiqueta>
       ) : null}
     </span>
   );

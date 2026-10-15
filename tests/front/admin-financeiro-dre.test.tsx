@@ -127,15 +127,25 @@ describe("Financeiro — DRE", () => {
     expect(linha("lucro_liquido").className).toContain("border-admin-gold/40");
     expect(linha("cmv").className).not.toContain("font-black");
 
-    // O CMV avisa que é estimado pelo custo ATUAL dos produtos.
+    // O CMV avisa que parte dele é estimada pelo custo ATUAL dos produtos (o servidor diz `cmv_estimado`).
     expect(normalizar(linha("cmv").textContent)).toContain(
-      "Estimado pelo custo atual dos produtos",
+      "Parte estimada pelo custo atual dos produtos",
     );
 
     // A receita bruta já abre separando app e loja física.
     const tudo = normalizar(hospedeiro.textContent);
     expect(tudo).toMatch(/App \(vendas online\) ?R\$ 6\.000,00/);
     expect(tudo).toMatch(/Loja física \(balcão e entrega\) ?R\$ 4\.000,00/);
+  });
+
+  it("CMV SEM o aviso quando o servidor diz que nenhum item usou o custo de hoje (cmv_estimado = false)", async () => {
+    rpcFalso.mockResolvedValue({
+      data: { ...DRE, cmv_estimado: false },
+      error: null,
+    });
+    await montar({ inicio: "2026-09-01", fim: "2026-09-30" });
+    expect(normalizar(linha("cmv").textContent)).not.toContain("estimada");
+    expect(normalizar(linha("cmv").textContent)).toContain("R$ 3.800,00");
   });
 
   it("despesas fixas abrem as categorias por baixo", async () => {

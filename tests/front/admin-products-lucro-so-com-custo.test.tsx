@@ -210,13 +210,16 @@ describe("o rótulo é verdade no banco: o get_admin_analytics_v2 VIVO só soma 
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .at(-1);
 
-  it("a viva é a 20261234000000 (sucessora da 20261214000000) e o valor de venda continua com o FILTER (WHERE custo IS NOT NULL)", () => {
+  it("a viva é a 20261242000000 (sucessora da 20261234000000) e o valor de venda continua com o FILTER (WHERE custo IS NOT NULL)", () => {
     expect(VIVA?.[0]).toContain(
-      "20261234000000_o_lucro_so_conta_produto_com_custo.sql",
+      "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql",
     );
     const sql = VIVA?.[1] ?? "";
-    // a 20261234 só acrescenta a mesma regra ao lucro e ao ranking; o estoque fica como a 20261214 deixou.
-    expect(sql).toContain("FILTER (WHERE p.custo IS NOT NULL), 0) AS profit");
+    // a 20261242 só troca de ONDE vem o custo do LUCRO e do ranking (o do dia da venda, senão o de hoje); o estoque
+    // segue com o custo de hoje, como a 20261214 deixou.
+    expect(sql).toContain(
+      "FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit",
+    );
     expect(sql).toContain(
       "COALESCE(SUM(preco_venda * estoque) FILTER (WHERE custo IS NOT NULL), 0)",
     );

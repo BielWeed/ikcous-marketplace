@@ -92,9 +92,11 @@ export function AjudaDoCrm({
               quantos produtos ficaram de fora. Para achar quais são, abra
               Produtos, toque no botão ao lado da busca ("Mostrar em lista com
               detalhes") e procure o selo "Sem Custo Cadastrado"; cadastre o
-              custo para ele entrar. O lucro usa o custo de hoje de cada
-              produto: se você mudar o custo, o lucro das vendas antigas muda
-              junto.
+              custo para ele entrar. O lucro de cada venda feita daqui para
+              frente usa o custo que o produto tinha no dia da venda: mudar o
+              custo depois não altera esse lucro. As vendas anteriores e as
+              feitas quando o produto estava sem custo cadastrado usam o custo
+              de hoje: se você mudar o custo, o lucro delas muda junto.
             </li>
           </ul>
         </div>
