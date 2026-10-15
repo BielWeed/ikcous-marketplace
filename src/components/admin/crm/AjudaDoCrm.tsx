@@ -89,12 +89,12 @@ export function AjudaDoCrm({
               Os cinco produtos com maior lucro (preço de venda menos o custo
               cadastrado) em pedidos válidos de todo o período. Venda sem custo
               (nem guardado no dia, nem cadastrado hoje) fica fora da conta do
-              lucro, e a tela avisa quantos produtos ficaram de fora. Para
-              achar os sem custo hoje, abra Produtos, toque no botão ao lado da
-              busca ("Mostrar em lista com detalhes") e procure o selo "Sem
-              Custo Cadastrado"; cadastre o custo para ele entrar. Cada venda
-              nova guarda o custo do dia: mudar o custo depois não altera o
-              lucro dela. As vendas de antes dessa mudança usam o custo de hoje.
+              lucro, e a tela avisa quantos produtos ficaram de fora. Para achar
+              os sem custo hoje, abra Produtos, toque no botão ao lado da busca
+              ("Mostrar em lista com detalhes") e procure o selo "Sem Custo
+              Cadastrado"; cadastre o custo para ele entrar. Cada venda nova
+              guarda o custo do dia: mudar o custo depois não altera o lucro
+              dela. As vendas de antes dessa mudança usam o custo de hoje.
             </li>
           </ul>
         </div>
