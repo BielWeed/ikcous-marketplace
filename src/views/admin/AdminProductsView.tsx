@@ -46,6 +46,7 @@ import {
   precisaDeReposicao,
 } from "@/utils/avisos-do-lojista";
 import { haptic } from "@/utils/haptic";
+import { consumirProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -251,6 +252,20 @@ export const AdminProductsView = memo(function AdminProductsView({
   const effectiveLoading = loading || !hasLoadedOnce;
   const shouldScrollToTop = useRef(false);
 
+  // Logo depois de CADASTRAR um produto novo, a lista abre na página 1 e sem
+  // busca nem categoria: o produto novo é o mais recente, e com o filtro ou a
+  // página de antes a lojista não o veria. Qualquer outra abertura continua
+  // lembrando o estado guardado no aparelho. O aviso vem do formulário e vale
+  // uma vez só (`consumirProdutoNovoCadastrado`).
+  useEffect(() => {
+    if (!active) return;
+    if (!consumirProdutoNovoCadastrado()) return;
+    setSearchTerm("");
+    setFilterCategory("all");
+    setCurrentPage(0);
+    shouldScrollToTop.current = true;
+  }, [active, setSearchTerm, setFilterCategory, setCurrentPage]);
+
   useEffect(() => {
     if (shouldScrollToTop.current) {
       const mainEl =
@@ -349,6 +364,22 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   const totalPages = Math.ceil(totalProducts / pageSize);
 
+  // "Nenhum produto" com busca ou categoria escolhida é o filtro que não achou
+  // nada — não o catálogo vazio. A tela diz o que está filtrado e oferece sair.
+  const temBuscaOuFiltro = !!searchTerm || filterCategory !== "all";
+  const descricaoDoFiltro = [
+    searchTerm ? `a busca "${searchTerm}"` : null,
+    filterCategory !== "all" ? `a categoria "${filterCategory}"` : null,
+  ]
+    .filter(Boolean)
+    .join(" e ");
+  const limparBuscaEFiltros = () => {
+    setSearchTerm("");
+    setFilterCategory("all");
+    setCurrentPage(0);
+    shouldScrollToTop.current = true;
+  };
+
   // Lógica de cálculo financeiro global (SWR / Server-Side)
   const financialStats = useMemo(() => {
     // PAINEL-05: `null` quando a analytics nao respondeu — os cartoes
@@ -419,11 +450,16 @@ export const AdminProductsView = memo(function AdminProductsView({
         icon: Package,
         accent: "text-purple-500",
         // PAINEL-09: o número é o total FILTRADO (total_count da RPC com
-        // busca), não o catálogo geral — o subtítulo mentia.
-        subValue: searchTerm ? "Resultados da busca" : "Catálogo Geral",
+        // busca), não o catálogo geral — o subtítulo mentia. Vale também para
+        // o filtro de categoria, não só para a busca.
+        subValue: searchTerm
+          ? "Resultados da busca"
+          : filterCategory !== "all"
+            ? "Só desta categoria"
+            : "Catálogo Geral",
       },
     ],
-    [financialStats, totalProducts, searchTerm], // C2 da 1a revisao: +1 warning sem esta dep
+    [financialStats, totalProducts, searchTerm, filterCategory], // C2 da 1a revisao: +1 warning sem esta dep
   );
 
   // Achado 7 da auditoria de 20/08/2026
@@ -953,8 +989,27 @@ export const AdminProductsView = memo(function AdminProductsView({
               <Package className="size-6 text-zinc-600" />
             </div>
             <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-              Nenhum produto cadastrado
+              {temBuscaOuFiltro
+                ? "Nenhum produto encontrado"
+                : "Nenhum produto cadastrado"}
             </h3>
+            {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
+                diz o que está filtrado e dá a saída. */}
+            {temBuscaOuFiltro && (
+              <>
+                <p className="relative z-10 mt-2 text-xs font-medium text-zinc-500">
+                  Nada combina com {descricaoDoFiltro}. Seus produtos continuam
+                  cadastrados.
+                </p>
+                <button
+                  type="button"
+                  onClick={limparBuscaEFiltros}
+                  className="relative z-10 mt-4 min-h-11 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-wider text-black"
+                >
+                  Limpar busca e filtros
+                </button>
+              </>
+            )}
           </div>
         )}
 
