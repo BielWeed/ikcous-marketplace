@@ -19,17 +19,18 @@
 -- regra de devolução apagada sem ninguém ver. Por isso a troca passa a ser UMA função, numa transação só.
 --
 --   * public.renomear_categoria(p_id uuid, p_novo_nome text) -> jsonb
---       só o administrador de AGORA. Recusa nome vazio, grande demais, só de símbolos ou igual (sem diferenciar
---       maiúscula, acento nem pontuação — a mesma regra do slug) ao de OUTRA categoria. Troca o nome nos quatro
+--       só o administrador de AGORA. Recusa nome vazio, grande demais, só de símbolos, "Todas"/"all" (o filtro da
+--       vitrine) ou igual (sem diferenciar maiúscula, acento nem pontuação — a mesma regra do slug) ao de OUTRA
+--       categoria. Troca o nome (em TODOS os produtos da categoria, também o pausado e o excluído) nos quatro
 --       lugares e devolve quantos de cada foram trocados: {id, nome_antigo, nome, slug, mudou, produtos, banners,
 --       regra_devolucao}. Se qualquer passo falhar, NADA muda (uma função = uma transação).
 --   * public.apagar_categoria_vazia(p_id uuid) -> jsonb
 --       só o administrador de AGORA. Recusa, com o motivo e as contagens, enquanto houver produto, banner ou regra
 --       de devolução apontando para a categoria. Vazia, apaga a linha.
 --   * public.categorias_com_uso() -> jsonb
---       só o administrador de AGORA. Lista todas as categorias (também as escondidas) com a contagem de produtos,
---       banners e regra de devolução de cada uma: é o que a tela "Gerenciar categorias" mostra antes de a lojista
---       renomear ou apagar.
+--       só o administrador de AGORA. Lista todas as categorias (também as escondidas) com a contagem de produtos
+--       (e, deles, quantos estão excluídos), banners e regra de devolução de cada uma: é o que a tela "Gerenciar
+--       categorias" mostra antes de a lojista renomear ou apagar.
 --   * oito funções AUXILIARES privadas (categoria__*): a chave de comparação, o slug, a codificação e a decodificação
 --     do nome para o endereço, a leitura do link do banner (partes e nome), o "é a mesma categoria?" e a contagem de
 --     usos. Ninguém de fora as executa.
@@ -71,9 +72,19 @@
 --   * Quem salva um produto com a categoria ANTIGA (tela aberta antes da troca) durante a troca recria o órfão: não há
 --     trava de linha entre "trocar categoria" e "salvar produto". A janela é de milissegundos e a tela de produtos
 --     relê as categorias.
---   * O front não troca mais o nome direto na tabela (useCategories.updateCategory chama a RPC), mas a política de RLS
---     de UPDATE de categorias continua permitindo o admin gravar `nome` por PostgREST. Fechar isso mexeria no grant
---     de coluna de uma tabela que a vitrine lê no boot — fora do escopo desta migration.
+--   * O front não troca mais o nome direto na tabela (useCategories.updateCategory chama a RPC), mas as políticas de
+--     RLS de UPDATE E DE DELETE de `categorias` ainda usam is_admin() (o papel do JWT, não o de AGORA) e continuam
+--     permitindo o admin gravar `nome` e apagar a linha por PostgREST, sem passar por estas funções: um nome trocado
+--     assim deixa o produto órfão, e um DELETE direto apaga a categoria mesmo com produto, banner ou regra. Fechar
+--     isso é tarefa separada (rls_admin_atual nas duas políticas, como a 20261202000000 fez nas do pedido): mexe nas
+--     políticas e no grant de coluna de uma tabela que a vitrine lê no boot — fora do escopo desta migration.
+--   * Produto EXCLUÍDO (deleted_at preenchido) continua contando como "em uso" ao apagar, e a lojista não o vê na
+--     lista: a recusa e a tela dizem quantos são, mas não há como ela mover produto excluído. Se isso deve
+--     liberar a exclusão da categoria (ou ganhar uma tela de "excluídos"), é decisão de produto, não desta migration.
+--   * Os nomes "Todas" e "all" (o filtro da vitrine e o valor dele no painel) são recusados ao RENOMEAR; a CRIAÇÃO
+--     de categoria é um INSERT direto na tabela (a tela recusa, o banco não): proteger o banco pediria gatilho ou
+--     CHECK em `categorias`, que muda o contrato da tabela — registrado, não feito aqui.
+--   * A ordem de categorias_com_uso é por byte (COLLATE "C"), igual em qualquer banco; a tela reordena por idioma.
 --
 -- 6. PRÉ-VOO E CONFERÊNCIA FINAL (neste arquivo)
 --
@@ -109,7 +120,7 @@ BEGIN
 
   FOREACH v_item IN ARRAY ARRAY[
     'categorias.id', 'categorias.nome', 'categorias.slug', 'categorias.ativo',
-    'produtos.categoria', 'banners.id', 'banners.link',
+    'produtos.categoria', 'produtos.deleted_at', 'banners.id', 'banners.link',
     'politica_devolucao.categorias_sem_troca', 'politica_devolucao.updated_at', 'politica_devolucao.updated_by'
   ] LOOP
     IF NOT EXISTS (
@@ -297,7 +308,11 @@ AS $$
          AND CASE WHEN $3 THEN $1 = $2 ELSE public.categoria__chave($1) = public.categoria__chave($2) END;
 $$;
 
--- Quanto desta categoria está em uso: {produtos, banners, regra_devolucao, estrito}. NULL se a categoria não existe.
+-- Quanto desta categoria está em uso: {produtos, produtos_excluidos, banners, regra_devolucao, estrito}. NULL se a
+-- categoria não existe. `produtos` conta TODOS os produtos da categoria (também o pausado e o excluído: é o que
+-- impede apagar e o que renomear troca); `produtos_excluidos` é a parte deles com deleted_at preenchido, que a lista
+-- de produtos da lojista não mostra — a tela e a recusa de apagar a explicam em vez de dizer "3 produtos" quando ela
+-- vê 1.
 CREATE OR REPLACE FUNCTION public.categoria__usos(p_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -308,6 +323,7 @@ DECLARE
   v_nome text;
   v_estrito boolean;
   v_produtos integer;
+  v_excluidos integer;
   v_banners integer;
   v_regra integer;
 BEGIN
@@ -321,7 +337,8 @@ BEGIN
      WHERE o.id <> p_id AND public.categoria__chave(o.nome) = public.categoria__chave(v_nome)
   );
 
-  SELECT count(*)::integer INTO v_produtos
+  SELECT count(*)::integer, (count(*) FILTER (WHERE p.deleted_at IS NOT NULL))::integer
+    INTO v_produtos, v_excluidos
     FROM public.produtos p
    WHERE public.categoria__mesma(p.categoria, v_nome, v_estrito);
 
@@ -336,6 +353,7 @@ BEGIN
 
   RETURN jsonb_build_object(
     'produtos', v_produtos,
+    'produtos_excluidos', v_excluidos,
     'banners', v_banners,
     'regra_devolucao', v_regra,
     'estrito', v_estrito
@@ -371,10 +389,13 @@ BEGIN
                'slug', c.slug,
                'ativo', COALESCE(c.ativo, true),
                'produtos', (u.j ->> 'produtos')::integer,
+               'produtos_excluidos', (u.j ->> 'produtos_excluidos')::integer,
                'banners', (u.j ->> 'banners')::integer,
                'regra_devolucao', (u.j ->> 'regra_devolucao')::integer
              )
-             ORDER BY lower(c.nome), c.id)
+             -- Ordem fixa por byte, igual em qualquer banco: a de "idioma" muda de uma loja para outra (no
+             -- collation C "Íntimos" ficaria depois de "Outlet"). A tela ordena por idioma pt-BR no cliente.
+             ORDER BY c.nome COLLATE "C", c.id)
       FROM public.categorias c
      CROSS JOIN LATERAL (SELECT public.categoria__usos(c.id) AS j) u
   ), '[]'::jsonb);
@@ -427,6 +448,12 @@ BEGIN
   v_slug := public.categoria__slug(v_novo);
   IF v_slug = '' THEN
     RAISE EXCEPTION 'O nome da categoria precisa ter pelo menos uma letra ou um número.' USING ERRCODE = '22023';
+  END IF;
+  -- "Todas" é o filtro que a vitrine mostra antes de todas as categorias (e "all" é o valor dele no painel): uma
+  -- categoria com esse nome colidiria com ele e não conseguiria ser filtrada.
+  IF public.categoria__chave(v_novo) IN ('todas', 'all') THEN
+    RAISE EXCEPTION 'O nome "%" já é do filtro que mostra todos os produtos da loja. Escolha outro nome.', v_novo
+      USING ERRCODE = '22023';
   END IF;
 
   -- Uma gestão de categoria por vez (renomear e apagar não se atropelam).
@@ -550,9 +577,11 @@ DECLARE
   v_cat public.categorias%ROWTYPE;
   v_usos jsonb;
   v_produtos integer;
+  v_excluidos integer;
   v_banners integer;
   v_regra integer;
   v_motivos text[] := ARRAY[]::text[];
+  v_aviso_excluidos text := '';
 BEGIN
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
@@ -575,11 +604,22 @@ BEGIN
 
   v_usos := public.categoria__usos(p_id);
   v_produtos := (v_usos ->> 'produtos')::integer;
+  v_excluidos := (v_usos ->> 'produtos_excluidos')::integer;
   v_banners := (v_usos ->> 'banners')::integer;
   v_regra := (v_usos ->> 'regra_devolucao')::integer;
 
   IF v_produtos > 0 THEN
-    v_motivos := v_motivos || (v_produtos || CASE WHEN v_produtos = 1 THEN ' produto' ELSE ' produtos' END);
+    v_motivos := v_motivos || (
+      v_produtos || CASE WHEN v_produtos = 1 THEN ' produto' ELSE ' produtos' END
+      || CASE
+           WHEN v_excluidos = 1 THEN ' (1 excluído, que não aparece na lista)'
+           WHEN v_excluidos > 1 THEN ' (' || v_excluidos || ' excluídos, que não aparecem na lista)'
+           ELSE ''
+         END);
+  END IF;
+  IF v_excluidos > 0 THEN
+    -- A lojista não enxerga nem move produto excluído: dizer o que dá para fazer, em vez de deixá-la procurando.
+    v_aviso_excluidos := ' Produto excluído não aparece na lista de produtos e só sai da categoria com a ajuda do suporte.';
   END IF;
   IF v_banners > 0 THEN
     v_motivos := v_motivos || (v_banners || CASE WHEN v_banners = 1 THEN ' banner' ELSE ' banners' END);
@@ -589,8 +629,8 @@ BEGIN
   END IF;
 
   IF cardinality(v_motivos) > 0 THEN
-    RAISE EXCEPTION 'A categoria "%" ainda está em uso: %. Mude os produtos de categoria, troque o link do banner e tire a categoria da regra de devolução antes de apagar. Se só quer tirá-la da vitrine, esconda.',
-      v_cat.nome, array_to_string(v_motivos, ', ')
+    RAISE EXCEPTION 'A categoria "%" ainda está em uso: %. Mude os produtos de categoria, troque o link do banner e tire a categoria da regra de devolução antes de apagar.% Se só quer tirá-la da vitrine, esconda.',
+      v_cat.nome, array_to_string(v_motivos, ', '), v_aviso_excluidos
       USING ERRCODE = '55006';
   END IF;
 

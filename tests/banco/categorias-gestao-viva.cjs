@@ -17,6 +17,11 @@
  *             quase iguais; categoria inexistente.
  *  APAGAR     recusa com o motivo e as contagens enquanto houver produto, banner (ativo ou nao) ou regra de
  *             devolucao; vazia, apaga so ela.
+ *  PAUSADO E  produto pausado (ativo = false) e excluido (deleted_at) contam como "em uso" ao apagar (a recusa conta
+ *  EXCLUIDO   os excluidos, que a lojista nao ve) e a troca de nome os alcanca tambem. MUTANTES: tirar cada uma dessas
+ *             guardas (e a ordem por byte e a recusa de "Todas"/"all") deixa a prova vermelha por ASSERCAO de
+ *             comportamento, nao so por diferenca de corpo.
+ *  LISTA      categorias_com_uso ordena por byte (COLLATE "C"): igual em qualquer idioma de banco.
  *  PERMISSAO  anon = sem EXECUTE (42501); logado comum, admin rebaixado (JWT velho) e admin so numa das duas fontes
  *             = "Acesso negado" sem escrever; admin atual e service_role passam; as auxiliares sao fechadas.
  *  LINK       a codificacao do nome e' a de encodeURIComponent (ate emoji) e a leitura do link e' a de
@@ -197,11 +202,12 @@ async function semear({
     );
 
   let n = 100;
-  for (const [nome, categoria] of produtos)
+  // [nome, categoria, ativo = true, excluido = false]: pausado e' ativo = false; excluido e' deleted_at preenchido.
+  for (const [nome, categoria, ativo = true, excluido = false] of produtos)
     await C.query(
-      `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo, categoria)
-       VALUES ($1, $2, 100, 10, true, 40, $3)`,
-      [uuid(n++), nome, categoria],
+      `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo, categoria, deleted_at)
+       VALUES ($1, $2, 100, 10, $4, 40, $3, CASE WHEN $5::boolean THEN now() ELSE NULL END)`,
+      [uuid(n++), nome, categoria, ativo, excluido],
     );
 
   n = 500;
@@ -670,6 +676,259 @@ prova(
 );
 
 // ---------------------------------------------------------------------------
+// PRODUTO PAUSADO (ativo = false) E EXCLUIDO (deleted_at preenchido)
+//
+// A lojista nao ve o excluido na lista, e o pausado aparece como "offline". Os dois continuam apontando para a
+// categoria pelo NOME: apagar a categoria os deixaria orfaos e renomear sem eles os deixaria na categoria velha.
+// Cada caso roda num SAVEPOINT (desfeito no fim), para a mesma funcao servir ao teste e aos mutantes abaixo.
+// ---------------------------------------------------------------------------
+
+/** Roda `fn` num savepoint que sempre volta, passe ou falhe: o mesmo `semear` pode ser repetido. */
+async function emSavepoint(fn) {
+  await C.query("SAVEPOINT caso");
+  try {
+    return await fn();
+  } finally {
+    await C.query("ROLLBACK TO SAVEPOINT caso");
+  }
+}
+
+async function casosDePausadoEExcluido() {
+  // APAGAR: so um produto PAUSADO ja segura a categoria
+  await emSavepoint(async () => {
+    await semear({
+      categorias: [[CAT.brinq, "brinquedo", "brinquedo"]],
+      produtos: [["P1 pausado", "brinquedo", false]],
+    });
+    const r = await apagar(CAT.brinq);
+    assert.equal(r.codigo, "55006", `pausado: ${r.erro}`);
+    assert.match(r.erro, /em uso: 1 produto\. /, "pausado conta como em uso");
+    assert.doesNotMatch(r.erro, /exclu/, "pausado nao e' excluido");
+    assert.equal((await linhaDaCategoria(CAT.brinq))?.nome, "brinquedo");
+  });
+
+  // APAGAR: so um produto EXCLUIDO segura a categoria, e a recusa conta quantos sao e o que fazer
+  await emSavepoint(async () => {
+    await semear({
+      categorias: [[CAT.brinq, "brinquedo", "brinquedo"]],
+      produtos: [["P1 excluido", " Brinquedo", true, true]],
+    });
+    const r = await apagar(CAT.brinq);
+    assert.equal(r.codigo, "55006", `excluido: ${r.erro}`);
+    assert.match(
+      r.erro,
+      /em uso: 1 produto \(1 excluído, que não aparece na lista\)\. /,
+      "excluido conta como em uso e a recusa diz que a lojista nao o ve",
+    );
+    assert.match(
+      r.erro,
+      /Produto excluído não aparece na lista de produtos e só sai da categoria com a ajuda do suporte\. Se só quer tirá-la da vitrine, esconda\./,
+    );
+    assert.equal((await linhaDaCategoria(CAT.brinq))?.nome, "brinquedo");
+  });
+
+  // APAGAR: o mix (normal + pausado + 2 excluidos): conta TODOS e separa os excluidos
+  await emSavepoint(async () => {
+    await semear({
+      categorias: [[CAT.brinq, "brinquedo", "brinquedo"]],
+      produtos: [
+        ["P1", "brinquedo"],
+        ["P2 pausado", "brinquedo", false],
+        ["P3 excluido", "brinquedo", true, true],
+        ["P4 pausado e excluido", "brinquedo", false, true],
+      ],
+    });
+    const r = await apagar(CAT.brinq);
+    assert.equal(r.codigo, "55006", r.erro);
+    assert.match(
+      r.erro,
+      /em uso: 4 produtos \(2 excluídos, que não aparecem na lista\)\. /,
+    );
+    const lista = await tentar(
+      "authenticated",
+      "SELECT public.categorias_com_uso() AS r",
+      [],
+      ADMIN,
+    );
+    assert.ok(lista.linhas, lista.erro);
+    assert.deepEqual(
+      [lista.linhas[0].r[0].produtos, lista.linhas[0].r[0].produtos_excluidos],
+      [4, 2],
+    );
+  });
+
+  // RENOMEAR: a troca chega tambem no produto pausado e no excluido
+  await emSavepoint(async () => {
+    await semear({
+      categorias: [[CAT.brinq, "brinquedo", "brinquedo"]],
+      produtos: [
+        ["P1", "brinquedo"],
+        ["P2 pausado", "brinquedo", false],
+        ["P3 excluido", "Brinquedo ", true, true],
+        ["P4 pausado e excluido", " brinquedo", false, true],
+        ["P5 outra categoria", "Cama"],
+      ],
+    });
+    const r = await renomear(CAT.brinq, "Brinquedos");
+    assert.ok(r.linhas, r.erro);
+    assert.equal(r.linhas[0].r.produtos, 4, "conta os quatro");
+    assert.deepEqual(await categoriasDosProdutos(), [
+      "Brinquedos",
+      "Brinquedos",
+      "Brinquedos",
+      "Brinquedos",
+      "Cama",
+    ]);
+  });
+}
+
+prova(
+  "PAUSADO E EXCLUIDO: apagar CONTA os dois como 'em uso' (e a recusa explica o excluido); renomear TROCA a categoria dos dois tambem",
+  () => emTransacao(casosDePausadoEExcluido),
+);
+
+/** O arquivo da migration com UM trecho trocado (o trecho tem de existir uma vez so). */
+function migrationMutante(de, para) {
+  const vezes = MIGRATION.split(de).length - 1;
+  assert.equal(vezes, 1, `o trecho do mutante aparece ${vezes}x: ${de}`);
+  return MIGRATION.replace(de, () => para);
+}
+
+const NA_CONTAGEM_DE_PRODUTOS =
+  "WHERE public.categoria__mesma(p.categoria, v_nome, v_estrito);";
+const NA_TROCA_DE_PRODUTOS =
+  "WHERE public.categoria__mesma(categoria, v_antigo, false);";
+
+/**
+ * Cada mutante tira UMA guarda da migration e roda o comportamento: se a prova continuasse verde, ela nao estaria
+ * medindo o que diz. Cai por ASSERCAO sobre o resultado (nao so por diferenca de corpo da funcao).
+ */
+for (const [rotulo, de, para, comportamento] of [
+  [
+    "apagar SEM contar o produto pausado",
+    NA_CONTAGEM_DE_PRODUTOS,
+    "WHERE public.categoria__mesma(p.categoria, v_nome, v_estrito) AND p.ativo IS NOT FALSE;",
+    () => casosDePausadoEExcluido(),
+  ],
+  [
+    "apagar SEM contar o produto excluido",
+    NA_CONTAGEM_DE_PRODUTOS,
+    "WHERE public.categoria__mesma(p.categoria, v_nome, v_estrito) AND p.deleted_at IS NULL;",
+    () => casosDePausadoEExcluido(),
+  ],
+  [
+    "renomear PULA o produto pausado",
+    NA_TROCA_DE_PRODUTOS,
+    "WHERE public.categoria__mesma(categoria, v_antigo, false) AND ativo IS NOT FALSE;",
+    () => casosDePausadoEExcluido(),
+  ],
+  [
+    "renomear PULA o produto excluido",
+    NA_TROCA_DE_PRODUTOS,
+    "WHERE public.categoria__mesma(categoria, v_antigo, false) AND deleted_at IS NULL;",
+    () => casosDePausadoEExcluido(),
+  ],
+  [
+    "a recusa nao diz quantos produtos estao excluidos",
+    "WHEN v_excluidos > 1 THEN ' (' || v_excluidos || ' excluídos, que não aparecem na lista)'",
+    "WHEN v_excluidos > 1 THEN ''",
+    () => casosDePausadoEExcluido(),
+  ],
+  [
+    "a lista ordena pelo idioma do banco (lower) em vez de por byte",
+    'ORDER BY c.nome COLLATE "C", c.id)',
+    "ORDER BY lower(c.nome), c.id)",
+    () => casoDaOrdemDaLista(),
+  ],
+  [
+    "renomear aceita 'Todas' e 'all'",
+    "IF public.categoria__chave(v_novo) IN ('todas', 'all') THEN",
+    "IF public.categoria__chave(v_novo) IN ('nome-que-nunca-existe') THEN",
+    () => casoDoNomeReservado(),
+  ],
+]) {
+  prova(`MUTANTE: ${rotulo} deixa a prova vermelha`, () =>
+    emTransacao(async () => {
+      // controle: com a migration de verdade o mesmo comportamento passa
+      await comportamento();
+      assert.equal(await aplicar(migrationMutante(de, para)), null);
+      await assert.rejects(
+        comportamento(),
+        (erro) => erro instanceof assert.AssertionError,
+        `o mutante "${rotulo}" passou despercebido`,
+      );
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NOME RESERVADO ("Todas" e "all") E ORDEM DA LISTA
+// ---------------------------------------------------------------------------
+
+async function casoDoNomeReservado() {
+  await emSavepoint(async () => {
+    await semear(FIXTURE_COMPLETA());
+    const antes = await retrato();
+    for (const nome of ["Todas", "todas", "  TODAS ", "all", "ALL", " All "]) {
+      const r = await renomear(CAT.brinq, nome);
+      assert.equal(r.codigo, "22023", `${nome}: ${r.erro}`);
+      assert.match(
+        r.erro,
+        /já é do filtro que mostra todos os produtos da loja\. Escolha outro nome\./,
+      );
+    }
+    assert.deepEqual(await retrato(), antes, "as recusas nao escrevem");
+    // parecido nao e' reservado
+    const ok = await renomear(CAT.brinq, "Todas as festas");
+    assert.ok(ok.linhas, ok.erro);
+    assert.equal(ok.linhas[0].r.nome, "Todas as festas");
+  });
+}
+
+prova(
+  "RECUSAS: 'Todas' e 'all' (o filtro da vitrine e o do painel) = 22023 sem escrever; 'Todas as festas' passa",
+  () => emTransacao(casoDoNomeReservado),
+);
+
+async function casoDaOrdemDaLista() {
+  await emSavepoint(async () => {
+    await semear({
+      categorias: [
+        [uuid(11), "Outlet", "outlet"],
+        [uuid(12), "bijuterias", "bijuterias"],
+        [uuid(13), "Íntimos", "intimos"],
+        [uuid(14), "Joias", "joias"],
+        [uuid(15), "Acessórios", "acessorios"],
+      ],
+    });
+    const r = await tentar(
+      "authenticated",
+      "SELECT public.categorias_com_uso() AS r",
+      [],
+      ADMIN,
+    );
+    assert.ok(r.linhas, r.erro);
+    const esperado = [
+      "Outlet",
+      "bijuterias",
+      "Íntimos",
+      "Joias",
+      "Acessórios",
+    ].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+    assert.deepEqual(
+      r.linhas[0].r.map((c) => c.nome),
+      esperado,
+      "a ordem e' a dos bytes UTF-8 (COLLATE C), a mesma em qualquer banco",
+    );
+  });
+}
+
+prova(
+  "LISTA: a ordem de categorias_com_uso e' por byte (COLLATE C), igual em qualquer idioma de banco",
+  () => emTransacao(casoDaOrdemDaLista),
+);
+
+// ---------------------------------------------------------------------------
 // LISTA COM USO / ESCONDER
 // ---------------------------------------------------------------------------
 
@@ -692,20 +951,32 @@ prova(
         ADMIN,
       );
       assert.ok(r.linhas, r.erro);
+      // O CONTEUDO (por nome, sem depender da ordem nem do idioma do banco) ...
+      const porNome = (lista) =>
+        Object.fromEntries(
+          lista.map((c) => [
+            c.nome,
+            [
+              c.ativo,
+              c.produtos,
+              c.produtos_excluidos,
+              c.banners,
+              c.regra_devolucao,
+            ],
+          ]),
+        );
+      assert.deepEqual(porNome(r.linhas[0].r), {
+        brinquedo: [true, 3, 0, 3, 1],
+        "Cama & Banho": [true, 1, 0, 1, 1],
+        Íntimos: [true, 0, 0, 0, 0],
+        Outlet: [false, 1, 0, 0, 0],
+      });
+      // ... e a ORDEM, que e' por byte (COLLATE "C") e igual em qualquer banco: maiuscula antes de minuscula e
+      // acentuada no fim ("Íntimos" depois de "brinquedo"; no collation de idioma ficaria no meio da lista).
       assert.deepEqual(
-        r.linhas[0].r.map((c) => [
-          c.nome,
-          c.ativo,
-          c.produtos,
-          c.banners,
-          c.regra_devolucao,
-        ]),
-        [
-          ["brinquedo", true, 3, 3, 1],
-          ["Cama & Banho", true, 1, 1, 1],
-          ["Íntimos", true, 0, 0, 0],
-          ["Outlet", false, 1, 0, 0],
-        ],
+        r.linhas[0].r.map((c) => c.nome),
+        ["Cama & Banho", "Outlet", "brinquedo", "Íntimos"],
+        "ordem por byte, nao pelo idioma do banco",
       );
 
       // esconder e' so a coluna `ativo`: nenhum produto, banner ou regra muda
@@ -1029,6 +1300,18 @@ prova(
       );
       await C.query(
         "ALTER TABLE public.politica_devolucao RENAME COLUMN sem_troca_tmp TO categorias_sem_troca",
+      );
+
+      await C.query(
+        "ALTER TABLE public.produtos RENAME COLUMN deleted_at TO excluido_em_tmp",
+      );
+      const r3 = await aplicar(MIGRATION);
+      assert.match(
+        r3?.erro ?? "",
+        /B1_BASELINE_DIVERGENT.*produtos\.deleted_at/,
+      );
+      await C.query(
+        "ALTER TABLE public.produtos RENAME COLUMN excluido_em_tmp TO deleted_at",
       );
 
       await C.query(

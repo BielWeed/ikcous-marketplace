@@ -63,15 +63,15 @@ WITH portas AS (
                      WHERE n.nspname = 'public') > 0 THEN '>0' ELSE '0' END
   UNION ALL
   SELECT 'renomear_categoria: corpo e o da 20261237000000 (md5)',
-         'e292b04bff0d8fdb9d267f5af223659a',
+         '984252066cc468e4964fb56eff75eae8',
          COALESCE((SELECT x.m FROM portas x WHERE x.proname = 'renomear_categoria'), 'AUSENTE')
   UNION ALL
   SELECT 'apagar_categoria_vazia: corpo e o da 20261237000000 (md5)',
-         '42344040a05cf8edfeb6a8e2352b7f4e',
+         '942449150bb5e6fadfa7cf003f3fa49e',
          COALESCE((SELECT x.m FROM portas x WHERE x.proname = 'apagar_categoria_vazia'), 'AUSENTE')
   UNION ALL
   SELECT 'categorias_com_uso: corpo e o da 20261237000000 (md5)',
-         '110e498eec9170bd1682143beaab5fd5',
+         '9e92ace839e626ff293e79b407e5768f',
          COALESCE((SELECT x.m FROM portas x WHERE x.proname = 'categorias_com_uso'), 'AUSENTE')
   UNION ALL
   SELECT 'as tres portas: atributos de sempre (SECURITY DEFINER, plpgsql, search_path=public, jsonb; apagar e renomear VOLATILE, categorias_com_uso STABLE)',
