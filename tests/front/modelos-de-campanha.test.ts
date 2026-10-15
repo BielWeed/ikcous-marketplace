@@ -140,6 +140,20 @@ describe("problemaDoCupom", () => {
     ).toBe("esgotado");
   });
 
+  it("limite 0 (ou negativo) é cupom ILIMITADO, igual ao servidor, e não esgota", () => {
+    for (const usage_limit of [0, -1]) {
+      for (const usage_count of [0, 5]) {
+        expect(
+          problemaDoCupom(
+            "VERAO10",
+            [{ ...bom, usage_limit, usage_count }],
+            agora,
+          ),
+        ).toBeNull();
+      }
+    }
+  });
+
   it("validade no futuro e limite com sobra não atrapalham", () => {
     expect(
       problemaDoCupom(

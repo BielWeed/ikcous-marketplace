@@ -123,9 +123,12 @@ export function problemaDoCupom(
   if (cupom.valid_until && new Date(cupom.valid_until) <= agora) {
     return "vencido";
   }
+  // Limite nulo, 0 ou negativo é cupom ilimitado (o formulário de cupom grava
+  // 0 = "ilimitado"; o servidor trata `usage_limit <= 0` do mesmo jeito).
   if (
     cupom.usage_limit !== null &&
     cupom.usage_limit !== undefined &&
+    cupom.usage_limit > 0 &&
     (cupom.usage_count ?? 0) >= cupom.usage_limit
   ) {
     return "esgotado";
