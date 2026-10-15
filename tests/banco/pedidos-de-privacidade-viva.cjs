@@ -601,7 +601,31 @@ PROVAS.push({
       assert.strictEqual(ainda.rows[0].n, 2, "o rollback recusado apagou");
 
       // 3. Sem pedido: desfaz tudo; a segunda vez recusa (nada a desfazer).
+      // 3a. Tabela SEM linha visivel mas que ja guardou linha (o pedido de ensaio foi apagado por fora, sem
+      //     VACUUM): e o caso do pedido gravado "no meio" que a contagem nao enxerga. O rollback RECUSA pelo
+      //     tamanho em disco — registro legal, a decisao e do dono. Este teste o apaga por DELETE, entao a
+      //     tabela fica com paginas (8192 bytes): e exatamente esse o caso, e a recusa tem de acontecer.
       await c.query(`DELETE FROM ${T}`);
+      const vazia = await c.query(
+        `SELECT count(*)::int AS n, pg_relation_size('${T}'::regclass)::int AS bytes FROM ${T}`,
+      );
+      assert.strictEqual(vazia.rows[0].n, 0, "o DELETE devia deixar 0 linhas");
+      assert.ok(
+        vazia.rows[0].bytes > 0,
+        "o DELETE sem VACUUM devia deixar paginas em disco (o caso do pedido gravado no meio)",
+      );
+      await c.query("SAVEPOINT sem_linha_com_paginas");
+      await assert.rejects(
+        c.query(rollback),
+        /já guardou linha\(s\) \(tamanho em disco \d+ bytes, mesmo que a contagem não as veja\)/,
+        "o rollback devia recusar tabela sem linha visivel mas com paginas gravadas",
+      );
+      await c.query("ROLLBACK TO SAVEPOINT sem_linha_com_paginas");
+      const intacta = await c.query(`SELECT to_regclass('${T}') AS t`);
+      assert.ok(intacta.rows[0].t, "o rollback recusado apagou a tabela");
+      // 3b. TRUNCATE (superusuario do banco efemero; ninguem mais pode) devolve a tabela a 0 bytes: so entao o
+      //     rollback de "sem pedido" desfaz.
+      await c.query(`TRUNCATE ${T}`);
       await c.query(rollback);
       const sumiu = await c.query(
         `SELECT to_regclass('${T}') AS t, to_regprocedure('public.pedidos_de_privacidade__carimbar()') AS f`,
