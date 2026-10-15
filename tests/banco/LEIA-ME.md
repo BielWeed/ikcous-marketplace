@@ -567,7 +567,10 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   (`/?category=<nome>`, codificado ou cru) e a lista `categorias_sem_troca` da política de devolução. A prova roda com os
   papéis reais num Postgres efêmero: renomear troca os QUATRO lugares numa transação e conta cada um (com a chave da
   vitrine: maiúscula e espaço nas pontas; nome PARECIDO e outra categoria ficam; banner inativo também; os outros
-  parâmetros do link ficam; a lista da política não ganha repetido e guarda a ordem); falha injetada no banner ou na
+  parâmetros do link ficam; a lista da política só troca o item que é a categoria, guarda a ordem e as repetições dos
+  outros itens, e o nome novo não se repete; produto e item da lista mantêm o espaço que tinham nas pontas, para a
+  regra de devolução, que compara `lower()` sem tirar espaço, dar o MESMO "aceita troca?" de cada produto antes e depois
+  da troca, numa matriz de espaços, caixas e itens); falha injetada no banner ou na
   política não deixa NADA trocado (com o controle sem a falha); nome repetido (maiúscula, acento, pontuação, espaço),
   vazio, só símbolos e acima de 80 letras recusam sem escrever; duas linhas quase iguais recusam renomear (ninguém é
   adivinhado); apagar recusa com o motivo e as contagens enquanto houver produto, banner (ativo ou não) ou regra de
@@ -582,7 +585,8 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `38a-conferir-gestao-de-categorias-aplicado` (DEPOIS, 8 linhas) e `38b-antes-gestao-de-categorias-funcoes-ausentes`
   (ANTES, 6 linhas), a "prova de objetos" do lote `20261237000000`. Mesmo desenho do portão 34: rol exato nos estados,
   um negativo por linha (byte a mais em cada corpo, atributo, EXECUTE aberto ou fechado demais, auxiliar aberta ou
-  ausente, gatilho, coluna e função de que a migration depende), o veredito do `conferir-banco.cjs` (`rol=ok`).
+  ausente ou trocada por uma sobrecarga de outra assinatura, gatilho, coluna e função de que a migration depende), o
+  veredito do `conferir-banco.cjs` (`rol=ok`).
   **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado

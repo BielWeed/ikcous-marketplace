@@ -16,10 +16,14 @@
 --   * corpo      -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF) de cada porta: o da 20261237000000.
 --   * atributos  -- as tres portas: SECURITY DEFINER + plpgsql + `search_path=public` + retorno jsonb, e a volatilidade
 --                   de cada uma (renomear e apagar VOLATILE, categorias_com_uso STABLE).
---   * EXECUTE    -- PUBLIC e' medido por aclexplode(coalesce(proacl, acldefault('f', dono))), porque
---                   has_function_privilege nao tem o pseudo-papel PUBLIC; anon, authenticated e service_role por
---                   has_function_privilege. As tres portas: PUBLIC=nao anon=nao authenticated=sim service_role=sim.
---   * auxiliares -- as oito categoria__* existem e nenhuma e' executavel por PUBLIC, anon, authenticated nem service_role.
+--   * EXECUTE    -- PUBLIC e' medido por aclexplode(coalesce(proacl, acldefault('f', dono))) (grantee 0), que da a mesma
+--                   resposta em qualquer versao do Postgres: o has_function_privilege('public', ...) so e' aceito nas
+--                   versoes novas (o PG17 aceita; foi medido), e esta consulta nao pode depender da versao da loja;
+--                   anon, authenticated e service_role por has_function_privilege. As tres portas: PUBLIC=nao
+--                   anon=nao authenticated=sim service_role=sim.
+--   * auxiliares -- as oito categoria__*, CADA UMA pela assinatura (nome + tipos dos argumentos: to_regprocedure),
+--                   existem e nenhuma e' executavel por PUBLIC, anon, authenticated nem service_role. Uma funcao de mesmo
+--                   nome e outra assinatura (sobrecarga) nao conta como a auxiliar nem entra na contagem.
 --   * gatilho    -- set_ultima_atualizacao em public.produtos, BEFORE UPDATE por linha, habilitado.
 --
 -- md5 recalculado do ARQUIVO da migration por tests/banco/categorias-gestao-viva.cjs, que tambem roda esta consulta num
@@ -53,17 +57,18 @@ WITH portas AS (
           OR (to_regrole('anon') IS NOT NULL AND has_function_privilege('anon', p.oid, 'EXECUTE'))
           OR (to_regrole('authenticated') IS NOT NULL AND has_function_privilege('authenticated', p.oid, 'EXECUTE'))
           OR (to_regrole('service_role') IS NOT NULL AND has_function_privilege('service_role', p.oid, 'EXECUTE'))) AS aberta
-    FROM pg_proc p
-   WHERE p.pronamespace = 'public'::regnamespace
-     AND p.proname IN ('categoria__chave', 'categoria__slug', 'categoria__url_codifica', 'categoria__url_decodifica',
-                       'categoria__partes_do_link', 'categoria__nome_do_link', 'categoria__mesma', 'categoria__usos')
+    FROM (VALUES ('categoria__chave', 'text'), ('categoria__slug', 'text'), ('categoria__url_codifica', 'text'),
+                 ('categoria__url_decodifica', 'text'), ('categoria__partes_do_link', 'text'),
+                 ('categoria__nome_do_link', 'text'), ('categoria__mesma', 'text,text,boolean'),
+                 ('categoria__usos', 'uuid')) AS a(nome, tipos)
+    JOIN pg_proc p ON p.oid = to_regprocedure('public.' || a.nome || '(' || a.tipos || ')')
 ), itens(item, esperado, vivo) AS (
   SELECT 'controle: funcoes de public visiveis a este papel', '>0',
          CASE WHEN (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                      WHERE n.nspname = 'public') > 0 THEN '>0' ELSE '0' END
   UNION ALL
   SELECT 'renomear_categoria: corpo e o da 20261237000000 (md5)',
-         '984252066cc468e4964fb56eff75eae8',
+         '01a0d0acddb57f9ca88f7131336357c9',
          COALESCE((SELECT x.m FROM portas x WHERE x.proname = 'renomear_categoria'), 'AUSENTE')
   UNION ALL
   SELECT 'apagar_categoria_vazia: corpo e o da 20261237000000 (md5)',

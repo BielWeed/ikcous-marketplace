@@ -190,7 +190,7 @@ const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
 prova(
   "HASH: o md5 literal da 38a e' o do corpo que o arquivo carrega, e o banco mede o mesmo",
   async () => {
-    assert.equal(H.renomear, "984252066cc468e4964fb56eff75eae8");
+    assert.equal(H.renomear, "01a0d0acddb57f9ca88f7131336357c9");
     assert.equal(H.apagar, "942449150bb5e6fadfa7cf003f3fa49e");
     assert.equal(H.listar, "9e92ace839e626ff293e79b407e5768f");
     for (const h of Object.values(H))
@@ -437,6 +437,27 @@ prova("NEGATIVO 38a: cada defeito reprova SO as linhas certas", async () => {
       `DROP FUNCTION ${AUXILIARES[6]}`,
       guardaSql(`to_regprocedure(${quote(AUXILIARES[6])}) IS NULL`),
       [A_AUX],
+    ],
+    // a contagem e' pela ASSINATURA (nome + tipos), nao pelo nome: uma sobrecarga no lugar da auxiliar de verdade
+    // (mesmo nome, outro tipo de argumento) NAO faz a auxiliar existir; antes a contagem por nome dava "8 existem"
+    [
+      `DROP FUNCTION ${AUXILIARES[1]};
+       CREATE FUNCTION public.categoria__slug(text, integer) RETURNS text LANGUAGE sql AS $f$ SELECT 'x'::text $f$;
+       REVOKE ALL ON FUNCTION public.categoria__slug(text, integer) FROM PUBLIC, anon, authenticated, service_role`,
+      guardaSql(
+        `to_regprocedure(${quote(AUXILIARES[1])}) IS NULL AND to_regprocedure('public.categoria__slug(text,integer)') IS NOT NULL`,
+      ),
+      [A_AUX],
+    ],
+    // e uma sobrecarga A MAIS, com as oito de verdade no lugar, nao entra na conta (a lista de portas permitidas
+    // do L8 e' quem pega funcao aberta que nao deveria existir)
+    [
+      `CREATE FUNCTION public.categoria__chave(text, integer) RETURNS text LANGUAGE sql AS $f$ SELECT 'x'::text $f$;
+       REVOKE ALL ON FUNCTION public.categoria__chave(text, integer) FROM PUBLIC, anon, authenticated, service_role`,
+      guardaSql(
+        `to_regprocedure('public.categoria__chave(text,integer)') IS NOT NULL`,
+      ),
+      [],
     ],
     // o gatilho que avisa a vitrine do produto trocado
     [

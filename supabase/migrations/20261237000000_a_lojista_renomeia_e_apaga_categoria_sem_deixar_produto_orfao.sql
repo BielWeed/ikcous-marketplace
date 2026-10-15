@@ -45,6 +45,19 @@
 -- `+`, `#` nem `&`, e todo `%` abrindo um par hexadecimal); o resto dos parâmetros do link é preservado. O link novo
 -- é escrito como `/?category=` + encodeURIComponent(nome novo), igual a linkDaCategoria().
 --
+-- As DUAS réguas não são a mesma, e renomear não pode mexer na regra de devolução de ninguém: a vitrine tira o espaço
+-- das pontas; a regra de devolução (solicitar_devolucao, 20261175000000) compara lower() SEM tirar. Um produto
+-- " Brinquedo" (espaço na ponta) aparece na aba "brinquedo" da vitrine, mas NÃO casa com o item "Brinquedo" da lista
+-- de "não aceita troca": hoje aceita troca. Se a troca de nome o reescrevesse como "Jogos" limpo, ele passaria a casar
+-- com o item "Jogos" e deixaria de aceitar troca, sem a lojista ver. Por isso, nos produtos e nos itens da lista, o
+-- que É a categoria (pela chave da vitrine) troca só o miolo e MANTÉM o espaço que já tinha nas pontas: " Brinquedo"
+-- vira " Jogos", "Brinquedo " vira "Jogos ". A vitrine continua agrupando (tira o espaço dos dois lados) e, para a
+-- regra de devolução, "Brinquedo" e " Brinquedo" continuam textos diferentes, antes e depois: o resultado de
+-- "aceita troca?" de cada produto é o mesmo de antes (tests/banco/categorias-gestao-viva.cjs prova numa matriz).
+-- Limite: se o nome NOVO já estiver escrito na lista de devolução (item antigo, sem categoria própria), os produtos
+-- da categoria trocada passam a casar com ele: é o que a lojista escreveu na lista, e a recusa de nome repetido só
+-- olha a tabela de categorias.
+--
 -- Exceção deliberada: se existirem DUAS linhas em categorias que só diferem por maiúscula/espaço (o slug único
 -- impede isso para quem cria pela tela, mas dado antigo pode ter), renomear RECUSA (a troca não saberia de qual das
 -- duas é o produto) e apagar passa a comparar o texto EXATO. Ninguém é adivinhado.
@@ -504,9 +517,13 @@ BEGIN
     RAISE EXCEPTION 'Já existe uma categoria com esse nome. Escolha outro nome.' USING ERRCODE = '23505';
   END;
 
-  -- (b) os produtos
+  -- (b) os produtos. O espaço que o produto já trazia nas pontas FICA: a regra de devolução compara lower() sem tirar
+  -- espaço, e um produto " Brinquedo" não casa com o item "Brinquedo" da lista. Trocar o texto inteiro por "Jogos"
+  -- o faria casar com o item (já trocado para "Jogos") e a lojista, sem ver, passaria a negar a troca dele.
   UPDATE public.produtos
-     SET categoria = v_novo
+     SET categoria = substring(categoria from '^[[:space:]]*')
+                     || v_novo
+                     || substring(regexp_replace(categoria, '^[[:space:]]+', '') from '[[:space:]]*$')
    WHERE public.categoria__mesma(categoria, v_antigo, false);
   GET DIAGNOSTICS v_produtos = ROW_COUNT;
 
@@ -528,23 +545,35 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- (d) a lista "sem troca por gosto" da política de devolução (a troca de nome e a deduplicação mantêm a ordem)
+  -- (d) a lista "sem troca por gosto" da política de devolução. Só o item que É a categoria troca de texto (com o
+  -- espaço das pontas que ele já tinha, pelo mesmo motivo do produto); os outros ficam como estão, na mesma ordem e
+  -- com as repetições que tinham. Única exceção: o texto novo (o mesmo nome em mais de um item trocado, ou já escrito
+  -- ao lado) não se repete; vale o primeiro.
   SELECT d.categorias_sem_troca INTO v_lista FROM public.politica_devolucao d WHERE d.id = 1 FOR UPDATE;
   IF FOUND AND v_lista IS NOT NULL THEN
     SELECT count(*)::integer INTO v_n
       FROM unnest(v_lista) AS e(item)
      WHERE public.categoria__mesma(e.item, v_antigo, false);
     IF v_n > 0 THEN
-      SELECT COALESCE(array_agg(g.x ORDER BY g.primeira), ARRAY[]::text[]) INTO v_nova_lista
+      SELECT COALESCE(array_agg(q.x ORDER BY q.ord), ARRAY[]::text[]) INTO v_nova_lista
         FROM (
-          SELECT m.x, min(m.ord) AS primeira
-            FROM (
-              SELECT CASE WHEN public.categoria__mesma(e.item, v_antigo, false) THEN v_novo ELSE e.item END AS x,
-                     e.ord
-                FROM unnest(v_lista) WITH ORDINALITY AS e(item, ord)
-            ) m
-           GROUP BY m.x
-        ) g;
+          WITH n AS (
+            SELECT e.ord,
+                   public.categoria__mesma(e.item, v_antigo, false) AS trocado,
+                   CASE WHEN public.categoria__mesma(e.item, v_antigo, false)
+                        THEN substring(e.item from '^[[:space:]]*')
+                             || v_novo
+                             || substring(regexp_replace(e.item, '^[[:space:]]+', '') from '[[:space:]]*$')
+                        ELSE e.item
+                   END AS x
+              FROM unnest(v_lista) WITH ORDINALITY AS e(item, ord)
+          )
+          SELECT n.x, n.ord,
+                 row_number() OVER (PARTITION BY n.x ORDER BY n.ord) AS rn,
+                 EXISTS (SELECT 1 FROM n AS t WHERE t.trocado AND t.x = n.x) AS e_texto_novo
+            FROM n
+        ) q
+       WHERE NOT (q.e_texto_novo AND q.rn > 1);
       UPDATE public.politica_devolucao
          SET categorias_sem_troca = v_nova_lista,
              updated_at = now(),

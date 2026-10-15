@@ -9,9 +9,12 @@
  * e a lista "sem troca por gosto" da politica de devolucao. Cada caso roda numa transacao que termina em ROLLBACK.
  *
  *  RENOMEAR   a troca chega nos QUATRO lugares (com a chave da vitrine: maiuscula e espaco nas pontas), conta quantos
- *             de cada, preserva os outros parametros do link, a ordem e o resto da lista; nome parecido e outra
- *             categoria nao sao tocados; banner inativo tambem; so maiuscula ("brinquedo" -> "Brinquedo") passa;
- *             mesmo nome e' no-op.
+ *             de cada, preserva os outros parametros do link, a ordem e o resto da lista (so o item que E a categoria
+ *             troca; os repetidos das outras categorias ficam); nome parecido e outra categoria nao sao tocados;
+ *             banner inativo tambem; so maiuscula ("brinquedo" -> "Brinquedo") passa; mesmo nome e' no-op.
+ *  REGRA DE   renomear NAO muda o "aceita troca?" de NENHUM produto: a regra de devolucao compara lower() SEM tirar
+ *  TROCA      espaco e a vitrine tira; produto e item da lista mantem o espaco que tinham nas pontas (caso do
+ *             " Brinquedo" e matriz de 80 produtos x itens com espaco/tab/caixa, antes x depois).
  *  ATOMICO    uma falha no meio (no banner ou na politica) nao deixa NADA trocado.
  *  RECUSAS    nome repetido (maiuscula, acento, pontuacao, espaco), vazio, so simbolos e grande demais; duas linhas
  *             quase iguais; categoria inexistente.
@@ -323,7 +326,7 @@ prova(
       assert.deepEqual(await categoriasDosProdutos(), [
         "Brinquedos de Montar",
         "Brinquedos de Montar",
-        "Brinquedos de Montar",
+        " Brinquedos de Montar ", // o espaco das pontas que o produto ja tinha FICA (ver a prova da regra de troca)
         "Cama & Banho", // outra categoria: intacta
         "brinquedos", // nome PARECIDO: intacto
         null,
@@ -434,12 +437,193 @@ prova(
       const r = await renomear(CAT.brinq, "Brinquedos 2");
       assert.ok(r.linhas, r.erro);
       assert.equal(r.linhas[0].r.regra_devolucao, 2);
+      // "brinquedo " (com espaco) tambem e' a categoria, mas guarda o espaco: texto diferente de "Brinquedos 2", fica
       assert.deepEqual(await listaDaPolitica(), [
         "Calçados",
         "Brinquedos 2",
         "Jogos",
+        "Brinquedos 2 ",
       ]);
     }),
+);
+
+/**
+ * "Este produto nao aceita troca por gosto?" EXATAMENTE como solicitar_devolucao (20261175000000) decide:
+ * `lower(categoria) = ANY (lower() de cada item da lista)`, SEM tirar espaco das pontas. Devolve {nome: boolean}.
+ */
+const semTroca = async () =>
+  Object.fromEntries(
+    (
+      await C.query(
+        `SELECT p.nome,
+                (p.categoria IS NOT NULL
+                 AND lower(p.categoria) = ANY (SELECT lower(c) FROM unnest(d.categorias_sem_troca) c)) AS sem
+           FROM public.produtos p CROSS JOIN public.politica_devolucao d
+          WHERE d.id = 1 AND p.id >= $1
+          ORDER BY p.id`,
+        [uuid(100)],
+      )
+    ).rows.map((r) => [r.nome, r.sem]),
+  );
+
+/** A chave da vitrine (toLowerCase().trim()): a mesma categoria para a tela, mesmo com espaco na ponta. */
+const chaveDaVitrine = (t) => (t == null ? null : t.trim().toLowerCase());
+
+async function casoDoEspacoNaPonta() {
+  await emSavepoint(async () => {
+    // O caso do revisor: a regra de devolucao compara lower() SEM tirar espaco; a vitrine compara COM trim.
+    await semear({
+      categorias: [[CAT.brinq, "Brinquedo", "brinquedo"]],
+      produtos: [
+        ["P1 limpo", "Brinquedo"],
+        ["P2 espaco antes", " Brinquedo"],
+        ["P3 espaco depois", "Brinquedo "],
+        ["P4 outra", "Roupas"],
+        ["P5 outra com espaco", " Roupas"],
+      ],
+      lista: ["Brinquedo", "Roupas"],
+    });
+    const antes = await semTroca();
+    assert.deepEqual(antes, {
+      "P1 limpo": true,
+      "P2 espaco antes": false,
+      "P3 espaco depois": false,
+      "P4 outra": true,
+      "P5 outra com espaco": false,
+    });
+
+    const r = await renomear(CAT.brinq, "Jogos");
+    assert.ok(r.linhas, r.erro);
+    assert.equal(
+      r.linhas[0].r.produtos,
+      3,
+      "os tres da categoria seguem a troca (a vitrine os agrupa)",
+    );
+
+    assert.deepEqual(
+      await semTroca(),
+      antes,
+      "a regra de devolucao de cada produto e' a mesma de antes da troca",
+    );
+    // e a vitrine continua agrupando os tres na categoria nova
+    for (const c of (await categoriasDosProdutos()).slice(0, 3))
+      assert.equal(chaveDaVitrine(c), "jogos");
+  });
+}
+
+prova(
+  "RENOMEAR nao muda a regra de troca de NENHUM produto: ' Brinquedo' (espaco na ponta) nao aceita troca antes e continua sem a regra depois",
+  () => emTransacao(casoDoEspacoNaPonta),
+);
+
+async function casoDaMatrizDeEspacos() {
+  await emSavepoint(async () => {
+    const pads = ["", " ", "  ", "\t", " \t"];
+    const produtos = [];
+    let k = 0;
+    for (const pre of pads)
+      for (const pos of pads)
+        for (const caixa of ["Brinquedo", "brinquedo", "BRINQUEDO"])
+          produtos.push([`B${k++}`, `${pre}${caixa}${pos}`]);
+    for (const outra of [
+      "Roupas",
+      " roupas",
+      "ROUPAS ",
+      "Brinquedos",
+      "Roupas\t",
+      null,
+    ])
+      produtos.push([`O${k++}`, outra]);
+    await semear({
+      categorias: [[CAT.brinq, "Brinquedo", "brinquedo"]],
+      produtos,
+      lista: [
+        "Brinquedo",
+        "brinquedo ",
+        " BRINQUEDO",
+        "\tBrinquedo\t",
+        "Roupas",
+        "roupas ",
+        " Roupas",
+        "Roupas",
+        "Brinquedos",
+        "Calçados",
+      ],
+    });
+    const antes = await semTroca();
+    const total = Object.keys(antes).length;
+    const sim = Object.values(antes).filter(Boolean).length;
+    assert.ok(
+      total >= 80 && sim > 5 && sim < total,
+      `a matriz mistura sim e nao (${sim}/${total})`,
+    );
+
+    const r = await renomear(CAT.brinq, "Jogos");
+    assert.ok(r.linhas, r.erro);
+    assert.equal(
+      r.linhas[0].r.produtos,
+      75,
+      "todos os 75 da categoria (a vitrine os agrupa)",
+    );
+    assert.deepEqual(
+      await semTroca(),
+      antes,
+      "nenhum dos produtos mudou de regra",
+    );
+
+    // e quem estava na categoria (pela vitrine) segue nela com o nome novo
+    const cats = await categoriasDosProdutos();
+    assert.equal(
+      cats.slice(0, 75).every((c) => chaveDaVitrine(c) === "jogos"),
+      true,
+    );
+    assert.deepEqual(cats.slice(75), [
+      "Roupas",
+      " roupas",
+      "ROUPAS ",
+      "Brinquedos",
+      "Roupas\t",
+      null,
+    ]);
+  });
+}
+
+prova(
+  "RENOMEAR nao muda a regra de troca de NENHUM produto: matriz de espacos (antes, depois), caixas e itens da lista, antes x depois",
+  () => emTransacao(casoDaMatrizDeEspacos),
+);
+
+async function casoDaListaPreservada() {
+  await emSavepoint(async () => {
+    await semear({
+      categorias: [[CAT.brinq, "Brinquedo", "brinquedo"]],
+      produtos: [["P1", "Brinquedo"]],
+      lista: [
+        "Roupas",
+        "Brinquedo",
+        "Roupas",
+        "roupas",
+        "Calçados",
+        "Calçados",
+      ],
+    });
+    const r = await renomear(CAT.brinq, "Jogos");
+    assert.ok(r.linhas, r.erro);
+    assert.equal(r.linhas[0].r.regra_devolucao, 1);
+    assert.deepEqual(await listaDaPolitica(), [
+      "Roupas",
+      "Jogos",
+      "Roupas",
+      "roupas",
+      "Calçados",
+      "Calçados",
+    ]);
+  });
+}
+
+prova(
+  "RENOMEAR mexe SO nos itens da lista que sao a categoria: os repetidos e os outros ficam como estao",
+  () => emTransacao(casoDaListaPreservada),
 );
 
 // ---------------------------------------------------------------------------
@@ -775,8 +959,8 @@ async function casosDePausadoEExcluido() {
     assert.deepEqual(await categoriasDosProdutos(), [
       "Brinquedos",
       "Brinquedos",
-      "Brinquedos",
-      "Brinquedos",
+      "Brinquedos ", // o espaco das pontas fica
+      " Brinquedos",
       "Cama",
     ]);
   });
@@ -845,6 +1029,24 @@ for (const [rotulo, de, para, comportamento] of [
     "IF public.categoria__chave(v_novo) IN ('todas', 'all') THEN",
     "IF public.categoria__chave(v_novo) IN ('nome-que-nunca-existe') THEN",
     () => casoDoNomeReservado(),
+  ],
+  [
+    "renomear escreve o nome limpo no produto (perde o espaco das pontas e muda a regra de troca)",
+    "SET categoria = substring(categoria from '^[[:space:]]*')\n                     || v_novo\n                     || substring(regexp_replace(categoria, '^[[:space:]]+', '') from '[[:space:]]*$')",
+    "SET categoria = v_novo",
+    () => casoDoEspacoNaPonta(),
+  ],
+  [
+    "renomear escreve o nome limpo no item da lista (perde o espaco das pontas)",
+    "THEN substring(e.item from '^[[:space:]]*')\n                             || v_novo\n                             || substring(regexp_replace(e.item, '^[[:space:]]+', '') from '[[:space:]]*$')",
+    "THEN v_novo",
+    () => casoDaMatrizDeEspacos(),
+  ],
+  [
+    "renomear junta a lista inteira e perde os repetidos das outras categorias",
+    "WHERE NOT (q.e_texto_novo AND q.rn > 1);",
+    "WHERE q.rn = 1;",
+    () => casoDaListaPreservada(),
   ],
 ]) {
   prova(`MUTANTE: ${rotulo} deixa a prova vermelha`, () =>
