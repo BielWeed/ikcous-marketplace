@@ -12407,3 +12407,295 @@ Deno.test("29a/29b — o rpc-ci.yml roda as duas provas vivas do lote (comportam
       );
   }
 });
+
+// 42m — MEDICAO do "reembolso em duvida" (tarefa T0 do plano do reembolso A/B, 15/10/2026), ANTES da migration que
+// faz o saldo a estornar descontar as linhas falhou/recusado que PODEM TER SAIDO no Mercado Pago. Consulta de
+// LEITURA, de rol ABERTO (molde da 18a/22m/27m/35m: tipo/objeto/detalhe, sem coluna `ok`, nunca prova do portao).
+// O que este teste prende: a regra "pode ter saido" com o texto e a ordem do plano (e a lista fechada IGUAL a
+// `CODIGOS_NADA_SAIU` de estorno.ts e ao `v_sem_post` da 20261226000000), a conta do saldo IGUAL a
+// `pedido__saldo_a_estornar` da 20261198000000, o controle de RLS, as tabelas lidas e que NENHUM id, nome, e-mail,
+// endereco, codigo ou id do MP sai no log do run (id de pedido e de linha so dentro de count()).
+const NOME_42M = "42m-medir-saldo-em-duvida";
+Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "pode ter saido" na ordem do plano, conta do saldo da 20261198, so agregados`, async (t) => {
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_42M}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+  const normal = (s: string) => s.replace(/\s+/g, " ").trim();
+  const LISTA_NADA_SAIU = [
+    "insufficient_money_for_refund",
+    "order_payment_not_yet_enabled_for_refund",
+  ];
+  await t.step("esta no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "nao achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${NOME_42M}\n`, i) > i,
+      `falta a opcao ${NOME_42M} no workflow`,
+    );
+    const runbook = await Deno.readTextFile(`${RAIZ}/docs/runbooks/producao-unica-fonte.md`);
+    assertStringIncludes(runbook, `**\`${NOME_42M}\`**`, "a 42m saiu do runbook");
+  });
+  await t.step(
+    "um statement, comeca por WITH, sem palavra de escrita e sem SQL dinamico",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*WITH\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+          semTexto,
+        ),
+        "palavra de escrita fora de comentario/string",
+      );
+      assert(
+        !/\b(EXECUTE|query_to_xml|dblink\w*|format|pg_read_file|lo_import|pg_sleep|FOR\s+UPDATE|FOR\s+SHARE)\b/i.test(
+          semTexto,
+        ),
+        "SQL dinamico, leitura de arquivo, trava ou espera",
+      );
+      // nenhuma funcao do banco e chamada: a conta e reescrita em linha (as funcoes de dinheiro sao fechadas para o
+      // leitor, e chamar autorizar_post_do_estorno ESCREVERIA o carimbo)
+      assert(
+        !/\b(pedido__saldo_a_estornar|autorizar_post_do_estorno|registrar_\w+|reemitir_\w+|admin_\w+)\s*\(/i.test(
+          semTexto,
+        ),
+        "a 42m chama funcao de dinheiro",
+      );
+    },
+  );
+  await t.step("a saida final e tipo, objeto, detalhe, em ordem fixa", () => {
+    assert(
+      /SELECT tipo, objeto, detalhe\s+FROM r\s+ORDER BY ordem, objeto, detalhe;/.test(
+        limpo,
+      ),
+      "a saida final tem de ser tipo, objeto, detalhe, com ORDER BY ordem, objeto, detalhe",
+    );
+  });
+  await t.step(
+    "rol ABERTO: sem coluna `ok` e fora de ROL_FECHADO_POR_CONSULTA e de CONSULTAS_DE_ROL_FECHADO (nunca vira prova do portao)",
+    async () => {
+      assert(!/\bAS ok\b/i.test(semTexto), "a 42m nao tem coluna ok");
+      assert(
+        !Object.hasOwn(ROL_FECHADO_POR_CONSULTA, NOME_42M),
+        "a 42m e de rol aberto: nao pode estar no rol fechado",
+      );
+      const { CONSULTAS_DE_ROL_FECHADO } = await import(
+        "../scripts/frota/publicar-release.mjs"
+      );
+      assert(!CONSULTAS_DE_ROL_FECHADO.has(NOME_42M));
+    },
+  );
+  await t.step(
+    "so le o catalogo e QUATRO tabelas (marketplace_orders, order_refunds, order_refund_diagnostico, devolucoes)",
+    () => {
+      const permitidos = new Set([
+        "public.marketplace_orders",
+        "public.order_refunds",
+        "public.order_refund_diagnostico",
+        "public.devolucoes",
+        "pg_roles",
+        "pg_class",
+        // as CTEs da propria consulta
+        "ped",
+        "lin",
+        "morta",
+        "saldo",
+        "viva",
+        "formas",
+        "categorias",
+        "r",
+      ]);
+      const alvos = [...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi)]
+        .map((m) => m[1].toLowerCase());
+      assert(alvos.length > 0);
+      for (const a of alvos)
+        assert(permitidos.has(a), `a 42m le ${a}, fora da lista do permitido`);
+      for (const tabela of [
+        "public.marketplace_orders",
+        "public.order_refunds",
+        "public.order_refund_diagnostico",
+        "public.devolucoes",
+      ])
+        assert(alvos.includes(tabela), `a 42m nao le ${tabela}`);
+    },
+  );
+  await t.step(
+    "controle de RLS como a 35m: quem leu, BYPASSRLS e se a RLS vale em CADA tabela lida; e se order_refund_prova ja existe",
+    () => {
+      assertStringIncludes(limpo, "'superusuario=' || (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)::text");
+      assertStringIncludes(limpo, "'|bypassrls=' || (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user)::text");
+      for (const tabela of [
+        "marketplace_orders",
+        "order_refunds",
+        "order_refund_diagnostico",
+        "devolucoes",
+      ]) {
+        assertStringIncludes(limpo, `'|rls_vale_em_${tabela}=' || (SELECT (c.relrowsecurity AND NOT COALESCE(a.rolbypassrls, false) AND NOT COALESCE(a.rolsuper, false))::text`);
+        assertStringIncludes(limpo, `WHERE c.oid = 'public.${tabela}'::regclass AND a.rolname = current_user)`);
+      }
+      assertStringIncludes(limpo, "to_regclass('public.order_refund_prova') IS NOT NULL");
+      assertStringIncludes(
+        limpo,
+        "count(*) FILTER (WHERE pode_ter_saido = (categoria LIKE 'passo3%' OR categoria LIKE 'passo4%'))",
+      );
+    },
+  );
+  await t.step(
+    "a regra 'pode ter saido': texto do plano no cabecalho, na ORDEM, e a mesma ordem no CASE",
+    () => {
+      const cab = normal(sql.slice(0, sql.indexOf("WITH ped AS")));
+      const passos = [
+        "(1) mp_refund_id presente -> true;",
+        "(2) nada_saiu_provado_em presente -> false;",
+        "(3) recusado sem post_autorizado_em -> false;",
+        "(4) falhou com diagnostico, sem carimbo e codigo na lista fechada -> false;",
+        "(5) senao true (inclui falhou antiga sem diagnostico).",
+      ];
+      let ultimo = -1;
+      for (const p of passos) {
+        const i = cab.indexOf(`-- ${p}`);
+        assert(i > ultimo, `o passo "${p}" saiu do cabecalho ou da ordem`);
+        ultimo = i;
+      }
+      assertStringIncludes(cab, "O passo (2) e IGNORADO aqui: a tabela `order_refund_prova` ainda nao existe");
+      assertStringIncludes(
+        normal(limpo),
+        normal(`CASE
+           WHEN r.mp_refund_id IS NOT NULL THEN true
+           WHEN r.status = 'recusado' AND r.post_autorizado_em IS NULL THEN false
+           WHEN r.status = 'falhou'
+                AND dg.refund_id IS NOT NULL
+                AND dg.post_incerto_em IS NULL
+                AND dg.mp_codigo IN ('insufficient_money_for_refund', 'order_payment_not_yet_enabled_for_refund') THEN false
+           ELSE true
+         END AS pode_ter_saido`),
+      );
+      // forma: cartao = credito/debito; todo o resto (pix E NULL) e pix
+      assertStringIncludes(
+        limpo,
+        "CASE WHEN o.metodo_online IN ('credito', 'debito') THEN 'cartao' ELSE 'pix' END AS forma",
+      );
+    },
+  );
+  await t.step(
+    "a lista fechada e IGUAL a CODIGOS_NADA_SAIU de estorno.ts e ao v_sem_post da 20261226000000",
+    async () => {
+      const estorno = await Deno.readTextFile(
+        `${RAIZ}/supabase/functions/_shared/estorno.ts`,
+      );
+      const m = estorno.match(/const CODIGOS_NADA_SAIU = new Set\(\[([\s\S]*?)\]\);/);
+      assert(m, "nao achei CODIGOS_NADA_SAIU em estorno.ts");
+      const doTs = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).sort();
+      assertEquals(doTs, [...LISTA_NADA_SAIU].sort());
+      const mig = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql`,
+      );
+      const listaSql = `IN (${LISTA_NADA_SAIU.map((c) => `'${c}'`).join(", ")})`;
+      const vSemPost = mig.slice(mig.indexOf("v_sem_post := "), mig.indexOf("IF v_sem_post THEN"));
+      assertStringIncludes(vSemPost, `v_diag.mp_codigo ${listaSql}`);
+      // as duas aparicoes na 42m (o CASE da regra e a marca codigo_na_lista) usam a lista inteira, nada a mais
+      assertEquals(limpo.split(`mp_codigo ${listaSql}`).length - 1, 2);
+      assertEquals(limpo.split("mp_codigo").length - 1, 2, "mp_codigo so aparece nos dois testes de lista");
+    },
+  );
+  await t.step(
+    "a conta do saldo e a de pedido__saldo_a_estornar (20261198000000) e a de autorizar_post_do_estorno (20261196000000)",
+    async () => {
+      const m98 = normal(await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261198000000_cancelar_pedido_anula_a_cobranca.sql`,
+      ));
+      // a migration (alias r.) e a 42m (alias l.) descontam as MESMAS linhas
+      assertStringIncludes(m98, "AND (r.status IN ('solicitado', 'em_processamento') OR (r.status = 'concluido' AND r.concluido_em IS NULL))), 0)");
+      assertStringIncludes(normal(limpo), "AND (l.status IN ('solicitado', 'em_processamento') OR (l.status = 'concluido' AND l.concluido_em IS NULL))), 0)");
+      assertStringIncludes(m98, "WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0)");
+      assertStringIncludes(normal(limpo), "WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0) AS manual");
+      // em duvida = falhou/recusado com a regra verdadeira
+      assertStringIncludes(normal(limpo), "AND l.status IN ('falhou', 'recusado') AND l.pode_ter_saido), 0) AS em_duvida");
+      const m96 = normal(await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql`,
+      ));
+      assertStringIncludes(m96, "AND id <> v_linha.id AND status IN ('solicitado', 'em_processamento'); v_disponivel := v_total - v_estornado - v_em_voo_outras;");
+      assertStringIncludes(normal(limpo), "AND o2.linha <> l.linha AND o2.status IN ('solicitado', 'em_processamento')), 0) AS disp_hoje");
+      assertStringIncludes(normal(limpo), "AND l.solicitado_por <> 'sistema'");
+    },
+  );
+  await t.step(
+    "travadas: em_processamento com tentativas >= 5, idade desde COALESCE(post_autorizado_em, created_at), 3 e 7 dias",
+    () => {
+      assertStringIncludes(limpo, "l.status = 'em_processamento' AND l.tentativas >= 5");
+      assertStringIncludes(limpo, "now() - COALESCE(l.post_autorizado_em, l.created_at) >= interval '3 days'");
+      assertStringIncludes(limpo, "now() - COALESCE(l.post_autorizado_em, l.created_at) >= interval '7 days'");
+    },
+  );
+  await t.step(
+    "nenhum dado pessoal nem do MP: nenhuma coluna de pessoa/texto livre; mp_refund_id so por IS NOT NULL; id de pedido e de linha so dentro de count()",
+    () => {
+      assert(
+        !/\b(email|customer_\w+|full_name|nome|cpf|phone|telefone|whatsapp|endereco\w*|address\w*|user_id|motivo|ultimo_erro|protocolo|mp_status\w*|mp_chargeback\w*|observacao\w*|mensagem\w*|codigo_rastreio|fotos|gateway_payment_id)\b/i.test(
+          semTexto,
+        ),
+        "a 42m toca coluna de pessoa, texto livre ou dado do MP",
+      );
+      assert(!/\bd\.detalhe\b/.test(semTexto), "a 42m le o texto livre da devolucao");
+      const semTesteDeId = semTexto.replace(/\br\.mp_refund_id IS NOT NULL\b/g, "");
+      assert(!/\bmp_refund_id\b/.test(semTesteDeId), "mp_refund_id aparece fora do teste IS NOT NULL");
+      const blocoR = semTexto.slice(semTexto.indexOf("), r AS ("));
+      assert(blocoR.length > 100, "nao achei o bloco final `r`");
+      const semContagem = blocoR.replace(/count\((?:DISTINCT )?\w+\.(?:pedido|linha)\)/g, "count()");
+      assert(
+        !/\b\w+\.(?:pedido|linha)\b/.test(semContagem),
+        "id de pedido ou de linha aparece na saida fora de count()",
+      );
+    },
+  );
+  await t.step(
+    "legado, dobro e manual: as tres contagens pedidas pelo coordenador, com a regra de cada uma no texto",
+    () => {
+      // regra do LEGADO de linhaPodeJaTerChegadoAoMp (estorno.ts) e quantas delas o v_sem_post chama de "nada saiu"
+      assertStringIncludes(limpo, "(r.criada_sob_autorizacao IS NOT TRUE AND r.tentativas > 1) AS legado_tentativas");
+      assertStringIncludes(limpo, "FILTER (WHERE m.legado_tentativas AND NOT m.pode_ter_saido)");
+      // o restante do pedido: total - valor_estornado - manual; dobro so quando o valor e MENOR que ele
+      assertStringIncludes(limpo, "p.total - p.estornado - p.manual AS restante");
+      assertStringIncludes(limpo, "FILTER (WHERE m.pode_ter_saido AND m.amount < m.restante)");
+      // reembolso manual registrado: "Ja estornei" (pedido) ou "por fora" (devolucao, qualquer status)
+      assertStringIncludes(limpo, "(o.estorno_manual_registrado_em IS NOT NULL) AS ja_estornei");
+      assertStringIncludes(normal(limpo), "WHERE d2.order_id = o.id AND d2.reembolso_manual) AS por_fora");
+      assertStringIncludes(limpo, "FILTER (WHERE m.pode_ter_saido AND (m.ja_estornei OR m.por_fora))");
+      const ts = sql.slice(0, sql.indexOf("WITH ped AS"));
+      assertStringIncludes(ts, "linhaPodeJaTerChegadoAoMp");
+    },
+  );
+  await t.step(
+    "cobre cada medicao (controle, a_linha, a_marca, b_saldo, c_cancel, d_travada, e_viva, f_legado, g_dobro, h_manual), com as 7 categorias e as 2 formas aparecendo mesmo em zero",
+    () => {
+      for (const tipo of [
+        "controle",
+        "a_linha",
+        "a_marca",
+        "b_saldo",
+        "c_cancel",
+        "d_travada",
+        "e_viva",
+        "f_legado",
+        "g_dobro",
+        "h_manual",
+      ])
+        assertStringIncludes(limpo, `'${tipo}'`, `falta o tipo ${tipo}`);
+      for (const categoria of [
+        "passo1 com mp_refund_id",
+        "passo3 recusado sem post autorizado",
+        "passo4 falhou com codigo da lista nada saiu",
+        "passo5 falhou com carimbo post_incerto_em",
+        "passo5 falhou com codigo fora da lista",
+        "passo5 falhou legado sem diagnostico",
+        "passo5 recusado com post autorizado",
+      ]) {
+        // nasce no CASE da categoria E na lista de VALUES (a que garante o zero)
+        assertEquals(limpo.split(`'${categoria}'`).length - 1, 2, categoria);
+      }
+      assertStringIncludes(limpo, "(VALUES ('cartao'), ('pix')) v(f)");
+      assertStringIncludes(limpo, "CROSS JOIN formas f");
+    },
+  );
+});
