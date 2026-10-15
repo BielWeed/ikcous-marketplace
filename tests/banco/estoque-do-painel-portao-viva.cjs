@@ -1175,6 +1175,8 @@ async function main() {
       [
         "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql",
         "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)",
+      ],
+      [
         "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql",
         "public.upsert_store_config(jsonb)",
       ],
