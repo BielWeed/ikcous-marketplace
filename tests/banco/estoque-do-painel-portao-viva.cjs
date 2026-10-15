@@ -1141,7 +1141,9 @@ async function main() {
   );
   // as sucessoras da 99 DO LOTE sao exatamente a 20261212 (painel_inicio) e a 20261214 (analytics); as
   // posteriores sao a 20261227 (crm_visao), a 20261228 (que sucede a 12 em painel_inicio) e a 20261230 e a
-  // 20261231 (a busca de clientes: get_admin_customers_paged e crm_clientes, funcoes de fora destas tres)
+  // 20261231 (a busca de clientes: get_admin_customers_paged e crm_clientes, funcoes de fora destas tres),
+  // a 20261234 (que sucede a 14 em get_admin_analytics_v2) e a 20261239 (a identidade legal da loja:
+  // upsert_store_config, tambem fora destas tres)
   assert.deepEqual(
     SUCESSORAS_DO_LOTE.map((s) => [s.nome, s.assinatura, s.hashDesta]).sort(),
     [F.painel, F.analytics].map((f) => [f.arq, f.sig, f.md5.depois]).sort(),
@@ -1169,6 +1171,10 @@ async function main() {
       [
         "20261234000000_o_lucro_so_conta_produto_com_custo.sql",
         "public.get_admin_analytics_v2(integer)",
+      ],
+      [
+        "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql",
+        "public.upsert_store_config(jsonb)",
       ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",

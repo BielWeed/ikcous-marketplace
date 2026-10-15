@@ -2265,6 +2265,9 @@ export type Database = {
           store_name: string | null;
           store_state: string | null;
           store_description: string | null;
+          store_legal_name: string | null;
+          store_legal_document: string | null;
+          store_support_email: string | null;
           theme_mode: string | null;
           updated_at: string | null;
           vapid_public_key: string | null;
@@ -2308,6 +2311,9 @@ export type Database = {
           store_name?: string | null;
           store_state?: string | null;
           store_description?: string | null;
+          store_legal_name?: string | null;
+          store_legal_document?: string | null;
+          store_support_email?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -2351,6 +2357,9 @@ export type Database = {
           store_name?: string | null;
           store_state?: string | null;
           store_description?: string | null;
+          store_legal_name?: string | null;
+          store_legal_document?: string | null;
+          store_support_email?: string | null;
           theme_mode?: string | null;
           updated_at?: string | null;
           vapid_public_key?: string | null;
@@ -2507,6 +2516,9 @@ export type Database = {
           real_time_sales_alerts: boolean | null;
           store_address: string | null;
           store_description: string | null;
+          store_legal_name: string | null;
+          store_legal_document: string | null;
+          store_support_email: string | null;
           share_text: string | null;
           shipping_coverage: string | null;
           shipping_fee: number | null;

@@ -1,3 +1,4 @@
+import { RodapeDasPoliticas } from "@/components/politicas/RodapeDasPoliticas";
 import { BannerCarousel } from "@/components/ui/custom/BannerCarousel";
 import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
 import { useStore } from "@/contexts/StoreContext";
@@ -5,6 +6,7 @@ import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
 import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
 import { categoriaValidaDaHome } from "@/lib/categoria-valida-da-home";
+import { identidadeLegalDaLoja } from "@/lib/identidade-legal-da-loja";
 import { cn } from "@/lib/utils";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { Product, SortOption, View } from "@/types";
@@ -788,6 +790,14 @@ export const HomeView = React.memo(function HomeView({
           </p>
         </div>
       )}
+
+      {/* Termos, Privacidade e Trocas: a cliente precisa achá-los ANTES de
+          comprar ou cadastrar (LGPD e CDC). Sempre presentes — não dependem
+          de a lojista ter preenchido horário ou contato. */}
+      <RodapeDasPoliticas
+        onNavigate={onNavigate}
+        identidade={identidadeLegalDaLoja(config)}
+      />
     </div>
   );
 });

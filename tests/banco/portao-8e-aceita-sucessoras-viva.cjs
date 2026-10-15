@@ -10,7 +10,8 @@
  *   get_admin_analytics_v2(integer)       20261199 → 20261214000000 → 20261234000000;
  *   crm_visao(date,date)                  20261199 → 20261227000000;
  *   get_admin_customers_paged(...)        20261199 → 20261230000000 (a busca de clientes);
- *   crm_clientes(text,text,integer,integer) 20261199 → 20261231000000 (a busca do CRM).
+ *   crm_clientes(text,text,integer,integer) 20261199 → 20261231000000 (a busca do CRM);
+ *   upsert_store_config(jsonb)            20261199 → 20261239000000 (a identidade legal da loja).
  * Sem isso a 8e dava ok=false nessas linhas numa loja que recebeu a sucessora e
  * o backfill do ledger 92-202 ficava bloqueado para sempre (CI run 38000693188,
  * passo "Prova viva do lote 60-66"). Cada função é POR SI: uma loja pode ter só
@@ -32,8 +33,8 @@
  * CASOS:
  *  POSITIVOS  árvore inteira (todas as sucessoras no ar); estado da 99 (todas
  *             desfeitas); painel parado na 12; e UM estado "só esta" para cada
- *             função que não é o painel (só a 14, só a 27, só a 30, só a 31: as
- *             outras desfeitas). Em todos: todas as linhas ok=true, EXATAMENTE o
+ *             função que não é o painel (só a 14, só a 27, só a 30, só a 31, só a 39:
+ *             as outras desfeitas). Em todos: todas as linhas ok=true, EXATAMENTE o
  *             ROL_DA_8E (mesmo nº de linhas), e as respostas dos estados são IGUAIS
  *             linha a linha (o `vivo` aceito mostra o `esperado`, que é o hash da 99).
  *  NEGATIVOS  para CADA função com sucessora, reprovando SÓ a linha dela: corpo estranho
@@ -43,7 +44,7 @@
  *             função (o aceito é por função; esse caso só roda na árvore inteira).
  *             No estado da 99 rodam o estranho e o AUSENTE; nos mistos, o estranho, o
  *             AUSENTE e a sobrecarga.
- *             Controle: uma das outras 56 (upsert_store_config) com corpo estranho
+ *             Controle: uma das outras 55 (save_store_identity) com corpo estranho
  *             reprova só ela (nada mais foi afrouxado).
  *  MUTANTES   o texto da consulta com o hash da sucessora trocado, os aceitos
  *             removidos (sem o OR e com o CTE vazio), o aceito de qualquer função
@@ -102,8 +103,8 @@ const fnDe = (s) =>
   s.assinatura.slice("public.".length, s.assinatura.indexOf("("));
 // A CADEIA de cada função, em ordem de aplicação: painel_inicio = [12, 28] (o `hashVigente` da 28 é
 // o `hashDesta` da 12), get_admin_analytics_v2 = [14, 34] (idem: o `hashVigente` da 34 é o `hashDesta`
-// da 14), crm_visao = [27], get_admin_customers_paged = [30], crm_clientes = [31]. O representante de cada
-// função é o ÚLTIMO elo (o topo da cadeia); o corpo da 99 é o `hashVigente` do PRIMEIRO.
+// da 14), crm_visao = [27], get_admin_customers_paged = [30], crm_clientes = [31], upsert_store_config = [39].
+// O representante de cada função é o ÚLTIMO elo (o topo da cadeia); o corpo da 99 é o `hashVigente` do PRIMEIRO.
 const CADEIAS = new Map();
 for (const s of SUCESSORAS_DA_99)
   CADEIAS.set(fnDe(s), [...(CADEIAS.get(fnDe(s)) ?? []), s]);
@@ -115,19 +116,21 @@ const ANALYTICS_14 = CADEIAS.get("get_admin_analytics_v2")[0];
 const CRM = topo("crm_visao");
 const CLIENTES = topo("get_admin_customers_paged");
 const CRMC = topo("crm_clientes");
+const UPSERT = topo("upsert_store_config");
 assert.ok(
-  SUCESSORAS_DA_99.length === 7 &&
-    CADEIAS.size === 5 &&
+  SUCESSORAS_DA_99.length === 8 &&
+    CADEIAS.size === 6 &&
     CADEIAS.get("painel_inicio").length === 2 &&
     PAINEL_12.hashDesta === PAINEL.hashVigente &&
     CADEIAS.get("get_admin_analytics_v2").length === 2 &&
     ANALYTICS_14.hashDesta === ANALYTICS.hashVigente &&
     CADEIAS.get("crm_visao").length === 1 &&
     CADEIAS.get("get_admin_customers_paged").length === 1 &&
-    CADEIAS.get("crm_clientes").length === 1,
-  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 + 20261234 (get_admin_analytics_v2), a 20261227 (crm_visao), a 20261230 (get_admin_customers_paged) e a 20261231 (crm_clientes): reveja a 8e e esta prova",
+    CADEIAS.get("crm_clientes").length === 1 &&
+    CADEIAS.get("upsert_store_config").length === 1,
+  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 + 20261234 (get_admin_analytics_v2), a 20261227 (crm_visao), a 20261230 (get_admin_customers_paged), a 20261231 (crm_clientes) e a 20261239 (upsert_store_config): reveja a 8e e esta prova",
 );
-const FUNCOES = [PAINEL, ANALYTICS, CRM, CLIENTES, CRMC];
+const FUNCOES = [PAINEL, ANALYTICS, CRM, CLIENTES, CRMC, UPSERT];
 /** O corpo da 99 da função (o `esperado` da 8e), o `hashVigente` do primeiro elo da cadeia. */
 const h99 = (s) => CADEIAS.get(fnDe(s))[0].hashVigente;
 /** Todo corpo que a 8e aceita para a função: o da 99 e o de cada elo da cadeia. */
@@ -141,7 +144,8 @@ const OUTRA = new Map([
   [ANALYTICS, CRM],
   [CRM, CLIENTES],
   [CLIENTES, CRMC],
-  [CRMC, PAINEL],
+  [CRMC, UPSERT],
+  [UPSERT, PAINEL],
 ]);
 
 const REF = "gnjsrucsmjkajijrakzr";
@@ -241,7 +245,7 @@ const ESTADO_99 = async (c) => {
   assert.deepEqual(
     desfeitas,
     SUCESSORAS_DA_99.map((s) => s.nome).reverse(),
-    "as sete sucessoras tinham de estar no ar e sair",
+    "as oito sucessoras tinham de estar no ar e sair",
   );
   await exigirHashes(c, "estado 99", hashesCom([]));
 };
@@ -294,15 +298,17 @@ const SO_14 = SO(ANALYTICS, "só 14");
 const SO_27 = SO(CRM, "só 27");
 const SO_30 = SO(CLIENTES, "só 30");
 const SO_31 = SO(CRMC, "só 31");
+const SO_39 = SO(UPSERT, "só 39");
 const ESTADOS = [
-  ["árvore inteira (12, 28, 14, 34, 27, 30 e 31 no ar)", ARVORE],
-  ["estado da 20261199 (as sete sucessoras desfeitas)", ESTADO_99],
+  ["árvore inteira (12, 28, 14, 34, 27, 30, 31 e 39 no ar)", ARVORE],
+  ["estado da 20261199 (as oito sucessoras desfeitas)", ESTADO_99],
   ["painel parado na 20261212 (a 20261228 desfeita)", PAINEL_NA_12],
   ["analytics parado na 20261214 (a 20261234 desfeita)", ANALYTICS_NA_14],
   ["misto: só a 20261214 + 20261234 (as outras desfeitas)", SO_14],
   ["misto: só a 20261227 (as outras desfeitas)", SO_27],
   ["misto: só a 20261230 (as outras desfeitas)", SO_30],
   ["misto: só a 20261231 (as outras desfeitas)", SO_31],
+  ["misto: só a 20261239 (as outras desfeitas)", SO_39],
 ];
 
 /** CREATE OR REPLACE com o texto de pg_get_functiondef e o corpo transformado
@@ -591,9 +597,9 @@ async function provar() {
     );
   }
   for (const rows of respostas.slice(1))
-    assert.deepEqual(rows, respostas[0], "os oito estados respondem igual");
+    assert.deepEqual(rows, respostas[0], "os nove estados respondem igual");
   ok(
-    "os oito estados (árvore, 99, painel na 12, analytics na 14, só 14+34, só 27, só 30, só 31) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
+    "os nove estados (árvore, 99, painel na 12, analytics na 14, só 14+34, só 27, só 30, só 31, só 39) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
   );
 
   // ------------------------------------------------------------- NEGATIVOS
@@ -705,27 +711,41 @@ async function provar() {
     await exigirReprovadas("só 31 + tela Clientes ausente", r10.rows, [
       item(CLIENTES),
     ]);
+    const r11 = await noEstado(em(SO_39, sobrecarga(UPSERT)));
+    await exigirReprovadas(
+      "só 39 + sobrecarga do upsert_store_config",
+      r11.rows,
+      [item(UPSERT)],
+    );
+    const r12 = await noEstado(em(SO_39, ausente(PAINEL)));
+    await exigirReprovadas("só 39 + painel ausente", r12.rows, [item(PAINEL)]);
+    const r13 = await noEstado(
+      em(SO_39, corpoEstranho(UPSERT.assinatura, aceitosDe(UPSERT))),
+    );
+    await exigirReprovadas("só 39 + upsert_store_config estranho", r13.rows, [
+      item(UPSERT),
+    ]);
   }
   ok(
-    "negativo — nos estados MISTOS (painel na 12, só 14, só 27, só 30, só 31) a função ausente, estranha ou sobrecarregada reprova SÓ a linha dela",
+    "negativo — nos estados MISTOS (painel na 12, só 14, só 27, só 30, só 31, só 39) a função ausente, estranha ou sobrecarregada reprova SÓ a linha dela",
   );
-  // Controle: as outras 56 seguem exatas.
+  // Controle: as outras 55 seguem exatas (agora a upsert_store_config TEM sucessora; o controle e a save_store_identity).
   {
     const { rows } = await noEstado(async (c) => {
       await ARVORE(c);
       const r = await c.query(
         `SELECT p.oid::regprocedure::text AS a FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
-          WHERE ns.nspname = 'public' AND p.proname = 'upsert_store_config'`,
+          WHERE ns.nspname = 'public' AND p.proname = 'save_store_identity'`,
       );
       assert.equal(r.rows.length, 1);
       return corpoEstranho(r.rows[0].a, [])(c);
     });
-    await exigirReprovadas("upsert_store_config estranho", rows, [
-      "corpo final upsert_store_config",
+    await exigirReprovadas("save_store_identity estranho", rows, [
+      "corpo final save_store_identity",
     ]);
   }
   ok(
-    "controle — uma das outras 56 (upsert_store_config) com corpo estranho reprova só ela: nada além das cinco funções com sucessora foi afrouxado",
+    "controle — uma das outras 55 (save_store_identity) com corpo estranho reprova só ela: nada além das seis funções com sucessora foi afrouxado",
   );
 
   // ------------------------------------------------------------- MUTANTES
@@ -754,7 +774,7 @@ async function provar() {
     ARVORE,
   );
   await mutantePositivo(
-    "aceitos removidos (CTE sucessoras sem as sete)",
+    "aceitos removidos (CTE sucessoras sem as oito)",
     SUCESSORAS_DA_99.map((s) => [
       `('${fnDe(s)}', '${s.hashDesta}', '${s.nome.slice(0, 14)}')`,
       `('nenhuma_${s.nome.slice(0, 14)}', '${zero}', '${s.nome.slice(0, 14)}')`,
@@ -791,7 +811,7 @@ async function provar() {
     [item(PAINEL)],
   );
   ok(
-    "MUTANTES do texto da 8e: hash de cada elo da cadeia trocado (12, 28, 14, 34, 27, 30 e 31, cada um no estado em que ele é o vivo), hash da 99 trocado (cada função), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
+    "MUTANTES do texto da 8e: hash de cada elo da cadeia trocado (12, 28, 14, 34, 27, 30, 31 e 39, cada um no estado em que ele é o vivo), hash da 99 trocado (cada função), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
   );
 }
 

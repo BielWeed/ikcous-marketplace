@@ -543,6 +543,17 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `35a-conferir-lucro-so-com-custo-aplicado` (DEPOIS, 6 linhas) e `35b-antes-lucro-so-com-custo-corpo-vigente` (ANTES, 5
   linhas) do lote `20261234000000`. Rol exato nos estados (depois, antes, corpo da 99), um negativo por linha, mutantes
   do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **a loja declara razão social, CNPJ/CPF e e-mail (`loja-declara-quem-e-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261239000000` (`upsert_store_config`, as três colunas novas de `store_config` e a `v_store_config`),
+  com os papéis de verdade: salvar um dos três não apaga os outros nem os demais campos da loja, as CHECK de forma,
+  só o admin atual grava, o visitante lê e não escreve, ida e volta com o corpo da 99 e o ACL da view iguais, o
+  rollback que recusa com dado da loja, pré-voo que recusa sem escrever, mutantes. **Não prova** a IKCOUS nem a Savy.
+- **portão da identidade legal da loja (`loja-declara-quem-e-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `40a-conferir-identidade-legal-da-loja-aplicado` (DEPOIS, 11 linhas) e
+  `40b-antes-identidade-legal-da-loja-base-vigente` (ANTES, 10 linhas) do lote `20261239000000`. Rol exato nos estados
+  (depois, antes), um negativo por linha (inclusive o ACL, o dono e as opções da view, que o rollback recria por DROP
+  VIEW + CREATE VIEW + GRANT ALL), mutantes do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`).
+  **Não prova** a IKCOUS nem a Savy.
 - **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
   RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`) avisa "Pedido pronto para retirar" e
@@ -569,7 +580,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   desfeita, para provar grants/RLS/view — o admin grava
   `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
 - **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
-  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261234) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261234, 20261239) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
   reprova se aparecer uma sucessora que não esteja na lista.
 - **função nova não nasce aberta (`portas-do-visitante-so-as-permitidas-viva.cjs`, via `rodar-isolado.cjs`)**: L8 da
   auditoria de 12/10, sem migration. Com todas as migrations aplicadas, toda função de `public` que anon,

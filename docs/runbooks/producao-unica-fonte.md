@@ -1309,6 +1309,63 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
 
+  40. **Lote de UMA migration, de apply normal: `20261239000000` (a loja PODE declarar razao social, CNPJ/CPF e
+      e-mail de atendimento; ADITIVA e OPCIONAL, nao muda dado).** Sem `backfillLedger` e sem `nuncaAplicar`; valem
+      as duas lojas assinantes (IKCOUS e Savy). Acrescenta tres colunas NULAS e sem default em `store_config`
+      (`store_legal_name`, `store_legal_document`, `store_support_email`), tres CHECK de forma, as tres colunas NO FIM
+      da view `v_store_config` (por `CREATE OR REPLACE VIEW`: de 42 para 45 colunas, ACL e opcoes nao sao
+      recriados) e as tres chaves novas na `upsert_store_config` (o corpo da `20261199000000` mais tres trocas
+      declaradas; salvar um dos tres, ou qualquer outro campo, nao apaga os demais):
+      - **O que muda para a lojista e para a cliente:** a lojista ganha o formulario "Dados da empresa" em Minha loja
+        e a cliente le razao social, CNPJ/CPF e e-mail nos Termos, na Privacidade e no rodape. Quem nao preencher
+        nada nao muda NADA para ninguem; a linha `id = 1` de `store_config` ganha `NULL/NULL/NULL`.
+      - **ORDEM:** o banco de CADA loja (IKCOUS, depois Savy) ANTES de publicar o front desta branch: o front le e
+        grava os tres campos, e front publicado antes do banco procura colunas que a loja ainda nao tem.
+      - Quem quebra: ninguem (nenhuma assinatura muda; as tres chaves sao opcionais). Nenhuma edge function muda.
+        Duas consultas, so leitura, so catalogo, de ROL FECHADO (11 e 10 linhas, so valem com `rol=ok`):
+        - **`40a-conferir-identidade-legal-da-loja-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo da
+          `upsert_store_config` (md5) com os tres CASE, os atributos e o `EXECUTE` fechado ao visitante, as tres
+          colunas (text, nulas, sem default), as tres CHECK, as 45 colunas da view, as opcoes
+          (`security_invoker=on`) e o ACL da view.
+        - **`40b-antes-identidade-legal-da-loja-base-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo da
+          `20261199000000` sem os tres CASE, as tres colunas e as tres CHECK ainda ausentes, a view de 42 colunas com
+          as opcoes e o ACL. **Nao mede o `EXECUTE` da funcao.** O md5 vem do arquivo da migration, nao de uma loja:
+          **rode a `40b` em CADA loja ANTES do apply**; corpo diferente e loja que ninguem mediu (a migration
+          tambem recusa, `B1_BASELINE_DIVERGENT`).
+      - **O ACL DA VIEW e' o que o DESFAZER precisa:** o rollback encolhe a view de 45 para 42 colunas, e o Postgres
+        recusa `CREATE OR REPLACE VIEW` que encolha; por isso ele faz `DROP VIEW` + `CREATE VIEW` +
+        `GRANT ALL ... TO anon, authenticated, service_role`. So devolve o estado vivo se o ACL de hoje for
+        exatamente esse. As DUAS consultas medem a linha "ACL" da view (dono `postgres`; `anon`, `authenticated` e
+        `service_role` com ALL; `PUBLIC` sem nada; nenhum outro papel; nenhum GRANT OPTION): **uma loja com ACL
+        diferente reprova na `40b` e NAO recebe o apply** ate o dono decidir (a alternativa e outro rollback, nao
+        afrouxar a consulta).
+      - **Medir antes (so leitura, nao e portao):** `40m-medir-identidade-legal-da-loja` mostra o ACL CRU da view
+        (`relacl`), o dono e as opcoes, quantos objetos dependem da view (o `DROP VIEW` do rollback recusa se algum
+        depender), a linha unica de `store_config` e o corpo vivo da `upsert_store_config`. So nomes de papeis,
+        letras de privilegio e contagens; nenhum valor de coluna de `store_config`.
+      - **Caminho, uma loja por vez:** `40a` (sai NEGATIVA) -> `40b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `40a` DE NOVO, que tem de sair POSITIVA. `40a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **A cadeia das sucessoras:** `upsert_store_config` passa a ser `20261199000000` -> `20261239000000`. A `8e`
+        (lote 92-202) aceita o corpo novo como sucessor e segue POSITIVA; a `9a` (faixa 60-66) passou a exigir o
+        corpo NOVO dessa funcao (ela prova sempre a migration mais nova que define cada funcao), entao numa loja que
+        ainda nao recebeu este lote a `9a` sai NEGATIVA nessa linha (o `canais-de-backend.json` so a exige, e so na
+        IKCOUS, quando o lote 60-66 e novo para a loja: confira o ledger da IKCOUS antes de assumir que nao e).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql` (recria o corpo da
+        `20261199000000`, mesmo md5; recria a view de 42 colunas; derruba as tres colunas por ULTIMO; **RECUSA**
+        com `DADO_DA_LOJA_NAO_SE_APAGA_SEM_QUERER` se a loja ja preencheu algum dos tres campos: apagar o que a
+        lojista digitou e' ato deliberado, nunca efeito colateral; o cabecalho do arquivo diz como aplicar). Depois
+        dele a `40b` volta a ser POSITIVA e a `40a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `9a`, a
+        `40a` e a `40b` DE NOVO.
+      - **Limites:** `tests/banco/loja-declara-quem-e-viva.cjs` prova o comportamento (salvar um campo nao apaga os
+        outros, a forma recusada pelas CHECK, so o admin atual grava, o visitante le e nao escreve, ida e volta com o
+        corpo da 99 e o ACL da view iguais, o rollback que recusa com dado) e
+        `tests/banco/loja-declara-quem-e-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o ACL vivo
+        delas (isso so a `40b` e a `40m` rodadas contra o ref de cada loja).
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

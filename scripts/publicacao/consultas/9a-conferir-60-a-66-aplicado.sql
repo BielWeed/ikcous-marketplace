@@ -45,10 +45,12 @@
 --         argumentos, e uma só sobrecarga de cada função tratada.
 --   * Os CORPOS (`prosrc`, sem o retorno de carro (CR), md5) são os da migration MAIS NOVA da árvore
 --     que define cada função. Isso verifica o ESTADO ATUAL exigido para a release
---     presente; NÃO é evidência das migrations 62..64 — quatro delas
---     (registrar_venda_presencial, get_admin_orders_paged,
---     get_admin_orders_cancelados_recentes e upsert_store_config) foram
---     redefinidas na 20261199 e o corpo vivo prova a 99; a evidência de 62..64 é a
+--     presente; NÃO é evidência das migrations 62..64 — três delas
+--     (registrar_venda_presencial, get_admin_orders_paged e
+--     get_admin_orders_cancelados_recentes) foram redefinidas na 20261199 e o
+--     corpo vivo prova a 99, e a quarta (upsert_store_config) foi redefinida
+--     de novo na 20261239 (a loja declara razão social, CNPJ/CPF e e-mail de
+--     atendimento), cujo corpo o vivo prova agora; a evidência de 62..64 é a
 --     ACL e o overload acima. tests/ci_conferir_banco_test.ts recalcula cada md5 a
 --     partir dos arquivos desta árvore: uma migration futura que redefina uma delas
 --     QUEBRA o CI e obriga a atualizar esta consulta no mesmo PR.
@@ -110,7 +112,7 @@ WITH corpos AS (
     ('get_product_recommendations', '3de5b27cc17c31301249861b7921a6fe'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
     ('registrar_venda_presencial', '6a421904a7c99a0e17ca58f2f891c71d'),
-    ('upsert_store_config', '9c56a9c6953e1d774a1ee97d5d8a7e16')
+    ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3')
 ), acls(fn, esperado) AS (VALUES
     ('buscar_por_codigo_barras', 'anon=false authenticated=true service_role=true public=nao'),
     ('get_admin_orders_cancelados_recentes', 'anon=false authenticated=true service_role=true public=nao'),

@@ -55,6 +55,9 @@ const NOMES = [
   // (a CADEIA 99 → 14 → 34: o `hashVigente` da 34 é o `hashDesta` da 14; desfazer em ordem inversa
   // devolve cada corpo ao anterior).
   "20261234000000_o_lucro_so_conta_produto_com_custo.sql",
+  // A identidade legal da loja (14/10/2026): upsert_store_config passa a gravar razão social, documento e e-mail
+  // de atendimento; sucede o corpo da 99 (hashVigente = o `hashDesta` da 99 para essa função).
+  "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql",
 ];
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");
