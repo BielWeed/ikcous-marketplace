@@ -39,6 +39,8 @@ on:
       - "tests/banco/**"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
+      # O ensaio da anonimizacao le o SQL direto deste roteiro: mudar o roteiro dispara a prova.
+      - "docs/runbooks/atender-pedido-de-privacidade.md"
       # A prova viva do lote 60-66 (abaixo) roda estes três: mudar a consulta
       # 9a, o INSERT do backfill ou o script que os executa dispara a prova.
       - "scripts/publicacao/conferir-banco.cjs"
@@ -106,6 +108,7 @@ on:
       - "tests/banco/**"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
+      - "docs/runbooks/atender-pedido-de-privacidade.md"
       - "scripts/publicacao/conferir-banco.cjs"
       - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-60-66.sql"
@@ -717,6 +720,22 @@ jobs:
       - name: Prova viva do portao do sino do pedido de retirada (consultas 34a e 34b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-de-retirada-portao-viva.cjs
+      # Pedidos de privacidade da cliente (migration 20261238, dado de cliente + permissao): exclusao de conta e correcao de
+      # e-mail pedidas pelo app e atendidas a mao. COMPORTAMENTO com a RLS real: a cliente le e insere so o dela, nao decide,
+      # um aberto por (cliente, tipo), anon fechado, admin atual atende com carimbo do servidor, rebaixado nao, NINGUEM apaga
+      # (DELETE e TRUNCATE recusados ate para o service_role), forma do e-mail, chave estrangeira sem cascata, rollback que
+      # recusa apagar com pedido registrado. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva dos pedidos de privacidade da cliente (migration 20261238)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pedidos-de-privacidade-viva.cjs
+      # ENSAIO do roteiro de anonimizacao de conta (docs/runbooks/atender-pedido-de-privacidade.md): o SQL e LIDO do proprio
+      # roteiro e roda contra uma cliente de mentira + uma vizinha. Prova: o ensaio nao grava; valendo, o dado pessoal sai e os
+      # pedidos continuam com os mesmos valores; o login NAO e apagado (fica bloqueado e sem identidade); a vizinha fica
+      # intacta; varredura independente nao acha mais nome/e-mail/telefone/CPF; as travas recusam. O esquema auth e emulado
+      # (o roteiro marca o que so um Supabase real prova). BLOQUEANTE. CLONE proprio.
+      - name: Ensaio do roteiro de anonimizacao de conta (privacidade)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/anonimizar-conta-ensaio-viva.cjs
       # L8 da auditoria de 12/10: FUNCAO NOVA DE BANCO NAO NASCE ABERTA. Com TODAS as migrations aplicadas do zero,
       # lista toda funcao de `public` que alguem de fora executa (anon, authenticated ou PUBLIC, inclusive funcao de
       # extensao) e REPROVA se alguma nao esta na lista versionada tests/banco/portas-do-visitante-permitidas.json (que
