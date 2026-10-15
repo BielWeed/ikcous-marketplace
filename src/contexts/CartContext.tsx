@@ -105,6 +105,13 @@ export interface CartActions {
   ) => void;
   setShippingCep: (cep: string | null) => void;
   setEnderecoSelecionadoId: (id: string | null) => void;
+  /** Relê AGORA preço, estoque e situação de cada item no catálogo e deixa o
+   *  carrinho como a loja está hoje (o que mudou sai em aviso). Serve a
+   *  recusa "Os valores do pedido mudaram. Atualize o carrinho": o app só
+   *  relia ao abrir ou por aviso em tempo real. A promessa termina quando a
+   *  leitura terminou e NUNCA rejeita — leitura que falha deixa o carrinho
+   *  como estava. */
+  renovarCarrinhoPeloCatalogo: () => Promise<void>;
 }
 
 export interface CartContextType extends CartState, CartActions {}
@@ -336,6 +343,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // app, relê preço, estoque e situação de cada item e deixa o carrinho como o
   // catálogo está HOJE. Falhou a leitura -> o carrinho fica como estava (nunca
   // pior que antes). Carrinho vazio -> nenhuma leitura.
+  // Também é a ação `renovarCarrinhoPeloCatalogo` (com ou sem conta): a recusa
+  // "Os valores do pedido mudaram. Atualize o carrinho" a chama antes de levar
+  // a cliente ao carrinho. Só mexe no carrinho local — o sync com o banco segue
+  // o caminho normal (a mudança de `cart` o dispara).
   const renovarPeloCatalogo = useCallback(async () => {
     const uidDaLeitura = userIdAtualRef.current;
     const ids = Array.from(new Set(cartRef.current.map((i) => i.product.id)));
@@ -1141,6 +1152,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setSelectedShippingOption,
       setShippingCep,
       setEnderecoSelecionadoId,
+      renovarCarrinhoPeloCatalogo: renovarPeloCatalogo,
     }),
     [
       addToCart,
@@ -1150,6 +1162,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       getCartTotal,
       getCartCount,
       setSelectedShippingOption,
+      renovarPeloCatalogo,
     ],
   );
 
