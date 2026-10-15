@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 39a, 39b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1866,6 +1866,50 @@ const ROL_DA_37B = [
   "create_marketplace_order_v24: o corpo ainda NAO recusa o pedido pelo app cujo total do servidor e zero",
   "create_marketplace_order_v24: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
 ];
+/** O rol da 39a (a prova de objetos da migration 20261238000000, a cliente pede a exclusao da conta e a correcao do e-mail; DADO DE
+ * CLIENTE): as 19 linhas que scripts/publicacao/consultas/39a-conferir-pedidos-de-privacidade-aplicado.sql devolve, cada uma UMA
+ * vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): o controle, a tabela inteira (colunas,
+ * constraints e a regra de cada CHECK, a chave sem cascata, os dois indices), a RLS ligada com as tres politicas e a expressao delas,
+ * os privilegios (PUBLIC e anon nenhum; authenticated so le a tabela e so escreve as colunas do pedido; service_role le, grava e
+ * decide, NAO apaga), a funcao do gatilho (uma sobrecarga, corpo por md5, atributos, EXECUTE fechado ao visitante) e o gatilho.
+ * tests/banco/pedidos-de-privacidade-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_39A = [
+  "controle: funcoes de public visiveis a este papel",
+  "pedidos_de_privacidade: colunas (nome, tipo, NOT NULL, default)",
+  "pedidos_de_privacidade: as 8 constraints pelo nome",
+  "pedidos_de_privacidade: a regra de cada CHECK (tipo, situacao, e-mail, carimbo, observacao)",
+  "pedidos_de_privacidade: chave user_id -> auth.users, sem cascata",
+  "uq_pedidos_de_privacidade_um_aberto: unico parcial, um pedido aberto por cliente e tipo",
+  "idx_pedidos_de_privacidade_situacao_criado: a lista do painel",
+  "pedidos_de_privacidade: seguranca por linha (RLS)",
+  "pedidos_de_privacidade: as tres politicas (nome, comando, papel), nenhuma de DELETE",
+  "pedidos_de_privacidade: a expressao de cada politica (a cliente so o dela, o admin de agora)",
+  "pedidos_de_privacidade: PUBLIC e anon sem nenhum privilegio (tabela ou coluna)",
+  "pedidos_de_privacidade: authenticated, privilegios de tabela",
+  "pedidos_de_privacidade: authenticated, colunas que escreve",
+  "pedidos_de_privacidade: service_role le, grava e decide, e NAO apaga",
+  "pedidos_de_privacidade__carimbar: sobrecargas",
+  "pedidos_de_privacidade__carimbar: corpo e o da 20261238000000 (md5)",
+  "pedidos_de_privacidade__carimbar: atributos (SECURITY INVOKER, VOLATILE, search_path=public, trigger)",
+  "pedidos_de_privacidade__carimbar: EXECUTE fechado ao visitante (PUBLIC, anon, authenticated)",
+  "tr_pedidos_de_privacidade_carimbar: o unico gatilho, BEFORE UPDATE por linha, ligado",
+];
+/** O rol da 39b (a consulta de AUSENCIA do lote dos pedidos de privacidade; `ausenciaConfirmadaPor`): as 9 linhas que
+ * scripts/publicacao/consultas/39b-antes-pedidos-de-privacidade-objetos-ausentes.sql devolve - a base de antes: a tabela, os dois
+ * indices, a funcao do gatilho e o gatilho AUSENTES; auth.users, auth.uid() e rls_admin_atual() presentes; e o papel `postgres`
+ * (o que aplica) com REFERENCES em auth.users (a chave estrangeira do pedido). Uma loja que ja tem a migration (inteira ou pela
+ * metade) reprova aqui de proposito: a migration NASCE o objeto e nao e reaplicavel. */
+const ROL_DA_39B = [
+  "controle: funcoes de public visiveis a este papel",
+  "pedidos_de_privacidade: tabela ausente",
+  "pedidos_de_privacidade: os dois indices ausentes",
+  "pedidos_de_privacidade__carimbar: funcao ausente (qualquer sobrecarga)",
+  "tr_pedidos_de_privacidade_carimbar: gatilho ausente (em qualquer tabela)",
+  "dependencia auth.users: existe",
+  "dependencia auth.uid(): existe",
+  "dependencia public.rls_admin_atual(): existe",
+  "auth.users: o papel postgres (que aplica a migration) tem REFERENCES",
+];
 /** O rol da 34a (a prova de objetos da migration 20261233000000, o sino do pedido de retirada fala de retirada): as 7 linhas que
  * scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado do
  * banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de notifica_cliente_de_mudanca_de_status e o NOVO (md5), ele traz
@@ -1951,6 +1995,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado": ROL_DA_37A,
   "37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente":
     ROL_DA_37B,
+  "39a-conferir-pedidos-de-privacidade-aplicado": ROL_DA_39A,
+  "39b-antes-pedidos-de-privacidade-objetos-ausentes": ROL_DA_39B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2547,6 +2593,8 @@ module.exports = {
   ROL_DA_36B,
   ROL_DA_37A,
   ROL_DA_37B,
+  ROL_DA_39A,
+  ROL_DA_39B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

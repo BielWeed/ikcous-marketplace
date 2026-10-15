@@ -1,3 +1,4 @@
+import { PrivacidadeEMeusDados } from "@/components/account/PrivacidadeEMeusDados";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -988,6 +989,10 @@ export function AccountSettingsView() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Privacidade e meus dados (LGPD): pedir a exclusão da conta ou a
+            correção do e-mail. O app só registra o pedido; a loja atende. */}
+        <PrivacidadeEMeusDados userId={user.id} emailAtual={user.email ?? ""} />
 
         {/* Footer simple info */}
         <motion.div

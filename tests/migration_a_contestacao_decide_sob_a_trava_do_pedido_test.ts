@@ -490,6 +490,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",
+    // 20261238000000: a cliente pede a exclusao da conta e a correcao do e-mail (tabela pedidos_de_privacidade, dado de cliente; comportamento, ensaio do roteiro de anonimizacao e portao 39a/39b).
+    "tests/banco/pedidos-de-privacidade-viva.cjs",
+    "tests/banco/anonimizar-conta-ensaio-viva.cjs",
+    "tests/banco/pedidos-de-privacidade-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

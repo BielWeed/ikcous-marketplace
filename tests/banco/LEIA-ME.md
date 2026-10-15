@@ -599,6 +599,42 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   linhas) e a medição `34m-medir-sino-da-retirada` (rol aberto, só contagens), a "prova de objetos" do lote
   `20261233000000`. Mesmo desenho do portão 26: rol exato nos estados, um negativo por linha, o veredito do
   `conferir-banco.cjs` (`rol=ok`), a 34m por diferença contra os pedidos montados. **Não prova** a IKCOUS nem a Savy.
+- **pedidos de privacidade da cliente (`pedidos-de-privacidade-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261238000000` — a tabela `pedidos_de_privacidade` (excluir conta / corrigir e-mail, atendida à mão). Com a RLS real:
+  a cliente lê e insere só o dela (leitura cruzada e inserção em nome de outra recusadas), não decide nem escreve
+  situação/carimbos/observação, um aberto por (cliente, tipo) (23505), anon fechado, o admin atual atende com carimbo
+  do servidor e a decisão é final, o admin rebaixado com JWT velho não lê nem decide, **ninguém apaga** (DELETE e
+  TRUNCATE recusados para anon, cliente, admin e service_role; sem grant e sem política de DELETE), forma do e-mail e
+  chave estrangeira sem cascata, estrutura (RLS, políticas, índice, colunas de INSERT/UPDATE), rollback que RECUSA com
+  pedido registrado. **Não prova** a IKCOUS nem a Savy.
+- **ensaio da anonimização de conta (`anonimizar-conta-ensaio-viva.cjs`, via `rodar-isolado.cjs`)**: sem migration. O SQL
+  é LIDO dos blocos do roteiro `docs/runbooks/atender-pedido-de-privacidade.md` e roda contra uma cliente de mentira e
+  uma vizinha. O ensaio (`v_confirmar := false`) não grava; valendo, o dado pessoal sai (perfil, endereços, favoritos,
+  carrinho, avisos, push, códigos, texto livre e endereço dos pedidos, texto da devolução), os pedidos **continuam** com
+  os mesmos valores, o login **não é apagado** (fica bloqueado, com e-mail sem identidade), a vizinha e o registro do
+  pedido de privacidade ficam intactos; uma varredura independente não acha mais nome/e-mail/telefone/CPF e a "busca de
+  sobras" do roteiro acha só a resposta da loja que cita o nome; as travas (pedido ou devolução em andamento, foto no
+  Storage, sem pedido aberto) recusam sem mudar nada. Do login do Supabase o roteiro também limpa a troca pendente de
+  e-mail/telefone e os códigos de `auth.users`, apaga as linhas dela de `auth.one_time_tokens` e `auth.mfa_factors` e
+  deixa o `auth.audit_log_entries` sem IP e sem dado pessoal (a linha fica); do pedido só passa a lista de permitidos
+  (forma de entrega, endereço da loja, canal), provada com chave de endereço de nome inesperado. A prova (g) tira UM
+  passo por vez (7 mutantes + o do IP) e a varredura tem de achar dado dela. O esquema `auth` é **emulado** por esta
+  prova (colunas e tabelas que o roteiro toca, com os tipos do GoTrue); o que só um Supabase real prova está marcado
+  `[CONFERIR EM LOJA DE TESTE]` no roteiro. **Não prova** a IKCOUS nem a Savy.
+- **portão dos pedidos de privacidade (`pedidos-de-privacidade-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `39a-conferir-pedidos-de-privacidade-aplicado` (DEPOIS do apply, 19 linhas) e `39b-antes-pedidos-de-privacidade-objetos-ausentes`
+  (ANTES, 9 linhas, com o `REFERENCES` do papel `postgres` em `auth.users`) e a medição
+  `39m-medir-privilegios-do-roteiro-de-privacidade` (rol aberto, só catálogo), a "prova de objetos" do lote `20261238000000`.
+  Rol exato em todos os estados (depois, antes, ida e volta, o arquivo em CRLF), a migration que **não é reaplicável**
+  recusada no pré-voo, um defeito por vez reprovando SÓ a sua linha (coluna, CHECK trocada ou com valor a mais, chave com
+  cascata, índice sem o filtro, RLS desligada, política a menos, a mais, para outro papel ou com a expressão frouxa, cada
+  privilégio a mais ou a menos para PUBLIC, anon, authenticated e service_role, corpo com 1 byte, atributos, `EXECUTE`
+  aberto, outra sobrecarga, gatilho desligado, de outro tipo, a mais ou com `WHEN`; e, no ANTES, o resto de uma meia
+  migration e cada dependência que falta), o `REFERENCES` provado trocando o papel alvo por um papel de teste (o
+  `postgres` local é superusuário), a 39m lida certa por tabela com um papel de teste, o papel sem `USAGE` em `auth`
+  fazendo a consulta ERRAR (nunca virar positiva) e o veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS
+  nem a Savy, nem o `REFERENCES` do `postgres` real (só a `39b` rodada na loja). O roteiro manual de anonimização **não
+  roda aqui**: ele apaga dado real de login e fica com o dono, caso a caso.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

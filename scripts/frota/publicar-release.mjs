@@ -448,6 +448,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "36b-antes-venda-repetida-do-balcao-corpo-vigente",
   "37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado",
   "37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente",
+  "39a-conferir-pedidos-de-privacidade-aplicado",
+  "39b-antes-pedidos-de-privacidade-objetos-ausentes",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
