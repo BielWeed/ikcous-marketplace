@@ -22,6 +22,10 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
 import { destinoDaUrl, urlDoDestino } from "@/lib/destino-do-aviso";
+import {
+  LIMITE_DA_BUSCA_DO_HISTORICO,
+  somenteCampanhasReais,
+} from "@/lib/historico-de-campanhas";
 import { supabase } from "@/lib/supabase";
 import { normalizeText } from "@/lib/utils";
 import type { View } from "@/types";
@@ -501,12 +505,17 @@ export const AdminPushView = memo(function AdminPushView({
       .from("push_notifications_log")
       .select("*")
       .order("sent_at", { ascending: false })
-      .limit(20);
+      .limit(LIMITE_DA_BUSCA_DO_HISTORICO);
 
     // PAINEL-08: `null` em falha — `history` nasce `[]` e o render
     // exibia "Nenhuma mensagem enviada" para uma falha de rede. O
     // subCount ao lado (linha 244) já usava null; o histórico não.
-    setHistory(error || !data ? null : data);
+    //
+    // Só campanhas: as linhas "Sua pergunta/avaliação foi respondida!" que as
+    // RPCs de resposta da loja gravam neste log não são envio nenhum — a
+    // busca traz mais linhas do que a tela mostra para que elas não ocupem os
+    // 20 lugares das campanhas (src/lib/historico-de-campanhas.ts).
+    setHistory(error || !data ? null : somenteCampanhasReais(data));
   }, []);
 
   // Achado 6 da auditoria de 20/08/2026: dos quatro botões de público, só o
