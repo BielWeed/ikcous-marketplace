@@ -13766,3 +13766,421 @@ Deno.test("43a/43b — o rpc-ci.yml roda as duas provas vivas do lote (comportam
   }
   assert(MIGRACAO_241.endsWith(".sql"));
 });
+
+// 44m — MEDICAO dos numeros enganosos por pedido de R$ 0,00 e por desconto (15/10/2026), ANTES de qualquer migration.
+// Consulta de LEITURA, de rol ABERTO (molde da 35m/42m: tipo/objeto/detalhe, sem coluna `ok`, nunca prova do portao).
+// O que este teste prende: o filtro do painel IDENTICO ao de get_admin_analytics_v2 (corpo vigente da 20261234000000),
+// a conta do lucro do painel IDENTICA (sem ratear o desconto), a regra de venda e de chave de cliente IDENTICA a
+// crm__vendas (20261178000000), a lista de payment_status IGUAL a CHECK da 20261020000000, o controle de RLS, as
+// tabelas lidas e que NENHUM id, nome, e-mail, telefone ou WhatsApp sai no log do run.
+const NOME_44M = "44m-medir-pedidos-de-zero-e-desconto";
+Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e lucro do painel identicos a 20261234, cliente igual ao crm__vendas, so agregados`, async (t) => {
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_44M}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+  const normal = (s: string) => s.replace(/\s+/g, " ").trim();
+  const bloco = (ini: string, fim: string) => {
+    const i = limpo.indexOf(ini);
+    const j = limpo.indexOf(fim, i);
+    assert(i >= 0 && j > i, `nao achei o bloco ${ini}`);
+    return normal(limpo.slice(i, j));
+  };
+  const migracoes: string[] = [];
+  for await (const e of Deno.readDir(MIGRATIONS_DIR))
+    if (e.isFile && /^\d{14}_.*\.sql$/.test(e.name)) migracoes.push(e.name);
+  migracoes.sort();
+  const ultimaQueDefine = async (assinatura: string) => {
+    let ultima = "";
+    for (const nome of migracoes) {
+      const txt = await Deno.readTextFile(`${MIGRATIONS_DIR}/${nome}`);
+      if (txt.includes(assinatura)) ultima = nome;
+    }
+    return ultima;
+  };
+  const FILTRO_PAINEL =
+    "o.status NOT IN ('cancelled', 'returned') AND (o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'))";
+  const LUCRO_PAINEL =
+    "SUM(oi.quantity * (oi.price - p.custo)) FILTER (WHERE p.custo IS NOT NULL)";
+
+  await t.step("esta no menu do workflow e no runbook", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "nao achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${NOME_44M}\n`, i) > i,
+      `falta a opcao ${NOME_44M} no workflow`,
+    );
+    const runbook = await Deno.readTextFile(
+      `${RAIZ}/docs/runbooks/producao-unica-fonte.md`,
+    );
+    assertStringIncludes(
+      runbook,
+      `**\`${NOME_44M}\`**`,
+      "a 44m saiu do runbook",
+    );
+  });
+  await t.step(
+    "um statement, comeca por WITH, sem palavra de escrita, sem SQL dinamico e sem chamar funcao do banco",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*WITH\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+          semTexto,
+        ),
+        "palavra de escrita fora de comentario/string",
+      );
+      assert(
+        !/\b(EXECUTE|query_to_xml|dblink\w*|format|pg_read_file|lo_import|pg_sleep|FOR\s+UPDATE|FOR\s+SHARE)\b/i.test(
+          semTexto,
+        ),
+        "SQL dinamico, leitura de arquivo, trava ou espera",
+      );
+      // as regras sao reescritas em linha: as funcoes do painel e do CRM sao fechadas para o leitor (is_admin)
+      assert(
+        !/\b(get_admin_analytics\w*|crm_\w+|fin__\w+|painel_\w+|admin_\w+|is_admin\w*)\s*\(/i.test(
+          semTexto,
+        ),
+        "a 44m chama funcao do banco",
+      );
+    },
+  );
+  await t.step("a saida final e tipo, objeto, detalhe, em ordem fixa", () => {
+    assert(
+      /SELECT tipo, objeto, detalhe\s+FROM r\s+ORDER BY ordem, objeto, detalhe;/.test(
+        limpo,
+      ),
+      "a saida final tem de ser tipo, objeto, detalhe, com ORDER BY ordem, objeto, detalhe",
+    );
+  });
+  await t.step(
+    "rol ABERTO: sem coluna `ok` e fora de ROL_FECHADO_POR_CONSULTA e de CONSULTAS_DE_ROL_FECHADO (nunca vira prova do portao)",
+    async () => {
+      assert(!/\bAS ok\b/i.test(semTexto), "a 44m nao tem coluna ok");
+      assert(!Object.hasOwn(ROL_FECHADO_POR_CONSULTA, NOME_44M));
+      const { CONSULTAS_DE_ROL_FECHADO } = await import(
+        "../scripts/frota/publicar-release.mjs"
+      );
+      assert(!CONSULTAS_DE_ROL_FECHADO.has(NOME_44M));
+    },
+  );
+  await t.step(
+    "so le o catalogo e TRES tabelas (marketplace_orders, marketplace_order_items, produtos)",
+    () => {
+      const permitidos = new Set([
+        "public.marketplace_orders",
+        "public.marketplace_order_items",
+        "public.produtos",
+        "pg_roles",
+        "pg_class",
+        // as CTEs da propria consulta
+        "janelas",
+        "ped",
+        "item",
+        "painel",
+        "base",
+        "wa_da_conta",
+        "crm",
+        "cliente",
+        "pagtos",
+        "canais",
+        "r",
+      ]);
+      const alvos = [
+        ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+      ].map((m) => m[1].toLowerCase());
+      assert(alvos.length > 0);
+      for (const a of alvos)
+        assert(permitidos.has(a), `a 44m le ${a}, fora da lista do permitido`);
+      for (const tabela of [
+        "public.marketplace_orders",
+        "public.marketplace_order_items",
+        "public.produtos",
+      ])
+        assert(alvos.includes(tabela), `a 44m nao le ${tabela}`);
+    },
+  );
+  await t.step(
+    "controle de RLS como a 35m/42m: quem leu, BYPASSRLS e se a RLS vale em CADA tabela lida",
+    () => {
+      assertStringIncludes(
+        limpo,
+        "'superusuario=' || (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)::text",
+      );
+      assertStringIncludes(
+        limpo,
+        "'|bypassrls=' || (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user)::text",
+      );
+      for (const tabela of [
+        "marketplace_orders",
+        "marketplace_order_items",
+        "produtos",
+      ]) {
+        assertStringIncludes(
+          limpo,
+          `'|rls_vale_em_${tabela}=' || (SELECT (c.relrowsecurity AND NOT COALESCE(a.rolbypassrls, false) AND NOT COALESCE(a.rolsuper, false))::text`,
+        );
+        assertStringIncludes(
+          limpo,
+          `WHERE c.oid = 'public.${tabela}'::regclass AND a.rolname = current_user)`,
+        );
+      }
+    },
+  );
+  await t.step(
+    "o filtro e o lucro do painel sao IDENTICOS aos de get_admin_analytics_v2, e a 20261234000000 e o corpo vigente",
+    async () => {
+      const vigente = await ultimaQueDefine(
+        "FUNCTION public.get_admin_analytics_v2",
+      );
+      assertEquals(
+        vigente,
+        "20261234000000_o_lucro_so_conta_produto_com_custo.sql",
+        "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
+      );
+      const mig = normal(
+        await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`),
+      );
+      // o grafico do lucro (daily_items) da migration: o mesmo JOIN, o mesmo filtro, a mesma conta
+      const daily = mig.slice(
+        mig.indexOf("daily_items AS ("),
+        mig.indexOf("GROUP BY", mig.indexOf("daily_items AS (")),
+      );
+      assertStringIncludes(daily, LUCRO_PAINEL);
+      assertStringIncludes(
+        daily,
+        "JOIN public.produtos p ON oi.product_id = p.id",
+      );
+      assertStringIncludes(daily, `AND ${FILTRO_PAINEL}`);
+      assert(
+        !/deleted_at/.test(daily),
+        "o grafico passou a filtrar produto apagado: a 44m tem de acompanhar",
+      );
+      // a 44m: o lucro do painel no bloco `item`, o filtro no bloco `painel`, sem filtro de produto apagado
+      const item = bloco("item AS (", "), painel AS (");
+      assertStringIncludes(
+        item,
+        `COALESCE(${LUCRO_PAINEL}, 0) AS lucro_painel`,
+      );
+      assertStringIncludes(
+        item,
+        "JOIN public.produtos p ON oi.product_id = p.id",
+      );
+      assert(!/deleted_at/.test(item));
+      const painel = bloco("painel AS (", "), base AS (");
+      assertStringIncludes(painel, `WHERE ${FILTRO_PAINEL}`);
+      // o desconto concedido: teto no subtotal, como a create_marketplace_order_v24
+      assertStringIncludes(
+        painel,
+        "LEAST(GREATEST(COALESCE(o.discount, 0), 0), GREATEST(o.subtotal, 0)) AS desconto_concedido",
+      );
+      const v24 = normal(
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql`,
+        ),
+      );
+      assertStringIncludes(
+        v24,
+        "IF v_discount_amount > v_calculated_subtotal THEN v_discount_amount := v_calculated_subtotal;",
+      );
+      // a contagem "no painel" da a_zero usa o mesmo filtro (sobre o payment_status de lista fechada)
+      assertStringIncludes(
+        normal(limpo),
+        "p.status NOT IN ('cancelled', 'returned') AND p.pagto IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')",
+      );
+    },
+  );
+  await t.step(
+    "a venda reconhecida e a chave da cliente sao IDENTICAS a crm__vendas (20261178000000, corpo vigente)",
+    async () => {
+      const vigente = await ultimaQueDefine("FUNCTION public.crm__vendas");
+      assertEquals(vigente, "20261178000000_o_crm_e_o_inicio_leem_a_loja.sql");
+      const mig = normal(
+        await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`),
+      );
+      const base = bloco("base AS (", "), wa_da_conta AS (");
+      const venda =
+        "WHERE o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') AND o.status NOT IN ('cancelled', 'returned') AND COALESCE(o.pagamento_recebido_em, o.paid_at) IS NOT NULL AND COALESCE(o.pagamento_recebido_em, o.paid_at) <=";
+      assertStringIncludes(mig, `${venda} p_ate`);
+      assertStringIncludes(base, `${venda} now()`);
+      const wa =
+        "NULLIF(regexp_replace(COALESCE(o.customer_data ->> 'whatsapp', ''), '\\D', '', 'g'), '')";
+      assertStringIncludes(mig, `${wa} AS wa`);
+      assertStringIncludes(base, `${wa} AS wa`);
+      // a chave: a migration usa user_id, a 44m o apelido `conta` (o resto do texto e o mesmo)
+      const chave =
+        "COALESCE(b.user_id::text, w.user_id::text, CASE WHEN b.wa IS NOT NULL THEN 'wa:' || b.wa END)";
+      assertStringIncludes(mig, chave);
+      assertStringIncludes(
+        normal(limpo),
+        `${chave.replaceAll("user_id", "conta")} AS chave`,
+      );
+      assertStringIncludes(
+        mig,
+        "LEFT JOIN wa_da_conta w ON w.wa = b.wa AND b.user_id IS NULL",
+      );
+      assertStringIncludes(
+        normal(limpo),
+        "LEFT JOIN wa_da_conta w ON w.wa = b.wa AND b.conta IS NULL",
+      );
+      assertStringIncludes(
+        mig,
+        "SELECT DISTINCT ON (b.wa) b.wa, b.user_id FROM base b WHERE b.wa IS NOT NULL AND b.user_id IS NOT NULL ORDER BY b.wa, b.pago_em DESC",
+      );
+      assertStringIncludes(
+        normal(limpo),
+        "SELECT DISTINCT ON (b.wa) b.wa, b.conta FROM base b WHERE b.wa IS NOT NULL AND b.conta IS NOT NULL ORDER BY b.wa, b.pago_em DESC",
+      );
+    },
+  );
+  await t.step(
+    "a janela e a do grafico: dia de calendario de Sao Paulo, os ultimos N dias CONTANDO HOJE (slice(-30)/slice(-90)), nunca now() - intervalo",
+    async () => {
+      const DIA_DO_PEDIDO =
+        "(o.created_at AT TIME ZONE 'America/Sao_Paulo')::date";
+      const HOJE = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
+      // o painel: serie de dias que termina HOJE, pedidos no balde do dia de Sao Paulo (daily_orders e daily_items)
+      const mig = normal(
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261234000000_o_lucro_so_conta_produto_com_custo.sql`,
+        ),
+      );
+      const historico = mig.slice(
+        mig.indexOf("WITH days AS ("),
+        mig.indexOf("ORDER BY d.day ASC"),
+      );
+      assertStringIncludes(historico, `${HOJE}, interval '1 day'`);
+      assertEquals(historico.split(`${DIA_DO_PEDIDO} AS day`).length - 1, 2);
+      assertStringIncludes(
+        historico,
+        "LEFT JOIN daily_items dit ON d.day = dit.day",
+      );
+      // o grafico mostra os ULTIMOS N dias da serie e o hook pede a serie inteira (Tudo)
+      const grafico = await Deno.readTextFile(
+        `${RAIZ}/src/components/admin/dashboard/OperationalPerformanceChart.tsx`,
+      );
+      assertStringIncludes(
+        grafico,
+        'if (timeframe === "30") return revenueHistory.slice(-30);',
+      );
+      assertStringIncludes(
+        grafico,
+        'if (timeframe === "90") return revenueHistory.slice(-90);',
+      );
+      const hook = await Deno.readTextFile(`${RAIZ}/src/hooks/useAnalytics.ts`);
+      assertStringIncludes(hook, "export const JANELA_TUDO_DIAS = 3650;");
+      assertStringIncludes(hook, "{ p_limit_days: JANELA_TUDO_DIAS }");
+      // a 44m: N dias contando hoje, no mesmo balde, e o "primeiro pedido" no balde da primeira compra
+      const janelas = bloco("janelas AS (", "), ped AS (");
+      assertStringIncludes(janelas, `ELSE ${HOJE} - (dias - 1) END AS desde`);
+      assertStringIncludes(
+        janelas,
+        "('30 dias', 30, 1), ('90 dias', 90, 2), ('total', NULL::integer, 3)",
+      );
+      assertStringIncludes(
+        bloco("ped AS (", "), item AS ("),
+        `${DIA_DO_PEDIDO} AS dia`,
+      );
+      assertStringIncludes(
+        bloco("painel AS (", "), base AS ("),
+        `${DIA_DO_PEDIDO} AS dia`,
+      );
+      const cliente = bloco("cliente AS (", "), pagtos AS (");
+      assertStringIncludes(
+        cliente,
+        "(min(c.pago_em) AT TIME ZONE 'America/Sao_Paulo')::date AS dia_da_primeira",
+      );
+      assertStringIncludes(
+        cliente,
+        "(array_agg(c.total ORDER BY c.pago_em, c.pedido))[1] AS total_da_primeira",
+      );
+      const r = normal(limpo.slice(limpo.indexOf("), r AS (")));
+      assertEquals(
+        r.split("(j.desde IS NULL OR p.dia >= j.desde)").length - 1,
+        4,
+      );
+      assertEquals(
+        r.split("(j.desde IS NULL OR pn.dia >= j.desde)").length - 1,
+        1,
+      );
+      assertEquals(
+        r.split("(j.desde IS NULL OR cl.dia_da_primeira >= j.desde)").length -
+          1,
+        1,
+      );
+      assert(
+        !/now\(\)\s*-/.test(semTexto),
+        "janela por tempo decorrido (now() - intervalo) voltou",
+      );
+      assert(
+        !/\binterval\b/i.test(semTexto),
+        "intervalo de tempo na 44m: a janela e por dia de calendario",
+      );
+    },
+  );
+  await t.step(
+    "a lista de payment_status e a da CHECK (20261020000000), mais nulo e outro",
+    async () => {
+      const mig = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261020000000_lojista_registra_pagamento_recebido.sql`,
+      );
+      const check = mig.slice(
+        mig.indexOf("ADD CONSTRAINT marketplace_orders_payment_status_check"),
+      );
+      const daCheck = [
+        ...check.slice(0, check.indexOf("])")).matchAll(/'([a-z_]+)'::text/g),
+      ]
+        .map((m) => m[1])
+        .sort();
+      assertEquals(daCheck.length, 7);
+      const ped = bloco("ped AS (", "), item AS (");
+      const m = ped.match(
+        /WHEN o\.payment_status IN \(([^)]*)\) THEN o\.payment_status/,
+      );
+      assert(m, "nao achei a lista do payment_status no bloco ped");
+      assertEquals(
+        [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort(),
+        daCheck,
+      );
+      const pagtos = bloco("pagtos AS (", "), canais AS (");
+      assertEquals(
+        [...pagtos.matchAll(/\('([a-z_]+)'\)/g)].map((x) => x[1]).sort(),
+        [...daCheck, "nulo", "outro"].sort(),
+      );
+    },
+  );
+  await t.step(
+    "nenhum dado pessoal: conta e WhatsApp so no bloco `base`; id de pedido e chave da cliente so dentro de count()",
+    () => {
+      const ini = semTexto.indexOf("base AS (");
+      const fim = semTexto.indexOf("), wa_da_conta AS (");
+      assert(ini > 0 && fim > ini);
+      const foraDaBase = semTexto.slice(0, ini) + semTexto.slice(fim);
+      assert(
+        !/\b(email|customer_\w+|full_name|nome|cpf|phone|telefone|whatsapp|endereco\w*|address\w*|user_id|notes|observation|coupon_code|gateway_payment_id|idempotency_key)\b/i.test(
+          foraDaBase,
+        ),
+        "a 44m toca coluna de pessoa ou texto livre fora do bloco base",
+      );
+      // dentro da base: so a conta e o WhatsApp (via customer_data ->> 'whatsapp'), nada mais de pessoa
+      const base = semTexto.slice(ini, fim);
+      assert(
+        !/\b(email|customer_name|customer_phone|full_name|nome|cpf|phone|telefone)\b/i.test(
+          base,
+        ),
+      );
+      const blocoR = semTexto.slice(semTexto.indexOf("), r AS ("));
+      assert(blocoR.length > 100, "nao achei o bloco final `r`");
+      const semContagem = blocoR
+        .replace(/count\((?:DISTINCT )?\w+\.(?:pedido|chave)\)/g, "count()")
+        .replace(/\b\w+\.chave IS NULL\b/g, "");
+      assert(
+        !/\b\w+\.(?:pedido|chave|conta|wa|id|product_id|order_id)\b/.test(
+          semContagem,
+        ),
+        "id de pedido, de conta ou chave da cliente aparece na saida fora de count()",
+      );
+    },
+  );
+});
