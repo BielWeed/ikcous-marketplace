@@ -129,6 +129,9 @@ describe("usePainelInicio — voltar a ficar visível", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Meio-dia em São Paulo, fixo: o hook também recarrega quando o DIA muda. Com o relógio real,
+    // a partir das 16h o "escondida 8 horas" cruzava a meia-noite e contava uma busca a mais.
+    vi.setSystemTime(new Date("2026-10-15T15:00:00Z"));
     h.chamadasPainel = 0;
     h.aoMudarPedido = null;
     h.modo = "ok";
