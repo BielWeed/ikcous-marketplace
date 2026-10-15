@@ -1181,6 +1181,7 @@ export function CartView({
               {orderViewMode === "guest" && (
                 <OrderSearch
                   onNavigate={onNavigate}
+                  whatsappDaLoja={config.whatsappNumber}
                   onOrdersFound={(foundOrders) => {
                     setPedidosConvidado(foundOrders);
                   }}

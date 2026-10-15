@@ -1,4 +1,5 @@
 import { useOrders } from "@/hooks/useOrders";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { mascaraWhatsappBr } from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import type { Order, View } from "@/types";
@@ -30,6 +31,11 @@ interface OrderSearchProps {
   title?: string;
   description?: string;
   onOrdersFound?: (orders: Order[]) => void;
+  /**
+   * WhatsApp da loja (`config.whatsappNumber`), para o aviso de quem comprou
+   * sem conta. Opcional: sem ele (ou curto demais) o aviso vira só instrução.
+   */
+  whatsappDaLoja?: string | null;
 }
 
 export function OrderSearch({
@@ -37,6 +43,7 @@ export function OrderSearch({
   title = "Acesse sua conta",
   description = "Faça login para ver seu histórico completo automaticamente e gerenciar seus pedidos.",
   onOrdersFound,
+  whatsappDaLoja,
 }: OrderSearchProps) {
   const { generateOrderOtp, fetchOrdersByOtp } = useOrders(true, false);
   const [tab, setTab] = useState<"login" | "guest">("login");
@@ -54,6 +61,25 @@ export function OrderSearch({
   const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = mascaraWhatsappBr(e.target.value, whatsapp);
     setWhatsapp(formatted);
+  };
+
+  const lojaAtendePorWhatsapp = lojaTemWhatsapp(whatsappDaLoja);
+
+  // Quem comprou SEM conta não tem e-mail gravado no pedido (a compra da
+  // convidada nunca o coleta), então o rastreio abaixo nunca o acha — o aviso
+  // diz isso antes de ela digitar e leva ao que funciona: a loja. Mesmo
+  // mecanismo de CheckoutView/SuccessView (wa.me com DDI 55, sem opener).
+  const handleFalarComALoja = () => {
+    if (!lojaAtendePorWhatsapp) return;
+    let numero = (whatsappDaLoja || "").replaceAll(/\D/g, "");
+    if (numero.length === 10 || numero.length === 11) numero = `55${numero}`;
+    const mensagem =
+      "Olá! Fiz um pedido sem criar conta e quero acompanhar. O identificador do pedido é: ";
+    globalThis.open(
+      `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   };
 
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -236,6 +262,32 @@ export function OrderSearch({
                       Preencha as informações do pedido para receber um código
                       de validação.
                     </p>
+                  </div>
+
+                  <div className="space-y-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-amber-900">
+                    <p className="text-[11px] font-black uppercase tracking-wide">
+                      Comprou sem criar conta?
+                    </p>
+                    <p className="text-[11px] font-medium leading-relaxed">
+                      Este rastreio só encontra pedidos feitos com e-mail. Se
+                      você comprou sem conta, fale com a loja e informe o
+                      identificador do pedido (aparece ao finalizar a compra).
+                      {lojaAtendePorWhatsapp
+                        ? ""
+                        : " Use o contato da loja que você já tem."}
+                    </p>
+                    {lojaAtendePorWhatsapp && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          haptic.light();
+                          handleFalarComALoja();
+                        }}
+                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber-600/30 bg-white py-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-amber-800 transition-all active:scale-[0.98]"
+                      >
+                        Falar com a loja no WhatsApp
+                      </button>
+                    )}
                   </div>
 
                   <div className="space-y-3">
