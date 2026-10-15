@@ -272,7 +272,10 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       expect(valorDoCampo("product-sale-price")).toBe("60,00");
       expect(textoDe("preco-veio-da-grade")).toContain("veio da grade");
       // O que a lojista vê na lista: nenhuma variação com preço próprio.
-      expect(document.body.textContent).not.toContain("R$ 60.00");
+      // `formatCurrency` põe um espaço inquebrável depois do "R$": normaliza.
+      expect(
+        (document.body.textContent ?? "").replace(/\s+/g, " "),
+      ).not.toContain("R$ 60,00");
     });
 
     it("(1) o Publicar já fica liberado (o preço não é pedido de novo) e a gravação leva o preço do produto e variações Auto", async () => {
@@ -326,8 +329,12 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
 
       expect(valorDoCampo("product-sale-price")).toBe("60,00");
       expect(textoDe("preco-veio-da-grade")).toContain("veio da grade");
-      expect(document.body.textContent).toContain("R$ 80.00");
-      expect(document.body.textContent).not.toContain("R$ 60.00");
+      const telaNormalizada = (document.body.textContent ?? "").replace(
+        /\s+/g,
+        " ",
+      );
+      expect(telaNormalizada).toContain("R$ 80,00");
+      expect(telaNormalizada).not.toContain("R$ 60,00");
 
       await act(async () => {
         botaoPublicar().click();
@@ -367,7 +374,9 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       expect(botaoPublicar().disabled).toBe(true);
       expect(textoDe("motivo-do-bloqueio")).toContain("preço de venda");
       // A linha que tinha preço o mantém.
-      expect(document.body.textContent).toContain("R$ 70.00");
+      expect((document.body.textContent ?? "").replace(/\s+/g, " ")).toContain(
+        "R$ 70,00",
+      );
     });
 
     it("preço ZERO na grade não vira Preço de Venda", async () => {

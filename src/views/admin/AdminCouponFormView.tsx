@@ -443,7 +443,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                   <p className="text-base font-black italic text-white leading-none">
                     {formData.type === "percentage"
                       ? `${formData.value || 0}% OFF`
-                      : `R$ ${Number(formData.value || 0).toFixed(2)}`}
+                      : formatCurrency(Number(formData.value || 0))}
                   </p>
                 </div>
                 <div className="text-right">
