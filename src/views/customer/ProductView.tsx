@@ -33,6 +33,7 @@ import {
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -1033,7 +1034,7 @@ export const ProductView = React.memo(function ProductView({
                     {isOutOfStock
                       ? "Esgotado"
                       : isLowStock
-                        ? `Apenas ${currentStock} restam!`
+                        ? textoEstoqueBaixo(currentStock)
                         : `Em estoque: ${currentStock}`}
                   </span>
                 </div>

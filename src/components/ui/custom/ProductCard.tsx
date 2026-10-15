@@ -17,6 +17,7 @@ import {
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada } from "@/lib/imageUrl";
 import { rotuloDeFavoritar } from "@/lib/rotulo-favoritar";
+import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant } from "@/types";
 import {
@@ -710,7 +711,7 @@ export const ProductCard = memo(function ProductCard({
                 {estoqueAtual <= 0
                   ? "Esgotado"
                   : estoqueAtual <= 5
-                    ? `Apenas ${estoqueAtual} restam!`
+                    ? textoEstoqueBaixo(estoqueAtual)
                     : `Estoque: ${estoqueAtual}`}
               </span>
             </div>
@@ -1001,7 +1002,7 @@ export const ProductCard = memo(function ProductCard({
                     {estoqueAtual <= 0
                       ? "Esgotado"
                       : estoqueAtual <= 5
-                        ? `Apenas ${estoqueAtual} restam!`
+                        ? textoEstoqueBaixo(estoqueAtual)
                         : `Estoque: ${estoqueAtual}`}
                   </span>
                 </div>
