@@ -25,7 +25,14 @@ const { estadoEnderecos, contaEstavel, invoke, espelho, createOrder } =
     estadoEnderecos: { lista: [] as Address[] },
     contaEstavel: {
       user: { id: "user-1", user_metadata: { name: "Cliente Teste" } },
-      profile: { full_name: "Cliente Teste", whatsapp: "34999999999" },
+      // O perfil traz o id da conta: o checkout só usa o perfil cujo id é o
+      // da conta logada (dc0d6bab); sem id ele é tratado como "ainda não
+      // chegou" e nome/WhatsApp ficam vazios, travando o Finalizar.
+      profile: {
+        id: "user-1",
+        full_name: "Cliente Teste",
+        whatsapp: "34999999999",
+      },
     },
     invoke: vi.fn(),
     espelho: {
