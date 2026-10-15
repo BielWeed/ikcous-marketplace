@@ -213,6 +213,20 @@ describe("ProductView — a quantidade acompanha o estoque da variação", () =>
     expect(String(avisar.mock.calls[0][0])).toBe("Só restam 2");
   });
 
+  it("sobra 1 unidade na variação: o aviso diz 'Só resta 1' (singular)", async () => {
+    await montar(
+      produtoCom([cor("v-verm", "Vermelho", 10), cor("v-azul", "Azul", 1)]),
+    );
+
+    await tocar(opcao("Vermelho"));
+    await aumentar(2);
+    await tocar(opcao("Azul"));
+
+    expect(avisar).toHaveBeenCalledTimes(1);
+    expect(String(avisar.mock.calls[0][0])).toBe("Só resta 1");
+    expect(await quantidadeQueVaiAoCarrinho()).toBe(1);
+  });
+
   it("trocar para uma variação com estoque de sobra NÃO mexe na quantidade nem avisa", async () => {
     await montar(
       produtoCom([cor("v-verm", "Vermelho", 10), cor("v-azul", "Azul", 8)]),

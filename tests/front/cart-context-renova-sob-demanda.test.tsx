@@ -250,7 +250,7 @@ describe("CartContext — releitura do catálogo sob demanda", () => {
         expect(atual.cart).toHaveLength(1);
         expect(atual.cart[0].quantity).toBe(1);
         expect(mundo.avisos).toHaveLength(1);
-        expect(mundo.avisos[0]).toContain("Só restam 1 unidade");
+        expect(mundo.avisos[0]).toContain("Só resta 1 unidade");
       });
 
       it("o produto ESGOTOU ou foi pausado: a linha sai do carrinho, com aviso", async () => {
