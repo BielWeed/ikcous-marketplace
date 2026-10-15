@@ -1798,6 +1798,45 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql":
+    [
+      {
+        // A lojista renomeia e apaga categoria sem deixar produto órfão (14/10/2026): três funções NOVAS do painel.
+        // Sem esta entrada a migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO
+        // (pg_get_functiondef, comentários incluídos): as duas travas de admin (a do JWT e a do papel de agora) e cada
+        // lugar onde o nome é trocado aparecem UMA vez — tirar um deles é exatamente o produto órfão que a função evita.
+        funcao: "renomear_categoria",
+        esperado: [
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          {
+            texto: "pg_advisory_xact_lock(hashtext('categorias:gestao'))",
+            vezes: 1,
+          },
+          { texto: "UPDATE public.categorias SET nome = v_novo", vezes: 1 },
+          { texto: "UPDATE public.produtos", vezes: 1 },
+          { texto: "UPDATE public.banners", vezes: 1 },
+          { texto: "UPDATE public.politica_devolucao", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "apagar_categoria_vazia",
+        esperado: [
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          { texto: "public.categoria__usos(p_id)", vezes: 1 },
+          { texto: "DELETE FROM public.categorias WHERE id = p_id", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "categorias_com_uso",
+        esperado: [
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+          { texto: "public.categoria__usos(c.id)", vezes: 1 },
+        ],
+      },
+    ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

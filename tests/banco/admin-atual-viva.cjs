@@ -309,6 +309,14 @@ const POSTERIORES_A_97 = [
     nome: "20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql",
     noAr: `SELECT to_regprocedure('public.admin_devolucao_reembolso_por_fora(uuid,uuid)') IS NOT NULL AS sim`,
   },
+  // 20261237000000: a lojista renomeia e apaga categoria sem deixar produto orfao. As tres
+  // portas do painel (categorias_com_uso, renomear_categoria, apagar_categoria_vazia) usam
+  // is_admin_atual(): sem esta entrada o rollback da 97 recusa (B1_BASELINE_DIVERGENT:
+  // "funcoes fora da 20261197000000 ainda usam ..."). No FIM da lista de proposito.
+  {
+    nome: "20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql",
+    noAr: `SELECT to_regprocedure('public.renomear_categoria(uuid,text)') IS NOT NULL AS sim`,
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(cliente) {

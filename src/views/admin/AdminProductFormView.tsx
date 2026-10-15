@@ -32,6 +32,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCategories } from "@/hooks/useCategories";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
@@ -41,6 +42,11 @@ import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import { soFotosReais } from "@/lib/foto-do-produto";
+import {
+  ErroDeCategoria,
+  categoriaExisteNaLista,
+  mesmaCategoria,
+} from "@/lib/gestao-de-categorias";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
   chaveDoRascunhoDoProduto,
@@ -148,6 +154,14 @@ const LeitorDeCodigo = lazy(() =>
   import("@/components/admin/pdv/LeitorDeCodigo").then((modulo) => ({
     default: modulo.LeitorDeCodigo,
   })),
+);
+
+// A tela "Gerenciar categorias" só é baixada quando a lojista a abre (pelo
+// mesmo motivo do leitor acima): fora dela o formulário não precisa dela.
+const GerenciarCategorias = lazy(() =>
+  import("@/components/admin/categorias/GerenciarCategorias").then(
+    (modulo) => ({ default: modulo.GerenciarCategorias }),
+  ),
 );
 
 // C5.3 — sem câmera (desktop sem webcam, navegador sem suporte) o botão
@@ -487,7 +501,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       ),
     [products],
   );
-  const { categories: dbCategories, addCategory } = useCategories();
+  const {
+    categories: dbCategories,
+    addCategory,
+    isLoading: carregandoCategorias,
+  } = useCategories();
   const isOffline = useOnlineStatus();
   const { config } = useStore();
   const isLocalShipping = config?.shippingCoverage === "local";
@@ -581,7 +599,54 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   });
   const [currentProduct, setCurrentProduct] = useState<any>(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  // A lojista renomeou ou apagou a categoria que está escolhida AQUI: o campo
+  // acompanha. O banco já trocou o nome no produto salvo; sem isto, salvar com o
+  // nome velho no campo devolveria o produto à categoria que não existe mais.
+  useAoMudarCategoria((mudanca) => {
+    if (mudanca.tipo === "renomeada") {
+      setFormData((prev) =>
+        mesmaCategoria(prev.category ?? "", mudanca.de)
+          ? { ...prev, category: mudanca.para }
+          : prev,
+      );
+    } else if (mudanca.tipo === "apagada") {
+      setFormData((prev) =>
+        mesmaCategoria(prev.category ?? "", mudanca.nome)
+          ? { ...prev, category: "" }
+          : prev,
+      );
+    }
+  });
+  // A categoria que um RASCUNHO restaurado trouxe, ainda por conferir. O rascunho
+  // fica guardado no aparelho por até 7 dias; nesse tempo a lojista pode ter
+  // renomeado ou apagado a categoria (em "Gerenciar categorias" ou em outro
+  // aparelho), e salvar com o nome velho deixaria o produto órfão da vitrine.
+  // Depois que a lista de categorias chega, o nome que não existe mais sai do
+  // campo e a lojista é avisada de que precisa escolher de novo.
+  const [categoriaDoRascunho, setCategoriaDoRascunho] = useState<string | null>(
+    null,
+  );
+  const [categoriaDoRascunhoSumiu, setCategoriaDoRascunhoSumiu] = useState<
+    string | null
+  >(null);
+  useEffect(() => {
+    if (categoriaDoRascunho === null) return;
+    // Lista ainda chegando (ou vazia por falha de leitura): não dá para afirmar nada.
+    if (carregandoCategorias || dbCategories.length === 0) return;
+    setCategoriaDoRascunho(null);
+    if (categoriaExisteNaLista(categoriaDoRascunho, dbCategories)) return;
+    setCategoriaDoRascunhoSumiu(categoriaDoRascunho);
+    setFormData((prev) =>
+      mesmaCategoria(prev.category ?? "", categoriaDoRascunho)
+        ? { ...prev, category: "" }
+        : prev,
+    );
+    toast.warning(
+      `A categoria “${categoriaDoRascunho}” do rascunho não existe mais. Escolha a categoria de novo.`,
+    );
+  }, [categoriaDoRascunho, carregandoCategorias, dbCategories]);
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
@@ -908,6 +973,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           };
           setFormData(draftFields);
           setInitialData(draftFields);
+          if (draftFields.category)
+            setCategoriaDoRascunho(draftFields.category);
           setIsPromoActive(!!parsed.originalPrice);
           if (draftFields.variants.length > 0) {
             setChaveDasVariacoes((chave) => chave + 1);
@@ -1033,6 +1100,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 label: "Restaurar",
                 onClick: () => {
                   setFormData(draftFields);
+                  // A categoria que o rascunho trouxe e o produto já não tem: confere.
+                  if (
+                    draftFields.category &&
+                    !mesmaCategoria(draftFields.category, initialData.category)
+                  ) {
+                    setCategoriaDoRascunho(draftFields.category);
+                  }
                   setIsPromoActive(!!draftFields.originalPrice);
                   if (draftFields.variants.length > 0) {
                     setChaveDasVariacoes((chave) => chave + 1);
@@ -2504,6 +2578,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         <div className="absolute bottom-0 left-0 h-[500px] w-[500px] rounded-full bg-blue-500/5 blur-[120px]" />
       </div>
 
+      {gerenciandoCategorias && (
+        <Suspense fallback={null}>
+          <GerenciarCategorias
+            aberta
+            onFechar={() => setGerenciandoCategorias(false)}
+          />
+        </Suspense>
+      )}
+
       {typeof document !== "undefined" &&
         createPortal(
           <AnimatePresence>
@@ -2598,10 +2681,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             });
                             setShowCategoryForm(false);
                             setNewCategoryName("");
-                          } catch {
-                            toast.error("Erro ao salvar categoria", {
-                              id: loadingId,
-                            });
+                          } catch (e) {
+                            toast.error(
+                              e instanceof ErroDeCategoria
+                                ? e.message
+                                : "Erro ao salvar categoria",
+                              { id: loadingId },
+                            );
                           }
                         }
                       }}
@@ -3830,6 +3916,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   onValueChange={async (val) => {
                     if (val === "NEW_CATEGORY") {
                       setShowCategoryForm(true);
+                    } else if (val === "MANAGE_CATEGORIES") {
+                      setGerenciandoCategorias(true);
                     } else {
                       setFormData((prev) => ({ ...prev, category: val }));
                     }
@@ -3860,12 +3948,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         ➕ CRIAR NOVA CATEGORIA
                       </span>
                     </SelectItem>
+                    <SelectItem
+                      value="MANAGE_CATEGORIES"
+                      className="cursor-pointer rounded-lg px-4 py-3 font-black text-zinc-300 focus:bg-white/5 focus:text-white"
+                    >
+                      <span className="flex items-center gap-2">
+                        ✏️ RENOMEAR, ESCONDER OU APAGAR
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 text-zinc-600 transition-colors group-hover:text-emerald-500">
                   <Layers className="size-5" />
                 </div>
               </div>
+              {categoriaDoRascunhoSumiu && formData.category === "" ? (
+                <p
+                  role="alert"
+                  data-testid="categoria-do-rascunho-sumiu"
+                  className="ml-1 text-xs font-bold text-amber-300"
+                >
+                  A categoria “{categoriaDoRascunhoSumiu}” do rascunho não
+                  existe mais. Escolha a categoria de novo.
+                </p>
+              ) : null}
             </div>
 
             {/* Preço de venda: sobe da antiga "Precificação" para o básico —
