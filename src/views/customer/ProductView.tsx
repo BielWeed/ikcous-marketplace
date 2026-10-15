@@ -3,6 +3,7 @@ import {
   CONTAINER_DO_COMPUTADOR,
   ROTULO_NO_COMPUTADOR,
 } from "@/components/desktop/medidas";
+import { GaleriaDoProduto } from "@/components/ui/custom/GaleriaDoProduto";
 import { MarkdownRenderer } from "@/components/ui/custom/MarkdownRenderer";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
@@ -19,8 +20,6 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
-import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
-import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
@@ -31,11 +30,7 @@ import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
-import {
-  conjuntoDeImagens,
-  imagemRedimensionada,
-  usarImagemOriginal,
-} from "@/lib/imageUrl";
+import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -44,7 +39,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Flame,
   Heart,
@@ -254,7 +248,6 @@ export const ProductView = React.memo(function ProductView({
   onQuickBuy,
   onNavigate,
 }: ProductViewProps) {
-  const computador = useTelaDeComputador();
   const isReady = useDeferredRender(220);
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -568,31 +561,59 @@ export const ProductView = React.memo(function ProductView({
   // Estoque que a cliente pode levar com UMA escolha de variações (o menor
   // entre as escolhidas; sem escolha, o do produto). Separado de `currentStock`
   // para a troca de variação conferir a escolha NOVA antes de renderizar.
-  const estoqueDaEscolha = (escolha: Record<string, string>): number => {
-    if (Object.keys(variantGroups).length === 0) return product.stock;
-    const escolhidas = Object.entries(escolha)
+  const variantesDaEscolha = (escolha: Record<string, string>) =>
+    Object.entries(escolha)
       .map(([name, value]) =>
         product.variants?.find((v) => v.name === name && v.value === value),
       )
       .filter(Boolean) as ProductVariant[];
+  const estoqueDaEscolha = (escolha: Record<string, string>): number => {
+    if (Object.keys(variantGroups).length === 0) return product.stock;
+    const escolhidas = variantesDaEscolha(escolha);
     return escolhidas.length > 0
       ? Math.min(...escolhidas.map((v) => v.stockIncrement || 0))
       : product.stock;
   };
   const currentStock = estoqueDaEscolha(selectedVariants);
 
+  // As fotos da galeria: as do produto e, se uma variação escolhida aponta
+  // uma foto que o produto não tem mais, essa foto no fim. A variação com
+  // foto NÃO esconde as outras -- só leva a galeria até a dela.
+  const fotosDaEscolha = (escolha: Record<string, string>): string[] => {
+    const doProduto = product.images ?? [];
+    const extras = variantesDaEscolha(escolha)
+      .map((v) => v.imageUrl)
+      .filter((url): url is string => !!url && !doProduto.includes(url));
+    return [...doProduto, ...new Set(extras)];
+  };
+  const fotosDaGaleria = fotosDaEscolha(selectedVariants);
+  // A faixa pode encolher (foto extra some ao desmarcar a variação).
+  const indiceDaFoto = Math.min(
+    currentImageIndex,
+    Math.max(fotosDaGaleria.length - 1, 0),
+  );
+
   // Tocar numa variação escolhe; tocar de novo na mesma desmarca. A quantidade
   // já escolhida nunca passa do estoque da combinação nova: a cliente que
   // pediu 5 do vermelho (10) e troca para o azul (2) fica com 2 e é avisada,
   // em vez de a tela mostrar 5 e o carrinho cortar depois.
   const alternarVariante = (grupo: string, valor: string) => {
-    const proxima =
-      selectedVariants[grupo] === valor
-        ? Object.fromEntries(
-            Object.entries(selectedVariants).filter(([nome]) => nome !== grupo),
-          )
-        : { ...selectedVariants, [grupo]: valor };
+    const desmarcando = selectedVariants[grupo] === valor;
+    const proxima = desmarcando
+      ? Object.fromEntries(
+          Object.entries(selectedVariants).filter(([nome]) => nome !== grupo),
+        )
+      : { ...selectedVariants, [grupo]: valor };
     setSelectedVariants(proxima);
+    // Escolher uma variação que tem foto leva a galeria até a foto dela.
+    const fotoDaVariante = desmarcando
+      ? undefined
+      : product.variants?.find((v) => v.name === grupo && v.value === valor)
+          ?.imageUrl;
+    if (fotoDaVariante) {
+      const posicao = fotosDaEscolha(proxima).indexOf(fotoDaVariante);
+      if (posicao >= 0) setCurrentImageIndex(posicao);
+    }
     const estoque = estoqueDaEscolha(proxima);
     if (estoque > 0 && quantity > estoque) {
       setQuantity(estoque);
@@ -761,18 +782,6 @@ export const ProductView = React.memo(function ProductView({
     abrirWhatsapp(url);
   };
 
-  const nextImage = () => {
-    if (!product.images?.length) return;
-    setCurrentImageIndex((prev) => (prev + 1) % product.images.length);
-  };
-
-  const prevImage = () => {
-    if (!product.images?.length) return;
-    setCurrentImageIndex(
-      (prev) => (prev - 1 + product.images.length) % product.images.length,
-    );
-  };
-
   // Schema.org JSON-LD
   const structuredData = {
     "@context": "https://schema.org/",
@@ -855,211 +864,47 @@ export const ProductView = React.memo(function ProductView({
       >
         {/* Image Gallery */}
         <div className="lg:col-start-1 lg:row-start-1 lg:min-w-0">
-          <div
-            className={cn(
-              "group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3]",
-              "lg:aspect-square lg:max-h-[calc(100dvh-var(--header-height)-220px)] lg:rounded-3xl",
-              // Ring sutil de definição: a caixa #F8F9FA sobre página branca
-              // "sumia" no desktop (achado da prévia de 29/09) -- o traço
-              // quase invisível separa a galeria do fundo sem virar cartão.
-              "lg:ring-1 lg:ring-zinc-950/5",
-            )}
-          >
-            <div className="relative flex size-full items-center justify-center overflow-hidden">
-              <AnimatePresence mode="popLayout" initial={false}>
-                <motion.img
-                  key={currentImageIndex}
-                  src={imagemRedimensionada(
-                    variantImage || product.images?.[currentImageIndex] || "",
-                    { width: 960, quality: 80 },
-                  )}
-                  srcSet={
-                    conjuntoDeImagens(
-                      variantImage || product.images?.[currentImageIndex] || "",
-                      [480, 640, 960, 1280],
-                      80,
-                    ) || undefined
-                  }
-                  // Ocupa a largura toda no celular; a partir do desktop fica limitada pela altura.
-                  sizes="(min-width: 1024px) 720px, 100vw"
-                  alt={product.name}
-                  onError={(event) =>
-                    usarImagemOriginal(
-                      event.currentTarget,
-                      variantImage || product.images?.at(currentImageIndex),
-                    )
-                  }
-                  className="main-product-image h-full w-auto max-w-full object-contain"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  style={
-                    (isViewTransitionSupported &&
-                    currentImageIndex === 0 &&
-                    !variantImage
-                      ? { viewTransitionName: "product-image" }
-                      : undefined) as React.CSSProperties
-                  }
-                />
-              </AnimatePresence>
-            </div>
-
-            {/* Navigation Arrows */}
-            {(product.images?.length || 0) > 1 && !variantImage && (
-              <div
-                className={cn(
-                  "pointer-events-none absolute inset-0 flex items-center justify-between px-4 opacity-100 transition-opacity duration-300 hover-hover:opacity-0 hover-hover:group-hover:opacity-100",
-                  "lg:!opacity-100",
-                )}
-              >
+          <GaleriaDoProduto
+            fotos={fotosDaGaleria}
+            nome={product.name}
+            indice={indiceDaFoto}
+            onMudarIndice={setCurrentImageIndex}
+            acoes={
+              <div className="absolute right-4 top-4 z-10 flex gap-2">
                 <button
-                  onClick={prevImage}
-                  // Laudo de acessibilidade 03/09, achado 2: botões de ícone sem
-                  // nome nenhum para o leitor de tela.
-                  aria-label="Foto anterior"
-                  // Laudo 05/09, M4: `after:-inset-1.5` amplia o alvo de toque
-                  // de 32px para 44px (recomendado mobile) sem mudar o visual.
-                  className={cn(
-                    "pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95",
-                    // Setas maiores no desktop: no leitor de 27" o alvo de
-                    // 32px flutuava pequeno demais dentro da foto quadrada.
-                    "lg:size-10",
-                  )}
-                >
-                  <ChevronLeft className="size-4" />
-                </button>
-                <button
-                  onClick={nextImage}
-                  aria-label="Próxima foto"
-                  className={cn(
-                    "pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95",
-                    // Setas maiores no desktop: no leitor de 27" o alvo de
-                    // 32px flutuava pequeno demais dentro da foto quadrada.
-                    "lg:size-10",
-                  )}
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-              </div>
-            )}
-
-            {/* Image Indicators - Glass Pill */}
-            {(product.images?.length || 0) > 1 && !variantImage && (
-              <div
-                className={cn(
-                  "absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 shadow-2xl backdrop-blur-xl",
-                  "lg:hidden",
-                )}
-              >
-                {product.images?.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentImageIndex(index)}
-                    // Laudo de acessibilidade 03/09, achado 2: as bolinhas eram
-                    // "botão, botão, botão" — agora dizem qual foto abrem e qual
-                    // é a atual (`aria-current`).
-                    aria-label={`Foto ${index + 1} de ${product.images?.length ?? 0}`}
-                    aria-current={
-                      index === currentImageIndex ? "true" : undefined
-                    }
-                    // Laudo 05/09, M4: bolinha de 4px (h-1) era alvo de toque
-                    // abaixo do mínimo WCAG de 24px — pseudo-elemento invisível
-                    // amplia a área SEM mudar o visual. Laudo Opus 07/09 (C1):
-                    // o inset é 10px só na VERTICAL (4+20 = 24px); na horizontal
-                    // fica em 3px porque as bolinhas ficam a 6px uma da outra
-                    // (gap-1.5) — o inset quadrado de 10px fazia a área da
-                    // bolinha seguinte cobrir a anterior e ROUBAR o toque
-                    // (regressão medida no preview do PR #437). Alvo de 24px de
-                    // LARGURA exige aumentar o gap — decisão visual do dono.
-                    className={`relative h-1 rounded-full transition-all duration-500 after:absolute after:-inset-y-2.5 after:inset-x-[-3px] after:content-[''] ${
-                      index === currentImageIndex
-                        ? "w-6 bg-white"
-                        : "w-1.5 bg-white/30 hover:bg-white/50"
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="absolute right-4 top-4 z-10 flex gap-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavorite();
-                }}
-                // Laudo de acessibilidade 03/09, achado 2: sem nome, favoritar
-                // era impossível por leitor de tela (o "Compartilhar" ao lado já
-                // tinha `aria-label` — este é o padrão da casa).
-                aria-label={
-                  isFavorite
-                    ? "Remover dos favoritos"
-                    : "Adicionar aos favoritos"
-                }
-                className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
-              >
-                <Heart
-                  className={cn(
-                    "size-4.5 transition-colors",
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFavorite();
+                  }}
+                  // Laudo de acessibilidade 03/09, achado 2: sem nome, favoritar
+                  // era impossível por leitor de tela (o "Compartilhar" ao lado já
+                  // tinha `aria-label` — este é o padrão da casa).
+                  aria-label={
                     isFavorite
-                      ? "fill-red-500 text-red-500 animate-heart-pop"
-                      : "text-zinc-600",
-                  )}
-                />
-              </button>
-              <button
-                onClick={handleShare}
-                aria-label="Compartilhar"
-                className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
-              >
-                <Share2 className="size-4.5 text-zinc-600" />
-              </button>
-            </div>
-          </div>
-
-          {computador && (product.images?.length || 0) > 1 && !variantImage && (
-            <div
-              className="lg:mt-4 lg:flex lg:flex-wrap lg:gap-3"
-              role="group"
-              aria-label="Fotos do produto"
-            >
-              {product.images.map((foto, index) => (
-                <button
-                  key={`${foto}-${index}`}
-                  type="button"
-                  aria-label={`Ver foto ${index + 1} de ${product.images.length}`}
-                  aria-current={
-                    index === currentImageIndex ? "true" : undefined
+                      ? "Remover dos favoritos"
+                      : "Adicionar aos favoritos"
                   }
-                  onClick={() => setCurrentImageIndex(index)}
-                  className={cn(
-                    "lg:size-[72px] lg:overflow-hidden lg:rounded-xl lg:border-2 lg:bg-zinc-50 lg:p-1 lg:transition-colors lg:focus-visible:outline-none lg:focus-visible:ring-2 lg:focus-visible:ring-primary lg:focus-visible:ring-offset-2 lg:shadow-sm",
-                    index === currentImageIndex
-                      ? "lg:border-primary"
-                      : "lg:border-zinc-200 lg:hover:border-zinc-400",
-                  )}
+                  className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
                 >
-                  <img
-                    src={imagemRedimensionada(foto, {
-                      width: 200,
-                      quality: 80,
-                    })}
-                    alt=""
-                    onError={(event) =>
-                      usarImagemOriginal(event.currentTarget, foto)
-                    }
-                    loading="lazy"
-                    decoding="async"
-                    className="lg:size-full lg:object-contain"
+                  <Heart
+                    className={cn(
+                      "size-4.5 transition-colors",
+                      isFavorite
+                        ? "fill-red-500 text-red-500 animate-heart-pop"
+                        : "text-zinc-600",
+                    )}
                   />
                 </button>
-              ))}
-            </div>
-          )}
+                <button
+                  onClick={handleShare}
+                  aria-label="Compartilhar"
+                  className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
+                >
+                  <Share2 className="size-4.5 text-zinc-600" />
+                </button>
+              </div>
+            }
+          />
         </div>
         {/* Product Info */}
         <div className={cn("px-5 py-4", "lg:contents")}>
