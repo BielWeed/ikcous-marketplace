@@ -1,5 +1,9 @@
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import {
+  ROTULO_SEM_VALOR_A_PAGAR,
+  pedidoSemValorAPagar,
+} from "@/lib/forma-de-pagamento";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus, PaymentMethod, View } from "@/types";
@@ -392,6 +396,11 @@ export const OrderList = memo(function OrderList({
             : statusBase;
         const payment = paymentConfig[order.paymentMethod] || paymentConfig.pix;
         const PaymentIcon = payment.icon;
+        // Compra que fechou em R$ 0,00 (cupom de 100%): não há forma de
+        // pagamento a mostrar. A regra é UMA só (`pedidoSemValorAPagar`).
+        const formaDePagamento = pedidoSemValorAPagar(order)
+          ? ROTULO_SEM_VALOR_A_PAGAR
+          : payment.label;
         const StatusIcon = status.icon;
         const total = order?.total || 0;
         const date = order?.createdAt ? new Date(order.createdAt) : new Date();
@@ -451,7 +460,7 @@ export const OrderList = memo(function OrderList({
 
                     <div className="flex items-center gap-0.5">
                       <PaymentIcon className="size-3 stroke-[2.5] text-zinc-400" />
-                      <span>{payment.label}</span>
+                      <span>{formaDePagamento}</span>
                     </div>
 
                     {order.customer.neighborhood && (

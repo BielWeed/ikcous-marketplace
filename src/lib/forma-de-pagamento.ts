@@ -20,6 +20,43 @@ export interface FormaDoPedido {
   readonly metodoOnline?: string | null;
   /** Ramifica por `presencial`, nunca por `online` — ausente é site. */
   readonly canal?: string | null;
+  /** `marketplace_orders.total`. Só decide o caso "sem valor a pagar"
+   * (`pedidoSemValorAPagar`); ausente = "não sei", e o rótulo é o de sempre. */
+  readonly total?: number | null;
+}
+
+/** O que as telas dizem no lugar da forma de pagamento quando a compra fechou
+ * em R$ 0,00 (cupom de 100%). Texto de exibição — o servidor segue gravando o
+ * pedido como "pagar na entrega" e isto não muda. */
+export const ROTULO_SEM_VALOR_A_PAGAR = "Sem valor a pagar";
+
+/**
+ * A ÚNICA decisão de "este pedido não tem nada a pagar" nas telas (decisão do
+ * dono, 15/10/2026). Em centavos: 0,004 de ponto flutuante é zero, 0,01 não.
+ * Total ausente, nulo ou que não é número NUNCA conta — na dúvida o pedido
+ * segue com o rótulo de antes, nunca vira "sem valor" por falta de dado.
+ */
+export function pedidoSemValorAPagar(pedido: {
+  readonly total?: number | null;
+  readonly subtotal?: number | null;
+  readonly discount?: number | null;
+  readonly shipping?: number | null;
+}): boolean {
+  const centavos = (valor: number | null | undefined) =>
+    typeof valor === "number" && Number.isFinite(valor)
+      ? Math.round(valor * 100)
+      : null;
+  if (centavos(pedido.total) !== 0) return false;
+  // A conta tem de bater: o mapper (`mapOrderFromDB`) devolve `total` 0 para
+  // linha SEM a coluna, e isso não pode virar "sem valor a pagar" num pedido
+  // que tem produtos e frete. Quando subtotal, desconto e frete existem no
+  // objeto, subtotal - desconto + frete tem de dar zero também; se algum
+  // faltar, não há o que conferir e vale o total.
+  const subtotal = centavos(pedido.subtotal);
+  const desconto = centavos(pedido.discount);
+  const frete = centavos(pedido.shipping);
+  if (subtotal === null || desconto === null || frete === null) return true;
+  return subtotal - desconto + frete === 0;
 }
 
 function rotuloDoPagamentoPeloSite(metodoOnline: string | null | undefined) {
@@ -39,6 +76,7 @@ function rotuloDoPagamentoPeloSite(metodoOnline: string | null | undefined) {
 }
 
 export function rotuloDaFormaDoPedido(pedido: FormaDoPedido): string {
+  if (pedidoSemValorAPagar(pedido)) return ROTULO_SEM_VALOR_A_PAGAR;
   const noBalcao = pedido.canal === "presencial";
   switch (pedido.paymentMethod) {
     case "cash":

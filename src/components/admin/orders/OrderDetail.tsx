@@ -23,7 +23,11 @@ import {
 } from "@/lib/anulacao-do-balcao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
-import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import {
+  ROTULO_SEM_VALOR_A_PAGAR,
+  pedidoSemValorAPagar,
+  rotuloDaFormaDoPedido,
+} from "@/lib/forma-de-pagamento";
 import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
@@ -122,9 +126,13 @@ const getNextStatus = (current: OrderStatus): OrderStatus | null => {
 // rótulo da planilha e da lista (`rotuloDaFormaDoPedido`, defeito D4 de
 // 28/09): cartão no balcão é "na maquininha", no site é "na entrega", e
 // "online" nunca vira "Dinheiro" (quem lança o caixa a partir daqui não pode
-// ler dinheiro e cobrar de novo). O PIX segue curto, como a ficha já dizia.
+// ler dinheiro e cobrar de novo). O PIX segue curto, como a ficha já dizia —
+// menos na compra de R$ 0,00 (cupom de 100%), que não tem forma de pagamento:
+// ali vale o rótulo único ("Sem valor a pagar").
 const getPaymentMethodLabel = (order: Order) =>
-  order.paymentMethod === "pix" ? "PIX" : rotuloDaFormaDoPedido(order);
+  order.paymentMethod === "pix" && !pedidoSemValorAPagar(order)
+    ? "PIX"
+    : rotuloDaFormaDoPedido(order);
 
 // T3 (lote B, 12/09) — a frase-situação do dinheiro no cabeçalho da seção
 // Pagamento (emprestada da direção "Dinheiro primeiro"): a primeira dúvida
@@ -165,6 +173,12 @@ function fraseSituacaoDoPagamento(order: Order): string {
   // recebido" (`podeRegistrarPagamento`). `recebido_na_entrega` + cancelado
   // já caiu no ramo de atenção acima.
   if (order.paymentMethod !== "online") {
+    // Compra que fechou em R$ 0,00 (cupom de 100%): o servidor a grava como
+    // "pagar na entrega", mas não há o que receber — "Falta receber na
+    // entrega · R$ 0,00" mandaria a lojista cobrar de quem não deve nada.
+    if (pedidoSemValorAPagar(order)) {
+      return ROTULO_SEM_VALOR_A_PAGAR;
+    }
     // D1 (lote C4): o banco não ganhou canal como oitavo payment_status — a
     // venda de balcão grava o MESMO `recebido_na_entrega`/pagamento pendente
     // de sempre. Só a FRASE muda de "entrega" para "balcão" quando o canal
@@ -904,6 +918,7 @@ function OrderFinanceCard({
   const situacaoPositiva =
     !situacao.includes("precisa de atenção") &&
     (situacao.startsWith("Pago no site") ||
+      situacao === ROTULO_SEM_VALOR_A_PAGAR ||
       situacao.startsWith("Recebido na entrega") ||
       situacao.startsWith("Recebido no balcão"));
 
@@ -1371,6 +1386,43 @@ export const OrderDetail = memo(function OrderDetail({
     }
   };
 
+  // 🔴 Task 4b — a ordem não se negocia: grava o dinheiro PRIMEIRO, avança o
+  // status DEPOIS, e SÓ SE a gravação não tiver lançado. `onRegistrarPagamento`
+  // já mostra o próprio toast de erro (ver `useOrders.registrarPagamentoRecebido`)
+  // — o catch aqui só ABORTA, sem chamar `handleStatusChange`: o pedido
+  // continua "em aberto" e o botão de registrar continua na tela, em vez de
+  // ficar "entregue" e sem registro nenhum — o dano silencioso que esta
+  // tarefa existe pra evitar.
+  //
+  // Trava de reentrada: duplo clique em "Avançar" (pedido de R$ 0, que não
+  // abre caixinha) chamaria o registro e a mudança de status duas vezes. Uma
+  // `ref` — não depende de re-render, vale já no segundo clique — fica presa
+  // até o fim do registro E do avanço, e sempre solta no `finally`, então
+  // depois de uma falha a lojista pode tentar de novo.
+  const registrandoEAvancandoRef = useRef(false);
+  const registrarRecebimentoEAvancar = async (
+    orderId: string,
+    status: OrderStatus,
+  ) => {
+    if (!onRegistrarPagamento) return;
+    if (registrandoEAvancandoRef.current) return;
+    registrandoEAvancandoRef.current = true;
+    try {
+      try {
+        await onRegistrarPagamento(orderId, true);
+      } catch (err) {
+        console.error(
+          "[OrderDetail] Erro ao registrar pagamento recebido antes de avançar:",
+          err,
+        );
+        return;
+      }
+      await handleStatusChange(orderId, status);
+    } finally {
+      registrandoEAvancandoRef.current = false;
+    }
+  };
+
   // Ponto de entrada exclusivo do botão "Avançar" — o botão de abortar chama
   // handleStatusChange direto com "cancelled" (ver onCancel no JSX abaixo),
   // então esta função nunca recebe "cancelled" e não precisa mais comparar
@@ -1387,6 +1439,22 @@ export const OrderDetail = memo(function OrderDetail({
         status: nextStatus,
         perguntaRecebimento: false,
       });
+      return;
+    }
+
+    // Compra que fechou em R$ 0,00 (cupom de 100%): não há dinheiro a trocar
+    // de mão, então NÃO pergunta "Recebeu R$ 0,00?" — a ficha registra o
+    // "Recebi" sozinha, pelo MESMO caminho do botão "Recebi" (dinheiro
+    // primeiro, status depois), e o pedido segue como pago para devolução e
+    // troca. Mesmas condições da pergunta abaixo; só muda quem responde.
+    if (
+      onRegistrarPagamento &&
+      nextStatus === "delivered" &&
+      !order.pagamentoRecebidoEm &&
+      podeRegistrarPagamento(order) &&
+      pedidoSemValorAPagar(order)
+    ) {
+      void registrarRecebimentoEAvancar(orderId, nextStatus);
       return;
     }
 
@@ -1424,27 +1492,12 @@ export const OrderDetail = memo(function OrderDetail({
     handleStatusChange(orderId, status);
   };
 
-  // 🔴 Task 4b — a ordem não se negocia: grava o dinheiro PRIMEIRO, avança o
-  // status DEPOIS, e SÓ SE a gravação não tiver lançado. `onRegistrarPagamento`
-  // já mostra o próprio toast de erro (ver `useOrders.registrarPagamentoRecebido`)
-  // — o catch aqui só ABORTA, sem chamar `handleStatusChange`: o pedido
-  // continua "em aberto" e o botão de registrar continua na tela, em vez de
-  // ficar "entregue" e sem registro nenhum — o dano silencioso que esta
-  // tarefa existe pra evitar.
+  // "Recebi" da pergunta: tira a caixinha da tela e segue o mesmo caminho.
   const confirmarRecebimentoEAvancar = async () => {
-    if (!pendingAdvance || !onRegistrarPagamento) return;
+    if (!pendingAdvance) return;
     const { orderId, status } = pendingAdvance;
     setPendingAdvance(null);
-    try {
-      await onRegistrarPagamento(orderId, true);
-    } catch (err) {
-      console.error(
-        "[OrderDetail] Erro ao registrar pagamento recebido antes de avançar:",
-        err,
-      );
-      return;
-    }
-    handleStatusChange(orderId, status);
+    await registrarRecebimentoEAvancar(orderId, status);
   };
 
   // Task 4b — botão "Marcar como recebido"/"Desfazer" DENTRO da ficha
