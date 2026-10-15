@@ -84,6 +84,30 @@ export const BOTAO_POR_FORA_APOS_ESPERA =
 export const TEXTO_JA_POR_FORA = "Você já registrou que devolveu por fora.";
 
 /**
+ * O valor de uma linha já resolvida por fora que o Mercado Pago ainda não
+ * respondeu (`reservado_por_fora` do servidor): o app o mantém fora do saldo
+ * — o lado seguro — e a tela DIZ isso, em vez de "tudo devolvido".
+ */
+export const textoReservado = (valor: string) =>
+  `${valor} reservado até o Mercado Pago responder.`;
+
+/**
+ * Aviso depois da saída PARCIAL dos 7 dias (o pedido segue pago). A frase da
+ * reserva só entra com a linha ainda viva no MP — linha parada (`falhou`) não
+ * fica reservada: o servidor já a conta como devolvida por fora.
+ */
+export const avisoDaSaidaParcial = (
+  devolvido: string,
+  falta: string,
+  viva: boolean,
+) =>
+  `Você devolveu ${devolvido} por fora; ainda falta ${falta} a devolver ao cliente${
+    viva
+      ? `; o app mantém ${devolvido} reservado até o Mercado Pago responder`
+      : ""
+  }.`;
+
+/**
  * Confirmação FORTE da saída dos 7 dias: mostra o risco de pagar em dobro e
  * exige digitar a frase fixa (diálogo nativo, o mesmo padrão do `confirm`
  * que o painel já usa para dinheiro — e sem componente novo no pacote do
@@ -125,10 +149,17 @@ const RECUSAS_DA_SAIDA: ReadonlyMap<unknown, string> = new Map([
  */
 export function lerSaidaAposEspera(
   v: unknown,
-): { gravou: true } | { gravou: false; aviso: string } {
+):
+  | { gravou: true; aindaADevolver?: number }
+  | { gravou: false; aviso: string } {
   const resultado = ehObjeto(v) ? v.resultado : undefined;
   if (resultado === "combinado" || resultado === "registrado") {
-    return { gravou: true };
+    // Saída PARCIAL do pedido cancelado: o servidor diz quanto ainda falta.
+    const falta =
+      ehObjeto(v) && v.detalhe === "parcial" ? reais(v.ainda_a_devolver) : null;
+    return falta === null
+      ? { gravou: true }
+      : { gravou: true, aindaADevolver: falta };
   }
   return {
     gravou: false,
@@ -183,6 +214,8 @@ export interface ReembolsosESaldo {
   em_duvida: number;
   manual: number;
   disponivel: number;
+  /** Linha resolvida por fora ainda viva no MP: valor preso até ele responder. */
+  reservado_por_fora: number;
   linhas: LinhaDoSaldo[];
 }
 
@@ -234,11 +267,19 @@ export function lerReembolsosESaldo(v: unknown): ReembolsosESaldo | null {
     v.em_duvida,
     v.manual,
     v.disponivel,
+    v.reservado_por_fora,
   ].map(reais);
   const linhas = v.linhas.map(lerLinha);
   if (numeros.includes(null) || linhas.includes(null)) return null;
-  const [total, valor_estornado, em_voo, em_duvida, manual, disponivel] =
-    numeros as number[];
+  const [
+    total,
+    valor_estornado,
+    em_voo,
+    em_duvida,
+    manual,
+    disponivel,
+    reservado_por_fora,
+  ] = numeros as number[];
   return {
     total,
     valor_estornado,
@@ -246,6 +287,7 @@ export function lerReembolsosESaldo(v: unknown): ReembolsosESaldo | null {
     em_duvida,
     manual,
     disponivel: Math.max(0, disponivel),
+    reservado_por_fora: Math.max(0, reservado_por_fora),
     linhas: linhas as LinhaDoSaldo[],
   };
 }
@@ -264,7 +306,17 @@ interface AcoesDaLinha {
    * (`substituida_por_manual`).
    */
   jaPorFora: boolean;
+  /**
+   * Resolvida por fora e AINDA viva no Mercado Pago (`solicitado` /
+   * `em_processamento`): o servidor a soma em `reservado_por_fora` — o app
+   * mantém o valor preso até o MP responder, e a tela diz isso.
+   */
+  reservada: boolean;
 }
+
+/** A linha ainda pode receber resposta do Mercado Pago. */
+export const linhaViva = (status: StatusDaLinha) =>
+  status === "solicitado" || status === "em_processamento";
 
 /**
  * Decide os botões de UMA linha a partir do veredito do servidor. A espera
@@ -298,5 +350,6 @@ export function acoesDaLinha(
       linha.status !== "concluido" &&
       linha.por_fora_apos_espera_liberado,
     jaPorFora,
+    reservada: linha.por_fora_liberado_em !== null && linhaViva(linha.status),
   };
 }

@@ -12,6 +12,7 @@ import {
   TEXTO_JA_POR_FORA,
   acoesDaLinha,
   confirmouPorForaAposEspera,
+  textoReservado,
 } from "@/lib/reembolso-em-duvida";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/types";
@@ -156,18 +157,26 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
 type EstadoDoCartao =
   | "bloqueado_status"
   | "bloqueado_retorno"
+  | "reservado"
   | "tudo_devolvido"
   | "normal";
 
 // Regra do dono (24/08/2026), a mesma que a RPC `solicitar_estorno` recusa
 // no servidor — aqui só EXPLICA antes do clique. Ordem importa: um pedido
-// não cancelado nunca chega a precisar do produto de volta.
-function estadoDoCartao(order: Order, disponivel: number): EstadoDoCartao {
+// não cancelado nunca chega a precisar do produto de volta. Saldo zero com
+// valor RESERVADO (linha resolvida por fora que o Mercado Pago ainda não
+// respondeu, pedido ainda pago) NÃO é "tudo devolvido": é dinheiro preso até
+// o MP responder, e a tela diz isso.
+function estadoDoCartao(
+  order: Order,
+  disponivel: number,
+  reservado: number,
+): EstadoDoCartao {
   if (order.status !== "cancelled") return "bloqueado_status";
   if (order.cancelledAfterShipping && !order.returnedToSellerAt) {
     return "bloqueado_retorno";
   }
-  if (disponivel <= 0) return "tudo_devolvido";
+  if (disponivel <= 0) return reservado > 0 ? "reservado" : "tudo_devolvido";
   return "normal";
 }
 
@@ -178,6 +187,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
     devolvido,
     emDuvida,
     disponivel,
+    reservadoPorFora,
     carregando,
     pedidoCarregado,
     erro,
@@ -234,8 +244,11 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
     );
   }
 
-  const estado = estadoDoCartao(order, disponivel);
-  const mostrarBotao = estado !== "tudo_devolvido";
+  // O reservado só vale com o pedido ainda pago: estornado inteiro, a conta fechou.
+  const reservado =
+    order.paymentStatus === "estornado" ? 0 : Math.max(reservadoPorFora, 0);
+  const estado = estadoDoCartao(order, disponivel, reservado);
+  const mostrarBotao = estado !== "tudo_devolvido" && estado !== "reservado";
   const podeAbrirCampo = estado === "normal";
 
   const valorNumericoDoCampo = paraNumero(valorCampo);
@@ -289,6 +302,11 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
       {estado === "tudo_devolvido" && (
         <p className="text-xs font-bold text-emerald-400">
           Todo o valor pago já foi devolvido.
+        </p>
+      )}
+      {reservado > 0 && (
+        <p className="text-xs font-bold text-amber-400">
+          {textoReservado(formatCurrency(reservado))}
         </p>
       )}
 

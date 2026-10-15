@@ -159,6 +159,7 @@ describe("itens 2 e 3: useEstornosDoPedido", () => {
       em_duvida: 0,
       manual: 0,
       disponivel: total,
+      reservado_por_fora: 0,
       linhas: [],
     },
     error: null,

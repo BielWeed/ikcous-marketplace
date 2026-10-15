@@ -353,6 +353,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
         devolvido: status === "concluido" ? 30 : 0,
         emCurso: status === "concluido" ? 0 : 30,
         disponivel: 70,
+        reservadoPorFora: 0,
         carregando: false,
         pedidoCarregado: true,
         erro: false,

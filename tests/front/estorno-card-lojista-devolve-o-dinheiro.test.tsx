@@ -89,6 +89,7 @@ function hookPadrao(
     emCurso: 0,
     emDuvida: 0,
     disponivel: 100,
+    reservadoPorFora: 0,
     carregando: false,
     // Data já leu pelo menos uma vez (primeira carga concluída) — os 11
     // testes originais assumem saldo confiável na tela. O caso "ainda não
@@ -491,6 +492,55 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
 
     expect(texto()).toContain("Todo o valor pago já foi devolvido.");
     expect(botaoComTexto("Devolver")).toBeUndefined();
+  });
+
+  it("R1-reserva: saldo zero porque uma linha resolvida por fora ainda espera o MP — diz 'R$ X reservado', NUNCA 'Todo o valor pago já foi devolvido'", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        pago: 100,
+        devolvido: 0,
+        emCurso: 60,
+        disponivel: 0,
+        reservadoPorFora: 60,
+      }),
+    );
+
+    await montar();
+
+    expect(texto()).toContain(
+      "R$ 60,00 reservado até o Mercado Pago responder.",
+    );
+    expect(texto()).not.toContain("Todo o valor pago já foi devolvido.");
+    expect(botaoComTexto("Devolver")).toBeUndefined();
+  });
+
+  it("R1-reserva: com saldo ainda livre, a reserva aparece junto do botão", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        pago: 100,
+        emCurso: 60,
+        disponivel: 40,
+        reservadoPorFora: 60,
+      }),
+    );
+
+    await montar();
+
+    expect(texto()).toContain(
+      "R$ 60,00 reservado até o Mercado Pago responder.",
+    );
+    expect(botaoComTexto("Devolver R$ 40,00")).toBeDefined();
+  });
+
+  it("R1-reserva: pedido já estornado inteiro — a conta fechou: 'Todo o valor pago já foi devolvido', sem reserva", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 100, disponivel: 0, reservadoPorFora: 60 }),
+    );
+
+    await montar({ ...pedidoBase, paymentStatus: "estornado" });
+
+    expect(texto()).toContain("Todo o valor pago já foi devolvido.");
+    expect(texto()).not.toContain("reservado até o Mercado Pago responder");
   });
 
   it("AC4-B (mutação B): 'falhou' com saldo insuficiente NÃO oferece 'Tentar de novo'", async () => {

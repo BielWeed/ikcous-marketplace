@@ -18,7 +18,9 @@ import {
   confirmouPorForaAposEspera,
   lerReembolsosESaldo,
   lerSaidaAposEspera,
+  linhaViva,
   parametrosPorForaAposEspera,
+  textoReservado,
 } from "@/lib/reembolso-em-duvida";
 import { supabase } from "@/lib/supabase";
 import type { DevolucaoDetalhe } from "@/types/devolucao";
@@ -168,7 +170,7 @@ export function ReembolsoDaDevolucao({
   if (!linha || linha.status === "concluido") return null;
 
   const valor = formatarReais(linha.amount);
-  const { podeRepetir, confirmando, porForaAposEspera, jaPorFora } =
+  const { podeRepetir, confirmando, porForaAposEspera, jaPorFora, reservada } =
     acoesDaLinha(linha);
 
   const tentarDeNovo = () =>
@@ -225,7 +227,13 @@ export function ReembolsoDaDevolucao({
         toast.info(saida.aviso);
         return false;
       }
-      toast.warning(`Registrado como devolvido por fora. ${AVISO_DE_DOBRO}`);
+      // Linha ainda viva no MP: o servidor passa a mantê-la reservada.
+      const reserva = linhaViva(linha.status)
+        ? ` O app mantém ${textoReservado(valor)}`
+        : "";
+      toast.warning(
+        `Registrado como devolvido por fora.${reserva} ${AVISO_DE_DOBRO}`,
+      );
       return true;
     });
 
@@ -236,7 +244,9 @@ export function ReembolsoDaDevolucao({
     >
       <p className="text-xs font-bold text-zinc-200">
         {jaPorFora
-          ? TEXTO_JA_POR_FORA
+          ? reservada
+            ? `${TEXTO_JA_POR_FORA} ${textoReservado(valor)}`
+            : TEXTO_JA_POR_FORA
           : podeRepetir
             ? `O reembolso de ${valor} não foi concluído pelo Mercado Pago.`
             : confirmando

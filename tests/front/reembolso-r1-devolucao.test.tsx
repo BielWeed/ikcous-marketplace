@@ -15,9 +15,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { instrucaoParaOCliente, lerDevolucaoDetalhe } from "@/lib/devolucao";
 import {
   acoesDaLinha,
+  avisoDaSaidaParcial,
   lerReembolsosESaldo,
   lerSaidaAposEspera,
 } from "@/lib/reembolso-em-duvida";
+import { formatCurrency } from "@/lib/utils";
 import type { DevolucaoDetalhe } from "@/types/devolucao";
 
 // ---------------------------------------------------------------------------
@@ -42,6 +44,7 @@ vi.mock("@/lib/supabase", () => ({
             em_duvida: 0,
             manual: 0,
             disponivel: 100,
+            reservado_por_fora: 0,
             linhas: [LINHA_DO_SALDO],
           },
           error: null,
@@ -211,6 +214,7 @@ describe("regras puras do contrato R1", () => {
       confirmando: false,
       porForaAposEspera: false,
       jaPorFora: false,
+      reservada: false,
     };
     expect(
       acoesDaLinha({ ...base, status: "falhou", pode_ter_saido: false }),
@@ -273,6 +277,7 @@ describe("regras puras do contrato R1", () => {
       em_duvida: 0,
       manual: 0,
       disponivel: 100,
+      reservado_por_fora: 0,
       linhas: [linha()],
     };
     expect(lerReembolsosESaldo(ok)?.total).toBe(100);
@@ -306,6 +311,7 @@ describe("regras puras do contrato R1", () => {
       em_duvida: 0,
       manual: 100,
       disponivel: "-100.00",
+      reservado_por_fora: 100,
       linhas: [linha({ status: "em_processamento" })],
     };
     expect(lerReembolsosESaldo(cru)?.disponivel).toBe(0);
@@ -344,6 +350,76 @@ describe("regras puras do contrato R1", () => {
         aviso: "O reembolso mudou. Os dados foram atualizados.",
       });
     }
+  });
+
+  it("R1-reserva: linha resolvida por fora e ainda viva no MP fica 'reservada'; parada não", () => {
+    const base = {
+      pode_ter_saido: true,
+      por_fora_apos_espera_liberado: true,
+      por_fora_liberado_em: "2026-10-16T00:00:00Z",
+      substituida_por_manual: false,
+    } as const;
+    for (const status of ["solicitado", "em_processamento"] as const) {
+      expect(acoesDaLinha({ ...base, status }).reservada).toBe(true);
+    }
+    for (const status of ["falhou", "recusado", "concluido"] as const) {
+      expect(acoesDaLinha({ ...base, status }).reservada).toBe(false);
+    }
+    // Sem a marca da saída, nada é reservado por fora.
+    expect(
+      acoesDaLinha({
+        ...base,
+        por_fora_liberado_em: null,
+        status: "em_processamento",
+      }).reservada,
+    ).toBe(false);
+  });
+
+  it("R1-reserva: o leitor EXIGE reservado_por_fora (sem ele = erro de leitura) e nunca o devolve negativo", () => {
+    const ok = {
+      total: 100,
+      valor_estornado: 0,
+      em_voo: 100,
+      em_duvida: 0,
+      manual: 100,
+      disponivel: 0,
+      reservado_por_fora: "100.00",
+      linhas: [linha({ status: "em_processamento" })],
+    };
+    expect(lerReembolsosESaldo(ok)?.reservado_por_fora).toBe(100);
+    expect(
+      lerReembolsosESaldo({ ...ok, reservado_por_fora: undefined }),
+    ).toBeNull();
+    expect(
+      lerReembolsosESaldo({ ...ok, reservado_por_fora: -5 })
+        ?.reservado_por_fora,
+    ).toBe(0);
+  });
+
+  it("R1-reserva: a saída PARCIAL traz quanto ainda falta (ainda_a_devolver do servidor)", () => {
+    expect(
+      lerSaidaAposEspera({
+        resultado: "registrado",
+        detalhe: "parcial",
+        risco_de_dobro: true,
+        ainda_a_devolver: "40.00",
+      }),
+    ).toEqual({ gravou: true, aindaADevolver: 40 });
+    // Saída inteira não tem "ainda falta".
+    expect(
+      lerSaidaAposEspera({
+        resultado: "registrado",
+        detalhe: "apos_espera",
+        ainda_a_devolver: 40,
+      }),
+    ).toEqual({ gravou: true });
+    expect(avisoDaSaidaParcial("R$ 60,00", "R$ 40,00", true)).toBe(
+      "Você devolveu R$ 60,00 por fora; ainda falta R$ 40,00 a devolver ao cliente; o app mantém R$ 60,00 reservado até o Mercado Pago responder.",
+    );
+    // Linha parada: o servidor não a reserva, e o aviso não promete reserva.
+    expect(avisoDaSaidaParcial("R$ 60,00", "R$ 40,00", false)).toBe(
+      "Você devolveu R$ 60,00 por fora; ainda falta R$ 40,00 a devolver ao cliente.",
+    );
   });
 });
 
@@ -464,6 +540,10 @@ describe("ReembolsoDaDevolucao — o painel ganha os botões que o servidor já 
     expect(toastMock.warning).toHaveBeenCalledWith(
       expect.stringContaining("Registrado como devolvido por fora."),
     );
+    // Linha parada (falhou): o servidor não a reserva; o aviso não promete.
+    expect(toastMock.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining("reservado"),
+    );
   });
 
   it("D4c: servidor RECUSA a saída dos 7 dias sem erro (`resultado: aguarde`) — a tela não diz 'registrado'", async () => {
@@ -507,6 +587,45 @@ describe("ReembolsoDaDevolucao — o painel ganha os botões que o servidor já 
     await montarBloco(detalhe({ updated_at: "2026-10-16T10:00:00Z" }));
     expect(texto()).toContain("Você já registrou que devolveu por fora.");
     expect(hospedeiro.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  it("D4d: resolvida por fora e ainda em processamento no MP — o bloco diz que o valor está RESERVADO", async () => {
+    LINHA_DO_SALDO = linha({
+      status: "em_processamento",
+      pode_ter_saido: true,
+      por_fora_liberado_em: "2026-10-16T10:00:00Z",
+    });
+    await montarBloco();
+    expect(texto()).toContain(
+      "Você já registrou que devolveu por fora. R$ 50,00 reservado até o Mercado Pago responder.",
+    );
+    expect(hospedeiro.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  it("D4e: saída dos 7 dias numa linha ainda viva no MP — o aviso diz que o app mantém o valor reservado", async () => {
+    LINHA_DO_SALDO = linha({
+      status: "em_processamento",
+      pode_ter_saido: true,
+      por_fora_apos_espera_liberado: true,
+    });
+    RESPOSTA_ACAO = {
+      data: {
+        resultado: "combinado",
+        detalhe: "apos_espera",
+        risco_de_dobro: true,
+        refund_id: "refund-1",
+      },
+      error: null,
+    };
+    await montarBloco();
+    vi.stubGlobal("prompt", vi.fn().mockReturnValue("DEVOLVI POR FORA"));
+    await clicar(botao("Já devolvi por fora (depois de 7 dias)"));
+
+    expect(toastMock.warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `Registrado como devolvido por fora. O app mantém ${formatCurrency(50)} reservado até o Mercado Pago responder.`,
+      ),
+    );
   });
 
   it("D5: em andamento — só o texto, nenhum botão", async () => {

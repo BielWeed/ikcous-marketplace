@@ -7,12 +7,15 @@ import {
   type LinhaDoSaldo,
   RPC_DO_REEMBOLSO_R1,
   type ReembolsosESaldo,
+  avisoDaSaidaParcial,
   chamarRpcDoR1,
   lerReembolsosESaldo,
   lerSaidaAposEspera,
+  linhaViva,
   parametrosPorForaAposEspera,
 } from "@/lib/reembolso-em-duvida";
 import { supabase } from "@/lib/supabase";
+import { formatCurrency } from "@/lib/utils";
 
 /** Status possíveis de uma linha de `order_refunds` (Task 1 do plano-mãe de
  * estorno, `20260907-plano-estorno-pelo-app.md`). */
@@ -71,6 +74,9 @@ interface EstornosDoPedido {
   emDuvida: number;
   /** = `disponivel` do servidor. A tela NUNCA recalcula (lote R1). */
   disponivel: number;
+  /** = `reservado_por_fora` do servidor: linha já resolvida por fora que o
+   * Mercado Pago ainda não respondeu (fica fora do saldo até ele responder). */
+  reservadoPorFora: number;
   carregando: boolean;
   /** O pedido já foi lido pelo menos uma vez. Distingue "ainda não sei o
    * saldo" (primeira carga, `false`) de "o saldo é zero" (`true` com
@@ -208,6 +214,9 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
   }, [carregar]);
 
   const linhas = juntar(detalhes, saldo?.linhas ?? []);
+  // O valor da linha no aviso da saída parcial (a mesma que a tela mostrava).
+  const linhasRef = useRef(linhas);
+  linhasRef.current = linhas;
   const temLinhaAtiva = linhas.some((linha) =>
     ESTADOS_EM_CURSO.includes(linha.status),
   );
@@ -299,8 +308,11 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
           await carregar();
           return false;
         }
+        const linha = linhasRef.current.find((l) => l.id === refundId);
         toast.warning(
-          `Pedido #${numero}: registrado como devolvido por fora. ${AVISO_DE_DOBRO}`,
+          saida.aindaADevolver !== undefined && linha
+            ? `Pedido #${numero}: ${avisoDaSaidaParcial(formatCurrency(linha.amount), formatCurrency(saida.aindaADevolver), linhaViva(linha.status))} ${AVISO_DE_DOBRO}`
+            : `Pedido #${numero}: registrado como devolvido por fora. ${AVISO_DE_DOBRO}`,
         );
         await carregar();
         return true;
@@ -324,6 +336,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
     emCurso: saldo?.em_voo ?? 0,
     emDuvida: saldo?.em_duvida ?? 0,
     disponivel: saldo?.disponivel ?? 0,
+    reservadoPorFora: saldo?.reservado_por_fora ?? 0,
     carregando,
     pedidoCarregado: saldo !== null,
     erro,

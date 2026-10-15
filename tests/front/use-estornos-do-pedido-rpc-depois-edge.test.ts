@@ -27,6 +27,7 @@ const SALDO_PADRAO = {
   em_duvida: 0,
   manual: 0,
   disponivel: 100,
+  reservado_por_fora: 0,
   linhas: [],
 };
 let RESPOSTA_SALDO: unknown = { data: SALDO_PADRAO, error: null };
@@ -273,6 +274,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
         em_duvida: 10,
         manual: 7,
         disponivel: 58.77,
+        reservado_por_fora: 0,
         linhas: [
           {
             id: "r1",
@@ -461,6 +463,84 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(toastMock.warning).toHaveBeenCalledWith(
       expect.stringContaining("o cliente recebe em dobro"),
     );
+  });
+
+  it("R1: saída PARCIAL numa linha viva — o aviso diz quanto devolveu, quanto ainda falta e que o valor fica reservado", async () => {
+    RESPOSTA_LINHAS = {
+      data: [
+        {
+          id: "refund-9",
+          amount: 60,
+          status: "em_processamento",
+          solicitado_por: "lojista",
+        },
+      ],
+      error: null,
+    };
+    RESPOSTA_SALDO = {
+      data: {
+        ...SALDO_PADRAO,
+        em_voo: 60,
+        disponivel: 40,
+        linhas: [
+          {
+            id: "refund-9",
+            status: "em_processamento",
+            amount: 60,
+            pode_ter_saido: true,
+            por_fora_liberado_em: null,
+            por_fora_apos_espera_liberado: true,
+            substituida_por_manual: false,
+            eh_pix: false,
+          },
+        ],
+      },
+      error: null,
+    };
+    // Retorno REAL da saída parcial (migration 20261241): o pedido segue pago.
+    RESPOSTA_RPC = {
+      data: {
+        resultado: "registrado",
+        detalhe: "parcial",
+        risco_de_dobro: true,
+        payment_status: "pago",
+        refund_id: "refund-9",
+        ainda_a_devolver: "40.00",
+      },
+      error: null,
+    };
+    const { atual } = await montarSonda();
+    const { formatCurrency } = await import("@/lib/utils");
+
+    let ok = false;
+    await act(async () => {
+      ok = await (
+        atual() as unknown as {
+          registrarPorForaAposEspera: (id: string) => Promise<boolean>;
+        }
+      ).registrarPorForaAposEspera("refund-9");
+    });
+
+    expect(ok).toBe(true);
+    expect(toastMock.warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `Você devolveu ${formatCurrency(60)} por fora; ainda falta ${formatCurrency(40)} a devolver ao cliente; o app mantém ${formatCurrency(60)} reservado até o Mercado Pago responder.`,
+      ),
+    );
+    expect(toastMock.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining("registrado como devolvido por fora"),
+    );
+  });
+
+  it("R1: o reservado por fora vem do servidor, sem conta da tela", async () => {
+    RESPOSTA_SALDO = {
+      data: { ...SALDO_PADRAO, disponivel: 0, reservado_por_fora: "60.00" },
+      error: null,
+    };
+    const { atual } = await montarSonda("pedido-reservado");
+    expect(
+      (atual() as unknown as { reservadoPorFora: number }).reservadoPorFora,
+    ).toBe(60);
   });
 
   it("R1: saída dos 7 dias RECUSADA pelo servidor (sem erro, `resultado: aguarde`) não diz 'registrado'", async () => {
