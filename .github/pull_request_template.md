@@ -17,7 +17,7 @@ Closes #
 - [ ] `npm run typecheck` passa localmente
 - [ ] `npm test` passa localmente
 - [ ] O CI está verde nos cinco jobs
-- [ ] Testei no preview deploy da Vercel, não só no localhost
+- [ ] Testei no preview deploy da Vercel, não só no localhost (PR sem preview automático: gere sob demanda com `npx vercel deploy` numa cópia limpa, ou escreva "N/A, sem mudança visual")
 - [ ] A mensagem de commit segue Conventional Commits e o escopo está em `.commitlintrc.json`
 - [ ] Não sobrou credencial, `console.log` de depuração nem código comentado
 - [ ] Se mudei comportamento documentado, atualizei o documento junto
