@@ -493,6 +493,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261235000000: a venda repetida do balcao devolve a venda feita (trava consultiva pela chave de idempotencia; comportamento com 2 conexoes e portao 36a/36b).
     "tests/banco/venda-balcao-mesma-chave-viva.cjs",
     "tests/banco/venda-balcao-mesma-chave-portao-viva.cjs",
+    // 20261243000000: desfazer o recebimento recusa pedido com devolucao viva (registrar_pagamento_recebido; comportamento com 2 conexoes, corrida nos dois sentidos, rollback e mutantes; o portao da release desta migration ainda nao existe).
+    "tests/banco/desfazer-recebimento-viva.cjs",
     // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",

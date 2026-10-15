@@ -2130,6 +2130,8 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
       // 15/10/2026: a 20261241000000 (o reembolso em dúvida prende o saldo) sucede QUATRO corpos que não
       // são da 99 (autorizar_post_do_estorno da 96; solicitar_estorno e admin_devolucao_concluir da 97;
       // pedido__saldo_a_estornar da 98).
+      // 15/10/2026: a 20261243000000 (desfazer o recebimento recusa pedido com devolução) sucede o corpo da 97
+      // de registrar_pagamento_recebido.
       assertEquals([...sucessoras8e].sort(porFn), [
         {
           fn: "admin_devolucao_concluir",
@@ -2195,6 +2197,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "pedido__saldo_a_estornar",
           h: "99741b4cdbf1e8d8340f80440e6da094",
           versao: "20261241000000",
+        },
+        // 15/10/2026: desfazer o recebimento recusa pedido com devolução (sucede o corpo da 97).
+        {
+          fn: "registrar_pagamento_recebido",
+          h: "7f448f9d84e86f0664e60cb61562716d",
+          versao: "20261243000000",
         },
         // 14/10/2026: a venda repetida do balcão (trava pela chave de idempotência).
         {
