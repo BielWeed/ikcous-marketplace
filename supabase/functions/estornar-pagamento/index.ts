@@ -63,6 +63,7 @@ import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts"
 import {
     aplicarDiagnosticoDoPost,
     autorizacaoPeloBanco,
+    cicloSemEnvioPorPrevoo,
     type AutorizacaoDoPost,
     type DiagnosticoDoPost,
     // A1 (15/10/2026): o MESMO teto que o robô usa para travar a linha.
@@ -109,7 +110,7 @@ export type ResultadoEstorno =
     | { tipo: 'em_processamento'; mp_refund_id: string | null; mp_status: string; diagnostico?: DiagnosticoDoPost }
     | { tipo: 'falhou'; motivo: string; codigo: string; diagnostico?: DiagnosticoDoPost }
     | { tipo: 'recusado'; motivo: string }
-    | { tipo: 'tentar_depois'; motivo: string; retryAfterS?: number; diagnostico?: DiagnosticoDoPost }
+    | { tipo: 'tentar_depois'; motivo: string; retryAfterS?: number; diagnostico?: DiagnosticoDoPost; semEnvioPorPrevoo?: true }
 
 export type ExecutorEstorno = (args: {
     linha: LinhaEstorno
@@ -519,6 +520,21 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                 .eq('id', refundId)
                 .in('status', ['em_processamento'])
             if (erroAdio) console.error('[estornar-pagamento] Falha ao gravar o adiamento (suave):', erroAdio)
+            // P1 do Codex no #888: o clique parou só na consulta antes do
+            // reenvio (nada saiu) — a marca deste clique não conta. Volta
+            // `tentativas` ao valor lido, CONDICIONADO ao que a marca gravou
+            // (outro executor no meio = 0 linhas, nada desfeito). Sem isso,
+            // cliques com o MP confuso levavam a linha à trava sem envio nenhum.
+            if (cicloSemEnvioPorPrevoo(resultado as any)) {
+                const tentativaAnterior = Number(linha.tentativas ?? 0)
+                const { error: erroDesfazer } = await supabase
+                    .from('order_refunds')
+                    .update({ tentativas: tentativaAnterior })
+                    .eq('id', refundId)
+                    .in('status', ['em_processamento'])
+                    .eq('tentativas', tentativaAnterior + 1)
+                if (erroDesfazer) console.error('[estornar-pagamento] Falha ao desfazer a tentativa sem envio (suave):', erroDesfazer)
+            }
             return json({ status: 'em_processamento', texto: TEXTO_EM_PROCESSAMENTO }, 202)
         }
 

@@ -106,6 +106,7 @@ import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import {
   aplicarDiagnosticoDoPost,
   autorizacaoPeloBanco,
+  cicloSemEnvioPorPrevoo,
   confirmarPorConsulta,
   consultarReembolsoDoPedido,
   consultarTransacaoDaOrder,
@@ -268,6 +269,30 @@ async function gravarDesfechoDoEstorno(
     console.error("reconciliar-pagamentos: falha ao gravar o desfecho terminal do estorno", refundId, error);
   }
   return "falhou";
+}
+
+/**
+ * P1 do Codex no #888 (15/10/2026): o ciclo terminou só pela consulta antes do
+ * reenvio (nada saiu) — a tentativa marcada para ele não conta. Volta
+ * `tentativas` ao valor de antes da marca, CONDICIONADO ao valor que este ciclo
+ * gravou: se outro executor mexeu no meio, 0 linhas e nada é desfeito. Falha
+ * aqui só loga — o pior caso é o de antes (a tentativa conta), nunca um POST.
+ */
+async function desfazerTentativaSemEnvio(
+  supabase: ReturnType<typeof createClient>,
+  refundId: string,
+  tentativaMarcada: number,
+  tentativaAnterior: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("order_refunds")
+    .update({ tentativas: tentativaAnterior })
+    .eq("id", refundId)
+    .in("status", ["em_processamento"])
+    .eq("tentativas", tentativaMarcada);
+  if (error) {
+    console.error("reconciliar-pagamentos: falha ao desfazer a tentativa de um ciclo sem envio", refundId, error);
+  }
 }
 
 const json = (corpo: unknown, status = 200) =>
@@ -1125,6 +1150,9 @@ async function handler(
             resultado,
             linha.tentativas,
           );
+          if (cicloSemEnvioPorPrevoo(resultado)) {
+            await desfazerTentativaSemEnvio(supabase, String(refund.id), linha.tentativas, Number(refund.tentativas ?? 0));
+          }
           if (desfecho === "concluido") refundsConcluidos++;
           else if (desfecho === "adiado") refundsAdiados++;
           else refundsFalhos++;
@@ -1260,6 +1288,11 @@ async function handler(
           resultadoRetry,
           tentativasAtuais + 1,
         );
+        // P1 do Codex no #888: ciclo que parou só na consulta antes do
+        // reenvio não gasta tentativa (senão a linha trava sem envio nenhum).
+        if (cicloSemEnvioPorPrevoo(resultadoRetry)) {
+          await desfazerTentativaSemEnvio(supabase, String(refund.id), tentativasAtuais + 1, tentativasAtuais);
+        }
         if (desfechoRetry === "concluido") refundsConcluidos++;
         else if (desfechoRetry === "adiado") refundsAdiados++;
         else refundsFalhos++;

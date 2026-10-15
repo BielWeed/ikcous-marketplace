@@ -84,7 +84,16 @@ export type ResultadoEstorno =
   // Guarda recusou ANTES de qualquer chamada ao MP: nada foi gasto.
   | { tipo: "recusado"; motivo: string }
   // 429/5xx/rede/resposta não reconhecida: o cron re-tenta com a MESMA chave.
-  | { tipo: "tentar_depois"; motivo: string; retryAfterS?: number; diagnostico?: DiagnosticoDoPost };
+  // `semEnvioPorPrevoo` (P1 do Codex no #888): o ÚNICO desfecho do ciclo foi a
+  // consulta antes do reenvio sem resposta clara — nada foi enviado e a
+  // tentativa marcada para este ciclo NÃO deve contar (ver `conferirAntesDoReenvio`).
+  | {
+    tipo: "tentar_depois";
+    motivo: string;
+    retryAfterS?: number;
+    diagnostico?: DiagnosticoDoPost;
+    semEnvioPorPrevoo?: true;
+  };
 
 /**
  * O que o POST de refund de UMA linha deixou para o diagnóstico (tabela
@@ -1863,14 +1872,30 @@ async function conferirAntesDoReenvio(args: {
     consulta = { resultado: "indeterminado", motivo: "a consulta lançou" };
   }
   if (consulta.resultado === "nao_achou") return null;
+  // P1 do Codex no #888: daqui para baixo o ciclo termina SÓ por causa da
+  // consulta (nada saiu, nada foi perguntado ao banco) — `semEnvioPorPrevoo`
+  // avisa os chamadores para não contarem a tentativa deste ciclo. Sem isso,
+  // quatro ciclos de MP confuso levavam a linha ao teto sem envio nenhum, e o
+  // ramo travado do robô nunca mais a devolvia ao executor. Consultar para
+  // sempre sem contar é inofensivo (só GET). A lista de ids ausente (acima) NÃO
+  // leva o sinal: é defeito do chamador, não resposta do MP, e deve travar.
   if (consulta.resultado === "achou") {
     const confirmacao = await confirmarPorConsulta({ buscar, token, linha, pedido, idsJaReivindicados });
     if (confirmacao.tipo === "concluido") return confirmacao;
     console.error("estorno: o MP mostra o reembolso desta linha, mas a confirmação não fechou — nada enviado", linha.id);
-    return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_JA_NO_MP };
+    return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_JA_NO_MP, semEnvioPorPrevoo: true };
   }
   console.error("estorno: consulta antes do reenvio sem resposta clara — nada enviado", linha.id, consulta.motivo);
-  return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_SEM_CONSULTA };
+  return { tipo: "tentar_depois", motivo: MOTIVO_REENVIO_SEM_CONSULTA, semEnvioPorPrevoo: true };
+}
+
+/**
+ * P1 do Codex no #888: o ciclo terminou só pela consulta antes do reenvio (nada
+ * saiu)? Os chamadores (clique e robô) desfazem então a marca de `tentativas`
+ * deste ciclo, com UPDATE condicionado ao valor que eles mesmos gravaram.
+ */
+export function cicloSemEnvioPorPrevoo(resultado: ResultadoEstorno): boolean {
+  return resultado.tipo === "tentar_depois" && resultado.semEnvioPorPrevoo === true;
 }
 
 /**

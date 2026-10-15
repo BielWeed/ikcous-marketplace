@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  cicloSemEnvioPorPrevoo,
   consultarReembolsoDoPedido,
   executarEstorno,
   linhaJaTeveEnvio,
@@ -368,6 +369,48 @@ Deno.test("B1-h - consultarReembolsoDoPedido SEM idProprio (os outros chamadores
     idsJaReivindicados: [],
   });
   assertEquals(consulta, { resultado: "nao_achou" });
+});
+
+// ---------------------------------------------------------------------------
+// P1 do Codex no #888: o sinal `semEnvioPorPrevoo` — só quando o ciclo parou
+// na consulta antes do reenvio (para os chamadores não contarem a tentativa).
+// ---------------------------------------------------------------------------
+
+Deno.test("SINAL-1 - pré-voo indeterminado ou 'achou' sem fechar: tentar_depois COM semEnvioPorPrevoo", async () => {
+  const indeterminado = await executar(linhaReenviada(), mpGuardiao([{ status: 500, corpo: {} }], { postProibido: true }).f);
+  assertEquals(cicloSemEnvioPorPrevoo(indeterminado), true);
+  const achouSemFechar = await executar(
+    linhaReenviada(),
+    mpGuardiao([{ status: 200, corpo: CONSULTA_ACHOU }, { status: 500, corpo: {} }], { postProibido: true }).f,
+  );
+  assertEquals(cicloSemEnvioPorPrevoo(achouSemFechar), true);
+});
+
+Deno.test("SINAL-2 - o resto NÃO leva o sinal: POST que falhou, autorização indisponível depois do nao_achou, lista de ids ausente", async () => {
+  const postFalhou = await executar(
+    linhaReenviada(),
+    (_e, init) =>
+      Promise.resolve(
+        (init?.method ?? "GET").toUpperCase() === "POST"
+          ? new Response("{}", { status: 500 })
+          : new Response(JSON.stringify(CONSULTA_NAO_ACHOU), { status: 200 }),
+      ),
+  );
+  assertEquals(postFalhou.tipo, "tentar_depois");
+  assertEquals(cicloSemEnvioPorPrevoo(postFalhou), false);
+  const semAutorizacao = await executar(
+    linhaReenviada(),
+    mpGuardiao([{ status: 200, corpo: CONSULTA_NAO_ACHOU }], { postProibido: true }).f,
+    { autorizarAntesDoPost: () => Promise.resolve({ decisao: "indisponivel" }) },
+  );
+  assertEquals(semAutorizacao.tipo, "tentar_depois");
+  assertEquals(cicloSemEnvioPorPrevoo(semAutorizacao), false);
+  const semLista = await executar(
+    linhaReenviada(),
+    mpGuardiao([{ status: 200, corpo: CONSULTA_NAO_ACHOU }], { postProibido: true }).f,
+    { idsJaReivindicados: undefined },
+  );
+  assertEquals(cicloSemEnvioPorPrevoo(semLista), false);
 });
 
 // ---------------------------------------------------------------------------

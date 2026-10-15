@@ -152,6 +152,7 @@ function clienteFalso(opts: {
     id: string,
     valores: Record<string, unknown>,
     statusFiltro: string[],
+    filtroEq?: [string, unknown],
   ) => { data: unknown; error: unknown };
   aoConcluirEstorno?: (args: Record<string, unknown>) => void;
   erroConcluirEstorno?: unknown;
@@ -366,26 +367,30 @@ function clienteFalso(opts: {
               eq(_coluna: string, id: string) {
                 return {
                   in(_coluna2: string, statusFiltro: string[]) {
-                    const executar = async (filtroIs?: [string, unknown]) => {
+                    const executar = async (filtroIs?: [string, unknown], filtroEq?: [string, unknown]) => {
                       if (valores.status === "falhou" || valores.status === "recusado") {
                         opts.registro.ordemDeGravacao?.push("final");
                       }
-                      opts.registro.atualizacoesOrderRefunds?.push(
-                        filtroIs ? { id, valores, statusFiltro, filtroIs } : { id, valores, statusFiltro },
-                      );
+                      const registroDaEscrita: Record<string, unknown> = { id, valores, statusFiltro };
+                      if (filtroIs) registroDaEscrita.filtroIs = filtroIs;
+                      if (filtroEq) registroDaEscrita.filtroEq = filtroEq;
+                      opts.registro.atualizacoesOrderRefunds?.push(registroDaEscrita as never);
                       if (opts.atualizarOrderRefunds) {
-                        return opts.atualizarOrderRefunds(id, valores, statusFiltro);
+                        return opts.atualizarOrderRefunds(id, valores, statusFiltro, filtroEq);
                       }
                       return { data: [{ id }], error: null };
                     };
-                    const encadeavel = (filtroIs?: [string, unknown]) => ({
+                    const encadeavel = (filtroIs?: [string, unknown], filtroEq?: [string, unknown]) => ({
                       // R1: `.is("post_autorizado_em", null)` no recusado.
-                      is: (coluna: string, valor: unknown) => encadeavel([coluna, valor]),
-                      select: () => executar(filtroIs),
+                      is: (coluna: string, valor: unknown) => encadeavel([coluna, valor], filtroEq),
+                      // P1 do Codex no #888: `.eq("tentativas", marca)` no
+                      // desfazer da tentativa de um ciclo sem envio.
+                      eq: (coluna: string, valor: unknown) => encadeavel(filtroIs, [coluna, valor]),
+                      select: () => executar(filtroIs, filtroEq),
                       then: (
                         res: (v: { data: unknown; error: unknown }) => void,
                         rej?: (e: unknown) => void,
-                      ) => executar(filtroIs).then(res, rej),
+                      ) => executar(filtroIs, filtroEq).then(res, rej),
                     });
                     return encadeavel();
                   },
@@ -1634,6 +1639,110 @@ Deno.test("R3e (A1, controle) - robô: linha NOVA (solicitado, tentativas 0) env
   assertEquals(mp.chamadas[0].chave, "rr1");
   assertEquals(corpo.estornos.concluidos, 1);
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});
+
+// ── P1 do Codex no #888 (15/10/2026): o pré-voo inconclusivo (consulta antes do
+// reenvio sem resposta clara) NÃO pode gastar tentativa. Sem isso, uma linha com
+// tentativas 1 cujo 1º ciclo parou ANTES do POST chega ao teto (5) em quatro
+// ciclos de MP confuso, sem nenhum envio, e fica presa para sempre — o ramo
+// travado nunca reentra no executor, mesmo quando o MP volta a responder.
+// Simulação COM ESTADO (a linha guarda tentativas, status e carimbo entre os
+// ciclos; o UPDATE condicionado a `.eq("tentativas", n)` só pega se bater).
+
+type CicloDoPrevoo = "inconclusivo" | "nao_achou" | "nao_achou_post_500";
+
+async function ciclosDoPrevoo(ciclos: CicloDoPrevoo[]) {
+  const pedido = pedidoFrescoPara({ total: 200, valor_estornado: 0 });
+  const linha: Record<string, unknown> = {
+    status: "em_processamento",
+    // O 1º ciclo marcou e parou ANTES do POST (GET da transação caiu): sem carimbo.
+    tentativas: 1,
+    post_autorizado_em: null,
+  };
+  const historico: string[] = [];
+  const violacoes: string[] = [];
+  let posts = 0;
+  for (const ciclo of ciclos) {
+    if (linha.status !== "em_processamento") {
+      historico.push(String(linha.status));
+      continue;
+    }
+    const supabase = clienteFalso({
+      candidatos: [],
+      registro: registroDoReenvio(),
+      refundsPendentes: [{
+        id: "rp1",
+        order_id: pedido.id,
+        amount: 20,
+        status: linha.status,
+        tentativas: linha.tentativas,
+        criada_sob_autorizacao: true,
+        post_autorizado_em: linha.post_autorizado_em,
+        mp_refund_id: null,
+      }],
+      resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+      atualizarOrderRefunds: (_id, valores, statusFiltro, filtroEq) => {
+        if (!statusFiltro.includes(String(linha.status))) return { data: [], error: null };
+        if (filtroEq && linha[filtroEq[0]] !== filtroEq[1]) return { data: [], error: null };
+        if (typeof valores.tentativas === "number") linha.tentativas = valores.tentativas;
+        if (typeof valores.status === "string") linha.status = valores.status;
+        return { data: [{ id: "rp1" }], error: null };
+      },
+      // O banco carimba o POST que autoriza (20261196000000).
+      autorizarPost: () => {
+        linha.post_autorizado_em = "2026-10-15T10:00:00.000Z";
+        return { data: { decisao: "autorizado", pedido }, error: null };
+      },
+      aoConcluirEstorno: () => {
+        linha.status = "concluido";
+      },
+    });
+    const f = (entrada: string | URL | Request, init?: RequestInit) => {
+      const url = typeof entrada === "string" ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+      const metodo = (init?.method ?? "GET").toUpperCase();
+      if (metodo === "POST") {
+        posts++;
+        if (ciclo === "inconclusivo") violacoes.push(url);
+        return Promise.resolve(
+          ciclo === "nao_achou_post_500"
+            ? new Response("{}", { status: 500 })
+            : new Response(JSON.stringify({ id: 9999, status: "approved", amount: 20 }), { status: 201 }),
+        );
+      }
+      const corpo = ciclo === "inconclusivo" ? PAGAMENTO_SEM_ACUMULADO : PAGAMENTO_SEM_REEMBOLSO;
+      return Promise.resolve(new Response(JSON.stringify(corpo), { status: 200 }));
+    };
+    await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: f });
+    historico.push(`${linha.status}/t${linha.tentativas}`);
+  }
+  return { linha, historico, violacoes, posts: () => posts };
+}
+
+Deno.test("PREVOO-1 (P1 Codex) - linha com tentativas 1 sem carimbo, 8 ciclos de pré-voo inconclusivo: ZERO POST e o contador NÃO anda (nunca chega ao teto)", async () => {
+  const r = await ciclosDoPrevoo(Array(8).fill("inconclusivo"));
+  assertEquals(r.violacoes, [], "nenhum POST com a consulta sem resposta clara");
+  assertEquals(r.historico, Array(8).fill("em_processamento/t1"));
+});
+
+Deno.test("PREVOO-2 (P1 Codex) - depois de 4 pré-voos inconclusivos, o MP prova que nada voltou: 1 POST sai e a devolução conclui", async () => {
+  const r = await ciclosDoPrevoo(["inconclusivo", "inconclusivo", "inconclusivo", "inconclusivo", "nao_achou"]);
+  assertEquals(r.violacoes, []);
+  assertEquals(r.posts(), 1);
+  assertEquals(r.linha.status, "concluido");
+});
+
+Deno.test("PREVOO-3 (controle) - linha cujo POST de verdade sai e falha (500) continua contando: trava em 5 e para de enviar", async () => {
+  const r = await ciclosDoPrevoo(Array(7).fill("nao_achou_post_500"));
+  assertEquals(r.historico, [
+    "em_processamento/t2",
+    "em_processamento/t3",
+    "em_processamento/t4",
+    "em_processamento/t5",
+    "em_processamento/t5",
+    "em_processamento/t5",
+    "em_processamento/t5",
+  ]);
+  assertEquals(r.posts(), 4, "um POST por ciclo até o teto; depois só consulta");
 });
 
 Deno.test("R4 - tentativas=5 -> continua em_processamento (saldo reservado), SEM novo POST, ultimo_erro com o texto do teto (D2/BLOQUEIA-2)", async () => {
@@ -3906,8 +4015,12 @@ async function simularCiclos(ciclos: CicloDoMp[]) {
 
 Deno.test("CICLOS-1 - a consulta cai no ciclo 4 e 'sem saldo' nos outros: tentativas (5) passam as recusas (4) e mesmo assim a linha vira falhou — não fica presa em_processamento", async () => {
   const r = await simularCiclos(["sem_saldo", "sem_saldo", "sem_saldo", "consulta_cai", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo"]);
-  // ciclo 5: 5 tentativas e só 4 recusas; no ciclo 6 o robô só consulta — e decide.
-  assertEquals(r.historico[4], "em_processamento/t5/r4");
+  // P1 do Codex no #888 (15/10/2026): a consulta que cai no ciclo 4 é o
+  // pré-voo do reenvio — ciclo sem envio, NÃO gasta tentativa. Os dois
+  // contadores seguem juntos (t4/r4 no ciclo 5) e a 5ª recusa vira falhou.
+  // O descasamento por um ciclo sem POST que CONTA está em CICLOS-6.
+  assertEquals(r.historico[3], "em_processamento/t3/r3");
+  assertEquals(r.historico[4], "em_processamento/t4/r4");
   assertEquals(r.linha.status, "falhou");
   assertEquals(r.historico[5].startsWith("falhou"), true);
 });
@@ -3940,10 +4053,14 @@ Deno.test("CICLOS-5 - o saldo ENTRA no ciclo 5 (POST 201, reembolso desta linha 
 });
 
 Deno.test("CICLOS-6 - na linha travada, consulta que FALHA (500) continua em consulta; no ciclo seguinte, com o MP legível e sem reembolso, vira falhou", async () => {
+  // P1 do Codex no #888: o descasamento vem do 1º ciclo — a consulta da
+  // TRANSAÇÃO cai antes de qualquer POST (linha nova, sem pré-voo), e esse ciclo
+  // CONTA. Quatro "sem saldo" depois, a linha está travada com t5/r4.
   const r = await simularCiclos([
-    "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo", "consulta_cai",
+    "consulta_cai", "sem_saldo", "sem_saldo", "sem_saldo", "sem_saldo",
     "consulta_cai", "sem_saldo",
   ]);
+  assertEquals(r.historico[0], "em_processamento/t1/r0");
   assertEquals(r.historico[4], "em_processamento/t5/r4");
   assertEquals(r.historico[5], "em_processamento/t5/r4");
   assertEquals(r.historico[6].startsWith("falhou"), true);

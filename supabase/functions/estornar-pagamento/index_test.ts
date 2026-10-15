@@ -1687,6 +1687,52 @@ Deno.test("A1-E4b (controle) - uma tentativa ABAIXO do teto ainda passa pela por
     assertEquals(mp.registro.chamadas.map((c) => c.metodo), ["GET", "POST"])
 })
 
+// P1 do Codex no #888: o clique que parou só na consulta antes do reenvio não
+// gasta tentativa — senão quatro cliques com o MP confuso levam a linha à
+// trava (409) sem envio nenhum.
+const LINHA_PAROU_ANTES_DO_POST = {
+    ...LINHA_SOLICITADA,
+    amount: 50,
+    status: "em_processamento",
+    tentativas: 1,
+    criada_sob_autorizacao: true,
+    post_autorizado_em: null,
+}
+
+const desfazimentos = (registro: any) =>
+    registro.atualizacoes.filter((u: any) => u.valores && "tentativas" in u.valores && !("status" in u.valores))
+
+Deno.test("A1-E6 (P1 Codex) - clique com pré-voo inconclusivo: ZERO POST e a marca deste clique é DESFEITA (tentativas volta a 1, condicionado ao 2 gravado)", async () => {
+    const mp = mpQueVigiaOPost([{ status: 500, corpo: {} }], { postProibido: true })
+    const { resposta, registro } = await cliqueComMp(LINHA_PAROU_ANTES_DO_POST, mp)
+    assertEquals(mp.registro.violacoes, [])
+    assertEquals(resposta.status, 202)
+    assertEquals(registro.marcas.length, 1)
+    assertEquals(registro.marcas[0].valores.tentativas, 2)
+    const d = desfazimentos(registro)
+    assertEquals(d.length, 1)
+    assertEquals(d[0].valores, { tentativas: 1 })
+    assertEquals(d[0].filtros.some((f: any) => f.metodo === "eq" && f.coluna === "tentativas" && f.valor === 2), true)
+    assertEquals(d[0].filtros.some((f: any) => f.metodo === "in" && f.valores.includes("em_processamento")), true)
+})
+
+Deno.test("A1-E7 (controle) - clique cujo POST de verdade sai e falha (500): a tentativa CONTA, nada é desfeito", async () => {
+    const registroMp = { chamadas: [] as string[] }
+    const buscar = ((_input: any, init?: any) => {
+        const metodo = String(init?.method ?? "GET").toUpperCase()
+        registroMp.chamadas.push(metodo)
+        return Promise.resolve(
+            metodo === "POST"
+                ? new Response("{}", { status: 500 })
+                : new Response(JSON.stringify(MP_SEM_REEMBOLSO), { status: 200 }),
+        )
+    }) as any
+    const { resposta, registro } = await cliqueComMp(LINHA_JA_ENVIADA, { buscar, registro: registroMp } as any)
+    assertEquals(resposta.status, 202)
+    assertEquals(registroMp.chamadas, ["GET", "POST"])
+    assertEquals(desfazimentos(registro).length, 0)
+})
+
 Deno.test("A1-E5 (controle) - linha NOVA (solicitado, tentativas 0): POST direto, ZERO GET — o primeiro envio não fica mais lento", async () => {
     const mp = mpQueVigiaOPost([{ status: 500, corpo: {} }], { postProibido: false })
     const { resposta } = await cliqueComMp({ ...LINHA_SOLICITADA, amount: 50 }, mp)
