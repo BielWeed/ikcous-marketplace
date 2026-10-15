@@ -543,6 +543,18 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `35a-conferir-lucro-so-com-custo-aplicado` (DEPOIS, 6 linhas) e `35b-antes-lucro-so-com-custo-corpo-vigente` (ANTES, 5
   linhas) do lote `20261234000000`. Rol exato nos estados (depois, antes, corpo da 99), um negativo por linha, mutantes
   do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **a venda repetida do balcão devolve a venda feita (`venda-balcao-mesma-chave-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261235000000` (`registrar_venda_presencial`, a RPC do PDV: trava consultiva pela chave de idempotência
+  antes de conferir a chave), com **duas conexões reais** num Postgres efêmero. A repetição da MESMA chave que chega
+  antes de a primeira commitar espera a primeira e devolve `ja_existia` com o MESMO pedido (nunca "Estoque
+  insuficiente" por causa da última unidade que a própria venda levou); o CONTROLE com o corpo antigo reproduz o defeito;
+  estoque sobrando, chaves diferentes, venda sem chave, outro balconista e outro canal (23505), permissão e o gate antes
+  da trava, rollback com o md5 da 20261199, pré-voo que recusa sem escrever e mutantes. **Não prova** a IKCOUS nem a Savy.
+- **portão da venda repetida do balcão (`venda-balcao-mesma-chave-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `36a-conferir-venda-repetida-do-balcao-aplicado` (DEPOIS, 6 linhas) e
+  `36b-antes-venda-repetida-do-balcao-corpo-vigente` (ANTES, 5 linhas; **não mede a ACL**, que é da 36a) do lote
+  `20261235000000`. Rol exato nos estados (depois, antes), um negativo por linha, mutantes do texto das consultas,
+  veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
 - **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
   RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`) avisa "Pedido pronto para retirar" e
@@ -569,7 +581,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   desfeita, para provar grants/RLS/view — o admin grava
   `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
 - **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
-  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261234) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261234, 20261235) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
   reprova se aparecer uma sucessora que não esteja na lista.
 - **função nova não nasce aberta (`portas-do-visitante-so-as-permitidas-viva.cjs`, via `rodar-isolado.cjs`)**: L8 da
   auditoria de 12/10, sem migration. Com todas as migrations aplicadas, toda função de `public` que anon,

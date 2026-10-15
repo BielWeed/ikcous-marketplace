@@ -1798,6 +1798,30 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql": [
+    {
+      // A venda repetida do balcão devolve a venda feita (14/10/2026): registrar_venda_presencial toma uma trava
+      // consultiva pela chave de idempotência ANTES de conferir a chave (a repetição que chega antes de a primeira
+      // commitar espera a primeira e devolve `ja_existia` com o MESMO pedido, em vez de "Estoque insuficiente"
+      // quando a primeira levou a última unidade). Sem esta entrada a migration saía PULADA. Os marcadores contam
+      // no corpo VIVO (comentários incluídos): a trava pela chave, as duas travas de admin (is_admin e
+      // is_admin_atual, 20261199000000) e a resposta idempotente seguem UMA vez cada.
+      funcao: "registrar_venda_presencial",
+      esperado: [
+        {
+          texto:
+            "hashtextextended('venda_presencial:' || p_idempotency_key::text, 0)",
+          vezes: 1,
+        },
+        { texto: "IF public.is_admin() IS DISTINCT FROM true THEN", vezes: 1 },
+        {
+          texto: "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+          vezes: 1,
+        },
+        { texto: "'ja_existia', v_ja_existia,", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

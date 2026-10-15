@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 34a, 34b, 35a, 35b, 36a, 36b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1813,6 +1813,31 @@ const ROL_DA_35B = [
   "get_admin_analytics_v2: o corpo ainda NAO conta os produtos sem custo",
   "get_admin_analytics_v2: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)",
 ];
+/** O rol da 36a (a prova de objetos da migration 20261235000000, a venda repetida do balcao devolve a venda feita: a RPC do PDV
+ * `registrar_venda_presencial` toma uma trava consultiva pela chave de idempotencia antes de conferir a chave): as 6 linhas que
+ * scripts/publicacao/consultas/36a-conferir-venda-repetida-do-balcao-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer
+ * estado do banco (funcao ausente vira `AUSENTE` na propria linha): o controle, UMA so funcao, o corpo vivo e o NOVO (md5), ele toma
+ * a trava pela chave, os atributos de sempre e o EXECUTE so para authenticated (PUBLIC, anon e service_role sem).
+ * tests/banco/venda-balcao-mesma-chave-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_36A = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_venda_presencial: sobrecargas",
+  "registrar_venda_presencial: corpo e o da 20261235000000, com a trava pela chave (md5)",
+  "registrar_venda_presencial: o corpo toma a trava consultiva pela chave de idempotencia",
+  "registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)",
+  "registrar_venda_presencial: EXECUTE so para authenticated (PUBLIC, anon e service_role sem)",
+];
+/** O rol da 36b (a consulta de AUSENCIA do lote da venda repetida do balcao; `ausenciaConfirmadaPor`): as 5 linhas que
+ * scripts/publicacao/consultas/36b-antes-venda-repetida-do-balcao-corpo-vigente.sql devolve - a base de antes: a funcao com o corpo
+ * da 20261199000000 (md5), sem a trava pela chave, com os atributos de sempre. NAO mede a ACL (o pre-voo da migration a confere).
+ * Uma loja que ja tem o corpo novo (ou num corpo que ninguem mediu) reprova aqui de proposito, nas linhas do corpo e do marcador. */
+const ROL_DA_36B = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_venda_presencial: sobrecargas",
+  "registrar_venda_presencial: corpo e o da 20261199000000, sem a trava pela chave (md5)",
+  "registrar_venda_presencial: o corpo ainda NAO toma a trava pela chave de idempotencia",
+  "registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)",
+];
 /** O rol da 34a (a prova de objetos da migration 20261233000000, o sino do pedido de retirada fala de retirada): as 7 linhas que
  * scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado do
  * banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de notifica_cliente_de_mudanca_de_status e o NOVO (md5), ele traz
@@ -1893,6 +1918,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "34b-antes-sino-da-retirada-corpo-vigente": ROL_DA_34B,
   "35a-conferir-lucro-so-com-custo-aplicado": ROL_DA_35A,
   "35b-antes-lucro-so-com-custo-corpo-vigente": ROL_DA_35B,
+  "36a-conferir-venda-repetida-do-balcao-aplicado": ROL_DA_36A,
+  "36b-antes-venda-repetida-do-balcao-corpo-vigente": ROL_DA_36B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2485,6 +2512,8 @@ module.exports = {
   ROL_DA_34B,
   ROL_DA_35A,
   ROL_DA_35B,
+  ROL_DA_36A,
+  ROL_DA_36B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

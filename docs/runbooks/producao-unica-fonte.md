@@ -1309,6 +1309,59 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
 
+  36. **Lote de UMA migration, de apply normal: `20261235000000` (a venda repetida do balcao devolve a venda
+      feita; DINHEIRO E ESTOQUE, nao muda dado).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy). Troca o corpo de `registrar_venda_presencial` (a RPC do PDV) por
+      `CREATE OR REPLACE`, com o corpo da `20261199000000` mais UMA trava, sem tocar assinatura, `SECURITY
+      DEFINER`, volatilidade, `search_path`, dono, comentario, ACL nem nenhuma resposta:
+      - **O defeito:** a chave de idempotencia existe para a retentativa honesta (a rede cai, o balconista nao ve
+        a confirmacao e toca "finalizar" de novo com a MESMA chave) receber o pedido que JA nasceu
+        (`ja_existia = true`). A conferencia da chave era feita ANTES de qualquer trava: a repeticao que chegava
+        antes de a primeira commitar nao achava nada, parava na trava de linha do estoque e, se a primeira levou a
+        ULTIMA unidade, recebia "Estoque insuficiente" de uma venda que existe (a venda feita e o estoque baixado
+        ficam; so a resposta mente, e o balconista tende a devolver o dinheiro de uma venda feita). Com estoque
+        sobrando a repeticao ja caia no indice unico e devolvia `ja_existia`: o defeito so aparece na ultima
+        unidade.
+      - **A correcao:** `pg_advisory_xact_lock` sobre `hashtextextended('venda_presencial:' || chave, 0)`, tomada
+        DEPOIS dos dois gates de admin e da checagem de sessao e ANTES de conferir a chave. A segunda chamada com a
+        mesma chave ESPERA a primeira terminar e devolve `ja_existia` com o MESMO pedido, sem ler estoque; se a
+        primeira desfez, a segunda segue como venda nova. Venda SEM chave nao toma trava; chaves DIFERENTES nao se
+        serializam; a trava consultiva e a PRIMEIRA que a funcao toma (as de linha vem depois, na ordem de
+        sempre): nenhum ciclo de espera novo.
+      - Quem quebra: ninguem (nenhuma assinatura muda; o PDV, `useVendaPresencial`, ja trata `ja_existia`).
+        Nenhuma edge function e nenhum front mudam. Duas consultas, so leitura, so catalogo, de ROL FECHADO (6 e 5
+        linhas, so valem com `rol=ok`):
+        - **`36a-conferir-venda-repetida-do-balcao-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo
+          novo (md5), a trava pela chave no corpo, os atributos de sempre e o `EXECUTE` so para `authenticated`
+          (PUBLIC, anon e service_role sem).
+        - **`36b-antes-venda-repetida-do-balcao-corpo-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo
+          da `20261199000000`, sem a trava, com os atributos de sempre. **Nao mede a ACL** (o pre-voo da migration
+          a confere). O md5 vem do arquivo da migration, nao de uma loja: **rode a `36b` em CADA loja ANTES do
+          apply**; corpo diferente e loja que ninguem mediu (a migration tambem recusa, `B1_BASELINE_DIVERGENT`).
+      - **Medir antes:** nao ha `36m`. O lote muda concorrencia, nao o que a lojista le, e nenhuma contagem de loja
+        diz com que frequencia a repeticao cai na ultima unidade.
+      - **Caminho, uma loja por vez:** `36a` (sai NEGATIVA) -> `36b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `36a` DE NOVO, que tem de sair POSITIVA. `36a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **A cadeia das sucessoras:** `registrar_venda_presencial` passa a ser `20261199000000` ->
+        `20261235000000`. A `8e` (lote 92-202) aceita o corpo novo ao lado do da `20261199000000`; a `9a` (lote
+        60-66, igualdade exata) passa a fixar o corpo novo e **so e POSITIVA depois deste apply**: o backfill do
+        ledger 60-66 que ela guarda espera por ele. Rodar a `8e` e a `9a` DE NOVO depois do apply.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql` (recria o corpo da
+        `20261199000000`, mesmo md5, sem tocar a ACL nem o comentario, com pre-voo proprio; rodar duas vezes deixa o
+        mesmo estado; NAO apaga nenhuma venda). Com ele **volta o defeito**. Depois dele a `36b` volta a ser
+        POSITIVA e a `36a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `9a`, a
+        `36a` e a `36b` DE NOVO.
+      - **Limites:** `tests/banco/venda-balcao-mesma-chave-viva.cjs` prova o comportamento com DUAS conexoes reais
+        (a corrida na ultima unidade, estoque sobrando, chaves diferentes e venda sem chave que nao se serializam,
+        outro balconista e outro canal, permissao e gate antes da trava, controle com o corpo antigo que reproduz
+        o defeito, rollback, pre-voo que recusa sem escrever, mutantes) e
+        `tests/banco/venda-balcao-mesma-chave-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
+        delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
