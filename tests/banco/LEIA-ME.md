@@ -689,6 +689,11 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   nos dois sentidos**: a devolução que chega primeiro (o desfazer espera a trava do pedido e recusa) e o desfazer que
   chega primeiro (a devolução espera e vê o pagamento vazio). CONTROLE com o corpo antigo (a venda some do Financeiro),
   rollback com o md5 da 20261197000000, pré-voo que recusa sem escrever e nove mutantes. **Não prova** a IKCOUS nem a Savy.
+- **portão do desfazer o recebimento (`desfazer-recebimento-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `46a-conferir-desfazer-recebimento-aplicado` (DEPOIS, 6 linhas) e `46b-antes-desfazer-recebimento-base-vigente` (ANTES,
+  6 linhas) do lote `20261243000000` (só o corpo de `registrar_pagamento_recebido`; não há medição 46m). Rol exato nos dois
+  estados, 13 negativos da 46a e 9 da 46b, seis mutantes do texto das consultas, e a `8e` POSITIVA com o corpo novo no ar e
+  desfeito. **Não prova** a IKCOUS nem a Savy.
 - **as provas que DESFAZEM corpos redefinidos pela `20261243000000`** (`pagamentos-rpc` e `admin-atual`: o rollback da 95 e da
   97 e a reaplicação da 97 partem do corpo de `registrar_pagamento_recebido` que a 97 deixa) a desfazem ANTES, na transação,
   por `desfazer-recebimento-posterior.cjs` (só se no ar): o pré-voo de cada rollback mais velho a recusa.

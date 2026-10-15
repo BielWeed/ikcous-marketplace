@@ -185,6 +185,8 @@ on:
           - 45a-conferir-custo-do-dia-aplicado
           - 45b-antes-custo-do-dia-base-vigente
           - 45m-medir-itens-sem-custo-do-dia
+          - 46a-conferir-desfazer-recebimento-aplicado
+          - 46b-antes-desfazer-recebimento-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

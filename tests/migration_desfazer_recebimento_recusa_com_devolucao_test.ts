@@ -373,3 +373,222 @@ Deno.test("as consultas e as provas vivas que fixam o corpo da 20261197000000 co
     ),
   );
 });
+
+// ---------------------------------------------------------------------------
+// O PORTÃO DA RELEASE (consultas 46a/46b, db-apply, canais-de-backend): o que se prova só lendo o texto.
+// O que as consultas DECIDEM (um negativo por linha, mutantes, o portão) é de
+// tests/banco/desfazer-recebimento-portao-viva.cjs; o que o lote declara para o portão (ordem, ledger, apply) é de
+// tests/frota_publicar_release_test.ts.
+// ---------------------------------------------------------------------------
+const CONF = require("../scripts/publicacao/conferir-banco.cjs");
+const A46 = "46a-conferir-desfazer-recebimento-aplicado";
+const B46 = "46b-antes-desfazer-recebimento-base-vigente";
+const consulta = (n) => lerArquivo(`scripts/publicacao/consultas/${n}.sql`);
+
+Deno.test("46a/46b — no menu e no rpc-ci, rol fechado de 6 e 6 itens no código, UM statement só de leitura, e cada item do rol está no .sql", () => {
+  const yaml = lerArquivo(".github/workflows/conferir-banco-da-loja.yml");
+  const rpc = lerArquivo(".github/workflows/rpc-ci.yml");
+  for (const n of [A46, B46]) {
+    assert.ok(yaml.includes(`- ${n}\n`), `${n}: no menu`);
+    assert.equal(
+      rpc.split(`scripts/publicacao/consultas/${n}.sql`).length - 1,
+      2,
+      `${n}: nos dois gatilhos de path do rpc-ci`,
+    );
+    const sql = consulta(n);
+    assert.equal(CONF.contarStatements(sql), 1, `${n}: UM statement`);
+    const limpo = removerRuido(sql);
+    assert.ok(/^\s*WITH\b/i.test(limpo), `${n}: começa por WITH`);
+    assert.ok(
+      !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+        limpo.replace(/'(?:[^']|'')*'/g, "''"),
+      ),
+      `${n}: palavra de escrita`,
+    );
+    // só catálogo: nenhuma tabela de dado é lida
+    for (const tabela of [
+      "marketplace_orders",
+      "devolucoes",
+      "marketplace_order_payment_history",
+    ])
+      assert.ok(
+        !new RegExp(`\\b(FROM|JOIN)\\s+(public\\.)?${tabela}\\b`, "i").test(
+          limpo,
+        ),
+        `${n}: leu a tabela de dado ${tabela}`,
+      );
+  }
+  assert.equal(CONF.ROL_DA_46A.length, 6);
+  assert.equal(CONF.ROL_DA_46B.length, 6);
+  assert.equal(new Set(CONF.ROL_DA_46A).size, 6);
+  assert.equal(new Set(CONF.ROL_DA_46B).size, 6);
+  assert.equal(CONF.ROL_FECHADO_POR_CONSULTA[A46], CONF.ROL_DA_46A);
+  assert.equal(CONF.ROL_FECHADO_POR_CONSULTA[B46], CONF.ROL_DA_46B);
+  for (const [n, rol] of [
+    [A46, CONF.ROL_DA_46A],
+    [B46, CONF.ROL_DA_46B],
+  ])
+    for (const item of rol)
+      assert.ok(
+        consulta(n).includes(`'${item}'`),
+        `${n}: "${item}" fora do .sql`,
+      );
+  // ASCII só (a consulta viaja pela API de gerenciamento): a única exceção é o travessão do cabeçalho, como nas outras
+  for (const n of [A46, B46]) {
+    const fora = consulta(n)
+      .split("\n")
+      .slice(1)
+      .filter((l) => [...l].some((ch) => ch.charCodeAt(0) > 127));
+    assert.deepEqual(fora, [], `${n}: acento ou símbolo fora do cabeçalho`);
+  }
+});
+
+Deno.test("46a/46b — os md5 citados são os dos ARQUIVOS: a 46a o corpo desta migration, a 46b o da 20261197000000; nenhuma cita o do outro", () => {
+  const a = consulta(A46);
+  const b = consulta(B46);
+  assert.ok(a.includes(`'${HASH_NOVO}'`), "a 46a cita o corpo novo");
+  assert.ok(!a.includes(HASH_VIGENTE), "a 46a não cita o vigente");
+  assert.ok(b.includes(`'${HASH_VIGENTE}'`), "a 46b cita o vigente");
+  assert.ok(!b.includes(HASH_NOVO), "a 46b não cita o corpo novo");
+  // e o vigente da 46b é o md5 real do corpo que a 20261197000000 deixa
+  assert.equal(md5(corpo(antes)), HASH_VIGENTE);
+});
+
+Deno.test("46a — a frase e o critério que ela procura são os do corpo REAL, e a ordem da trava vale no corpo novo e NÃO vale no antigo", () => {
+  const a = consulta(A46);
+  const corpoNovo = corpo(depois);
+  // os três pedaços ASCII da frase estão no RAISE do corpo novo
+  for (const pedaco of [
+    "Este pedido tem devolu",
+    ", recuse ou cancele a devolu",
+    "antes de desfazer o recebimento",
+  ]) {
+    assert.ok(a.includes(`'${pedaco}'`), `a 46a procura "${pedaco}"`);
+    assert.ok(MENSAGEM.includes(pedaco), `"${pedaco}" é pedaço da mensagem`);
+    assert.ok(corpoNovo.includes(pedaco), `o corpo novo tem "${pedaco}"`);
+    assert.ok(
+      !corpo(antes).includes(pedaco),
+      `o corpo antigo não tem "${pedaco}"`,
+    );
+  }
+  // o critério que a 46a procura está, igual, no corpo novo
+  const criterio = "d.status NOT IN ('recusada', 'cancelada', 'reprovada')";
+  assert.ok(
+    a.includes(criterio.replace(/'/g, "''")),
+    "a 46a procura o critério",
+  );
+  assert.ok(corpoNovo.includes(criterio));
+  assert.ok(!corpo(antes).includes(criterio));
+  // a ordem: o `FOR UPDATE;` do SELECT (o do comentário não tem `;`) < a checagem < o UPDATE que desfaz
+  const pos = (t, s) => t.indexOf(s);
+  assert.ok(
+    pos(corpoNovo, "FOR UPDATE;") > 0 &&
+      pos(corpoNovo, "FOR UPDATE;") <
+        pos(corpoNovo, "FROM public.devolucoes d") &&
+      pos(corpoNovo, "FROM public.devolucoes d") <
+        pos(corpoNovo, "SET payment_status = NULL"),
+    "no corpo novo: trava, checagem, UPDATE",
+  );
+  assert.equal(
+    pos(corpo(antes), "FROM public.devolucoes d"),
+    -1,
+    "o corpo antigo não tem a checagem",
+  );
+  assert.ok(a.includes("position('FOR UPDATE;' IN f.prosrc)"));
+  assert.ok(a.includes("position('FROM public.devolucoes d' IN f.prosrc)"));
+  assert.ok(a.includes("position('SET payment_status = NULL' IN f.prosrc)"));
+});
+
+Deno.test("46a/46b — a ACL e os atributos que as consultas medem são os que o pré-voo e o pós-voo da migration exigem", () => {
+  for (const n of [A46, B46]) {
+    const c = consulta(n);
+    for (const trecho of [
+      "p.prosecdef",
+      "l.lanname = 'plpgsql'",
+      "p.provolatile = 'v'",
+      "p.pronargs = 2",
+      "ARRAY['search_path=public']::text[]",
+      "pg_get_function_result(p.oid) = 'jsonb'",
+      "a.grantee = 0 AND a.privilege_type = 'EXECUTE'",
+      "has_function_privilege('anon'",
+      "has_function_privilege('authenticated'",
+      "has_function_privilege('service_role'",
+      "'PUBLIC=nao anon=nao authenticated=sim service_role=sim'",
+    ])
+      assert.ok(c.includes(trecho), `${n}: falta ${trecho}`);
+  }
+  // o pré-voo da migration exige a MESMA ACL
+  assert.ok(
+    migration.includes(
+      "NOT has_function_privilege('authenticated', v_oid, 'EXECUTE')",
+    ),
+  );
+  assert.ok(
+    migration.includes(
+      "NOT has_function_privilege('service_role', v_oid, 'EXECUTE')",
+    ),
+  );
+  assert.ok(
+    migration.includes("has_function_privilege('anon', v_oid, 'EXECUTE')"),
+  );
+  // e as 14 colunas da 46b são as que o pré-voo e o corpo citam
+  const b = consulta(B46);
+  for (const col of [
+    "'id', 'status', 'payment_status', 'payment_method', 'pagamento_recebido_em', 'pagamento_recebido_por', 'updated_at'",
+    "'order_id', 'acao', 'payment_status_antes', 'payment_status_depois', 'created_by'",
+    "'order_id', 'status'",
+  ])
+    assert.ok(b.includes(col), `46b: falta a lista ${col}`);
+});
+
+Deno.test("db-apply.cjs — a migration TEM entrada em VERIFICACOES (sem ela o apply sai PULADA) e cada marcador aparece o número certo de vezes no corpo da migration", () => {
+  const { VERIFICACOES, conferirMarcador } = require("../scripts/db-apply.cjs");
+  const entrada = VERIFICACOES[NOME];
+  assert.ok(entrada, "a migration não tem entrada em VERIFICACOES");
+  const checagens = Array.isArray(entrada) ? entrada : [entrada];
+  assert.equal(checagens.length, 1);
+  assert.equal(checagens[0].funcao, "registrar_pagamento_recebido");
+  const definicao = depois;
+  assert.ok(checagens[0].esperado.length >= 6, "marcadores a menos");
+  for (const marcador of checagens[0].esperado) {
+    const r = conferirMarcador(definicao, marcador);
+    assert.ok(
+      r.ok,
+      `${JSON.stringify(marcador)}: ${r.achou}x (esperado ${r.esperado}x)`,
+    );
+  }
+  // e a frase e o critério da entrada são os do corpo (a entrada não pode ficar velha)
+  const textos = JSON.stringify(checagens[0].esperado);
+  assert.ok(textos.includes(MENSAGEM));
+  assert.ok(textos.includes("'recusada', 'cancelada', 'reprovada'"));
+  // o corpo ANTIGO reprovaria pelo menos o marcador da frase
+  const reprovados = checagens[0].esperado.filter(
+    (m) => !conferirMarcador(antes, m).ok,
+  );
+  assert.ok(
+    reprovados.length >= 3,
+    "o corpo antigo tinha de reprovar os marcadores novos",
+  );
+});
+
+Deno.test("canais-de-backend.json e runbook — o lote da 20261243000000 está registrado com a consulta, a ausência e a versão; o rollback e o front estão declarados", () => {
+  const canais = JSON.parse(lerArquivo("scripts/frota/canais-de-backend.json"));
+  const lote = canais.provasDeObjetos.find((p) => p.consulta === A46);
+  assert.ok(lote, "lote 46a ausente");
+  assert.deepEqual(lote.versoes, ["20261243000000"]);
+  assert.equal(lote.ausenciaConfirmadaPor, B46);
+  assert.equal(
+    canais.provasDeObjetos.filter((p) =>
+      (p.versoes ?? []).includes("20261243000000"),
+    ).length,
+    1,
+    "a versão está em UM lote só",
+  );
+  const rb = new URL(
+    `../supabase/migrations/rollback-manual-${NOME}`,
+    import.meta.url,
+  );
+  assert.ok(Deno.statSync(rb).isFile);
+  const release = lerArquivo("scripts/frota/publicar-release.mjs");
+  assert.ok(release.includes(`"${A46}",`) && release.includes(`"${B46}",`));
+});
