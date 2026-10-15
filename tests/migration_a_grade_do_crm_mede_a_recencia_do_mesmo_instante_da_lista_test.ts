@@ -100,7 +100,7 @@ Deno.test("o corpo vigente e' o da 20261227000000 (md5 conhecido) e o corpo novo
   const a = CORPO_VIGENTE.split("\n");
   const b = CORPO_NOVO.split("\n");
   assert.equal(a.length, b.length);
-  assert.equal(a.filter((l, i) => l !== b[i]).length, 1);
+  assert.equal(a.filter((l, i) => l !== b.at(i)).length, 1);
   // o que NAO pode ter mudado: o formato do JSON (as chaves) e as duas travas de admin
   for (const chave of [
     "'receita_anterior'",
