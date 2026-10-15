@@ -39,7 +39,12 @@ describe("AjudaDoCrm — ranking de lucro e produto sem custo", () => {
     expect(texto).toContain(
       "Produto sem custo cadastrado fica fora da conta do lucro",
     );
-    expect(texto).toContain("a tela avisa quais são");
+    expect(texto).toContain("a tela avisa quantos produtos ficaram de fora");
+    expect(texto).toContain(
+      'procure "Sem Custo Cadastrado" no cartão detalhado',
+    );
+    // A tela só mostra a QUANTIDADE, não a lista de quais são.
+    expect(texto).not.toContain("avisa quais são");
     expect(texto).toContain(
       "O lucro usa o custo de hoje de cada produto: se você mudar o custo, o lucro das vendas antigas muda junto.",
     );
