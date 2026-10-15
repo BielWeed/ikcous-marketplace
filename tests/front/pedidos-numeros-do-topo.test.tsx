@@ -272,7 +272,10 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     });
   }
 
-  const ROTULO_DO_CARTAO_EM_TRANSITO = "Em trânsito ou prontos para retirar";
+  // Curto de propósito: o rótulo do cartão é `line-clamp-2` (AdminKpiCarousel) e
+  // a 360 px cabem ~22 caracteres por linha de rótulo útil; um texto maior
+  // perdia o final ("retirar") cortado pelo clamp.
+  const ROTULO_DO_CARTAO_EM_TRANSITO = "A caminho ou retirada";
 
   /** O valor (h3) do cartão cujo rótulo é exatamente `rotulo`. */
   function valorDoCartao(rotulo: string): string | null {
@@ -309,8 +312,15 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     await esperarAte(
       () => valorDoCartao(ROTULO_DO_CARTAO_EM_TRANSITO) === String(EM_TRANSITO),
     );
-    // O rótulo antigo, sozinho, não existe mais em nenhum cartão.
+    // Os rótulos antigos não existem mais em nenhum cartão.
     expect(valorDoCartao("Em trânsito")).toBeNull();
+    expect(valorDoCartao("Em trânsito ou prontos para retirar")).toBeNull();
+  });
+
+  it("o rótulo cabe em 2 linhas a 360 px (até 22 caracteres) e continua dizendo as duas coisas", () => {
+    expect(ROTULO_DO_CARTAO_EM_TRANSITO.length).toBeLessThanOrEqual(22);
+    expect(ROTULO_DO_CARTAO_EM_TRANSITO).toMatch(/caminho/);
+    expect(ROTULO_DO_CARTAO_EM_TRANSITO).toMatch(/retirada/);
   });
 
   it("contagens de milhar saem com ponto pt-BR nos três cartões das consultas: 1.234, 2.345, 3.456", async () => {

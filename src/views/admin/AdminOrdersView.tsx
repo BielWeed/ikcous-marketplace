@@ -577,7 +577,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       {
         // A contagem é `status = 'shipping'`, que na retirada na loja se lê
         // "Pronto para retirar" (`rotuloDoStatus`): o cartão diz as duas coisas.
-        label: "Em trânsito ou prontos para retirar",
+        // Até ~22 caracteres: o rótulo do cartão é `line-clamp-2` e, a 360 px,
+        // um texto maior perdia o final cortado pelo clamp.
+        label: "A caminho ou retirada",
         value: formatarInteiro(aCaminho),
         icon: Truck,
         accent: "text-indigo-500",
