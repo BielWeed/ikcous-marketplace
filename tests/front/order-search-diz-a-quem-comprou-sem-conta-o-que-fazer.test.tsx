@@ -103,8 +103,21 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     ];
     expect(url).toContain("https://wa.me/5534999998888");
     expect(decodeURIComponent(url)).toContain("sem criar conta");
+    // A URL CRUA tem de sair codificada: espaço, acento e "!" no texto do
+    // wa.me. Sem isto o teste acima (que decodifica) passaria até com a
+    // mensagem colada sem encodeURIComponent.
+    expect(url).toContain("?text=Ol%C3%A1!%20Fiz%20um%20pedido%20sem%20criar");
+    expect(url).not.toContain(" ");
     expect(alvo).toBe("_blank");
     expect(recursos).toBe("noopener,noreferrer");
+  });
+
+  it("o botão do WhatsApp tem área de toque de pelo menos 44px (min-h-11)", async () => {
+    await abrirRastrearSemConta("34999998888");
+
+    const botao = botaoPorTexto(host, BOTAO);
+    expect(botao).not.toBeUndefined();
+    expect(botao?.className.split(/\s+/)).toContain("min-h-11");
   });
 
   it("loja SEM WhatsApp: instrução honesta, nunca um botão morto", async () => {

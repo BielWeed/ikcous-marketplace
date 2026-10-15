@@ -283,7 +283,7 @@ export function OrderSearch({
                           haptic.light();
                           handleFalarComALoja();
                         }}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-600/30 bg-white py-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-amber-800 transition-all active:scale-[0.98]"
+                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber-600/30 bg-white py-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-amber-800 transition-all active:scale-[0.98]"
                       >
                         Falar com a loja no WhatsApp
                       </button>
