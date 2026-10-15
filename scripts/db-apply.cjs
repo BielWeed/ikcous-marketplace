@@ -1798,6 +1798,48 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql": [
+    {
+      // A venda repetida do balcão devolve a venda feita (14/10/2026): registrar_venda_presencial toma uma trava
+      // consultiva pela chave de idempotência ANTES de conferir a chave (a repetição que chega antes de a primeira
+      // commitar espera a primeira e devolve `ja_existia` com o MESMO pedido, em vez de "Estoque insuficiente"
+      // quando a primeira levou a última unidade). Sem esta entrada a migration saía PULADA. Os marcadores contam
+      // no corpo VIVO (comentários incluídos): a trava pela chave, as duas travas de admin (is_admin e
+      // is_admin_atual, 20261199000000) e a resposta idempotente seguem UMA vez cada.
+      funcao: "registrar_venda_presencial",
+      esperado: [
+        {
+          texto:
+            "hashtextextended('venda_presencial:' || p_idempotency_key::text, 0)",
+          vezes: 1,
+        },
+        { texto: "IF public.is_admin() IS DISTINCT FROM true THEN", vezes: 1 },
+        {
+          texto: "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+          vezes: 1,
+        },
+        { texto: "'ja_existia', v_ja_existia,", vezes: 1 },
+      ],
+    },
+  ],
+  "20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql": [
+    {
+      // A compra que dá R$ 0,00 não se paga pelo app (14/10/2026): o bloco 6-ter da v24 recusa o total
+      // calculado zero quando o meio é 'online', ANTES de reservar estoque e cupom. Sem esta entrada a migration
+      // saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef,
+      // comentários incluídos): a condição (só 'online', só o total do servidor) e o identificador estável da
+      // recusa aparecem UMA vez cada.
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0 THEN",
+          vezes: 1,
+        },
+        { texto: "pedido_sem_valor_a_pagar_pelo_app: subtotal", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

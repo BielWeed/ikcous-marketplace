@@ -1170,6 +1170,10 @@ async function main() {
         "20261234000000_o_lucro_so_conta_produto_com_custo.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
+      [
+        "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql",
+        "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

@@ -465,6 +465,33 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `31b-antes-endereco-da-compra-so-no-ponteiro` (ANTES, 7 linhas; **não mede a ACL**, que é da 31a), a "prova de
   objetos" do lote `20261229000000`. Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por
   linha, mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
+- **a compra que dá R$ 0,00 não se paga pelo app
+  (`a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261236000000` (a `create_marketplace_order_v24` recusa, ANTES de reservar estoque e de gastar a vaga do
+  cupom, o pedido de pagamento pelo app cujo total calculado pelo servidor é zero; **sucessora da 20261229000000**,
+  só a v24). O controle parte do estado ANTES (o rollback-manual, conferido byte a byte contra o corpo da
+  `20261229000000`) e prova o defeito (o pedido de R$ 0,00 pelo app nasce `aguardando`, baixa estoque e gasta o
+  cupom de uso único). Depois: zero + app recusa com a frase e o identificador no DETAIL (conta, retirada, cupom de
+  100%, convidada) e **nada é reservado nem gasto, provado por uma sequência movida por gatilhos** no INSERT do
+  pedido, na baixa do estoque e no uso do cupom (sequência não é desfeita por rollback: sem ela, recusar depois de
+  reservar passaria despercebido); zero + pagar na retirada/entrega (v23 cash/pix e a v24 chamada direto com cash)
+  nasce como hoje; positivo + app nasce como hoje, na borda de R$ 0,01 e com o total do SERVIDOR (R$ 0,04) quando
+  o cliente manda R$ 0,00; o cupom de uso único não é gasto na recusa e ainda compra, uma vez, na retirada; total
+  divergente recebe a recusa antiga; a retentativa de pedido que já nasceu devolve o pedido. O mesmo roteiro de
+  compras grava linhas idênticas antes e depois, só o corpo da v24 muda (a v23, a ACL e os dados ficam), reaplicar
+  2x e CRLF = mesmo estado, o rollback devolve o `prosrc` idêntico, o pré-voo recusa sem escrever (inclusive a
+  loja ainda no corpo da 20261174), a conferência reprovando desfaz a troca, e 6 mutantes (sem a recusa, recusa
+  depois de reservar, recusa também na entrega, limite R$ 0,01, total do cliente, só quem tem conta) ficam
+  vermelhos. **As provas da 20261229 (`endereco-no-pedido-viva.cjs` e `endereco-no-pedido-portao-viva.cjs`)
+  desfazem esta sucessora antes de medir** (como as da 20261199 fazem com as dela). **Não prova** a IKCOUS nem a
+  Savy.
+- **portão da compra que dá R$ 0,00 não se paga pelo app
+  (`a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado` (DEPOIS, 6 linhas) e
+  `37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente` (ANTES, 5 linhas; **não mede a ACL**, que é da
+  37a) do lote `20261236000000`. Rol exato nos estados (depois, antes, corpo da 20261174), um negativo por linha
+  (inclusive o EXECUTE de anon, authenticated, service_role e PUBLIC), mutantes do texto das consultas, veredito do
+  `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
 - **reembolso da devolução só "liberado" com o dinheiro (`reembolso-da-devolucao-viva.cjs`, via
   `rodar-isolado.cjs`)**: a migration `20261225000000` (o gatilho de aviso da devolução lê o estado REAL do
   reembolso; um gatilho novo em `order_refunds` avisa "liberado" quando `concluir_estorno` confirma o dinheiro) com
@@ -543,6 +570,18 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `35a-conferir-lucro-so-com-custo-aplicado` (DEPOIS, 6 linhas) e `35b-antes-lucro-so-com-custo-corpo-vigente` (ANTES, 5
   linhas) do lote `20261234000000`. Rol exato nos estados (depois, antes, corpo da 99), um negativo por linha, mutantes
   do texto das consultas, veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
+- **a venda repetida do balcão devolve a venda feita (`venda-balcao-mesma-chave-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261235000000` (`registrar_venda_presencial`, a RPC do PDV: trava consultiva pela chave de idempotência
+  antes de conferir a chave), com **duas conexões reais** num Postgres efêmero. A repetição da MESMA chave que chega
+  antes de a primeira commitar espera a primeira e devolve `ja_existia` com o MESMO pedido (nunca "Estoque
+  insuficiente" por causa da última unidade que a própria venda levou); o CONTROLE com o corpo antigo reproduz o defeito;
+  estoque sobrando, chaves diferentes, venda sem chave, outro balconista e outro canal (23505), permissão e o gate antes
+  da trava, rollback com o md5 da 20261199, pré-voo que recusa sem escrever e mutantes. **Não prova** a IKCOUS nem a Savy.
+- **portão da venda repetida do balcão (`venda-balcao-mesma-chave-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `36a-conferir-venda-repetida-do-balcao-aplicado` (DEPOIS, 6 linhas) e
+  `36b-antes-venda-repetida-do-balcao-corpo-vigente` (ANTES, 5 linhas; **não mede a ACL**, que é da 36a) do lote
+  `20261235000000`. Rol exato nos estados (depois, antes), um negativo por linha, mutantes do texto das consultas,
+  veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
 - **o sino do pedido de retirada (`o-sino-do-pedido-de-retirada-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
   `20261233000000` (`notifica_cliente_de_mudanca_de_status`, a trigger `tr_pedido_avisa_o_cliente`): o pedido de
   RETIRADA na loja (`customer_data->>'shipping_option_id' = 'store-pickup'`) avisa "Pedido pronto para retirar" e
@@ -569,7 +608,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   desfeita, para provar grants/RLS/view — o admin grava
   `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
 - **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
-  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261234) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261234, 20261235) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
   reprova se aparecer uma sucessora que não esteja na lista.
 - **função nova não nasce aberta (`portas-do-visitante-so-as-permitidas-viva.cjs`, via `rodar-isolado.cjs`)**: L8 da
   auditoria de 12/10, sem migration. Com todas as migrations aplicadas, toda função de `public` que anon,

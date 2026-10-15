@@ -83,6 +83,11 @@ const FRASES_DO_BANCO = [
   // regra irmã em recusaDoPedido.ts (remover_cupom) morre calada se a frase
   // sumir ou for reescrita no SQL (gatilho de marketplace_orders).
   "Os cupons estão desativados nesta loja.",
+  // A COMPRA QUE DÁ R$ 0,00 NÃO SE PAGA PELO APP (14/10/2026 — migration
+  // 20261236000000, a v24 recusa o total zero pelo app antes de reservar
+  // estoque e cupom): a regra irmã em recusaDoPedido.ts (trocar_pagamento)
+  // morre calada se a frase sumir ou for reescrita no SQL.
+  "Este pedido não tem valor a pagar pelo app. Escolha pagar na retirada ou na entrega, ou fale com a loja.",
 ];
 
 const sql = Object.values(MIGRATIONS).join("\n");
