@@ -141,11 +141,27 @@ describe("mensagemDaFalhaDaAnulacao — português do lojista, sem código nem j
     ).toBe(frase);
   });
 
-  it("o dia que passou: repassa a frase do banco, que já manda registrar uma devolução", () => {
+  it("o dia que passou: troca o 'registre uma devolução' (impossível no balcão) pelo que resta, conforme haja conta de cliente", () => {
     const frase =
       "Só dá para anular no mesmo dia da venda. Para outro dia, registre uma devolução.";
-    expect(mensagemDaFalhaDaAnulacao({ code: "22023", message: frase })).toBe(
-      frase,
+    const erro = { code: "22023", message: frase };
+    expect(mensagemDaFalhaDaAnulacao(erro)).toBe(
+      "Só dá para anular no mesmo dia da venda. Esta venda não está na conta de nenhum cliente: o app não abre devolução para ela.",
+    );
+    expect(mensagemDaFalhaDaAnulacao(erro, true)).toBe(
+      "Só dá para anular no mesmo dia da venda. Depois disso, a troca ou o reparo de defeito só podem ser pedidos pelo cliente, no app, dentro do prazo da loja.",
+    );
+  });
+
+  it("recebimento desfeito e refeito: só some o 'Registre uma devolução'", () => {
+    expect(
+      mensagemDaFalhaDaAnulacao({
+        code: "22023",
+        message:
+          "O recebimento desta venda foi desfeito e refeito hoje; por segurança ela não pode ser anulada aqui. Registre uma devolução.",
+      }),
+    ).toBe(
+      "O recebimento desta venda foi desfeito e refeito hoje; por segurança ela não pode ser anulada aqui.",
     );
   });
 
@@ -154,10 +170,6 @@ describe("mensagemDaFalhaDaAnulacao — português do lojista, sem código nem j
       ["22023", "Esta venda não pode ser anulada aqui."],
       ["22023", "Esta venda tem devolução registrada; resolva pela devolução."],
       ["22023", "Informe o motivo para anular a venda."],
-      [
-        "22023",
-        "O recebimento desta venda foi desfeito e refeito hoje; por segurança ela não pode ser anulada aqui. Registre uma devolução.",
-      ],
       ["42501", "Acesso negado: só a loja anula venda do balcão."],
     ]) {
       expect(mensagemDaFalhaDaAnulacao({ code, message })).toBe(message);

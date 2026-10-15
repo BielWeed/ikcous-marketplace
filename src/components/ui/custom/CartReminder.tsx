@@ -172,7 +172,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             {/* Right: Compact Action */}
             <button
               onClick={onAction}
-              className="group/btn flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-[9px] font-black uppercase tracking-wider text-white shadow-md transition-all hover:bg-primary/90 active:scale-95"
+              className="group/btn flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-[9px] font-black uppercase tracking-wider text-primary-foreground shadow-md transition-all hover:bg-primary/90 active:scale-95"
             >
               Carrinho
               <ChevronRight className="size-2.5 transition-transform group-hover:translate-x-0.5" />

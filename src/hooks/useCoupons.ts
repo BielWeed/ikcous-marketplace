@@ -6,6 +6,12 @@ import {
   minutosDaVagaPresa,
 } from "@/lib/cupomPreso";
 import { mensagemDeErroDoCupom } from "@/lib/erro-do-cupom";
+import {
+  PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { ClienteDoCupom, Coupon } from "@/types";
 import type { Database } from "@/types/database.types";
@@ -62,6 +68,67 @@ async function bancoTemAlcanceDoCupom(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** O que o checkout recebe de uma tentativa de aplicar um cupom. */
+interface ResultadoDaValidacaoDoCupom {
+  valid: boolean;
+  discount: number;
+  message?: string;
+  /** Laudo 31/08 (E1): true = a CONSULTA falhou (não é recusa do cupom) — quem revalida em segundo plano mantém o cupom como está. */
+  networkError?: boolean;
+}
+
+/** No cupom o toque certo é "Aplicar" — não existe botão "Tentar de novo". */
+const MENSAGEM_CUPOM_CONEXAO_LENTA =
+  "A conexão está lenta. Toque em Aplicar para tentar de novo.";
+
+/**
+ * A consulta em si (sem prazo — quem chama é que limita a espera). LANÇA em
+ * erro de rede/RPC; o chamador transforma em `networkError`.
+ */
+async function consultarCupom(
+  code: string,
+  subtotal: number,
+): Promise<ResultadoDaValidacaoDoCupom> {
+  // SecOps: validate_coupon_secure_v2 es SECURITY DEFINER
+  const { data, error } = await supabase.rpc(
+    "validate_coupon_secure_v2" as any,
+    {
+      p_code: code,
+      p_subtotal: subtotal,
+    } as any,
+  );
+
+  if (error) throw error;
+
+  const result = data as any;
+  if (!result)
+    return {
+      valid: false,
+      discount: 0,
+      message: "Erro ao validar cupom",
+    };
+
+  // Cupom preso (#210/#116): recusa por LIMITE + sessão → pergunta se a
+  // vaga está presa num pedido cancelado do próprio cliente. Só a
+  // resposta confirmada troca a frase; cupom válido nunca pergunta.
+  if (!result.is_valid && ehRecusaPorLimiteDeUso(result.error_message)) {
+    const minutos = await minutosDaVagaPresaDoCliente(code);
+    if (minutos !== null) {
+      return {
+        valid: false,
+        discount: Number(result.discount_value),
+        message: mensagemDeVagaPresa(code, minutos),
+      };
+    }
+  }
+
+  return {
+    valid: result.is_valid,
+    discount: Number(result.discount_value),
+    message: result.error_message,
+  };
 }
 
 /**
@@ -134,58 +201,23 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     async (
       code: string,
       subtotal: number,
-    ): Promise<{
-      valid: boolean;
-      discount: number;
-      message?: string;
-      /** Laudo 31/08 (E1): true = a CONSULTA falhou (não é recusa do cupom) — quem revalida em segundo plano mantém o cupom como está. */
-      networkError?: boolean;
-    }> => {
+    ): Promise<ResultadoDaValidacaoDoCupom> => {
       try {
-        // SecOps: validate_coupon_secure_v2 es SECURITY DEFINER
-        const { data, error } = await supabase.rpc(
-          "validate_coupon_secure_v2" as any,
-          {
-            p_code: code,
-            p_subtotal: subtotal,
-          } as any,
+        // Prazo na CADEIA inteira (validação + pergunta da vaga presa): rede
+        // pendurada não pode deixar "Aplicando…" travando a tela do cupom.
+        return await aguardarComPrazo(
+          consultarCupom(code, subtotal),
+          PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_CUPOM_CONEXAO_LENTA),
         );
-
-        if (error) throw error;
-
-        const result = data as any;
-        if (!result)
-          return {
-            valid: false,
-            discount: 0,
-            message: "Erro ao validar cupom",
-          };
-
-        // Cupom preso (#210/#116): recusa por LIMITE + sessão → pergunta se a
-        // vaga está presa num pedido cancelado do próprio cliente. Só a
-        // resposta confirmada troca a frase; cupom válido nunca pergunta.
-        if (!result.is_valid && ehRecusaPorLimiteDeUso(result.error_message)) {
-          const minutos = await minutosDaVagaPresaDoCliente(code);
-          if (minutos !== null) {
-            return {
-              valid: false,
-              discount: Number(result.discount_value),
-              message: mensagemDeVagaPresa(code, minutos),
-            };
-          }
-        }
-
-        return {
-          valid: result.is_valid,
-          discount: Number(result.discount_value),
-          message: result.error_message,
-        };
       } catch (error) {
         console.error("Error validating coupon:", error);
         return {
           valid: false,
           discount: 0,
-          message: "Erro na conexão com servidor",
+          message: ehConsultaSemResposta(error)
+            ? MENSAGEM_CUPOM_CONEXAO_LENTA
+            : "Erro na conexão com servidor",
           networkError: true,
         };
       }

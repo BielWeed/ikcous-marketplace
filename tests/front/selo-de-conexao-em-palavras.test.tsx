@@ -244,6 +244,26 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     }
   });
 
+  it("de 'sem internet' para 'lenta' o selo diz 'Lenta' — não acende 'Sincronizado' sem ter sincronizado nada", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      diagnostico.atual = { isOffline: true, quality: "offline", latency: 0 };
+      await montar();
+
+      // A rede existe, só está lenta: `isOffline` cai, `quality` vira "slow".
+      diagnostico.atual = { isOffline: false, quality: "slow", latency: 3500 };
+      await montar();
+
+      expect(selos()).toHaveLength(2);
+      for (const selo of selos()) {
+        expect(selo.textContent?.trim()).toBe("Lenta");
+        expect(selo.getAttribute("title")).toBe("Conexão lenta");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("o nome da loja na barra lateral pode quebrar em vez de estourar a borda (selo é shrink-0)", async () => {
     await montar();
     const nome = hospedeiro.querySelector("aside h1") as HTMLElement;

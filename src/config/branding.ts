@@ -1,4 +1,5 @@
 import { buildIdentity } from "./buildIdentity";
+import { textoSobreACorDaLoja } from "./cor-da-loja";
 
 export interface Branding {
   appName: string;
@@ -59,6 +60,18 @@ export function hexToTailwindHsl(hex: string): string {
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
+// Aplica a cor da loja nas variáveis do tema: `--primary` (a cor, igual a
+// sempre foi) e `--primary-foreground` (o texto que fica SOBRE ela, escolhido
+// pelo contraste — branco nas cores escuras, escuro nas claras). Único ponto
+// que escreve essas duas variáveis: a semente do build e o StoreContext
+// passam por aqui, para a cor e o texto sobre ela nunca divergirem.
+export function aplicarCorDaLoja(corHex: string): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.style.setProperty("--primary", hexToTailwindHsl(corHex));
+  root.style.setProperty("--primary-foreground", textoSobreACorDaLoja(corHex));
+}
+
 // CONTRATO DE COR — precedência: o branding (build) acima é a SEMENTE imediata
 // anti-flash no :root (aplicada por main.tsx antes do React montar); o
 // primary_color do BANCO vence quando a config chega ou muda (StoreContext
@@ -85,10 +98,7 @@ export function applyBranding(): void {
   const root = document.documentElement;
 
   if (branding.theme.primary) {
-    root.style.setProperty(
-      "--primary",
-      hexToTailwindHsl(branding.theme.primary),
-    );
+    aplicarCorDaLoja(branding.theme.primary);
   }
   if (branding.theme.secondary) {
     root.style.setProperty(

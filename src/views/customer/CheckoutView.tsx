@@ -35,6 +35,7 @@ import { useCoupons } from "@/hooks/useCoupons";
 import { useCuponsDoCheckout } from "@/hooks/useCuponsDoCheckout";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
+import { useIrAoCarrinhoRelido } from "@/hooks/useIrAoCarrinhoRelido";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   ErroCancelamentoNaoConcluido,
@@ -73,12 +74,19 @@ import {
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
+  formasDePagamentoParaTotalZero,
+  saidaDoTotalZero,
+  textoDoPedidoSemValor,
+} from "@/lib/pagamento-com-total-zero";
+import {
   esquecerPedidoPendenteDoCheckout,
   guardarPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
+  type RascunhoDoCheckout,
+  dadosDoRascunhoValemPara,
   lerRascunhoDoCheckout,
   limparRascunhoDoCheckout,
   rascunhoTemConteudo,
@@ -92,7 +100,11 @@ import {
 } from "@/lib/recusaDoPedido";
 import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
-import { mascaraWhatsappBr } from "@/lib/telefone-br";
+import {
+  celularBrasileiroCompleto,
+  mascaraWhatsappBr,
+  mensagemDeWhatsappIncompleto,
+} from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { cn } from "@/lib/utils";
 import type {
@@ -703,7 +715,23 @@ interface CheckoutViewProps {
   readonly retomadaDaRecarga?: boolean;
 }
 
-export function CheckoutView({
+/**
+ * A tela é recriada a CADA troca de conta (`key` = quem está logado). No app
+ * real o `App.tsx` já monta o checkout com `key` por conta; esta chave aqui é
+ * a DEFESA de dentro do módulo: nenhuma instância da tela atravessa de uma
+ * pessoa para outra, mesmo que alguém a monte sem a chave (testes, outro
+ * ponto de entrada). Estado do formulário, rascunho em memória e marcas de
+ * "a cliente mexeu" nascem de novo para quem entrou.
+ */
+export function CheckoutView(props: CheckoutViewProps) {
+  const { user } = useAuth();
+  return <CheckoutViewDaConta key={user?.id ?? "convidado"} {...props} />;
+}
+
+// Exportada SÓ para os testes que provam o comportamento de UMA instância
+// atravessando uma queda de sessão (a tela de pagamento aberta que perde a
+// conta); o app monta sempre `CheckoutView`, acima.
+export function CheckoutViewDaConta({
   cart: propCart,
   subtotal: propSubtotal,
   shipping: propShipping,
@@ -739,6 +767,7 @@ export function CheckoutView({
     freteIndefinido: ctxFreteIndefinido,
     freteGratis,
   } = useCart();
+  const irAoCarrinhoRelido = useIrAoCarrinhoRelido();
 
   const cart = propCart ?? ctxCart;
   const subtotal = propSubtotal ?? ctxSubtotal;
@@ -824,7 +853,22 @@ export function CheckoutView({
     },
   });
   const { validateCoupon } = useCoupons();
-  const { user, profile, loading: authLoading } = useAuth();
+  const {
+    user,
+    profile: perfilQueOAuthEntregou,
+    loading: authLoading,
+  } = useAuth();
+  // O PERFIL SÓ VALE SE FOR DA CONTA QUE ESTÁ LOGADA. O AuthContext entrega
+  // `user` e `profile` em estados separados: na troca de conta, na saída com
+  // sessão vencida e numa resposta atrasada, o perfil de OUTRA pessoa pode
+  // vir junto com a conta de agora. `get_my_complete_profile` devolve o `id`
+  // e filtra por `auth.uid()`, então a conferência é pelo dono do dado, na
+  // hora do uso — sem depender da ordem em que os efeitos rodam. Perfil sem
+  // `id` ou de outra conta = ainda não chegou o da conta de agora.
+  const perfilDaConta =
+    user && perfilQueOAuthEntregou?.id === user.id
+      ? perfilQueOAuthEntregou
+      : null;
   // CHECKOUT-070 (#197): sinal de rede para o cancelamento do pagamento
   // falho — mesmo hook já usado por ShippingCalculator, sem mecanismo novo.
   const isOffline = useOnlineStatus();
@@ -839,8 +883,12 @@ export function CheckoutView({
   const formatWhatsApp = (value: string, anterior?: string) =>
     mascaraWhatsappBr(value, anterior);
 
+  // Só o perfil CONFERIDO da conta de agora (`perfilDaConta`): nunca o
+  // `user_metadata` como plano B (as chaves não batem — o cadastro grava
+  // full_name/phone, o checkout lê name/whatsapp) e nunca o perfil de outra
+  // pessoa. Enquanto o perfil da conta não chega, o formulário fica VAZIO.
   const getDefaultWhatsApp = () => {
-    const whatsapp = profile?.whatsapp || user?.user_metadata?.whatsapp;
+    const whatsapp = perfilDaConta?.whatsapp;
     return whatsapp ? formatWhatsApp(whatsapp) : "";
   };
 
@@ -859,7 +907,7 @@ export function CheckoutView({
     return z
       .object({
         name: z.string().min(1, "Nome é obrigatório"),
-        whatsapp: z.string().min(14, "WhatsApp inválido"),
+        whatsapp: z.string(),
         cep: z.string().optional(),
         street: z.string().optional(),
         number: z.string().optional(),
@@ -870,6 +918,17 @@ export function CheckoutView({
         cpf: z.string().optional(),
       })
       .superRefine((data, ctx) => {
+        // WHATSAPP = CELULAR COMPLETO (DDD + 9 + 8), contado em DÍGITOS pela
+        // MESMA função que o resumo/botão usam (`faltaWhatsapp`): a régua
+        // antiga media o texto formatado (`min(14)`), e 10 dígitos já enchem
+        // 14 caracteres na máscara — o Finalizar abria com número inexistente.
+        if (!celularBrasileiroCompleto(data.whatsapp)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: mensagemDeWhatsappIncompleto(data.whatsapp),
+            path: ["whatsapp"],
+          });
+        }
         // CPF só é exigido com transportadora (ver o comentário grande de
         // `exigeCpfDoDestinatario`, acima) — `cpfValido` já cobre "vazio",
         // "menos de 11 dígitos" e "dígito verificador errado" na MESMA
@@ -936,7 +995,7 @@ export function CheckoutView({
     resolver: zodResolver(dynamicSchema),
     defaultValues: {
       cpf: "",
-      name: profile?.full_name || user?.user_metadata?.name || "",
+      name: perfilDaConta?.full_name || "",
       whatsapp: getDefaultWhatsApp(),
       cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
       city: "",
@@ -1028,6 +1087,18 @@ export function CheckoutView({
     conta: string | null;
   } | null>(null);
   const hasInitializedRef = useRef(false);
+  // DE QUEM SÃO o nome e o WhatsApp que estão na tela (id da conta; `null` =
+  // convidado; `undefined` = a autenticação ainda não disse quem é — nada é
+  // gravado no rascunho nesse intervalo, para nunca etiquetar dado de uma
+  // conta como de convidado). Mantido pelo efeito "de quem são nome e
+  // WhatsApp", mais abaixo, e semeado pelo init quando a conta já é conhecida.
+  const donoDosDadosRef = useRef<string | null | undefined>(undefined);
+  // O rascunho (inteiro) de uma CONTA que chegou antes de a autenticação
+  // dizer quem entrou: só se aplica se for a mesma conta.
+  const dadosPendentesDoRascunhoRef = useRef<{
+    rascunho: RascunhoDoCheckout;
+    dono: string | null | undefined;
+  } | null>(null);
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
       // O RASCUNHO É LIDO ANTES DE QUALQUER form.reset E ANTES DE ABRIR A
@@ -1046,6 +1117,12 @@ export function CheckoutView({
       // não entra no rascunho) atravessa os resets.
       const cpfJaCarregado = form.getValues("cpf") || "";
       hasInitializedRef.current = true;
+      // Quem é a conta de agora, já na hora de gravar os resets abaixo (o
+      // rascunho regravado leva o dono dos dados).
+      const contaDeAgora = user?.id ?? null;
+      if (donoDosDadosRef.current === undefined && !authLoading) {
+        donoDosDadosRef.current = contaDeAgora;
+      }
       if (!form.formState.isDirty) {
         // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
         // a cobertura decide para onde a loja entrega, nunca onde o cliente
@@ -1053,7 +1130,7 @@ export function CheckoutView({
         // dois com "Monte Carmelo"/"MG" na cobertura local.
         form.reset({
           cpf: cpfJaCarregado,
-          name: profile?.full_name || user?.user_metadata?.name || "",
+          name: perfilDaConta?.full_name || "",
           whatsapp: getDefaultWhatsApp(),
           cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
           city: "",
@@ -1067,6 +1144,39 @@ export function CheckoutView({
         // revalidado contra o subtotal atual no efeito logo abaixo; o que
         // deixou de valer não volta mentindo.
         if (rascunho && rascunhoTemConteudo(rascunho)) {
+          // O RASCUNHO INTEIRO É DE UMA PESSOA (dado de cliente): nome,
+          // WhatsApp, CEP, endereço e observações. Ele sabe de QUEM são
+          // (`contaDosDados`) e só volta para a mesma conta (ou, se foi
+          // convidado que digitou, para quem entrou no meio da compra); de
+          // outra conta ele é DESCARTADO e vale o perfil de quem está aqui.
+          // Com a autenticação ainda carregando e dono de conta, fica
+          // pendente até o efeito de conta decidir.
+          const donoDosDados = rascunho.contaDosDados;
+          const adiarRascunho = authLoading && donoDosDados !== null;
+          if (adiarRascunho) {
+            dadosPendentesDoRascunhoRef.current = {
+              rascunho,
+              dono: donoDosDados,
+            };
+          }
+          const rascunhoVale =
+            !adiarRascunho &&
+            dadosDoRascunhoValemPara(donoDosDados, contaDeAgora);
+          const doRascunho = rascunhoVale
+            ? rascunho
+            : {
+                ...rascunho,
+                nome: "",
+                whatsapp: "",
+                cep: "",
+                rua: "",
+                numero: "",
+                bairro: "",
+                cidade: "",
+                estado: "",
+                complemento: "",
+                notas: "",
+              };
           form.reset({
             // CPF NUNCA vem do rascunho (ver o comentário grande em
             // rascunho-do-checkout.ts) — este reset restaura endereço/nome/
@@ -1074,28 +1184,26 @@ export function CheckoutView({
             // estava no campo (o da conta, se chegou antes), nunca o
             // rascunho.
             cpf: cpfJaCarregado,
-            name:
-              rascunho.nome ||
-              profile?.full_name ||
-              user?.user_metadata?.name ||
-              "",
-            whatsapp: rascunho.whatsapp || getDefaultWhatsApp(),
+            name: doRascunho.nome || perfilDaConta?.full_name || "",
+            whatsapp: doRascunho.whatsapp || getDefaultWhatsApp(),
             cep:
-              rascunho.cep ||
+              doRascunho.cep ||
               localStorage.getItem("ikcous_last_shipping_cep") ||
               "",
-            street: rascunho.rua,
-            number: rascunho.numero,
-            neighborhood: rascunho.bairro,
-            city: rascunho.cidade,
-            state: rascunho.estado,
-            complement: rascunho.complemento,
+            street: doRascunho.rua,
+            number: doRascunho.numero,
+            neighborhood: doRascunho.bairro,
+            city: doRascunho.cidade,
+            state: doRascunho.estado,
+            complement: doRascunho.complemento,
           });
-          setNotes(rascunho.notas);
-          // O dono dos campos de endereço passa a ser o CEP do rascunho —
-          // mesmo contrato da semente de `ikcous_last_shipping_cep` acima.
-          if (rascunho.cep) {
-            cepAssociadoRef.current = formatarCep(rascunho.cep).limpo;
+          if (rascunhoVale) {
+            setNotes(rascunho.notas);
+            // O dono dos campos de endereço passa a ser o CEP do rascunho —
+            // mesmo contrato da semente de `ikcous_last_shipping_cep` acima.
+            if (rascunho.cep) {
+              cepAssociadoRef.current = formatarCep(rascunho.cep).limpo;
+            }
           }
           // O cupom volta SÓ o código: o efeito de revalidação do E1
           // (logo abaixo, [codigoDoCupom, subtotal]) decide em seguida —
@@ -1113,7 +1221,7 @@ export function CheckoutView({
         }
       }
     }
-  }, [storeConfigLoaded, profile, user]);
+  }, [storeConfigLoaded, perfilDaConta, user]);
 
   // Troca de conta com o checkout aberto (frente B): o cupom aplicado por
   // uma CONTA sai quando outra entra (ou quando ela sai) — exclusivo não passa
@@ -2049,7 +2157,7 @@ export function CheckoutView({
   const cidadeAtual = form.watch("city");
   const estadoAtual = form.watch("state");
   const faltaNome = !nomeAtual?.trim();
-  const faltaWhatsapp = (whatsappAtual?.length ?? 0) < 14;
+  const faltaWhatsapp = !celularBrasileiroCompleto(whatsappAtual);
   const enderecoConvidadoCompleto =
     soDigitos(cepDigitadoNoFormulario ?? "").length === 8 &&
     !!ruaAtual?.trim() &&
@@ -2283,7 +2391,11 @@ export function CheckoutView({
       complement?: string;
     }) => {
       if (!hasInitializedRef.current) return;
+      // Sem saber DE QUEM são nome e WhatsApp (autenticação carregando) não
+      // se grava: o rascunho que já está no armazenamento guarda o dono certo.
+      if (donoDosDadosRef.current === undefined) return;
       const rascunho = {
+        contaDosDados: donoDosDadosRef.current,
         nome: valores.name ?? "",
         whatsapp: valores.whatsapp ?? "",
         cep: valores.cep ?? "",
@@ -2316,7 +2428,9 @@ export function CheckoutView({
   // própria, lendo o formulário atual via getValues. Mesmas duas travas.
   useEffect(() => {
     if (!hasInitializedRef.current) return;
+    if (donoDosDadosRef.current === undefined) return;
     const rascunho = {
+      contaDosDados: donoDosDadosRef.current,
       nome: form.getValues("name") ?? "",
       whatsapp: form.getValues("whatsapp") ?? "",
       cep: form.getValues("cep") ?? "",
@@ -2575,6 +2689,86 @@ export function CheckoutView({
     }
   }, [authLoading, user, paymentMethod]);
 
+  // Values are now passed from props to ensure consistency
+  const discount = appliedCoupon?.discount || 0;
+  const finalTotal = total - discount;
+
+  // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
+  // (src/lib/guarda-de-frete.ts); o motivo e a história dela estão no
+  // comentário "REGRA DO CONVIDADO", mais abaixo, junto do botão. Mora AQUI
+  // porque a decisão do total zero (logo abaixo) lê o mesmo "frete fechado"
+  // que trava o Finalizar — uma fonte só, nunca duas condições.
+  const semFreteSelecionado =
+    freteIncoerenteComDestino ||
+    freteEmCotacao ||
+    finalizarBloqueadoPorFrete({
+      carrinhoVazio: cart.length === 0,
+      freteIndefinido: ctxFreteIndefinido,
+      shipping,
+      temOpcaoSelecionada: !!selectedShippingOption,
+    });
+
+  // COMPRA QUE FECHA EM R$ 0,00 (decisão do dono, 14/10/2026): cupom que zera
+  // o produto + frete grátis (ou retirada) deixa o total em zero, e o app não
+  // cobra pedido sem valor (`criar-pagamento` recusa). Com total zero a tela
+  // não oferece "pagar pelo app": fecha pelo caminho "na retirada/entrega".
+  // A decisão é pura (src/lib/pagamento-com-total-zero.ts); com total acima de
+  // zero ela devolve "nada muda" e a tela é a de sempre. `freteFechado` é o
+  // MESMO `!semFreteSelecionado` do botão: total que a tela mostra como "a
+  // calcular" nunca vira "sem valor a pagar".
+  const totalZero = formasDePagamentoParaTotalZero({
+    totalFinal: finalTotal,
+    freteFechado: cart.length > 0 && !semFreteSelecionado,
+    modalidadeDaLoja: ehEntregaLocal,
+    formasNaEntrega: formasPagamentoNaEntregaValidas(
+      config.formasPagamentoEntrega,
+    ),
+    paymentMethod,
+  });
+  // O que a cliente tinha marcado ANTES de o total zerar: se era o pagamento
+  // pelo app e ela tira o cupom (total volta a ter valor), a escolha volta
+  // sozinha — senão "Pix na entrega" ficaria marcado sem ela ter pedido. Só
+  // volta se a escolha ainda é a que o efeito marcou (mexeu de propósito =
+  // respeitada).
+  const escolhaAntesDoTotalZeroRef = useRef<{
+    metodoOnline: MetodoOnline;
+    marcada: PaymentMethod;
+  } | null>(null);
+  useEffect(() => {
+    if (totalZero.zerado) {
+      if (totalZero.meioParaMarcar === null) return;
+      if (paymentMethod === "online") {
+        escolhaAntesDoTotalZeroRef.current = {
+          metodoOnline,
+          marcada: totalZero.meioParaMarcar,
+        };
+      } else if (escolhaAntesDoTotalZeroRef.current) {
+        // A loja desligou a forma que o efeito tinha marcado: a "marcada"
+        // acompanha, senão a volta ao app nunca reconheceria a escolha.
+        escolhaAntesDoTotalZeroRef.current = {
+          ...escolhaAntesDoTotalZeroRef.current,
+          marcada: totalZero.meioParaMarcar,
+        };
+      }
+      setPaymentMethod(totalZero.meioParaMarcar);
+      return;
+    }
+    const antes = escolhaAntesDoTotalZeroRef.current;
+    if (!antes) return;
+    escolhaAntesDoTotalZeroRef.current = null;
+    if (paymentMethod !== antes.marcada) return;
+    if (authLoading || !user || !pagamentoOnlineLigado()) return;
+    setPaymentMethod("online");
+    setMetodoOnline(antes.metodoOnline);
+  }, [
+    totalZero.zerado,
+    totalZero.meioParaMarcar,
+    paymentMethod,
+    metodoOnline,
+    authLoading,
+    user,
+  ]);
+
   // TRANSPORTADORA EXIGE PAGAMENTO ANTECIPADO (regra do dono, 21/09/2026).
   // O defeito: quem escolhia "Pix na Entrega" com entrega local, voltava ao
   // carrinho e trocava o frete para uma transportadora, voltava para cá com
@@ -2601,6 +2795,9 @@ export function CheckoutView({
     if (paymentMethod === "online") return;
     if (!pagamentoOnlineLigado()) return;
     if (authLoading || !user) return;
+    // Total zero (14/10/2026): não existe PIX de R$ 0,00 para selecionar — o
+    // Finalizar trava com a explicação própria (`totalZero.travaPor`).
+    if (totalZero.zerado) return;
     setPaymentMethod("online");
     // Auto-seleção é sempre o PIX (o texto do toast promete isso).
     setMetodoOnline("pix");
@@ -2613,6 +2810,7 @@ export function CheckoutView({
     paymentMethod,
     authLoading,
     user,
+    totalZero.zerado,
   ]);
 
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a loja pode desligar a forma
@@ -2633,6 +2831,9 @@ export function CheckoutView({
     if (!ehEntregaLocal && selectedShippingOption) return;
     if (authLoading) return;
     if (paymentMethod === "online") return;
+    // Total zero (14/10/2026): quem marca a forma é o efeito do total zero
+    // (acima) — este aqui poderia escolher "online", que não cobra R$ 0,00.
+    if (totalZero.zerado) return;
     if (
       formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).includes(
         paymentMethod as "pix" | "card" | "cash",
@@ -2658,21 +2859,129 @@ export function CheckoutView({
     paymentMethod,
     authLoading,
     user,
+    totalZero.zerado,
   ]);
 
+  // O PERFIL SÓ PREENCHE O QUE A CLIENTE NÃO MEXEU. Antes, este efeito
+  // sobrescrevia nome e WhatsApp com os dados da conta a CADA mudança de
+  // `profile` (inclusive o mesmo perfil reemitido) e logo depois de o rascunho
+  // da sessão ser restaurado: ela trocava o WhatsApp, voltava ao carrinho,
+  // reabria o checkout, e o campo voltava com o do cadastro (ou vazio, se a
+  // conta não tem WhatsApp). Agora o campo só recebe o valor da conta quando
+  // (a) a cliente nunca digitou nele nesta montagem e (b) está vazio ou ainda
+  // guarda exatamente o que a conta anterior/o carregamento anterior pôs ali
+  // — o perfil que chega tarde continua preenchendo formulário vazio, e a
+  // troca de conta com o formulário intocado continua seguindo a conta nova.
+  const perfilVistoRef = useRef({
+    name: perfilDaConta?.full_name || "",
+    whatsapp: getDefaultWhatsApp(),
+  });
+  const camposMexidosPelaClienteRef = useRef(new Set<"name" | "whatsapp">());
   useEffect(() => {
-    if (profile) {
-      form.setValue("name", profile.full_name || "", { shouldValidate: true });
-      form.setValue(
+    // `type === "change"` é a digitação da pessoa (register/Controller);
+    // `setValue` e `reset` do próprio código chegam sem `type`.
+    const assinatura = form.watch((_valores, { name, type }) => {
+      if (type === "change" && (name === "name" || name === "whatsapp")) {
+        camposMexidosPelaClienteRef.current.add(name);
+      }
+    });
+    return () => assinatura.unsubscribe();
+  }, [form]);
+  // DE QUEM SÃO NOME E WHATSAPP DA TELA (dado de cliente): quando uma pessoa
+  // sai e OUTRA entra no mesmo celular, a segunda não pode ver o contato da
+  // primeira — o pedido sairia com o contato errado. Este efeito vem ANTES
+  // do efeito do perfil (a ordem de declaração é a ordem de execução no
+  // mesmo commit): primeiro limpa o que era da conta que saiu, depois o
+  // perfil novo preenche o formulário já vazio.
+  // - conta A → outra conta ou ninguém: nome/WhatsApp saem, as marcas "a
+  //   cliente mexeu" zeram e o que estava à espera do rascunho é descartado;
+  // - convidado → conta (mesma pessoa que entrou no meio da compra): o
+  //   digitado fica e passa a ser dela;
+  // - rascunho que esperava a autenticação (`dadosPendentesDoRascunhoRef`)
+  //   só entra se for da mesma conta (ou de convidado).
+  useEffect(() => {
+    if (authLoading) return;
+    const agora = user?.id ?? null;
+    const dono = donoDosDadosRef.current;
+    if (typeof dono === "string" && dono !== agora) {
+      dadosPendentesDoRascunhoRef.current = null;
+      camposMexidosPelaClienteRef.current.clear();
+      perfilVistoRef.current = { name: "", whatsapp: "" };
+      form.setValue("name", "");
+      form.setValue("whatsapp", "");
+    }
+    donoDosDadosRef.current = agora;
+    const pendente = dadosPendentesDoRascunhoRef.current;
+    dadosPendentesDoRascunhoRef.current = null;
+    if (pendente && dadosDoRascunhoValemPara(pendente.dono, agora)) {
+      const r = pendente.rascunho;
+      const mexida = camposMexidosPelaClienteRef.current;
+      if (r.nome && !mexida.has("name")) form.setValue("name", r.nome);
+      if (r.whatsapp && !mexida.has("whatsapp")) {
+        form.setValue("whatsapp", r.whatsapp);
+      }
+      // Endereço e CEP: só onde a pessoa ainda não escreveu nada nesse meio
+      // tempo (o CEP nasce da semente do aparelho, que também conta como
+      // "ainda não escreveu").
+      const semente = localStorage.getItem("ikcous_last_shipping_cep") || "";
+      const cepAtual = form.getValues("cep") ?? "";
+      if (r.cep && (cepAtual === "" || cepAtual === semente)) {
+        form.setValue("cep", r.cep);
+        cepAssociadoRef.current = formatarCep(r.cep).limpo;
+      }
+      const preencherSeVazio = (
+        campo: "street" | "number" | "neighborhood" | "city" | "state",
+        valor: string,
+      ) => {
+        if (valor && !(form.getValues(campo) ?? ""))
+          form.setValue(campo, valor);
+      };
+      preencherSeVazio("street", r.rua);
+      preencherSeVazio("number", r.numero);
+      preencherSeVazio("neighborhood", r.bairro);
+      preencherSeVazio("city", r.cidade);
+      preencherSeVazio("state", r.estado);
+      if (r.complemento && !(form.getValues("complement") ?? "")) {
+        form.setValue("complement", r.complemento);
+      }
+      if (r.notas && !notasRef.current) setNotes(r.notas);
+    }
+  }, [authLoading, user, form]);
+  useEffect(() => {
+    if (perfilDaConta) {
+      const nomeDoPerfil = perfilDaConta.full_name || "";
+      const whatsappDoPerfil = perfilDaConta.whatsapp
+        ? formatWhatsApp(perfilDaConta.whatsapp)
+        : "";
+      const seguirOPerfil = (
+        campo: "name" | "whatsapp",
+        novo: string,
+        anterior: string,
+      ) => {
+        const atual = form.getValues(campo) ?? "";
+        const aindaEhDoPerfil = atual === "" || atual === anterior;
+        if (
+          !camposMexidosPelaClienteRef.current.has(campo) &&
+          aindaEhDoPerfil
+        ) {
+          form.setValue(campo, novo, { shouldValidate: true });
+        }
+      };
+      seguirOPerfil("name", nomeDoPerfil, perfilVistoRef.current.name);
+      seguirOPerfil(
         "whatsapp",
-        profile.whatsapp ? formatWhatsApp(profile.whatsapp) : "",
-        { shouldValidate: true },
+        whatsappDoPerfil,
+        perfilVistoRef.current.whatsapp,
       );
+      perfilVistoRef.current = {
+        name: nomeDoPerfil,
+        whatsapp: whatsappDoPerfil,
+      };
       form.trigger();
     } else if (user) {
       form.trigger();
     }
-  }, [profile, user, form]);
+  }, [perfilDaConta, user, form]);
 
   useEffect(() => {
     if (user) {
@@ -2982,9 +3291,9 @@ export function CheckoutView({
   // Remove !user early return to allow guest checkout UI to render
   // if (!user) return null; // Wait for redirect
 
-  // Values are now passed from props to ensure consistency
-  const discount = appliedCoupon?.discount || 0;
-  const finalTotal = total - discount;
+  // `discount` e `finalTotal` moraram aqui; subiram para antes dos efeitos de
+  // pagamento (a decisão do total zero precisa deles, e os efeitos rodam antes
+  // do retorno antecipado de `authLoading`).
 
   // ECONOMIA total exibida na barra de baixo (pedido do Gabriel,
   // 12/09/2026): cupom + o que o frete grátis deixou de cobrar. NÃO muda o
@@ -3042,15 +3351,8 @@ export function CheckoutView({
   // configurada deixava `shipping === 0`, a guarda antiga não disparava, e
   // o pedido fechava com frete R$ 0 sem cotação nenhuma, depois do
   // carrinho ter dito "A calcular".
-  const semFreteSelecionado =
-    freteIncoerenteComDestino ||
-    freteEmCotacao ||
-    finalizarBloqueadoPorFrete({
-      carrinhoVazio: cart.length === 0,
-      freteIndefinido: ctxFreteIndefinido,
-      shipping,
-      temOpcaoSelecionada: !!selectedShippingOption,
-    });
+  // (`semFreteSelecionado` subiu para antes dos efeitos de pagamento — ver
+  // o comentário "COMPRA QUE FECHA EM R$ 0,00", acima dos efeitos.)
 
   // A outra guarda de frete (regra do dono, 21/09/2026): a modalidade do
   // frete tem de combinar com o meio de pagamento — transportadora exige
@@ -3120,7 +3422,8 @@ export function CheckoutView({
     aguardandoConferenciaDaRecusa ||
     convidadoForaDaCidade ||
     pagamentoIncompativel ||
-    formaDePagamentoDesligada;
+    formaDePagamentoDesligada ||
+    totalZero.bloqueiaFinalizar;
   // Com a identificação recolhida, o botão cinza precisa apontar o campo
   // pendente na própria barra, sem afrouxar a validação do pedido.
   const pendenciaDeIdentificacao = !isValid
@@ -3165,6 +3468,13 @@ export function CheckoutView({
 
     switch (DESTINO_POR_ACAO.get(acao)) {
       case "carrinho":
+        // Preço mudou / estoque caiu: o carrinho só ajuda se reler o catálogo
+        // ANTES de a cliente chegar lá (com teto, nunca a prende). As demais
+        // saídas do carrinho (frete, variação, remover) não dependem disso.
+        if (acao === "reconferir_carrinho" || acao === "ajustar_estoque") {
+          irAoCarrinhoRelido(() => onNavigate("cart"));
+          return;
+        }
         onNavigate("cart");
         return;
       case "cupom":
@@ -3369,6 +3679,22 @@ export function CheckoutView({
           : freteEmCotacao
             ? "Aguarde: o frete do endereço de entrega ainda está sendo calculado."
             : "Escolha uma opção de frete antes de finalizar o pedido.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // Trava do TOTAL ZERO (14/10/2026), antes da de modalidade × pagamento:
+    // a frase daquela manda "escolher pagamento pelo app", justo o que não
+    // existe com total zero. Cobre o que o `disabled` não alcança (quem chama
+    // o handler por outro caminho) e o instante entre o total zerar e o efeito
+    // trocar a forma de pagamento.
+    if (totalZero.bloqueiaFinalizar) {
+      toast.error(
+        totalZero.travaPor
+          ? `${textoDoPedidoSemValor({ decisao: totalZero, ehRetirada })} ${saidaDoTotalZero({ travaPor: totalZero.travaPor, temCupom: !!appliedCoupon })}`
+          : "Este pedido não tem valor a pagar. Escolha pagar na retirada ou na entrega para finalizar.",
       );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -4677,7 +5003,9 @@ export function CheckoutView({
         addresses={addresses}
         onNewAddressSubmit={handleNewAddressSubmit}
         onCancel={() => globalThis.history.back()}
-        nomeDaConta={profile?.full_name || user?.user_metadata?.name || ""}
+        nomeDaConta={
+          perfilDaConta?.full_name || user?.user_metadata?.name || ""
+        }
       />
     );
   }
@@ -4701,7 +5029,11 @@ export function CheckoutView({
     requerConta: boolean;
   }
 
-  const opcoesNoApp: OpcaoDePagamento[] = pagamentoOnlineLigado()
+  // Total zero (14/10/2026): o grupo "No app" some inteiro — não existe
+  // cobrança de R$ 0,00 (ver `totalZero`, acima dos efeitos de pagamento).
+  const appOferecidoNestaCompra =
+    pagamentoOnlineLigado() && !totalZero.escondeApp;
+  const opcoesNoApp: OpcaoDePagamento[] = appOferecidoNestaCompra
     ? [
         {
           value: "online",
@@ -4862,7 +5194,7 @@ export function CheckoutView({
           <div
             className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
           >
-            {isSelected && <Check className="size-3 text-white" />}
+            {isSelected && <Check className="size-3 text-primary-foreground" />}
           </div>
         )}
       </button>
@@ -5105,7 +5437,7 @@ export function CheckoutView({
                       ? "erro-checkout-name"
                       : undefined
                   }
-                  className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                  className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                 />
                 {form.formState.errors.name && (
                   <p
@@ -5153,7 +5485,7 @@ export function CheckoutView({
                             ? "erro-checkout-tel"
                             : undefined
                         }
-                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 py-3 pl-12 pr-4 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 py-3 pl-12 pr-4 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                       />
                     )}
                   />
@@ -5210,7 +5542,7 @@ export function CheckoutView({
                           ? "erro-checkout-cpf"
                           : "ajuda-checkout-cpf"
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   )}
                 />
@@ -5316,7 +5648,7 @@ export function CheckoutView({
                             ? "erro-guest-cep"
                             : undefined
                         }
-                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                         onChange={async (e) => {
                           const { limpo, formatado } = formatarCep(
                             e.target.value,
@@ -5388,7 +5720,7 @@ export function CheckoutView({
                           ? "erro-guest-number"
                           : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                     {form.formState.errors.number && (
                       <p
@@ -5418,7 +5750,7 @@ export function CheckoutView({
                           ? "erro-guest-street"
                           : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                     {form.formState.errors.street && (
                       <p
@@ -5448,7 +5780,7 @@ export function CheckoutView({
                           ? "erro-guest-neighborhood"
                           : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                     {form.formState.errors.neighborhood && (
                       <p
@@ -5476,7 +5808,7 @@ export function CheckoutView({
                       aria-invalid={
                         form.formState.errors.city ? true : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   </div>
                   <div className="col-span-3">
@@ -5496,7 +5828,7 @@ export function CheckoutView({
                       aria-invalid={
                         form.formState.errors.state ? true : undefined
                       }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   </div>
                   <div className="col-span-6">
@@ -5510,7 +5842,7 @@ export function CheckoutView({
                       id="guest-complement"
                       {...form.register("complement")}
                       placeholder="Apto, Bloco, Fundos, etc."
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   </div>
                 </div>
@@ -5537,7 +5869,7 @@ export function CheckoutView({
                       setEditingAddressId(null);
                       setIsAddressModalOpen(true);
                     }}
-                    className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
+                    className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-primary-foreground transition-all hover:opacity-90"
                   >
                     <Plus className="size-3" /> Novo
                   </Button>
@@ -5725,7 +6057,19 @@ export function CheckoutView({
                 pagamento online ligado é o PIX no app (auto-selecionado
                 pelo efeito da transição); sem ele, NÃO existe fallback "na
                 entrega" — o bloqueio é a regra e o texto diz por quê. */}
-            {selectedShippingOption && !ehEntregaLocal && (
+            {/* COMPRA QUE FECHA EM R$ 0,00 (dono, 14/10/2026): sem o grupo "No
+                app", a frase explica por que ele sumiu e o que a cliente faz.
+                Quando o Finalizar trava, a saída vem logo abaixo, junto do
+                botão (`totalZero.travaPor`). */}
+            {totalZero.zerado && (
+              <p
+                data-testid="checkout-pedido-sem-valor"
+                className="text-[11px] font-bold normal-case leading-normal tracking-normal text-zinc-700"
+              >
+                {textoDoPedidoSemValor({ decisao: totalZero, ehRetirada })}
+              </p>
+            )}
+            {selectedShippingOption && !ehEntregaLocal && !totalZero.zerado && (
               <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
                 {pagamentoOnlineLigado()
                   ? estadoDoCartao.estado !== "pronto"
@@ -5758,7 +6102,8 @@ export function CheckoutView({
               )}
             {(!selectedShippingOption || ehEntregaLocal) &&
               opcoesNaEntrega.length === 0 &&
-              !user && (
+              !user &&
+              !totalZero.zerado && (
                 <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
                   <p className="text-[11px] font-bold leading-snug text-amber-700">
                     Para comprar nesta loja, entre na sua conta — o pagamento é
@@ -5800,7 +6145,7 @@ export function CheckoutView({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
               rows={2}
-              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-primary focus:bg-white"
+              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-primary focus:bg-white md:text-sm"
               autoComplete="off"
             />
           </div>
@@ -6230,11 +6575,11 @@ export function CheckoutView({
                           "h-12 px-3 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-1.5 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
                           botaoFinalizarDesabilitado
                             ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                            : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
+                            : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-black/10",
                         )}
                       >
                         {isSubmitting ? (
-                          <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                          <div className="size-4 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
                         ) : (
                           <>
                             <span>Finalizar</span>
@@ -6303,7 +6648,55 @@ export function CheckoutView({
                               : "Informe o endereço de entrega para calcular o frete"}
                       </p>
                     )}
+                    {!semFreteSelecionado && totalZero.travaPor && (
+                      // COMPRA QUE FECHA EM R$ 0,00 (dono, 14/10/2026): o
+                      // total é zero e o pedido não fecha — transportadora
+                      // exige antecipado, ou a loja só recebe pelo app, e o
+                      // app não cobra pedido sem valor. Botão apagado SEM
+                      // saída faz a pessoa desistir: a frase diz o que fazer,
+                      // e os botões levam até lá.
+                      <div
+                        role="alert"
+                        data-testid="checkout-total-zero-trava"
+                        className="mx-auto mt-1.5 max-w-md space-y-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5"
+                      >
+                        <p className="flex items-start gap-1.5 text-[11px] font-bold text-amber-700">
+                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                          {saidaDoTotalZero({
+                            travaPor: totalZero.travaPor,
+                            temCupom: !!appliedCoupon,
+                          })}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {totalZero.travaPor === "transportadora" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                haptic.light();
+                                onNavigate("cart");
+                              }}
+                              className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                            >
+                              Escolher outro frete
+                            </button>
+                          )}
+                          {appliedCoupon && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                haptic.light();
+                                handleRemoveCoupon();
+                              }}
+                              className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                            >
+                              Tirar o cupom
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {!semFreteSelecionado &&
+                      !totalZero.zerado &&
                       pagamentoIncompativel &&
                       paymentMethod === "online" &&
                       ehEntregaLocal && (
@@ -6328,6 +6721,7 @@ export function CheckoutView({
                     {!semFreteSelecionado &&
                       !isOffline &&
                       !pagamentoIncompativel &&
+                      !totalZero.zerado &&
                       formaDePagamentoDesligada &&
                       // 🔴 CORRIGIDO na revisão Opus do commit 085282c3
                       // (anotação 2): sem esta guarda, um convidado numa
@@ -6563,7 +6957,7 @@ function SuccessView({
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
         <button
           onClick={() => onNavigate("home")}
-          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-primary-foreground shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
         >
           Retornar à Vitrine
           <ArrowLeft className="size-5 rotate-180" />
@@ -6642,7 +7036,7 @@ function PagamentoConfirmadoView({
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
         <button
           onClick={() => onNavigate("orders")}
-          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-primary-foreground shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
         >
           Ver Meus Pedidos
         </button>
@@ -6794,11 +7188,11 @@ function AddressSelectionView({
           <div className="absolute bottom-0 left-0 -mb-12 -ml-12 size-24 rounded-full bg-white/5 blur-xl" />
 
           <div className="relative z-10 flex flex-col">
-            <h2 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-white">
+            <h2 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-primary-foreground">
               {editingAddressId ? "Editar Endereço" : "Novo Endereço"}
               <Sparkles className="size-4.5 animate-pulse text-amber-400" />
             </h2>
-            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-white/80">
+            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-primary-foreground/80">
               {editingAddressId
                 ? "Atualize os dados para entrega"
                 : "Onde entregaremos seu produto?"}

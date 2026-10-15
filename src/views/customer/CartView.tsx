@@ -303,7 +303,14 @@ export function CartView({
   // Insert/Delete em useOrders.ts:1247-1279). Antes a view copiava a lista
   // para um estado local na entrada da aba e ficava congelada até sair e
   // voltar. Prendado por tests/front/cart-aba-pedidos-viva.test.tsx.
-  const { fetchUserOrders, orders: pedidosVivos } = useOrders(true, false);
+  // `ordersLoadError`: a consulta falhou (rede/servidor) — a aba mostra "Não
+  // conseguimos carregar" com "Tentar de novo" em vez de "Nenhum pedido".
+  // `?? null` porque dublês de teste anteriores ao campo devolvem `undefined`.
+  const {
+    fetchUserOrders,
+    orders: pedidosVivos,
+    ordersLoadError: erroDosPedidos,
+  } = useOrders(true, false);
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(80);
   const isSummaryReady = useDeferredRender(380);
@@ -412,6 +419,27 @@ export function CartView({
       }
     }
   }, [user, fetchUserOrders, activeTab, isReady]);
+
+  // "Tentar de novo" da lista de pedidos: refaz a leitura do servidor. O hook
+  // limpa o erro quando a resposta vem ok e o mantém se falhar de novo.
+  const devolverFocoDoRetryRef = useRef(false);
+  const tentarCarregarPedidosDeNovo = useCallback(() => {
+    devolverFocoDoRetryRef.current = true;
+    setIsLoadingOrders(true);
+    fetchUserOrders().then(() => {
+      setIsLoadingOrders(false);
+    });
+  }, [fetchUserOrders]);
+
+  // Foco de quem tocou em "Tentar de novo": se a leitura falhar de novo, o
+  // botão continua montado (a OrderList o mantém, "Carregando…") e o foco
+  // fica nele. Se der certo, o botão sai de cena — o foco vai para o painel
+  // da aba (tabIndex -1, estável), em vez de cair no corpo da página.
+  useEffect(() => {
+    if (!devolverFocoDoRetryRef.current || isLoadingOrders) return;
+    devolverFocoDoRetryRef.current = false;
+    if (!erroDosPedidos) document.getElementById("painel-orders")?.focus();
+  }, [isLoadingOrders, erroDosPedidos]);
 
   useEffect(() => {
     const getScrollElement = () => document.querySelector("main");
@@ -780,7 +808,7 @@ export function CartView({
                               <button
                                 type="button"
                                 onClick={cadastrarEndereco}
-                                className="select-none rounded-xl bg-primary px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white hover:bg-primary/90"
+                                className="select-none rounded-xl bg-primary px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-primary-foreground hover:bg-primary/90"
                               >
                                 Cadastrar endereço
                               </button>
@@ -931,7 +959,7 @@ export function CartView({
                         <div className="relative z-10">
                           {/* Header */}
                           <div className="mb-6 flex items-center gap-3">
-                            <div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-white shadow-md">
+                            <div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
                               <Sparkles className="size-5" />
                             </div>
                             <div>
@@ -1122,13 +1150,13 @@ export function CartView({
                         haptic.medium();
                         onNavigate("checkout");
                       }}
-                      className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl bg-primary px-6 text-white shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-[0.98]"
+                      className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl bg-primary px-6 text-primary-foreground shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-[0.98]"
                     >
                       <span className="relative z-10 text-[11px] font-black uppercase tracking-widest">
                         Finalizar Compra
                       </span>
                       <div className="relative z-10 flex size-8 items-center justify-center rounded-xl bg-white/10 transition-colors group-hover:bg-white/20">
-                        <ArrowRight className="size-4 text-white transition-transform group-hover:translate-x-0.5" />
+                        <ArrowRight className="size-4 text-primary-foreground transition-transform group-hover:translate-x-0.5" />
                       </div>
                       <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
                     </button>
@@ -1165,6 +1193,7 @@ export function CartView({
             <motion.div
               key="orders-content"
               id="painel-orders"
+              tabIndex={-1}
               role="tabpanel"
               aria-labelledby="tab-orders"
               custom={tabDirection}
@@ -1176,7 +1205,7 @@ export function CartView({
                 x: { ease: [0.16, 1, 0.3, 1], duration: 0.38 },
                 opacity: { duration: 0.2 },
               }}
-              className="flex w-full flex-1 flex-col px-6 pb-6 pt-0"
+              className="flex w-full flex-1 flex-col px-6 pb-6 pt-0 focus:outline-none"
             >
               {orderViewMode === "guest" && (
                 <OrderSearch
@@ -1276,6 +1305,9 @@ export function CartView({
                       isLoadingOrders={isLoadingOrders}
                       onNavigate={onNavigate}
                       isGuest={!user}
+                      loadError={user ? (erroDosPedidos ?? null) : null}
+                      onRetry={tentarCarregarPedidosDeNovo}
+                      hasAnyOrders={orders.length > 0}
                       emptyTitle={
                         orders.length > 0
                           ? ordersTab === "active"

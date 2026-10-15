@@ -829,7 +829,7 @@ export function AccountSettingsView() {
                     <Button
                       onClick={handleUpdateProfile}
                       disabled={loading || profileLoadState !== "loaded"}
-                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {loading ? (
                         <Loader2 className="size-4 animate-spin" />
@@ -971,7 +971,7 @@ export function AccountSettingsView() {
                     <Button
                       type="submit"
                       disabled={updatingPassword}
-                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90"
+                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90"
                     >
                       {updatingPassword ? (
                         <Loader2 className="size-4 animate-spin" />
@@ -1172,7 +1172,7 @@ export function AccountSettingsView() {
                               className="size-full object-cover duration-300 animate-in fade-in"
                             />
                           </div>
-                          <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-primary text-white shadow-md transition-colors hover:bg-primary/90">
+                          <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-colors hover:bg-primary/90">
                             <label
                               htmlFor="account-avatar-upload-icon"
                               className="flex size-full cursor-pointer items-center justify-center"
@@ -1214,7 +1214,7 @@ export function AccountSettingsView() {
                               onChange={handlePhotoUpload}
                               disabled={isUpdatingAvatar}
                             />
-                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90 active:scale-95">
+                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95">
                               <Camera className="size-3.5" />
                               Escolher Outra Foto
                             </span>
@@ -1344,7 +1344,7 @@ export function AccountSettingsView() {
               }}
               className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
                 coverModalTab === "presets"
-                  ? "bg-primary text-white shadow-md"
+                  ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -1358,7 +1358,7 @@ export function AccountSettingsView() {
               }}
               className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
                 coverModalTab === "upload"
-                  ? "bg-primary text-white shadow-md"
+                  ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
@@ -1477,7 +1477,7 @@ export function AccountSettingsView() {
                     haptic.light();
                   }}
                   disabled={isUpdatingCover}
-                  className="flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[9px] font-black font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-primary/90"
+                  className="flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[9px] font-black font-bold uppercase tracking-wider text-primary-foreground shadow-md transition-all hover:bg-primary/90"
                 >
                   {isUpdatingCover ? (
                     <>

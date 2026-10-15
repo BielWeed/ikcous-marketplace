@@ -15,7 +15,7 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useSearch } from "@/hooks/useSearch";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
-import type { View } from "@/types";
+import type { Product, View } from "@/types";
 import {
   ArrowLeft,
   PackageSearch,
@@ -40,6 +40,15 @@ interface SearchViewProps {
    * segura a cópia "dona" do termo (a barra do Header) nunca fica sabendo
    * que o "Limpar Tudo" do estado vazio zerou a busca aqui dentro. */
   onQueryChange?: (query: string) => void;
+  /** O carrinho do App (mesma função que a Home recebe). Sem ela os cards
+   * ficam sem como adicionar: viram "Ver produto" em vez de fingir que
+   * adicionaram. */
+  onAddToCart?: (
+    product: Product,
+    quantity?: number,
+    variantId?: string,
+    variantNames?: string,
+  ) => void;
 }
 
 interface SearchInputProps {
@@ -85,6 +94,7 @@ export const SearchView = React.memo(function SearchView({
   onBack,
   selectedProductId,
   onQueryChange,
+  onAddToCart,
 }: SearchViewProps) {
   const { config } = useStore();
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
@@ -114,6 +124,28 @@ export const SearchView = React.memo(function SearchView({
       onNavigate("product-detail", id);
     },
     [onNavigate],
+  );
+
+  // Mesmos dois caminhos da Home. O card chama `onAddToCart(produto, clique)`:
+  // o invólucro entrega só o produto — o clique no lugar de `quantity` viraria
+  // quantidade. Com opções (tamanho/cor), o card abre a folha e entrega
+  // variação + quantidade escolhidas.
+  const handleAddToCart = useCallback(
+    (product: Product) => {
+      onAddToCart?.(product);
+    },
+    [onAddToCart],
+  );
+  const handleAddToCartWithVariants = useCallback(
+    (
+      product: Product,
+      variantId: string | undefined,
+      variantNames: string,
+      quantity = 1,
+    ) => {
+      onAddToCart?.(product, quantity, variantId, variantNames);
+    },
+    [onAddToCart],
   );
 
   const handlePrefetchProductDetail = useCallback(() => {
@@ -242,7 +274,7 @@ export const SearchView = React.memo(function SearchView({
           <div className="no-scrollbar flex items-center gap-2 overflow-x-auto pb-1">
             <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
               <SheetTrigger asChild>
-                <button className="flex items-center gap-2 whitespace-nowrap rounded-full bg-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-95">
+                <button className="flex items-center gap-2 whitespace-nowrap rounded-full bg-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-primary-foreground shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-95">
                   <SlidersHorizontal className="size-3" />
                   Filtros {activeFiltersCount > 0 && `(${activeFiltersCount})`}
                 </button>
@@ -279,7 +311,7 @@ export const SearchView = React.memo(function SearchView({
                           onClick={() => setCategory(catName)}
                           className={`rounded-2xl border px-5 py-2.5 text-[11px] font-bold transition-all ${
                             category === catName
-                              ? "scale-105 border-primary bg-primary text-white shadow-lg shadow-black/10"
+                              ? "scale-105 border-primary bg-primary text-primary-foreground shadow-lg shadow-black/10"
                               : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
                           }`}
                         >
@@ -305,7 +337,7 @@ export const SearchView = React.memo(function SearchView({
                           onClick={() => setSort(option.value as any)}
                           className={`rounded-2xl border px-4 py-3 text-[11px] font-bold transition-all ${
                             sort === option.value
-                              ? "border-primary bg-primary text-white"
+                              ? "border-primary bg-primary text-primary-foreground"
                               : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
                           }`}
                         >
@@ -317,7 +349,7 @@ export const SearchView = React.memo(function SearchView({
 
                   <Button
                     onClick={() => setIsFilterOpen(false)}
-                    className="h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-white shadow-2xl shadow-black/10 transition-all hover:bg-primary/90"
+                    className="h-14 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-primary-foreground shadow-2xl shadow-black/10 transition-all hover:bg-primary/90"
                   >
                     Aplicar Filtros
                   </Button>
@@ -333,7 +365,7 @@ export const SearchView = React.memo(function SearchView({
                 onClick={() => setCategory(catName)}
                 className={`whitespace-nowrap rounded-full border px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
                   category === catName
-                    ? "border-primary bg-primary text-white"
+                    ? "border-primary bg-primary text-primary-foreground"
                     : "border-zinc-100 bg-zinc-50 text-zinc-500 hover:border-primary hover:text-primary"
                 }`}
               >
@@ -371,6 +403,10 @@ export const SearchView = React.memo(function SearchView({
                     isFavorite={isFavorite(product.id)}
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
+                    onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                    onAddToCartWithVariants={
+                      onAddToCart ? handleAddToCartWithVariants : undefined
+                    }
                     showRating={config.enableReviews}
                     promessasDeFrete={promessasDaLoja}
                     onMouseEnter={handlePrefetchProductDetail}
@@ -436,6 +472,10 @@ export const SearchView = React.memo(function SearchView({
                     isFavorite={isFavorite(product.id)}
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
+                    onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                    onAddToCartWithVariants={
+                      onAddToCart ? handleAddToCartWithVariants : undefined
+                    }
                     showRating={config.enableReviews}
                     promessasDeFrete={promessasDaLoja}
                     onMouseEnter={handlePrefetchProductDetail}

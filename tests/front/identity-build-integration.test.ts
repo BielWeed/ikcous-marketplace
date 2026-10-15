@@ -19,6 +19,7 @@ import {
 } from "../../scripts/identityBuildConfig";
 import { createIdentityBuildFixture } from "../../scripts/identityBuildFixture";
 import type { BuildIdentitySnapshot } from "../../src/config/buildIdentityContract";
+import { nomeCurtoDaLoja } from "../../src/config/nomeCurtoDaLoja";
 
 vi.mock("../../scripts/identityBuildFixture", { spy: true });
 const roots: string[] = [];
@@ -165,6 +166,10 @@ describe("artefato real de Vite/PWA", () => {
       });
       expect(path.basename(output)).toBe("dist-test");
       expect(manifest.name).toBe(snapshot.identity.storeName);
+      expect(manifest.short_name).toBe(
+        nomeCurtoDaLoja(snapshot.identity.storeName),
+      );
+      expect(Array.from(manifest.short_name).length).toBeLessThanOrEqual(12);
       expect(manifest.icons.map((icon: { src: string }) => icon.src)).toEqual([
         snapshot.localUrls.icon_192,
         snapshot.localUrls.icon_512,

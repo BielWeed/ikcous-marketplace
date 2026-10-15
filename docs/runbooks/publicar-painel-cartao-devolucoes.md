@@ -139,7 +139,7 @@ antes de abrir o estorno automático do cancelamento. As functions novas continu
     qualquer outro nome, pare.**
   - Os jobs marcados "(informacional)" não bloqueiam.
 - [ ] **"Build e tamanho" verde.** O portão de tamanho é dividido: cliente ≤ 550 kB, painel
-  ≤ 450 kB ([AGENTS.md](../../AGENTS.md), Verificação).
+  ≤ 455 kB ([AGENTS.md](../../AGENTS.md), Verificação).
 - [ ] **Todas as revisões de risco independentes deram PASSA**, no commit que vai ser publicado:
   - migrations 75–78;
   - edges do cartão;

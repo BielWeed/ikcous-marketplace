@@ -365,9 +365,10 @@ describe("AdminProductFormView — bordas da grade", () => {
     });
 
     expect(toastError).not.toHaveBeenCalled();
-    const texto = document.body.textContent ?? "";
-    expect(texto).toContain("R$ 109.90");
+    // `formatCurrency` põe um espaço inquebrável depois do "R$": normaliza.
+    const texto = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    expect(texto).toContain("R$ 109,90");
     // Só UMA linha ganhou selo de preço próprio.
-    expect(texto.match(/R\$ \d+\.\d{2}/g)).toHaveLength(1);
+    expect(texto.match(/R\$ \d+,\d{2}/g)).toHaveLength(1);
   });
 });

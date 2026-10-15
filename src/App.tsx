@@ -2284,11 +2284,15 @@ const AppContent = () => {
         : null;
       if (!product) {
         // Só o caso "o produto de fato não existe" manda para a Home.
-        const redirecionarParaHome = () => {
+        const redirecionarParaHome = (avisar = false) => {
           if (!active) return;
           console.warn(
             "[App] Product detail view requested but product not found on network. Redirecting to home.",
           );
+          // Produto removido ou pausado: a cliente cai na Home e precisa saber
+          // por quê. Falha de rede NUNCA passa por aqui (vira "Não conseguimos
+          // carregar"), e link sem id nem é produto indisponível: sem aviso.
+          if (avisar) toast.info("Este produto não está mais disponível.");
           setCurrentView("home");
           // Sync URL back to home
           const caminhoDaHome = caminhoDaHomeRef.current();
@@ -2326,14 +2330,14 @@ const AppContent = () => {
                   "[App] verifyProduct: produto não existe:",
                   error,
                 );
-                redirecionarParaHome();
+                redirecionarParaHome(true);
                 return;
               }
               throw error;
             }
             if (!data) {
               console.error("[App] verifyProduct query returned no data");
-              redirecionarParaHome();
+              redirecionarParaHome(true);
               return;
             }
             // Product exists in database, do not redirect!
@@ -2615,6 +2619,7 @@ const AppContent = () => {
               onBack: () => handleNavigate("home"),
               selectedProductId: selectedProductId || undefined,
               onQueryChange: setSearchQuery,
+              onAddToCart: handleAddToCart,
             }}
           />
         );
@@ -2767,6 +2772,7 @@ const AppContent = () => {
                       onToggleFavorite: handleToggleFavorite,
                       onProductClick: handleProductClick,
                       onNavigate: handleNavigate,
+                      onAddToCart: handleAddToCart,
                       selectedProductId: isMainTab
                         ? selectedProductId || undefined
                         : undefined,
@@ -2886,6 +2892,7 @@ const AppContent = () => {
                         onToggleFavorite: handleToggleFavorite,
                         onProductClick: handleProductClick,
                         onNavigate: handleNavigate,
+                        onAddToCart: handleAddToCart,
                         selectedProductId: selectedProductId || undefined,
                         isActive: currentView === "favorites",
                       }}

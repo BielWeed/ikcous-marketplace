@@ -16,6 +16,7 @@ export type TipoDeAviso =
   | "pedido"
   | "cancelamento"
   | "devolucao"
+  | "recebimento"
   | "pergunta"
   | "avaliacao"
   | "estoque";
@@ -169,6 +170,17 @@ const FRASE_DO_DINHEIRO: Record<
   pago_depois: "pago depois do cancelamento: confira o pedido",
 };
 
+/**
+ * Pedido entregue, pago na entrega, sem recebimento marcado (ver
+ * `@/lib/recebimentos-por-marcar`). `updated_at` e a data da entrega.
+ */
+export interface RecebimentoPorMarcar {
+  id: string;
+  customer_name: string | null;
+  total: number | null;
+  updated_at: string;
+}
+
 export interface AvaliacaoSemResposta {
   id: string;
   product_id: string;
@@ -201,6 +213,11 @@ export interface EntradaDeAvisos {
    * fonte nao entrou nesta rodada.
    */
   cancelamentosDoCliente?: CancelamentoDoCliente[];
+  /**
+   * Pedidos entregues, pagos na entrega, sem recebimento marcado, dos ultimos
+   * 30 dias. Opcional: ausente = a fonte nao entrou nesta rodada.
+   */
+  recebimentosPorMarcar?: RecebimentoPorMarcar[];
 }
 
 /**
@@ -223,6 +240,9 @@ const ORDEM_DE_URGENCIA: TipoDeAviso[] = [
   // produto cujo dinheiro ja voltou.
   "cancelamento",
   "devolucao",
+  // Marcar o recebimento destrava a cliente que quer devolver: logo depois da
+  // devolucao, antes do que pode esperar.
+  "recebimento",
   "pergunta",
   "avaliacao",
   "estoque",
@@ -293,6 +313,24 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
     });
   }
 
+  for (const recebimento of entrada.recebimentosPorMarcar ?? []) {
+    // Como os outros avisos de pedido, traz o nome da cliente; sem nome, o
+    // titulo fica sem o "de ..." em vez de dizer "de cliente".
+    const nome = (recebimento.customer_name ?? "").trim();
+    avisos.push({
+      id: `recebimento:${recebimento.id}`,
+      tipo: "recebimento",
+      titulo: `Pedido #${numeroDoPedido(recebimento.id)}${nome ? ` de ${nome}` : ""} entregue: você já recebeu o pagamento?`,
+      detalhe: `${formatarReais(recebimento.total)} — marque para a cliente poder pedir devolução`,
+      quando: recebimento.updated_at,
+      destino: { view: "admin-orders", id: recebimento.id },
+      // CONTA no cracha, ao contrario do estoque e do cancelamento: marcar o
+      // recebimento e o ato que faz o aviso sumir (e o que destrava a cliente
+      // que quer devolver), e a janela de 30 dias limita o que fica parado.
+      contaNoCracha: true,
+    });
+  }
+
   if (entrada.perguntasPendentes > 0) {
     const uma = entrada.perguntasPendentes === 1;
     avisos.push({
@@ -332,7 +370,9 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       detalhe:
         produto.stock === 0
           ? "Sem nenhuma unidade"
-          : `${produto.stock} ${produto.stock === 1 ? "unidade" : "unidades"} restantes`,
+          : produto.stock === 1
+            ? "1 unidade restante"
+            : `${produto.stock} unidades restantes`,
       quando: produto.created_at,
       destino: { view: "admin-product-form", id: produto.id },
       // NAO conta no cracha, e isso e' deliberado: estoque baixo so' termina

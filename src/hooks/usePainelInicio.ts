@@ -18,7 +18,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *   atrás das outras abas).
  * - Tempo real: um canal em `marketplace_orders` enquanto a tela está ativa;
  *   rajada de eventos vira UMA recarga (espera de 1,5 s), e aba escondida só
- *   marca "sujo" — recarrega quando volta a ficar visível.
+ *   marca "sujo" — recarrega quando volta a ficar visível. Sem evento, voltar
+ *   a ficar visível também recarrega se o retrato tem mais de 30 s (o "Hoje"
+ *   de uma tela aberta de um dia para o outro).
  */
 
 interface RetratoDoPainel {
@@ -179,7 +181,13 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     };
   }, []);
 
-  const carregar = useCallback(async (forcar: boolean) => {
+  // `silenciosa`: leitura de fundo que ninguém pediu (voltar a ficar visível).
+  // Se falhar e já houver números em mãos, não fala com a lojista: o celular
+  // saindo da tela bloqueada ainda pode estar sem rede, e a faixa vermelha por
+  // cima de números bons seria alerta falso. O retrato bom volta para o cache
+  // com a idade de antes, então a próxima volta tenta de novo. Sem nada em
+  // mãos, a falha aparece como sempre.
+  const carregar = useCallback(async (forcar: boolean, silenciosa = false) => {
     if (
       !forcar &&
       retratoEmCache &&
@@ -188,12 +196,19 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
       setRetrato(retratoEmCache);
       return;
     }
-    setCarregando(true);
+    const anterior = retratoEmCache;
+    if (!silenciosa) setCarregando(true);
     try {
       const novo = await buscarCoalescido(forcar);
+      // Só o painel decide: com o painel novo bom, ele entra mesmo que a
+      // assinatura tenha falhado (o erro dela segue o caminho de sempre).
+      if (silenciosa && anterior?.painel && novo.erroPainel !== null) {
+        if (retratoEmCache === novo) retratoEmCache = anterior;
+        return;
+      }
       if (montadoRef.current) setRetrato(novo);
     } finally {
-      if (montadoRef.current) setCarregando(false);
+      if (!silenciosa && montadoRef.current) setCarregando(false);
     }
   }, []);
 
@@ -235,10 +250,19 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     };
 
     const aoMudarVisibilidade = () => {
-      if (document.visibilityState === "visible" && sujoEscondido) {
+      if (document.visibilityState !== "visible") return;
+      if (sujoEscondido) {
+        // Chegou pedido enquanto estava escondida: uma recarga forçada só.
         sujoEscondido = false;
         recarregarJa();
+        return;
       }
+      // Sem evento de pedido, a tela aberta de manhã ainda mostra o "Hoje" de
+      // ontem. Voltar a ficar visível busca de novo se o retrato é velho
+      // (`carregar(false)` respeita o frescor de 30 s e a busca em voo), a
+      // menos que uma recarga por evento já esteja marcada. Silenciosa: ver
+      // `carregar`.
+      if (!espera) void carregar(false, true);
     };
 
     const canal = supabase
