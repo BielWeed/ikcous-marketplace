@@ -317,6 +317,16 @@ const POSTERIORES_A_97 = [
     nome: "20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql",
     noAr: `SELECT to_regprocedure('public.renomear_categoria(uuid,text)') IS NOT NULL AS sim`,
   },
+  // 20261238000000: a cliente pede exclusao da conta e correcao do e-mail. As tres politicas de
+  // public.pedidos_de_privacidade (dono_ou_admin_select, dono_insert, admin_update) usam
+  // is_admin_atual()/rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT: "politicas fora da 20261197000000 ainda usam ..."). O rollback dela
+  // recusa se a tabela tiver linha ou ja tiver guardado alguma (pg_relation_size > 0): num banco
+  // de prova recem-migrado ela esta vazia. Independe da 237; no FIM da lista de proposito, como as demais.
+  {
+    nome: "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql",
+    noAr: `SELECT to_regclass('public.pedidos_de_privacidade') IS NOT NULL AS sim`,
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(cliente) {
