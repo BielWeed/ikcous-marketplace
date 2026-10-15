@@ -88,8 +88,10 @@ export function AjudaDoCrm({
               <strong className="text-white">Produtos Mais Lucrativos:</strong>{" "}
               Os cinco produtos com maior lucro (preço de venda menos o custo
               cadastrado) em pedidos válidos de todo o período. Produto sem
-              custo cadastrado conta custo zero — cadastre o custo para o
-              ranking refletir a margem de verdade.
+              custo cadastrado fica fora da conta do lucro, e a tela avisa quais
+              são — cadastre o custo para ele entrar. O lucro usa o custo de
+              hoje de cada produto: se você mudar o custo, o lucro das vendas
+              antigas muda junto.
             </li>
           </ul>
         </div>
