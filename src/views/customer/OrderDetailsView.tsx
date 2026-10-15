@@ -357,7 +357,10 @@ function cancelledDescription(
   // cartão (`metodo_online` não chega ao app), então o texto não nomeia o
   // meio — "pagamento", que vale para os dois.
   if (key === "expirado") {
-    return "O prazo do pagamento terminou e o pedido foi cancelado. É só comprar de novo.";
+    // Pagou no fim do prazo e o vencimento passou antes da confirmação do
+    // Mercado Pago: o pedido fica minutos como `expirado` e só depois vira
+    // `pago_apos_expirar`. Comprar de novo na hora seria pagar duas vezes.
+    return "O prazo do pagamento terminou e o pedido foi cancelado. Se você já pagou, aguarde alguns minutos antes de comprar de novo. Se não pagou, é só comprar de novo.";
   }
   return statusConfig.cancelled.description;
 }

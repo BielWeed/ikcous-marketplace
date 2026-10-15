@@ -74,8 +74,12 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const FRASE_DO_VENCIMENTO =
-  "O prazo do pagamento terminou e o pedido foi cancelado. É só comprar de novo.";
+// A cliente que pagou no fim do prazo não pode ler "é só comprar de novo" sem
+// aviso: a confirmação do Mercado Pago pode chegar minutos depois do
+// vencimento, e comprar na hora seria pagar duas vezes.
+const AVISO_DE_QUEM_JA_PAGOU =
+  "Se você já pagou, aguarde alguns minutos antes de comprar de novo.";
+const FRASE_DO_VENCIMENTO = `O prazo do pagamento terminou e o pedido foi cancelado. ${AVISO_DE_QUEM_JA_PAGOU} Se não pagou, é só comprar de novo.`;
 const FRASE_GENERICA = "Este pedido foi cancelado e não seguirá para entrega.";
 
 describe("OrderDetailsView — pedido cancelado porque o pagamento venceu diz o motivo", () => {
@@ -130,6 +134,7 @@ describe("OrderDetailsView — pedido cancelado porque o pagamento venceu diz o 
     await renderizar("cancelled", "expirado", onNavigate);
 
     expect(texto()).toContain(FRASE_DO_VENCIMENTO);
+    expect(texto()).toContain(AVISO_DE_QUEM_JA_PAGOU);
     expect(texto()).not.toContain(FRASE_GENERICA);
 
     const botao = botaoDaLoja();
