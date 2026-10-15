@@ -38,6 +38,36 @@
 6. **Loja por loja.** Cada loja (IKCOUS, Savy…) tem o banco dela e os pedidos
    dela. O pedido aparece só no painel da loja onde a cliente o fez, e este
    roteiro roda no Supabase dessa loja.
+7. **Quem pediu pode não ser a dona da conta.** O app só confere que a pessoa
+   estava com a conta aberta no aparelho; com um celular emprestado, outra pessoa
+   pode pedir a troca do e-mail (para o e-mail dela) ou a exclusão. Por isso,
+   **antes de trocar o e-mail ou de anonimizar**, a loja faz sempre as duas coisas
+   da seção "Aviso ao e-mail ATUAL e espera de 3 dias" (logo abaixo): avisar o
+   e-mail que está hoje na conta e esperar 3 dias corridos. Sem isso, não troque
+   e não anonimize.
+
+## Aviso ao e-mail ATUAL e espera de 3 dias (vale para os DOIS tipos de pedido)
+
+1. **Avise o e-mail que está hoje na conta** (não o e-mail novo): ele aparece na
+   ficha da cliente no painel e, se não aparecer, em Supabase > Authentication >
+   Users. Texto-modelo (troque `TIPO` por "a exclusão da
+   sua conta" ou "a troca do e-mail da sua conta"):
+
+   > Olá! Recebemos, pelo app, um pedido de **TIPO**. Se foi você, não precisa
+   > fazer nada: vamos atender daqui a 3 dias. Se NÃO foi você (por exemplo, alguém
+   > usou o seu celular), responda a este e-mail agora dizendo "não fui eu" e não
+   > vamos mexer em nada.
+
+2. **Conte 3 dias corridos** a partir do envio do aviso e anote a data na nota
+   interna de quem atende. Antes disso, **não** troque o e-mail e **não** rode o
+   passo 4 "valendo" (o ensaio, com `v_confirmar := false`, pode rodar a qualquer
+   hora).
+3. **Se a dona da conta responder "não fui eu"** (em qualquer momento), pare: não
+   troque, não anonimize, marque "Não posso atender" com a nota "Não conseguimos
+   confirmar o seu pedido. Se precisar, faça um novo pedido pelo app." e avise o
+   dono, porque alguém usou a conta dela.
+4. O prazo de 15 dias da regra 3 continua valendo e a espera de 3 dias cabe nele:
+   avise no mesmo dia em que abrir o pedido.
 
 ## O que a tela da cliente promete (e o roteiro cumpre)
 
@@ -128,6 +158,10 @@ O bloco do passo 4 recusa rodar se ainda houver foto. **[CONFERIR EM LOJA DE
 TESTE]** os nomes exatos dos botões do Storage (mudam com a versão do painel).
 
 ## Passo 4 — Anonimizar (primeiro o ENSAIO, depois valendo)
+
+**Antes do "valendo": o aviso ao e-mail atual já foi enviado e já se passaram 3
+dias corridos sem resposta "não fui eu"** (seção "Aviso ao e-mail ATUAL e espera
+de 3 dias", regra 7). O ensaio pode rodar antes; o "valendo", não.
 
 Este bloco faz **tudo numa operação só** (ou tudo, ou nada) e **não apaga o login
 nem pedido nenhum**:
@@ -459,14 +493,21 @@ sem nome) que continua ligando pedidos ao login bloqueado.
 
 O app não troca o e-mail sozinho: falta um remetente de confirmação, e trocar
 sem confirmar deixaria qualquer um tomar a conta de outra pessoa. Por isso a
-troca é manual e **só com prova de que o e-mail novo é dela**:
+troca é manual e **só com prova de que o e-mail novo é dela** e **depois de
+avisar o e-mail de hoje e esperar 3 dias** (um celular emprestado bastaria para
+alguém pedir a troca para o e-mail dele e ficar com a conta):
 
-1. Escreva para o **e-mail novo** que a cliente pediu, pedindo que ela responda
+1. **Avise o e-mail ATUAL da conta** com o texto-modelo da seção "Aviso ao e-mail
+   ATUAL e espera de 3 dias" (diga que houve um pedido de troca de e-mail e que,
+   se não foi ela, deve responder). Anote a data.
+2. Escreva para o **e-mail novo** que a cliente pediu, pedindo que ela responda
    confirmando que foi ela. Não troque antes da resposta.
-2. Com a confirmação e o "pode" do dono: Supabase > Authentication > Users >
+3. Só troque quando **as duas coisas** já tiverem acontecido: a resposta do
+   e-mail novo **e** 3 dias corridos desde o aviso ao e-mail atual, sem resposta
+   "não fui eu". Com isso e o "pode" do dono: Supabase > Authentication > Users >
    a cliente > editar o e-mail (marque como confirmado, já que você acabou de
    conferir por resposta).
-3. Se a cliente não responder em 7 dias, marque "Não posso atender" com a nota
+4. Se o e-mail novo não responder em 7 dias, marque "Não posso atender" com a nota
    "Não conseguimos confirmar que o e-mail novo é seu. Faça um novo pedido
    quando puder responder ao nosso e-mail."
 

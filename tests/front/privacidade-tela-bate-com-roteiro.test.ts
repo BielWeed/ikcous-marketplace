@@ -43,6 +43,36 @@ describe("a tela da cliente e o roteiro da loja dizem a mesma coisa", () => {
     }
   });
 
+  it("a correção de e-mail: a tela diz que a loja confirma com o e-mail novo, e o roteiro avisa o e-mail ATUAL e espera 3 dias antes de trocar ou anonimizar", () => {
+    // A tela promete o que o roteiro faz: a loja escreve ao e-mail novo e só troca depois da resposta.
+    expect(TEXTOS_DA_CLIENTE.confirmaEmailTexto).toContain(
+      "escrever para esse e-mail novo",
+    );
+    expect(TEXTOS_DA_CLIENTE.confirmaEmailTexto).toContain(
+      "só troca o e-mail de entrada da sua conta depois da sua resposta",
+    );
+    const semQuebra = roteiro.replace(/\s+/g, " ");
+    // Celular emprestado: a sessão da cliente não prova que é ela. O roteiro manda avisar o e-mail de hoje...
+    expect(semQuebra).toContain("Aviso ao e-mail ATUAL e espera de 3 dias");
+    expect(semQuebra).toContain("Avise o e-mail que está hoje na conta");
+    expect(semQuebra).toContain("não fui eu");
+    // ...e esperar 3 dias corridos antes de trocar o e-mail E antes de anonimizar "valendo".
+    expect(semQuebra).toContain("3 dias corridos");
+    const correcao = roteiro
+      .split("## Correção de e-mail")[1]
+      .split("## O que NÃO fazer")[0]
+      .replace(/\s+/g, " ");
+    expect(correcao).toContain("Avise o e-mail ATUAL da conta");
+    expect(correcao).toContain("3 dias corridos desde o aviso");
+    const passo4 = roteiro
+      .split("## Passo 4")[1]
+      .split("## Passo 5")[0]
+      .replace(/\s+/g, " ");
+    expect(passo4).toContain("3 dias corridos");
+    // A regra existente continua: sem resposta do e-mail novo em 7 dias, recusa.
+    expect(correcao).toContain("não responder em 7 dias");
+  });
+
   it("o roteiro nunca manda apagar o login nem os pedidos", () => {
     const blocoAnonimizar = roteiro
       .split("-- BLOCO: anonimizar")[1]

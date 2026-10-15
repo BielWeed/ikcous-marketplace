@@ -48,7 +48,7 @@ export const TEXTOS_DA_CLIENTE = {
   confirmaVoltar: "Voltar",
 
   confirmaEmailTitulo: "Corrigir o seu e-mail",
-  confirmaEmailTexto: `Digite o e-mail certo. A loja vai trocar o e-mail de entrada da sua conta e responder em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias. Até lá, continue entrando com o e-mail de hoje.`,
+  confirmaEmailTexto: `Digite o e-mail certo. A loja vai escrever para esse e-mail novo pedindo que você confirme que ele é seu, e só troca o e-mail de entrada da sua conta depois da sua resposta. A loja responde em até ${PRAZO_DE_RESPOSTA_EM_DIAS} dias. Até lá, continue entrando com o e-mail de hoje.`,
   campoEmailRotulo: "E-mail novo",
   campoEmailDica: "Exemplo: nome@exemplo.com",
   confirmaEmailAcao: "Enviar pedido",

@@ -13,13 +13,16 @@
 -- pedidos registrados, o dono do banco exporta/arquiva as linhas por fora e só então esvazia a tabela — decisão
 -- humana, nunca deste script. Sem pedidos (tabela vazia), o rollback é seguro.
 --
--- PRÉ-VOO: recusa se a tabela tiver linha(s); se a tabela não existir (migration não aplicada: nada a desfazer);
--- ou se as políticas/gatilho de agora não forem exatamente os da migration (estado divergente: meça antes).
+-- PRÉ-VOO: trava a tabela (ACCESS EXCLUSIVE, `lock_timeout` de 5 s) ANTES de conferir; recusa se a tabela tiver
+-- linha(s) — contagem E tamanho em disco, porque sob REPEATABLE READ só o tamanho enxerga pedido gravado no meio;
+-- se a tabela não existir (migration não aplicada: nada a desfazer); ou se as políticas/gatilho de agora não forem exatamente os da migration (estado divergente: meça antes).
 -- A conferência final recusa se algum objeto sobrou.
 --
 -- Executar pelo aplicar-migrations.yml (apaga o registro do ledger na mesma transação). Sem BEGIN/COMMIT de nível
 -- superior neste arquivo — regra da casa. Rodar duas vezes: a segunda recusa no pré-voo (nada a desfazer).
 -- ============================================================================
+
+SET LOCAL lock_timeout = '5s';
 
 DO $preflight_rollback_20261238$
 DECLARE
@@ -31,9 +34,21 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.pedidos_de_privacidade não existe — a migration 20261238000000 não está aplicada; nada a desfazer.';
   END IF;
 
+  -- TRAVA ANTES DE CONTAR: sem ela, um pedido gravado entre a contagem e o DROP sumiria junto com a tabela. A trava
+  -- vale até o fim da transação (o aplicador a abre) e fecha a tabela para leitura e escrita; com `lock_timeout`,
+  -- se alguém a segura por mais de 5 s o rollback FALHA (55P03) sem desfazer nada, em vez de esperar sem prazo.
+  LOCK TABLE public.pedidos_de_privacidade IN ACCESS EXCLUSIVE MODE;
+
   EXECUTE 'SELECT count(*) FROM public.pedidos_de_privacidade' INTO v_linhas;
   IF v_linhas > 0 THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: há % pedido(s) de privacidade registrado(s) — são registro legal; exporte/arquive por fora e decida o que fazer antes de desfazer. Nada foi apagado.', v_linhas;
+  END IF;
+
+  -- Cinto para a contagem: sob REPEATABLE READ (o envelope do aplicador) a foto da contagem pode ser mais velha que
+  -- a trava e NÃO enxergar um pedido gravado no meio. O tamanho físico da tabela enxerga: tabela que já guardou
+  -- linha (mesmo apagada por fora, sem VACUUM) tem tamanho > 0 e também RECUSA — a decisão é do dono.
+  IF pg_relation_size(v_rel) > 0 THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: a tabela public.pedidos_de_privacidade já guardou linha(s) (tamanho em disco % bytes, mesmo que a contagem não as veja) — são registro legal; confira por fora e decida antes de desfazer. Nada foi apagado.', pg_relation_size(v_rel);
   END IF;
 
   SELECT string_agg(polname::text || ':' || polcmd::text, ', ' ORDER BY polname) INTO v_politicas

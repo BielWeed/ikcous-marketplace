@@ -69,8 +69,18 @@
 --           , has_table_privilege('service_role', 'public.pedidos_de_privacidade', 'DELETE');  -- false
 --   PROVA VIVA: tests/banco/pedidos-de-privacidade-viva.cjs (rpc-ci).
 --
+-- 9. ESPERA POR TRAVA (lock_timeout)
+--
+-- O CREATE TABLE ... REFERENCES auth.users pede trava de tabela (SHARE ROW EXCLUSIVE) em auth.users, a tabela de
+-- login. Se uma sessão esquecida estiver escrevendo ali, a migration esperaria SEM PRAZO e todo login e cadastro
+-- das lojas entraria na fila atrás dela. `lock_timeout` de 5 s: passou disso, a migration FALHA (55P03) sem
+-- gravar nada (a transação do aplicador desfaz tudo), em vez de enfileirar o login; é só repetir. Mesmo padrão das
+-- migrations 20261207, 20261209 e 20261210.
+--
 -- Sem BEGIN/COMMIT de nível superior (regra da casa): quem abre a transação é o aplicador.
 -- ============================================================================
+
+SET LOCAL lock_timeout = '5s';
 
 DO $preflight_20261238$
 BEGIN
