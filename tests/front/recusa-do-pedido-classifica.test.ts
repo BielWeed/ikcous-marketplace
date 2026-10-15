@@ -329,6 +329,27 @@ describe("classificarRecusaDoPedido", () => {
     );
   });
 
+  // A COMPRA QUE DÁ R$ 0,00 NÃO SE PAGA PELO APP (migration 20261236000000): a
+  // v24 recusa o pedido de total zero pelo app ANTES de reservar estoque e
+  // gastar a vaga do cupom. O pedido provadamente não nasceu e a saída é
+  // OUTRA forma de pagamento (a retirada/entrega aceita total zero), nunca
+  // "tentar de novo" o mesmo pagamento pelo app.
+  it("compra de R$ 0,00 pelo app -> trocar de forma de pagamento, com a frase do banco intacta", () => {
+    const frase =
+      "Este pedido não tem valor a pagar pelo app. Escolha pagar na retirada ou na entrega, ou fale com a loja.";
+    const r = classificarRecusaDoPedido(p0001(frase));
+    expect(r.acao).toBe("trocar_pagamento");
+    expect(r.mensagem).toBe(frase);
+    expect(r.produto).toBeUndefined();
+  });
+
+  it("a frase do total zero só casa inteira: variação dela cai no caso genérico conferir_antes", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("Este pedido não tem valor a pagar pelo app."),
+    );
+    expect(r.acao).toBe("conferir_antes");
+  });
+
   it("o nome guloso continua resolvendo parenteses dentro do nome", () => {
     // Provado pela revisao: o `.+` guloso ja acertava isto, e trocar para
     // `[\s\S]*` nao pode ter quebrado. Nome do produto contendo o proprio

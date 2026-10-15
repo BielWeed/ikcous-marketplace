@@ -465,6 +465,26 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `31b-antes-endereco-da-compra-so-no-ponteiro` (ANTES, 7 linhas; **não mede a ACL**, que é da 31a), a "prova de
   objetos" do lote `20261229000000`. Mesmo desenho do portão 26: rol exato nos dois estados, um negativo por
   linha, mutantes do texto das consultas vermelhos. **Não prova** a IKCOUS nem a Savy.
+- **a compra que dá R$ 0,00 não se paga pelo app
+  (`a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs`, via `rodar-isolado.cjs`)**: a migration
+  `20261236000000` (a `create_marketplace_order_v24` recusa, ANTES de reservar estoque e de gastar a vaga do
+  cupom, o pedido de pagamento pelo app cujo total calculado pelo servidor é zero; **sucessora da 20261229000000**,
+  só a v24). O controle parte do estado ANTES (o rollback-manual, conferido byte a byte contra o corpo da
+  `20261229000000`) e prova o defeito (o pedido de R$ 0,00 pelo app nasce `aguardando`, baixa estoque e gasta o
+  cupom de uso único). Depois: zero + app recusa com a frase e o identificador no DETAIL (conta, retirada, cupom de
+  100%, convidada) e **nada é reservado nem gasto, provado por uma sequência movida por gatilhos** no INSERT do
+  pedido, na baixa do estoque e no uso do cupom (sequência não é desfeita por rollback: sem ela, recusar depois de
+  reservar passaria despercebido); zero + pagar na retirada/entrega (v23 cash/pix e a v24 chamada direto com cash)
+  nasce como hoje; positivo + app nasce como hoje, na borda de R$ 0,01 e com o total do SERVIDOR (R$ 0,04) quando
+  o cliente manda R$ 0,00; o cupom de uso único não é gasto na recusa e ainda compra, uma vez, na retirada; total
+  divergente recebe a recusa antiga; a retentativa de pedido que já nasceu devolve o pedido. O mesmo roteiro de
+  compras grava linhas idênticas antes e depois, só o corpo da v24 muda (a v23, a ACL e os dados ficam), reaplicar
+  2x e CRLF = mesmo estado, o rollback devolve o `prosrc` idêntico, o pré-voo recusa sem escrever (inclusive a
+  loja ainda no corpo da 20261174), a conferência reprovando desfaz a troca, e 6 mutantes (sem a recusa, recusa
+  depois de reservar, recusa também na entrega, limite R$ 0,01, total do cliente, só quem tem conta) ficam
+  vermelhos. **As provas da 20261229 (`endereco-no-pedido-viva.cjs` e `endereco-no-pedido-portao-viva.cjs`)
+  desfazem esta sucessora antes de medir** (como as da 20261199 fazem com as dela). **Não prova** a IKCOUS nem a
+  Savy, e **o portão da release (consultas e lote em `canais-de-backend.json`) ainda não existe para esta migration**.
 - **reembolso da devolução só "liberado" com o dinheiro (`reembolso-da-devolucao-viva.cjs`, via
   `rodar-isolado.cjs`)**: a migration `20261225000000` (o gatilho de aviso da devolução lê o estado REAL do
   reembolso; um gatilho novo em `order_refunds` avisa "liberado" quando `concluir_estorno` confirma o dinheiro) com

@@ -1822,6 +1822,24 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql": [
+    {
+      // A compra que dá R$ 0,00 não se paga pelo app (14/10/2026): o bloco 6-ter da v24 recusa o total
+      // calculado zero quando o meio é 'online', ANTES de reservar estoque e cupom. Sem esta entrada a migration
+      // saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef,
+      // comentários incluídos): a condição (só 'online', só o total do servidor) e o identificador estável da
+      // recusa aparecem UMA vez cada.
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0 THEN",
+          vezes: 1,
+        },
+        { texto: "pedido_sem_valor_a_pagar_pelo_app: subtotal", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,
