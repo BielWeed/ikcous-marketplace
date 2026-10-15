@@ -78,6 +78,23 @@ export const AVISO_DE_DOBRO =
 export const TEXTO_CONFIRMANDO =
   "A loja está confirmando com o Mercado Pago, não repita.";
 
+export const BOTAO_POR_FORA_APOS_ESPERA =
+  "Já devolvi por fora (depois de 7 dias)";
+
+/**
+ * Confirmação FORTE da saída dos 7 dias: mostra o risco de pagar em dobro e
+ * exige digitar a frase fixa (diálogo nativo, o mesmo padrão do `confirm`
+ * que o painel já usa para dinheiro — e sem componente novo no pacote do
+ * painel, que está no limite de tamanho). Só `true` com a frase EXATA.
+ * A frase é só um freio de tela; quem decide se a saída vale é o servidor.
+ */
+export function confirmouPorForaAposEspera(valor: string): boolean {
+  const digitado = globalThis.prompt(
+    `${AVISO_DE_DOBRO} Registrar que você já devolveu ${valor} por outro meio? Para confirmar, digite ${FRASE_DE_CONFIRMACAO_POR_FORA}`,
+  );
+  return digitado?.trim() === FRASE_DE_CONFIRMACAO_POR_FORA;
+}
+
 type StatusDaLinha =
   | "solicitado"
   | "em_processamento"
@@ -132,26 +149,17 @@ function reais(v: unknown): number | null {
 function lerLinha(v: unknown): LinhaDoSaldo | null {
   if (!ehObjeto(v)) return null;
   const amount = reais(v.amount);
-  const liberado = v.por_fora_liberado_em;
-  if (
-    typeof v.id !== "string" ||
-    typeof v.status !== "string" ||
-    !(STATUS_DA_LINHA as readonly string[]).includes(v.status) ||
-    amount === null ||
-    typeof v.pode_ter_saido !== "boolean" ||
-    typeof v.eh_pix !== "boolean" ||
-    (liberado !== null && typeof liberado !== "string")
-  ) {
-    return null;
-  }
-  return {
-    id: v.id,
-    status: v.status as StatusDaLinha,
-    amount,
-    pode_ter_saido: v.pode_ter_saido,
-    por_fora_liberado_em: liberado,
-    eh_pix: v.eh_pix,
-  };
+  const liberado = v.por_fora_liberado_em ?? null;
+  const ok =
+    typeof v.id === "string" &&
+    (STATUS_DA_LINHA as readonly unknown[]).includes(v.status) &&
+    amount !== null &&
+    typeof v.pode_ter_saido === "boolean" &&
+    typeof v.eh_pix === "boolean" &&
+    (liberado === null || typeof liberado === "string");
+  return ok
+    ? ({ ...v, amount, por_fora_liberado_em: liberado } as LinhaDoSaldo)
+    : null;
 }
 
 /**
@@ -162,36 +170,26 @@ function lerLinha(v: unknown): LinhaDoSaldo | null {
  */
 export function lerReembolsosESaldo(v: unknown): ReembolsosESaldo | null {
   if (!ehObjeto(v) || !Array.isArray(v.linhas)) return null;
-  const total = reais(v.total);
-  const valorEstornado = reais(v.valor_estornado);
-  const emVoo = reais(v.em_voo);
-  const emDuvida = reais(v.em_duvida);
-  const manual = reais(v.manual);
-  const disponivel = reais(v.disponivel);
-  if (
-    total === null ||
-    valorEstornado === null ||
-    emVoo === null ||
-    emDuvida === null ||
-    manual === null ||
-    disponivel === null
-  ) {
-    return null;
-  }
-  const linhas: LinhaDoSaldo[] = [];
-  for (const bruta of v.linhas) {
-    const linha = lerLinha(bruta);
-    if (!linha) return null;
-    linhas.push(linha);
-  }
+  const numeros = [
+    v.total,
+    v.valor_estornado,
+    v.em_voo,
+    v.em_duvida,
+    v.manual,
+    v.disponivel,
+  ].map(reais);
+  const linhas = v.linhas.map(lerLinha);
+  if (numeros.includes(null) || linhas.includes(null)) return null;
+  const [total, valor_estornado, em_voo, em_duvida, manual, disponivel] =
+    numeros as number[];
   return {
     total,
-    valor_estornado: valorEstornado,
-    em_voo: emVoo,
-    em_duvida: emDuvida,
+    valor_estornado,
+    em_voo,
+    em_duvida,
     manual,
     disponivel,
-    linhas,
+    linhas: linhas as LinhaDoSaldo[],
   };
 }
 

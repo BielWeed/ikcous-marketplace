@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { ConfirmacaoPorForaAposEspera } from "@/components/admin/ConfirmacaoPorForaAposEspera";
 import {
   corpoDoErroDaEdge,
   formatarReais,
@@ -9,11 +8,13 @@ import {
 } from "@/lib/devolucao";
 import {
   AVISO_DE_DOBRO,
+  BOTAO_POR_FORA_APOS_ESPERA,
   type LinhaDoSaldo,
   RPC_DO_REEMBOLSO_R1,
   TEXTO_CONFIRMANDO,
   acoesDaLinha,
   chamarRpcDoR1,
+  confirmouPorForaAposEspera,
   lerReembolsosESaldo,
   parametrosPorForaAposEspera,
 } from "@/lib/reembolso-em-duvida";
@@ -22,63 +23,60 @@ import type { DevolucaoDetalhe } from "@/types/devolucao";
 
 import { BOTAO_SECUNDARIO } from "./AcoesDaDevolucao";
 
-const SECAO =
-  "admin-glass space-y-3 rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6";
+const ERRO = "Não foi possível concluir agora. Tente de novo.";
+const MUDOU = "A devolução mudou. Os dados foram atualizados.";
 
-const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
-
-type Acao = "reemitir" | "por_fora" | "por_fora_apos_espera";
-
-const ehObjeto = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
-
-/** Aviso de cada `resultado` da reemissão/"por fora" (contrato da 20261226). */
-function avisarResultado(resultado: string, corpo: Record<string, unknown>) {
-  switch (resultado) {
-    case "ja_existia":
-      toast.success(
-        "O Mercado Pago já tinha feito esta devolução: ela ficou registrada como paga.",
-      );
-      return;
-    case "ja_concluido":
-      toast.info("Esta devolução já estava resolvida.");
-      return;
-    case "em_andamento":
-      toast.info(
-        "Já existe uma devolução em andamento no Mercado Pago. Aguarde a resposta.",
-      );
-      return;
-    case "reembolso_mudou":
-      toast.info(
-        "Esta devolução mudou enquanto a tela estava aberta. Os dados foram atualizados.",
-      );
-      return;
-    case "use_por_fora":
+/**
+ * Aviso de cada `resultado` da reemissão (edge `estornar-pagamento`, ação
+ * `reemitir`) e do "por fora" (RPC `admin_devolucao_reembolso_por_fora`) —
+ * contrato da migration 20261226. `ja_existia`, `ja_concluido`,
+ * `em_andamento` e `reembolso_mudou` = a devolução mudou; a ficha relê.
+ * Sem `resultado` = erro (mensagem da edge, ou a genérica).
+ */
+const AVISOS = new Map<string, () => unknown>([
+  [
+    "reemitido",
+    () => toast.success("Reembolso pedido de novo ao Mercado Pago."),
+  ],
+  [
+    "use_por_fora",
+    () =>
       toast.warning(
-        "O Mercado Pago não aceita refazer esta devolução pelo app. Devolva ao cliente por PIX ou em dinheiro e toque em “Já devolvi por fora”.",
-        { duration: 12_000 },
-      );
-      return;
-    case "sem_saldo_para_reemitir":
-      toast.error("O pedido não tem saldo para refazer esta devolução.");
-      return;
-    case "indeterminado":
+        "O Mercado Pago não aceita refazer. Devolva por PIX ou dinheiro e toque em “Já devolvi por fora”.",
+      ),
+  ],
+  [
+    "sem_saldo_para_reemitir",
+    () => toast.error("O pedido não tem saldo para refazer."),
+  ],
+  [
+    "indeterminado",
+    () =>
       toast.warning(
-        "Não deu para confirmar com o Mercado Pago agora. Nada foi feito; tente de novo mais tarde.",
-        { duration: 12_000 },
-      );
-      return;
-    case "combinado":
+        "O Mercado Pago não confirmou. Nada foi feito; tente mais tarde.",
+      ),
+  ],
+  [
+    "combinado",
+    () =>
       toast.success(
-        "Registrado: o reembolso foi devolvido por fora. O cliente foi avisado.",
-      );
-      if (corpo.risco_de_dobro === true) {
-        toast.warning(AVISO_DE_DOBRO, { duration: 15_000 });
-      }
-      return;
-    default:
-      toast.error(ERRO_GENERICO);
-  }
+        "Registrado como devolvido por fora. O cliente foi avisado.",
+      ),
+  ],
+]);
+
+/** Avisa o resultado; devolve o corpo quando ele é um objeto. */
+function avisar(corpo: unknown): Record<string, unknown> {
+  const c =
+    typeof corpo === "object" && corpo !== null
+      ? (corpo as Record<string, unknown>)
+      : {};
+  const aviso = AVISOS.get(String(c.resultado));
+  if (aviso) aviso();
+  else if (typeof c.resultado === "string") toast.info(MUDOU);
+  else toast.error(typeof c.erro === "string" ? c.erro : ERRO);
+  if (c.risco_de_dobro === true) toast.warning(AVISO_DE_DOBRO);
+  return c;
 }
 
 /**
@@ -87,7 +85,7 @@ function avisarResultado(resultado: string, corpo: Record<string, unknown>) {
  * sabia reemitir e registrar "devolvido por fora", mas a tela não chamava.
  *
  * Os botões seguem o veredito do SERVIDOR (`pedido_reembolsos_e_saldo`):
- * linha parada que nada saiu → "Tentar de novo" e "Já devolvi por fora";
+ * linha parada em que nada saiu → "Tentar de novo" e "Já devolvi por fora";
  * linha que PODE ter saído → só "não repita"; e, quando o servidor libera,
  * a saída dos 7 dias com confirmação forte.
  */
@@ -95,229 +93,174 @@ export function ReembolsoDaDevolucao({
   detalhe,
   aoMudar,
 }: Readonly<{ detalhe: DevolucaoDetalhe; aoMudar: () => void }>) {
-  const refundId = detalhe.refund_id;
-  const deveMostrar =
+  const { id, order_id, refund_id } = detalhe;
+  const ativo =
     detalhe.status === "concluida" &&
     detalhe.resolucao_final === "reembolso" &&
     !detalhe.reembolso_manual &&
-    refundId !== null;
+    refund_id !== null;
 
   const [linha, setLinha] = useState<LinhaDoSaldo | null>(null);
   const [erro, setErro] = useState(false);
-  const [emVoo, setEmVoo] = useState<Acao | null>(null);
+  const [emVoo, setEmVoo] = useState(false);
   const emVooRef = useRef(false);
   const rodadaRef = useRef(0);
 
   const carregar = useCallback(async () => {
-    if (!deveMostrar) return;
+    if (!ativo) return;
     const rodada = ++rodadaRef.current;
+    let desta: LinhaDoSaldo | null = null;
     try {
       const { data, error } = await chamarRpcDoR1(
         supabase,
         RPC_DO_REEMBOLSO_R1.saldo,
-        { p_order_id: detalhe.order_id },
+        { p_order_id: order_id },
       );
-      if (rodada !== rodadaRef.current) return;
-      const lido = error ? null : lerReembolsosESaldo(data);
-      const desta = lido?.linhas.find((l) => l.id === refundId) ?? null;
-      setLinha(desta);
-      setErro(desta === null);
+      if (!error) {
+        desta =
+          lerReembolsosESaldo(data)?.linhas.find((l) => l.id === refund_id) ??
+          null;
+      }
     } catch {
-      if (rodada === rodadaRef.current) setErro(true);
+      // Sem leitura: erro honesto abaixo.
     }
-  }, [deveMostrar, detalhe.order_id, refundId]);
+    if (rodada !== rodadaRef.current) return;
+    setLinha(desta);
+    setErro(desta === null);
+  }, [ativo, order_id, refund_id]);
 
   // Relê sempre que a ficha relê (objeto `detalhe` novo).
   useEffect(() => {
     void carregar();
   }, [carregar, detalhe]);
 
-  if (!deveMostrar || refundId === null) return null;
+  if (!ativo) return null;
 
-  async function executar(qual: Acao, passo: () => Promise<boolean>) {
+  async function executar(passo: () => Promise<unknown>): Promise<boolean> {
     if (emVooRef.current) return false;
     emVooRef.current = true;
-    setEmVoo(qual);
+    setEmVoo(true);
     try {
-      return await passo();
+      return (await passo()) === true;
     } catch (e) {
-      toast.error(mensagemDoErro(e, ERRO_GENERICO));
+      toast.error(mensagemDoErro(e, ERRO));
       return false;
     } finally {
       emVooRef.current = false;
-      setEmVoo(null);
-      await carregar();
+      setEmVoo(false);
+      // A ficha relê, e o `detalhe` novo relê este bloco.
       aoMudar();
     }
   }
 
-  const valor = formatarReais(linha?.amount ?? detalhe.valor_reembolso ?? 0);
-
-  async function tentarDeNovo(esperado: string) {
-    const ok = globalThis.confirm(
-      `Pedir de novo ao Mercado Pago o reembolso de ${valor}? O app confere antes se a devolução anterior não saiu.`,
-    );
-    if (!ok) return;
-    await executar("reemitir", async () => {
-      const { data, error } = await supabase.functions.invoke(
-        "estornar-pagamento",
-        {
-          body: {
-            acao: "reemitir",
-            devolucao_id: detalhe.id,
-            refund_esperado: esperado,
-          },
-        },
-      );
-      const corpo = error ? await corpoDoErroDaEdge(error) : data;
-      const resultado =
-        ehObjeto(corpo) && typeof corpo.resultado === "string"
-          ? corpo.resultado
-          : null;
-      if (!ehObjeto(corpo) || resultado === null) {
-        toast.error(
-          ehObjeto(corpo) && typeof corpo.erro === "string"
-            ? corpo.erro
-            : ERRO_GENERICO,
-        );
-        return false;
-      }
-      if (resultado !== "reemitido") {
-        avisarResultado(resultado, corpo);
-        return false;
-      }
-      // A tentativa nova nasce `solicitado`: o clique a executa (a mesma
-      // ação do EstornoCard). Falhar aqui não é falha: o cron a pega.
-      const novo = typeof corpo.refund_id === "string" ? corpo.refund_id : "";
-      try {
-        const { error: erroDoEnvio } = novo
-          ? await supabase.functions.invoke("estornar-pagamento", {
-              body: { refund_id: novo },
-            })
-          : { error: true };
-        if (erroDoEnvio) {
-          toast.info(
-            "Reembolso registrado de novo; o Mercado Pago é acionado em até 10 minutos.",
-          );
-        } else {
-          toast.success(
-            `Reembolso de ${valor} pedido de novo ao Mercado Pago.`,
-          );
-        }
-      } catch {
-        toast.info(
-          "Reembolso registrado de novo; o Mercado Pago é acionado em até 10 minutos.",
-        );
-      }
-      return true;
-    });
-  }
-
-  async function porFora(esperado: string) {
-    const ok = globalThis.confirm(
-      `Registrar que você devolveu ${valor} ao cliente por fora (PIX ou dinheiro)? O app não vai mais pedir este reembolso ao Mercado Pago.`,
-    );
-    if (!ok) return;
-    await executar("por_fora", async () => {
-      const { data, error } = await supabase.rpc(
-        RPC_DO_REEMBOLSO_R1.porForaDaDevolucao,
-        { p_devolucao_id: detalhe.id, p_refund_esperado: esperado },
-      );
-      if (error) {
-        toast.error(mensagemDoErro(error, ERRO_GENERICO));
-        return false;
-      }
-      const corpo = ehObjeto(data) ? data : {};
-      avisarResultado(
-        typeof corpo.resultado === "string" ? corpo.resultado : "",
-        corpo,
-      );
-      return corpo.resultado === "combinado";
-    });
-  }
-
-  function porForaAposEspera(esperado: string) {
-    return executar("por_fora_apos_espera", async () => {
-      const { error } = await chamarRpcDoR1(
-        supabase,
-        RPC_DO_REEMBOLSO_R1.porForaAposEsperaDaDevolucao,
-        parametrosPorForaAposEspera.devolucao(detalhe.id, esperado),
-      );
-      if (error) {
-        toast.error(mensagemDoErro(error, ERRO_GENERICO));
-        return false;
-      }
-      toast.warning(
-        `Registrado que você devolveu ${valor} por fora. ${AVISO_DE_DOBRO} Confira no painel do Mercado Pago.`,
-        { duration: 15_000 },
-      );
-      return true;
-    });
-  }
-
   if (erro) {
     return (
-      <section className={SECAO} data-testid="reembolso-da-devolucao">
-        <p className="text-xs font-bold text-zinc-300">
-          Não consegui ler o reembolso desta devolução.
-        </p>
-        <button
-          type="button"
-          onClick={() => void carregar()}
-          className={BOTAO_SECUNDARIO}
-        >
-          Atualizar
-        </button>
-      </section>
+      <p className="text-xs font-bold text-zinc-300">
+        Não consegui ler o reembolso desta devolução. Toque em atualizar, no
+        topo.
+      </p>
     );
   }
 
   // Ainda lendo, ou dinheiro já confirmado: nada a decidir aqui.
   if (!linha || linha.status === "concluido") return null;
 
-  const {
-    podeRepetir,
-    confirmando,
-    porForaAposEspera: liberado,
-  } = acoesDaLinha(linha);
-  const emAndamento =
-    linha.status === "solicitado" || linha.status === "em_processamento";
+  const valor = formatarReais(linha.amount);
+  const { podeRepetir, confirmando, porForaAposEspera } = acoesDaLinha(linha);
+
+  const tentarDeNovo = () =>
+    globalThis.confirm(
+      `Pedir de novo ao Mercado Pago o reembolso de ${valor}? O app confere antes se o anterior não saiu.`,
+    ) &&
+    executar(async () => {
+      const { data, error } = await supabase.functions.invoke(
+        "estornar-pagamento",
+        {
+          body: {
+            acao: "reemitir",
+            devolucao_id: id,
+            refund_esperado: linha.id,
+          },
+        },
+      );
+      const c = avisar(error ? await corpoDoErroDaEdge(error) : data);
+      if (c.resultado !== "reemitido") return false;
+      // A tentativa nova nasce `solicitado`; o clique a executa (o mesmo
+      // caminho do EstornoCard). Falhar aqui não é falha: o cron
+      // `reconciliar-pagamentos` a executa em até 10 minutos.
+      await supabase.functions
+        .invoke("estornar-pagamento", { body: { refund_id: c.refund_id } })
+        .catch(() => null);
+      return true;
+    });
+
+  const porFora = () =>
+    globalThis.confirm(
+      `Registrar que você devolveu ${valor} por fora (PIX ou dinheiro)? O app não pede mais este reembolso ao Mercado Pago.`,
+    ) &&
+    executar(async () => {
+      const { data, error } = await supabase.rpc(
+        RPC_DO_REEMBOLSO_R1.porForaDaDevolucao,
+        { p_devolucao_id: id, p_refund_esperado: linha.id },
+      );
+      if (error) throw error;
+      return avisar(data).resultado === "combinado";
+    });
+
+  const porForaAposEspera7 = () =>
+    confirmouPorForaAposEspera(valor) &&
+    executar(async () => {
+      const { error } = await chamarRpcDoR1(
+        supabase,
+        RPC_DO_REEMBOLSO_R1.porForaAposEsperaDaDevolucao,
+        parametrosPorForaAposEspera.devolucao(id, linha.id),
+      );
+      if (error) throw error;
+      toast.warning(`Registrado como devolvido por fora. ${AVISO_DE_DOBRO}`);
+      return true;
+    });
 
   return (
-    <section className={SECAO} data-testid="reembolso-da-devolucao">
-      <p className="text-xs font-bold leading-relaxed text-zinc-200">
-        {emAndamento && `Reembolso de ${valor} em andamento no Mercado Pago.`}
-        {podeRepetir &&
-          `O reembolso de ${valor} não foi concluído pelo Mercado Pago.`}
-        {confirmando &&
-          `O reembolso de ${valor} não teve resposta certa do Mercado Pago. ${TEXTO_CONFIRMANDO}`}
+    <section
+      className="admin-glass space-y-3 rounded-2xl border border-white/5 p-4"
+      data-testid="reembolso-da-devolucao"
+    >
+      <p className="text-xs font-bold text-zinc-200">
+        {podeRepetir
+          ? `O reembolso de ${valor} não foi concluído pelo Mercado Pago.`
+          : confirmando
+            ? `O reembolso de ${valor} não teve resposta certa do Mercado Pago. ${TEXTO_CONFIRMANDO}`
+            : `Reembolso de ${valor} em andamento no Mercado Pago.`}
       </p>
       {podeRepetir && (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={emVoo !== null}
-            onClick={() => void tentarDeNovo(linha.id)}
+            disabled={emVoo}
+            onClick={() => void tentarDeNovo()}
             className={BOTAO_SECUNDARIO}
           >
-            {emVoo === "reemitir" ? "Pedindo…" : "Tentar de novo"}
+            Tentar de novo
           </button>
           <button
             type="button"
-            disabled={emVoo !== null}
-            onClick={() => void porFora(linha.id)}
+            disabled={emVoo}
+            onClick={() => void porFora()}
             className={BOTAO_SECUNDARIO}
           >
             Já devolvi por fora
           </button>
         </div>
       )}
-      {liberado && (
-        <ConfirmacaoPorForaAposEspera
-          idBase={`por-fora-devolucao-${detalhe.id}`}
-          enviando={emVoo !== null}
-          onConfirmar={() => porForaAposEspera(linha.id)}
-        />
+      {porForaAposEspera && (
+        <button
+          type="button"
+          disabled={emVoo}
+          onClick={() => void porForaAposEspera7()}
+          className={BOTAO_SECUNDARIO}
+        >
+          {BOTAO_POR_FORA_APOS_ESPERA}
+        </button>
       )}
     </section>
   );

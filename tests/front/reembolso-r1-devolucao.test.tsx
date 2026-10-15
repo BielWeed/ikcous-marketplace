@@ -180,18 +180,6 @@ async function clicar(b: HTMLButtonElement | undefined) {
   });
 }
 
-async function digitar(input: HTMLInputElement, valor: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    globalThis.HTMLInputElement.prototype,
-    "value",
-  )?.set;
-  await act(async () => {
-    setter?.call(input, valor);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    await Promise.resolve();
-  });
-}
-
 async function montarBloco(d: DevolucaoDetalhe = detalhe()) {
   const { ReembolsoDaDevolucao } = await import(
     "@/components/admin/devolucoes/ReembolsoDaDevolucao"
@@ -353,15 +341,14 @@ describe("ReembolsoDaDevolucao — o painel ganha os botões que o servidor já 
     await montarBloco();
 
     expect(botao("Tentar de novo")).toBeUndefined();
+    const promptMock = vi.fn().mockReturnValue("outra coisa");
+    vi.stubGlobal("prompt", promptMock);
     await clicar(botao("Já devolvi por fora (depois de 7 dias)"));
-    expect(texto()).toContain("o cliente recebe em dobro");
+    expect(CHAMADAS).toEqual([]);
+    expect(promptMock.mock.calls[0][0]).toContain("o cliente recebe em dobro");
 
-    const confirmar = () => botao("Confirmar que devolvi por fora");
-    expect(confirmar()?.disabled).toBe(true);
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    await digitar(campo, "DEVOLVI POR FORA");
-    expect(confirmar()?.disabled).toBe(false);
-    await clicar(confirmar());
+    promptMock.mockReturnValue("DEVOLVI POR FORA");
+    await clicar(botao("Já devolvi por fora (depois de 7 dias)"));
 
     expect(CHAMADAS).toEqual([
       {

@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 
-import { ConfirmacaoPorForaAposEspera } from "@/components/admin/ConfirmacaoPorForaAposEspera";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   type LinhaEstornoDoPedido,
   useEstornosDoPedido,
 } from "@/hooks/useEstornosDoPedido";
-import { TEXTO_CONFIRMANDO, acoesDaLinha } from "@/lib/reembolso-em-duvida";
+import {
+  BOTAO_POR_FORA_APOS_ESPERA,
+  TEXTO_CONFIRMANDO,
+  acoesDaLinha,
+  confirmouPorForaAposEspera,
+} from "@/lib/reembolso-em-duvida";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/types";
 
@@ -355,29 +359,34 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
             podeTentarDeNovo && disponivel >= linha.amount;
           const { porForaAposEspera } = acoesDaLinha(linha);
           return (
-            <div key={linha.id} className="space-y-2">
-              <p className="text-xs font-medium text-zinc-300">
-                {texto}
-                {podeTentarComSaldo && (
-                  <Button
-                    type="button"
-                    variant="link"
-                    size="sm"
-                    disabled={enviando}
-                    onClick={() => pedirConfirmacaoEEnviar(linha.amount)}
-                  >
-                    Tentar de novo
-                  </Button>
-                )}
-              </p>
-              {porForaAposEspera && (
-                <ConfirmacaoPorForaAposEspera
-                  idBase={`por-fora-${linha.id}`}
-                  enviando={enviando}
-                  onConfirmar={() => registrarPorForaAposEspera(linha.id)}
-                />
+            <p key={linha.id} className="text-xs font-medium text-zinc-300">
+              {texto}
+              {podeTentarComSaldo && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  disabled={enviando}
+                  onClick={() => pedirConfirmacaoEEnviar(linha.amount)}
+                >
+                  Tentar de novo
+                </Button>
               )}
-            </div>
+              {porForaAposEspera && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  disabled={enviando}
+                  onClick={() =>
+                    confirmouPorForaAposEspera(formatCurrency(linha.amount)) &&
+                    registrarPorForaAposEspera(linha.id)
+                  }
+                >
+                  {BOTAO_POR_FORA_APOS_ESPERA}
+                </Button>
+              )}
+            </p>
           );
         })}
       </div>

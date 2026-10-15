@@ -417,7 +417,6 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(CHAMADAS.some((c) => c.tipo === "invoke")).toBe(false);
     expect(toastMock.warning).toHaveBeenCalledWith(
       expect.stringContaining("o cliente recebe em dobro"),
-      expect.anything(),
     );
   });
 

@@ -692,18 +692,6 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
 // que está no DOM (texto, botões, chamadas), nunca layout.
 // ---------------------------------------------------------------------------
 describe("EstornoCard — lote R1: linha que pode ter saído não se repete", () => {
-  async function digitarNoCampo(input: HTMLInputElement, valor: string) {
-    const setter = Object.getOwnPropertyDescriptor(
-      globalThis.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(input, valor);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      await Promise.resolve();
-    });
-  }
-
   async function clicar(botao: HTMLButtonElement | undefined) {
     await act(async () => {
       botao?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -789,24 +777,24 @@ describe("EstornoCard — lote R1: linha que pode ter saído não se repete", ()
     await montar();
 
     expect(botaoComTexto("Tentar de novo")).toBeUndefined();
-    await clicar(botaoComTexto("Já devolvi por fora (depois de 7 dias)"));
+    const botao = botaoComTexto("Já devolvi por fora (depois de 7 dias)");
 
-    expect(texto()).toContain(
-      "Se o Mercado Pago ainda processar esta devolução, o cliente recebe em dobro.",
-    );
-    const confirmar = () => botaoComTexto("Confirmar que devolvi por fora");
-    expect(confirmar()?.disabled).toBe(true);
-
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    // Frase errada (minúscula) não libera.
-    await digitarNoCampo(campo, "devolvi por fora");
-    expect(confirmar()?.disabled).toBe(true);
-    await clicar(confirmar());
+    // Frase errada (minúscula), ou desistir (null): nada é registrado.
+    const promptMock = vi.fn().mockReturnValue("devolvi por fora");
+    vi.stubGlobal("prompt", promptMock);
+    await clicar(botao);
+    promptMock.mockReturnValue(null);
+    await clicar(botao);
     expect(registrarPorForaAposEsperaMock).not.toHaveBeenCalled();
 
-    await digitarNoCampo(campo, "DEVOLVI POR FORA");
-    expect(confirmar()?.disabled).toBe(false);
-    await clicar(confirmar());
+    // O diálogo mostra o risco de dobro e pede a frase fixa.
+    expect(promptMock.mock.calls[0][0]).toContain(
+      "Se o Mercado Pago ainda processar esta devolução, o cliente recebe em dobro.",
+    );
+    expect(promptMock.mock.calls[0][0]).toContain("digite DEVOLVI POR FORA");
+
+    promptMock.mockReturnValue(" DEVOLVI POR FORA ");
+    await clicar(botao);
 
     expect(registrarPorForaAposEsperaMock).toHaveBeenCalledTimes(1);
     expect(registrarPorForaAposEsperaMock).toHaveBeenCalledWith("refund-velho");

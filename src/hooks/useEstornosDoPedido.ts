@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
+  AVISO_DE_DOBRO,
   type LinhaDoSaldo,
   RPC_DO_REEMBOLSO_R1,
   type ReembolsosESaldo,
@@ -279,8 +280,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
           return false;
         }
         toast.warning(
-          `Pedido #${numero}: registrado que você devolveu por fora. Se o Mercado Pago ainda processar a devolução antiga, o cliente recebe em dobro — confira no painel do Mercado Pago.`,
-          { duration: 15_000 },
+          `Pedido #${numero}: registrado como devolvido por fora. ${AVISO_DE_DOBRO}`,
         );
         await carregar();
         return true;
