@@ -1690,6 +1690,19 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
 3. uma linha em `scripts/frota/canais-de-backend.json`. Se for loja de TESTE, a linha vai em
    `scripts/frota/politica.json` (`lojasSemBackendGerenciado`).
 
+## Medicoes antes de escrever a migration (so leitura, nao e portao)
+
+- **`42m-medir-saldo-em-duvida`** (reembolso A/B, tarefa T0, 15/10/2026): roda ANTES da migration que faz o
+  saldo a estornar descontar as linhas `falhou`/`recusado` que PODEM TER SAIDO no Mercado Pago. Rodar nas duas
+  lojas assinantes (IKCOUS e Savy) pelo `conferir-banco-da-loja.yml`, uma loja por run. So contagens e somas,
+  por forma (cartao = credito/debito; pix = pix ou sem metodo), nenhum dado pessoal nem codigo do MP: linhas em
+  duvida por passo da regra "pode ter saido", pedidos cujo saldo cai (e os que vao a zero ou menos), cancelados
+  de cartao com `falhou` em duvida, linhas travadas ha 3 e 7 dias, linhas vivas que a autorizacao do POST
+  passaria a recusar, a regra do legado (`tentativas > 1`), o risco de dobro (valor menor que o restante) e
+  linhas em duvida de pedido com reembolso manual. **Ler a linha `controle` primeiro:** com a RLS valendo em
+  `order_refund_diagnostico`, toda linha `falhou` parece "legado sem diagnostico" e o numero sai INFLADO; nas
+  outras tabelas, sai baixo. `divergencias` tem de ser 0. Nao e portao: quem decide e quem le.
+
 ## Fora da release, de proposito
 
 - `20261201000000` so entra depois das edges novas e de >= 15 min de escoamento com 1 ciclo do
