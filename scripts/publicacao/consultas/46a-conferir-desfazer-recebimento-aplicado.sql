@@ -20,7 +20,7 @@
 --   * EXECUTE    -- PUBLIC e' medido por aclexplode(coalesce(proacl, acldefault('f', dono))), porque
 --                   has_function_privilege nao tem o pseudo-papel PUBLIC; anon, authenticated e service_role por
 --                   has_function_privilege (papel ausente conta como sem EXECUTE).
---   * marcador   -- a frase da recusa (tres pedacos ASCII dela: a consulta nao leva acento) esta no corpo, junto do criterio `NOT IN ('recusada', 'cancelada',
+--   * marcador   -- a frase da recusa (quatro pedacos ASCII dela: a consulta nao leva acento) esta no corpo, junto do criterio `NOT IN ('recusada', 'cancelada',
 --                   'reprovada')`; e a trava do pedido (o `FOR UPDATE;` do SELECT, nao o do comentario) vem ANTES da checagem (a corrida com
 --                   solicitar_devolucao so se fecha assim).
 --
@@ -56,7 +56,7 @@ WITH fn AS (
                      WHERE n.nspname = 'public') > 0 THEN '>0' ELSE '0' END
   UNION ALL
   SELECT 'registrar_pagamento_recebido: corpo e o da 20261243000000, com a recusa da devolucao viva (md5)',
-         '7f448f9d84e86f0664e60cb61562716d',
+         '88270bb1e228c90be73acca03a3cee4e',
          COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'registrar_pagamento_recebido: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb, dois argumentos)',
@@ -77,8 +77,9 @@ WITH fn AS (
          'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn) THEN 'AUSENTE'
               WHEN (SELECT position('Este pedido tem devolu' IN f.prosrc) > 0
-                           AND position(', recuse ou cancele a devolu' IN f.prosrc) > 0
-                           AND position('antes de desfazer o recebimento' IN f.prosrc) > 0
+                           AND position(' em andamento ou conclu' IN f.prosrc) > 0
+                           AND position('ser desfeito se a devolu' IN f.prosrc) > 0
+                           AND position('permite desfazer' IN f.prosrc) > 0
                            AND position('d.status NOT IN (''recusada'', ''cancelada'', ''reprovada'')' IN f.prosrc) > 0
                       FROM fn f)
               THEN 'sim' ELSE 'nao' END

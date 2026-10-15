@@ -60,7 +60,7 @@ const SQL_97 = fs.readFileSync(path.join(PASTA, NOME_97), "utf8");
 const FN = "public.registrar_pagamento_recebido(uuid, boolean)";
 const HASH_97 = "6584d62da7815a913b1e0cb86c108b0f";
 const MSG_DEVOLUCAO =
-  "Este pedido tem devolução: conclua, recuse ou cancele a devolução antes de desfazer o recebimento";
+  "Este pedido tem devolução em andamento ou concluída. O recebimento só pode ser desfeito se a devolução for recusada, cancelada ou reprovada na inspeção; devolução concluída não permite desfazer.";
 const ACL_CONHECIDA =
   "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}";
 

@@ -2201,7 +2201,7 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
         // 15/10/2026: desfazer o recebimento recusa pedido com devolução (sucede o corpo da 97).
         {
           fn: "registrar_pagamento_recebido",
-          h: "7f448f9d84e86f0664e60cb61562716d",
+          h: "88270bb1e228c90be73acca03a3cee4e",
           versao: "20261243000000",
         },
         // 14/10/2026: a venda repetida do balcão (trava pela chave de idempotência).

@@ -45,7 +45,7 @@ BEGIN
   FOR r IN
     SELECT *
       FROM (VALUES
-        ('public.registrar_pagamento_recebido(uuid, boolean)', '6584d62da7815a913b1e0cb86c108b0f', '7f448f9d84e86f0664e60cb61562716d')
+        ('public.registrar_pagamento_recebido(uuid, boolean)', '6584d62da7815a913b1e0cb86c108b0f', '88270bb1e228c90be73acca03a3cee4e')
       ) AS esperado(assinatura, hash_vigente, hash_desta)
   LOOP
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash

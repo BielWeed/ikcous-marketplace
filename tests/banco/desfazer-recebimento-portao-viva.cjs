@@ -57,7 +57,7 @@ const NOME = "20261243000000_desfazer_recebimento_recusa_com_devolucao.sql";
 const ler = (nome) => fs.readFileSync(path.join(MIGRATIONS, nome), "utf8");
 const RB = ler(`rollback-manual-${NOME}`);
 const FN = "public.registrar_pagamento_recebido(uuid,boolean)";
-const HASH_NOVO = "7f448f9d84e86f0664e60cb61562716d";
+const HASH_NOVO = "88270bb1e228c90be73acca03a3cee4e";
 const HASH_VIGENTE = "6584d62da7815a913b1e0cb86c108b0f";
 
 const REF = "gnjsrucsmjkajijrakzr";
@@ -335,10 +335,7 @@ async function provar() {
     ],
     [
       "a frase da recusa trocada",
-      trocaNoCorpo(
-        "antes de desfazer o recebimento'",
-        "antes de desfazer o pagamento'",
-      ),
+      trocaNoCorpo("permite desfazer.'", "permite refazer.'"),
       [A_CORPO, A_FRASE],
     ],
     [

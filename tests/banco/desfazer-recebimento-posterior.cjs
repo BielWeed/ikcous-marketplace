@@ -24,7 +24,7 @@ const path = require("node:path");
 const DESFAZER_RECEBIMENTO = Object.freeze({
   nome: "20261243000000_desfazer_recebimento_recusa_com_devolucao.sql",
   // "No ar" = o corpo vivo tem a frase da recusa (só o corpo desta migration a tem).
-  noAr: `SELECT prosrc LIKE '%Este pedido tem devolução: conclua, recuse ou cancele a devolução%' AS sim
+  noAr: `SELECT prosrc LIKE '%Este pedido tem devolução em andamento ou concluída%' AS sim
            FROM pg_proc WHERE oid = to_regprocedure('public.registrar_pagamento_recebido(uuid,boolean)')`,
 });
 

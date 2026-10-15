@@ -1825,7 +1825,7 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       reescrita; um corpo trocado por `CREATE OR REPLACE` (`registrar_pagamento_recebido(uuid, boolean)`; assinatura,
       dono, ACL e atributos preservados):
       - **O que muda:** o botao "Desfazer recebimento" do pedido de entrega (e a venda do balcao) passa a RECUSAR, com a
-        frase "Este pedido tem devolucao: conclua, recuse ou cancele a devolucao antes de desfazer o recebimento", quando
+        frase "Este pedido tem devolucao em andamento ou concluida. O recebimento so pode ser desfeito se a devolucao for recusada, cancelada ou reprovada na inspecao; devolucao concluida nao permite desfazer.", quando
         o pedido tem uma devolucao viva (qualquer uma que NAO seja recusada, cancelada nem reprovada: o criterio da
         anulacao do balcao e de `solicitar_devolucao`). Antes, o desfazer apagava o pagamento e a data, a venda sumia
         do Financeiro e a devolucao aberta ficava sem pagamento para devolver.

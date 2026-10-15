@@ -32,7 +32,7 @@ const ANULACAO = "20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql";
 const HASH_VIGENTE = "6584d62da7815a913b1e0cb86c108b0f";
 const ASSINATURA = "public.registrar_pagamento_recebido(uuid, boolean)";
 const MENSAGEM =
-  "Este pedido tem devolução: conclua, recuse ou cancele a devolução antes de desfazer o recebimento";
+  "Este pedido tem devolução em andamento ou concluída. O recebimento só pode ser desfeito se a devolução for recusada, cancelada ou reprovada na inspeção; devolução concluída não permite desfazer.";
 
 const lerArquivo = (rel) =>
   Deno.readTextFileSync(new URL(rel, DIR)).replace(/\r\n/g, "\n");
@@ -338,9 +338,7 @@ Deno.test("as consultas e as provas vivas que fixam o corpo da 20261197000000 co
   const modulo = lerArquivo("tests/banco/desfazer-recebimento-posterior.cjs");
   assert.ok(modulo.includes(`nome: "${NOME}"`), "o módulo cita a migration");
   assert.ok(
-    modulo.includes(
-      "Este pedido tem devolução: conclua, recuse ou cancele a devolução",
-    ),
+    modulo.includes("Este pedido tem devolução em andamento ou concluída"),
     "o módulo mede 'no ar' pela frase da recusa (só o corpo desta migration a tem)",
   );
   for (const arq of [
@@ -406,24 +404,27 @@ Deno.test("46a/46b — no menu e no rpc-ci, rol fechado de 6 e 6 itens no códig
       `${n}: palavra de escrita`,
     );
     // só catálogo: nenhuma tabela de dado é lida
-    for (const tabela of [
-      "marketplace_orders",
-      "devolucoes",
-      "marketplace_order_payment_history",
-    ])
-      assert.ok(
-        !new RegExp(`\\b(FROM|JOIN)\\s+(public\\.)?${tabela}\\b`, "i").test(
-          limpo,
-        ),
-        `${n}: leu a tabela de dado ${tabela}`,
-      );
+    assert.ok(
+      !/\b(FROM|JOIN)\s+(public\.)?(marketplace_orders|devolucoes|marketplace_order_payment_history)\b/i.test(
+        limpo,
+      ),
+      `${n}: leu uma tabela de dado`,
+    );
   }
   assert.equal(CONF.ROL_DA_46A.length, 6);
   assert.equal(CONF.ROL_DA_46B.length, 6);
   assert.equal(new Set(CONF.ROL_DA_46A).size, 6);
   assert.equal(new Set(CONF.ROL_DA_46B).size, 6);
-  assert.equal(CONF.ROL_FECHADO_POR_CONSULTA[A46], CONF.ROL_DA_46A);
-  assert.equal(CONF.ROL_FECHADO_POR_CONSULTA[B46], CONF.ROL_DA_46B);
+  assert.equal(
+    CONF.ROL_FECHADO_POR_CONSULTA["46a-conferir-desfazer-recebimento-aplicado"],
+    CONF.ROL_DA_46A,
+  );
+  assert.equal(
+    CONF.ROL_FECHADO_POR_CONSULTA[
+      "46b-antes-desfazer-recebimento-base-vigente"
+    ],
+    CONF.ROL_DA_46B,
+  );
   for (const [n, rol] of [
     [A46, CONF.ROL_DA_46A],
     [B46, CONF.ROL_DA_46B],
@@ -460,8 +461,9 @@ Deno.test("46a — a frase e o critério que ela procura são os do corpo REAL, 
   // os três pedaços ASCII da frase estão no RAISE do corpo novo
   for (const pedaco of [
     "Este pedido tem devolu",
-    ", recuse ou cancele a devolu",
-    "antes de desfazer o recebimento",
+    " em andamento ou conclu",
+    "ser desfeito se a devolu",
+    "permite desfazer",
   ]) {
     assert.ok(a.includes(`'${pedaco}'`), `a 46a procura "${pedaco}"`);
     assert.ok(MENSAGEM.includes(pedaco), `"${pedaco}" é pedaço da mensagem`);
@@ -543,7 +545,9 @@ Deno.test("46a/46b — a ACL e os atributos que as consultas medem são os que o
 
 Deno.test("db-apply.cjs — a migration TEM entrada em VERIFICACOES (sem ela o apply sai PULADA) e cada marcador aparece o número certo de vezes no corpo da migration", () => {
   const { VERIFICACOES, conferirMarcador } = require("../scripts/db-apply.cjs");
-  const entrada = VERIFICACOES[NOME];
+  const entrada = Object.entries(VERIFICACOES).find(
+    ([nome]) => nome === NOME,
+  )?.[1];
   assert.ok(entrada, "a migration não tem entrada em VERIFICACOES");
   const checagens = Array.isArray(entrada) ? entrada : [entrada];
   assert.equal(checagens.length, 1);

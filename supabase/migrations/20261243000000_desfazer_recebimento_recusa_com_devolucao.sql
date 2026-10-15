@@ -19,13 +19,22 @@
 -- No ramo de desfazer, DEPOIS de confirmar que o pagamento está mesmo como
 -- 'recebido_na_entrega' e ANTES de qualquer escrita, a função recusa quando o pedido tem
 -- devolução viva, com a frase:
---   'Este pedido tem devolução: conclua, recuse ou cancele a devolução antes de desfazer o recebimento'
+--   'Este pedido tem devolução em andamento ou concluída. O recebimento só pode ser desfeito se a devolução for recusada, cancelada ou reprovada na inspeção; devolução concluída não permite desfazer.'
 -- Devolução viva = a mesma regra da anulação da venda do balcão (20261204000000, item 8) e
 -- de solicitar_devolucao (20261175000000): qualquer status que NÃO seja 'recusada',
 -- 'cancelada' nem 'reprovada' (solicitada, aprovada, em_transito, recebida e concluida
 -- recusam; as três que encerram sem dinheiro liberam). 'reprovada' entra na lista de quem
 -- libera porque é o produto recebido e reprovado na inspeção: a devolução se encerra sem
 -- reembolso (admin_devolucao_reprovar), então não há saída a proteger.
+--
+-- A FRASE só oferece o que destrava de verdade (transições medidas no código, 15/10/2026):
+--   * solicitada  -> a loja recusa (admin_devolucao_decidir) ou a cliente cancela (cancelar_devolucao);
+--   * aprovada    -> só a cliente cancela (cancelar_devolucao aceita solicitada e aprovada);
+--   * em_transito -> segue para recebida (nenhuma das duas saídas existe aqui);
+--   * recebida    -> a loja reprova na inspeção (admin_devolucao_reprovar) ou conclui;
+--   * concluida   -> TERMINAL: nunca vira recusada, cancelada nem reprovada. O dinheiro já saiu
+--     (ou a troca foi feita), então o desfazer fica recusado para sempre neste pedido.
+-- Por isso a frase NÃO manda "concluir": concluir leva à única situação sem saída.
 --
 -- 3. A CORRIDA (a trava do pedido)
 --
@@ -63,7 +72,7 @@
 --
 -- Recusa se: a função não existir ou tiver sobrecarga; o corpo vivo (md5 de
 -- replace(prosrc, E'\r', '')) não for UM dos dois conhecidos (o da 20261197000000 —
--- 6584d62da7815a913b1e0cb86c108b0f — ou o desta migration — 7f448f9d84e86f0664e60cb61562716d); os atributos não forem os de sempre
+-- 6584d62da7815a913b1e0cb86c108b0f — ou o desta migration — 88270bb1e228c90be73acca03a3cee4e); os atributos não forem os de sempre
 -- (plpgsql, SECURITY DEFINER, VOLATILE, não STRICT, search_path = public, retorna jsonb,
 -- 2 argumentos); a ACL não for a de hoje (EXECUTE para authenticated e service_role; PUBLIC e
 -- anon sem); ou faltarem as tabelas/colunas de que o corpo depende. Os hashes são o md5 REAL
@@ -92,7 +101,7 @@
 --
 --   1. SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc
 --       WHERE oid = to_regprocedure('public.registrar_pagamento_recebido(uuid, boolean)');
---      -- esperado: 7f448f9d84e86f0664e60cb61562716d
+--      -- esperado: 88270bb1e228c90be73acca03a3cee4e
 --   2. proacl, prosecdef e proconfig iguais antes e depois (esperado hoje:
 --      {postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}, true,
 --      {search_path=public}).
@@ -119,7 +128,7 @@ BEGIN
   FOR r IN
     SELECT *
       FROM (VALUES
-        ('public.registrar_pagamento_recebido(uuid, boolean)', '6584d62da7815a913b1e0cb86c108b0f', '7f448f9d84e86f0664e60cb61562716d')
+        ('public.registrar_pagamento_recebido(uuid, boolean)', '6584d62da7815a913b1e0cb86c108b0f', '88270bb1e228c90be73acca03a3cee4e')
       ) AS esperado(assinatura, hash_vigente, hash_desta)
   LOOP
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
@@ -293,7 +302,7 @@ BEGIN
                  WHERE d.order_id = p_order_id
                    AND d.status NOT IN ('recusada', 'cancelada', 'reprovada')
             ) THEN
-                RAISE EXCEPTION 'Este pedido tem devolução: conclua, recuse ou cancele a devolução antes de desfazer o recebimento';
+                RAISE EXCEPTION 'Este pedido tem devolução em andamento ou concluída. O recebimento só pode ser desfeito se a devolução for recusada, cancelada ou reprovada na inspeção; devolução concluída não permite desfazer.';
             END IF;
 
             v_depois := NULL;
@@ -338,8 +347,8 @@ BEGIN
     FROM pg_proc
    WHERE oid = to_regprocedure('public.registrar_pagamento_recebido(uuid, boolean)');
 
-  IF v_hash IS DISTINCT FROM '7f448f9d84e86f0664e60cb61562716d' THEN
-    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: depois do CREATE OR REPLACE o corpo vivo de public.registrar_pagamento_recebido(uuid, boolean) tem hash % e devia ter 7f448f9d84e86f0664e60cb61562716d — a migration não vale.', COALESCE(v_hash, 'ausente');
+  IF v_hash IS DISTINCT FROM '88270bb1e228c90be73acca03a3cee4e' THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: depois do CREATE OR REPLACE o corpo vivo de public.registrar_pagamento_recebido(uuid, boolean) tem hash % e devia ter 88270bb1e228c90be73acca03a3cee4e — a migration não vale.', COALESCE(v_hash, 'ausente');
   END IF;
 
   IF v_oid IS NULL OR NOT EXISTS (

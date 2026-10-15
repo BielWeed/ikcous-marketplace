@@ -2285,7 +2285,7 @@ const VERIFICACOES = {
       esperado: [
         {
           texto:
-            "RAISE EXCEPTION 'Este pedido tem devolução: conclua, recuse ou cancele a devolução antes de desfazer o recebimento';",
+            "RAISE EXCEPTION 'Este pedido tem devolução em andamento ou concluída. O recebimento só pode ser desfeito se a devolução for recusada, cancelada ou reprovada na inspeção; devolução concluída não permite desfazer.';",
           vezes: 1,
         },
         {
