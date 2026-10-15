@@ -1297,8 +1297,23 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         rollback, mutantes) e `tests/banco/categorias-gestao-portao-viva.cjs` prova a decisao das duas consultas,
         num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja
         nem o corpo vivo delas. **Corrida conhecida:** uma aba de produto aberta ANTES de um renome, salva
-        DEPOIS, grava o nome antigo no produto (o produto volta a ficar com um nome que nao existe mais; a lojista
-        o ve na tela "Gerenciar categorias" como categoria sem produto e corrige o produto).
+        DEPOIS, grava o nome antigo no produto. O produto volta a ficar com um nome que nao existe mais na tabela
+        `categorias`; a tela "Gerenciar categorias" NAO o mostra (la so existem as linhas de `categorias`, e esta
+        nao tem linha), ele continua aparecendo em "Todas" na vitrine mas some do filtro da categoria. A lojista
+        so o acha pela lista de produtos e corrige abrindo o produto e escolhendo a categoria de novo.
+      - **Em aberto, declarado (nao e desta migration):**
+        - **R5 (`UPDATE` e `DELETE` direto em `categorias`):** as politicas de RLS de `UPDATE` e de `DELETE` da tabela
+          `categorias` ainda usam `is_admin()` (papel do JWT), nao o admin ATUAL. Por PostgREST um admin consegue
+          trocar `nome` (deixa o produto orfao) e APAGAR a linha mesmo com produto, banner ou regra (o
+          `apagar_categoria_vazia` so protege quem passa por ele). Tarefa separada: `rls_admin_atual` nas duas
+          politicas, como a `20261202000000` fez nas do pedido.
+        - **R6 (link de banner):** link com ENDERECO COMPLETO escrito a mao (`https://<loja>/?category=X`) e link
+          sem a barra (`?category=X`) nao sao reconhecidos: renomear nao os troca (so `/?category=X`, o que o painel
+          grava). O banner antigo continua abrindo uma pagina vazia ate a lojista trocar o link.
+        - **Produto excluido:** conta como "em uso" e a lojista nao o ve nem o move; a categoria so pode ser apagada
+          depois que ele sai dela (hoje, com ajuda do suporte). Se isso deve liberar o apagar, e decisao de produto.
+        - **Nome "Todas"/"all":** recusado ao renomear (banco) e ao criar pela tela; o `INSERT` direto em
+          `categorias` nao e barrado (pediria gatilho/`CHECK`, que muda o contrato da tabela).
 
 4. **Promover UM front e conferir a frota.**
 
