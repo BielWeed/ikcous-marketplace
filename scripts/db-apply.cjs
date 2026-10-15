@@ -2078,6 +2078,11 @@ const VERIFICACOES = {
           vezes: 1,
         },
         { texto: "AND d.reembolso_manual), 0)", vezes: 1 },
+        // o POR FORA PARCIAL do pedido cancelado conta no saldo em qualquer status da linha
+        {
+          texto: "AND pf.substituida_por_manual_em IS NULL), 0)",
+          vezes: 1,
+        },
       ],
     },
     {
@@ -2162,8 +2167,20 @@ const VERIFICACOES = {
             "IF NOT public.order_refund__liberavel_apos_espera(v_r.id) THEN",
           vezes: 1,
         },
-        { texto: "'risco_de_dobro', true", vezes: 1 },
+        { texto: "'risco_de_dobro', true", vezes: 2 },
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        // a linha que nasceu enquanto a trava do pedido era esperada é travada antes das checagens
+        {
+          texto:
+            "PERFORM 1 FROM public.order_refunds releitura WHERE releitura.order_id = p_order_id ORDER BY releitura.id FOR UPDATE;",
+          vezes: 1,
+        },
+        // só a linha que cobre TODO o saldo ainda a devolver estorna o pedido; a parcial só marca por fora
+        {
+          texto: "IF round(v_r.amount, 2) < round(v_resta, 2) THEN",
+          vezes: 1,
+        },
+        { texto: "'detalhe', 'parcial'", vezes: 1 },
       ],
     },
     {
@@ -2183,7 +2200,13 @@ const VERIFICACOES = {
           vezes: 1,
         },
         {
-          texto: "'disponivel', public.pedido__saldo_a_estornar(p_order_id),",
+          texto:
+            "'disponivel', GREATEST(public.pedido__saldo_a_estornar(p_order_id), 0),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'substituida_por_manual', pv.substituida_por_manual_em IS NOT NULL,",
           vezes: 1,
         },
       ],

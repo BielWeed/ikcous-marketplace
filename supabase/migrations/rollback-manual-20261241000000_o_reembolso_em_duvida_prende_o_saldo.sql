@@ -41,7 +41,7 @@ BEGIN
 
   FOR r IN
     SELECT * FROM (VALUES
-      ('public.pedido__saldo_a_estornar(uuid)', '9579d2b56b57cf948659936a928dd7dc', 'ee7f8e6e7eb18d5a383f5634c61aa0c4'),
+      ('public.pedido__saldo_a_estornar(uuid)', '9579d2b56b57cf948659936a928dd7dc', '99741b4cdbf1e8d8340f80440e6da094'),
       ('public.solicitar_estorno(uuid,numeric,text)', '069c3d12a470cc4708099d909c57ca02', '840de50f44958fe43b55f5222691df9b'),
       ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', '26080db4aeb82bdfb9fcd0c6f7169ebb', 'ebb901efff59a53082836a13e053cd1a'),
       ('public.autorizar_post_do_estorno(uuid,numeric)', 'e128f7ad54ebc82c97b97af4aa7baa08', 'c73e48294c08f34240abc3843aa7d1f1'),
@@ -61,9 +61,9 @@ BEGIN
     SELECT * FROM (VALUES
       ('order_refund__pode_ter_saido', 'bdbb28b3d91588c8b10283d57bfb73d6'),
       ('order_refund__liberavel_apos_espera', 'cb37f24646fda24e1a51c8f01983e083'),
-      ('pedido_reembolsos_e_saldo', '64cf09844a36503dcf9d355be1a452b8'),
+      ('pedido_reembolsos_e_saldo', 'baf21d65b13bea6b8e0d18f3ced1e05e'),
       ('admin_devolucao_reembolso_por_fora_apos_espera', '92dd1608d02ef5e9fd9fe34e0bd7c49f'),
-      ('registrar_estorno_manual_apos_espera', 'e1cc84a9471590abd34ce9368dd444e7')
+      ('registrar_estorno_manual_apos_espera', '7b1403e418b2d80d02db287444f8a0ef')
     ) AS esperado(nome, hash_desta)
   LOOP
     IF EXISTS (SELECT 1 FROM pg_proc p

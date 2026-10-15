@@ -600,8 +600,8 @@ async function provar() {
       A,
       trocar(
         SQL[A],
-        "AND position('substituida_por_manual_em' IN f.prosrc) > 0\n                               THEN 'sim' ELSE 'nao' END",
-        "AND position('substituida_por_manual_em' IN f.prosrc) > 0\n                               THEN 'sim' ELSE 'sim' END",
+        "AND position('pv.substituida_por_manual_em IS NOT NULL' IN f.prosrc) > 0\n                               THEN 'sim' ELSE 'nao' END",
+        "AND position('pv.substituida_por_manual_em IS NOT NULL' IN f.prosrc) > 0\n                               THEN 'sim' ELSE 'sim' END",
       ),
       ANTES,
       "negativo",

@@ -46,7 +46,7 @@ function corpoDe(sql, nome) {
 const DESTA = {
   order_refund__pode_ter_saido: "bdbb28b3d91588c8b10283d57bfb73d6",
   order_refund__liberavel_apos_espera: "cb37f24646fda24e1a51c8f01983e083",
-  pedido__saldo_a_estornar: "ee7f8e6e7eb18d5a383f5634c61aa0c4",
+  pedido__saldo_a_estornar: "99741b4cdbf1e8d8340f80440e6da094",
   solicitar_estorno: "840de50f44958fe43b55f5222691df9b",
   admin_devolucao_concluir: "ebb901efff59a53082836a13e053cd1a",
   autorizar_post_do_estorno: "c73e48294c08f34240abc3843aa7d1f1",
@@ -55,8 +55,8 @@ const DESTA = {
   devolucao_avisa_o_cliente: "56502b960dcf3e136c1d0d5c41091c20",
   admin_devolucao_reembolso_por_fora_apos_espera:
     "92dd1608d02ef5e9fd9fe34e0bd7c49f",
-  registrar_estorno_manual_apos_espera: "e1cc84a9471590abd34ce9368dd444e7",
-  pedido_reembolsos_e_saldo: "64cf09844a36503dcf9d355be1a452b8",
+  registrar_estorno_manual_apos_espera: "7b1403e418b2d80d02db287444f8a0ef",
+  pedido_reembolsos_e_saldo: "baf21d65b13bea6b8e0d18f3ced1e05e",
 };
 // Os sete corpos VIGENTES (o que esta no ar antes dela) — o rollback os devolve byte a byte.
 const VIGENTE = {
@@ -336,6 +336,54 @@ Deno.test("a espera UNICA dos 7 dias (liberavel_apos_espera): 7 dias pelo now() 
   );
 });
 
+Deno.test("a saida dos 7 dias do pedido cancelado: re-trava as linhas depois do pedido; so a linha que cobre TODO o saldo estorna o pedido; a parcial so marca por fora e o saldo a conta como por fora", () => {
+  const c = corpoDe(migration, "registrar_estorno_manual_apos_espera");
+  const iPedido = c.indexOf(
+    "SELECT * INTO v_o FROM public.marketplace_orders WHERE id = p_order_id FOR UPDATE;",
+  );
+  const iRelock = c.indexOf(
+    "PERFORM 1 FROM public.order_refunds releitura WHERE releitura.order_id = p_order_id ORDER BY releitura.id FOR UPDATE;",
+  );
+  const iLinha = c.indexOf(
+    "SELECT * INTO v_r FROM public.order_refunds WHERE id = p_refund_esperado;",
+  );
+  assert.ok(
+    iPedido > 0 && iRelock > iPedido && iLinha > iRelock,
+    "linhas -> pedido -> linhas de novo, antes de ler a linha",
+  );
+  const iParcial = c.indexOf(
+    "IF round(v_r.amount, 2) < round(v_resta, 2) THEN",
+  );
+  const iEstornado = c.indexOf("SET payment_status = 'estornado'");
+  const iRecusa = c.indexOf("SET status = 'recusado'");
+  assert.ok(iParcial > 0, "a decisao parcial x total");
+  assert.ok(
+    iEstornado > iParcial && iRecusa > iParcial,
+    "estornar e recusar as solicitadas so depois da decisao (so no total)",
+  );
+  const parcial = c.slice(iParcial, c.indexOf("END IF;", iParcial));
+  assert.ok(parcial.includes("'detalhe', 'parcial'"));
+  assert.ok(parcial.includes("'risco_de_dobro', true"));
+  assert.ok(
+    !parcial.includes("substituida_por_manual_em"),
+    "a parcial nao marca substituida (o valor tem de seguir no saldo)",
+  );
+  assert.ok(!parcial.includes("estornado"), "a parcial nao estorna o pedido");
+  // o que ja saiu por fora inclui a parcial anterior (a mesma parcela do saldo)
+  assert.ok(
+    c.includes(
+      "AND pf.por_fora_liberado_em IS NOT NULL\n                                            AND pf.substituida_por_manual_em IS NULL), 0);",
+    ),
+  );
+  const saldo = corpoDe(migration, "pedido__saldo_a_estornar");
+  assert.ok(
+    saldo.includes(
+      "JOIN public.order_refund_prova pf ON pf.refund_id = r.id\n                      WHERE r.order_id = o.id\n                        AND pf.por_fora_liberado_em IS NOT NULL\n                        AND pf.substituida_por_manual_em IS NULL), 0)",
+    ),
+    "o saldo desconta o por fora parcial em qualquer status",
+  );
+});
+
 Deno.test("o contrato do painel (pedido_reembolsos_e_saldo): os NOMES que o front le, nada de codigo do MP", () => {
   const c = corpoDe(migration, "pedido_reembolsos_e_saldo");
   const linha = c.slice(
@@ -351,8 +399,15 @@ Deno.test("o contrato do painel (pedido_reembolsos_e_saldo): os NOMES que o fron
       "pode_ter_saido",
       "por_fora_liberado_em",
       "por_fora_apos_espera_liberado",
+      "substituida_por_manual",
       "eh_pix",
     ],
+  );
+  assert.ok(
+    linha.includes(
+      "'substituida_por_manual', pv.substituida_por_manual_em IS NOT NULL,",
+    ),
+    "a linha diz se foi substituida por manual",
   );
   const topo = c.slice(c.indexOf("RETURN jsonb_build_object("));
   assert.deepEqual(
@@ -368,8 +423,10 @@ Deno.test("o contrato do painel (pedido_reembolsos_e_saldo): os NOMES que o fron
     ],
   );
   assert.ok(
-    topo.includes("'disponivel', public.pedido__saldo_a_estornar(p_order_id)"),
-    "o disponivel E' o saldo",
+    topo.includes(
+      "'disponivel', GREATEST(public.pedido__saldo_a_estornar(p_order_id), 0)",
+    ),
+    "o disponivel E' o saldo, nunca negativo",
   );
   assert.ok(
     !/mp_codigo|order_refund_diagnostico|ultimo_erro|mp_refund_id/.test(c),

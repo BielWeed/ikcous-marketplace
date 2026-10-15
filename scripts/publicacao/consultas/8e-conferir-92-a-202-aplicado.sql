@@ -139,7 +139,7 @@ WITH corpos AS (
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
     ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa', '20261235000000'),
     ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3', '20261239000000'),
-    ('pedido__saldo_a_estornar', 'ee7f8e6e7eb18d5a383f5634c61aa0c4', '20261241000000'),
+    ('pedido__saldo_a_estornar', '99741b4cdbf1e8d8340f80440e6da094', '20261241000000'),
     ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),
     ('admin_devolucao_concluir', 'ebb901efff59a53082836a13e053cd1a', '20261241000000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000')), colunas(tabela, coluna) AS (VALUES

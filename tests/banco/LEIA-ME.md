@@ -638,13 +638,20 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   dúvida têm o mesmo saldo antes (rollback na transação) e depois; o painel (`pedido_reembolsos_e_saldo`) devolve
   exatamente os campos combinados e nenhum código do MP; a `falhou` legada marcada 2x prende o saldo e o novo pedido é
   recusado (marcada 1x, não); a substituída por manual sai da conta; a espera dos 7 dias (devolução e pedido cancelado)
-  responde `aguarde` com 3 dias e com 7 dias menos 1 s, libera com exatamente 7 (o botão `por_fora_apos_espera_liberado`
-  segue a porta), exige a frase, marca a linha, não se usa duas vezes e o botão some com a marca; o
-  `autorizar_post_do_estorno` recusa a linha liberada por fora. CORRIDA de duas conexões nas duas ordens (saída ×
-  autorizar). ACL (anon e logado comum recusados; as duas regras fechadas até ao `service_role`). Aplicar 2x e em CRLF,
-  rollback idempotente que recusa com marca, pré-voo que recusa corpo divergente sem escrever. Seis mutantes ficam
-  VERMELHOS (sem a regra do legado, sem o filtro da substituída nos dois lugares e só na regra, o autorizar sem a marca,
-  a espera sem os 7 dias, a espera sem a marca). **Não prova** a IKCOUS nem a Savy.
+  responde `aguarde` com 3 dias e com 7 dias menos 1 s, libera com exatamente 7 (o campo `por_fora_apos_espera_liberado`
+  diz só que a ESPERA passou; a porta ainda pode recusar e o front mostra a resposta dela), exige a frase, marca a
+  linha, não se usa duas vezes e o botão some com a marca; o `autorizar_post_do_estorno` recusa a linha liberada por
+  fora. Na saída do pedido cancelado, só a linha que cobre TODO o saldo ainda a devolver estorna o pedido (centavos
+  exatos); a PARCIAL só marca por fora, não recusa as outras linhas e o valor segue no saldo como "por fora" mesmo
+  depois que a linha fecha; duas parciais somam. O painel nunca devolve disponível negativo e diz se a linha foi
+  substituída; a reemissão (corpo novo) recusa a linha que pode ter saído e reemite a que provadamente não saiu.
+  CORRIDA de duas conexões nas duas ordens (saída × autorizar) e a da LINHA NOVA (três conexões: a re-trava das linhas
+  faz a marca da edge esperar a saída e achar 0 linha). ACL (anon e logado comum recusados; as duas regras fechadas até
+  ao `service_role`). Aplicar 2x e em CRLF, rollback idempotente que recusa com marca, pré-voo que recusa corpo
+  divergente sem escrever. Doze mutantes ficam VERMELHOS (sem a regra do legado, sem o filtro da substituída nos dois
+  lugares e só na regra, o autorizar sem a marca, a espera sem os 7 dias, a espera sem a marca, a saída sem a re-trava,
+  a parcial que estorna o pedido inteiro, o saldo sem o por fora parcial, o painel sem o GREATEST, o painel sem o campo
+  da substituída, a reemissão com a regra invertida). **Não prova** a IKCOUS nem a Savy.
 - **portão do reembolso em dúvida (`reembolso-em-duvida-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
   `43a-conferir-reembolso-em-duvida-aplicado` (DEPOIS, 21 linhas) e `43b-antes-reembolso-em-duvida-base-vigente`
   (ANTES, 14 linhas) do lote `20261241000000`. Rol exato nos dois estados, um negativo por linha (cada um dos doze

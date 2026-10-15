@@ -2183,7 +2183,7 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
         },
         {
           fn: "pedido__saldo_a_estornar",
-          h: "ee7f8e6e7eb18d5a383f5634c61aa0c4",
+          h: "99741b4cdbf1e8d8340f80440e6da094",
           versao: "20261241000000",
         },
         // 14/10/2026: a venda repetida do balcão (trava pela chave de idempotência).
@@ -13564,7 +13564,7 @@ Deno.test("43a/43b — os md5 da 43a sao os dos DOZE corpos que o arquivo da mig
   const DEPOIS: Record<string, string> = {
     order_refund__pode_ter_saido: "bdbb28b3d91588c8b10283d57bfb73d6",
     order_refund__liberavel_apos_espera: "cb37f24646fda24e1a51c8f01983e083",
-    pedido__saldo_a_estornar: "ee7f8e6e7eb18d5a383f5634c61aa0c4",
+    pedido__saldo_a_estornar: "99741b4cdbf1e8d8340f80440e6da094",
     solicitar_estorno: "840de50f44958fe43b55f5222691df9b",
     admin_devolucao_concluir: "ebb901efff59a53082836a13e053cd1a",
     autorizar_post_do_estorno: "c73e48294c08f34240abc3843aa7d1f1",
@@ -13573,8 +13573,8 @@ Deno.test("43a/43b — os md5 da 43a sao os dos DOZE corpos que o arquivo da mig
     devolucao_avisa_o_cliente: "56502b960dcf3e136c1d0d5c41091c20",
     admin_devolucao_reembolso_por_fora_apos_espera:
       "92dd1608d02ef5e9fd9fe34e0bd7c49f",
-    registrar_estorno_manual_apos_espera: "e1cc84a9471590abd34ce9368dd444e7",
-    pedido_reembolsos_e_saldo: "64cf09844a36503dcf9d355be1a452b8",
+    registrar_estorno_manual_apos_espera: "7b1403e418b2d80d02db287444f8a0ef",
+    pedido_reembolsos_e_saldo: "baf21d65b13bea6b8e0d18f3ced1e05e",
   };
   // De onde vem cada corpo VIGENTE (a ultima migration antes desta que o define).
   const ANTES: Record<string, [string, string]> = {

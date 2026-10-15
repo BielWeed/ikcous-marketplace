@@ -34,7 +34,9 @@
 --       Não em order_refunds: a cliente lê a linha inteira de order_refunds (RLS) e marca interna não
 --       vai para lá. Não em order_refund_diagnostico: o pré-voo da 20261226 e a 29a fixam as colunas dela.
 --   (c) `pedido__saldo_a_estornar` passa a descontar também o EM DÚVIDA: soma das linhas falhou/recusado
---       com pode_ter_saido verdadeiro e NÃO substituídas por manual. `solicitar_estorno` e o ramo
+--       com pode_ter_saido verdadeiro, NÃO substituídas por manual e NÃO liberadas por fora; e o POR FORA
+--       PARCIAL do pedido cancelado (linha com por_fora_liberado_em sem a marca de substituída, em qualquer
+--       status). `solicitar_estorno` e o ramo
 --       "pago pelo app" de `admin_devolucao_concluir` passam a CHAMAR a função (tinham cópia da conta que
 --       não descontava a linha concluída ainda não somada — a divergência sai junto).
 --   (d) `autorizar_post_do_estorno` NÃO passa a descontar o "em dúvida" (decisão A5b: o limite do MP já
@@ -43,18 +45,25 @@
 --       (CREATE OR REPLACE, mesma assinatura, mesmos GRANTs). O "por fora" marca a linha como substituída.
 --   (f) As SAÍDAS DOS 7 DIAS (para PIX e para cartão sem prova): `admin_devolucao_reembolso_por_fora_apos_espera`
 --       (devolução) e `registrar_estorno_manual_apos_espera` (pedido cancelado). Admin ATUAL; frase fixa
---       de confirmação 'DEVOLVI POR FORA'; marcam as duas marcas; devolvem risco_de_dobro: true. A linha de
---       order_refunds fica como está (o robô segue consultando o MP). A do pedido cancelado grava
---       payment_status = 'estornado' como registrar_estorno_manual (20261197000000). A ESPERA é UMA função
---       só, `order_refund__liberavel_apos_espera(linha)` (fechada para todo papel), que as duas saídas e o
---       painel leem — o botão e a porta não divergem: linha em_processamento, ou falhou que pode ter saído;
---       não substituída por manual; sem por_fora_liberado_em; now() − COALESCE(post_autorizado_em,
---       created_at) >= 7 dias (relógio SÓ do banco).
+--       de confirmação 'DEVOLVI POR FORA'; devolvem risco_de_dobro: true. A linha de order_refunds fica como
+--       está (o robô segue consultando o MP). A da devolução marca as duas marcas. A do pedido cancelado, se a
+--       linha cobre TODO o saldo ainda a devolver, marca as duas e grava payment_status = 'estornado' como
+--       registrar_estorno_manual (20261197000000); se cobre só PARTE, marca só por_fora_liberado_em, não muda
+--       o pedido nem as outras linhas e responde detalhe 'parcial' (o valor passa a contar no saldo como "por
+--       fora"). A ESPERA é UMA função só, `order_refund__liberavel_apos_espera(linha)` (fechada para todo
+--       papel), que as duas saídas e o painel leem: linha em_processamento, ou falhou que pode ter saído; não
+--       substituída por manual; sem por_fora_liberado_em; now() − COALESCE(post_autorizado_em, created_at)
+--       >= 7 dias (relógio SÓ do banco). O campo do painel diz só que a ESPERA passou: a porta ainda confere o
+--       resto (linha do sistema, outra linha em processamento, linha de devolução...) e pode recusar — o front
+--       mostra a RESPOSTA da porta.
 --   (g) `pedido_reembolsos_e_saldo(pedido)` — o que o painel mostra: total, valor_estornado, em_voo,
---       em_duvida, manual, disponivel e as linhas {id, status, amount, pode_ter_saido, por_fora_liberado_em,
---       por_fora_apos_espera_liberado, eh_pix}; NUNCA o código do MP. Só o admin atual logado. O front deixa
---       de copiar a conta. por_fora_liberado_em = a MARCA (a saída dos 7 dias JÁ foi usada);
---       por_fora_apos_espera_liberado = a linha PODE usar a saída AGORA (order_refund__liberavel_apos_espera).
+--       em_duvida, manual, disponivel (nunca negativo: GREATEST(saldo, 0)) e as linhas {id, status, amount,
+--       pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado, substituida_por_manual, eh_pix};
+--       NUNCA o código do MP. Só o admin atual logado. O front deixa de copiar a conta.
+--       por_fora_liberado_em = a MARCA (a saída dos 7 dias JÁ foi usada); por_fora_apos_espera_liberado = a
+--       ESPERA da linha passou (order_refund__liberavel_apos_espera; a porta ainda pode recusar por outro
+--       motivo); substituida_por_manual = o reembolso manual tomou o lugar da linha (aí pode_ter_saido = false
+--       quer dizer "não conta como dúvida", não "o dinheiro não saiu": a tela não oferece tentar de novo).
 --   (h) O aviso da cliente na conclusão com reembolso ainda em andamento passa a dizer "A loja está
 --       confirmando sua devolução com o Mercado Pago." (não promete o que o MP ainda não confirmou).
 --   (i) REVOKE do authenticated em `admin_devolucao_reemitir_reembolso` (a antiga, que só aceitava
@@ -86,7 +95,7 @@
 -- caem juntos ou não caem).
 --
 -- 6. HASHES (md5 do corpo sem CR, vigente -> desta)
---   pedido__saldo_a_estornar            9579d2b56b57cf948659936a928dd7dc -> ee7f8e6e7eb18d5a383f5634c61aa0c4
+--   pedido__saldo_a_estornar            9579d2b56b57cf948659936a928dd7dc -> 99741b4cdbf1e8d8340f80440e6da094
 --   solicitar_estorno                   069c3d12a470cc4708099d909c57ca02 -> 840de50f44958fe43b55f5222691df9b
 --   admin_devolucao_concluir            26080db4aeb82bdfb9fcd0c6f7169ebb -> ebb901efff59a53082836a13e053cd1a
 --   autorizar_post_do_estorno           e128f7ad54ebc82c97b97af4aa7baa08 -> c73e48294c08f34240abc3843aa7d1f1
@@ -95,9 +104,9 @@
 --   devolucao_avisa_o_cliente           2cd21f47021cafc15cae4ccd0c8c67e5 -> 56502b960dcf3e136c1d0d5c41091c20
 --   novas: order_refund__pode_ter_saido bdbb28b3d91588c8b10283d57bfb73d6,
 --   order_refund__liberavel_apos_espera cb37f24646fda24e1a51c8f01983e083, pedido_reembolsos_e_saldo
---   64cf09844a36503dcf9d355be1a452b8, admin_devolucao_reembolso_por_fora_apos_espera
+--   baf21d65b13bea6b8e0d18f3ced1e05e, admin_devolucao_reembolso_por_fora_apos_espera
 --   92dd1608d02ef5e9fd9fe34e0bd7c49f, registrar_estorno_manual_apos_espera
---   e1cc84a9471590abd34ce9368dd444e7.
+--   7b1403e418b2d80d02db287444f8a0ef.
 -- Os "vigentes" vêm dos ARQUIVOS das migrations 20261198/20261197/20261196/20261226/20261225; o corpo vivo
 -- de cada loja só a consulta 43b mede, ANTES do apply.
 --
@@ -157,7 +166,7 @@ BEGIN
   FOR r IN
     SELECT *
       FROM (VALUES
-        ('pedido__saldo_a_estornar', 'public.pedido__saldo_a_estornar(uuid)', 'sql', 's', 'numeric', '9579d2b56b57cf948659936a928dd7dc', 'ee7f8e6e7eb18d5a383f5634c61aa0c4'),
+        ('pedido__saldo_a_estornar', 'public.pedido__saldo_a_estornar(uuid)', 'sql', 's', 'numeric', '9579d2b56b57cf948659936a928dd7dc', '99741b4cdbf1e8d8340f80440e6da094'),
         ('solicitar_estorno', 'public.solicitar_estorno(uuid,numeric,text)', 'plpgsql', 'v', 'jsonb', '069c3d12a470cc4708099d909c57ca02', '840de50f44958fe43b55f5222691df9b'),
         ('admin_devolucao_concluir', 'public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'plpgsql', 'v', 'jsonb', '26080db4aeb82bdfb9fcd0c6f7169ebb', 'ebb901efff59a53082836a13e053cd1a'),
         ('autorizar_post_do_estorno', 'public.autorizar_post_do_estorno(uuid,numeric)', 'plpgsql', 'v', 'jsonb', 'e128f7ad54ebc82c97b97af4aa7baa08', 'c73e48294c08f34240abc3843aa7d1f1'),
@@ -217,9 +226,9 @@ BEGIN
     SELECT * FROM (VALUES
       ('order_refund__pode_ter_saido', 'bdbb28b3d91588c8b10283d57bfb73d6'),
       ('order_refund__liberavel_apos_espera', 'cb37f24646fda24e1a51c8f01983e083'),
-      ('pedido_reembolsos_e_saldo', '64cf09844a36503dcf9d355be1a452b8'),
+      ('pedido_reembolsos_e_saldo', 'baf21d65b13bea6b8e0d18f3ced1e05e'),
       ('admin_devolucao_reembolso_por_fora_apos_espera', '92dd1608d02ef5e9fd9fe34e0bd7c49f'),
-      ('registrar_estorno_manual_apos_espera', 'e1cc84a9471590abd34ce9368dd444e7')
+      ('registrar_estorno_manual_apos_espera', '7b1403e418b2d80d02db287444f8a0ef')
     ) AS esperado(nome, hash_desta)
   LOOP
     IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = r.nome) > 1 THEN
@@ -316,7 +325,10 @@ REVOKE ALL ON FUNCTION public.order_refund__pode_ter_saido(uuid) FROM PUBLIC, an
 -- 2b. order_refund__liberavel_apos_espera — a ESPERA dos 7 dias, UMA regra para a porta e para o botão
 -- ---------------------------------------------------------------------------
 -- As duas saídas dos 7 dias e o painel (pedido_reembolsos_e_saldo, campo por_fora_apos_espera_liberado)
--- leem ESTA função: o botão só aparece quando a porta aceitaria a espera. Fechada para todo papel.
+-- leem ESTA função para a ESPERA. O campo do painel diz só "a espera desta linha passou"; a porta ainda
+-- confere o resto (linha do sistema, outra linha em processamento, linha de devolução no pedido cancelado,
+-- pedido já estornado ou sem pagamento...) e pode recusar com o campo true: o front mostra a RESPOSTA da
+-- porta. Fechada para todo papel.
 CREATE OR REPLACE FUNCTION public.order_refund__liberavel_apos_espera(p_refund_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -356,7 +368,11 @@ AS $saldo$
   -- total pago − já confirmado (valor_estornado) − em voo (solicitado/em_processamento, e a concluída
   -- AINDA NÃO SOMADA: status 'concluido' com concluido_em NULL) − EM DÚVIDA (20261241000000: linha
   -- falhou/recusado cujo dinheiro PODE ter saído no Mercado Pago, order_refund__pode_ter_saido, e que
-  -- NÃO foi substituída por reembolso manual) − reembolso manual de devolução concluída.
+  -- NÃO foi substituída por reembolso manual nem liberada por fora) − reembolso manual de devolução
+  -- concluída − POR FORA PARCIAL do pedido cancelado (linha com por_fora_liberado_em SEM a marca de
+  -- substituída: a saída dos 7 dias que cobriu só parte do saldo; o dinheiro saiu por fora e não está
+  -- em nenhuma outra conta — conta em QUALQUER status da linha, senão voltaria ao saldo quando o robô
+  -- fechasse a linha).
   -- Pode dar zero ou negativo: quem chama decide.
   SELECT o.total
          - COALESCE(o.valor_estornado, 0)
@@ -373,12 +389,22 @@ AS $saldo$
                                           FROM public.order_refund_prova pv
                                          WHERE pv.refund_id = r.id
                                            AND pv.substituida_por_manual_em IS NOT NULL)
+                        AND NOT EXISTS (SELECT 1
+                                          FROM public.order_refund_prova pf
+                                         WHERE pf.refund_id = r.id
+                                           AND pf.por_fora_liberado_em IS NOT NULL)
                         AND public.order_refund__pode_ter_saido(r.id)), 0)
          - COALESCE((SELECT sum(d.valor_reembolso)
                        FROM public.devolucoes d
                       WHERE d.order_id = o.id
                         AND d.status = 'concluida'
                         AND d.reembolso_manual), 0)
+         - COALESCE((SELECT sum(r.amount)
+                       FROM public.order_refunds r
+                       JOIN public.order_refund_prova pf ON pf.refund_id = r.id
+                      WHERE r.order_id = o.id
+                        AND pf.por_fora_liberado_em IS NOT NULL
+                        AND pf.substituida_por_manual_em IS NULL), 0)
     FROM public.marketplace_orders o
    WHERE o.id = p_order_id;
 $saldo$;
@@ -1284,8 +1310,13 @@ GRANT EXECUTE ON FUNCTION public.admin_devolucao_reembolso_por_fora_apos_espera(
 -- ---------------------------------------------------------------------------
 -- O registrar_estorno_manual de sempre recusa enquanto há linha em_processamento (o POST pode ter saído).
 -- Esta é a saída quando o MP nunca respondeu: mesma regra de 7 dias, mesma frase, mesmo risco assumido.
--- Grava payment_status = 'estornado' como registrar_estorno_manual (20261197000000).
--- Ordem de travas: linhas de order_refunds do pedido (por id) -> pedido.
+-- TOTAL (a linha cobre todo o saldo ainda a devolver: total − valor_estornado − o que já saiu por fora, em
+-- centavos exatos): grava payment_status = 'estornado' como registrar_estorno_manual (20261197000000) e tira
+-- da fila as outras linhas 'solicitado'. PARCIAL (a linha cobre só parte): o pedido fica como está (nada de
+-- 'estornado', nenhuma outra linha recusada), a linha ganha só a marca por fora e o valor dela passa a contar
+-- no saldo como "por fora"; a resposta diz detalhe 'parcial' e risco_de_dobro.
+-- Ordem de travas: linhas de order_refunds do pedido (por id) -> pedido -> as linhas de novo (por id; pega a
+-- linha que nasceu enquanto a trava do pedido era esperada), como registrar_estorno_manual.
 CREATE OR REPLACE FUNCTION public.registrar_estorno_manual_apos_espera(
   p_order_id uuid,
   p_refund_esperado uuid,
@@ -1301,6 +1332,7 @@ DECLARE
   v_r public.order_refunds%ROWTYPE;
   v_desde timestamptz;
   v_ja_manual numeric;
+  v_resta numeric;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
@@ -1328,6 +1360,10 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Pedido não encontrado.' USING ERRCODE = 'P0002';
   END IF;
+  -- RELÊ e TRAVA as linhas com o pedido já travado (o passo 3 de registrar_estorno_manual, 20261197000000):
+  -- a linha que nasceu enquanto a trava do pedido era esperada fica travada ANTES das checagens abaixo; sem
+  -- isto a marca da edge (solicitado -> em_processamento) cai entre a checagem e o UPDATE e o POST sai.
+  PERFORM 1 FROM public.order_refunds releitura WHERE releitura.order_id = p_order_id ORDER BY releitura.id FOR UPDATE;
 
   -- Lida DEPOIS da trava da linha: um POST autorizado no meio já está carimbado aqui.
   SELECT * INTO v_r FROM public.order_refunds WHERE id = p_refund_esperado;
@@ -1386,15 +1422,41 @@ BEGIN
                               'liberado_a_partir_de', v_desde + interval '7 days');
   END IF;
 
+  -- O que já saiu por fora deste pedido: devolução manual concluída + linhas liberadas por fora numa saída
+  -- PARCIAL anterior (por_fora_liberado_em sem a marca de substituída; a mesma parcela do saldo).
   SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual
     FROM public.devolucoes d
    WHERE d.order_id = p_order_id AND d.status = 'concluida' AND d.reembolso_manual;
-  IF v_o.total - COALESCE(v_o.valor_estornado, 0) - v_ja_manual <= 0 THEN
+  v_ja_manual := v_ja_manual + COALESCE((SELECT sum(x.amount)
+                                           FROM public.order_refunds x
+                                           JOIN public.order_refund_prova pf ON pf.refund_id = x.id
+                                          WHERE x.order_id = p_order_id
+                                            AND pf.por_fora_liberado_em IS NOT NULL
+                                            AND pf.substituida_por_manual_em IS NULL), 0);
+  v_resta := v_o.total - COALESCE(v_o.valor_estornado, 0) - v_ja_manual;
+  IF v_resta <= 0 THEN
     RAISE EXCEPTION 'Este pedido não tem mais nada a devolver: o valor já saiu por outro caminho (devolução ou estorno).'
       USING ERRCODE = '22023';
   END IF;
 
-  -- A3 + A4: nenhum POST desta linha sai mais, e ela sai da conta "em dúvida".
+  -- PARCIAL: a linha NÃO cobre todo o saldo ainda a devolver (centavos exatos, numeric). O pedido NÃO vira
+  -- 'estornado' (esconderia o resto, e o financeiro leria reembolso total): só a marca por fora (A3, nenhum
+  -- POST desta linha sai mais). SEM a marca de substituída: o valor desta linha passa a contar no saldo como
+  -- POR FORA em qualquer status (pedido__saldo_a_estornar) — é o único registro do dinheiro que saiu por
+  -- fora. As outras linhas 'solicitado' seguem como estão.
+  IF round(v_r.amount, 2) < round(v_resta, 2) THEN
+    INSERT INTO public.order_refund_prova AS pv (refund_id, por_fora_liberado_em)
+    VALUES (v_r.id, now())
+    ON CONFLICT (refund_id) DO UPDATE
+       SET por_fora_liberado_em = COALESCE(pv.por_fora_liberado_em, EXCLUDED.por_fora_liberado_em);
+
+    RETURN jsonb_build_object('resultado', 'registrado', 'detalhe', 'parcial',
+                              'risco_de_dobro', true, 'payment_status', v_o.payment_status, 'refund_id', v_r.id,
+                              'ainda_a_devolver', v_resta - v_r.amount);
+  END IF;
+
+  -- TOTAL: a linha cobre todo o saldo ainda a devolver. A3 + A4: nenhum POST desta linha sai mais, e ela sai
+  -- da conta "em dúvida" (o pedido estornado fecha a conta).
   INSERT INTO public.order_refund_prova AS pv (refund_id, substituida_por_manual_em, por_fora_liberado_em)
   VALUES (v_r.id, now(), now())
   ON CONFLICT (refund_id) DO UPDATE
@@ -1426,10 +1488,15 @@ GRANT EXECUTE ON FUNCTION public.registrar_estorno_manual_apos_espera(uuid, uuid
 -- 11. pedido_reembolsos_e_saldo — o que o painel mostra (o front deixa de copiar a conta)
 -- ---------------------------------------------------------------------------
 -- Contrato (o front depende dos NOMES): {total, valor_estornado, em_voo, em_duvida, manual, disponivel,
--- linhas: [{id, status, amount, pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado, eh_pix}]}.
--- disponivel = pedido__saldo_a_estornar = total − valor_estornado − em_voo − em_duvida − manual. NUNCA o código
--- do MP. por_fora_liberado_em = a MARCA (a saída dos 7 dias JÁ foi usada, ou null); por_fora_apos_espera_liberado
--- = a linha PODE usar a saída AGORA (order_refund__liberavel_apos_espera, a mesma regra das duas portas).
+-- linhas: [{id, status, amount, pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado,
+-- substituida_por_manual, eh_pix}]}.
+-- disponivel = GREATEST(pedido__saldo_a_estornar, 0) = total − valor_estornado − em_voo − em_duvida − manual,
+-- nunca negativo (a linha em_processamento resolvida por fora conta em em_voo E em manual até o robô fechá-la:
+-- o lado seguro, mas a conta crua pode ficar abaixo de zero). manual = devolução manual concluída + por fora
+-- parcial do pedido cancelado. NUNCA o código do MP. por_fora_liberado_em = a MARCA (a saída dos 7 dias JÁ
+-- foi usada, ou null); por_fora_apos_espera_liberado = a ESPERA da linha passou (order_refund__liberavel_apos_
+-- espera, a mesma regra das duas portas) — a porta ainda pode recusar por outro motivo e o front mostra a
+-- resposta dela; substituida_por_manual = a linha tem a marca de substituída (o manual tomou o lugar dela).
 -- eh_pix: o pedido não é de cartão (metodo_online fora de credito/debito; NULL conta como PIX).
 CREATE OR REPLACE FUNCTION public.pedido_reembolsos_e_saldo(p_order_id uuid)
 RETURNS jsonb
@@ -1471,6 +1538,10 @@ BEGIN
                        FROM public.order_refund_prova pv
                       WHERE pv.refund_id = r.id
                         AND pv.substituida_por_manual_em IS NOT NULL)
+     AND NOT EXISTS (SELECT 1
+                       FROM public.order_refund_prova pf
+                      WHERE pf.refund_id = r.id
+                        AND pf.por_fora_liberado_em IS NOT NULL)
      AND public.order_refund__pode_ter_saido(r.id);
 
   SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_manual
@@ -1478,6 +1549,12 @@ BEGIN
    WHERE d.order_id = p_order_id
      AND d.status = 'concluida'
      AND d.reembolso_manual;
+  v_manual := v_manual + COALESCE((SELECT sum(r.amount)
+                                     FROM public.order_refunds r
+                                     JOIN public.order_refund_prova pf ON pf.refund_id = r.id
+                                    WHERE r.order_id = p_order_id
+                                      AND pf.por_fora_liberado_em IS NOT NULL
+                                      AND pf.substituida_por_manual_em IS NULL), 0);
 
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
            'id', r.id,
@@ -1486,6 +1563,7 @@ BEGIN
            'pode_ter_saido', public.order_refund__pode_ter_saido(r.id),
            'por_fora_liberado_em', pv.por_fora_liberado_em,
            'por_fora_apos_espera_liberado', public.order_refund__liberavel_apos_espera(r.id),
+           'substituida_por_manual', pv.substituida_por_manual_em IS NOT NULL,
            'eh_pix', v_eh_pix
          ) ORDER BY r.created_at, r.id), '[]'::jsonb)
     INTO v_linhas
@@ -1499,7 +1577,7 @@ BEGIN
     'em_voo', v_em_voo,
     'em_duvida', v_em_duvida,
     'manual', v_manual,
-    'disponivel', public.pedido__saldo_a_estornar(p_order_id),
+    'disponivel', GREATEST(public.pedido__saldo_a_estornar(p_order_id), 0),
     'linhas', v_linhas
   );
 END;
@@ -1524,7 +1602,7 @@ BEGIN
     SELECT * FROM (VALUES
       ('public.order_refund__pode_ter_saido(uuid)', 'sql', 's', 'bdbb28b3d91588c8b10283d57bfb73d6'),
       ('public.order_refund__liberavel_apos_espera(uuid)', 'sql', 's', 'cb37f24646fda24e1a51c8f01983e083'),
-      ('public.pedido__saldo_a_estornar(uuid)', 'sql', 's', 'ee7f8e6e7eb18d5a383f5634c61aa0c4'),
+      ('public.pedido__saldo_a_estornar(uuid)', 'sql', 's', '99741b4cdbf1e8d8340f80440e6da094'),
       ('public.solicitar_estorno(uuid,numeric,text)', 'plpgsql', 'v', '840de50f44958fe43b55f5222691df9b'),
       ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'plpgsql', 'v', 'ebb901efff59a53082836a13e053cd1a'),
       ('public.autorizar_post_do_estorno(uuid,numeric)', 'plpgsql', 'v', 'c73e48294c08f34240abc3843aa7d1f1'),
@@ -1532,8 +1610,8 @@ BEGIN
       ('public.admin_devolucao_reembolso_por_fora(uuid,uuid)', 'plpgsql', 'v', '76eaffb4f9438f7fe557961e1bdaad81'),
       ('public.devolucao_avisa_o_cliente()', 'plpgsql', 'v', '56502b960dcf3e136c1d0d5c41091c20'),
       ('public.admin_devolucao_reembolso_por_fora_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', '92dd1608d02ef5e9fd9fe34e0bd7c49f'),
-      ('public.registrar_estorno_manual_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', 'e1cc84a9471590abd34ce9368dd444e7'),
-      ('public.pedido_reembolsos_e_saldo(uuid)', 'plpgsql', 's', '64cf09844a36503dcf9d355be1a452b8')
+      ('public.registrar_estorno_manual_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', '7b1403e418b2d80d02db287444f8a0ef'),
+      ('public.pedido_reembolsos_e_saldo(uuid)', 'plpgsql', 's', 'baf21d65b13bea6b8e0d18f3ced1e05e')
     ) AS esperado(assinatura, lingua, volatilidade, hash_desta)
   LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang

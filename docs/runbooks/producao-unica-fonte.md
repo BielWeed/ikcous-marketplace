@@ -1721,11 +1721,14 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         desconta o "em duvida" pela regra UNICA `order_refund__pode_ter_saido` (com a regra do legado: linha de antes
         da autorizacao marcada mais de uma vez PODE ter saido); a linha resolvida por fora sai da conta (nao desconta
         duas vezes). O painel le `pedido_reembolsos_e_saldo` (total, estornado, em voo, em duvida, manual,
-        disponivel e as linhas com `pode_ter_saido`, `por_fora_liberado_em` = a MARCA e
-        `por_fora_apos_espera_liberado` = o botao "Ja devolvi por fora (depois de 7 dias)" pode aparecer AGORA). Duas
+        disponivel nunca negativo e as linhas com `pode_ter_saido`, `por_fora_liberado_em` = a MARCA,
+        `por_fora_apos_espera_liberado` = a ESPERA de 7 dias passou (a porta ainda pode recusar por outro motivo; o
+        front mostra a resposta dela) e `substituida_por_manual`). Duas
         saidas de 7 dias com a frase `DEVOLVI POR FORA` (`admin_devolucao_reembolso_por_fora_apos_espera`,
         `registrar_estorno_manual_apos_espera`) leem a MESMA espera do botao (`order_refund__liberavel_apos_espera`,
-        relogio do banco), marcam a linha e respondem `risco_de_dobro`; o `autorizar_post_do_estorno` recusa
+        relogio do banco), marcam a linha e respondem `risco_de_dobro`. A do pedido cancelado so marca o pedido como
+        `estornado` quando a linha cobre TODO o saldo ainda a devolver; a linha PARCIAL so ganha a marca por fora,
+        o pedido segue pago e o valor dela segue descontado no saldo como "por fora"; o `autorizar_post_do_estorno` recusa
         (`linha_mudou`) a linha liberada por fora: o robo nunca reenvia o que a loja pagou a mao. O aviso da
         devolucao em processamento diz que a loja esta confirmando com o Mercado Pago. A antiga
         `admin_devolucao_reemitir_reembolso` perde o `EXECUTE` do logado (nenhum chamador no front publicado).

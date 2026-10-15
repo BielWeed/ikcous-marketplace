@@ -25,7 +25,8 @@
 --                   colunas (pg_attribute: information_schema esconde coluna sem privilegio do leitor).
 --   * marcador   -- leitura humana do mesmo fato do md5: o corpo do saldo chama a regra unica e respeita a marca de
 --                   substituida por manual; as duas saidas dos 7 dias e o painel leem a MESMA espera
---                   (order_refund__liberavel_apos_espera), para o botao e a porta nao divergirem.
+--                   (order_refund__liberavel_apos_espera). O campo do painel diz so que a ESPERA passou: a
+--                   porta ainda pode recusar por outro motivo, e o front mostra a RESPOSTA da porta.
 --
 -- md5 recalculado dos ARQUIVOS das migrations por tests/ci_conferir_banco_test.ts e pelo teste estatico da migration;
 -- tests/banco/reembolso-em-duvida-portao-viva.cjs roda esta consulta num Postgres real (positiva depois do apply,
@@ -35,7 +36,7 @@
 WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
   VALUES ('pode', 'public.order_refund__pode_ter_saido(uuid)', 'sql', 's', 'bdbb28b3d91588c8b10283d57bfb73d6'),
          ('espera', 'public.order_refund__liberavel_apos_espera(uuid)', 'sql', 's', 'cb37f24646fda24e1a51c8f01983e083'),
-         ('saldo', 'public.pedido__saldo_a_estornar(uuid)', 'sql', 's', 'ee7f8e6e7eb18d5a383f5634c61aa0c4'),
+         ('saldo', 'public.pedido__saldo_a_estornar(uuid)', 'sql', 's', '99741b4cdbf1e8d8340f80440e6da094'),
          ('solicitar', 'public.solicitar_estorno(uuid,numeric,text)', 'plpgsql', 'v', '840de50f44958fe43b55f5222691df9b'),
          ('concluir', 'public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', 'plpgsql', 'v', 'ebb901efff59a53082836a13e053cd1a'),
          ('autorizar', 'public.autorizar_post_do_estorno(uuid,numeric)', 'plpgsql', 'v', 'c73e48294c08f34240abc3843aa7d1f1'),
@@ -43,8 +44,8 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          ('porfora', 'public.admin_devolucao_reembolso_por_fora(uuid,uuid)', 'plpgsql', 'v', '76eaffb4f9438f7fe557961e1bdaad81'),
          ('avisa', 'public.devolucao_avisa_o_cliente()', 'plpgsql', 'v', '56502b960dcf3e136c1d0d5c41091c20'),
          ('esperadev', 'public.admin_devolucao_reembolso_por_fora_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', '92dd1608d02ef5e9fd9fe34e0bd7c49f'),
-         ('esperaped', 'public.registrar_estorno_manual_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', 'e1cc84a9471590abd34ce9368dd444e7'),
-         ('painel', 'public.pedido_reembolsos_e_saldo(uuid)', 'plpgsql', 's', '64cf09844a36503dcf9d355be1a452b8')
+         ('esperaped', 'public.registrar_estorno_manual_apos_espera(uuid,uuid,text)', 'plpgsql', 'v', '7b1403e418b2d80d02db287444f8a0ef'),
+         ('painel', 'public.pedido_reembolsos_e_saldo(uuid)', 'plpgsql', 's', 'baf21d65b13bea6b8e0d18f3ced1e05e')
 ), fn AS (
   SELECT t.chave, p.oid,
          md5(replace(p.prosrc, chr(13), '')) AS m,
@@ -94,7 +95,7 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'espera'), 'AUSENTE')
   UNION ALL
   SELECT 'pedido__saldo_a_estornar: corpo e o da 20261241000000, com o em duvida (md5)',
-         'ee7f8e6e7eb18d5a383f5634c61aa0c4',
+         '99741b4cdbf1e8d8340f80440e6da094',
          COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'saldo'), 'AUSENTE')
   UNION ALL
   SELECT 'solicitar_estorno: corpo e o da 20261241000000, a conta pela funcao de saldo (md5)',
@@ -126,11 +127,11 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
          COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'esperadev'), 'AUSENTE')
   UNION ALL
   SELECT 'registrar_estorno_manual_apos_espera: corpo e o da 20261241000000 (md5)',
-         'e1cc84a9471590abd34ce9368dd444e7',
+         '7b1403e418b2d80d02db287444f8a0ef',
          COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'esperaped'), 'AUSENTE')
   UNION ALL
   SELECT 'pedido_reembolsos_e_saldo: corpo e o da 20261241000000 (md5)',
-         '64cf09844a36503dcf9d355be1a452b8',
+         'baf21d65b13bea6b8e0d18f3ced1e05e',
          COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'painel'), 'AUSENTE')
   UNION ALL
   SELECT 'as doze funcoes: atributos do desenho (SECURITY DEFINER, search_path=public, linguagem e volatilidade de cada uma)',
@@ -180,7 +181,7 @@ WITH alvo(chave, assinatura, lingua, volatilidade, hash_desta) AS (
   SELECT 'pedido__saldo_a_estornar: desconta o em duvida pela regra unica e respeita a substituida por manual',
          'sim',
          COALESCE((SELECT CASE WHEN position('order_refund__pode_ter_saido' IN f.prosrc) > 0
-                                AND position('substituida_por_manual_em' IN f.prosrc) > 0
+                                AND position('pv.substituida_por_manual_em IS NOT NULL' IN f.prosrc) > 0
                                THEN 'sim' ELSE 'nao' END
                      FROM fn f WHERE f.chave = 'saldo'), 'AUSENTE')
   UNION ALL

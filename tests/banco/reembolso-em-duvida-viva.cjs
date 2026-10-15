@@ -17,6 +17,13 @@
  *  AUTORIZAR    linha com por_fora_liberado_em: o autorizar_post_do_estorno recusa (linha_mudou), sem a marca autoriza.
  *  CORRIDA      duas conexões reais: a saída e o autorizar sobre a MESMA linha, nas duas ordens — quem chega depois
  *               espera a trava e lê o que o outro gravou (nunca as duas coisas juntas).
+ *  PARCIAL      (rodada de correção, 15/10/2026) a saída do pedido cancelado só estorna o pedido quando a linha
+ *               cobre TODO o saldo ainda a devolver (centavos exatos); a parcial só marca por fora, não recusa as
+ *               outras linhas e o valor dela segue no saldo como "por fora" mesmo depois que a linha fecha; duas
+ *               parciais somam. O painel nunca devolve disponível negativo, diz se a linha foi substituída, e a
+ *               reemissão (corpo novo) recusa a linha que pode ter saído e reemite a que provadamente não saiu.
+ *  CORRIDA B    linha nova nasce enquanto a saída do pedido cancelado espera o pedido: a re-trava das linhas faz
+ *               a marca da edge esperar e achar 0 linha (sem ela, um em_processamento fantasma num estornado).
  *  ACL          o painel e as saídas: anon sem EXECUTE, logado comum recusado (42501); as duas regras só do servidor.
  *  MIGRATION    reaplicar (2x) e CRLF = mesmo estado; o rollback devolve os corpos de antes e recusa com marca; o
  *               pré-voo recusa corpo divergente SEM escrever.
@@ -62,6 +69,7 @@ const SIG = {
     "public.admin_devolucao_reembolso_por_fora_apos_espera(uuid,uuid,text)",
   saidaPed: "public.registrar_estorno_manual_apos_espera(uuid,uuid,text)",
   solicitar: "public.solicitar_estorno(uuid,numeric,text)",
+  reemitir: "public.reemitir_reembolso_da_devolucao(uuid,uuid,uuid,jsonb)",
 };
 /** md5 de cada função, lido da CONFERÊNCIA FINAL do arquivo ('sig', 'lingua', 'vol', 'md5'). */
 const hashDoArquivo = (sig) => {
@@ -87,6 +95,7 @@ const idDe = (prefixo) =>
 
 let C;
 let D; // a segunda conexão das corridas
+let E; // a terceira: a marca da edge e quem olha a espera das outras (achado B)
 const PROVAS = [];
 const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
 const FRASE = "devolvi por fora "; // maiúsculas e espaço não importam
@@ -432,6 +441,7 @@ async function contratoDoPainel() {
       "por_fora_apos_espera_liberado",
       "por_fora_liberado_em",
       "status",
+      "substituida_por_manual",
     ]);
   const txt = JSON.stringify(p);
   assert.ok(
@@ -517,6 +527,13 @@ async function substituidaSolta() {
     (await linhaDoPainel(orderId, refund)).pode_ter_saido,
     false,
     "substituída não pode ter saído",
+  );
+  // (achado D) o painel DIZ que a linha foi substituída: o false acima é "não conta como dúvida",
+  // não "o dinheiro não saiu" — a tela não oferece "Tentar de novo" nela
+  assert.equal(
+    (await linhaDoPainel(orderId, refund)).substituida_por_manual,
+    true,
+    "o painel não diz que a linha foi substituída",
   );
   const p = await painel(orderId);
   assert.equal(Number(p.manual), 100);
@@ -714,6 +731,202 @@ async function autorizarRecusaMarcada() {
   assert.equal((await autorizar(l3, 100)).decisao, "autorizado");
 }
 
+const oito = () => new Date(Date.now() - 8 * 864e5);
+const pedidoDe = async (o) =>
+  (
+    await C.query(
+      "SELECT payment_status, estorno_manual_registrado_em FROM public.marketplace_orders WHERE id = $1",
+      [o],
+    )
+  ).rows[0];
+const statusDe = async (refund, c = C) =>
+  (
+    await c.query("SELECT status FROM public.order_refunds WHERE id = $1", [
+      refund,
+    ])
+  ).rows[0].status;
+
+/** PARCIAL (achado A, Codex P1): linha de R$ 100 num pedido de R$ 300 — o pedido NÃO vira estornado. */
+async function parcialNaoEstorna() {
+  await semearPessoas();
+  const o = await pedido({ total: 300, status: "cancelled" });
+  const l = await linha(o, {
+    status: "em_processamento",
+    valor: 100,
+    postEm: oito(),
+  });
+  const s = await linha(o, { status: "solicitado", valor: 50 });
+  assert.equal(await saldo(o), 150, "antes: 300 − 100 − 50 em voo");
+  const r = await saidaPed(o, l);
+  assert.equal(r.resultado, "registrado");
+  assert.equal(r.detalhe, "parcial", "100 num pedido de 300 é PARCIAL");
+  assert.equal(r.risco_de_dobro, true);
+  assert.equal(Number(r.ainda_a_devolver), 200);
+  const ped = await pedidoDe(o);
+  assert.equal(
+    ped.payment_status,
+    "pago",
+    "a saída parcial marcou o pedido INTEIRO como estornado (esconde os 200 que faltam)",
+  );
+  assert.equal(ped.estorno_manual_registrado_em, null);
+  assert.equal(
+    await statusDe(s),
+    "solicitado",
+    "a saída parcial recusou outra linha",
+  );
+  const m = await marcas(l);
+  assert.ok(m?.por_fora_liberado_em, "a marca por fora");
+  assert.equal(m.substituida_por_manual_em, null);
+  const lp = await linhaDoPainel(o, l);
+  assert.equal(lp.por_fora_apos_espera_liberado, false);
+  assert.equal(lp.substituida_por_manual, false);
+  assert.equal((await saidaPed(o, l)).resultado, "ja_concluido");
+  assert.equal((await autorizar(l, 100)).decisao, "linha_mudou");
+  // em voo E por fora (o lado seguro, como a saída da devolução): 300 − 150 em voo − 100 por fora
+  assert.equal(await saldo(o), 50);
+  // o robô fecha a linha como falhou e "nada saiu": os 100 pagos por fora SEGUEM descontados
+  await C.query(
+    "UPDATE public.order_refunds SET status = 'falhou' WHERE id = $1",
+    [l],
+  );
+  await nadaSaiu(l);
+  assert.equal(
+    await saldo(o),
+    150,
+    "o por fora parcial voltou ao saldo quando a linha fechou (a loja pagaria de novo)",
+  );
+  const p = await painel(o);
+  assert.equal(Number(p.manual), 100);
+  assert.equal(Number(p.em_duvida), 0, "o por fora não conta duas vezes");
+  assert.equal(Number(p.disponivel), 150);
+  const de = await tentar(
+    "authenticated",
+    "SELECT public.solicitar_estorno($1, 200, 'o resto') AS r",
+    [o],
+    ADMIN,
+  );
+  assert.match(de.erro ?? "", /maior que o valor disponível/);
+}
+
+/** TOTAL (achado A): a linha cobre TODO o saldo ainda a devolver -> estornado; centavos exatos. */
+async function totalEstorna() {
+  await semearPessoas();
+  const o = await pedido({
+    total: 300,
+    status: "cancelled",
+    valorEstornado: 200,
+  });
+  const l = await linha(o, {
+    status: "em_processamento",
+    valor: 100,
+    postEm: oito(),
+  });
+  const s = await linha(o, { status: "solicitado", valor: 30 });
+  const r = await saidaPed(o, l);
+  assert.equal(r.resultado, "registrado");
+  assert.equal(r.detalhe, "apos_espera", "100 de 100 que faltavam é TOTAL");
+  assert.equal(r.payment_status, "estornado");
+  const ped = await pedidoDe(o);
+  assert.equal(ped.payment_status, "estornado");
+  assert.ok(ped.estorno_manual_registrado_em);
+  assert.equal(await statusDe(s), "recusado", "a solicitada sai da fila");
+  const m = await marcas(l);
+  assert.ok(m?.por_fora_liberado_em && m?.substituida_por_manual_em);
+  // um centavo a menos é PARCIAL (numeric, sem float)
+  const o2 = await pedido({ total: 100, status: "cancelled" });
+  const l2 = await linha(o2, {
+    status: "em_processamento",
+    valor: 99.99,
+    postEm: oito(),
+  });
+  const r2 = await saidaPed(o2, l2);
+  assert.equal(r2.detalhe, "parcial", "99,99 de 100,00 não é o saldo todo");
+  assert.equal(r2.ainda_a_devolver, 0.01);
+  assert.equal((await pedidoDe(o2)).payment_status, "pago");
+}
+
+/** Duas saídas PARCIAIS: a segunda conta o que a primeira já pagou por fora e fecha o pedido. */
+async function duasParciaisFecham() {
+  await semearPessoas();
+  const o = await pedido({ total: 300, status: "cancelled" });
+  const l1 = await linha(o, { status: "falhou", valor: 200, postEm: oito() });
+  const l2 = await linha(o, { status: "falhou", valor: 100, postEm: oito() });
+  assert.equal(await saldo(o), 0, "as duas em dúvida prendem tudo");
+  const r1 = await saidaPed(o, l1);
+  assert.equal(r1.detalhe, "parcial");
+  assert.equal((await pedidoDe(o)).payment_status, "pago");
+  assert.equal(await saldo(o), 0, "200 por fora + 100 em dúvida");
+  const r2 = await saidaPed(o, l2);
+  assert.equal(
+    r2.detalhe,
+    "apos_espera",
+    "a segunda não somou o que a primeira já pagou por fora",
+  );
+  assert.equal((await pedidoDe(o)).payment_status, "estornado");
+}
+
+/** DISPONÍVEL nunca negativo no painel (achado C): 100 − 100 em voo − 100 manual. */
+async function disponivelNuncaNegativo() {
+  const { orderId, dev, refund } = await devolucaoConcluida({
+    total: 100,
+    valor: 100,
+  });
+  await C.query(
+    "UPDATE public.order_refunds SET status = 'em_processamento', post_autorizado_em = now() - interval '8 days' WHERE id = $1",
+    [refund],
+  );
+  assert.equal((await saidaDev(dev, refund)).resultado, "combinado");
+  assert.equal(await saldo(orderId), -100, "a conta crua (quem chama decide)");
+  const p = await painel(orderId);
+  assert.equal(Number(p.em_voo), 100);
+  assert.equal(Number(p.manual), 100);
+  assert.equal(
+    Number(p.disponivel),
+    0,
+    "o painel devolveu disponível NEGATIVO",
+  );
+}
+
+const reemitir = async (dev, refund, consulta) =>
+  (
+    await como(
+      "service_role",
+      "SELECT public.reemitir_reembolso_da_devolucao($1, $2, $3, $4::jsonb) AS r",
+      [dev, U.admin, refund, JSON.stringify(consulta)],
+    )
+  )[0].r;
+
+/** REEMISSÃO pelo corpo NOVO (achado E): a regra única decide se a linha pode ganhar tentativa nova. */
+async function reemissaoPelaRegraUnica() {
+  // (1) falhou que PODE ter saído (sem diagnóstico): sem prova de que não saiu, nunca reemite
+  const a = await devolucaoConcluida({ total: 300, valor: 100 });
+  await C.query(
+    "UPDATE public.order_refunds SET status = 'falhou', ultimo_erro = 'x', tentativas = 1 WHERE id = $1",
+    [a.refund],
+  );
+  let r = await reemitir(a.dev, a.refund, { resultado: "nao_achou" });
+  assert.equal(
+    r.resultado,
+    "use_por_fora",
+    "reemitiu a linha cujo dinheiro pode ter saído",
+  );
+  assert.equal(r.detalhe, "sem_prova_de_que_nao_saiu");
+  // (2) falhou PROVADAMENTE sem POST (código da lista fechada, sem carimbo de POST incerto): reemite
+  const b = await devolucaoConcluida({ total: 300, valor: 100 });
+  await C.query(
+    "UPDATE public.order_refunds SET status = 'falhou', ultimo_erro = 'x', tentativas = 1 WHERE id = $1",
+    [b.refund],
+  );
+  await nadaSaiu(b.refund);
+  r = await reemitir(b.dev, b.refund, { resultado: "nao_achou" });
+  assert.equal(
+    r.resultado,
+    "reemitido",
+    "a linha em que nada saiu não reemitiu",
+  );
+  assert.equal(r.refund_anterior, b.refund);
+}
+
 prova(
   "SEM DÚVIDA: o saldo de cinco formas de pedido sem linha em dúvida é o MESMO antes e depois da migration",
   () => emTransacao(semDuvidaSaldoIgual),
@@ -745,6 +958,26 @@ prova(
 prova(
   "AUTORIZAR: linha com por_fora_liberado_em -> linha_mudou; sem marca, ou só substituída -> autorizado",
   () => emTransacao(autorizarRecusaMarcada),
+);
+prova(
+  "PARCIAL (A): linha de 100 num pedido de 300 -> registrado/parcial, pedido segue pago, a solicitada fica, só a marca por fora; os 100 seguem no saldo mesmo quando a linha fecha",
+  () => emTransacao(parcialNaoEstorna),
+);
+prova(
+  "TOTAL (A): a linha que cobre todo o saldo ainda a devolver estorna o pedido e recusa a solicitada; 99,99 de 100,00 é parcial",
+  () => emTransacao(totalEstorna),
+);
+prova(
+  "DUAS PARCIAIS (A): 200 e depois 100 num pedido de 300 -> a segunda conta o por fora da primeira e estorna",
+  () => emTransacao(duasParciaisFecham),
+);
+prova(
+  "DISPONÍVEL (C): 100 − 100 em voo − 100 manual = −100 na conta crua; o painel devolve 0",
+  () => emTransacao(disponivelNuncaNegativo),
+);
+prova(
+  "REEMISSÃO (E): corpo novo de reemitir_reembolso_da_devolucao — falhou que pode ter saído recusa; falhou provadamente sem POST reemite",
+  () => emTransacao(reemissaoPelaRegraUnica),
 );
 
 prova(
@@ -967,6 +1200,143 @@ prova(
   },
 );
 
+/** Espera (olhando pela conexão E) até a sessão `pid` cumprir `cond` (wait_event_type/wait_event). */
+async function esperaDe(pid, cond) {
+  for (let i = 0; i < 200; i++) {
+    const r = await E.query(
+      "SELECT wait_event_type, wait_event FROM pg_stat_activity WHERE pid = $1",
+      [pid],
+    );
+    if (r.rows[0] && cond(r.rows[0])) return true;
+    await new Promise((res) => setTimeout(res, 25));
+  }
+  return false;
+}
+
+/**
+ * CORRIDA da LINHA NOVA (achado B, revisor R1): uma linha N nasce (D trava o pedido e a cria) enquanto a saída
+ * dos 7 dias do pedido cancelado (C) espera a trava do pedido; um gatilho de atraso na tabela de marcas segura
+ * a saída DEPOIS das checagens; nesse meio a marca da edge (E) tenta pôr N em processamento. Com a re-trava
+ * das linhas depois do pedido, a marca espera a saída e acha 0 linha (N já 'recusado'); sem ela, a marca
+ * passa e N vira um em_processamento fantasma num pedido 'estornado'. Grava de verdade no clone.
+ */
+async function corridaDaLinhaNova(sabotagem) {
+  await semearPessoas();
+  const o = await pedido({ total: 100, status: "cancelled" });
+  const l = await linha(o, {
+    status: "em_processamento",
+    valor: 100,
+    postEm: oito(),
+  });
+  await E.query(
+    "CREATE OR REPLACE FUNCTION public.zz_atraso_r1() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(1.5); RETURN NEW; END $$",
+  );
+  await E.query(
+    "DROP TRIGGER IF EXISTS zz_atraso_r1 ON public.order_refund_prova",
+  );
+  await E.query(
+    "CREATE TRIGGER zz_atraso_r1 BEFORE INSERT ON public.order_refund_prova FOR EACH ROW EXECUTE FUNCTION public.zz_atraso_r1()",
+  );
+  const pidC = (await C.query("SELECT pg_backend_pid() AS p")).rows[0].p;
+  let pMarca = null;
+  try {
+    await D.query("BEGIN");
+    await D.query(
+      "SELECT 1 FROM public.marketplace_orders WHERE id = $1 FOR UPDATE",
+      [o],
+    );
+    const n = await linha(o, { status: "solicitado", valor: 50 }, D);
+    await C.query("BEGIN");
+    if (sabotagem) await sabotagem();
+    const pSaida = saidaPed(o, l);
+    assert.ok(
+      await esperaDe(pidC, (w) => w.wait_event_type === "Lock"),
+      "a saída não esperou a trava do pedido",
+    );
+    await D.query("COMMIT");
+    assert.ok(
+      await esperaDe(pidC, (w) => w.wait_event === "PgSleep"),
+      "a saída não chegou ao atraso (depois das checagens)",
+    );
+    pMarca = E.query(
+      "UPDATE public.order_refunds SET status = 'em_processamento', tentativas = tentativas + 1, updated_at = now() WHERE id = $1 AND status IN ('solicitado', 'em_processamento') RETURNING id",
+      [n],
+    );
+    let marcou = false;
+    pMarca.then(
+      () => {
+        marcou = true;
+      },
+      () => {
+        marcou = true;
+      },
+    );
+    const s = await pSaida;
+    await new Promise((res) => setTimeout(res, 300));
+    assert.equal(
+      marcou,
+      false,
+      "a marca da edge passou na linha nova enquanto a saída segurava o pedido (sem a re-trava)",
+    );
+    assert.equal(s.resultado, "registrado");
+    assert.equal(s.detalhe, "apos_espera");
+    await C.query("COMMIT");
+    const m = await pMarca;
+    assert.equal(
+      m.rowCount,
+      0,
+      "a marca da edge achou a linha nova depois do estorno",
+    );
+    assert.equal(await statusDe(n, E), "recusado");
+    assert.equal(
+      (
+        await E.query(
+          "SELECT payment_status FROM public.marketplace_orders WHERE id = $1",
+          [o],
+        )
+      ).rows[0].payment_status,
+      "estornado",
+    );
+  } finally {
+    await C.query("ROLLBACK").catch(() => {});
+    await D.query("ROLLBACK").catch(() => {});
+    if (pMarca) await pMarca.catch(() => {});
+    await E.query(
+      "DROP TRIGGER IF EXISTS zz_atraso_r1 ON public.order_refund_prova",
+    );
+    await E.query("DROP FUNCTION IF EXISTS public.zz_atraso_r1()");
+  }
+}
+const SEM_RELOCK = () =>
+  sabotar(SIG.saidaPed, [
+    [
+      "PERFORM 1 FROM public.order_refunds releitura WHERE releitura.order_id = p_order_id ORDER BY releitura.id FOR UPDATE;\n",
+      "",
+    ],
+  ]);
+
+prova(
+  "CORRIDA (B): linha nova nasce enquanto a saída do pedido cancelado espera o pedido; a marca da edge espera a saída e acha 0 linha (N 'recusado')",
+  () => corridaDaLinhaNova(null),
+);
+prova(
+  "MUTANTE morre: a saída do pedido cancelado SEM a re-trava das linhas -> a corrida da linha nova fica VERMELHA",
+  async () => {
+    let pego = null;
+    try {
+      await corridaDaLinhaNova(SEM_RELOCK);
+    } catch (e) {
+      pego = e;
+    }
+    assert.ok(pego, "MUTANTE SOBREVIVEU: sem a re-trava");
+    assert.ok(
+      pego instanceof assert.AssertionError,
+      `o mutante quebrou por outro motivo: ${pego?.stack ?? pego}`,
+    );
+    console.log(`       (caiu em: ${String(pego.message).split("\n")[0]})`);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // MUTANTES: o corpo sabotado (CREATE OR REPLACE na transação) tem de deixar um comportamento VERMELHO
 // ---------------------------------------------------------------------------
@@ -1044,6 +1414,57 @@ const MUTANTES = [
       sabotar(SIG.espera, [["AND pv.por_fora_liberado_em IS NULL", ""]]),
     morre: [esperaRespeitaAMarca],
   },
+  {
+    // (A) o comportamento de antes: toda saída do pedido cancelado estorna o pedido inteiro
+    nome: "a saída do pedido cancelado estorna o pedido INTEIRO mesmo com a linha parcial",
+    sabotar: () =>
+      sabotar(SIG.saidaPed, [
+        ["IF round(v_r.amount, 2) < round(v_resta, 2) THEN", "IF false THEN"],
+      ]),
+    morre: [parcialNaoEstorna, totalEstorna, duasParciaisFecham],
+  },
+  {
+    // (A) a parcial "sai da conta" sem deixar o valor em lugar nenhum
+    nome: "o saldo sem o POR FORA PARCIAL",
+    sabotar: () =>
+      sabotar(SIG.saldo, [
+        ["AND pf.substituida_por_manual_em IS NULL), 0)", "AND false), 0)"],
+      ]),
+    morre: [parcialNaoEstorna],
+  },
+  {
+    nome: "o painel sem o GREATEST (disponível negativo)",
+    sabotar: () =>
+      sabotar(SIG.painel, [
+        [
+          "GREATEST(public.pedido__saldo_a_estornar(p_order_id), 0)",
+          "public.pedido__saldo_a_estornar(p_order_id)",
+        ],
+      ]),
+    morre: [disponivelNuncaNegativo],
+  },
+  {
+    nome: "o painel sem o campo substituida_por_manual (sempre false)",
+    sabotar: () =>
+      sabotar(SIG.painel, [
+        [
+          "'substituida_por_manual', pv.substituida_por_manual_em IS NOT NULL,",
+          "'substituida_por_manual', false,",
+        ],
+      ]),
+    morre: [substituidaSolta],
+  },
+  {
+    nome: "a reemissão com a regra única INVERTIDA",
+    sabotar: () =>
+      sabotar(SIG.reemitir, [
+        [
+          "v_sem_post := NOT public.order_refund__pode_ter_saido(v_r.id);",
+          "v_sem_post := public.order_refund__pode_ter_saido(v_r.id);",
+        ],
+      ]),
+    morre: [reemissaoPelaRegraUnica],
+  },
 ];
 for (const m of MUTANTES) {
   for (const comportamento of m.morre) {
@@ -1077,8 +1498,10 @@ async function main() {
   const url = lerDatabaseUrlEfemera();
   C = new Client({ connectionString: url });
   D = new Client({ connectionString: url });
+  E = new Client({ connectionString: url });
   await C.connect();
   await D.connect();
+  await E.connect();
   let falhas = 0;
   try {
     for (const p of PROVAS) {
@@ -1100,6 +1523,7 @@ async function main() {
   } finally {
     await C.end().catch(() => {});
     await D.end().catch(() => {});
+    await E.end().catch(() => {});
   }
   console.log(
     `\nreembolso-em-duvida-viva: ${PROVAS.length - falhas}/${PROVAS.length} ok`,
