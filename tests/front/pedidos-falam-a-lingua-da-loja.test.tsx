@@ -340,6 +340,10 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
         created_at: "2026-09-01T10:00:00.000Z",
         concluido_em:
           status === "concluido" ? "2026-09-02T10:00:00.000Z" : null,
+        // Lote R1: veredito do servidor (contestação não é repetível).
+        pode_ter_saido: true,
+        por_fora_liberado_em: null,
+        eh_pix: false,
       };
       useEstornosDoPedidoMock.mockReturnValue({
         linhas: [linha],

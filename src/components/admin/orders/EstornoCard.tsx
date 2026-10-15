@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
+import { ConfirmacaoPorForaAposEspera } from "@/components/admin/ConfirmacaoPorForaAposEspera";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   type LinhaEstornoDoPedido,
   useEstornosDoPedido,
 } from "@/hooks/useEstornosDoPedido";
+import { TEXTO_CONFIRMANDO, acoesDaLinha } from "@/lib/reembolso-em-duvida";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/types";
 
@@ -90,9 +92,9 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
   }
 
   // Teto de tentativas (pré-requisito 2 do plano): a linha fica travada em
-  // `em_processamento` para sempre em vez de arriscar pagar duas vezes. A
-  // saída manual do limbo exigiria RPC nova = migration = decisão do dono;
-  // por isso NÃO existe botão "Tentar de novo" aqui, só o aviso.
+  // `em_processamento` para sempre em vez de arriscar pagar duas vezes. NÃO
+  // existe "Tentar de novo" aqui; a única saída é a dos 7 dias (lote R1), que
+  // aparece abaixo da linha quando o SERVIDOR a libera.
   if (linha.status === "em_processamento" && linha.tentativas >= 5) {
     return {
       texto: `A devolução de ${valor} não foi confirmada pelo Mercado Pago depois de 5 tentativas. Confira no painel do Mercado Pago se ela saiu; o valor fica reservado aqui até isso se resolver.`,
@@ -120,16 +122,28 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
     };
   }
 
+  // Lote R1: o veredito "pode ter saído" é do SERVIDOR. Linha parada que
+  // pode ter chegado ao Mercado Pago NUNCA ganha "Tentar de novo": a
+  // tentativa nova vai com chave nova, o MP não deduplica e o cliente
+  // receberia em dobro.
+  const { podeRepetir, confirmando } = acoesDaLinha(linha);
+
   if (linha.status === "falhou") {
+    if (confirmando) {
+      return {
+        texto: `A devolução de ${valor} não teve resposta certa do Mercado Pago. ${TEXTO_CONFIRMANDO}`,
+        podeTentarDeNovo: false,
+      };
+    }
     return {
       texto: `A devolução de ${valor} não foi concluída: ${linha.ultimo_erro ?? ""}`,
-      podeTentarDeNovo: true,
+      podeTentarDeNovo: podeRepetir,
     };
   }
 
   // `recusado`, sem chargeback envolvido.
   return {
-    texto: `A devolução de ${valor} foi recusada: ${linha.ultimo_erro ?? ""}`,
+    texto: `A devolução de ${valor} foi recusada: ${linha.ultimo_erro ?? ""}${confirmando ? ` ${TEXTO_CONFIRMANDO}` : ""}`,
     podeTentarDeNovo: false,
   };
 }
@@ -157,12 +171,14 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
     linhas,
     pago,
     devolvido,
+    emDuvida,
     disponivel,
     carregando,
     pedidoCarregado,
     erro,
     recarregar,
     solicitarEstorno,
+    registrarPorForaAposEspera,
     enviando,
   } = useEstornosDoPedido(order.id);
 
@@ -251,6 +267,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
       <p className="text-xs font-bold text-zinc-400">
         Pago: {formatCurrency(pago)} · Devolvido: {formatCurrency(devolvido)} ·
         Disponível: {formatCurrency(disponivel)}
+        {emDuvida > 0 && ` · Em confirmação: ${formatCurrency(emDuvida)}`}
       </p>
 
       {estado === "bloqueado_status" && (
@@ -336,21 +353,31 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
           const { texto, podeTentarDeNovo } = textoDaLinha(linha);
           const podeTentarComSaldo =
             podeTentarDeNovo && disponivel >= linha.amount;
+          const { porForaAposEspera } = acoesDaLinha(linha);
           return (
-            <p key={linha.id} className="text-xs font-medium text-zinc-300">
-              {texto}
-              {podeTentarComSaldo && (
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  disabled={enviando}
-                  onClick={() => pedirConfirmacaoEEnviar(linha.amount)}
-                >
-                  Tentar de novo
-                </Button>
+            <div key={linha.id} className="space-y-2">
+              <p className="text-xs font-medium text-zinc-300">
+                {texto}
+                {podeTentarComSaldo && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    disabled={enviando}
+                    onClick={() => pedirConfirmacaoEEnviar(linha.amount)}
+                  >
+                    Tentar de novo
+                  </Button>
+                )}
+              </p>
+              {porForaAposEspera && (
+                <ConfirmacaoPorForaAposEspera
+                  idBase={`por-fora-${linha.id}`}
+                  enviando={enviando}
+                  onConfirmar={() => registrarPorForaAposEspera(linha.id)}
+                />
               )}
-            </p>
+            </div>
           );
         })}
       </div>

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 
 import { AcoesDaDevolucao, BOTAO_SECUNDARIO } from "./AcoesDaDevolucao";
+import { ReembolsoDaDevolucao } from "./ReembolsoDaDevolucao";
 import { SeloDoStatus, SeloDoTipo } from "./SelosDaDevolucao";
 
 const SECAO =
@@ -152,6 +153,14 @@ export function DetalheDaDevolucao({
               ficha={ficha}
               detalhe={detalhe}
               onSujoMudou={aoSujar}
+            />
+
+            <ReembolsoDaDevolucao
+              detalhe={detalhe}
+              aoMudar={() => {
+                void ficha.recarregar();
+                onMudou();
+              }}
             />
 
             {detalhe.status === "concluida" && detalhe.reembolso_manual && (
