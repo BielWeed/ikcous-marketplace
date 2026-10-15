@@ -9,10 +9,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  type TipoDePolitica,
-  nomeDaPolitica,
-} from "@/lib/textos-das-politicas";
+import { type TipoDePolitica, nomeDaPolitica } from "@/lib/nomes-das-politicas";
 import { cn } from "@/lib/utils";
 
 interface PoliticaEmFolhaProps {
@@ -44,7 +41,7 @@ export function PoliticaEmFolha({ tipo, onFechar }: PoliticaEmFolhaProps) {
         // embutido do Sheet anuncia "Close" ao leitor de tela.
         showCloseButton={false}
         className={cn(
-          "mx-auto flex max-h-[92dvh] flex-col gap-0 rounded-t-3xl bg-background p-0 text-foreground",
+          "mx-auto flex max-h-[92dvh] flex-col gap-0 rounded-t-3xl bg-card p-0 text-card-foreground",
           "sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:max-h-[85dvh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:border",
           "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=open]:slide-in-from-left-1/2",
         )}

@@ -6,9 +6,9 @@ import { usePoliticaDeTrocasDaLoja } from "@/hooks/usePoliticaDeTrocasDaLoja";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import type { TipoDePolitica } from "@/lib/nomes-das-politicas";
 import {
   type DocumentoDePolitica,
-  type TipoDePolitica,
   montarPolitica,
 } from "@/lib/textos-das-politicas";
 import { formatarWhatsAppParaExibicao } from "@/utils/telefone";

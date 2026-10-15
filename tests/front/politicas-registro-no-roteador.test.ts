@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { TELAS_DE_ENTRADA } from "@/config/rotas";
-import { TIPOS_DE_POLITICA, viewDaPolitica } from "@/lib/textos-das-politicas";
+import { TIPOS_DE_POLITICA, viewDaPolitica } from "@/lib/nomes-das-politicas";
 
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do proprio repositorio
 const APP = readFileSync(

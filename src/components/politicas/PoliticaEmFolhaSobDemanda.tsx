@@ -1,6 +1,6 @@
 import { Suspense, lazy, useState } from "react";
 
-import type { TipoDePolitica } from "@/lib/textos-das-politicas";
+import type { TipoDePolitica } from "@/lib/nomes-das-politicas";
 
 // A folha (Radix Sheet + o texto + a leitura da política de trocas no banco)
 // só vem do servidor quando a cliente toca num link de política. Quem a

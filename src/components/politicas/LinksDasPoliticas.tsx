@@ -1,16 +1,18 @@
 import { useState } from "react";
 
 import { PoliticaEmFolhaSobDemanda } from "@/components/politicas/PoliticaEmFolhaSobDemanda";
-import {
-  type TipoDePolitica,
-  nomeDaPolitica,
-} from "@/lib/textos-das-politicas";
+import { type TipoDePolitica, nomeDaPolitica } from "@/lib/nomes-das-politicas";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
 
-// Link no meio de uma frase: o texto fica pequeno, mas a área de toque chega
-// aos 44px (py-3.5 de cima e de baixo) sem aumentar a altura da linha —
-// `-my-3.5` devolve o espaço que o padding tomaria.
+// Link no meio de uma frase: o texto fica pequeno, mas a CAIXA do botão tem
+// 44px de altura de verdade (`min-h-11`), sem margem negativa e sem padding que
+// vaze para fora dela. Foi assim de propósito: a versão anterior esticava a
+// área de toque ~14px para cima e para baixo (`-my-3.5` + `py-3.5`), e a barra
+// do checkout tem o botão Finalizar a 6px de distância — um toque na beirada de
+// baixo do Finalizar podia abrir os Termos. Os links ficam sozinhos numa
+// segunda linha da frase (`<br />`), então a altura extra é da frase, não
+// invade o vizinho.
 //
 // CORES: estes dois componentes moram sobre superfícies BRANCAS fixas (a barra
 // do Finalizar, o cartão do cadastro, a página do produto — todas `bg-white`
@@ -18,7 +20,7 @@ import { haptic } from "@/utils/haptic";
 // `text-muted-foreground` no tema escuro vira cinza-claro sobre branco, abaixo
 // de 3:1. zinc-500 sobre branco dá 4,8:1 e zinc-900 dá 17:1.
 const LINK_NA_FRASE =
-  "-my-3.5 inline cursor-pointer rounded-sm py-3.5 font-semibold text-zinc-900 underline underline-offset-2";
+  "inline-flex min-h-11 cursor-pointer items-center rounded-sm font-semibold text-zinc-900 underline underline-offset-2";
 
 /**
  * "Ao finalizar você concorda com os Termos de uso e a Política de
@@ -49,6 +51,7 @@ export function FraseDeAceite({
         className={cn("text-[11px] leading-snug text-zinc-500", className)}
       >
         Ao {acao} você concorda com os{" "}
+        <br />
         <button
           type="button"
           onClick={() => abrir("termos")}

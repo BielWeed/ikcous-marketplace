@@ -1,9 +1,13 @@
-import type { View } from "@/types";
+import { type TipoDePolitica, nomeDaPolitica } from "@/lib/nomes-das-politicas";
 import type { PoliticaDevolucao } from "@/types/devolucao";
 
-// Textos das três páginas que a cliente precisa achar ANTES de comprar ou
+// Textos das três páginas que quem compra precisa achar ANTES de comprar ou
 // cadastrar: Termos de uso, Política de Privacidade e Trocas e devoluções
 // (LGPD e Código de Defesa do Consumidor).
+//
+// ARQUIVO GRANDE, de propósito fora do caminho da vitrine: só a folha e a
+// página de leitura o importam. Nomes e telas de cada política moram em
+// `nomes-das-politicas.ts` (pequeno) — o rodapé importa só aquele.
 //
 // FONTE ÚNICA: a página (`PoliticaDaLojaView`) e a folha que abre no
 // checkout, no produto e no cadastro desenham EXATAMENTE estes blocos —
@@ -14,13 +18,12 @@ import type { PoliticaDevolucao } from "@/types/devolucao";
 //   endereço de entrega e, para transportadora, o CPF de quem recebe;
 // - pagamento pelo app: Mercado Pago; na entrega/retirada: combinado com a loja;
 // - frete: calculado pelo CEP; o CEP digitado é consultado em serviços de CEP;
-// - não há rastreador de publicidade no app da cliente.
-// A lojista PODE e DEVE revisar: o texto-base é honesto sobre o que o app faz,
-// mas só ela sabe o CNPJ, o prazo de guarda e quem responde pelos dados.
-
-/** As três páginas, na ordem em que aparecem nos links. */
-export const TIPOS_DE_POLITICA = ["termos", "privacidade", "trocas"] as const;
-export type TipoDePolitica = (typeof TIPOS_DE_POLITICA)[number];
+// - não há rastreador de publicidade no app de quem compra.
+// Texto-base fixo no código: hoje NÃO existe tela para a lojista editar Termos
+// nem Privacidade (só as regras de troca, em Ajustes → Trocas e devoluções).
+// Quem revisa e muda estes dois textos é quem mantém o código. O que o texto
+// ainda não diz porque o app não guarda: CNPJ/razão social, prazo de guarda
+// dos dados e quem responde por eles — decisão do dono.
 
 export interface SecaoDeTexto {
   readonly id: string;
@@ -37,30 +40,6 @@ export interface DocumentoDePolitica {
 
 export interface DadosDaLoja {
   readonly nome: string;
-}
-
-/** Nome que a cliente lê no link e no título de cada página. */
-export function nomeDaPolitica(tipo: TipoDePolitica): string {
-  switch (tipo) {
-    case "termos":
-      return "Termos de uso";
-    case "privacidade":
-      return "Política de Privacidade";
-    case "trocas":
-      return "Trocas e devoluções";
-  }
-}
-
-/** A tela (`View`) de cada página: é por ela que o rodapé da vitrine navega. */
-export function viewDaPolitica(tipo: TipoDePolitica): View {
-  switch (tipo) {
-    case "termos":
-      return "terms";
-    case "privacidade":
-      return "privacy";
-    case "trocas":
-      return "returns-policy";
-  }
 }
 
 /** Quando não há política carregada, vale o mínimo do CDC art. 49. */
@@ -171,7 +150,9 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         id: "com-quem",
         titulo: "Com quem dividimos",
         paragrafos: [
-          "Só o necessário para a compra acontecer: o Mercado Pago, que processa o pagamento feito pelo app; os serviços de frete e transportadoras, que recebem nome, endereço, WhatsApp e, quando exigido, o CPF de quem recebe; e os serviços de hospedagem e banco de dados que mantêm o app no ar. O CEP que você digita também é consultado em serviços de busca de CEP.",
+          "Só o necessário para a compra acontecer: o Mercado Pago, que processa o pagamento feito pelo app; os serviços de frete e as transportadoras, que recebem nome, endereço, WhatsApp, e-mail e, quando exigido, o CPF de quem recebe; e o serviço de e-mail que a loja usa para enviar o comprovante do pedido e o código de verificação. O CEP que você digita também é consultado em serviços de busca de CEP.",
+          "Se você permitir as notificações, o serviço de notificações do seu navegador ou aparelho entrega os avisos até você.",
+          "A plataforma que hospeda o app e o banco de dados usa servidores de terceiros, que podem ficar fora do Brasil, e tem acesso técnico aos dados apenas para manter o serviço funcionando.",
           "A loja não vende os seus dados.",
         ],
       },
@@ -179,7 +160,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         id: "seus-direitos",
         titulo: "Seus direitos",
         paragrafos: [
-          "Pela LGPD, você pode pedir à loja: confirmar que guardamos dados seus, ver quais são, corrigir o que estiver errado e pedir a exclusão do que não precisamos manter. Nome, WhatsApp e endereços você mesma corrige no seu Perfil.",
+          "Pela LGPD, você pode pedir à loja: confirmar que guardamos dados seus, ver quais são, corrigir o que estiver errado e pedir a exclusão do que não precisamos manter. Você pode corrigir nome, WhatsApp e endereços no seu Perfil.",
           "Para pedir a exclusão da conta ou dos dados, fale com a loja pelo contato no fim desta página. Alguns dados, como os de pedidos já feitos, podem ter de ser mantidos por obrigação legal.",
         ],
       },
@@ -187,7 +168,7 @@ function montarPrivacidade(loja: DadosDaLoja): DocumentoDePolitica {
         id: "seguranca",
         titulo: "Segurança e prazo",
         paragrafos: [
-          "Os dados ficam em serviços com acesso protegido e só a equipe da loja que precisa deles para atender você os vê. Guardamos os dados enquanto a sua conta existir e pelo tempo que a lei exigir.",
+          "Os dados ficam em serviços com acesso protegido. Têm acesso a eles a loja e a empresa que fornece e mantém este app, só para fazê-lo funcionar. Guardamos os dados enquanto a sua conta existir e pelo tempo que a lei exigir.",
         ],
       },
       {
@@ -213,6 +194,19 @@ function listaEmTexto(itens: readonly string[]): string {
   return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
 }
 
+/**
+ * Regra FIXA do app, a favor de quem compra: na tela de Ajustes da lojista lê-se
+ * "No arrependimento e no defeito o frete de volta é sempre da loja"
+ * (`PoliticaDeDevolucaoSection`). Vale com ou sem a política carregada.
+ */
+const FRETE_DE_VOLTA: SecaoDeTexto = {
+  id: "frete-de-volta",
+  titulo: "Frete de volta",
+  paragrafos: [
+    "No arrependimento e no defeito, o frete de volta é pago pela loja.",
+  ],
+};
+
 // TEXTO-BASE: a lojista deve revisar
 function montarTrocas(
   loja: DadosDaLoja,
@@ -232,6 +226,7 @@ function montarTrocas(
           `Compras feitas pelo app podem ser desfeitas em até ${ARREPENDIMENTO_MINIMO_DIAS} dias corridos depois que você recebe o produto, sem precisar dizer o motivo (Código de Defesa do Consumidor, art. 49).`,
         ],
       },
+      FRETE_DE_VOLTA,
       {
         id: "outros-prazos",
         titulo: "Troca e produto com defeito",
@@ -255,16 +250,16 @@ function montarTrocas(
     });
 
     if (politica.aceita_troca && politica.prazo_troca_dias > 0) {
-      const troca = [
-        `Você pode trocar por outro tamanho, cor ou modelo em até ${politica.prazo_troca_dias} dias depois de receber. O produto precisa voltar em boas condições.`,
-        politica.frete_troca_pago_por === "loja"
-          ? "O frete da troca é pago pela loja."
-          : "O frete da troca é pago por você.",
-      ];
-      if (politica.aceita_vale) {
-        troca.push("A loja também aceita transformar a devolução em vale.");
-      }
-      secoes.push({ id: "troca", titulo: "Troca", paragrafos: troca });
+      secoes.push({
+        id: "troca",
+        titulo: "Troca",
+        paragrafos: [
+          `Você pode trocar por outro tamanho, cor ou modelo em até ${politica.prazo_troca_dias} dias depois de receber.`,
+          politica.frete_troca_pago_por === "loja"
+            ? "O frete da troca é pago pela loja."
+            : "O frete da troca é pago por você.",
+        ],
+      });
     } else {
       secoes.push({
         id: "troca",
@@ -275,17 +270,33 @@ function montarTrocas(
       });
     }
 
+    // O vale é uma resolução à parte: o app o oferece sempre que a loja o
+    // aceita, tenha ela troca por preferência ou não (`resolucoesPermitidas`).
+    if (politica.aceita_vale) {
+      secoes.push({
+        id: "vale",
+        titulo: "Vale",
+        paragrafos: [
+          "A loja também aceita devolver o valor em forma de vale. Ao pedir a devolução, você escolhe entre as opções disponíveis para o seu caso.",
+        ],
+      });
+    }
+
     const defeito = [
-      `Produto com defeito, danificado no transporte, errado ou diferente do anunciado: você tem até ${politica.prazo_vicio_dias} dias depois de receber para avisar a loja.`,
+      `Produto com defeito, danificado no transporte, errado ou diferente do anunciado: você tem até ${politica.prazo_vicio_dias} dias, contados a partir do recebimento, para avisar a loja.`,
     ];
     if (politica.exige_fotos_vicio) {
       defeito.push("Envie fotos do problema ao fazer o pedido.");
     }
+    defeito.push(
+      "Se o defeito só aparecer depois desse prazo, o Código de Defesa do Consumidor pode garantir o seu direito por mais tempo. Nesse caso, fale com a loja pelo contato no fim desta página.",
+    );
     secoes.push({
       id: "defeito",
       titulo: "Produto com defeito",
       paragrafos: defeito,
     });
+    secoes.push(FRETE_DE_VOLTA);
 
     const categorias = politica.categorias_sem_troca
       .map((c) => c.trim())
@@ -305,7 +316,7 @@ function montarTrocas(
     id: "como-pedir",
     titulo: "Como pedir",
     paragrafos: [
-      "Depois que o pedido for entregue, entre na sua conta, abra o pedido em Meus pedidos e toque em Solicitar devolução ou troca. Você recebe um protocolo e acompanha o andamento ali mesmo.",
+      "Depois que o pedido for entregue, entre na sua conta, abra o pedido em Meus pedidos e toque em Solicitar devolução ou troca. Você recebe um protocolo e acompanha o andamento por lá.",
     ],
   });
 

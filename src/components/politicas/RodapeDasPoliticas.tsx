@@ -2,7 +2,7 @@ import {
   TIPOS_DE_POLITICA,
   nomeDaPolitica,
   viewDaPolitica,
-} from "@/lib/textos-das-politicas";
+} from "@/lib/nomes-das-politicas";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
 

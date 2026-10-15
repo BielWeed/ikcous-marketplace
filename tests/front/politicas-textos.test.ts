@@ -10,11 +10,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import {
-  TIPOS_DE_POLITICA,
-  montarPolitica,
-  textoCorrido,
-} from "@/lib/textos-das-politicas";
+import { TIPOS_DE_POLITICA } from "@/lib/nomes-das-politicas";
+import { montarPolitica, textoCorrido } from "@/lib/textos-das-politicas";
 import type { PoliticaDevolucao } from "@/types/devolucao";
 
 const LOJA = { nome: "Loja da Ana" };
@@ -74,9 +71,27 @@ describe("textos das políticas — todas as três", () => {
     );
     const marcas = fonte.match(/\/\/ TEXTO-BASE: a lojista deve revisar/g);
     expect(marcas?.length).toBe(3);
+    // Fiel ao fato: hoje NÃO existe tela para a lojista editar Termos nem
+    // Privacidade (só as regras de troca, em Ajustes). O comentário não pode
+    // prometer o contrário.
+    expect(fonte).not.toMatch(/PODE e DEVE revisar/i);
+    expect(fonte).toMatch(/não existe tela/i);
     for (const tipo of TIPOS_DE_POLITICA) {
       expect(textoCorrido(montarPolitica(tipo, LOJA, POLITICA))).not.toMatch(
         /TEXTO-BASE|deve revisar/,
+      );
+    }
+  });
+});
+
+describe("linguagem neutra: fala com 'você', sem flexão de gênero", () => {
+  const FLEXAO =
+    /\ba cliente\b|\bda cliente\b|\bpela cliente\b|\bmesma\b|\bmesmo\b|\bobrigad[ao]\b|\bsozinha\b|\bsozinho\b|\bpronta\b|\bpronto\b/i;
+
+  it.each(TIPOS_DE_POLITICA)("%s: nenhuma frase flexiona gênero", (tipo) => {
+    for (const politica of [POLITICA, null]) {
+      expect(textoCorrido(montarPolitica(tipo, LOJA, politica))).not.toMatch(
+        FLEXAO,
       );
     }
   });
@@ -119,9 +134,60 @@ describe("Política de Privacidade", () => {
     expect(texto).not.toMatch(/anúncios|publicidade|rastre/i);
   });
 
-  it("notificações só com o consentimento da cliente", () => {
+  it("notificações só com o consentimento de quem usa", () => {
     expect(texto).toMatch(/notifica/i);
     expect(texto).toMatch(/se você (permitir|aceitar|autorizar)/i);
+  });
+
+  describe("com quem os dados vão (conferido no código das funções)", () => {
+    const secao = montarPolitica("privacidade", LOJA, POLITICA).secoes.find(
+      (s) => s.id === "com-quem",
+    );
+    const comQuem = (secao?.paragrafos ?? []).join("\n");
+
+    it("a transportadora recebe também o e-mail (etiqueta: to.email e new_sender_mail)", () => {
+      expect(comQuem).toMatch(/transportadoras?/i);
+      expect(comQuem).toMatch(
+        /nome, endereço, WhatsApp, e-mail e, quando exigido, o CPF/,
+      );
+    });
+
+    it("o serviço de e-mail da loja (comprovante do pedido e código de verificação)", () => {
+      expect(comQuem).toMatch(/serviço de e-mail/i);
+      expect(comQuem).toMatch(/comprovante/i);
+      expect(comQuem).toMatch(/código de verificação/i);
+    });
+
+    it("o serviço de notificações do navegador, só para quem permitiu", () => {
+      expect(comQuem).toMatch(/serviço de notificações do seu navegador/i);
+      expect(comQuem).toMatch(/se você permitir/i);
+    });
+
+    it("a plataforma de hospedagem tem acesso técnico e pode ficar fora do Brasil", () => {
+      expect(comQuem).toMatch(/fora do Brasil/);
+      expect(comQuem).toMatch(/acesso técnico/);
+      expect(comQuem).toMatch(/manter o (serviço|app)/i);
+    });
+
+    it("nenhuma frase afirma que SÓ a loja vê os dados (a empresa que mantém o app também tem acesso)", () => {
+      const doc = montarPolitica("privacidade", LOJA, POLITICA);
+      const todo = textoCorrido(doc);
+      expect(todo).not.toMatch(
+        /só a equipe|somente a equipe|apenas a equipe|só (a loja|quem)|exclusiv/i,
+      );
+      const seguranca = doc.secoes
+        .find((s) => s.id === "seguranca")
+        ?.paragrafos.join(" ");
+      expect(seguranca).toMatch(
+        /a loja e a empresa que fornece e mantém este app, só para fazê-lo funcionar/,
+      );
+      // Sem citar a marca da plataforma.
+      expect(todo).not.toMatch(/ikcous/i);
+    });
+
+    it("segue dizendo que a loja não vende dados", () => {
+      expect(comQuem).toMatch(/não vende/);
+    });
   });
 });
 
@@ -160,15 +226,64 @@ describe("Trocas e devoluções — usa o que a lojista configurou", () => {
     expect(loja).toMatch(/frete da troca é pago pela loja/i);
     expect(loja).toMatch(/depois que a loja confere/i);
 
-    const cliente = textoCorrido(
+    const voce = textoCorrido(
       montarPolitica("trocas", LOJA, {
         ...POLITICA,
         frete_troca_pago_por: "cliente",
         reembolso_momento: "ao_receber",
       }),
     );
-    expect(cliente).toMatch(/frete da troca é pago por você/i);
-    expect(cliente).toMatch(/assim que a loja recebe/i);
+    expect(voce).toMatch(/frete da troca é pago por você/i);
+    expect(voce).toMatch(/assim que a loja recebe/i);
+  });
+
+  it("não inventa condição que nenhuma regra configurada prevê", () => {
+    for (const politica of [POLITICA, null]) {
+      expect(
+        textoCorrido(montarPolitica("trocas", LOJA, politica)),
+      ).not.toMatch(/boas condições|sem uso|na embalagem|com etiqueta/i);
+    }
+  });
+
+  it("no arrependimento e no defeito o frete de volta é da loja (a favor de quem compra)", () => {
+    for (const politica of [POLITICA, null]) {
+      const doc = montarPolitica("trocas", LOJA, politica);
+      const secao = doc.secoes.find((s) => s.id === "frete-de-volta");
+      expect(secao, "seção do frete de volta").toBeDefined();
+      expect((secao?.paragrafos ?? []).join(" ")).toMatch(
+        /arrependimento e no defeito.*frete de volta é pago pela loja/i,
+      );
+    }
+  });
+
+  it("vale: aparece quando a loja o aceita, mesmo sem troca por preferência", () => {
+    const semTrocaComVale = textoCorrido(
+      montarPolitica("trocas", LOJA, {
+        ...POLITICA,
+        aceita_troca: false,
+        aceita_vale: true,
+      }),
+    );
+    expect(semTrocaComVale).toMatch(/não faz troca por preferência/);
+    expect(semTrocaComVale).toMatch(/\bvale\b/i);
+
+    const semNenhum = textoCorrido(
+      montarPolitica("trocas", LOJA, {
+        ...POLITICA,
+        aceita_troca: false,
+        aceita_vale: false,
+      }),
+    );
+    expect(semNenhum).not.toMatch(/\bvale\b/i);
+  });
+
+  it("defeito: prazo da tabela contado do recebimento, e a lei pode dar mais tempo", () => {
+    const texto = textoCorrido(montarPolitica("trocas", LOJA, POLITICA));
+    expect(texto).toMatch(/até 90 dias, contados a partir do recebimento/);
+    expect(texto).toMatch(/por mais tempo/);
+    expect(texto).toMatch(/Código de Defesa do Consumidor/);
+    // Não promete além do que o app faz: remete à loja.
+    expect(texto).toMatch(/fale com a loja/i);
   });
 
   it("categorias sem troca e endereço de devolução entram quando existem", () => {
