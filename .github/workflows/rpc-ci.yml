@@ -97,6 +97,8 @@ on:
       - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
       - "scripts/publicacao/consultas/36a-conferir-venda-repetida-do-balcao-aplicado.sql"
       - "scripts/publicacao/consultas/36b-antes-venda-repetida-do-balcao-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado.sql"
+      - "scripts/publicacao/consultas/37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -164,6 +166,8 @@ on:
       - "scripts/publicacao/consultas/35m-medir-lucro-so-com-custo.sql"
       - "scripts/publicacao/consultas/36a-conferir-venda-repetida-do-balcao-aplicado.sql"
       - "scripts/publicacao/consultas/36b-antes-venda-repetida-do-balcao-corpo-vigente.sql"
+      - "scripts/publicacao/consultas/37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado.sql"
+      - "scripts/publicacao/consultas/37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -650,6 +654,10 @@ jobs:
       - name: Prova viva da compra que da R$ 0,00 nao se paga pelo app (migration 20261236)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 37a (DEPOIS, 6 linhas) e 37b (ANTES, 5 linhas). Nao ha medicao 37m: nenhuma contagem de loja e prova do que o lote muda. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da compra que da R$ 0,00 nao se paga pelo app (consultas 37a e 37b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs
       # Os numeros do painel (migrations 20261227 e 20261228, numeros; ordem do dono de 14/10/2026): a taxa de devolucao
       # do CRM nunca passa de 100% (a turma de vendas pagas do periodo, as estornadas e canceladas dentro) e o "Hoje" do
       # Inicio e o "vs. ontem" do CRM comparam ate a MESMA hora do dia (relogio fixo de Sao Paulo). COMPORTAMENTO com os

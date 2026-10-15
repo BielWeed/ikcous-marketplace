@@ -484,7 +484,14 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   depois de reservar, recusa também na entrega, limite R$ 0,01, total do cliente, só quem tem conta) ficam
   vermelhos. **As provas da 20261229 (`endereco-no-pedido-viva.cjs` e `endereco-no-pedido-portao-viva.cjs`)
   desfazem esta sucessora antes de medir** (como as da 20261199 fazem com as dela). **Não prova** a IKCOUS nem a
-  Savy, e **o portão da release (consultas e lote em `canais-de-backend.json`) ainda não existe para esta migration**.
+  Savy.
+- **portão da compra que dá R$ 0,00 não se paga pelo app
+  (`a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado` (DEPOIS, 6 linhas) e
+  `37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente` (ANTES, 5 linhas; **não mede a ACL**, que é da
+  37a) do lote `20261236000000`. Rol exato nos estados (depois, antes, corpo da 20261174), um negativo por linha
+  (inclusive o EXECUTE de anon, authenticated, service_role e PUBLIC), mutantes do texto das consultas, veredito do
+  `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
 - **reembolso da devolução só "liberado" com o dinheiro (`reembolso-da-devolucao-viva.cjs`, via
   `rodar-isolado.cjs`)**: a migration `20261225000000` (o gatilho de aviso da devolução lê o estado REAL do
   reembolso; um gatilho novo em `order_refunds` avisa "liberado" quando `concluir_estorno` confirma o dinheiro) com

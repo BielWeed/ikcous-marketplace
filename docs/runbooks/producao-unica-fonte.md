@@ -1362,6 +1362,61 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
 
+  37. **Lote de UMA migration, de apply normal: `20261236000000` (a compra que da R$ 0,00 nao se paga pelo app;
+      DINHEIRO, ESTOQUE E CUPOM, nao muda dado; decisao do dono de 14/10/2026).** Sem `backfillLedger` e sem
+      `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). Troca o corpo de
+      `create_marketplace_order_v24` (so ela; a `v23`, da compra na entrega, NAO e tocada) por `CREATE OR REPLACE`,
+      com o corpo da `20261229000000` mais UM bloco, sem tocar assinatura, `SECURITY DEFINER`, volatilidade,
+      `search_path`, retorno `uuid` nem ACL:
+      - **O defeito:** um cupom que zera a compra, com frete zero (retirada na loja, entrega local gratis ou o proprio
+        desconto cobrindo o frete), deixava o total em R$ 0,00 e o pedido pelo app NASCIA: `aguardando`, com a reserva
+        de 30 minutos, baixando o estoque e gastando a vaga do cupom (inclusive a do cupom de uso unico). Mas
+        `criar-pagamento` recusa pedido de valor zero (nao existe cobranca de R$ 0,00 no Mercado Pago): a cliente nao
+        tinha como pagar, e o pedido segurava estoque e cupom ate expirar.
+      - **A correcao (bloco 6-ter):** `IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0` recusa,
+        com uma frase em portugues e o identificador `pedido_sem_valor_a_pagar_pelo_app` no DETAIL, ANTES do INSERT do
+        pedido, da baixa do estoque e do uso do cupom. O total e o CALCULADO pelo servidor (nunca o `p_total_amount`
+        do cliente), arredondado em 2 casas porque o pedido grava `numeric(10,2)`: R$ 0,01 em diante segue nascendo.
+        So o meio `online` muda; `pix`, `card` e `cash` nao, e o pedido de R$ 0,00 na entrega continua nascendo pela
+        `v23`.
+      - **O que a cliente passa a ver:** a recusa com a frase, que o front (`src/lib/recusaDoPedido.ts`) traduz em
+        "trocar a forma de pagamento". Banco antes ou depois do front da no mesmo (com o front antigo a recusa chega
+        pelo toast com o texto do banco). **Pedido que ja nasceu com total zero pelo app (aguardando ou expirado)
+        fica como esta**: a expiracao devolve estoque e cupom pelos caminhos de sempre.
+      - Quem quebra: ninguem (nenhuma assinatura muda). Nenhuma edge function muda. Duas consultas, so leitura, so
+        catalogo, de ROL FECHADO (6 e 5 linhas, so valem com `rol=ok`):
+        - **`37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado`** (a consulta do lote) prova DEPOIS do
+          apply o corpo novo (md5), a recusa no corpo, os atributos de sempre e o `EXECUTE` de sempre (anon,
+          authenticated e service_role sim; PUBLIC nao).
+        - **`37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente`** (`ausenciaConfirmadaPor`) prova o
+          ANTES: o corpo da `20261229000000`, sem a recusa, com os atributos de sempre. **Nao mede a ACL** (o pre-voo
+          da migration a confere). O md5 vem do arquivo da migration, nao de uma loja: **rode a `37b` em CADA loja
+          ANTES do apply**. Loja ainda no corpo da `20261174000000` (o lote da 20261229000000 nao aplicado) reprova aqui e a
+          migration recusa tambem (`B1_BASELINE_DIVERGENT`): aplique o lote da 20261229000000 antes.
+      - **Medir antes:** nao ha `37m`; nenhuma contagem de loja e prova do que o lote muda (uma recusa nova, provada
+        pelo comportamento).
+      - **Caminho, uma loja por vez:** `37a` (sai NEGATIVA) -> `37b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `37a` DE NOVO, que tem de sair POSITIVA. `37a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **A cadeia das sucessoras:** `create_marketplace_order_v24` passa a ser `20261174000000` ->
+        `20261229000000` -> `20261236000000`. A `31a` (o lote da 20261229000000) aceita o corpo novo ao lado do da `20261229000000`
+        (so na linha da `v24`) e segue POSITIVA; as provas vivas da 20261229000000 desfazem esta sucessora antes de medir.
+        Rodar a `31a` DE NOVO depois do apply.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql` (recria o corpo da
+        `20261229000000`, mesmo md5, sem tocar a ACL, com pre-voo proprio; rodar duas vezes deixa o mesmo estado),
+        ANTES do rollback da `20261229000000` (o da 20261229000000 recusa enquanto houver redefinicao posterior no ar). Com ele
+        **volta o beco sem saida**. Depois dele a `37b` volta a ser POSITIVA e a `37a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `31a`, a `37a` e
+        a `37b` DE NOVO.
+      - **Limites:** `tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs` prova o comportamento
+        pelo caminho real do checkout (conta, convidada, retirada, cupom de 100%, cupom de uso unico), a ORDEM por
+        uma sequencia movida por gatilhos (o rollback nao a desfaz), o zero na retirada/entrega nascendo como hoje,
+        o positivo pelo app como hoje, o rollback, o pre-voo e os mutantes;
+        `tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs` prova a decisao das duas
+        consultas, num Postgres 17 efemero. Nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de
+        cada loja nem o corpo vivo delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
