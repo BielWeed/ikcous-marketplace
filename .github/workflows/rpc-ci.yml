@@ -117,6 +117,9 @@ on:
       - "scripts/publicacao/consultas/41m-medir-pergunta-respondida.sql"
       - "scripts/publicacao/consultas/43a-conferir-reembolso-em-duvida-aplicado.sql"
       - "scripts/publicacao/consultas/43b-antes-reembolso-em-duvida-base-vigente.sql"
+      - "scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql"
+      - "scripts/publicacao/consultas/45b-antes-custo-do-dia-base-vigente.sql"
+      - "scripts/publicacao/consultas/45m-medir-itens-sem-custo-do-dia.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -203,6 +206,9 @@ on:
       - "scripts/publicacao/consultas/41m-medir-pergunta-respondida.sql"
       - "scripts/publicacao/consultas/43a-conferir-reembolso-em-duvida-aplicado.sql"
       - "scripts/publicacao/consultas/43b-antes-reembolso-em-duvida-base-vigente.sql"
+      - "scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql"
+      - "scripts/publicacao/consultas/45b-antes-custo-do-dia-base-vigente.sql"
+      - "scripts/publicacao/consultas/45m-medir-itens-sem-custo-do-dia.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -804,6 +810,21 @@ jobs:
       - name: Prova viva do portao do reembolso em duvida (consultas 43a e 43b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-em-duvida-portao-viva.cjs
+      # O lucro usa o custo do dia da venda (migration 20261242, DINHEIRO e dado de cliente; decisao do dono de 15/10/2026): cada item que
+      # nasce guarda o custo que o produto tinha naquele dia numa tabela lateral SO do servidor (gatilho AFTER INSERT; nunca derruba a
+      # compra) e o lucro do CRM (get_admin_analytics_v2) e o CMV da DRE (fin_dre) leem esse custo, com o de hoje como reserva.
+      # COMPORTAMENTO com as funcoes reais: a venda da loja (v24) e a do balcao gravam, a venda antiga segue o custo de hoje, o custo
+      # nao vaza (RLS, ACL por aclexplode, nenhuma funcao de cliente a cita), o gatilho com falha simulada nao derruba a compra, mesmas
+      # chaves e mesmos numeros sem registros, devolucao com o custo trocado (mesmo periodo e periodo diferente), cmv_estimado
+      # calculado, rollback em dois degraus, aplicar 2x, a trava do apply (sem fila), venda de 200 itens, mutantes que TEM de cair e
+      # corrida de duas conexoes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do custo do dia da venda (migration 20261242)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/custo-do-dia-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 45a (DEPOIS, 13 linhas), 45b (ANTES, 6 linhas) e a medicao 45m (rol aberto). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do custo do dia (consultas 45a, 45b e 45m)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/custo-do-dia-portao-viva.cjs
       # O sino do pedido de retirada (migration 20261233, dado de cliente; cacada de 14/10/2026): o pedido de RETIRADA na loja
       # (customer_data->>'shipping_option_id' = 'store-pickup') avisa "Pedido pronto para retirar" e "Pedido retirado" no sino, e
       # o resto fica byte a byte como era. COMPORTAMENTO com a trigger real: o fluxo de entrega e o de retirada, o cancelamento

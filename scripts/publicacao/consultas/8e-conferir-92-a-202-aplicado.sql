@@ -22,12 +22,14 @@
 -- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
 -- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
 -- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
--- apply da sucessora. Hoje são onze funções (onze migrations), cada uma POR SI (função independente:
+-- apply da sucessora. Hoje são doze funções (doze migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo)
---                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo);
+--                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
+--                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda);
+--   * `fin_dre`                → 20261242000000 (a DRE usa o custo do dia da venda; parte do corpo da 99);
 --   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável)
 --                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp);
@@ -142,7 +144,9 @@ WITH corpos AS (
     ('pedido__saldo_a_estornar', '99741b4cdbf1e8d8340f80440e6da094', '20261241000000'),
     ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),
     ('admin_devolucao_concluir', 'ebb901efff59a53082836a13e053cd1a', '20261241000000'),
-    ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000')), colunas(tabela, coluna) AS (VALUES
+    ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
+    ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
+    ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
     ('order_refunds', 'mp_chargeback_valor_do_caso'),

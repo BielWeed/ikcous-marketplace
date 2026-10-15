@@ -38,6 +38,9 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { Client } = require("pg");
 const { falhar, lerDatabaseUrlEfemera } = require("./efemero.cjs");
+const {
+  devolverAoEstadoAnteriorAoCustoDoDia,
+} = require("./sucessoras-da-99.cjs");
 
 const REPO = path.resolve(__dirname, "..", "..");
 process.chdir(REPO);
@@ -193,6 +196,9 @@ const hashVivo = async (c) =>
     )
   ).rows[0]?.h ?? null;
 const DEPOIS = async (c) => {
+  // A 20261242000000 (o custo do dia) sucede a 34 no mesmo corpo: dentro da transação desta montagem, devolve
+  // o clone ao estado "34 no ar" (idempotente; o ROLLBACK de noEstado desfaz).
+  await devolverAoEstadoAnteriorAoCustoDoDia(c);
   // a árvore inteira: a 34 no ar (o corpo desta migration)
   assert.equal(
     await hashVivo(c),

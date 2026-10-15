@@ -2157,6 +2157,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           versao: "20261232000000",
         },
         {
+          fn: "fin_dre",
+          h: "afc3e13805ce37819cfdcd094043087c",
+          versao: "20261242000000",
+        },
+        {
           fn: "get_admin_analytics_v2",
           h: "0a5f8c75bbeeda3777a6a7326a0e281c",
           versao: "20261214000000",
@@ -2165,6 +2170,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_analytics_v2",
           h: "05eac70f6bd4360c1f71fd373747ad0e",
           versao: "20261234000000",
+        },
+        {
+          fn: "get_admin_analytics_v2",
+          h: "dceb62881ebf8fa404ba3ac295041691",
+          versao: "20261242000000",
         },
         {
           fn: "get_admin_customers_paged",
@@ -7392,6 +7402,7 @@ const MIGRACAO_BASELINE = `${MIGRATIONS_DIR}/20260806000000_baseline_do_schema_v
 const MIGRACAO_212 = `${MIGRATIONS_DIR}/20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql`;
 const MIGRACAO_213 = `${MIGRATIONS_DIR}/20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql`;
 const MIGRACAO_234 = `${MIGRATIONS_DIR}/20261234000000_o_lucro_so_conta_produto_com_custo.sql`;
+const MIGRACAO_242 = `${MIGRATIONS_DIR}/20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql`;
 const MIGRACAO_214 = `${MIGRATIONS_DIR}/20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql`;
 /** A SUCESSORA de painel_inicio (14/10/2026): o Início compara até a mesma hora. A 17a a aceita ao lado da 12. */
 const MIGRACAO_228 = `${MIGRATIONS_DIR}/20261228000000_o_inicio_compara_ate_a_mesma_hora.sql`;
@@ -7729,12 +7740,33 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpoSucessoraAn.replace(/\n/g, "\r\n"), "utf8")
       .digest("hex"),
   };
+  // E o da sucessora DESTA (a 20261242, o lucro usa o custo do dia da venda): a 17a o aceita também (LF e CRLF).
+  const textoSucessora42 = (await Deno.readTextFile(MIGRACAO_242)).replace(
+    /\r\n/g,
+    "\n",
+  );
+  const iniSucessora42 = textoSucessora42.indexOf(
+    cabecalhoDepois17("get_admin_analytics_v2"),
+  );
+  assert(iniSucessora42 >= 0, "a 20261242 não define get_admin_analytics_v2");
+  const abreSucessora42 =
+    textoSucessora42.indexOf("AS $$", iniSucessora42) + "AS $$".length;
+  const corpoSucessora42 = textoSucessora42.slice(
+    abreSucessora42,
+    textoSucessora42.indexOf("$$;", abreSucessora42),
+  );
+  const shaSucessora42 = {
+    lf: criarHash("sha256").update(corpoSucessora42, "utf8").digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpoSucessora42.replace(/\n/g, "\r\n"), "utf8")
+      .digest("hex"),
+  };
   for (const [nome, sql, lado, outro, rotulo] of [
     [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 2 da de get_admin_analytics_v2 (a 20261234)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 4 da de get_admin_analytics_v2 (a 20261234 e a 20261242)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
@@ -7747,6 +7779,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora.crlf,
                 shaSucessoraAn.lf,
                 shaSucessoraAn.crlf,
+                shaSucessora42.lf,
+                shaSucessora42.crlf,
               ]
             : [];
         assertEquals(new Set(todos).size, 6);
@@ -7773,6 +7807,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                     x.crlf,
                     shaSucessoraAn.lf,
                     shaSucessoraAn.crlf,
+                    shaSucessora42.lf,
+                    shaSucessora42.crlf,
                     x.lf,
                   ]
                 : [x.lf, x.lf, x.crlf, x.lf],
@@ -13984,19 +14020,24 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       const vigente = await ultimaQueDefine(
         "FUNCTION public.get_admin_analytics_v2",
       );
+      // A 20261242000000 (o lucro usa o custo do dia da venda) trocou SO a fonte do custo no grafico: o resto da regra
+      // (filtro, juncao, janela) segue o da 34. A 44m mede com o custo de HOJE de proposito (ver o cabecalho dela):
+      // aqui a regra e' comparada com o corpo vigente trocando a fonte nova pelo custo de hoje.
       assertEquals(
         vigente,
-        "20261234000000_o_lucro_so_conta_produto_com_custo.sql",
+        "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql",
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
       const mig = normal(
         await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`),
       );
       // o grafico do lucro (daily_items) da migration: o mesmo JOIN, o mesmo filtro, a mesma conta
-      const daily = mig.slice(
-        mig.indexOf("daily_items AS ("),
-        mig.indexOf("GROUP BY", mig.indexOf("daily_items AS (")),
-      );
+      const daily = mig
+        .slice(
+          mig.indexOf("daily_items AS ("),
+          mig.indexOf("GROUP BY", mig.indexOf("daily_items AS (")),
+        )
+        .replaceAll("COALESCE(oic.custo, p.custo)", "p.custo");
       assertStringIncludes(daily, LUCRO_PAINEL);
       assertStringIncludes(
         daily,

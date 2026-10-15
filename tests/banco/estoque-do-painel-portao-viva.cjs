@@ -1184,6 +1184,16 @@ async function main() {
         "20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql",
         "public.upsert_store_config(jsonb)",
       ],
+      // A 20261242 (o custo do dia): UMA migration, duas funções (fin_dre, de fora destas três, e o analytics, que ela
+      // SUCEDE a 34 sobre a 14); o rollback dela devolve os dois corpos de uma vez (a 17a aceita o corpo dela: portão 45).
+      [
+        "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql",
+        "public.fin_dre(date,date)",
+      ],
+      [
+        "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

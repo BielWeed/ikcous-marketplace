@@ -51,7 +51,9 @@
 -- deixa o portao vermelho no lote 17.
 -- JA DECIDIDO PARA `get_admin_analytics_v2` (14/10/2026): a 20261234000000 (o lucro so conta produto com
 -- custo) o redefine depois deste lote. A linha `get_admin_analytics_v2: corpo e o da 20261214000000` aceita
--- o corpo da 14 OU o da 34 (o rol e os rotulos do rol nao mudam). `get_admin_products_paged` segue exata.
+-- o corpo da 14 OU o da 34 OU o da 42 (a 20261242000000, o lucro usa o custo do dia da venda: o corpo da 34 com
+-- o custo do dia por item; decidido em 15/10/2026) (o rol e os rotulos do rol nao mudam).
+-- `get_admin_products_paged` segue exata.
 --
 -- sha256 = encode(sha256(convert_to(prosrc, 'UTF8')), 'hex'). Cada hash aparece aqui uma vez em
 -- LF e uma em CRLF; tests/ci_conferir_banco_test.ts os recalcula dos ARQUIVOS das migrations
@@ -121,12 +123,15 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo e o da 20261214000000 (sha256)',
          '297e4f2919cfdd3c2a3f66ebaa7109ced7e9602b435f67f07087a1da259558dc',
-         -- 4 hashes aceitos: o corpo da 20261214000000 (LF e CRLF) OU o da SUCESSORA dele, a 20261234000000
-         -- (o lucro so conta produto com custo; LF e CRLF). O `vivo` mostra o esperado.
+         -- 6 hashes aceitos: o corpo da 20261214000000 (LF e CRLF) OU o da SUCESSORA dele, a 20261234000000
+         -- (o lucro so conta produto com custo; LF e CRLF) OU o da sucessora desta, a 20261242000000 (o lucro
+         -- usa o custo do dia da venda; LF e CRLF). O `vivo` mostra o esperado.
          COALESCE((SELECT CASE WHEN f.h IN ('297e4f2919cfdd3c2a3f66ebaa7109ced7e9602b435f67f07087a1da259558dc',
                                             'b87b17e30345c7764ed4e78f9faf0336d7de02313b3b471e975dab26a5b0ee4f',
                                             '7447521c32fe9dcfa498f4c7a9bbaf98adb35a4fb39ce715e2aa13c3ea72e2ff',
-                                            '4c5314ab0650a56971274ef3ea3d3524b1b8caed2e9ca3863320ae366bcb3602')
+                                            '4c5314ab0650a56971274ef3ea3d3524b1b8caed2e9ca3863320ae366bcb3602',
+                                            'f449361e99245580f39e7f559e9ef48e50e31ab3ecb8fcf90e8336b831982ff9',
+                                            'da008983c697cda3e688be5ec6cf89a2480bb671715d916464763a41735d5626')
                                THEN '297e4f2919cfdd3c2a3f66ebaa7109ced7e9602b435f67f07087a1da259558dc'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_admin_analytics_v2'), 'AUSENTE')
