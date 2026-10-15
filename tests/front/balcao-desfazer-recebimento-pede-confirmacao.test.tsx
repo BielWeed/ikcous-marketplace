@@ -228,7 +228,7 @@ describe("Desfazer o recebimento de venda do balcão pede confirmação", () => 
       // A cliente não consegue pedir devolução (20261175/20261199).
       expect(texto).toContain("não consegue pedir devolução");
       // A venda conta no dia em que for marcada de novo (fin__movimentos).
-      expect(texto).toContain("no dia em que você marcar de novo");
+      expect(texto).toContain("no dia da nova marcação");
       // Nada de regra que só existe no balcão.
       expect(texto).not.toContain("Anular");
       expect(texto).not.toContain("estoque");

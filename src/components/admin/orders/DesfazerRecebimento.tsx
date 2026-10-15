@@ -90,12 +90,12 @@ export function DesfazerRecebimento({
             </AlertDialogDescription>
           ) : (
             <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
-              O pagamento deste pedido volta a ficar em branco. Enquanto isso, o
-              valor sai das vendas, do lucro e do Financeiro, e a cliente não
-              consegue pedir devolução. Ao marcar como recebido outra vez, a
-              venda passa a contar no dia em que você marcar de novo
+              O pagamento volta a ficar em branco. Enquanto isso, o valor sai
+              das vendas, do lucro e do Financeiro, e a cliente não consegue
+              pedir devolução. Ao marcar de novo, a venda conta no dia da nova
+              marcação
               {order.paymentMethod === "cash"
-                ? " e, como foi em dinheiro, entra no Caixa da loja se ele estiver aberto."
+                ? " (em dinheiro, no Caixa da loja, se estiver aberto)."
                 : "."}
             </AlertDialogDescription>
           )}

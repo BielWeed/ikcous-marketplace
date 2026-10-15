@@ -18,7 +18,6 @@ import {
   useViewTransition,
 } from "@/hooks/useViewTransition";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
-import { lerJanelaDeRecebimentoDias } from "@/lib/janela-de-recebimento-da-loja";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
@@ -27,6 +26,7 @@ import {
 import {
   FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
   inicioDaJanelaDeRecebimento,
+  lerJanelaDeRecebimentoDias,
 } from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";

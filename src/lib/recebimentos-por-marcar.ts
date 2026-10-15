@@ -1,3 +1,5 @@
+import { COLUNAS_DA_POLITICA, lerPolitica } from "@/lib/devolucao";
+import { supabase } from "@/lib/supabase";
 import type { PoliticaDevolucao } from "@/types/devolucao";
 
 /**
@@ -99,4 +101,28 @@ export function janelaDeRecebimentoDias(
     politica.aceita_troca ? politica.prazo_troca_dias : 0,
   ].filter(prazoValido);
   return prazos.length > 0 ? Math.max(...prazos) : JANELA_DE_RECEBIMENTO_DIAS;
+}
+
+/**
+ * Lê, no banco, quantos dias o sino deve olhar para trás: a conta é de
+ * `janelaDeRecebimentoDias`, aqui só a leitura de `politica_devolucao` (linha
+ * única `id = 1`, as mesmas colunas da tela de Políticas).
+ *
+ * NUNCA lança e nunca devolve menos que o padrão por falha: erro do banco,
+ * linha ausente, resposta torta ou rede caída viram 90 dias. O aviso precisa
+ * SOBRAR; ler a configuração não é uma fonte de aviso, então a falha dela não
+ * acende o "não consegui conferir" do sino.
+ */
+export async function lerJanelaDeRecebimentoDias(): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from("politica_devolucao")
+      .select(COLUNAS_DA_POLITICA)
+      .eq("id", 1)
+      .maybeSingle();
+    if (error || !data) return JANELA_DE_RECEBIMENTO_DIAS;
+    return janelaDeRecebimentoDias(lerPolitica(data));
+  } catch {
+    return JANELA_DE_RECEBIMENTO_DIAS;
+  }
 }

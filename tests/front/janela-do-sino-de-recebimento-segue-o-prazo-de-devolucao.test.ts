@@ -171,7 +171,7 @@ describe("a leitura da configuração no banco", () => {
 
   it("lê a linha única de `politica_devolucao` e devolve o prazo da loja", async () => {
     const { lerJanelaDeRecebimentoDias } = await import(
-      "@/lib/janela-de-recebimento-da-loja"
+      "@/lib/recebimentos-por-marcar"
     );
     maybeSingleMock.mockResolvedValue({
       data: {
@@ -196,7 +196,7 @@ describe("a leitura da configuração no banco", () => {
     ],
   ])("%s: usa 90", async (_nome, resposta) => {
     const { lerJanelaDeRecebimentoDias } = await import(
-      "@/lib/janela-de-recebimento-da-loja"
+      "@/lib/recebimentos-por-marcar"
     );
     maybeSingleMock.mockResolvedValue(resposta);
 
@@ -205,7 +205,7 @@ describe("a leitura da configuração no banco", () => {
 
   it("a consulta que lança (rede caiu) também usa 90 — e não derruba quem chamou", async () => {
     const { lerJanelaDeRecebimentoDias } = await import(
-      "@/lib/janela-de-recebimento-da-loja"
+      "@/lib/recebimentos-por-marcar"
     );
     maybeSingleMock.mockRejectedValue(new Error("rede"));
 
