@@ -51,7 +51,8 @@
 --
 -- ROLLBACK MANUAL: versionado em
 -- rollback-manual-20261240000000_a_cliente_e_avisada_quando_a_loja_responde_sua_pergunta.sql (recria os dois
--- corpos de antes, byte a byte; os avisos já criados em `notificacoes` ficam — são avisos verdadeiros).
+-- corpos de antes, byte a byte, com pré-voo e conferência final próprios; os avisos já criados em `notificacoes`
+-- ficam — são avisos verdadeiros).
 -- PROVA VIVA: tests/banco/pergunta-respondida-avisa-viva.cjs.
 
 DO $preflight_20261240$
@@ -236,7 +237,8 @@ BEGIN
 END;
 $function$;
 
--- CONFERÊNCIA FINAL: as duas sobrecargas carregam o corpo desta migration e o ACL/atributos seguem os de antes.
+-- CONFERÊNCIA FINAL: só compara o HASH do corpo das duas sobrecargas com o desta migration. ACL e atributos não são
+-- comparados aqui: o CREATE OR REPLACE os preserva, e a consulta 41a (e a 41b, antes do apply) os mede.
 DO $posvoo_20261240$
 DECLARE
   r record;

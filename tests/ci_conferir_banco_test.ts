@@ -12569,9 +12569,19 @@ Deno.test("41a/41b — os md5 da 41a sao os dos DOIS corpos NOVOS que o arquivo 
       2,
       "pre-voo (hash_desta) e conferencia final",
     );
-    assert(!rb.includes(h), "o rollback nao cita corpo novo");
+    // o pre-voo do rollback cita o corpo NOVO uma vez (hash_desta: e o que ele aceita desfazer); a conferencia final nunca
+    assertEquals(
+      rb.split(`'${h}'`).length - 1,
+      1,
+      "o rollback cita o corpo novo so no pre-voo (hash_desta)",
+    );
   }
   for (const h of antes) {
+    assertEquals(
+      rb.split(`'${h}'`).length - 1,
+      2,
+      "o rollback cita o corpo de antes no pre-voo (hash_antes) e na conferencia final",
+    );
     assertEquals(b.split(`'${h}'`).length - 1, 1, "41b: md5 de corpo vigente");
     assert(!a.includes(h), "41a nao cita corpo vigente");
     assertEquals(mig.split(`'${h}'`).length - 1, 1, "pre-voo (hash_vigente)");

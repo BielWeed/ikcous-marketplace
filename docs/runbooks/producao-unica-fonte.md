@@ -1352,9 +1352,18 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
         `rollback-manual-20261240000000_a_cliente_e_avisada_quando_a_loja_responde_sua_pergunta.sql` (recria os dois
         corpos de antes, mesmo md5; os avisos ja criados em `notificacoes` FICAM, sao avisos verdadeiros). **Este
-        rollback NAO tem pre-voo proprio** (os outros rollbacks da casa recusam se o corpo vivo nao e o esperado):
-        rodar so com a `41a` POSITIVA na mao e depois conferir a `41b` POSITIVA e a `41a` NEGATIVA. Desfazer volta o
-        defeito (a linha falsa no log e nenhum aviso na cliente).
+        rollback tem pre-voo e conferencia final proprios** (como os outros rollbacks da casa): recusa
+        (`B1_BASELINE_DIVERGENT`) se `answer_question_atomic` nao tem exatamente as duas assinaturas ou se o corpo vivo
+        de qualquer uma nao e o desta migration nem o de antes (alguem trocou o corpo de novo: desfazer por cima
+        apagaria a trava nova em silencio) e, depois de recriar os corpos, aborta se algum nao voltou ao md5 de antes.
+        Depois de desfazer, conferir a `41b` POSITIVA e a `41a` NEGATIVA. Desfazer volta o defeito (a linha falsa no
+        log e nenhum aviso na cliente).
+      - **Desfazer o banco EXIGE desfazer o FRONT junto, e o front vai PRIMEIRO.** Com o banco desfeito e o front
+        desta release ainda no ar, a caixa de resposta do painel (`AdminQAView.tsx`) continua dizendo "Avisa a cliente
+        no app" e isso volta a ser FALSO: a lojista acha que avisou e a cliente nao recebe nada. Ordem: (1) publicar
+        de novo o front de ANTES desta release (ou um front sem essa frase) em TODAS as lojas e conferir
+        `version.json` de cada uma; (2) so entao rodar o rollback do banco, loja por loja. Nunca o contrario. O front
+        de antes funciona com o banco novo (nenhuma assinatura muda), entao desfazer o front primeiro e seguro.
       - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `41a` e a `41b` DE
         NOVO.
       - **Limites:** `tests/banco/pergunta-respondida-avisa-viva.cjs` prova o comportamento (defeito antes, aviso so

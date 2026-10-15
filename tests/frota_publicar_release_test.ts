@@ -8376,7 +8376,8 @@ Deno.test("lote 20261240 — o canais-de-backend.json real o declara como lote d
     "NAO mede a ACL",
     "reply_review_atomic (a resposta a AVALIACAO) NAO e tocada",
     "NUNCA reaplicar a 20261064 nem a 20261065",
-    "SEM pre-voo proprio",
+    "COM pre-voo e conferencia final proprios",
+    "DESFAZER O BANCO EXIGE DESFAZER O FRONT ANTES",
     "rollback-manual-20261240000000",
     "item 41 de docs/runbooks/producao-unica-fonte.md",
   ])
@@ -8391,7 +8392,14 @@ Deno.test("lote 20261240 — o canais-de-backend.json real o declara como lote d
     runbook,
     "**NUNCA reaplicar a `20261064` nem a `20261065` depois desta.**",
   );
-  assertStringIncludes(runbook, "**Este rollback NAO tem pre-voo proprio**");
+  assertStringIncludes(
+    runbook,
+    "**Este rollback tem pre-voo e conferencia final proprios**",
+  );
+  assertStringIncludes(
+    runbook,
+    "**Desfazer o banco EXIGE desfazer o FRONT junto, e o front vai PRIMEIRO.**",
+  );
 });
 
 Deno.test("lote 20261240 — SEM evidência: pede a 41a; 41a NEGATIVA sem a 41b: pede a 41b; nenhum apply", async () => {

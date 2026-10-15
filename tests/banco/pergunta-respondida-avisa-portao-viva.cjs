@@ -249,7 +249,8 @@ const SO_A_DE_TRES_VOLTOU = async (c) => {
     p.startsWith("p_question_id uuid, p_answer text, p_admin_id uuid)"),
   );
   assert.ok(tres, "o rollback não tem o CREATE da sobrecarga de 3 argumentos");
-  await c.query(marca + tres);
+  // sem a conferência final do rollback (ela exige as DUAS de volta ao corpo de antes): só o CREATE da de 3 argumentos
+  await c.query(marca + tres.split("\n-- CONFERÊNCIA FINAL")[0]);
   assert.equal(await hashVivo(c, F2), H[F2].desta);
   assert.equal(await hashVivo(c, F3), H[F3].vigente);
 };

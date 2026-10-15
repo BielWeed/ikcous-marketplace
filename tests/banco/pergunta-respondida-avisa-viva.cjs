@@ -73,6 +73,15 @@ const FUNCOES_SQL = MIGRATION.slice(
   MIGRATION.indexOf("-- CONFERÊNCIA FINAL"),
 );
 
+/**
+ * Os dois CREATE OR REPLACE do rollback, SEM o pre-voo nem a conferencia final: monta o corpo de antes por cima de um
+ * corpo DESCONHECIDO (mutante, corpo alheio), que o pre-voo do rollback recusaria de proposito.
+ */
+const ROLLBACK_SO_CORPOS = ROLLBACK.slice(
+  ROLLBACK.indexOf("CREATE OR REPLACE FUNCTION"),
+  ROLLBACK.indexOf("-- CONFERÊNCIA FINAL"),
+);
+
 const U = {
   admin: "7e7e2400-0000-4000-8000-0000000000a1",
   admin2: "7e7e2400-0000-4000-8000-0000000000a2",
@@ -753,7 +762,7 @@ prova(
     // corpo divergente (1 byte a mais)
     await recusa(async () => {
       await C.query(
-        ROLLBACK.replace(
+        ROLLBACK_SO_CORPOS.replace(
           "-- 2. Get Question Info",
           "-- 2. Get Question Info (editado na loja)",
         ),
@@ -774,6 +783,113 @@ prova(
            LOOP EXECUTE 'DROP INDEX ' || v; END LOOP; END $$`,
       );
     }, /indice unico|índice único/);
+  },
+);
+
+prova(
+  "(6) o PRE-VOO do rollback recusa SEM escrever (corpo alheio em qualquer das duas, sobrecarga extra ou ausente) e a CONFERENCIA FINAL recusa corpo que nao voltou; o corpo desta migration e o de antes passam",
+  async () => {
+    const alheioNaDeTres = () => {
+      const p = ROLLBACK_SO_CORPOS.split("$function$");
+      p[3] = `${p[3]}    -- editado na loja\n`;
+      return p.join("$function$");
+    };
+    const recusa = async (preparar, esperado) => {
+      await C.query("BEGIN");
+      try {
+        await C.query(MIGRATION); // parte do estado desta migration
+        await preparar();
+        const antes = [await hashVivo(F2), await hashVivo(F3)];
+        await C.query("SAVEPOINT desfazer");
+        let erro;
+        try {
+          await C.query(ROLLBACK);
+        } catch (e) {
+          erro = e;
+        }
+        assert.ok(erro, "o rollback devia recusar");
+        assert.match(erro.message, esperado);
+        await C.query("ROLLBACK TO SAVEPOINT desfazer");
+        assert.deepEqual(
+          [await hashVivo(F2), await hashVivo(F3)],
+          antes,
+          "a recusa nao pode escrever",
+        );
+      } finally {
+        await C.query("ROLLBACK");
+      }
+    };
+    // alguem trocou o corpo da de 2 args DEPOIS da migration
+    await recusa(async () => {
+      await C.query(
+        ROLLBACK_SO_CORPOS.replace(
+          "-- 2. Get Question Info",
+          "-- 2. Get Question Info (editado na loja)",
+        ),
+      );
+    }, /^B1_BASELINE_DIVERGENT: corpo vivo de public\.answer_question_atomic\(uuid,text\) \(hash [0-9a-f]{32}\) não é o desta migration nem o de antes/);
+    // ... ou o da de 3 args (a de 2 passa, a de 3 e' a que recusa)
+    await recusa(async () => {
+      await C.query(alheioNaDeTres());
+    }, /^B1_BASELINE_DIVERGENT: corpo vivo de public\.answer_question_atomic\(uuid,text,uuid\)/);
+    // sobrecarga extra e sobrecarga ausente: nao sao as duas assinaturas esperadas
+    await recusa(async () => {
+      await C.query(
+        `CREATE FUNCTION public.answer_question_atomic(p_a uuid) RETURNS void LANGUAGE sql AS 'SELECT 1'`,
+      );
+    }, /^B1_BASELINE_DIVERGENT: answer_question_atomic não tem exatamente as duas assinaturas/);
+    await recusa(async () => {
+      await C.query(
+        "DROP FUNCTION public.answer_question_atomic(uuid,text,uuid)",
+      );
+    }, /^B1_BASELINE_DIVERGENT: answer_question_atomic não tem exatamente as duas assinaturas/);
+
+    // passa nos dois estados conhecidos: o desta migration (desfaz) e o de antes (idempotente), e confere o resultado
+    await C.query("BEGIN");
+    try {
+      await C.query(MIGRATION);
+      await C.query(ROLLBACK);
+      assert.equal(await hashVivo(F2), H_ANTES[F2]);
+      assert.equal(await hashVivo(F3), H_ANTES[F3]);
+      await C.query(ROLLBACK); // ja desfeito: reescreve o mesmo texto
+      assert.equal(await hashVivo(F2), H_ANTES[F2]);
+      assert.equal(await hashVivo(F3), H_ANTES[F3]);
+      // so uma das duas no estado de antes e a outra no desta migration tambem passa
+      await C.query(MIGRATION);
+      await C.query(
+        `${ROLLBACK_SO_CORPOS.split("$function$").slice(0, 2).join("$function$")}$function$;`,
+      ); // so a de 2 args volta
+      assert.equal(await hashVivo(F2), H_ANTES[F2]);
+      assert.equal(await hashVivo(F3), H_DEPOIS[F3]);
+      await C.query(ROLLBACK);
+      assert.equal(await hashVivo(F3), H_ANTES[F3]);
+    } finally {
+      await C.query("ROLLBACK");
+    }
+
+    // CONFERENCIA FINAL: um rollback adulterado (corpo de antes com 1 byte a mais) cria o corpo errado e a conferencia recusa
+    await C.query("BEGIN");
+    try {
+      await C.query(MIGRATION);
+      let erro;
+      try {
+        await C.query(
+          ROLLBACK.replace(
+            "-- 2. Get Question Info",
+            "-- 2. Get Question Info (adulterado)",
+          ),
+        );
+      } catch (e) {
+        erro = e;
+      }
+      assert.ok(erro, "a conferencia final devia recusar");
+      assert.match(
+        erro.message,
+        /^conferencia rollback 20261240: corpo vivo de public\.answer_question_atomic\(uuid,text\) \(hash [0-9a-f]{32}\) não voltou ao de antes/,
+      );
+    } finally {
+      await C.query("ROLLBACK");
+    }
   },
 );
 
@@ -859,7 +975,7 @@ prova(
       );
     } finally {
       // o corpo mutante e' desconhecido para o pre-voo: volta ao vigente (rollback) e reaplica a migration
-      await C.query(ROLLBACK);
+      await C.query(ROLLBACK_SO_CORPOS);
       await C.query(MIGRATION);
       assert.equal(await hashVivo(F2), H_DEPOIS[F2], "a migration nao voltou");
     }

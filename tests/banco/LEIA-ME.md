@@ -553,7 +553,9 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   não executa, ACL e atributos iguais antes e depois; o aviso que falha nunca perde a resposta; duas lojistas
   respondendo a MESMA pergunta (duas conexões reais) geram UM aviso. Aplicar 2x e em CRLF = mesmo estado, o rollback
   devolve os corpos de antes byte a byte, o pré-voo recusa sem escrever (corpo divergente, sobrecarga extra, índice
-  único ausente), seis mutantes ficam vermelhos e o ENSAIO (um bloco `DO` que termina em `RAISE EXCEPTION`) serve a uma
+  único ausente), o rollback tem pré-voo (recusa corpo alheio em qualquer das duas, sobrecarga extra ou ausente, sem
+  escrever; aceita o corpo desta migration e o de antes) e conferência final (recusa corpo que não voltou), seis
+  mutantes ficam vermelhos e o ENSAIO (um bloco `DO` que termina em `RAISE EXCEPTION`) serve a uma
   loja real. **Não prova** a IKCOUS nem a Savy.
 - **portão da pergunta respondida (`pergunta-respondida-avisa-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
   consultas `41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado` (DEPOIS, 10 linhas) e
