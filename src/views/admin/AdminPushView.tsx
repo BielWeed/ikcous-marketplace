@@ -27,6 +27,7 @@ import {
   MARCADOR_DO_CUPOM,
   MODELOS_DE_CAMPANHA,
   codigosDeCupomCitados,
+  filtroDosCodigosCitados,
   mensagemDoProblemaDoCupom,
   problemaDoCupom,
   temMarcadorPendente,
@@ -323,7 +324,7 @@ async function avisosDosCuponsCitados(codigos: string[]): Promise<string[]> {
     const { data, error } = await supabase
       .from("coupons")
       .select("code, active, valid_until, usage_limit, usage_count")
-      .in("code", codigos);
+      .or(filtroDosCodigosCitados(codigos));
     if (error) throw error;
     const cupons = (data ?? []) as CupomDaLoja[];
     const agora = new Date();
