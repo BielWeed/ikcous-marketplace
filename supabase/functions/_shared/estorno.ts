@@ -1591,6 +1591,14 @@ const STATUS_REFUND_MORTO = new Set(["rejected", "cancelled", "canceled", "faile
  *     estranha, reembolso em andamento, reembolso de outro valor (a devolução
  *     do painel em parcelas: o dinheiro saiu e ninguém o explica).
  * `idsJaReivindicados` = `mp_refund_id` das OUTRAS linhas do pedido.
+ *
+ * `idProprio` (opcional; B1 da revisão Opus do #888, 15/10/2026): o
+ * `mp_refund_id` que ESTA linha já tem gravado. Com ele, a lista do MP só prova
+ * alguma coisa se esse id APARECER nela: ausente é `indeterminado` (o reembolso
+ * PIX em contingência, por exemplo, pode não ser listado na consulta do
+ * pagamento). Presente e morto, segue a regra normal (pode dar `nao_achou`);
+ * presente e vivo, a regra normal já dá `achou` ou `indeterminado`. Quem não
+ * passa o parâmetro tem o comportamento de antes.
  */
 export async function consultarReembolsoDoPedido(args: {
   buscar: typeof fetch;
@@ -1598,6 +1606,7 @@ export async function consultarReembolsoDoPedido(args: {
   pedido: PedidoParaEstorno;
   valor: number;
   idsJaReivindicados: string[];
+  idProprio?: string | null;
 }): Promise<ConsultaDoReembolso> {
   const { buscar, token, pedido } = args;
   const indeterminado = (motivo: string): ConsultaDoReembolso => ({ resultado: "indeterminado", motivo });
@@ -1647,6 +1656,18 @@ export async function consultarReembolsoDoPedido(args: {
     const dizReembolsada = corpo.status === "refunded" || corpo.status_detail === "partially_refunded";
     if (dizReembolsada && !refunds.some((r) => r.status === statusTerminal)) {
       return indeterminado("a cobrança consta como devolvida, mas nenhum reembolso aparece");
+    }
+  }
+
+  // B1 (revisão Opus do #888): a linha já tem id do MP — a lista só vale como
+  // prova se mostrar esse id (e ele não puder ser de outra linha).
+  const idProprio = typeof args.idProprio === "string" ? args.idProprio.trim() : "";
+  if (idProprio !== "") {
+    if (!refunds.some((r) => idComoString(r.id) === idProprio)) {
+      return indeterminado("o reembolso já registrado desta devolução não aparece na consulta");
+    }
+    if (reivindicados.has(idProprio)) {
+      return indeterminado("o reembolso desta devolução consta também em outra devolução do pedido");
     }
   }
 
@@ -1833,6 +1854,9 @@ async function conferirAntesDoReenvio(args: {
       pedido,
       valor: linha.amount,
       idsJaReivindicados,
+      // B1 (revisão Opus do #888): linha com id do MP só reenvia se a lista
+      // mostrar esse id morto.
+      idProprio: linha.mp_refund_id,
     });
   } catch (err) {
     console.error("estorno: a consulta antes do reenvio lançou", nomeDoErro(err));

@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  consultarReembolsoDoPedido,
   executarEstorno,
   linhaJaTeveEnvio,
   type LinhaEstorno,
@@ -267,6 +268,106 @@ Deno.test("REENVIO-C4 - a consulta vem ANTES da autorização do banco: indeterm
   assertEquals(mp.violacoes, []);
   assertEquals(r.tipo, "tentar_depois");
   assertEquals(perguntas, 0);
+});
+
+// ---------------------------------------------------------------------------
+// B1 da revisão Opus do #888: a linha que JÁ TEM id do MP gravado (o 1º envio
+// voltou 201 in_process — PIX em contingência) só reenvia se a lista do MP
+// mostrar esse id MORTO. Reembolso em contingência pode não aparecer na consulta
+// do pagamento; lista vazia ali não prova nada.
+// ---------------------------------------------------------------------------
+
+const linhaComIdDoMp = (extras: Partial<LinhaEstorno> = {}) =>
+  linhaReenviada({ mp_refund_id: "7001", tentativas: 3, ...extras });
+
+Deno.test("REV-9 (B1) - linha com mp_refund_id 7001 e a lista do MP VAZIA: ZERO POST (o reembolso dela pode estar em contingência, invisível)", async () => {
+  const mp = mpGuardiao([{ status: 200, corpo: CONSULTA_NAO_ACHOU }], { postProibido: true });
+  const r = await executar(linhaComIdDoMp(), mp.f);
+  assertEquals(mp.violacoes, [], "nenhum POST de reembolso");
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"]);
+  assertEquals(r.tipo, "tentar_depois");
+  if (r.tipo === "tentar_depois") assertEquals(r.motivo, MOTIVO_REENVIO_SEM_CONSULTA);
+});
+
+Deno.test("B1-b - linha com mp_refund_id e a lista mostra OUTRO reembolso morto, mas não o dela: ZERO POST", async () => {
+  const mp = mpGuardiao([{
+    status: 200,
+    corpo: { id: 1, status: "approved", transaction_amount_refunded: 0, refunds: [{ id: 8888, status: "rejected", amount: 50 }] },
+  }], { postProibido: true });
+  const r = await executar(linhaComIdDoMp(), mp.f);
+  assertEquals(mp.violacoes, []);
+  assertEquals(r.tipo, "tentar_depois");
+});
+
+for (const morto of ["rejected", "cancelled", "failed"]) {
+  Deno.test(`B1-c - o id da linha aparece MORTO (${morto}): nada saiu por ele, pode reenviar — 1 POST, depois da consulta`, async () => {
+    const mp = mpGuardiao([{
+      status: 200,
+      corpo: { id: 1, status: "approved", transaction_amount_refunded: 0, refunds: [{ id: 7001, status: morto, amount: 50 }] },
+    }], { postProibido: false });
+    await executar(linhaComIdDoMp(), mp.f);
+    assertEquals(mp.chamadas.map((c) => c.metodo), ["GET", "POST"]);
+    assertEquals(mp.posts()[0].chave, ID_LINHA);
+  });
+}
+
+Deno.test("B1-d - o id da linha aparece CONCLUÍDO (approved, valor dela): ZERO POST, adota o 7001", async () => {
+  const mp = mpGuardiao([{
+    status: 200,
+    corpo: { id: 1, status: "approved", transaction_amount_refunded: 50, refunds: [{ id: 7001, status: "approved", amount: 50 }] },
+  }], { postProibido: true });
+  const r = await executar(linhaComIdDoMp(), mp.f);
+  assertEquals(mp.violacoes, []);
+  assertEquals(r.tipo, "concluido");
+  if (r.tipo === "concluido") assertEquals(r.mp_refund_id, "7001");
+});
+
+Deno.test("B1-e - o id da linha aparece VIVO (in_process): ZERO POST, aguarda", async () => {
+  const mp = mpGuardiao([{
+    status: 200,
+    corpo: { id: 1, status: "approved", transaction_amount_refunded: 0, refunds: [{ id: 7001, status: "in_process", amount: 50 }] },
+  }], { postProibido: true });
+  const r = await executar(linhaComIdDoMp(), mp.f);
+  assertEquals(mp.violacoes, []);
+  assertEquals(r.tipo, "tentar_depois");
+});
+
+Deno.test("B1-f - pedido PIX (order): linha com id REF1 e a order sem nenhum reembolso listado: ZERO POST", async () => {
+  const pedido = pedidoPayments({ gateway_payment_id: ORDER });
+  const mp = mpGuardiao([{
+    status: 200,
+    corpo: {
+      id: ORDER,
+      status: "processed",
+      status_detail: "accredited",
+      transactions: { payments: [{ id: "PAY01XYZEXEMPLODETRANSA1", status: "processed" }], refunds: [] },
+    },
+  }], { postProibido: true });
+  const r = await executar(linhaComIdDoMp({ mp_refund_id: "REF1" }), mp.f, { pedido });
+  assertEquals(mp.violacoes, []);
+  assertEquals(r.tipo, "tentar_depois");
+});
+
+Deno.test("B1-g - o id da linha consta também como de OUTRA linha do pedido (contradição): ZERO POST", async () => {
+  const mp = mpGuardiao([{
+    status: 200,
+    corpo: { id: 1, status: "approved", transaction_amount_refunded: 0, refunds: [{ id: 7001, status: "rejected", amount: 50 }] },
+  }], { postProibido: true });
+  const r = await executar(linhaComIdDoMp(), mp.f, { idsJaReivindicados: ["7001"] });
+  assertEquals(mp.violacoes, []);
+  assertEquals(r.tipo, "tentar_depois");
+});
+
+Deno.test("B1-h - consultarReembolsoDoPedido SEM idProprio (os outros chamadores) segue como antes: lista vazia é nao_achou", async () => {
+  const mp = mpGuardiao([{ status: 200, corpo: CONSULTA_NAO_ACHOU }], { postProibido: true });
+  const consulta = await consultarReembolsoDoPedido({
+    buscar: mp.f,
+    token: TOKEN,
+    pedido: pedidoPayments(),
+    valor: 50,
+    idsJaReivindicados: [],
+  });
+  assertEquals(consulta, { resultado: "nao_achou" });
 });
 
 // ---------------------------------------------------------------------------
