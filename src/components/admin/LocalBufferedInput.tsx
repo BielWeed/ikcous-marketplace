@@ -17,6 +17,14 @@ interface LocalBufferedInputProps
   readonly delay?: number;
   readonly validate?: (val: string) => string | null;
   readonly mask?: "phone" | "currency";
+  /**
+   * Só com `mask="currency"`: o zero DIGITADO vira campo vazio. A máscara nunca
+   * deixa o campo vazio sozinha (apagar o "0,05" com backspace dá "0,0", lido
+   * como "00" e mostrado como "0,00"), e onde vazio quer dizer "sem preço
+   * próprio" esse "0,00" virava preço zero. O valor que já veio salvo (prop
+   * `value`) continua sendo mostrado como está, zero inclusive.
+   */
+  readonly zeroVazio?: boolean;
 }
 
 const formatPhone = (val: string, anterior?: string) => {
@@ -64,6 +72,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   className,
   validate,
   mask,
+  zeroVazio = false,
   ...props
 }: LocalBufferedInputProps) {
   const formatValue = useCallback(
@@ -125,6 +134,10 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     } else if (mask === "currency") {
       val = formatCurrency(val);
       rawVal = parseCurrencyToFloatString(val);
+      if (zeroVazio && Number.parseFloat(rawVal) === 0) {
+        val = "";
+        rawVal = "";
+      }
     }
 
     setLocalVal(val);

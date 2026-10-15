@@ -15,8 +15,11 @@
  *  - produto SEM preço e só ALGUMAS linhas com preço (ou nenhuma, ou zero):
  *    não se chuta — o produto continua pedindo o Preço de Venda.
  *
- * Preço zero fica como preço próprio da linha (brinde é legítimo, ver
- * `preco-vendido.ts`), mas nunca vira Preço de Venda do produto.
+ * Preço zero que chegue até aqui fica como preço próprio da linha (a cobrança
+ * honra zero, ver `preco-vendido.ts`), mas nunca vira Preço de Venda do
+ * produto. A TELA não deixa o zero chegar: os campos de preço da grade usam
+ * `zeroVazio` (o campo apagado é "Auto", não "0,00") e o botão "Aplicar para
+ * todas" só aplica preço maior que zero (`precoPositivoOuVazio`).
  */
 
 /** Mesma limpeza do preço do modal unitário ("89,90" vira "89.90"): o valor
@@ -45,6 +48,15 @@ export const precoDaLinha = (bruto: string): number | undefined => {
   if (!limpo) return undefined;
   const numero = Number.parseFloat(limpo);
   return Number.isNaN(numero) ? undefined : Math.max(0, numero);
+};
+
+/** O preço que o botão "Aplicar para todas" (e o valor segurado) pode usar:
+ *  número maior que zero, limpo do jeito da grade ("49,90" vira "49.90").
+ *  Zero, vazio e texto sem número viram "" — "0.00" é texto NÃO vazio e, num
+ *  `limparNumero(x) || linha.preco`, zerava todas as linhas. */
+export const precoPositivoOuVazio = (bruto: string): string => {
+  const numero = precoDaLinha(bruto);
+  return numero !== undefined && numero > 0 ? limparNumero(bruto) : "";
 };
 
 export interface PrecoResolvidoDaGrade {
