@@ -608,7 +608,10 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
                         </div>
                       </div>
 
-                      <OrderTimeline status={order.status} />
+                      <OrderTimeline
+                        status={order.status}
+                        retiradaNaLoja={order.retiradaNaLoja === true}
+                      />
 
                       <div className="flex gap-2 pt-2">
                         <Button
