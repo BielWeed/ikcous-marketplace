@@ -25,16 +25,27 @@ interface AddressListProps {
   showMaps?: boolean;
 }
 
-// Query de LOCAL para o Google: rua+número, bairro, cidade, UF, CEP e Brasil.
+// Query de LOCAL para o Google. Endereço completo (rua, cidade e UF):
+// rua+número, cidade, UF e, só se for específico, o CEP no fim. Incompleto:
+// rua+número, bairro, cidade, UF, CEP e Brasil — o que houver, como
+// localizador de reserva.
 // Dados privados — destinatário, complemento, referência e apelido — NUNCA
 // saem para o Google. Sem rua e sem CEP não há como apontar o mapa: devolve
 // null para o cartão nem montar iframe vazio (a query é texto; o Google
 // geocodifica sozinho — nada de coordenada inventada nem precisão prometida).
 //
-// CEP sai da query quando rua, cidade e UF estão completos: em alguns
-// endereços, combinar bairro+CEP leva o embed clássico a uma busca ambígua
-// (POIs da região em vez do pin do endereço). O CEP segue como fallback
-// nos casos incompletos.
+// No endereço completo o bairro e o "Brasil" ficam de fora (medido no embed
+// real): um nome de bairro que lembra nome de comércio faz o Google listar
+// dezenas de comércios (vários pinos) em vez de apontar UM endereço. Sem o
+// bairro o mesmo endereço dá um pino só. O CEP volta no fim apenas quando é
+// de rua (8 dígitos e NÃO terminado em 000): ele desempata rua repetida em
+// cidade grande. CEP geral da cidade (terminado em 000) não localiza nada.
+function cepEspecificoDoEndereco(cep: string | null | undefined) {
+  const digitos = (cep ?? "").replace(/\D/g, "");
+  if (digitos.length !== 8 || digitos.endsWith("000")) return null;
+  return `${digitos.slice(0, 5)}-${digitos.slice(5)}`;
+}
+
 export function queryMapsDoEndereco(address: Address): string | null {
   // Guarda DIRETA em street ou CEP: um número órfão (rua vazia) não monta
   // query — sem um dos dois não há como apontar o mapa.
@@ -44,20 +55,27 @@ export function queryMapsDoEndereco(address: Address): string | null {
     temRua && address.number?.trim()
       ? `${address.street!.trim()}, ${address.number.trim()}`
       : (address.street?.trim() ?? "");
-  // A omissão do CEP exige rua PRESENTE: sem rua, o CEP é o único
-  // localizador e não pode sair.
-  const omitirCep = Boolean(
+  // A simplificação exige rua PRESENTE: sem rua, bairro e CEP são os únicos
+  // localizadores e não podem sair.
+  const enderecoCompleto = Boolean(
     temRua && address.city?.trim() && address.state?.trim(),
   );
-  const partes = [
-    rua,
-    address.neighborhood?.trim(),
-    address.city?.trim(),
-    address.state?.trim(),
-    omitirCep ? null : address.cep?.trim(),
-    "Brasil",
-  ].filter(Boolean);
-  return encodeURIComponent(partes.join(", "));
+  const partes = enderecoCompleto
+    ? [
+        rua,
+        address.city?.trim(),
+        address.state?.trim(),
+        cepEspecificoDoEndereco(address.cep),
+      ]
+    : [
+        rua,
+        address.neighborhood?.trim(),
+        address.city?.trim(),
+        address.state?.trim(),
+        address.cep?.trim(),
+        "Brasil",
+      ];
+  return encodeURIComponent(partes.filter(Boolean).join(", "));
 }
 
 // Apagar endereço pede confirmação (caçada de 14/10/2026, dado de cliente): a lixeira do cartão é pequena e fica
