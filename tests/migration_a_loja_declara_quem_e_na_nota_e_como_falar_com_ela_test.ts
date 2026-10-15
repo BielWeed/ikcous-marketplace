@@ -234,12 +234,13 @@ Deno.test("a view ganha as tres colunas NO FIM por CREATE OR REPLACE (o ACL e as
     "store_legal_document",
     "store_support_email",
   ];
-  for (let i = 1; i < ordem.length; i++) {
+  ordem.slice(1).forEach((nome, i) => {
+    const anterior = ordem.at(i) ?? "";
     assert.ok(
-      view.indexOf(ordem[i]) > view.indexOf(ordem[i - 1]),
-      `${ordem[i]} depois de ${ordem[i - 1]}`,
+      view.indexOf(nome) > view.indexOf(anterior),
+      `${nome} depois de ${anterior}`,
     );
-  }
+  });
   assert.ok(
     view.endsWith("store_support_email FROM store_config"),
     "as tres sao as ULTIMAS",
@@ -344,8 +345,13 @@ Deno.test("o rollback: recusa com dado da loja, encolhe a view por DROP+CREATE+G
 // A entrada VERIFICACOES provada por SABOTAGEM: a MESMA checagem que o db-apply roda contra o banco e' exercitada
 // contra o corpo SEM os CASE (deve FALHAR) e contra o corpo novo (deve VERIFICAR).
 // ---------------------------------------------------------------------------
+// Busca pela lista de pares (sem indexar o objeto por uma chave que vem de variavel).
+function entradaDaVerificacao() {
+  return Object.entries(VERIFICACOES).find(([nome]) => nome === NOME)?.[1];
+}
+
 Deno.test("VERIFICACOES tem entrada para a 20261239000000, e ela reprova o corpo da 99 e verifica o corpo novo", () => {
-  const entrada = VERIFICACOES[NOME];
+  const entrada = entradaDaVerificacao();
   assert.ok(
     entrada !== undefined,
     "sem entrada em VERIFICACOES para a migration",
@@ -359,7 +365,8 @@ Deno.test("VERIFICACOES tem entrada para a 20261239000000, e ela reprova o corpo
 });
 
 Deno.test("SABOTAGEM: cada marcador sozinho derruba a checagem (tirar um dos tres CASE, ou a guarda de admin atual)", () => {
-  const checagem = VERIFICACOES[NOME][0];
+  const checagem = entradaDaVerificacao()?.[0];
+  assert.ok(checagem !== undefined, "sem entrada em VERIFICACOES");
   for (const chave of [
     "store_legal_name",
     "store_legal_document",

@@ -74,9 +74,31 @@ describe("formatarDocumento — máscara para mostrar", () => {
 });
 
 describe("emailDeAtendimentoValido", () => {
-  it.each(["atendimento@loja.com.br", "a@b.co", "oi+loja@dominio.com"])(
-    "aceita %s",
-    (e) => expect(emailDeAtendimentoValido(e)).toBe(true),
+  it.each([
+    "atendimento@loja.com.br",
+    "a@b.co",
+    "oi+loja@dominio.com",
+    "Atendimento@Loja.COM.br",
+    "joão.silva@loja.com.br",
+    "nome_sobrenome-1@sub.dominio.com",
+  ])("aceita %s (maiúscula, acento e sinal de mais continuam valendo)", (e) =>
+    expect(emailDeAtendimentoValido(e)).toBe(true),
+  );
+  it.each([
+    "<script>alert(1)</script>@x.io",
+    "<b>@x.io",
+    "x@y.z?subject=oi",
+    "x@y.com?cc=a@b.com",
+    "x@y.z&bcc=a",
+    "x@y.z#topo",
+    'x"y@z.com',
+    "x'y@z.com",
+    "x@y.z>",
+    "a@b@c.com",
+    "a b@c.com",
+    "a@b .com",
+  ])("recusa %j (forma que não é de um e-mail comum)", (e) =>
+    expect(emailDeAtendimentoValido(e)).toBe(false),
   );
   it("o limite é 254 caracteres, o mesmo da CHECK do banco", () => {
     expect(emailDeAtendimentoValido(`${"a".repeat(248)}@b.com`)).toBe(true);
@@ -167,6 +189,18 @@ describe("identidadeLegalParaGravar — o que vai ao banco", () => {
     });
     expect(r.valido).toBe(false);
     if (!r.valido) expect(r.erros.email).toMatch(/e-mail/i);
+  });
+
+  it("e-mail com cara de link ou de código NÃO grava, com o mesmo aviso simples", () => {
+    for (const email of ["x@y.z?subject=oi", "<b>@x.io"]) {
+      const r = identidadeLegalParaGravar({
+        razaoSocial: "",
+        documento: "",
+        email,
+      });
+      expect(r.valido).toBe(false);
+      if (!r.valido) expect(r.erros.email).toMatch(/nome@dominio\.com/);
+    }
   });
 
   it("razão social comprida demais NÃO grava (limite do banco: 200)", () => {
@@ -265,6 +299,12 @@ describe("identidadeLegalDaLoja — o que a vitrine lê do config", () => {
     expect(
       identidadeLegalDaLoja({ storeSupportEmail: "lixo", storeLegalName: "L" }),
     ).toMatchObject({ email: null });
+    // nem o que tem cara de código ou de link (passa na CHECK do banco, não aqui)
+    for (const lixo of ["<script>x</script>@x.io", "x@y.z?subject=oi"]) {
+      expect(
+        identidadeLegalDaLoja({ storeSupportEmail: lixo, storeLegalName: "L" }),
+      ).toMatchObject({ email: null });
+    }
   });
 });
 

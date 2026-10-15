@@ -37,8 +37,13 @@ const LIMITE_DA_RAZAO_SOCIAL = 200;
 /** Limite de um e-mail (RFC 5321). Também é a CHECK do banco. */
 const LIMITE_DO_EMAIL = 254;
 
-// Mesma forma da CHECK do banco: um @, nada de espaço, um ponto no domínio.
-const FORMA_DO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// A forma da CHECK do banco (um @, nada de espaço, um ponto no domínio) MAIS o
+// aperto do app: o e-mail vira link `mailto:` e texto na tela, então nada de
+// `<`, `>`, `?`, `&`, `#` nem aspas — que não existem em e-mail de loja e abrem
+// caminho para código ou para parâmetros de link (`x@y.z?subject=…`). Maiúscula,
+// acento e `+` seguem valendo. O banco continua mais largo de propósito: só o
+// app decide o que mostrar, e o que não passa aqui simplesmente não aparece.
+const FORMA_DO_EMAIL = /^[^\s@<>?&#"'`]+@[^\s@<>?&#"'`]+\.[^\s@<>?&#"'`]+$/;
 
 /** Só letras e números, em maiúsculas: tira máscara, espaço e pontuação. */
 function limparDocumento(valor: string | null | undefined): string {
