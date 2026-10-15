@@ -1,4 +1,5 @@
 import { ChipDeVariacao } from "@/components/admin/crm/ChipDeVariacao";
+import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   formatarInteiro,
   formatarMoeda,
@@ -95,6 +96,9 @@ export function HojeNaLoja({
   carregando,
 }: Readonly<{ hoje: PainelInicio["hoje"] | null; carregando: boolean }>) {
   const pedidos = hoje?.pedidos ?? null;
+  // A data acompanha o relógio: o Início fica aberto (ou congelado em segundo
+  // plano) de um dia para o outro, e "Hoje" não pode ficar preso em ontem.
+  const dia = useDiaDeSaoPaulo();
   return (
     <section
       aria-labelledby="inicio-hoje-titulo"
@@ -110,7 +114,7 @@ export function HojeNaLoja({
           Hoje
         </h2>
         <p className="truncate text-[11px] capitalize text-zinc-400">
-          {DIA_DE_HOJE.format(new Date())}
+          {DIA_DE_HOJE.format(instanteDoDia(dia))}
         </p>
       </div>
 
