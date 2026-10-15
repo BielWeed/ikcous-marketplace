@@ -768,6 +768,10 @@ export function AdminLayout({
       className="flex size-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-50 lg:flex-row"
       style={
         {
+          // iPhone instalado: o app desenha por baixo da barra de status/notch
+          // (`black-translucent`); sem esta folga o cabeçalho do painel ficava
+          // por baixo dela. Vale 0 fora disso.
+          paddingTop: "var(--safe-area-top)",
           "--admin-tab-pb": isStandalone
             ? "calc(6.25rem + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
             : `calc(6.25rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))`,

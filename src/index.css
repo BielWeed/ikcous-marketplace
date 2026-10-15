@@ -1287,6 +1287,25 @@ body.admin-modal-open .active-scroll-container {
   }
 }
 
+/* App instalado no iPhone: a barra de status é `black-translucent` (o app
+   desenha por baixo dela) e o texto dela é SEMPRE branco. O cabeçalho do
+   cliente é branco: hora e bateria sumiam. Esta faixa preta tem exatamente a
+   altura da barra (`safe-area-inset-top` vale 0 no navegador, no Android e no
+   iPhone deitado — aí a faixa tem altura zero e não aparece). */
+@media (display-mode: standalone) {
+  html::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top, 0);
+    background: #000;
+    pointer-events: none;
+    z-index: 2147483647;
+  }
+}
+
 /* Top Anchored Toast Notification System */
 [data-sonner-toaster][data-position^="top"] {
   top: calc(var(--safe-area-top, 0px) + 64px) !important;
