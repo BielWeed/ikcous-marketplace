@@ -12434,8 +12434,14 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
       yaml.indexOf(`\n          - ${NOME_42M}\n`, i) > i,
       `falta a opcao ${NOME_42M} no workflow`,
     );
-    const runbook = await Deno.readTextFile(`${RAIZ}/docs/runbooks/producao-unica-fonte.md`);
-    assertStringIncludes(runbook, `**\`${NOME_42M}\`**`, "a 42m saiu do runbook");
+    const runbook = await Deno.readTextFile(
+      `${RAIZ}/docs/runbooks/producao-unica-fonte.md`,
+    );
+    assertStringIncludes(
+      runbook,
+      `**\`${NOME_42M}\`**`,
+      "a 42m saiu do runbook",
+    );
   });
   await t.step(
     "um statement, comeca por WITH, sem palavra de escrita e sem SQL dinamico",
@@ -12506,8 +12512,9 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
         "categorias",
         "r",
       ]);
-      const alvos = [...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi)]
-        .map((m) => m[1].toLowerCase());
+      const alvos = [
+        ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+      ].map((m) => m[1].toLowerCase());
       assert(alvos.length > 0);
       for (const a of alvos)
         assert(permitidos.has(a), `a 42m le ${a}, fora da lista do permitido`);
@@ -12523,18 +12530,33 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
   await t.step(
     "controle de RLS como a 35m: quem leu, BYPASSRLS e se a RLS vale em CADA tabela lida; e se order_refund_prova ja existe",
     () => {
-      assertStringIncludes(limpo, "'superusuario=' || (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)::text");
-      assertStringIncludes(limpo, "'|bypassrls=' || (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user)::text");
+      assertStringIncludes(
+        limpo,
+        "'superusuario=' || (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)::text",
+      );
+      assertStringIncludes(
+        limpo,
+        "'|bypassrls=' || (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user)::text",
+      );
       for (const tabela of [
         "marketplace_orders",
         "order_refunds",
         "order_refund_diagnostico",
         "devolucoes",
       ]) {
-        assertStringIncludes(limpo, `'|rls_vale_em_${tabela}=' || (SELECT (c.relrowsecurity AND NOT COALESCE(a.rolbypassrls, false) AND NOT COALESCE(a.rolsuper, false))::text`);
-        assertStringIncludes(limpo, `WHERE c.oid = 'public.${tabela}'::regclass AND a.rolname = current_user)`);
+        assertStringIncludes(
+          limpo,
+          `'|rls_vale_em_${tabela}=' || (SELECT (c.relrowsecurity AND NOT COALESCE(a.rolbypassrls, false) AND NOT COALESCE(a.rolsuper, false))::text`,
+        );
+        assertStringIncludes(
+          limpo,
+          `WHERE c.oid = 'public.${tabela}'::regclass AND a.rolname = current_user)`,
+        );
       }
-      assertStringIncludes(limpo, "to_regclass('public.order_refund_prova') IS NOT NULL");
+      assertStringIncludes(
+        limpo,
+        "to_regclass('public.order_refund_prova') IS NOT NULL",
+      );
       assertStringIncludes(
         limpo,
         "count(*) FILTER (WHERE pode_ter_saido = (categoria LIKE 'passo3%' OR categoria LIKE 'passo4%'))",
@@ -12558,7 +12580,10 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
         assert(i > ultimo, `o passo "${p}" saiu do cabecalho ou da ordem`);
         ultimo = i;
       }
-      assertStringIncludes(cab, "O passo (2) e IGNORADO aqui: a tabela `order_refund_prova` ainda nao existe");
+      assertStringIncludes(
+        cab,
+        "O passo (2) e IGNORADO aqui: a tabela `order_refund_prova` ainda nao existe",
+      );
       assertStringIncludes(
         normal(limpo),
         normal(`CASE
@@ -12584,7 +12609,9 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
       const estorno = await Deno.readTextFile(
         `${RAIZ}/supabase/functions/_shared/estorno.ts`,
       );
-      const m = estorno.match(/const CODIGOS_NADA_SAIU = new Set\(\[([\s\S]*?)\]\);/);
+      const m = estorno.match(
+        /const CODIGOS_NADA_SAIU = new Set\(\[([\s\S]*?)\]\);/,
+      );
       assert(m, "nao achei CODIGOS_NADA_SAIU em estorno.ts");
       const doTs = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).sort();
       assertEquals(doTs, [...LISTA_NADA_SAIU].sort());
@@ -12592,40 +12619,81 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
         `${MIGRATIONS_DIR}/20261226000000_a_reemissao_do_reembolso_consulta_o_mercado_pago_antes_de_pagar_de_novo.sql`,
       );
       const listaSql = `IN (${LISTA_NADA_SAIU.map((c) => `'${c}'`).join(", ")})`;
-      const vSemPost = mig.slice(mig.indexOf("v_sem_post := "), mig.indexOf("IF v_sem_post THEN"));
+      const vSemPost = mig.slice(
+        mig.indexOf("v_sem_post := "),
+        mig.indexOf("IF v_sem_post THEN"),
+      );
       assertStringIncludes(vSemPost, `v_diag.mp_codigo ${listaSql}`);
       // as duas aparicoes na 42m (o CASE da regra e a marca codigo_na_lista) usam a lista inteira, nada a mais
       assertEquals(limpo.split(`mp_codigo ${listaSql}`).length - 1, 2);
-      assertEquals(limpo.split("mp_codigo").length - 1, 2, "mp_codigo so aparece nos dois testes de lista");
+      assertEquals(
+        limpo.split("mp_codigo").length - 1,
+        2,
+        "mp_codigo so aparece nos dois testes de lista",
+      );
     },
   );
   await t.step(
     "a conta do saldo e a de pedido__saldo_a_estornar (20261198000000) e a de autorizar_post_do_estorno (20261196000000)",
     async () => {
-      const m98 = normal(await Deno.readTextFile(
-        `${MIGRATIONS_DIR}/20261198000000_cancelar_pedido_anula_a_cobranca.sql`,
-      ));
+      const m98 = normal(
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261198000000_cancelar_pedido_anula_a_cobranca.sql`,
+        ),
+      );
       // a migration (alias r.) e a 42m (alias l.) descontam as MESMAS linhas
-      assertStringIncludes(m98, "AND (r.status IN ('solicitado', 'em_processamento') OR (r.status = 'concluido' AND r.concluido_em IS NULL))), 0)");
-      assertStringIncludes(normal(limpo), "AND (l.status IN ('solicitado', 'em_processamento') OR (l.status = 'concluido' AND l.concluido_em IS NULL))), 0)");
-      assertStringIncludes(m98, "WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0)");
-      assertStringIncludes(normal(limpo), "WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0) AS manual");
+      assertStringIncludes(
+        m98,
+        "AND (r.status IN ('solicitado', 'em_processamento') OR (r.status = 'concluido' AND r.concluido_em IS NULL))), 0)",
+      );
+      assertStringIncludes(
+        normal(limpo),
+        "AND (l.status IN ('solicitado', 'em_processamento') OR (l.status = 'concluido' AND l.concluido_em IS NULL))), 0)",
+      );
+      assertStringIncludes(
+        m98,
+        "WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0)",
+      );
+      assertStringIncludes(
+        normal(limpo),
+        "WHERE d.order_id = o.id AND d.status = 'concluida' AND d.reembolso_manual), 0) AS manual",
+      );
       // em duvida = falhou/recusado com a regra verdadeira
-      assertStringIncludes(normal(limpo), "AND l.status IN ('falhou', 'recusado') AND l.pode_ter_saido), 0) AS em_duvida");
-      const m96 = normal(await Deno.readTextFile(
-        `${MIGRATIONS_DIR}/20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql`,
-      ));
-      assertStringIncludes(m96, "AND id <> v_linha.id AND status IN ('solicitado', 'em_processamento'); v_disponivel := v_total - v_estornado - v_em_voo_outras;");
-      assertStringIncludes(normal(limpo), "AND o2.linha <> l.linha AND o2.status IN ('solicitado', 'em_processamento')), 0) AS disp_hoje");
+      assertStringIncludes(
+        normal(limpo),
+        "AND l.status IN ('falhou', 'recusado') AND l.pode_ter_saido), 0) AS em_duvida",
+      );
+      const m96 = normal(
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql`,
+        ),
+      );
+      assertStringIncludes(
+        m96,
+        "AND id <> v_linha.id AND status IN ('solicitado', 'em_processamento'); v_disponivel := v_total - v_estornado - v_em_voo_outras;",
+      );
+      assertStringIncludes(
+        normal(limpo),
+        "AND o2.linha <> l.linha AND o2.status IN ('solicitado', 'em_processamento')), 0) AS disp_hoje",
+      );
       assertStringIncludes(normal(limpo), "AND l.solicitado_por <> 'sistema'");
     },
   );
   await t.step(
     "travadas: em_processamento com tentativas >= 5, idade desde COALESCE(post_autorizado_em, created_at), 3 e 7 dias",
     () => {
-      assertStringIncludes(limpo, "l.status = 'em_processamento' AND l.tentativas >= 5");
-      assertStringIncludes(limpo, "now() - COALESCE(l.post_autorizado_em, l.created_at) >= interval '3 days'");
-      assertStringIncludes(limpo, "now() - COALESCE(l.post_autorizado_em, l.created_at) >= interval '7 days'");
+      assertStringIncludes(
+        limpo,
+        "l.status = 'em_processamento' AND l.tentativas >= 5",
+      );
+      assertStringIncludes(
+        limpo,
+        "now() - COALESCE(l.post_autorizado_em, l.created_at) >= interval '3 days'",
+      );
+      assertStringIncludes(
+        limpo,
+        "now() - COALESCE(l.post_autorizado_em, l.created_at) >= interval '7 days'",
+      );
     },
   );
   await t.step(
@@ -12637,12 +12705,24 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
         ),
         "a 42m toca coluna de pessoa, texto livre ou dado do MP",
       );
-      assert(!/\bd\.detalhe\b/.test(semTexto), "a 42m le o texto livre da devolucao");
-      const semTesteDeId = semTexto.replace(/\br\.mp_refund_id IS NOT NULL\b/g, "");
-      assert(!/\bmp_refund_id\b/.test(semTesteDeId), "mp_refund_id aparece fora do teste IS NOT NULL");
+      assert(
+        !/\bd\.detalhe\b/.test(semTexto),
+        "a 42m le o texto livre da devolucao",
+      );
+      const semTesteDeId = semTexto.replace(
+        /\br\.mp_refund_id IS NOT NULL\b/g,
+        "",
+      );
+      assert(
+        !/\bmp_refund_id\b/.test(semTesteDeId),
+        "mp_refund_id aparece fora do teste IS NOT NULL",
+      );
       const blocoR = semTexto.slice(semTexto.indexOf("), r AS ("));
       assert(blocoR.length > 100, "nao achei o bloco final `r`");
-      const semContagem = blocoR.replace(/count\((?:DISTINCT )?\w+\.(?:pedido|linha)\)/g, "count()");
+      const semContagem = blocoR.replace(
+        /count\((?:DISTINCT )?\w+\.(?:pedido|linha)\)/g,
+        "count()",
+      );
       assert(
         !/\b\w+\.(?:pedido|linha)\b/.test(semContagem),
         "id de pedido ou de linha aparece na saida fora de count()",
@@ -12653,15 +12733,36 @@ Deno.test(`${NOME_42M} — no menu, UM SELECT so leitura de rol aberto, regra "p
     "legado, dobro e manual: as tres contagens pedidas pelo coordenador, com a regra de cada uma no texto",
     () => {
       // regra do LEGADO de linhaPodeJaTerChegadoAoMp (estorno.ts) e quantas delas o v_sem_post chama de "nada saiu"
-      assertStringIncludes(limpo, "(r.criada_sob_autorizacao IS NOT TRUE AND r.tentativas > 1) AS legado_tentativas");
-      assertStringIncludes(limpo, "FILTER (WHERE m.legado_tentativas AND NOT m.pode_ter_saido)");
+      assertStringIncludes(
+        limpo,
+        "(r.criada_sob_autorizacao IS NOT TRUE AND r.tentativas > 1) AS legado_tentativas",
+      );
+      assertStringIncludes(
+        limpo,
+        "FILTER (WHERE m.legado_tentativas AND NOT m.pode_ter_saido)",
+      );
       // o restante do pedido: total - valor_estornado - manual; dobro so quando o valor e MENOR que ele
-      assertStringIncludes(limpo, "p.total - p.estornado - p.manual AS restante");
-      assertStringIncludes(limpo, "FILTER (WHERE m.pode_ter_saido AND m.amount < m.restante)");
+      assertStringIncludes(
+        limpo,
+        "p.total - p.estornado - p.manual AS restante",
+      );
+      assertStringIncludes(
+        limpo,
+        "FILTER (WHERE m.pode_ter_saido AND m.amount < m.restante)",
+      );
       // reembolso manual registrado: "Ja estornei" (pedido) ou "por fora" (devolucao, qualquer status)
-      assertStringIncludes(limpo, "(o.estorno_manual_registrado_em IS NOT NULL) AS ja_estornei");
-      assertStringIncludes(normal(limpo), "WHERE d2.order_id = o.id AND d2.reembolso_manual) AS por_fora");
-      assertStringIncludes(limpo, "FILTER (WHERE m.pode_ter_saido AND (m.ja_estornei OR m.por_fora))");
+      assertStringIncludes(
+        limpo,
+        "(o.estorno_manual_registrado_em IS NOT NULL) AS ja_estornei",
+      );
+      assertStringIncludes(
+        normal(limpo),
+        "WHERE d2.order_id = o.id AND d2.reembolso_manual) AS por_fora",
+      );
+      assertStringIncludes(
+        limpo,
+        "FILTER (WHERE m.pode_ter_saido AND (m.ja_estornei OR m.por_fora))",
+      );
       const ts = sql.slice(0, sql.indexOf("WITH ped AS"));
       assertStringIncludes(ts, "linhaPodeJaTerChegadoAoMp");
     },
