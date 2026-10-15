@@ -97,6 +97,45 @@ export function confirmouPorForaAposEspera(valor: string): boolean {
   return digitado?.trim() === FRASE_DE_CONFIRMACAO_POR_FORA;
 }
 
+const MUDOU_SEM_GRAVAR = "O reembolso mudou. Os dados foram atualizados.";
+
+/** Aviso de cada recusa das saídas dos 7 dias (nada foi gravado). */
+const RECUSAS_DA_SAIDA: ReadonlyMap<unknown, string> = new Map([
+  [
+    "aguarde",
+    "Ainda não passaram 7 dias do último pedido ao Mercado Pago. Nada foi registrado.",
+  ],
+  [
+    "sem_espera",
+    "Nada saiu por este reembolso: use o botão de sempre, sem esperar. Nada foi registrado.",
+  ],
+  [
+    "em_andamento",
+    "O reembolso ainda está em andamento no Mercado Pago. Nada foi registrado.",
+  ],
+]);
+
+/**
+ * Lê o retorno das duas saídas dos 7 dias (migration 20261241). Quando o
+ * servidor RECUSA (antes dos 7 dias, linha em que nada saiu, linha que mudou,
+ * já resolvida...), ele NÃO dá erro: devolve `{resultado, detalhe}` em jsonb.
+ * Só `combinado` (devolução) e `registrado` (pedido cancelado) gravaram a
+ * saída; qualquer outro `resultado`, ou forma inesperada, = nada gravado, e a
+ * tela não pode dizer "registrado".
+ */
+export function lerSaidaAposEspera(
+  v: unknown,
+): { gravou: true } | { gravou: false; aviso: string } {
+  const resultado = ehObjeto(v) ? v.resultado : undefined;
+  if (resultado === "combinado" || resultado === "registrado") {
+    return { gravou: true };
+  }
+  return {
+    gravou: false,
+    aviso: RECUSAS_DA_SAIDA.get(resultado) ?? MUDOU_SEM_GRAVAR,
+  };
+}
+
 type StatusDaLinha =
   | "solicitado"
   | "em_processamento"

@@ -9,6 +9,7 @@ import {
   type ReembolsosESaldo,
   chamarRpcDoR1,
   lerReembolsosESaldo,
+  lerSaidaAposEspera,
   parametrosPorForaAposEspera,
 } from "@/lib/reembolso-em-duvida";
 import { supabase } from "@/lib/supabase";
@@ -276,7 +277,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
       setEnviando(true);
       const numero = numeroDoPedido(orderId);
       try {
-        const { error } = await chamarRpcDoR1(
+        const { data, error } = await chamarRpcDoR1(
           supabase,
           RPC_DO_REEMBOLSO_R1.porForaAposEsperaDoPedido,
           parametrosPorForaAposEspera.pedido(orderId, refundId),
@@ -284,6 +285,13 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
         if (error) {
           // A RPC fala com o leigo (mensagem da migration).
           toast.error(`Devolução do pedido #${numero}: ${error.message}`);
+          await carregar();
+          return false;
+        }
+        // Recusa do servidor vem SEM erro (`resultado` no jsonb).
+        const saida = lerSaidaAposEspera(data);
+        if (!saida.gravou) {
+          toast.info(`Pedido #${numero}: ${saida.aviso}`);
           await carregar();
           return false;
         }

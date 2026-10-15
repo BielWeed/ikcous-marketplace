@@ -17,6 +17,7 @@ import {
   chamarRpcDoR1,
   confirmouPorForaAposEspera,
   lerReembolsosESaldo,
+  lerSaidaAposEspera,
   parametrosPorForaAposEspera,
 } from "@/lib/reembolso-em-duvida";
 import { supabase } from "@/lib/supabase";
@@ -212,12 +213,18 @@ export function ReembolsoDaDevolucao({
   const porForaAposEspera7 = () =>
     confirmouPorForaAposEspera(valor) &&
     executar(async () => {
-      const { error } = await chamarRpcDoR1(
+      const { data, error } = await chamarRpcDoR1(
         supabase,
         RPC_DO_REEMBOLSO_R1.porForaAposEsperaDaDevolucao,
         parametrosPorForaAposEspera.devolucao(id, linha.id),
       );
       if (error) throw error;
+      // Recusa do servidor vem SEM erro (`resultado` no jsonb).
+      const saida = lerSaidaAposEspera(data);
+      if (!saida.gravou) {
+        toast.info(saida.aviso);
+        return false;
+      }
       toast.warning(`Registrado como devolvido por fora. ${AVISO_DE_DOBRO}`);
       return true;
     });

@@ -13,7 +13,11 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { instrucaoParaOCliente, lerDevolucaoDetalhe } from "@/lib/devolucao";
-import { acoesDaLinha, lerReembolsosESaldo } from "@/lib/reembolso-em-duvida";
+import {
+  acoesDaLinha,
+  lerReembolsosESaldo,
+  lerSaidaAposEspera,
+} from "@/lib/reembolso-em-duvida";
 import type { DevolucaoDetalhe } from "@/types/devolucao";
 
 // ---------------------------------------------------------------------------
@@ -273,6 +277,38 @@ describe("regras puras do contrato R1", () => {
     expect(lerReembolsosESaldo({ ...ok, em_duvida: null })).toBeNull();
     expect(lerReembolsosESaldo(null)).toBeNull();
   });
+
+  it("lerSaidaAposEspera: só 'combinado'/'registrado' gravou; recusa sem erro nunca vira 'registrado'", () => {
+    // Os dois sucessos reais das RPCs da migration 20261241.
+    expect(
+      lerSaidaAposEspera({ resultado: "combinado", risco_de_dobro: true }),
+    ).toEqual({ gravou: true });
+    expect(
+      lerSaidaAposEspera({ resultado: "registrado", risco_de_dobro: true }),
+    ).toEqual({ gravou: true });
+    // Recusas que o servidor devolve SEM erro.
+    for (const resultado of [
+      "aguarde",
+      "sem_espera",
+      "em_andamento",
+      "ja_concluido",
+      "reembolso_mudou",
+    ]) {
+      expect(lerSaidaAposEspera({ resultado }).gravou).toBe(false);
+    }
+    const aguarde = lerSaidaAposEspera({ resultado: "aguarde" });
+    expect(!aguarde.gravou && aguarde.aviso).toContain(
+      "Ainda não passaram 7 dias",
+    );
+    // Forma inesperada (ou chave do protótipo) também é "nada gravado".
+    for (const v of [null, undefined, "ok", {}, { resultado: "toString" }]) {
+      const s = lerSaidaAposEspera(v);
+      expect(s).toEqual({
+        gravou: false,
+        aviso: "O reembolso mudou. Os dados foram atualizados.",
+      });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -356,6 +392,16 @@ describe("ReembolsoDaDevolucao — o painel ganha os botões que o servidor já 
     });
     await montarBloco();
 
+    // Retorno REAL de admin_devolucao_reembolso_por_fora_apos_espera (20261241).
+    RESPOSTA_ACAO = {
+      data: {
+        resultado: "combinado",
+        detalhe: "apos_espera",
+        risco_de_dobro: true,
+        refund_id: "refund-1",
+      },
+      error: null,
+    };
     expect(botao("Tentar de novo")).toBeUndefined();
     const promptMock = vi.fn().mockReturnValue("outra coisa");
     vi.stubGlobal("prompt", promptMock);
@@ -379,6 +425,37 @@ describe("ReembolsoDaDevolucao — o painel ganha os botões que o servidor já 
     ]);
     // Nenhum pedido ao Mercado Pago na saída por fora.
     expect(CHAMADAS.some((c) => c.tipo === "invoke")).toBe(false);
+    expect(toastMock.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Registrado como devolvido por fora."),
+    );
+  });
+
+  it("D4c: servidor RECUSA a saída dos 7 dias sem erro (`resultado: aguarde`) — a tela não diz 'registrado'", async () => {
+    LINHA_DO_SALDO = linha({
+      pode_ter_saido: true,
+      por_fora_apos_espera_liberado: true,
+    });
+    RESPOSTA_ACAO = {
+      data: {
+        resultado: "aguarde",
+        detalhe: "antes_de_7_dias",
+        refund_id: "refund-1",
+        liberado_a_partir_de: "2026-10-22T10:00:00Z",
+      },
+      error: null,
+    };
+    await montarBloco();
+    vi.stubGlobal("prompt", vi.fn().mockReturnValue("DEVOLVI POR FORA"));
+
+    await clicar(botao("Já devolvi por fora (depois de 7 dias)"));
+
+    expect(CHAMADAS).toHaveLength(1);
+    expect(toastMock.warning).not.toHaveBeenCalled();
+    expect(toastMock.info).toHaveBeenCalledWith(
+      expect.stringContaining("Ainda não passaram 7 dias"),
+    );
+    // A ficha relê mesmo na recusa.
+    expect(aoMudar).toHaveBeenCalled();
   });
 
   it("D4b: booleano do servidor false — sem saída dos 7 dias; marca de uso preenchida — só 'já registrado'", async () => {

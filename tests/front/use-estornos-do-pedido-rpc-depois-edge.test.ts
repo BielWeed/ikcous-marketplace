@@ -401,6 +401,17 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
   });
 
   it("R1: saída dos 7 dias chama a RPC com a frase fixa e a linha esperada", async () => {
+    // Retorno REAL de registrar_estorno_manual_apos_espera (migration 20261241).
+    RESPOSTA_RPC = {
+      data: {
+        resultado: "registrado",
+        detalhe: "apos_espera",
+        risco_de_dobro: true,
+        payment_status: "estornado",
+        refund_id: "refund-9",
+      },
+      error: null,
+    };
     const { atual } = await montarSonda();
 
     let ok = false;
@@ -428,6 +439,35 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(CHAMADAS.some((c) => c.tipo === "invoke")).toBe(false);
     expect(toastMock.warning).toHaveBeenCalledWith(
       expect.stringContaining("o cliente recebe em dobro"),
+    );
+  });
+
+  it("R1: saída dos 7 dias RECUSADA pelo servidor (sem erro, `resultado: aguarde`) não diz 'registrado'", async () => {
+    // O servidor recusa devolvendo jsonb, NÃO erro (migration 20261241).
+    RESPOSTA_RPC = {
+      data: {
+        resultado: "aguarde",
+        detalhe: "antes_de_7_dias",
+        refund_id: "refund-9",
+        liberado_a_partir_de: "2026-10-22T10:00:00Z",
+      },
+      error: null,
+    };
+    const { atual } = await montarSonda();
+
+    let ok = true;
+    await act(async () => {
+      ok = await (
+        atual() as unknown as {
+          registrarPorForaAposEspera: (id: string) => Promise<boolean>;
+        }
+      ).registrarPorForaAposEspera("refund-9");
+    });
+
+    expect(ok).toBe(false);
+    expect(toastMock.warning).not.toHaveBeenCalled();
+    expect(toastMock.info).toHaveBeenCalledWith(
+      expect.stringContaining("Ainda não passaram 7 dias"),
     );
   });
 
