@@ -76,29 +76,14 @@ export function DesfazerRecebimento({
       >
         <AlertDialogHeader>
           <AlertDialogTitle className="text-lg font-black tracking-tight text-white">
-            {ehVendaDoBalcao
-              ? "Desfazer o recebimento desta venda?"
-              : "Desfazer o recebimento deste pedido?"}
+            Desfazer o recebimento{" "}
+            {ehVendaDoBalcao ? "desta venda" : "deste pedido"}?
           </AlertDialogTitle>
-          {ehVendaDoBalcao ? (
-            <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
-              Depois de desfazer, esta venda não poderá mais ser anulada e o
-              estoque não volta.
-              {aindaSePodeAnular
-                ? " Para cancelar de verdade, use Anular."
-                : " A venda deixa de constar como recebida."}
-            </AlertDialogDescription>
-          ) : (
-            <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
-              O pagamento volta a ficar em branco. Enquanto isso, o valor sai
-              das vendas, do lucro e do Financeiro, e a cliente não consegue
-              pedir devolução. Ao marcar de novo, a venda conta no dia da nova
-              marcação
-              {order.paymentMethod === "cash"
-                ? " (em dinheiro, no Caixa da loja, se estiver aberto)."
-                : "."}
-            </AlertDialogDescription>
-          )}
+          <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
+            {ehVendaDoBalcao
+              ? `Depois de desfazer, esta venda não poderá mais ser anulada e o estoque não volta.${aindaSePodeAnular ? " Para cancelar de verdade, use Anular." : " A venda deixa de constar como recebida."}`
+              : "O valor sai das vendas, do lucro e do Financeiro, e a cliente não consegue pedir devolução."}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="mt-2 gap-2">
           {/* O Radix põe o foco no "Cancel" ao abrir: a ação padrão é voltar. */}

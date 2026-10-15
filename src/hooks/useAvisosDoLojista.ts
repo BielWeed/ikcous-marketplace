@@ -9,8 +9,7 @@ import {
 import {
   FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
   TETO_DE_RECEBIMENTOS,
-  inicioDaJanelaDeRecebimento,
-  lerJanelaDeRecebimentoDias,
+  inicioDaJanelaDoSino,
 } from "@/lib/recebimentos-por-marcar";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
@@ -198,15 +197,13 @@ async function buscarCancelamentosDoCliente(): Promise<
 // tambem pela bolinha do sino (`AdminLayout`). Falha de leitura LANCA: vira
 // falha da FONTE, nunca "nenhum pedido por marcar".
 async function buscarRecebimentosPorMarcar(): Promise<RecebimentoPorMarcar[]> {
-  // A janela segue o prazo de devolução da loja; sem configuração, 90 dias.
-  const dias = await lerJanelaDeRecebimentoDias();
   const { data, error } = await supabase
     .from("marketplace_orders")
     .select("id, customer_name, total, updated_at")
     .eq("status", "delivered")
     .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
     .is("payment_status", null)
-    .gte("updated_at", inicioDaJanelaDeRecebimento(Date.now(), dias))
+    .gte("updated_at", await inicioDaJanelaDoSino())
     .order("updated_at", { ascending: false })
     .limit(TETO_DE_RECEBIMENTOS);
 

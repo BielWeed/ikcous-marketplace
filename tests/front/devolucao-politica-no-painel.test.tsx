@@ -169,6 +169,8 @@ describe("PoliticaDeDevolucaoSection", () => {
   });
 
   it("salva pela RPC com os prazos e as categorias sem troca escolhidas", async () => {
+    const recontar = vi.fn();
+    window.addEventListener("admin:recontar-avisos", recontar);
     await montar();
 
     await digitar("politica-arrependimento", "10");
@@ -176,6 +178,8 @@ describe("PoliticaDeDevolucaoSection", () => {
       botao("Moda íntima")?.click();
     });
     expect(onDirtyMudou).toHaveBeenLastCalledWith(true);
+    // Nada de recontar o sino antes de salvar.
+    expect(recontar).not.toHaveBeenCalled();
 
     await act(async () => {
       botao("Salvar política")?.click();
@@ -197,6 +201,9 @@ describe("PoliticaDeDevolucaoSection", () => {
       }),
     );
     expect(toast.success).toHaveBeenCalled();
+    // Salvou: o sino do painel recalcula a janela dos recebimentos por marcar.
+    expect(recontar).toHaveBeenCalledTimes(1);
+    window.removeEventListener("admin:recontar-avisos", recontar);
     expect(botao("Política salva")).toBeTruthy();
     expect(onDirtyMudou).toHaveBeenLastCalledWith(false);
   });

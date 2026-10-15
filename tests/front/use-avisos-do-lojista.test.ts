@@ -27,6 +27,7 @@ import {
   FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
   JANELA_DE_RECEBIMENTO_DIAS,
   TETO_DE_RECEBIMENTOS,
+  inicioDaJanelaDeRecebimento,
 } from "@/lib/recebimentos-por-marcar";
 
 // Reatribuiveis e lidos no momento da consulta: e assim que um caso troca
@@ -740,8 +741,6 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
   });
 
   it("a consulta le SO entregue, nao-online, pagamento em branco, dos ultimos 90 dias (sem configuracao), no maximo 100", async () => {
-    const antes = Date.now();
-
     await montarSonda();
 
     const calls = consultaDeRecebimentos();
@@ -755,10 +754,7 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
     // Janela de 90 dias (a configuracao nao chegou), pela data da entrega.
     const gte = calls?.find((c) => c[0] === "gte");
     expect(gte?.[1]).toBe("updated_at");
-    const desde = Date.parse(String(gte?.[2]));
-    expect(Math.abs(antes - 90 * 24 * 3600 * 1000 - desde)).toBeLessThan(
-      10_000,
-    );
+    expect(gte?.[2]).toBe(inicioDaJanelaDeRecebimento(Date.now(), 90));
     // Teto de 100.
     expect(calls).toContainEqual(["limit", 100]);
   });
@@ -771,39 +767,28 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
     expect(TETO_DE_RECEBIMENTOS).toBe(100);
   });
 
-  /** Quantos dias a consulta de recebimentos olha para tras. */
-  function diasDaJanela(antes: number): number {
-    const gte = consultaDeRecebimentos()?.find((c) => c[0] === "gte");
-    return Math.round((antes - Date.parse(String(gte?.[2]))) / (24 * 3600e3));
+  /** O corte da consulta de recebimentos, para um prazo em dias. */
+  function corteDe(dias: number): string {
+    return inicioDaJanelaDeRecebimento(Date.now(), dias);
   }
+  const corteDaConsulta = () =>
+    consultaDeRecebimentos()?.find((c) => c[0] === "gte")?.[2];
 
   it.each([
-    ["30 (o minimo do banco, troca desligada)", 30, false, 30],
-    ["180", 180, true, 180],
-  ])(
-    "a janela segue o prazo de vicio da loja: %s dias",
-    async (_n, vicio, troca, esperado) => {
-      RESPOSTA_POLITICA = {
-        data: {
-          prazo_arrependimento_dias: 7,
-          prazo_troca_dias: 0,
-          prazo_vicio_dias: vicio,
-          aceita_troca: troca,
-        },
-        error: null,
-      };
-      const antes = Date.now();
+    ["30 (o minimo do banco)", 30],
+    ["180", 180],
+  ])("a janela segue o prazo de vicio da loja: %s dias", async (_n, vicio) => {
+    RESPOSTA_POLITICA = { data: { prazo_vicio_dias: vicio }, error: null };
 
-      const { atual } = await montarSonda();
+    const { atual } = await montarSonda();
 
-      expect(tabelasConsultadas).toContain("politica_devolucao");
-      expect(diasDaJanela(antes)).toBe(esperado);
-      // O teto e o resto da consulta nao mudam.
-      expect(consultaDeRecebimentos()).toContainEqual(["limit", 100]);
-      // Ler a configuracao nao e uma fonte de aviso: nada de "falha".
-      expect(atual().fontesComFalha).toEqual([]);
-    },
-  );
+    expect(tabelasConsultadas).toContain("politica_devolucao");
+    expect(corteDaConsulta()).toBe(corteDe(vicio));
+    // O teto e o resto da consulta nao mudam.
+    expect(consultaDeRecebimentos()).toContainEqual(["limit", 100]);
+    // Ler a configuracao nao e uma fonte de aviso: nada de "falha".
+    expect(atual().fontesComFalha).toEqual([]);
+  });
 
   it.each([
     [
@@ -823,11 +808,10 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
       RESPOSTA_POLITICA = resposta;
       POLITICA_LANCA = lanca;
       RESPOSTA_RECEBIMENTOS = { data: [entregueSemRecebimento()], error: null };
-      const antes = Date.now();
 
       const { atual } = await montarSonda();
 
-      expect(diasDaJanela(antes)).toBe(90);
+      expect(corteDaConsulta()).toBe(corteDe(90));
       expect(atual().avisos.map((a) => a.tipo)).toContain("recebimento");
       expect(atual().fontesComFalha).toEqual([]);
     },

@@ -1,6 +1,4 @@
-import { COLUNAS_DA_POLITICA, lerPolitica } from "@/lib/devolucao";
 import { supabase } from "@/lib/supabase";
-import type { PoliticaDevolucao } from "@/types/devolucao";
 
 /**
  * "Recebimento por marcar" — pedido ENTREGUE, pago na entrega ou na retirada
@@ -63,66 +61,41 @@ export const FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA =
   "payment_method.is.null,payment_method.neq.online";
 
 /**
- * O ISO do começo da janela, a partir de `agora` (injetável para o teste) e do
- * prazo em dias (o da loja; sem ele, o padrão de 90).
+ * O ISO do começo da janela: o INÍCIO do dia de São Paulo que fica `dias` dias
+ * de calendário antes de hoje. É a semântica do servidor
+ * (`devolucao_elegibilidade`, 20261175000000): `v_dias = hoje(SP) - dia da
+ * entrega(SP)` e a devolução vale enquanto `v_dias <= prazo` — ou seja, o dia
+ * limite vale o dia INTEIRO, não 24 h × N contadas do instante de agora.
+ * `agora` é injetável para o teste. O -03:00 é fixo de propósito: o Brasil
+ * não tem horário de verão desde 2019, e o prazo (no máximo 365 dias) nunca
+ * olha para antes disso.
  */
 export function inicioDaJanelaDeRecebimento(
   agora: number = Date.now(),
   dias: number = JANELA_DE_RECEBIMENTO_DIAS,
 ): string {
-  return new Date(agora - dias * 24 * 3600 * 1000).toISOString();
-}
-
-type PrazosDaPolitica = Pick<
-  PoliticaDevolucao,
-  | "prazo_arrependimento_dias"
-  | "prazo_troca_dias"
-  | "prazo_vicio_dias"
-  | "aceita_troca"
->;
-
-const prazoValido = (n: unknown): n is number =>
-  typeof n === "number" && Number.isFinite(n) && n > 0;
-
-/**
- * Quantos dias o sino olha para trás, dado o que a loja configurou: o MAIOR
- * prazo em que a cliente ainda pode pedir (desistir da compra, trocar — se a
- * loja aceita troca — ou reclamar de defeito; `devolucao_elegibilidade`
- * aceita o pedido se qualquer um dos três está no prazo). Sem configuração, ou
- * com número que não presta, usa 90: o aviso nunca encolhe por falha de leitura.
- */
-export function janelaDeRecebimentoDias(
-  politica: PrazosDaPolitica | null | undefined,
-): number {
-  if (!politica) return JANELA_DE_RECEBIMENTO_DIAS;
-  const prazos = [
-    politica.prazo_vicio_dias,
-    politica.prazo_arrependimento_dias,
-    politica.aceita_troca ? politica.prazo_troca_dias : 0,
-  ].filter(prazoValido);
-  return prazos.length > 0 ? Math.max(...prazos) : JANELA_DE_RECEBIMENTO_DIAS;
+  return `${new Date(agora - dias * 86_400_000).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })}T00:00:00-03:00`;
 }
 
 /**
- * Lê, no banco, quantos dias o sino deve olhar para trás: a conta é de
- * `janelaDeRecebimentoDias`, aqui só a leitura de `politica_devolucao` (linha
- * única `id = 1`, as mesmas colunas da tela de Políticas).
- *
- * NUNCA lança e nunca devolve menos que o padrão por falha: erro do banco,
- * linha ausente, resposta torta ou rede caída viram 90 dias. O aviso precisa
- * SOBRAR; ler a configuração não é uma fonte de aviso, então a falha dela não
- * acende o "não consegui conferir" do sino.
+ * O começo da janela do sino, já com o prazo da loja: o prazo de devolução por defeito que a
+ * loja configurou (`politica_devolucao.prazo_vicio_dias`, linha única). NUNCA
+ * lança e nunca devolve menos que o padrão por falha: erro, linha ausente,
+ * número torto ou rede caída viram 90 dias — o aviso precisa SOBRAR, e ler a
+ * configuração não é uma fonte de aviso (a falha dela não acende o "não
+ * consegui conferir" do sino).
  */
-export async function lerJanelaDeRecebimentoDias(): Promise<number> {
+export async function inicioDaJanelaDoSino(): Promise<string> {
+  let dias = JANELA_DE_RECEBIMENTO_DIAS;
   try {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("politica_devolucao")
-      .select(COLUNAS_DA_POLITICA)
+      .select("prazo_vicio_dias")
       .eq("id", 1)
       .maybeSingle();
-    if (error || !data) return JANELA_DE_RECEBIMENTO_DIAS;
-    return janelaDeRecebimentoDias(lerPolitica(data));
+    dias = Number(data?.prazo_vicio_dias) || dias;
   } catch {
-    return JANELA_DE_RECEBIMENTO_DIAS;
+    // Sem configuração: o padrão (90) — o aviso sobra, nunca some.
   }
+  return inicioDaJanelaDeRecebimento(Date.now(), dias);
 }

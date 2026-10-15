@@ -3,212 +3,132 @@
 // tentava devolver, o servidor recusava ("Este pedido não tem pagamento a
 // devolver") e o sino já tinha esquecido o pedido.
 //
-// Aqui a parte pura (a conta da data de corte e a leitura do prazo) e a leitura
-// da configuração no banco, com a regra de ouro: se a configuração não chegou,
-// o prazo é 90 — o aviso tem de SOBRAR, nunca sumir.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// Aqui: a data de corte (semântica do servidor: dia de calendário de São
+// Paulo, `v_dias <= prazo`, migration 20261175000000) e a leitura do prazo,
+// com a regra de ouro: se a configuração não chegou, o prazo é 90 — o aviso
+// tem de SOBRAR, nunca sumir.
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   JANELA_DE_RECEBIMENTO_DIAS,
   inicioDaJanelaDeRecebimento,
-  janelaDeRecebimentoDias,
+  inicioDaJanelaDoSino,
 } from "@/lib/recebimentos-por-marcar";
-import type { PoliticaDevolucao } from "@/types/devolucao";
 
-const DIA = 24 * 3600 * 1000;
-const AGORA = Date.parse("2026-10-15T15:00:00.000Z");
+const { maybeSingleMock, fromMock } = vi.hoisted(() => {
+  const maybeSingleMock = vi.fn();
+  const builder = {
+    select: vi.fn(() => builder),
+    eq: vi.fn(() => builder),
+    maybeSingle: maybeSingleMock,
+  };
+  return { maybeSingleMock, fromMock: vi.fn(() => builder) };
+});
 
-/** Um pedido atualizado há `dias` dias aparece no sino se a data dele passa do corte. */
-function apareceNoSino(diasAtras: number, prazoEmDias?: number): boolean {
+vi.mock("@/lib/supabase", () => ({ supabase: { from: fromMock } }));
+
+/** O pedido entra no sino se a data dele passa do corte. */
+function apareceNoSino(atualizadoEm: string, agora: string, dias?: number) {
   const corte =
-    prazoEmDias === undefined
-      ? inicioDaJanelaDeRecebimento(AGORA)
-      : inicioDaJanelaDeRecebimento(AGORA, prazoEmDias);
-  const atualizadoEm = new Date(AGORA - diasAtras * DIA).toISOString();
-  return atualizadoEm >= corte;
-}
-
-function politica(extra: Partial<PoliticaDevolucao> = {}): PoliticaDevolucao {
-  return {
-    prazo_arrependimento_dias: 7,
-    prazo_troca_dias: 30,
-    prazo_vicio_dias: 90,
-    aceita_troca: true,
-    aceita_vale: true,
-    exige_fotos_vicio: true,
-    metodos_locais: [],
-    metodos_nacionais: [],
-    reembolso_momento: "ao_receber",
-    frete_troca_pago_por: "cliente",
-    categorias_sem_troca: [],
-    texto_politica: "",
-    endereco_devolucao: "",
-    updated_at: "",
-    ...extra,
-  } as PoliticaDevolucao;
+    dias === undefined
+      ? inicioDaJanelaDeRecebimento(Date.parse(agora))
+      : inicioDaJanelaDeRecebimento(Date.parse(agora), dias);
+  return Date.parse(atualizadoEm) >= Date.parse(corte);
 }
 
 describe("a data de corte do sino", () => {
-  it("o padrão é 90 dias (o prazo de vício padrão da loja)", () => {
+  it("o padrão é 90 dias", () => {
     expect(JANELA_DE_RECEBIMENTO_DIAS).toBe(90);
-    expect(inicioDaJanelaDeRecebimento(AGORA)).toBe(
-      new Date(AGORA - 90 * DIA).toISOString(),
-    );
+  });
+
+  it("o corte é o INÍCIO do dia de São Paulo, `dias` dias de calendário atrás", () => {
+    // 15/10/2026 15:00 em São Paulo = 18:00Z.
+    expect(
+      inicioDaJanelaDeRecebimento(Date.parse("2026-10-15T18:00:00Z"), 30),
+    ).toBe("2026-09-15T00:00:00-03:00");
+    expect(
+      inicioDaJanelaDeRecebimento(Date.parse("2026-10-15T18:00:00Z")),
+    ).toBe("2026-07-17T00:00:00-03:00");
   });
 
   it("pedido de 45 dias APARECE com prazo de 90 e NÃO aparece com prazo de 30", () => {
-    expect(apareceNoSino(45, 90)).toBe(true);
-    expect(apareceNoSino(45, 30)).toBe(false);
+    const agora = "2026-10-15T18:00:00Z";
+    const atualizado = "2026-08-31T18:00:00Z"; // 45 dias antes
+    expect(apareceNoSino(atualizado, agora, 90)).toBe(true);
+    expect(apareceNoSino(atualizado, agora, 30)).toBe(false);
+    // Sem prazo informado, vale o padrão de 90.
+    expect(apareceNoSino(atualizado, agora)).toBe(true);
   });
 
-  it("sem prazo informado usa 90: o pedido de 45 dias aparece", () => {
-    expect(apareceNoSino(45)).toBe(true);
-    expect(apareceNoSino(89)).toBe(true);
-    expect(apareceNoSino(91)).toBe(false);
+  it("o dia limite vale o dia INTEIRO: atualizado às 23:00 do dia limite, 'agora' 23:30 do mesmo dia", () => {
+    // Prazo de 30 dias. O servidor aceita `hoje(SP) - dia(SP) <= 30`.
+    // Dia limite = 15/09 (30 dias antes de 15/10). 23:00 em SP = 02:00Z do dia
+    // seguinte; 'agora' = 15/10 23:30 em SP = 16/10 02:30Z.
+    const atualizado = "2026-09-16T02:00:00.000Z";
+    const agora = "2026-10-16T02:30:00Z";
+    expect(apareceNoSino(atualizado, agora, 30)).toBe(true);
   });
 
-  it("o prazo escolhido manda no corte", () => {
-    expect(inicioDaJanelaDeRecebimento(AGORA, 180)).toBe(
-      new Date(AGORA - 180 * DIA).toISOString(),
-    );
+  it("no dia seguinte o mesmo pedido já saiu (o servidor recusa)", () => {
+    const atualizado = "2026-09-16T02:00:00.000Z"; // 15/09 23:00 em SP
+    const agora = "2026-10-17T02:30:00Z"; // 16/10 23:30 em SP
+    expect(apareceNoSino(atualizado, agora, 30)).toBe(false);
+  });
+
+  it("pedido do começo do dia limite (00:00 em SP) também aparece; um minuto antes, não", () => {
+    const agora = "2026-10-15T18:00:00Z";
+    expect(apareceNoSino("2026-09-15T03:00:00.000Z", agora, 30)).toBe(true);
+    expect(apareceNoSino("2026-09-15T02:59:00.000Z", agora, 30)).toBe(false);
+  });
+
+  it("virada de mês e de ano: 15 dias antes de 05/01/2027 é 21/12/2026", () => {
+    expect(
+      inicioDaJanelaDeRecebimento(Date.parse("2027-01-05T15:00:00Z"), 15),
+    ).toBe("2026-12-21T00:00:00-03:00");
   });
 });
 
-describe("o prazo que a loja configurou", () => {
-  it("sem configuração (ainda não carregou ou falhou) usa 90", () => {
-    expect(janelaDeRecebimentoDias(null)).toBe(90);
-    expect(janelaDeRecebimentoDias(undefined)).toBe(90);
-  });
-
-  it("usa o prazo de vício da loja", () => {
-    expect(janelaDeRecebimentoDias(politica({ prazo_vicio_dias: 120 }))).toBe(
-      120,
-    );
-  });
-
-  it("vício curto, troca desligada: segue o vício (o mínimo do banco é 30)", () => {
-    expect(
-      janelaDeRecebimentoDias(
-        politica({ prazo_vicio_dias: 30, aceita_troca: false }),
-      ),
-    ).toBe(30);
-  });
-
-  it("a cliente que ainda pode TROCAR também precisa do aviso: vale o maior prazo", () => {
-    expect(
-      janelaDeRecebimentoDias(
-        politica({ prazo_vicio_dias: 30, prazo_troca_dias: 60 }),
-      ),
-    ).toBe(60);
-  });
-
-  it("troca desligada não alarga a janela", () => {
-    expect(
-      janelaDeRecebimentoDias(
-        politica({
-          prazo_vicio_dias: 30,
-          prazo_troca_dias: 60,
-          aceita_troca: false,
-        }),
-      ),
-    ).toBe(30);
-  });
-
-  it("o prazo de desistir da compra também conta quando é o maior", () => {
-    expect(
-      janelaDeRecebimentoDias(
-        politica({
-          prazo_vicio_dias: 30,
-          prazo_troca_dias: 0,
-          prazo_arrependimento_dias: 45,
-        }),
-      ),
-    ).toBe(45);
-  });
-
-  it("número quebrado na configuração cai no 90, nunca em janela zero", () => {
-    expect(
-      janelaDeRecebimentoDias(
-        politica({
-          prazo_vicio_dias: Number.NaN,
-          prazo_troca_dias: Number.NaN,
-          prazo_arrependimento_dias: Number.NaN,
-        }),
-      ),
-    ).toBe(90);
-    expect(
-      janelaDeRecebimentoDias(
-        politica({
-          prazo_vicio_dias: 0,
-          prazo_troca_dias: 0,
-          prazo_arrependimento_dias: 0,
-        }),
-      ),
-    ).toBe(90);
-  });
-});
-
-describe("a leitura da configuração no banco", () => {
-  const { maybeSingleMock, fromMock } = vi.hoisted(() => {
-    const maybeSingleMock = vi.fn();
-    const builder = {
-      select: vi.fn(() => builder),
-      eq: vi.fn(() => builder),
-      maybeSingle: maybeSingleMock,
-    };
-    return { maybeSingleMock, fromMock: vi.fn(() => builder) };
-  });
-
-  vi.mock("@/lib/supabase", () => ({ supabase: { from: fromMock } }));
-
+describe("a leitura do prazo da loja", () => {
   beforeEach(() => {
     maybeSingleMock.mockReset();
     fromMock.mockClear();
   });
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
 
-  it("lê a linha única de `politica_devolucao` e devolve o prazo da loja", async () => {
-    const { lerJanelaDeRecebimentoDias } = await import(
-      "@/lib/recebimentos-por-marcar"
+  /** Quantos dias o corte devolvido está para trás de hoje (calendário SP). */
+  function diasDoCorte(corte: string): number {
+    const hoje = new Date().toLocaleDateString("sv-SE", {
+      timeZone: "America/Sao_Paulo",
+    });
+    return Math.round(
+      (Date.parse(hoje) - Date.parse(corte.slice(0, 10))) / 86_400_000,
     );
+  }
+
+  it("lê a linha única de `politica_devolucao` e usa o prazo de defeito da loja", async () => {
     maybeSingleMock.mockResolvedValue({
-      data: {
-        prazo_arrependimento_dias: 7,
-        prazo_troca_dias: 30,
-        prazo_vicio_dias: 200,
-        aceita_troca: true,
-      },
+      data: { prazo_vicio_dias: 200 },
       error: null,
     });
 
-    await expect(lerJanelaDeRecebimentoDias()).resolves.toBe(200);
+    expect(diasDoCorte(await inicioDaJanelaDoSino())).toBe(200);
     expect(fromMock).toHaveBeenCalledWith("politica_devolucao");
   });
 
   it.each([
     ["o banco devolve erro", { data: null, error: { message: "caiu" } }],
     ["a linha não existe", { data: null, error: null }],
-    [
-      "a linha vem sem os prazos",
-      { data: { aceita_troca: true }, error: null },
-    ],
+    ["a linha vem sem o prazo", { data: {}, error: null }],
+    ["o prazo vem torto", { data: { prazo_vicio_dias: "x" }, error: null }],
+    ["o prazo vem zerado", { data: { prazo_vicio_dias: 0 }, error: null }],
   ])("%s: usa 90", async (_nome, resposta) => {
-    const { lerJanelaDeRecebimentoDias } = await import(
-      "@/lib/recebimentos-por-marcar"
-    );
     maybeSingleMock.mockResolvedValue(resposta);
 
-    await expect(lerJanelaDeRecebimentoDias()).resolves.toBe(90);
+    expect(diasDoCorte(await inicioDaJanelaDoSino())).toBe(90);
   });
 
   it("a consulta que lança (rede caiu) também usa 90 — e não derruba quem chamou", async () => {
-    const { lerJanelaDeRecebimentoDias } = await import(
-      "@/lib/recebimentos-por-marcar"
-    );
     maybeSingleMock.mockRejectedValue(new Error("rede"));
 
-    await expect(lerJanelaDeRecebimentoDias()).resolves.toBe(90);
+    expect(diasDoCorte(await inicioDaJanelaDoSino())).toBe(90);
   });
 });
