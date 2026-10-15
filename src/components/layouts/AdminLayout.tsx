@@ -18,6 +18,7 @@ import {
   useViewTransition,
 } from "@/hooks/useViewTransition";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
+import { lerJanelaDeRecebimentoDias } from "@/lib/janela-de-recebimento-da-loja";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
@@ -297,6 +298,8 @@ export function AdminLayout({
         // acende o sino. A MESMA regra da lista (`useAvisosDoLojista`), lida
         // de `@/lib/recebimentos-por-marcar` — duas contagens diferentes para
         // a mesma pergunta seria pior que nenhuma.
+        // A janela segue o prazo de devolução da loja (sem configuração, 90).
+        const diasDeRecebimento = await lerJanelaDeRecebimentoDias();
         const { count: recebimentosCount, error: recebimentosErr } =
           await supabase
             .from("marketplace_orders")
@@ -304,7 +307,10 @@ export function AdminLayout({
             .eq("status", "delivered")
             .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
             .is("payment_status", null)
-            .gte("updated_at", inicioDaJanelaDeRecebimento());
+            .gte(
+              "updated_at",
+              inicioDaJanelaDeRecebimento(Date.now(), diasDeRecebimento),
+            );
 
         if (recebimentosErr) {
           falhouAlgumaConsulta = true;

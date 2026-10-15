@@ -42,6 +42,9 @@ const FILTROS_DA_PRIVACIDADE: Array<[string, unknown]> = [];
 // a consulta nova do sino, em `marketplace_orders`, distinguida da dos
 // pedidos pendentes pelo `.eq("status", "delivered")`.
 let RECEBIMENTOS_POR_MARCAR = 0;
+// Politica de devolucao da loja (15/10/2026): a janela do sino segue o prazo
+// dela. `null` = a leitura nao trouxe nada (cai em 90 dias).
+let POLITICA_DA_LOJA: unknown = null;
 const FILTROS_DE_RECEBIMENTO: Array<[string, ...unknown[]]> = [];
 
 /** Duble do query builder de contagem do Supabase (`head: true`). */
@@ -58,6 +61,9 @@ function criarContagemBuilder(contagem: number, tabela = "") {
       return builder;
     });
   builder.select = vi.fn(() => builder);
+  builder.maybeSingle = vi.fn(() =>
+    Promise.resolve({ data: POLITICA_DA_LOJA, error: null }),
+  );
   builder.in = vi.fn(() => builder);
   builder.or = passa("or");
   builder.is = passa("is");
@@ -203,6 +209,7 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     FALHA_PRIVACIDADE = null;
     FILTROS_DA_PRIVACIDADE.length = 0;
     RECEBIMENTOS_POR_MARCAR = 0;
+    POLITICA_DA_LOJA = null;
     FILTROS_DE_RECEBIMENTO.length = 0;
     vi.clearAllMocks();
     vi.stubGlobal(
@@ -407,9 +414,31 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     ]);
     const gte = FILTROS_DE_RECEBIMENTO.find((f) => f[0] === "gte");
     expect(gte?.[1]).toBe("updated_at");
+    // Sem configuracao da loja a janela e o padrao: 90 dias (era 30 fixos).
     expect(
       Math.abs(
-        Date.now() - 30 * 24 * 3600 * 1000 - Date.parse(String(gte?.[2])),
+        Date.now() - 90 * 24 * 3600 * 1000 - Date.parse(String(gte?.[2])),
+      ),
+    ).toBeLessThan(10_000);
+  });
+
+  it("a janela da bolinha segue o prazo de devolucao que a loja configurou", async () => {
+    RECEBIMENTOS_POR_MARCAR = 2;
+    POLITICA_DA_LOJA = {
+      prazo_arrependimento_dias: 7,
+      prazo_troca_dias: 0,
+      prazo_vicio_dias: 180,
+      aceita_troca: false,
+    };
+
+    const { sino } = await montarPainel();
+
+    await esperarAte(() => sino.querySelector("span") !== null);
+    const gte = FILTROS_DE_RECEBIMENTO.find((f) => f[0] === "gte");
+    expect(gte?.[1]).toBe("updated_at");
+    expect(
+      Math.abs(
+        Date.now() - 180 * 24 * 3600 * 1000 - Date.parse(String(gte?.[2])),
       ),
     ).toBeLessThan(10_000);
   });
