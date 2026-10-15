@@ -129,7 +129,7 @@ describe("Financeiro — DRE", () => {
 
     // O CMV avisa que parte dele é estimada pelo custo ATUAL dos produtos (o servidor diz `cmv_estimado`).
     expect(normalizar(linha("cmv").textContent)).toContain(
-      "Parte estimada pelo custo atual dos produtos",
+      "Inclui estimativa pelo custo atual",
     );
 
     // A receita bruta já abre separando app e loja física.
@@ -144,7 +144,7 @@ describe("Financeiro — DRE", () => {
       error: null,
     });
     await montar({ inicio: "2026-09-01", fim: "2026-09-30" });
-    expect(normalizar(linha("cmv").textContent)).not.toContain("estimada");
+    expect(normalizar(linha("cmv").textContent)).not.toContain("estimativa");
     expect(normalizar(linha("cmv").textContent)).toContain("R$ 3.800,00");
   });
 

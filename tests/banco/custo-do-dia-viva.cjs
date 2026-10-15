@@ -912,7 +912,7 @@ PROVAS.push({
         );
         assert.ok(
           dos.every((a) => a.startsWith("WARNING")) &&
-            !/\b12(\.\d+)?\b/.test(dos.join("")),
+            !/\b12\b/.test(dos.join("")),
           "o aviso é WARNING e não leva o valor do custo",
         );
         assert.ok(

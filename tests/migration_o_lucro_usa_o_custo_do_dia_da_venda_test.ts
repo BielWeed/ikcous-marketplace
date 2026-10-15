@@ -7,8 +7,8 @@
 // novo) em tests/banco/custo-do-dia-portao-viva.cjs. Aqui fica o que se prova so lendo o texto: hashes (md5 REAL dos corpos),
 // nenhum BEGIN/COMMIT de topo, a migration so ADITIVA (nenhuma escrita em dado), o rollback comum NAO apaga a tabela e o
 // destrutivo e' um arquivo a parte com a confirmacao, a trava NOWAIT, os REVOKE e o desenho da tabela.
-/* eslint-disable security/detect-non-literal-regexp, security/detect-object-injection --
- * As RegExp e as chaves vêm de constantes FIXAS deste arquivo (nomes de função e md5 conhecidos), nunca de entrada externa. */
+/* eslint-disable security/detect-object-injection --
+ * As chaves vêm de constantes FIXAS deste arquivo (nomes de função e md5 conhecidos), nunca de entrada externa. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
