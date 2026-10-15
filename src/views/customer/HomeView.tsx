@@ -1,3 +1,4 @@
+import { RodapeDasPoliticas } from "@/components/politicas/RodapeDasPoliticas";
 import { BannerCarousel } from "@/components/ui/custom/BannerCarousel";
 import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
 import { useStore } from "@/contexts/StoreContext";
@@ -788,6 +789,11 @@ export const HomeView = React.memo(function HomeView({
           </p>
         </div>
       )}
+
+      {/* Termos, Privacidade e Trocas: a cliente precisa achá-los ANTES de
+          comprar ou cadastrar (LGPD e CDC). Sempre presentes — não dependem
+          de a lojista ter preenchido horário ou contato. */}
+      <RodapeDasPoliticas onNavigate={onNavigate} />
     </div>
   );
 });
