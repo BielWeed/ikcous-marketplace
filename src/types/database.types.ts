@@ -1416,6 +1416,32 @@ export type Database = {
           },
         ];
       };
+      order_refund_prova: {
+        Row: {
+          por_fora_liberado_em: string | null;
+          refund_id: string;
+          substituida_por_manual_em: string | null;
+        };
+        Insert: {
+          por_fora_liberado_em?: string | null;
+          refund_id: string;
+          substituida_por_manual_em?: string | null;
+        };
+        Update: {
+          por_fora_liberado_em?: string | null;
+          refund_id?: string;
+          substituida_por_manual_em?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_refund_prova_refund_id_fkey";
+            columns: ["refund_id"];
+            isOneToOne: true;
+            referencedRelation: "order_refunds";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       order_refunds: {
         Row: {
           amount: number;
@@ -3018,6 +3044,14 @@ export type Database = {
         Args: { p_devolucao_id: string; p_refund_esperado: string };
         Returns: Json;
       };
+      admin_devolucao_reembolso_por_fora_apos_espera: {
+        Args: {
+          p_confirmacao: string;
+          p_devolucao_id: string;
+          p_refund_esperado: string;
+        };
+        Returns: Json;
+      };
       admin_devolucao_reemitir_reembolso: {
         Args: { p_devolucao_id: string; p_manual?: boolean };
         Returns: Json;
@@ -3650,6 +3684,14 @@ export type Database = {
         };
         Returns: number;
       };
+      order_refund__liberavel_apos_espera: {
+        Args: { p_refund_id: string };
+        Returns: boolean;
+      };
+      order_refund__pode_ter_saido: {
+        Args: { p_refund_id: string };
+        Returns: boolean;
+      };
       pagamentos_a_reconciliar: {
         Args: never;
         Returns: {
@@ -3675,6 +3717,10 @@ export type Database = {
       pedido__saldo_a_estornar: {
         Args: { p_order_id: string };
         Returns: number;
+      };
+      pedido_reembolsos_e_saldo: {
+        Args: { p_order_id: string };
+        Returns: Json;
       };
       perfil_publico_avaliacoes: {
         Args: { p_autor: string };
@@ -3754,6 +3800,14 @@ export type Database = {
         Returns: Json;
       };
       registrar_estorno_manual: { Args: { p_order_id: string }; Returns: Json };
+      registrar_estorno_manual_apos_espera: {
+        Args: {
+          p_confirmacao: string;
+          p_order_id: string;
+          p_refund_esperado: string;
+        };
+        Returns: Json;
+      };
       registrar_pagamento_recebido: {
         Args: { p_order_id: string; p_recebido: boolean };
         Returns: Json;

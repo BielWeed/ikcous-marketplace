@@ -2012,6 +2012,208 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // O reembolso em dúvida prende o saldo (15/10/2026, lote R1 do plano reembolso-ab; DINHEIRO). Sem esta entrada a
+  // migration saía PULADA (saída 2: "ninguém verificou"). Os marcadores contam no corpo VIVO (pg_get_functiondef,
+  // comentários incluídos), exatos: a regra ÚNICA com a ordem que decide (substituída antes do legado, legado antes do
+  // recusado/falhou, a lista fechada "nada saiu" e o lado seguro), o saldo descontando o em dúvida pela regra e
+  // respeitando a substituída, cada chamador trocado para a função de saldo ou para a regra, a recusa do POST da linha
+  // liberada por fora, o texto novo do aviso ao cliente e, nas duas saídas de 7 dias, a frase de confirmação, a espera
+  // e o risco_de_dobro. O resto (tabela, EXECUTE, atributos) o DO de conferência da migration aborta o apply se divergir.
+  "20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql": [
+    {
+      funcao: "order_refund__pode_ter_saido",
+      esperado: [
+        { texto: "WHEN r.mp_refund_id IS NOT NULL THEN true", vezes: 1 },
+        {
+          texto: "WHEN pv.substituida_por_manual_em IS NOT NULL THEN false",
+          vezes: 1,
+        },
+        {
+          texto:
+            "WHEN r.criada_sob_autorizacao IS NOT TRUE AND r.tentativas > 1 THEN true",
+          vezes: 1,
+        },
+        {
+          texto:
+            "WHEN r.status = 'recusado' AND r.post_autorizado_em IS NULL THEN false",
+          vezes: 1,
+        },
+        { texto: "AND dg.post_incerto_em IS NULL", vezes: 1 },
+        {
+          texto:
+            "AND dg.mp_codigo IN ('insufficient_money_for_refund', 'order_payment_not_yet_enabled_for_refund') THEN false",
+          vezes: 1,
+        },
+        { texto: "ELSE true", vezes: 1 },
+      ],
+    },
+    {
+      // A espera dos 7 dias: UMA regra para as duas portas e para o botão do painel.
+      funcao: "order_refund__liberavel_apos_espera",
+      esperado: [
+        {
+          texto:
+            "OR (r.status = 'falhou' AND public.order_refund__pode_ter_saido(r.id)))",
+          vezes: 1,
+        },
+        { texto: "AND pv.substituida_por_manual_em IS NULL", vezes: 1 },
+        { texto: "AND pv.por_fora_liberado_em IS NULL", vezes: 1 },
+        {
+          texto:
+            "AND now() - COALESCE(r.post_autorizado_em, r.created_at) >= interval '7 days'",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "pedido__saldo_a_estornar",
+      esperado: [
+        { texto: "AND r.status IN ('falhou', 'recusado')", vezes: 1 },
+        {
+          texto: "AND pv.substituida_por_manual_em IS NOT NULL)",
+          vezes: 1,
+        },
+        {
+          texto: "AND public.order_refund__pode_ter_saido(r.id)), 0)",
+          vezes: 1,
+        },
+        { texto: "AND d.reembolso_manual), 0)", vezes: 1 },
+        // o POR FORA PARCIAL do pedido cancelado conta no saldo em qualquer status da linha
+        {
+          texto: "AND pf.substituida_por_manual_em IS NULL), 0)",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "solicitar_estorno",
+      esperado: [
+        {
+          texto: "v_saldo := public.pedido__saldo_a_estornar(p_order_id);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_concluir",
+      esperado: [
+        {
+          texto: "v_disponivel := public.pedido__saldo_a_estornar(v_o.id);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "autorizar_post_do_estorno",
+      esperado: [
+        { texto: "AND pv.por_fora_liberado_em IS NOT NULL) THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "reemitir_reembolso_da_devolucao",
+      esperado: [
+        {
+          texto:
+            "v_sem_post := NOT public.order_refund__pode_ter_saido(v_r.id);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_reembolso_por_fora",
+      esperado: [
+        {
+          texto: "v_risco := public.order_refund__pode_ter_saido(v_r.id);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "devolucao_avisa_o_cliente",
+      esperado: [
+        {
+          texto: "A loja está confirmando sua devolução com o Mercado Pago.",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "admin_devolucao_reembolso_por_fora_apos_espera",
+      esperado: [
+        {
+          texto:
+            "IF upper(btrim(COALESCE(p_confirmacao, ''))) <> 'DEVOLVI POR FORA' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF NOT public.order_refund__liberavel_apos_espera(v_r.id) THEN",
+          vezes: 1,
+        },
+        { texto: "'risco_de_dobro', true", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "registrar_estorno_manual_apos_espera",
+      esperado: [
+        {
+          texto:
+            "IF upper(btrim(COALESCE(p_confirmacao, ''))) <> 'DEVOLVI POR FORA' THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF NOT public.order_refund__liberavel_apos_espera(v_r.id) THEN",
+          vezes: 1,
+        },
+        { texto: "'risco_de_dobro', true", vezes: 2 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        // a linha que nasceu enquanto a trava do pedido era esperada é travada antes das checagens
+        {
+          texto:
+            "PERFORM 1 FROM public.order_refunds releitura WHERE releitura.order_id = p_order_id ORDER BY releitura.id FOR UPDATE;",
+          vezes: 1,
+        },
+        // só a linha que cobre TODO o saldo ainda a devolver estorna o pedido; a parcial só marca por fora
+        {
+          texto: "IF round(v_r.amount, 2) < round(v_resta, 2) THEN",
+          vezes: 1,
+        },
+        { texto: "'detalhe', 'parcial'", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "pedido_reembolsos_e_saldo",
+      esperado: [
+        {
+          texto: "IF auth.uid() IS NULL OR NOT public.is_admin_atual() THEN",
+          vezes: 1,
+        },
+        {
+          texto: "'pode_ter_saido', public.order_refund__pode_ter_saido(r.id),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'por_fora_apos_espera_liberado', public.order_refund__liberavel_apos_espera(r.id),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'disponivel', GREATEST(public.pedido__saldo_a_estornar(p_order_id), 0),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'substituida_por_manual', pv.substituida_por_manual_em IS NOT NULL,",
+          vezes: 1,
+        },
+        // o valor reservado (linha resolvida por fora ainda viva no MP) que a tela mostra
+        { texto: "'reservado_por_fora', v_reservado,", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

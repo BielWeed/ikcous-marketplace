@@ -123,8 +123,16 @@ module.exports = [
     // duas juntas: painel 462,83 kB; teto = medido + ~1,5 kB, arredondado a 0,5
     // acima. Sem duplicata nem dependência nova; `import()` não ajuda porque o
     // portão SOMA todos os chunks do painel. Cliente 540,36/550 kB, sem mudança.
+    //
+    // 15/10/2026 — teto 464,5 -> 466 kB (decisão do dono, delegada à hub em
+    // 15/10/2026 ("você escolhe a melhor opção por mim"), registrada aqui; o
+    // dono pode vetar e voltar a 464,5; lote R1 do
+    // reembolso): +1,5 kB: bloco de reembolso em dúvida no painel, risco de
+    // pagamento em dobro. Medido 465,17 kB (base 462,83; +2,34 do R1 já
+    // compactado: contrato do saldo do servidor, bloco da devolução, saída dos
+    // 7 dias). Código morto citado acima não devolve byte. Cliente 540,60/550.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "464.5 kB",
+    limit: "466 kB",
     webpack: false,
     running: false,
   },

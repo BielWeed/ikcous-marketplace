@@ -15,7 +15,13 @@
 -- corte esta aplicado; qualquer `false` = PARE e leia a linha. Depois do rollback-manual reprovam as linhas dos
 -- corpos, dos atributos, do EXECUTE e da tabela.
 --
---   * corpo      -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF).
+--   * corpo      -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF). SUCESSORA (15/10/2026): a
+--                   20261241000000 (o reembolso em duvida prende o saldo) reescreve `reemitir_reembolso_da_devolucao`
+--                   e `admin_devolucao_reembolso_por_fora` (as duas passam a decidir pela regra unica
+--                   `order_refund__pode_ter_saido`, que le o mesmo diagnostico); a linha do corpo de cada uma aceita o
+--                   md5 da 20261226000000 OU o da 20261241000000 (aceito, o `vivo` mostra o `esperado`), para a 29a
+--                   seguir POSITIVA depois do apply da sucessora. Corpo estranho reprova igual; o EXECUTE e os
+--                   atributos seguem exatos (a sucessora nao os muda).
 --   * atributos  -- SECURITY DEFINER + plpgsql + VOLATILE + proconfig = {search_path=public}, nas TRES funcoes.
 --   * EXECUTE    -- PUBLIC e' medido por aclexplode(coalesce(proacl, acldefault('f', dono))), porque
 --                   has_function_privilege nao tem o pseudo-papel PUBLIC; anon, authenticated e service_role
@@ -68,11 +74,17 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'reemitir_reembolso_da_devolucao: corpo e o da 20261226000000 (md5)',
          '872fcb1d2bac9816e2d2b1c7c2e868c0',
-         COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'reemitir'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m IN ('872fcb1d2bac9816e2d2b1c7c2e868c0',
+                                            'fd5d79042efa68f9a17298fff1e950bd')
+                               THEN '872fcb1d2bac9816e2d2b1c7c2e868c0' ELSE f.m END
+                     FROM fn f WHERE f.chave = 'reemitir'), 'AUSENTE')
   UNION ALL
   SELECT 'admin_devolucao_reembolso_por_fora: corpo e o da 20261226000000 (md5)',
          '0a7e06d7004c3fb70897e87c4dfa8cf9',
-         COALESCE((SELECT f.m FROM fn f WHERE f.chave = 'porfora'), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m IN ('0a7e06d7004c3fb70897e87c4dfa8cf9',
+                                            '76eaffb4f9438f7fe557961e1bdaad81')
+                               THEN '0a7e06d7004c3fb70897e87c4dfa8cf9' ELSE f.m END
+                     FROM fn f WHERE f.chave = 'porfora'), 'AUSENTE')
   UNION ALL
   SELECT 'as tres funcoes: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public)',
          'SECURITY DEFINER plpgsql VOLATILE search_path=public',

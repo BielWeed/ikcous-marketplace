@@ -1710,6 +1710,64 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
 
+  43. **Lote de UMA migration, de apply normal: `20261241000000` (o reembolso em duvida prende o saldo; DINHEIRO;
+      lote R1 do plano reembolso-ab de 15/10/2026).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy). ADITIVA: uma tabela nova vazia (`order_refund_prova`, so do servidor), cinco funcoes
+      novas e sete corpos trocados por `CREATE OR REPLACE` (assinatura, dono, ACL e atributos preservados):
+      - **O defeito:** uma linha de reembolso `falhou`/`recusado` cujo dinheiro PODE ter saido no Mercado Pago (sem
+        prova de que nada saiu) nao contava no saldo a devolver: a lojista podia pedir de novo e o cliente receber
+        duas vezes. E uma linha presa em processamento nao tinha saida: o cliente esperava para sempre.
+      - **O que muda:** o saldo (`pedido__saldo_a_estornar`, lido pelo pedir reembolso e pelo concluir devolucao)
+        desconta o "em duvida" pela regra UNICA `order_refund__pode_ter_saido` (com a regra do legado: linha de antes
+        da autorizacao marcada mais de uma vez PODE ter saido); a linha resolvida por fora sai da conta (nao desconta
+        duas vezes). O painel le `pedido_reembolsos_e_saldo` (total, estornado, em voo, em duvida, manual,
+        disponivel nunca negativo, `reservado_por_fora` = linha resolvida por fora que o Mercado Pago ainda nao
+        respondeu, mantida fora do saldo e mostrada como "reservado" (nunca "tudo devolvido"), e as linhas com
+        `pode_ter_saido`, `por_fora_liberado_em` = a MARCA,
+        `por_fora_apos_espera_liberado` = a ESPERA de 7 dias passou (a porta ainda pode recusar por outro motivo; o
+        front mostra a resposta dela) e `substituida_por_manual`). Duas
+        saidas de 7 dias com a frase `DEVOLVI POR FORA` (`admin_devolucao_reembolso_por_fora_apos_espera`,
+        `registrar_estorno_manual_apos_espera`) leem a MESMA espera do botao (`order_refund__liberavel_apos_espera`,
+        relogio do banco), marcam a linha e respondem `risco_de_dobro`. A do pedido cancelado so marca o pedido como
+        `estornado` quando a linha cobre TODO o saldo ainda a devolver; a linha PARCIAL so ganha a marca por fora,
+        o pedido segue pago e o valor dela segue descontado no saldo como "por fora"; o `autorizar_post_do_estorno` recusa
+        (`linha_mudou`) a linha liberada por fora: o robo nunca reenvia o que a loja pagou a mao. O aviso da
+        devolucao em processamento diz que a loja esta confirmando com o Mercado Pago. A antiga
+        `admin_devolucao_reemitir_reembolso` perde o `EXECUTE` do logado (nenhum chamador no front publicado).
+      - **Medido antes (`42m`, 15/10/2026):** zero linhas `falhou`/`recusado` na IKCOUS e na Savy: NENHUM saldo
+        existente muda no apply.
+      - Duas consultas, so leitura, so catalogo, de ROL FECHADO (21 e 14 linhas, so valem com `rol=ok`):
+        - **`43a-conferir-reembolso-em-duvida-aplicado`** (a consulta do lote) prova DEPOIS do apply os doze corpos
+          (md5), os atributos, o `EXECUTE` de cada papel, a tabela de marcas so do servidor e os marcadores (o saldo
+          desconta o em duvida; as duas saidas e o painel leem a mesma espera).
+        - **`43b-antes-reembolso-em-duvida-base-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: a tabela e as
+          cinco funcoes novas AUSENTES, os sete corpos vigentes, as funcoes de dinheiro chamadas com o corpo
+          conhecido, a funcao antiga existindo e o gatilho do aviso ligado. **Nao mede a ACL.** Rode a `43b` em CADA
+          loja ANTES do apply.
+      - **Caminho, uma loja por vez (IKCOUS, depois Savy):** `43a` (sai NEGATIVA) -> `43b` MAIS NOVA e POSITIVA ->
+        UM comando `aplicar-migrations.yml` com a migration -> o ensaio pede a `43a` DE NOVO, que tem de sair
+        POSITIVA. `43a` POSITIVA com a versao fora do ledger: PARAR (sem backfill). A `8e`, a `28a` e a `29a` seguem
+        POSITIVAS depois do apply (os corpos novos entram como sucessores conhecidos delas).
+      - **ORDEM: o banco de CADA loja ANTES do front do R1** (a tela nova chama `pedido_reembolsos_e_saldo` e as
+        duas saidas). O front de antes funciona com o banco novo (nenhuma assinatura muda).
+      - **NUNCA reaplicar a `20261196`, a `20261197`, a `20261198`, a `20261225` nem a `20261226` depois desta.** O
+        pre-voo delas recusa os corpos novos.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261241000000_o_reembolso_em_duvida_prende_o_saldo.sql` (recria os sete corpos de antes,
+        mesmo md5; apaga as cinco funcoes novas e a tabela; devolve o `EXECUTE` do logado a funcao antiga). **O
+        rollback RECUSA (`MARCA_DE_REEMBOLSO_NAO_SE_APAGA_SEM_QUERER`) se `order_refund_prova` tiver qualquer
+        linha:** apagar uma marca por fora deixaria o robo reenviar um reembolso ja pago a mao. Tambem recusa se algum
+        corpo vivo nao for o desta nem o de antes. Depois, a `43b` volta POSITIVA e a `43a` NEGATIVA. **Desfazer o
+        banco EXIGE desfazer o FRONT do R1 ANTES** (a tela nova chamaria funcao que nao existe mais).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `43a` e
+        a `43b` DE NOVO.
+      - **Limites:** `tests/banco/reembolso-em-duvida-viva.cjs` prova o comportamento (saldo igual em pedido sem
+        linha em duvida, o legado prende, a substituida solta, a espera antes/com 7 dias/depois/com a marca, o
+        autorizar recusa, corrida de duas conexoes, ACL, aplicar 2x e CRLF, rollback, mutantes) e
+        `tests/banco/reembolso-em-duvida-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
+        delas.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

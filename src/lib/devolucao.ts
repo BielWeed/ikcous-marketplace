@@ -700,7 +700,18 @@ export function etapasDaDevolucao(d: {
   ];
 }
 
-/** O que o cliente faz agora (ou o que está acontecendo), em uma frase. */
+const TEXTO_REEMBOLSO_CONFIRMANDO_CLIENTE =
+  "A loja está confirmando sua devolução com o Mercado Pago.";
+
+/**
+ * O que o cliente faz agora (ou o que está acontecendo), em uma frase.
+ *
+ * `statusDoReembolso` (lote R1, 15/10/2026): o status da linha de
+ * `order_refunds` desta devolução. Só `"concluido"` deixa dizer "liberado";
+ * qualquer outra coisa — em andamento, falhou, ou ainda não lido (`null`) —
+ * diz que a loja está confirmando. Antes a frase afirmava "liberado" assim
+ * que a devolução concluía, mesmo com o dinheiro ainda sem sair.
+ */
 export function instrucaoParaOCliente(
   d: Pick<
     DevolucaoDetalhe,
@@ -716,6 +727,7 @@ export function instrucaoParaOCliente(
     | "valor_reembolso"
   >,
   loja: { endereco?: string | null; horario?: string | null },
+  statusDoReembolso: string | null = null,
 ): string {
   switch (d.status) {
     case "solicitada":
@@ -764,9 +776,12 @@ export function instrucaoParaOCliente(
     case "concluida": {
       if (d.resolucao_final === "reembolso") {
         const valor = formatarReais(d.valor_reembolso ?? 0);
-        return d.reembolso_manual
-          ? `Reembolso de ${valor} combinado com a loja (em mãos ou por PIX).`
-          : `Reembolso de ${valor} liberado pelo Mercado Pago: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).`;
+        if (d.reembolso_manual) {
+          return `Reembolso de ${valor} combinado com a loja (em mãos ou por PIX).`;
+        }
+        return statusDoReembolso === "concluido"
+          ? `Reembolso de ${valor} liberado pelo Mercado Pago: PIX cai na sua conta; cartão aparece como crédito na fatura (o prazo é do seu banco).`
+          : TEXTO_REEMBOLSO_CONFIRMANDO_CLIENTE;
       }
       if (d.resolucao_final === "troca") {
         return "A troca foi confirmada. A loja combina com você a entrega do novo produto.";

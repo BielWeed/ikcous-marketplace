@@ -80,6 +80,7 @@ const {
   anexarAoSummary,
 } = require("./efemero.cjs");
 const { SUCESSORAS_DA_99 } = require("./sucessoras-da-99.cjs");
+const { REEMBOLSO_EM_DUVIDA } = require("./reembolso-em-duvida-posterior.cjs");
 
 const U_CLIENTE = "71111111-1111-1111-1111-111111111111";
 const U_OUTRO = "71111111-1111-1111-1111-111111111112";
@@ -1669,6 +1670,10 @@ const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
 // DENTRO da transação, na ordem inversa da aplicação; o ROLLBACK do fim
 // devolve tudo. Cada uma só é desfeita se estiver no ar.
 const POSTERIORES_A_97 = [
+  // 20261241000000 (o reembolso em duvida prende o saldo) redefine o reemitir e o por fora da 1226 e mais
+  // cinco corpos (tests/banco/reembolso-em-duvida-posterior.cjs): com ela no ar o rollback da 1226 recusa
+  // (B1_BASELINE_DIVERGENT). E a mais nova: sai PRIMEIRO.
+  REEMBOLSO_EM_DUVIDA,
   // As sucessoras da 99 (20261212, 20261214 — redefinem corpos dela;
   // tests/banco/sucessoras-da-99.cjs), na ordem inversa da aplicação: com
   // qualquer uma no ar, o rollback da 99 abaixo recusa. "No ar" = o corpo vivo

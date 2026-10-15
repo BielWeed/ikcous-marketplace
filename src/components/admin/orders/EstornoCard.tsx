@@ -6,6 +6,14 @@ import {
   type LinhaEstornoDoPedido,
   useEstornosDoPedido,
 } from "@/hooks/useEstornosDoPedido";
+import {
+  BOTAO_POR_FORA_APOS_ESPERA,
+  TEXTO_CONFIRMANDO,
+  TEXTO_JA_POR_FORA,
+  acoesDaLinha,
+  confirmouPorForaAposEspera,
+  textoReservado,
+} from "@/lib/reembolso-em-duvida";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/types";
 
@@ -90,9 +98,9 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
   }
 
   // Teto de tentativas (pré-requisito 2 do plano): a linha fica travada em
-  // `em_processamento` para sempre em vez de arriscar pagar duas vezes. A
-  // saída manual do limbo exigiria RPC nova = migration = decisão do dono;
-  // por isso NÃO existe botão "Tentar de novo" aqui, só o aviso.
+  // `em_processamento` para sempre em vez de arriscar pagar duas vezes. NÃO
+  // existe "Tentar de novo" aqui; a única saída é a dos 7 dias (lote R1), que
+  // aparece abaixo da linha quando o SERVIDOR a libera.
   if (linha.status === "em_processamento" && linha.tentativas >= 5) {
     return {
       texto: `A devolução de ${valor} não foi confirmada pelo Mercado Pago depois de 5 tentativas. Confira no painel do Mercado Pago se ela saiu; o valor fica reservado aqui até isso se resolver.`,
@@ -120,16 +128,28 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
     };
   }
 
+  // Lote R1: o veredito "pode ter saído" é do SERVIDOR. Linha parada que
+  // pode ter chegado ao Mercado Pago NUNCA ganha "Tentar de novo": a
+  // tentativa nova vai com chave nova, o MP não deduplica e o cliente
+  // receberia em dobro.
+  const { podeRepetir, confirmando } = acoesDaLinha(linha);
+
   if (linha.status === "falhou") {
+    if (confirmando) {
+      return {
+        texto: `A devolução de ${valor} não teve resposta certa do Mercado Pago. ${TEXTO_CONFIRMANDO}`,
+        podeTentarDeNovo: false,
+      };
+    }
     return {
       texto: `A devolução de ${valor} não foi concluída: ${linha.ultimo_erro ?? ""}`,
-      podeTentarDeNovo: true,
+      podeTentarDeNovo: podeRepetir,
     };
   }
 
   // `recusado`, sem chargeback envolvido.
   return {
-    texto: `A devolução de ${valor} foi recusada: ${linha.ultimo_erro ?? ""}`,
+    texto: `A devolução de ${valor} foi recusada: ${linha.ultimo_erro ?? ""}${confirmando ? ` ${TEXTO_CONFIRMANDO}` : ""}`,
     podeTentarDeNovo: false,
   };
 }
@@ -137,18 +157,26 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
 type EstadoDoCartao =
   | "bloqueado_status"
   | "bloqueado_retorno"
+  | "reservado"
   | "tudo_devolvido"
   | "normal";
 
 // Regra do dono (24/08/2026), a mesma que a RPC `solicitar_estorno` recusa
 // no servidor — aqui só EXPLICA antes do clique. Ordem importa: um pedido
-// não cancelado nunca chega a precisar do produto de volta.
-function estadoDoCartao(order: Order, disponivel: number): EstadoDoCartao {
+// não cancelado nunca chega a precisar do produto de volta. Saldo zero com
+// valor RESERVADO (linha resolvida por fora que o Mercado Pago ainda não
+// respondeu, pedido ainda pago) NÃO é "tudo devolvido": é dinheiro preso até
+// o MP responder, e a tela diz isso.
+function estadoDoCartao(
+  order: Order,
+  disponivel: number,
+  reservado: number,
+): EstadoDoCartao {
   if (order.status !== "cancelled") return "bloqueado_status";
   if (order.cancelledAfterShipping && !order.returnedToSellerAt) {
     return "bloqueado_retorno";
   }
-  if (disponivel <= 0) return "tudo_devolvido";
+  if (disponivel <= 0) return reservado > 0 ? "reservado" : "tudo_devolvido";
   return "normal";
 }
 
@@ -157,12 +185,15 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
     linhas,
     pago,
     devolvido,
+    emDuvida,
     disponivel,
+    reservadoPorFora,
     carregando,
     pedidoCarregado,
     erro,
     recarregar,
     solicitarEstorno,
+    registrarPorForaAposEspera,
     enviando,
   } = useEstornosDoPedido(order.id);
 
@@ -213,8 +244,11 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
     );
   }
 
-  const estado = estadoDoCartao(order, disponivel);
-  const mostrarBotao = estado !== "tudo_devolvido";
+  // O reservado só vale com o pedido ainda pago: estornado inteiro, a conta fechou.
+  const reservado =
+    order.paymentStatus === "estornado" ? 0 : Math.max(reservadoPorFora, 0);
+  const estado = estadoDoCartao(order, disponivel, reservado);
+  const mostrarBotao = estado !== "tudo_devolvido" && estado !== "reservado";
   const podeAbrirCampo = estado === "normal";
 
   const valorNumericoDoCampo = paraNumero(valorCampo);
@@ -251,6 +285,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
       <p className="text-xs font-bold text-zinc-400">
         Pago: {formatCurrency(pago)} · Devolvido: {formatCurrency(devolvido)} ·
         Disponível: {formatCurrency(disponivel)}
+        {emDuvida > 0 && ` · Em confirmação: ${formatCurrency(emDuvida)}`}
       </p>
 
       {estado === "bloqueado_status" && (
@@ -267,6 +302,11 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
       {estado === "tudo_devolvido" && (
         <p className="text-xs font-bold text-emerald-400">
           Todo o valor pago já foi devolvido.
+        </p>
+      )}
+      {reservado > 0 && (
+        <p className="text-xs font-bold text-amber-400">
+          {textoReservado(formatCurrency(reservado))}
         </p>
       )}
 
@@ -336,9 +376,11 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
           const { texto, podeTentarDeNovo } = textoDaLinha(linha);
           const podeTentarComSaldo =
             podeTentarDeNovo && disponivel >= linha.amount;
+          const { porForaAposEspera, jaPorFora } = acoesDaLinha(linha);
           return (
             <p key={linha.id} className="text-xs font-medium text-zinc-300">
               {texto}
+              {jaPorFora && ` ${TEXTO_JA_POR_FORA}`}
               {podeTentarComSaldo && (
                 <Button
                   type="button"
@@ -348,6 +390,20 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
                   onClick={() => pedirConfirmacaoEEnviar(linha.amount)}
                 >
                   Tentar de novo
+                </Button>
+              )}
+              {porForaAposEspera && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  disabled={enviando}
+                  onClick={() =>
+                    confirmouPorForaAposEspera(formatCurrency(linha.amount)) &&
+                    registrarPorForaAposEspera(linha.id)
+                  }
+                >
+                  {BOTAO_POR_FORA_APOS_ESPERA}
                 </Button>
               )}
             </p>

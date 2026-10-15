@@ -59,12 +59,12 @@
       "porque": "Devolucoes e estornos do painel do lojista (Ja devolvi por fora): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (is_admin e is_admin_atual) e auth.uid(); nao move dinheiro no Mercado Pago; o visitante nao a executa."
     },
     {
-      "funcao": "public.admin_devolucao_reemitir_reembolso(p_devolucao_id uuid, p_manual boolean)",
+      "funcao": "public.admin_devolucao_reembolso_por_fora_apos_espera(p_devolucao_id uuid, p_refund_esperado uuid, p_confirmacao text)",
       "executa": ["authenticated"],
       "tipo": "volatil",
       "secdef": true,
       "situacao": "logado",
-      "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+      "porque": "Saida dos 7 dias da devolucao no painel do lojista (Ja devolvi por fora depois de 7 dias): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (is_admin e is_admin_atual), auth.uid() e a frase DEVOLVI POR FORA; nao move dinheiro no Mercado Pago (migration 20261241000000); o visitante nao a executa."
     },
     {
       "funcao": "public.admin_devolucao_registrar(p_id uuid, p_evento text, p_codigo text, p_nota text)",
@@ -651,6 +651,14 @@
       "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
     },
     {
+      "funcao": "public.pedido_reembolsos_e_saldo(p_order_id uuid)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Reembolsos e saldo do pedido no painel do lojista (a conta unica que a tela mostra): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige auth.uid() e o admin ATUAL; so le (migration 20261241000000); o visitante nao a executa."
+    },
+    {
       "funcao": "public.perfil_publico_avaliacoes(p_autor uuid)",
       "executa": ["anon", "authenticated"],
       "tipo": "leitura",
@@ -689,6 +697,14 @@
       "secdef": true,
       "situacao": "logado",
       "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.registrar_estorno_manual_apos_espera(p_order_id uuid, p_refund_esperado uuid, p_confirmacao text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Saida dos 7 dias do pedido cancelado no painel do lojista (Ja estornei depois de 7 dias): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (is_admin e is_admin_atual), auth.uid() e a frase DEVOLVI POR FORA; nao move dinheiro no Mercado Pago (migration 20261241000000); o visitante nao a executa."
     },
     {
       "funcao": "public.registrar_pagamento_recebido(p_order_id uuid, p_recebido boolean)",

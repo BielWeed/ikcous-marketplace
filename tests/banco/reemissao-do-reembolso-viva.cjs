@@ -33,6 +33,19 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+const {
+  desfazerReembolsoEmDuvidaNaTransacao,
+} = require("./reembolso-em-duvida-posterior.cjs");
+
+/**
+ * Abre a transacao no cliente principal e, se a SUCESSORA 20261241000000 (o reembolso em duvida prende o saldo)
+ * estiver no ar, desfaz ela primeiro: ela reescreve corpos desta migration, e o pre-voo daqui (e do rollback daqui)
+ * recusa o corpo dela. Assim cada caso mede ESTA migration isolada, como antes da sucessora existir.
+ */
+async function comecarSem1241() {
+  await C.query("BEGIN");
+  await desfazerReembolsoEmDuvidaNaTransacao(C);
+}
 
 const MIGRATIONS = path.resolve(
   __dirname,
@@ -120,7 +133,7 @@ const hashDe = async (sig) =>
 
 /** Uma transacao por caso, sempre desfeita, no estado DEPOIS (24 + 25 aplicadas, idempotente) ou ANTES (25 desfeita). */
 async function emTransacao(fn, { estado = "depois" } = {}) {
-  await C.query("BEGIN");
+  await comecarSem1241();
   try {
     await C.query(MIGRATION24);
     if (estado === "antes") {
@@ -1282,7 +1295,7 @@ prova(
     await B.connect();
     let ids = null;
     try {
-      await C.query("BEGIN");
+      await comecarSem1241();
       await C.query(MIGRATION24);
       await C.query(MIGRATION);
       const c = await falha({ status: "recusado" });
@@ -1314,7 +1327,7 @@ prova(
     await B.connect();
     let ids = null;
     try {
-      await C.query("BEGIN");
+      await comecarSem1241();
       await C.query(MIGRATION24);
       await C.query(MIGRATION);
       const c = await falha({ status: "recusado" });
@@ -1328,7 +1341,7 @@ prova(
         [c.dev, U.admin, c.refund, JSON.stringify(NAO)],
       );
       const porForaNaC = (async () => {
-        await C.query("BEGIN");
+        await comecarSem1241();
         try {
           await C.query(
             "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
@@ -1375,7 +1388,7 @@ prova(
     await B.connect();
     let ids = null;
     try {
-      await C.query("BEGIN");
+      await comecarSem1241();
       await C.query(MIGRATION24);
       await C.query(MIGRATION);
       const c = await falha({ status: "recusado" });
@@ -1759,7 +1772,7 @@ prova(
 
 /** Aplica o `CREATE OR REPLACE` de uma funcao com UMA troca de texto (que tem de existir) e roda o cenario. */
 async function mutante(rotulo, tagDaFuncao, de, para, comportamento) {
-  await C.query("BEGIN");
+  await comecarSem1241();
   try {
     await C.query(MIGRATION24);
     await C.query(MIGRATION);
@@ -1967,7 +1980,7 @@ prova(
     for (const [rotulo, tag, de, para, comp] of roteiro) {
       if (comp === "SOBREVIVE") {
         // redundancia deliberada: este mutante NAO pode ficar vermelho; se ficar, a defesa em profundidade sumiu
-        await C.query("BEGIN");
+        await comecarSem1241();
         try {
           await C.query(MIGRATION24);
           await C.query(MIGRATION);
@@ -1986,7 +1999,7 @@ prova(
       ["EXECUTE da reemissao para authenticated", FUNCOES.reemitir.sig],
       ["EXECUTE do diagnostico para authenticated", FUNCOES.diagnostico.sig],
     ]) {
-      await C.query("BEGIN");
+      await comecarSem1241();
       try {
         await C.query(MIGRATION24);
         await C.query(MIGRATION);
@@ -2003,7 +2016,7 @@ prova(
       }
     }
     // a tabela de diagnostico aberta para authenticated: a prova de RLS/grant fica vermelha
-    await C.query("BEGIN");
+    await comecarSem1241();
     try {
       await C.query(MIGRATION24);
       await C.query(MIGRATION);

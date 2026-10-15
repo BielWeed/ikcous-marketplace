@@ -506,6 +506,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261240000000: a cliente e avisada quando a loja responde a pergunta dela (answer_question_atomic, as duas sobrecargas: aviso no sino em vez da linha falsa no log de push; comportamento e portao 41a/41b).
     "tests/banco/pergunta-respondida-avisa-viva.cjs",
     "tests/banco/pergunta-respondida-avisa-portao-viva.cjs",
+    // 20261241000000: o reembolso em duvida prende o saldo (regra unica pode_ter_saido, saldo com o em duvida, as duas saidas de 7 dias pela mesma espera do painel, autorizar recusa a linha liberada por fora; comportamento com 2 conexoes e mutantes, e portao 43a/43b).
+    "tests/banco/reembolso-em-duvida-viva.cjs",
+    "tests/banco/reembolso-em-duvida-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.

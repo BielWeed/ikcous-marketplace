@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 33a, 33b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 33a, 33b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b, 43a, 43b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -2007,6 +2007,58 @@ const ROL_DA_41B = [
   "answer_question_atomic(uuid,text,uuid): o corpo ainda NAO grava no sino da cliente",
   "answer_question_atomic(uuid,text,uuid): atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=public, void)",
 ];
+/** O rol da 43a (a prova de objetos da migration 20261241000000, o reembolso em duvida prende o saldo: a linha de
+ * reembolso que PODE ter saido no Mercado Pago passa a segurar o saldo, por UMA regra so; duas saidas de 7 dias para a
+ * lojista; a tela le um contrato unico): as 21 linhas que scripts/publicacao/consultas/43a-conferir-reembolso-em-duvida-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na propria linha): o controle,
+ * o corpo NOVO (md5) das doze funcoes, os atributos delas, o EXECUTE de cada papel (as duas regras so do servidor, as tres portas
+ * novas so do logado, a antiga admin_devolucao_reemitir_reembolso fechada), a tabela de marcas so do servidor e com as tres
+ * colunas, o marcador de que o saldo desconta o em duvida e o de que as saidas dos 7 dias e o painel leem a MESMA espera.
+ * tests/banco/reembolso-em-duvida-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_43A = [
+  "controle: funcoes de public visiveis a este papel",
+  "order_refund__pode_ter_saido: corpo e o da 20261241000000, a regra unica (md5)",
+  "order_refund__liberavel_apos_espera: corpo e o da 20261241000000, a espera dos 7 dias (md5)",
+  "pedido__saldo_a_estornar: corpo e o da 20261241000000, com o em duvida (md5)",
+  "solicitar_estorno: corpo e o da 20261241000000, a conta pela funcao de saldo (md5)",
+  "admin_devolucao_concluir: corpo e o da 20261241000000, o ramo do app pela funcao de saldo (md5)",
+  "autorizar_post_do_estorno: corpo e o da 20261241000000, recusa a linha liberada por fora (md5)",
+  "reemitir_reembolso_da_devolucao: corpo e o da 20261241000000, pela regra unica (md5)",
+  "admin_devolucao_reembolso_por_fora: corpo e o da 20261241000000, pela regra unica e marcando a substituida (md5)",
+  "devolucao_avisa_o_cliente: corpo e o da 20261241000000, a loja esta confirmando com o Mercado Pago (md5)",
+  "admin_devolucao_reembolso_por_fora_apos_espera: corpo e o da 20261241000000 (md5)",
+  "registrar_estorno_manual_apos_espera: corpo e o da 20261241000000 (md5)",
+  "pedido_reembolsos_e_saldo: corpo e o da 20261241000000 (md5)",
+  "as doze funcoes: atributos do desenho (SECURITY DEFINER, search_path=public, linguagem e volatilidade de cada uma)",
+  "as duas regras do servidor (pode_ter_saido e liberavel_apos_espera): EXECUTE fechado a todos (PUBLIC, anon, authenticated e service_role)",
+  "as tres portas novas do lojista: EXECUTE so do authenticated (PUBLIC e anon nao)",
+  "admin_devolucao_reemitir_reembolso: EXECUTE fechado ao logado e ao visitante (a antiga, sem chamador)",
+  "order_refund_prova: so do servidor (RLS ligada, nenhuma policy, nenhum acesso de anon, authenticated e service_role)",
+  "order_refund_prova: as tres colunas do desenho (refund_id, substituida_por_manual_em, por_fora_liberado_em)",
+  "pedido__saldo_a_estornar: desconta o em duvida pela regra unica e respeita a substituida por manual",
+  "as duas saidas dos 7 dias e o painel: a mesma espera (order_refund__liberavel_apos_espera)",
+];
+/** O rol da 43b (a consulta de AUSENCIA do lote do reembolso em duvida; `ausenciaConfirmadaPor`): as 14 linhas que
+ * scripts/publicacao/consultas/43b-antes-reembolso-em-duvida-base-vigente.sql devolve - a base de antes: a tabela de marcas e as
+ * cinco funcoes novas ainda NAO existem; as SETE funcoes que a migration reescreve com o corpo vigente (md5) e os atributos de
+ * sempre; as duas funcoes de dinheiro que ela chama com o corpo conhecido; a antiga admin_devolucao_reemitir_reembolso existe; o
+ * gatilho do aviso da devolucao ligado. NAO mede a ACL. Uma loja que ja tem a migration reprova aqui de proposito. */
+const ROL_DA_43B = [
+  "controle: funcoes de public visiveis a este papel",
+  "order_refund_prova e as cinco funcoes novas ainda NAO existem",
+  "pedido__saldo_a_estornar: corpo e o vigente da 20261198000000, sem o em duvida (md5)",
+  "solicitar_estorno: corpo e o vigente da 20261197000000 (md5)",
+  "admin_devolucao_concluir: corpo e o vigente da 20261197000000 (md5)",
+  "autorizar_post_do_estorno: corpo e o vigente da 20261196000000 (md5)",
+  "reemitir_reembolso_da_devolucao: corpo e o vigente da 20261226000000 (md5)",
+  "admin_devolucao_reembolso_por_fora: corpo e o vigente da 20261226000000 (md5)",
+  "devolucao_avisa_o_cliente: corpo e o vigente da 20261225000000 (md5)",
+  "as sete funcoes: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, linguagem, volatilidade e retorno)",
+  "concluir_estorno: corpo e o conhecido da 2026110000100 (md5; a reemissao o chama)",
+  "devolucao__avisar_reembolso: corpo e o da 20261225000000 (md5; o por fora e a saida dos 7 dias o chamam)",
+  "admin_devolucao_reemitir_reembolso(uuid, boolean) existe (a migration fecha o EXECUTE dela ao logado)",
+  "tr_devolucao_avisa_o_cliente: ligado a devolucao_avisa_o_cliente",
+];
 /** O rol da 34a (a prova de objetos da migration 20261233000000, o sino do pedido de retirada fala de retirada): as 7 linhas que
  * scripts/publicacao/consultas/34a-conferir-sino-da-retirada-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado do
  * banco (funcao ausente vira `AUSENTE` na propria linha): o corpo vivo de notifica_cliente_de_mudanca_de_status e o NOVO (md5), ele traz
@@ -2131,6 +2183,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "40b-antes-identidade-legal-da-loja-base-vigente": ROL_DA_40B,
   "41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado": ROL_DA_41A,
   "41b-antes-pergunta-respondida-corpos-vigentes": ROL_DA_41B,
+  "43a-conferir-reembolso-em-duvida-aplicado": ROL_DA_43A,
+  "43b-antes-reembolso-em-duvida-base-vigente": ROL_DA_43B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2737,6 +2791,8 @@ module.exports = {
   ROL_DA_40B,
   ROL_DA_41A,
   ROL_DA_41B,
+  ROL_DA_43A,
+  ROL_DA_43B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
