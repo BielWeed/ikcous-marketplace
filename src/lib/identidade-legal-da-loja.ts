@@ -57,9 +57,9 @@ const PESOS_DO_SEGUNDO_DV = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
 
 function digitoDoCnpj(base: string, pesos: readonly number[]): number {
   let soma = 0;
-  for (let i = 0; i < pesos.length; i++) {
-    soma += valorDoCaractere(base.charAt(i)) * pesos[i];
-  }
+  pesos.forEach((peso, i) => {
+    soma += valorDoCaractere(base.charAt(i)) * peso;
+  });
   const resto = soma % 11;
   return resto < 2 ? 0 : 11 - resto;
 }

@@ -1785,7 +1785,8 @@ const VERIFICACOES = {
       funcao: "upsert_store_config",
       esperado: [
         {
-          texto: "store_legal_name = CASE WHEN config_json ? 'store_legal_name'",
+          texto:
+            "store_legal_name = CASE WHEN config_json ? 'store_legal_name'",
           vezes: 1,
         },
         {
