@@ -11,6 +11,87 @@ import { motion } from "framer-motion";
 import { Clock, MapPin, Navigation } from "lucide-react";
 import { useState } from "react";
 
+// Caixa do mapa embutido: o iframe sobe 56px para esconder o chip "Open in
+// Maps" do Google, e o centro GEOGRÁFICO do mapa (onde o Google desenha o
+// marcador do endereço) é o centro DESSA caixa — 28px acima do centro do
+// cartão visível. O pino mora na MESMA caixa (mesmas classes, uma fonte só):
+// se um dia o recorte mudar, os dois mudam juntos e a ponta nunca desvia.
+const CAIXA_DO_IFRAME =
+  "pointer-events-none absolute left-0 top-[-56px] h-[calc(100%+56px)] w-full";
+
+// Pino da casa (pedido do dono, 14/10/2026): PEQUENO (30x38) e redondo.
+// A logo vai num CÍRCULO (raio 13) e o anel de 2px em volta é o próprio
+// corpo preto do pino. O corpo é um círculo de raio 15 com um bico, cuja
+// PONTA é a base do SVG (`M15,38`): com o ancoradouro em 50%/-100% da caixa
+// do iframe, a ponta cai no centro do mapa, onde o Google desenha o
+// marcador nativo do endereço — que este corpo, maior que o marcador do
+// Google (mesma ponta, mesmo eixo), cobre por inteiro. Os +2px: medido no
+// Chromium em 3 endereços, a ponta do marcador do Google fica 1–2px ABAIXO
+// do centro da caixa; sem eles uma agulha vermelha aparecia sob a ponta.
+//
+// Ícone: o MESMO que vai para a tela inicial do celular — papel `icon_192`
+// (o do manifest do PWA, `porteiro.ts`, e o da notificação push, `sw.ts`).
+// NUNCA a logo LARGA do cabeçalho: uma logo-palavra (ex.: "SAVY") recortada
+// num círculo pequeno virava um borrão preto (dono, 28/09). O ícone já vem
+// QUADRADO e validado no build. Falha de rede cai na inicial, nunca num
+// borrão. Fundo branco por baixo: ícone com transparência não vira buraco.
+function PinDoMapa({ nome, inicial }: { nome: string; inicial: string }) {
+  const [iconeFalhou, setIconeFalhou] = useState(false);
+  const icone = iconeFalhou ? null : buildIdentity.localUrls.icon_192;
+  return (
+    <div data-pino-do-mapa="" className={CAIXA_DO_IFRAME}>
+      <div className="absolute left-1/2 top-[calc(50%+2px)] -translate-x-1/2 -translate-y-full drop-shadow-[0_2px_2px_rgba(0,0,0,0.35)]">
+        <svg
+          width="30"
+          height="38"
+          viewBox="0 0 30 38"
+          role="img"
+          aria-label={`Local da loja ${nome}`}
+        >
+          <defs>
+            <clipPath id="pin-icone-recorte">
+              <circle cx="15" cy="15" r="13" />
+            </clipPath>
+          </defs>
+          <path
+            data-pino-corpo=""
+            d="M15,38 L26.37,24.78 A15,15 0 1,0 3.63,24.78 Z"
+            fill="#18181b"
+          />
+          <circle cx="15" cy="15" r="12.5" fill="#ffffff" />
+          <g clipPath="url(#pin-icone-recorte)">
+            {icone ? (
+              <image
+                href={icone}
+                x="2"
+                y="2"
+                width="26"
+                height="26"
+                preserveAspectRatio="xMidYMid meet"
+                onError={() => setIconeFalhou(true)}
+              />
+            ) : (
+              <>
+                <circle cx="15" cy="15" r="13" fill="#18181b" />
+                <text
+                  x="15"
+                  y="20"
+                  textAnchor="middle"
+                  fontSize="15"
+                  fontWeight="900"
+                  fill="#ffffff"
+                >
+                  {inicial}
+                </text>
+              </>
+            )}
+          </g>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 // Página de LEITURA da marca do lojista assinante (peça 24). Fonte ÚNICA dos
 // dados = StoreConfig da loja (useStore) — a mesma que alimenta o cabeçalho
 // (logo/nome) e o rodapé da home (horário). Régua da casa: o dado que a loja
@@ -83,19 +164,6 @@ export function AboutStoreView() {
       return { ...current, stage };
     });
   };
-
-  // Ícone do PIN do mapa (pedido do dono, 28/09): o MESMO ícone que vai para
-  // a tela inicial do celular — papel `icon_192`, o que o manifest do PWA
-  // manda em `iconesManifestParaUrls` (porteiro.ts) e a notificação push lê
-  // em `resolverIconeDaLoja` (sw.ts). NUNCA a logo LARGA do cabeçalho
-  // (`logoSrc` acima): uma logo-palavra (ex.: "SAVY") recortada num círculo
-  // pequeno virava um borrão preto indistinguível do balão — o pin é
-  // independente da cascata banco→build→inicial da logo grande porque o
-  // ícone do app já vem QUADRADO e validado no build (schema garante
-  // largura===altura), sem precisar de estágio intermediário. Falha de rede
-  // cai na inicial, nunca num borrão.
-  const [iconeDoPinFalhou, setIconeDoPinFalhou] = useState(false);
-  const iconeDoPin = iconeDoPinFalhou ? null : buildIdentity.localUrls.icon_192;
 
   useDocumentMeta({ title: `Sobre a loja | ${storeName}` });
 
@@ -209,80 +277,12 @@ export function AboutStoreView() {
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
                   credentialless=""
-                  className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
+                  className={`${CAIXA_DO_IFRAME} block border-0`}
                 />
-                {/* Pin balão da casa em UM SVG: gota PRETA sólida (contorno
-                    e corpo) e o ÍCONE DO APP (`iconeDoPin`, não a logo larga
-                    do cabeçalho) num quadrado de cantos arredondados — não um
-                    círculo: ícone de app já nasce QUADRADO, então cabe
-                    inteiro (`meet`) sem recortar a marca. Moldura branca ao
-                    redor: contraste garantido mesmo com ícone escuro e sobre
-                    qualquer fundo de mapa. Sombra no pin inteiro para
-                    destacar sobre o mapa. A ponta de baixo continua a âncora
-                    no centro do mapa; sem ícone (ou falha), a inicial. */}
-                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full drop-shadow-[0_3px_6px_rgba(0,0,0,0.45)]">
-                  <svg
-                    width="60"
-                    height="73"
-                    viewBox="0 0 56 68"
-                    role="img"
-                    aria-label={`Local da loja ${storeName}`}
-                  >
-                    <defs>
-                      <clipPath id="pin-icone-recorte">
-                        <rect x="15" y="15" width="26" height="26" rx="7" />
-                      </clipPath>
-                    </defs>
-                    <path
-                      d="M28,64 C28,64 12,46.5 12,28 A16,16 0 1,1 44,28 C44,46.5 28,64 28,64 Z"
-                      fill="#18181b"
-                      stroke="#18181b"
-                      strokeWidth="3"
-                      strokeLinejoin="round"
-                    />
-                    <rect
-                      x="13"
-                      y="13"
-                      width="30"
-                      height="30"
-                      rx="9"
-                      fill="#ffffff"
-                    />
-                    <g clipPath="url(#pin-icone-recorte)">
-                      {iconeDoPin ? (
-                        <image
-                          href={iconeDoPin}
-                          x="15"
-                          y="15"
-                          width="26"
-                          height="26"
-                          preserveAspectRatio="xMidYMid meet"
-                          onError={() => setIconeDoPinFalhou(true)}
-                        />
-                      ) : (
-                        <>
-                          <rect
-                            x="15"
-                            y="15"
-                            width="26"
-                            height="26"
-                            fill="#18181b"
-                          />
-                          <text
-                            x="28"
-                            y="33"
-                            textAnchor="middle"
-                            fontSize="14"
-                            fontWeight="900"
-                            fill="#ffffff"
-                          >
-                            {inicial}
-                          </text>
-                        </>
-                      )}
-                    </g>
-                  </svg>
-                </div>
+                {/* Pino da casa (ver `PinDoMapa`). Mora na MESMA caixa do
+                    iframe — não no centro do cartão, que fica 28px abaixo do
+                    centro do mapa por causa do recorte do topo. */}
+                <PinDoMapa nome={storeName} inicial={inicial} />
                 <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">
                   Localização aproximada
                 </p>
