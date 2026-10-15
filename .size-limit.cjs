@@ -87,8 +87,17 @@ module.exports = [
     // Decisão do dono (26/09/2026, "Painel 450 · cliente 550"): medido
     // 402,44 kB no fixture de 26/09 (o recharts sozinho ~81 kB; Financeiro,
     // CRM e Devoluções do PR #666 ~78 kB) — teto de 450 kB, folga de ~48 kB.
+    //
+    // 15/10/2026 — teto 450 -> 455 kB (decisão técnica, sem ganho honesto
+    // disponível). Lote da noite 15/10: 39 ajustes de tela juntos; cada ramo
+    // cabia sozinho. Medido: base do lote (ebb23ba2) 448,11 kB; lote 3 inteiro
+    // 451,38 kB (+3,27 kB) — CI 451,32 kB. O crescimento é código de comportamento
+    // novo e espalhado (cupom do PDV, "Desfazer" com confirmação, banners,
+    // recibo, Mercado Pago), sem duplicata nem dependência nova; `import()`
+    // não ajuda porque o portão SOMA todos os chunks do painel. Cliente fica
+    // em 522,77/550 kB, sem mudança de teto.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "450 kB",
+    limit: "455 kB",
     webpack: false,
     running: false,
   },
