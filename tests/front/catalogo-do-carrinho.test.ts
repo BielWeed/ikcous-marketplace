@@ -130,7 +130,7 @@ describe("avisosDoCarrinho", () => {
     );
     const frases = await avisosDoCarrinho([item(linha(), 3)], catalogo);
     expect(frases).toHaveLength(2);
-    expect(frases.some((f) => f.includes("Só restam 1 unidade "))).toBe(true);
+    expect(frases.some((f) => f.includes("Só resta 1 unidade de "))).toBe(true);
     expect(frases.some((f) => f.includes("mudou de"))).toBe(true);
   });
 

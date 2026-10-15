@@ -1,6 +1,7 @@
 import { mapProductFromDB } from "@/lib/mappers";
 import { precoVendido } from "@/lib/preco-vendido";
 import { reconferirCarrinho } from "@/lib/reconferirCarrinho";
+import { textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { formatCurrency } from "@/lib/utils";
 import type { CartItem, Product } from "@/types";
 
@@ -226,7 +227,7 @@ export async function avisosDoCarrinho(
         frases.push(
           (m.para ?? 0) <= 0
             ? `${nome} esgotou e saiu do seu carrinho.`
-            : `Só restam ${m.para} unidade${m.para === 1 ? "" : "s"} de ${nome}. Ajustamos a quantidade no seu carrinho.`,
+            : `${textoSoRestam(m.para ?? 0)} unidade${m.para === 1 ? "" : "s"} de ${nome}. Ajustamos a quantidade no seu carrinho.`,
         );
       } else if (!saiu) {
         frases.push(

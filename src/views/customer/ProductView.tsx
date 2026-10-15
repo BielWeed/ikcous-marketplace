@@ -33,7 +33,7 @@ import {
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
-import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
+import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -623,7 +623,7 @@ export const ProductView = React.memo(function ProductView({
     const estoque = estoqueDaEscolha(proxima);
     if (estoque > 0 && quantity > estoque) {
       setQuantity(estoque);
-      toast.warning(`Só restam ${estoque}`, {
+      toast.warning(textoSoRestam(estoque), {
         description: `Ajustamos a quantidade para ${estoque}.`,
       });
     }
