@@ -521,7 +521,10 @@ export type View =
   | "product-detail"
   | "address-form"
   | "user-profile"
-  | "about-store";
+  | "about-store"
+  | "terms"
+  | "privacy"
+  | "returns-policy";
 
 export type SortOption = "default" | "price-asc" | "price-desc" | "sold";
 

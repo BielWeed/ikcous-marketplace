@@ -57,6 +57,9 @@ export const telasDeEntrada = Object.freeze([
   "admin-login",
   "user-profile",
   "about-store",
+  "terms",
+  "privacy",
+  "returns-policy",
 ]);
 
 const PREFIXO_ADMIN = "admin-";
