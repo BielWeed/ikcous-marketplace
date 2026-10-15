@@ -17,6 +17,13 @@ vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ coupons: mockCoupons, addCoupon, updateCoupon }),
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+// O formulário lê as formas de pagamento da loja (aviso do cupom que cobre a
+// compra inteira): sem provedor de loja nos testes, o dublê entra aqui.
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { formasPagamentoEntrega: ["pix", "card", "cash"] },
+  }),
+}));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));

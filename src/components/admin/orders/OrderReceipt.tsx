@@ -22,6 +22,14 @@ interface OrderReceiptProps {
    * vendo o branding do build.
    */
   storeName?: string;
+  /**
+   * Rótulo da variação de cada item ("Cor Azul · Tamanho M"), por
+   * `variantId`. O pedido só guarda o id; quem lê o catálogo é a ficha
+   * (OrderDetail), e este recibo só imprime o que recebe. Sem a prop, ou sem
+   * entrada para o item, a linha sai como sempre (o recibo do balcão, por
+   * exemplo, já leva a variação dentro do nome).
+   */
+  variacoes?: Record<string, string>;
 }
 
 // O recibo e o unico documento desta tela que sai IMPRESSO e vai para a mao
@@ -39,6 +47,7 @@ function reais(valor: number): string {
 export const OrderReceipt = memo(function OrderReceipt({
   order,
   storeName: storeNameProp,
+  variacoes,
 }: OrderReceiptProps) {
   const storeName = storeNameProp ?? branding.appName;
   return (
@@ -81,6 +90,11 @@ export const OrderReceipt = memo(function OrderReceipt({
               <div key={i} className="flex justify-between">
                 <span className="flex-1">
                   {item.quantity}x {item.name}
+                  {item.variantId && variacoes?.[item.variantId] && (
+                    <span className="block pl-4 text-xs">
+                      {variacoes[item.variantId]}
+                    </span>
+                  )}
                 </span>
                 <span>
                   R$ {reais((item.price || 0) * (item.quantity || 0))}

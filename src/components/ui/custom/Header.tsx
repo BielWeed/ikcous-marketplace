@@ -223,7 +223,7 @@ export const Header = memo(function Header({
             ) : (
               <div className="flex items-center gap-2">
                 <div className="relative flex size-8 items-center justify-center rounded-[8px] bg-primary shadow-lg">
-                  <span className="font-black italic text-white">
+                  <span className="font-black italic text-primary-foreground">
                     {storeLetter}
                   </span>
                   {/* Extreme Sync Status Dot */}

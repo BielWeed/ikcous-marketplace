@@ -1,15 +1,24 @@
 import type { OrderStatus } from "@/types";
-import { Check, Home, Package, Truck, XCircle } from "lucide-react";
+import { Check, Home, Package, Store, Truck, XCircle } from "lucide-react";
 
 interface OrderTimelineProps {
   status: OrderStatus;
+  /** Retirada na loja: ninguém leva o pedido, a cliente busca — a etapa
+   * `shipping` se chama "Pronto para retirar" (só texto e ícone; mesmo nome
+   * da ficha do pedido, em todos os estados). */
+  retiradaNaLoja?: boolean;
 }
 
-export function OrderTimeline({ status }: OrderTimelineProps) {
+export function OrderTimeline({
+  status,
+  retiradaNaLoja = false,
+}: OrderTimelineProps) {
   const steps = [
     { key: "pending", label: "Recebido", icon: Check },
     { key: "processing", label: "Preparando", icon: Package },
-    { key: "shipping", label: "Em rota", icon: Truck },
+    retiradaNaLoja
+      ? { key: "shipping", label: "Pronto para retirar", icon: Store }
+      : { key: "shipping", label: "Em rota", icon: Truck },
     { key: "delivered", label: "Entregue", icon: Home },
   ];
 

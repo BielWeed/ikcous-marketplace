@@ -26,10 +26,11 @@
 //     casa, o da página do produto): nasce em 1, teto = estoque do item
 //     escolhido, "+" e "−" desabilitam nas bordas, e a quantidade escolhida
 //     viaja no 4º argumento da prop.
-//   - 🟢 PEÇA 18: o "Adicionar" da folha dispara o MESMO voo de bolinha do
-//     caminho do card (triggerFlyingCartAnimation) — agora a partir da FOTO
-//     da folha; antes partia do CTA do rodapé, colado no carrinho, e o olho
-//     não pegava o voo.
+//   - 🟢 PEÇA 18 (REVISTA em 14/10/2026): o "Adicionar" da folha termina no
+//     MESMO voo de bolinha do caminho do card (triggerFlyingCartAnimation),
+//     mas SÓ QUANDO A FOLHA JÁ SAIU, partindo da foto do CARD ao fundo. A
+//     versão da peça 18 partia da foto da folha com ela aberta: a bolinha
+//     boiava sobre o conteúdo e ia para um carrinho coberto pela folha.
 //   - Sem a prop: o botão continua fazendo o que fazia — levar para a tela
 //     do produto (o teste irmão
 //     card-nao-deixa-comprar-sem-escolher-a-variacao.test.tsx continua
@@ -511,39 +512,337 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(onAddToCartWithVariants.mock.calls[0][3]).toBe(3);
   });
 
-  it("o 'Adicionar' da folha dispara o MESMO voo de bolinha do caminho do card (triggerFlyingCartAnimation)", async () => {
-    // O trigger de voo só atira com o alvo do carrinho no DOM
-    // (#bottom-nav-cart — a BottomNav planta na vitrine real; no jsdom, um
-    // pino de teste). Sem o pino, o trigger sai cedo com só um aviso.
-    const alvoDoCarrinho = document.createElement("div");
-    alvoDoCarrinho.id = "bottom-nav-cart";
-    document.body.appendChild(alvoDoCarrinho);
+  // ── A BOLINHA DO CARRINHO NÃO ATRAVESSA A FOLHA (14/10/2026) ───────────
+  // Relato do dono (dois prints de celular): ao tocar em "Adicionar" dentro
+  // da folha, a bolinha com a foto do produto aparecia boiando por cima do
+  // conteúdo da folha (ao lado do preço) e seguia para um carrinho que a
+  // própria folha cobre (folha z-130 acima da barra de baixo z-120). Medido
+  // no Chromium, 375x812: ela saía do centro da foto da folha (188,343) e ia
+  // até (237,780), TODAS as 45 amostras do voo dentro da folha aberta.
+  // Contrato novo: a bolinha só voa quando a folha já SAIU — parte da foto
+  // do CARD (que está visível ao fundo) até o carrinho. Sem ponto de partida
+  // visível e confiável, não voa (fica o "Salvo!").
+  //
+  // O jsdom não mede layout: `getBoundingClientRect` devolve zeros. Os
+  // testes dão as medidas na mão; o visual real foi conferido no Chromium.
+  const fotoDoCard = () =>
+    hospedeiro.querySelector<HTMLElement>(
+      '[data-testid="product-card-photo"]',
+    )!;
+  const voos = () => document.querySelectorAll(".cart-flyer-container");
 
-    try {
+  function medir(el: Element, r: Partial<DOMRect>) {
+    const left = r.left ?? 0;
+    const top = r.top ?? 0;
+    const width = r.width ?? 0;
+    const height = r.height ?? 0;
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    });
+  }
+
+  // O alvo do voo: #bottom-nav-cart (a BottomNav planta na vitrine real; no
+  // jsdom, um pino de teste). Sem ele o trigger sai cedo, só com um aviso.
+  function plantarCarrinho() {
+    const alvo = document.createElement("div");
+    alvo.id = "bottom-nav-cart";
+    document.body.appendChild(alvo);
+    medir(alvo, { left: 300, top: 700, width: 60, height: 20 });
+    return alvo;
+  }
+
+  // O jsdom não implementa `elementFromPoint` (quem está por cima de um
+  // ponto da tela): o teste planta uma resposta e, no fim, tira.
+  function quemEstaPorCima(el: () => Element | null) {
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => el(),
+    });
+  }
+
+  // Tela de 1024x768 (padrão do jsdom): a foto do card inteira à vista.
+  function fotoDoCardVisivel() {
+    medir(fotoDoCard(), { left: 20, top: 100, width: 160, height: 200 });
+    // Centro (100, 200): o que está por cima ali é a própria foto do card.
+    quemEstaPorCima(() => fotoDoCard());
+  }
+
+  async function escolherMEAdicionar() {
+    await abrirFolha();
+    await act(async () => {
+      chip("M").click();
+    });
+    await act(async () => {
+      ctaDaFolha().click();
+    });
+  }
+
+  // 600 ms (Salvando -> Salvo!) + 700 ms (Salvo! visível) = folha fecha;
+  // depois, um tique para o Radix terminar de soltar a folha e avisar.
+  async function esperarAFolhaFechar() {
+    await act(async () => {
+      vi.advanceTimersByTime(1300);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+  }
+
+  describe("bolinha do carrinho no caminho da folha", () => {
+    let alvoDoCarrinho: HTMLElement;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      alvoDoCarrinho = plantarCarrinho();
+    });
+
+    afterEach(() => {
+      // O voo se limpa sozinho aos 750 ms; limpar na mão para não vazar nó
+      // para o caso seguinte.
+      for (const voo of Array.from(voos())) voo.remove();
+      alvoDoCarrinho.remove();
+      Reflect.deleteProperty(document, "elementFromPoint");
+    });
+
+    it("com a folha ABERTA nenhuma bolinha nasce — nem no toque, nem no 'Salvo!'", async () => {
       await renderizarCard(criarProduto({ variants: criarVariantes() }), {
         onAddToCartWithVariants: vi.fn(),
       });
+      fotoDoCardVisivel();
+      await escolherMEAdicionar();
+
+      // Logo depois do toque: o botão mostra "Salvando...", e nada voa.
+      expect(ctaDaFolha().textContent).toContain("Salvando...");
+      expect(voos()).toHaveLength(0);
+
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+      // No "Salvo!" a folha ainda está na tela — e continua sem bolinha.
+      expect(ctaDaFolha().textContent).toContain("Salvo!");
+      expect(folha()).not.toBeNull();
+      expect(voos()).toHaveLength(0);
+    });
+
+    it("quando a folha SAI, a bolinha parte da foto do CARD até o carrinho", async () => {
+      const onAddToCartWithVariants = vi.fn();
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants,
+      });
+      fotoDoCardVisivel();
+      await escolherMEAdicionar();
+      await esperarAFolhaFechar();
+
+      expect(folha()).toBeNull();
+      expect(onAddToCartWithVariants).toHaveBeenCalledTimes(1);
+
+      expect(voos()).toHaveLength(1);
+      const voo = voos()[0] as HTMLElement;
+      // No BODY (fora do card e da folha, mesma anatomia do caminho do card).
+      expect(voo.parentElement).toBe(document.body);
+      // Ponto de partida = centro da foto do CARD (100,200) menos metade da
+      // bolinha (50px / 2): a bolinha nasce em cima da foto de fundo.
+      expect(voo.style.left).toBe("75px");
+      expect(voo.style.top).toBe("175px");
+      const bolinha = voo.querySelector("img");
+      expect(bolinha).not.toBeNull();
+      expect(bolinha!.getAttribute("src")).toBe("https://example.com/img.png");
+    });
+
+    it("o voo vale UMA vez: fechar e reabrir a folha depois não solta outra bolinha", async () => {
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants: vi.fn(),
+      });
+      fotoDoCardVisivel();
+      await escolherMEAdicionar();
+      await esperarAFolhaFechar();
+      expect(voos()).toHaveLength(1);
+      for (const voo of Array.from(voos())) voo.remove();
+
+      await abrirFolha();
+      await act(async () => {
+        alcaDaFolha().click();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(folha()).toBeNull();
+      expect(voos()).toHaveLength(0);
+    });
+
+    it("abrir a folha e fechar SEM adicionar não solta bolinha", async () => {
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants: vi.fn(),
+      });
+      fotoDoCardVisivel();
+      await abrirFolha();
+      await act(async () => {
+        alcaDaFolha().click();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(folha()).toBeNull();
+      expect(voos()).toHaveLength(0);
+    });
+
+    it("toque duplo no 'Adicionar': entra UMA vez e sai UMA bolinha", async () => {
+      const onAddToCartWithVariants = vi.fn();
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants,
+      });
+      fotoDoCardVisivel();
       await abrirFolha();
       await act(async () => {
         chip("M").click();
       });
+      // Dois toques, cada um um evento (o React atualiza entre eles, como no
+      // aparelho): o segundo cai no "Salvando..." e é recusado.
       await act(async () => {
         ctaDaFolha().click();
       });
+      await act(async () => {
+        ctaDaFolha().click();
+      });
+      await esperarAFolhaFechar();
 
-      // A bolinha NASCEU: o container do voo existe, no BODY (fora da folha,
-      // mesma anatomia do caminho do card) carregando a foto do produto.
-      const voo = document.querySelector(".cart-flyer-container");
-      expect(voo).not.toBeNull();
-      expect(voo!.parentElement).toBe(document.body);
-      const bolinha = voo!.querySelector("img");
-      expect(bolinha).not.toBeNull();
-      expect(bolinha!.getAttribute("src")).toBe("https://example.com/img.png");
+      expect(onAddToCartWithVariants).toHaveBeenCalledTimes(1);
+      expect(voos()).toHaveLength(1);
+    });
+
+    it("fechar a folha pela alça durante o 'Salvando...' também termina no voo (o item JÁ entrou)", async () => {
+      const onAddToCartWithVariants = vi.fn();
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants,
+      });
+      fotoDoCardVisivel();
+      await escolherMEAdicionar();
+      expect(voos()).toHaveLength(0);
+
+      await act(async () => {
+        alcaDaFolha().click();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(folha()).toBeNull();
+      expect(onAddToCartWithVariants).toHaveBeenCalledTimes(1);
+      expect(voos()).toHaveLength(1);
+    });
+
+    it("card fora da tela quando a folha sai: NÃO voa (sem ponto de partida visível), mas o item entrou", async () => {
+      const onAddToCartWithVariants = vi.fn();
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants,
+      });
+      // A foto do card está acima do topo da tela (rolada para fora).
+      medir(fotoDoCard(), { left: 20, top: -500, width: 160, height: 200 });
+      quemEstaPorCima(() => fotoDoCard());
+      await escolherMEAdicionar();
+      await esperarAFolhaFechar();
+
+      expect(folha()).toBeNull();
+      expect(onAddToCartWithVariants).toHaveBeenCalledTimes(1);
+      expect(voos()).toHaveLength(0);
+    });
+
+    it("foto do card COBERTA por outra coisa (barra fixa, outra folha): NÃO voa", async () => {
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants: vi.fn(),
+      });
+      medir(fotoDoCard(), { left: 20, top: 100, width: 160, height: 200 });
+      // O que está por cima do centro da foto NÃO é do card.
+      quemEstaPorCima(() => alvoDoCarrinho);
+      await escolherMEAdicionar();
+      await esperarAFolhaFechar();
+
+      expect(voos()).toHaveLength(0);
+    });
+
+    it("o foco volta ao botão do card quando a folha sai (a bolinha não rouba o foco)", async () => {
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants: vi.fn(),
+      });
+      fotoDoCardVisivel();
+      await escolherMEAdicionar();
+      await esperarAFolhaFechar();
+
+      expect(voos()).toHaveLength(1);
+      expect(document.activeElement).toBe(botaoDeAcao());
+    });
+
+    it("a bolinha sai ANTES de o foco voltar ao botão do card (focar rola a página e tira a foto da tela)", async () => {
+      // Medido no Chromium (1024px, 2 colunas, foto de ~600px, card
+      // parcialmente rolado): `botao.focus()` rola a página para mostrar o
+      // botão, que fica no pé do card. Com a ordem antiga (foco, depois voo) o
+      // centro da foto já tinha saído da tela quando `pontoDeSaidaVisivel`
+      // perguntava, e só aparecia o "Salvo!". Aqui o foco registra QUANTAS
+      // bolinhas já existiam no instante em que foi chamado.
+      await renderizarCard(criarProduto({ variants: criarVariantes() }), {
+        onAddToCartWithVariants: vi.fn(),
+      });
+      fotoDoCardVisivel();
+      const bolinhasNoInstanteDoFoco: number[] = [];
+      const focarDeVerdade = HTMLElement.prototype.focus;
+      const botao = botaoDeAcao();
+      vi.spyOn(botao, "focus").mockImplementation(function (
+        this: HTMLElement,
+        opcoes?: FocusOptions,
+      ) {
+        bolinhasNoInstanteDoFoco.push(voos().length);
+        focarDeVerdade.call(this, opcoes);
+      });
+      await escolherMEAdicionar();
+      await esperarAFolhaFechar();
+
+      expect(bolinhasNoInstanteDoFoco).toEqual([1]);
+      expect(voos()).toHaveLength(1);
+      expect(document.activeElement).toBe(botao);
+    });
+  });
+
+  it("card SEM variação: o voo continua saindo na hora, do botão do card (caminho direto preservado)", async () => {
+    vi.useFakeTimers();
+    const alvo = plantarCarrinho();
+    try {
+      const onAddToCart = vi.fn();
+      const { ProductCard } = await import(
+        "@/components/ui/custom/ProductCard"
+      );
+      await act(async () => {
+        raiz.render(
+          <ProductCard
+            product={criarProduto()}
+            isFavorite={false}
+            onToggleFavorite={() => {}}
+            onClick={vi.fn()}
+            showRating={false}
+            onAddToCart={onAddToCart}
+          />,
+        );
+      });
+      medir(botaoDeAcao(), { left: 40, top: 300, width: 100, height: 30 });
+      await act(async () => {
+        botaoDeAcao().click();
+      });
+
+      expect(onAddToCart).toHaveBeenCalledTimes(1);
+      // Na hora, sem esperar nada: centro do botão (90,315) - 25.
+      expect(voos()).toHaveLength(1);
+      const voo = voos()[0] as HTMLElement;
+      expect(voo.style.left).toBe("65px");
+      expect(voo.style.top).toBe("290px");
     } finally {
-      // O voo se limpa sozinho aos 750 ms; no teste, limpar na mão para não
-      // vazar nó para o caso seguinte.
-      document.querySelector(".cart-flyer-container")?.remove();
-      alvoDoCarrinho.remove();
+      for (const voo of Array.from(voos())) voo.remove();
+      alvo.remove();
     }
   });
 

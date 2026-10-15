@@ -13,6 +13,7 @@ import { CAMINHO_IDENTIDADE_JSON } from "../config/fichaDaLojaContract";
 // loja B".
 import { escapeHtml, identityHtml } from "../config/identidadeNoHtml";
 import { MANIFESTO_BASE } from "../config/manifestoBase";
+import { nomeCurtoDaLoja } from "../config/nomeCurtoDaLoja";
 import { cleanEnvVar } from "../lib/env-publico-valores";
 import { resolverValoresPublicosSupabase } from "../lib/env-publico-valores";
 import { readPublicStoreIdentity } from "../lib/publicStoreIdentity";
@@ -968,7 +969,7 @@ function atenderManifest(
   const manifest = {
     ...MANIFESTO_BASE,
     name: identity.storeName,
-    short_name: identity.storeName,
+    short_name: nomeCurtoDaLoja(identity.storeName),
     description: `Produtos e novidades de ${identity.storeName}`,
     theme_color: identity.theme.primary,
     background_color: identity.theme.primary,

@@ -45,6 +45,9 @@ let AVALIACOES_SEM_RESPOSTA = 0;
 let ERRO_NA_CONSULTA_DE_PEDIDOS = false;
 let ERRO_NA_CONSULTA_DE_PERGUNTAS = false;
 let ERRO_NA_CONSULTA_DE_AVALIACOES = false;
+// Consulta de pedidos ENTREGUES sem recebimento marcado (14/10/2026): o erro
+// dela tambem tem de acender o sino por duvida.
+let ERRO_NA_CONSULTA_DE_RECEBIMENTOS = false;
 // Exceção LANÇADA (caminho do `catch`), e não `error` devolvido no objeto —
 // são caminhos diferentes dentro de `fetchInitialCounts`.
 let EXCECAO_NA_CONSULTA_DE_PEDIDOS = false;
@@ -77,13 +80,29 @@ function criarContagemBuilder(
   excecaoPadrao = false,
 ) {
   const builder: any = {};
+  // 14/10/2026: o sino tem uma consulta a mais em `marketplace_orders` — os
+  // pedidos ENTREGUES, pagos na entrega, sem recebimento marcado — que se
+  // distingue pelo `.eq("status", "delivered")`. Aqui ela responde zero (nada
+  // por marcar); as flags de falha desta suite seguem mirando as outras.
+  let ehRecebimento = false;
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
   builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
-  builder.eq = vi.fn(() => builder);
+  builder.gte = vi.fn(() => builder);
+  builder.eq = vi.fn((coluna: string, valor: string) => {
+    if (coluna === "status" && valor === "delivered") ehRecebimento = true;
+    return builder;
+  });
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão dos vizinhos deste diretório.
   builder.then = (resolve: any, reject?: any) => {
+    if (ehRecebimento) {
+      return Promise.resolve(
+        ERRO_NA_CONSULTA_DE_RECEBIMENTOS
+          ? { count: null, error: new Error("falha simulada de rede") }
+          : { count: 0, error: null },
+      ).then(resolve, reject);
+    }
     if (tabela === "marketplace_orders" && ORDERS_DEFERRED) {
       const deferido = ORDERS_DEFERRED;
       ORDERS_DEFERRED = null;
@@ -239,6 +258,7 @@ describe("AdminLayout — o sino acende quando uma consulta falha, não quando a
     ERRO_NA_CONSULTA_DE_PEDIDOS = false;
     ERRO_NA_CONSULTA_DE_PERGUNTAS = false;
     ERRO_NA_CONSULTA_DE_AVALIACOES = false;
+    ERRO_NA_CONSULTA_DE_RECEBIMENTOS = false;
     EXCECAO_NA_CONSULTA_DE_PEDIDOS = false;
     EXCECAO_NA_CONSULTA_DE_AVALIACOES = false;
     EXCECAO_NA_CONSULTA_DE_PERGUNTAS = false;
@@ -309,6 +329,16 @@ describe("AdminLayout — o sino acende quando uma consulta falha, não quando a
   // `reviewsErr` e no `catch`) mostraram que só o de `ordersErr` era pego —
   // os outros três sobreviviam porque o dublê só sabia simular falha na
   // consulta de pedidos. Estes três casos fecham os pontos que sobreviviam.
+  it("a consulta de pedidos entregues sem recebimento falha (recebimentosErr), e nada mais está pendente — o sino ACENDE", async () => {
+    ERRO_NA_CONSULTA_DE_RECEBIMENTOS = true;
+
+    const sino = await montarPainel(raiz, hospedeiro);
+    await esperarContagensChegarem();
+
+    // Tudo mais em zero e sem falha: se acender, e por causa desta consulta.
+    expect(sino.querySelector("span")).toBeTruthy();
+  });
+
   it("a consulta de perguntas falha (qErr), e nada mais está pendente — o sino ACENDE", async () => {
     ERRO_NA_CONSULTA_DE_PERGUNTAS = true;
 
@@ -355,6 +385,7 @@ describe("AdminLayout — retentativa quando a rodada anterior falhou (ressalva 
     ERRO_NA_CONSULTA_DE_PEDIDOS = false;
     ERRO_NA_CONSULTA_DE_PERGUNTAS = false;
     ERRO_NA_CONSULTA_DE_AVALIACOES = false;
+    ERRO_NA_CONSULTA_DE_RECEBIMENTOS = false;
     EXCECAO_NA_CONSULTA_DE_PEDIDOS = false;
     EXCECAO_NA_CONSULTA_DE_AVALIACOES = false;
     EXCECAO_NA_CONSULTA_DE_PERGUNTAS = false;
@@ -458,6 +489,7 @@ describe("AdminLayout — rodada antiga não sobrescreve rodada nova (ressalva 3
     ERRO_NA_CONSULTA_DE_PEDIDOS = false;
     ERRO_NA_CONSULTA_DE_PERGUNTAS = false;
     ERRO_NA_CONSULTA_DE_AVALIACOES = false;
+    ERRO_NA_CONSULTA_DE_RECEBIMENTOS = false;
     EXCECAO_NA_CONSULTA_DE_PEDIDOS = false;
     EXCECAO_NA_CONSULTA_DE_AVALIACOES = false;
     EXCECAO_NA_CONSULTA_DE_PERGUNTAS = false;

@@ -5,6 +5,7 @@ import {
   palavrasDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
+import { miniaturaDaSugestao, usarImagemOriginal } from "@/lib/imageUrl";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -352,7 +353,7 @@ export function SearchBar({
                       key={cat}
                       type="button"
                       onClick={() => handleSuggestionClick(cat)}
-                      className="shadow-2xs flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-white active:scale-95"
+                      className="shadow-2xs flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
                     >
                       <Tag className="size-3" />
                       <span>{cat}</span>
@@ -385,13 +386,24 @@ export function SearchBar({
                       <div className="flex min-w-0 items-center gap-3.5 pr-2">
                         <div className="shadow-2xs relative size-12 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-100">
                           <img
+                            // Miniatura leve (em 3G eram várias fotos grandes
+                            // por letra digitada). O mesmo helper alimenta o
+                            // useCacheWarmer: a string aquecida é esta.
                             src={
-                              item.images[0] ||
-                              "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&q=80&w=100"
+                              item.images[0]
+                                ? miniaturaDaSugestao(item.images[0])
+                                : "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&q=80&w=100"
+                            }
+                            onError={(event) =>
+                              usarImagemOriginal(
+                                event.currentTarget,
+                                item.images[0],
+                              )
                             }
                             alt={item.name}
                             className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
                             loading="lazy"
+                            decoding="async"
                           />
                           {item.isBestseller && (
                             <span className="absolute right-0.5 top-0.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" />

@@ -80,7 +80,9 @@ describe("aviso de atualização mostra a versão limpa, não um código estranh
 
   function montar() {
     act(() => {
-      root.render(<PWAUpdateManager currentView={"home" as View} />);
+      // O selo de→para é do cartão, e o cartão é do PAINEL (a cliente vê só a
+      // faixa de uma linha, sem versão).
+      root.render(<PWAUpdateManager currentView={"admin-dashboard" as View} />);
     });
   }
 

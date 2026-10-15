@@ -128,6 +128,7 @@ describe("ProductCard — o card não é um botão com botões dentro (B3)", () 
     props: {
       onClick?: (id: string) => void;
       onToggleFavorite?: (p: Product, e: React.MouseEvent) => void;
+      onAddToCart?: (p: Product) => void;
       onAddToCartWithVariants?: (
         p: Product,
         variantId: string | undefined,
@@ -145,6 +146,7 @@ describe("ProductCard — o card não é um botão com botões dentro (B3)", () 
           isFavorite={false}
           onToggleFavorite={props.onToggleFavorite ?? vi.fn()}
           onClick={props.onClick ?? vi.fn()}
+          onAddToCart={props.onAddToCart}
           onAddToCartWithVariants={props.onAddToCartWithVariants}
           showRating={false}
           // `priority` evita o `IntersectionObserver` do LazyImage (ausente
@@ -261,7 +263,11 @@ describe("ProductCard — o card não é um botão com botões dentro (B3)", () 
 
   it("o botão de ação (carrinho) continua independente do alvo do produto", async () => {
     const onClick = vi.fn();
-    await renderizarCard({ onClick });
+    // O card precisa TER como adicionar: sem `onAddToCart` o botão vira
+    // "Ver produto" e abre a página de propósito (carrinho-dos-cards-busca-e-
+    // favoritos.test.tsx) — aqui o que se prova é o caminho do carrinho.
+    const onAddToCart = vi.fn();
+    await renderizarCard({ onClick, onAddToCart });
 
     const acao = hospedeiro.querySelector<HTMLButtonElement>(
       'button[data-testid="product-card-action"]',
@@ -270,6 +276,7 @@ describe("ProductCard — o card não é um botão com botões dentro (B3)", () 
       acao.click();
     });
 
+    expect(onAddToCart).toHaveBeenCalledTimes(1);
     expect(onClick).not.toHaveBeenCalled();
   });
 });

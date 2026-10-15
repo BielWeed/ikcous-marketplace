@@ -55,7 +55,7 @@ import {
   serializarRascunhoDoProduto,
   variacoesDoRascunhoComEstoqueDoBanco,
 } from "@/lib/rascunho-do-produto";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
@@ -5251,7 +5251,7 @@ const VariantItem = React.memo(function VariantItem({
             {variant.priceOverride && (
               <span className="flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-emerald-500">
                 <DollarSign className="size-3" />
-                R$ {Number(variant.priceOverride).toFixed(2)}
+                {formatCurrency(Number(variant.priceOverride))}
               </span>
             )}
           </div>

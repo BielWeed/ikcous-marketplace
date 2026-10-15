@@ -3,6 +3,7 @@ import { useSyncListener } from "@/hooks/useDataVault";
 import { DataVault } from "@/lib/dataVault";
 import { atributosDeImagem } from "@/lib/imageUrl";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
+import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Banner } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -302,13 +303,18 @@ export function useBanners(adminMode = false) {
       );
     }
     try {
-      const fileExt = file.name.split(".").pop();
+      // A loja IKCOUS não tem redimensionamento no servidor (imageUrl.ts):
+      // a foto crua do celular (vários MB) iria inteira a toda cliente na
+      // tela inicial. Reduz ANTES do envio, como a foto de produto — o
+      // utilitário é fail-open (falha ou formato intocável = o original).
+      const pronto = await redimensionarImagem(file);
+      const fileExt = pronto.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("banners")
-        .upload(filePath, file);
+        .upload(filePath, pronto);
 
       if (uploadError) throw uploadError;
 

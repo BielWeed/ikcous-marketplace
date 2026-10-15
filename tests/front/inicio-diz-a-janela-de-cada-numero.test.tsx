@@ -5,8 +5,9 @@
 // pago_apos_expirar, recebido_na_entrega, sem cancelado/devolvido, pelo dia do
 // pagamento). Prova, montando a tela de verdade:
 //   (a) o "Hoje" e o mês se chamam "Vendas pagas hoje" e "Vendas pagas no mês";
-//   (b) "Contas vencidas" aparece UMA vez (no Para fazer) e "A pagar em 7
-//       dias" continua levando ao Financeiro;
+//   (b) "Contas vencidas" aparece UMA vez (no Para fazer) e "A pagar (vencidas
+//       + próximos 7 dias)" continua levando ao Financeiro (o rótulo antigo,
+//       "A pagar em 7 dias", escondia que a soma inclui o que já venceu);
 //   (c) a legenda da série de 14 dias e a ajuda do Início usam as mesmas
 //       palavras; "Lucro estimado" não vira "vendas" (vem do DRE).
 import { act } from "react";
@@ -169,7 +170,7 @@ describe("Início: cada número diz o conceito e a janela", () => {
     );
   });
 
-  it("(b) 'Contas vencidas' aparece uma vez (no Para fazer) e 'A pagar em 7 dias' leva ao Financeiro", () => {
+  it("(b) 'Contas vencidas' aparece uma vez (no Para fazer) e 'A pagar (vencidas + próximos 7 dias)' leva ao Financeiro", () => {
     const pagina = texto(hospedeiro);
     expect(ocorrencias(pagina, "Contas vencidas")).toBe(1);
     expect(pagina).toContain("Devoluções abertas");
@@ -180,16 +181,16 @@ describe("Início: cada número diz o conceito e a janela", () => {
     expect(texto(paraFazer)).toContain("Contas vencidas");
 
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      texto(b).includes("A pagar em 7 dias"),
+      texto(b).includes("A pagar (vencidas + próximos 7 dias)"),
     );
     expect(botao).toBeTruthy();
     act(() => botao?.click());
     expect(onNavigate).toHaveBeenCalledWith("admin-financeiro");
   });
 
-  it("(b2) 'A pagar em 7 dias' é um botão-linha novo (rounded-2xl, gradiente, min-h-11)", () => {
+  it("(b2) 'A pagar (vencidas + próximos 7 dias)' é um botão-linha novo (rounded-2xl, gradiente, min-h-11)", () => {
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      texto(b).includes("A pagar em 7 dias"),
+      texto(b).includes("A pagar (vencidas + próximos 7 dias)"),
     );
     expect(botao).toBeTruthy();
     for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {

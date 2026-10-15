@@ -9,8 +9,12 @@
  * Fatos medidos na doc pública do Mercado Pago em 14/09/2026 (pesquisa da
  * peça): o lojista precisa de DUAS credenciais da conta dele — Public Key e
  * Access Token de produção, criadas em developers.mercadopago.com com a
- * conta normal dele (sem aprovação de pessoa). O ambiente real (produção ×
- * teste) vem da resposta da API (`live_mode`), NÃO do prefixo da chave.
+ * conta normal dele (sem aprovação de pessoa). O ambiente (produção × teste)
+ * NÃO vem do prefixo `APP_USR-` (os dois nascem assim) nem de `live_mode` (o
+ * `/users/me` não devolve esse campo): o teste de conexão lê as MARCAS da
+ * conta — `tags` com "test_user", e-mail `@testuser.com` ou token `TEST-`
+ * (corrigido em 14/10/2026). Com marca de teste a tela avisa; sem marca
+ * nenhuma a tela não afirma nada e não avisa.
  * O assistente de IA do app do Mercado Pago existe e se chama "Mago"
  * (antes "Assistente Pessoal") — o NOME varia conforme a versão do app, e
  * o CAMINHO exato dentro do app varia também, então o guia não promete
@@ -197,6 +201,33 @@ Essas chaves são SECRETAS. Eu só vou usá-las no painel do Mercado Pago e dent
 export const PROMPT_PARA_AGENTE_MP = montarPromptParaAgenteMp({
   urlDeNotificacoes: null,
 });
+
+/**
+ * Aviso de chave de conta de TESTE (14/10/2026). É o MESMO texto que a edge
+ * `credenciais-mercado-pago` manda em `aviso` quando a conta é de teste e a loja
+ * não declarou modo de teste — repetido aqui para o resumo do topo da seção
+ * continuar avisando depois que a tela é reaberta (o `aviso` da edge só chega na
+ * resposta do salvar/testar). Há um teste que confere os dois lados.
+ */
+export const AVISO_CHAVES_DE_TESTE =
+  'Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago). O PIX fica desligado até lá.';
+
+/**
+ * O mesmo aviso SEM a última frase: para a tela que lê uma loja em que o PIX
+ * ainda aparece LIGADO (a loja só desliga quando alguém testa ou salva de
+ * novo) — dizer "fica desligado" ali seria mentira. É igual à edge.
+ */
+export const AVISO_BASE_CHAVES_DE_TESTE =
+  'Essas chaves são de TESTE. Para vender de verdade, troque pelas chaves de PRODUÇÃO (aba "Credenciais de produção" no painel do Mercado Pago).';
+
+/**
+ * O mesmo aviso, para a loja que DECLAROU o modo de teste (`modo_de_teste:
+ * true` na resposta da edge — ex.: a loja de desenvolvimento): chave de teste é
+ * o esperado ali, então não se diz que as clientes não conseguem pagar. Igual
+ * (menos o ponto final) ao aviso curto da edge; um teste confere os dois lados.
+ */
+export const AVISO_CHAVE_DE_TESTE_EM_MODO_DE_TESTE =
+  "Chave de TESTE: o PIX não vai receber dinheiro de verdade.";
 
 /** Recado de segurança exibido embaixo do formulário. */
 export const RECADO_DE_SEGURANCA =

@@ -206,7 +206,7 @@ export function OrderSearch({
               className={cn(
                 "flex-1 py-2 text-[10px] xs:text-[11px] font-black uppercase tracking-[0.1em] rounded-xl transition-all duration-300",
                 tab === "login"
-                  ? "bg-primary text-white shadow-md"
+                  ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800",
               )}
             >
@@ -221,7 +221,7 @@ export function OrderSearch({
               className={cn(
                 "flex-1 py-2 text-[10px] xs:text-[11px] font-black uppercase tracking-[0.1em] rounded-xl transition-all duration-300",
                 tab === "guest"
-                  ? "bg-primary text-white shadow-md"
+                  ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800",
               )}
             >
@@ -244,7 +244,7 @@ export function OrderSearch({
               </div>
               <button
                 onClick={() => onNavigate("auth")}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-primary/90 active:scale-[0.98] xs:py-4 xs:text-[11px]"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-primary-foreground transition-all hover:bg-primary/90 active:scale-[0.98] xs:py-4 xs:text-[11px]"
               >
                 Entrar
                 <ChevronRight className="size-4" />
@@ -332,7 +332,7 @@ export function OrderSearch({
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-primary/90 active:scale-[0.98] disabled:opacity-55 xs:text-[11px]"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-primary-foreground transition-all hover:bg-primary/90 active:scale-[0.98] disabled:opacity-55 xs:text-[11px]"
                   >
                     {isLoading ? (
                       <>
@@ -387,7 +387,7 @@ export function OrderSearch({
                     <button
                       type="submit"
                       disabled={isLoading}
-                      className="flex flex-[2] items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-primary/90 active:scale-[0.98] disabled:opacity-55"
+                      className="flex flex-[2] items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-primary-foreground transition-all hover:bg-primary/90 active:scale-[0.98] disabled:opacity-55"
                     >
                       {isLoading ? (
                         <>

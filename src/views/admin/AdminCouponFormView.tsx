@@ -6,9 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
+import { useStore } from "@/contexts/StoreContext";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { codigoDoCupomParaSalvar } from "@/lib/codigo-do-cupom";
+import {
+  AVISO_CUPOM_PODE_COBRIR_A_COMPRA,
+  AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP,
+  cupomPodeCobrirACompraInteira,
+} from "@/lib/cupom-que-cobre-a-compra";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -47,6 +54,11 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     buscarClientesParaCupom,
   } = useCoupons(true, true);
   const isOffline = useOnlineStatus();
+  const { config } = useStore();
+  // Nenhuma forma "na retirada/entrega" ligada: a loja só recebe pelo app, e
+  // um cupom que zera a compra deixa a cliente sem caminho para fechar.
+  const lojaSoRecebePeloApp =
+    formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState<Partial<Coupon>>({
@@ -443,7 +455,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                   <p className="text-base font-black italic text-white leading-none">
                     {formData.type === "percentage"
                       ? `${formData.value || 0}% OFF`
-                      : `R$ ${Number(formData.value || 0).toFixed(2)}`}
+                      : formatCurrency(Number(formData.value || 0))}
                   </p>
                 </div>
                 <div className="text-right">
@@ -657,6 +669,24 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                 />
               </div>
             </div>
+
+            {/* CUPOM QUE COBRE A COMPRA INTEIRA (dono, 14/10/2026): aviso, nunca
+                bloqueio — o cupom salva normalmente. Mais forte quando a loja
+                só recebe pelo app: aí a cliente NÃO consegue fechar. */}
+            {cupomPodeCobrirACompraInteira(formData) && (
+              <div
+                role="note"
+                data-testid="aviso-cupom-cobre-a-compra"
+                className="flex items-start gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 sm:col-span-2"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+                <p className="text-[11px] font-bold leading-snug tracking-wide text-amber-300">
+                  {lojaSoRecebePeloApp
+                    ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
+                    : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
+                </p>
+              </div>
+            )}
 
             {/* Quem pode usar (frente B). Banco sem a coluna: escondido. */}
             {alcanceSuportado && (

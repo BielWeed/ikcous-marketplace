@@ -22,6 +22,8 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA } from "@/lib/recebimentos-por-marcar";
+
 // Reatribuiveis por caso: cada contagem alimenta um degrau da escada antiga,
 // e e variando as tres que se prova que nenhum degrau sobrou.
 let PEDIDOS_PENDENTES = 0;
@@ -36,19 +38,37 @@ let FALHA_PRIVACIDADE: "erro" | "sem-numero" | null = null;
 // Filtros pedidos à tabela de privacidade: a contagem tem de ser só dos ABERTOS.
 const FILTROS_DA_PRIVACIDADE: Array<[string, unknown]> = [];
 
+// Pedidos ENTREGUES, pagos na entrega, sem recebimento marcado (14/10/2026):
+// a consulta nova do sino, em `marketplace_orders`, distinguida da dos
+// pedidos pendentes pelo `.eq("status", "delivered")`.
+let RECEBIMENTOS_POR_MARCAR = 0;
+const FILTROS_DE_RECEBIMENTO: Array<[string, ...unknown[]]> = [];
+
 /** Duble do query builder de contagem do Supabase (`head: true`). */
 function criarContagemBuilder(contagem: number, tabela = "") {
   const builder: any = {};
+  const calls: Array<[string, ...unknown[]]> = [];
+  const ehRecebimento = () =>
+    calls.some(
+      (c) => c[0] === "eq" && c[1] === "status" && c[2] === "delivered",
+    );
+  const passa = (nome: string) =>
+    vi.fn((...args: unknown[]) => {
+      calls.push([nome, ...args]);
+      return builder;
+    });
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
-  builder.or = vi.fn(() => builder);
-  builder.is = vi.fn(() => builder);
+  builder.or = passa("or");
+  builder.is = passa("is");
   builder.eq = vi.fn((coluna: string, valor: unknown) => {
+    calls.push(["eq", coluna, valor]);
     if (tabela === "pedidos_de_privacidade") {
       FILTROS_DA_PRIVACIDADE.push([coluna, valor]);
     }
     return builder;
   });
+  builder.gte = passa("gte");
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão de dashboard-escuta-a-tabela-certa e admin-layout-cracha-pedidos-pendentes.
   builder.then = (resolve: any, reject?: any) => {
     if (tabela === "pedidos_de_privacidade" && FALHA_PRIVACIDADE) {
@@ -57,6 +77,13 @@ function criarContagemBuilder(contagem: number, tabela = "") {
           ? { count: null, error: new Error("falha simulada") }
           : { count: null, error: null },
       ).then(resolve, reject);
+    }
+    if (ehRecebimento()) {
+      FILTROS_DE_RECEBIMENTO.push(...calls);
+      return Promise.resolve({
+        count: RECEBIMENTOS_POR_MARCAR,
+        error: null,
+      }).then(resolve, reject);
     }
     return Promise.resolve({ count: contagem, error: null }).then(
       resolve,
@@ -175,6 +202,8 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     PRIVACIDADE_ABERTOS = 0;
     FALHA_PRIVACIDADE = null;
     FILTROS_DA_PRIVACIDADE.length = 0;
+    RECEBIMENTOS_POR_MARCAR = 0;
+    FILTROS_DE_RECEBIMENTO.length = 0;
     vi.clearAllMocks();
     vi.stubGlobal(
       "BroadcastChannel",
@@ -351,6 +380,38 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     // inteira, e o lojista fica com pergunta esperando e o sino apagado.
     await esperarAte(() => sino.querySelector("span") !== null);
     expect(sino.querySelector("span")).toBeTruthy();
+  });
+
+  it("só com pedido entregue sem recebimento marcado, a bolinha acende — e a consulta é a mesma regra da lista", async () => {
+    RECEBIMENTOS_POR_MARCAR = 2;
+
+    const { sino } = await montarPainel();
+
+    // Tudo mais em ZERO de proposito: se a bolinha nao olhasse a fonte nova,
+    // a lojista teria cliente impedida de pedir devolucao e o sino apagado.
+    await esperarAte(() => sino.querySelector("span") !== null);
+    expect(sino.querySelector("span")).toBeTruthy();
+    expect(FILTROS_DE_RECEBIMENTO).toContainEqual([
+      "eq",
+      "status",
+      "delivered",
+    ]);
+    expect(FILTROS_DE_RECEBIMENTO).toContainEqual([
+      "or",
+      FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
+    ]);
+    expect(FILTROS_DE_RECEBIMENTO).toContainEqual([
+      "is",
+      "payment_status",
+      null,
+    ]);
+    const gte = FILTROS_DE_RECEBIMENTO.find((f) => f[0] === "gte");
+    expect(gte?.[1]).toBe("updated_at");
+    expect(
+      Math.abs(
+        Date.now() - 30 * 24 * 3600 * 1000 - Date.parse(String(gte?.[2])),
+      ),
+    ).toBeLessThan(10_000);
   });
 
   it("com tudo zerado, a bolinha do sino fica APAGADA", async () => {

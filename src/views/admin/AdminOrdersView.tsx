@@ -51,6 +51,7 @@ import {
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
 import { formatarInteiro } from "@/lib/crm";
 import { recorteDaListaDePedidos } from "@/lib/filtro-da-lista-de-pedidos";
 import {
@@ -1399,6 +1400,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             targetUserId: alvo.userId,
             title,
             body,
+            // Sem `url` o toque no aviso caía na vitrine ("/").
+            url: caminhoDoPedidoNoAviso(orderId),
             data: { orderId, type: "order_status" },
           },
           headers: token

@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { DesfazerRecebimento } from "@/components/admin/orders/DesfazerRecebimento";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
@@ -317,17 +318,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                       )}
                     </span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRegistrarPagamento(order.id, false);
-                    }}
+                  <DesfazerRecebimento
+                    order={order}
+                    aoDesfazer={() => onRegistrarPagamento(order.id, false)}
                     disabled={registrandoPagamento}
                     className="h-11 shrink-0 rounded-xl border border-zinc-700/60 bg-zinc-800/50 px-3.5 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
-                  >
-                    Desfazer
-                  </button>
+                  />
                 </>
               ) : (
                 <button

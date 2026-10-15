@@ -13,6 +13,7 @@ import type { BuildIdentitySnapshot } from "../src/config/buildIdentityContract"
 // importa `identityHtml` deste módulo; o comportamento não mudou, só o
 // endereço da definição.
 import { escapeHtml, identityHtml } from "../src/config/identidadeNoHtml";
+import { nomeCurtoDaLoja } from "../src/config/nomeCurtoDaLoja";
 import {
   PUBLIC_DEFINE_KEYS,
   STORE_DELIVERY_API,
@@ -421,7 +422,7 @@ export function createIdentityBuildConfig(options: {
         const { identity, localUrls } = snapshot;
         Object.assign(pwaOptions.manifest!, {
           name: identity.storeName,
-          short_name: identity.storeName,
+          short_name: nomeCurtoDaLoja(identity.storeName),
           description: `Produtos e novidades de ${identity.storeName}`,
           theme_color: identity.theme.primary,
           background_color: identity.theme.primary,

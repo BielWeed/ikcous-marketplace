@@ -131,15 +131,17 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
         </span>
       </div>
 
-      {/* Comment */}
-      <p
-        className={cn(
-          "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
-          "lg:text-sm",
-        )}
-      >
-        {review.comment}
-      </p>
+      {/* Comment (opcional: avaliação só com estrelas não leva parágrafo) */}
+      {review.comment && (
+        <p
+          className={cn(
+            "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
+            "lg:text-sm",
+          )}
+        >
+          {review.comment}
+        </p>
+      )}
 
       {/* Images */}
       {review.images && review.images.length > 0 && (
@@ -166,7 +168,7 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
           disabled={hasMarkedHelpful}
           className={`flex w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
             hasMarkedHelpful
-              ? "border-primary bg-primary text-white shadow-sm"
+              ? "border-primary bg-primary text-primary-foreground shadow-sm"
               : "border-secondary/20 bg-secondary/10 text-primary hover:bg-secondary/20 active:scale-95"
           }`}
         >

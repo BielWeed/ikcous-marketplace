@@ -185,7 +185,7 @@ export function PushNotificationBanner({
                 <button
                   onClick={handleSubscribe}
                   disabled={isSubscribing}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-white shadow-lg shadow-black/25 hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-50"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-primary-foreground shadow-lg shadow-black/25 hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-50"
                 >
                   {isSubscribing ? (
                     <span className="animate-pulse">Ativando...</span>

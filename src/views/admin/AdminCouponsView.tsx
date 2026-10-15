@@ -659,7 +659,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                               <p className="whitespace-nowrap text-lg font-black italic tabular-nums text-white">
                                 {coupon.type === "percentage"
                                   ? `${coupon.value ?? 0}% OFF`
-                                  : `R$ ${Number(coupon.value ?? 0).toFixed(2)}`}
+                                  : formatCurrency(Number(coupon.value ?? 0))}
                               </p>
                             </div>
                             <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3 text-right">
