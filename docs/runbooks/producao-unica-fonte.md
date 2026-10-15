@@ -1308,6 +1308,349 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `tests/banco/lucro-so-com-custo-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
         efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
         delas.
+  36. **Lote de UMA migration, de apply normal: `20261235000000` (a venda repetida do balcao devolve a venda
+      feita; DINHEIRO E ESTOQUE, nao muda dado).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas
+      assinantes (IKCOUS e Savy). Troca o corpo de `registrar_venda_presencial` (a RPC do PDV) por
+      `CREATE OR REPLACE`, com o corpo da `20261199000000` mais UMA trava, sem tocar assinatura, `SECURITY
+      DEFINER`, volatilidade, `search_path`, dono, comentario, ACL nem nenhuma resposta:
+      - **O defeito:** a chave de idempotencia existe para a retentativa honesta (a rede cai, o balconista nao ve
+        a confirmacao e toca "finalizar" de novo com a MESMA chave) receber o pedido que JA nasceu
+        (`ja_existia = true`). A conferencia da chave era feita ANTES de qualquer trava: a repeticao que chegava
+        antes de a primeira commitar nao achava nada, parava na trava de linha do estoque e, se a primeira levou a
+        ULTIMA unidade, recebia "Estoque insuficiente" de uma venda que existe (a venda feita e o estoque baixado
+        ficam; so a resposta mente, e o balconista tende a devolver o dinheiro de uma venda feita). Com estoque
+        sobrando a repeticao ja caia no indice unico e devolvia `ja_existia`: o defeito so aparece na ultima
+        unidade.
+      - **A correcao:** `pg_advisory_xact_lock` sobre `hashtextextended('venda_presencial:' || chave, 0)`, tomada
+        DEPOIS dos dois gates de admin e da checagem de sessao e ANTES de conferir a chave. A segunda chamada com a
+        mesma chave ESPERA a primeira terminar e devolve `ja_existia` com o MESMO pedido, sem ler estoque; se a
+        primeira desfez, a segunda segue como venda nova. Venda SEM chave nao toma trava; chaves DIFERENTES nao se
+        serializam; a trava consultiva e a PRIMEIRA que a funcao toma (as de linha vem depois, na ordem de
+        sempre): nenhum ciclo de espera novo.
+      - Quem quebra: ninguem (nenhuma assinatura muda; o PDV, `useVendaPresencial`, ja trata `ja_existia`).
+        Nenhuma edge function e nenhum front mudam. Duas consultas, so leitura, so catalogo, de ROL FECHADO (6 e 5
+        linhas, so valem com `rol=ok`):
+        - **`36a-conferir-venda-repetida-do-balcao-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo
+          novo (md5), a trava pela chave no corpo, os atributos de sempre e o `EXECUTE` so para `authenticated`
+          (PUBLIC, anon e service_role sem).
+        - **`36b-antes-venda-repetida-do-balcao-corpo-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo
+          da `20261199000000`, sem a trava, com os atributos de sempre. **Nao mede a ACL** (o pre-voo da migration
+          a confere). O md5 vem do arquivo da migration, nao de uma loja: **rode a `36b` em CADA loja ANTES do
+          apply**; corpo diferente e loja que ninguem mediu (a migration tambem recusa, `B1_BASELINE_DIVERGENT`).
+      - **Medir antes:** nao ha `36m`. O lote muda concorrencia, nao o que a lojista le, e nenhuma contagem de loja
+        diz com que frequencia a repeticao cai na ultima unidade.
+      - **Caminho, uma loja por vez:** `36a` (sai NEGATIVA) -> `36b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `36a` DE NOVO, que tem de sair POSITIVA. `36a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **A cadeia das sucessoras:** `registrar_venda_presencial` passa a ser `20261199000000` ->
+        `20261235000000`. A `8e` (lote 92-202) aceita o corpo novo ao lado do da `20261199000000`; a `9a` (lote
+        60-66, igualdade exata) passa a fixar o corpo novo e **so e POSITIVA depois deste apply**: o backfill do
+        ledger 60-66 que ela guarda espera por ele. Rodar a `8e` e a `9a` DE NOVO depois do apply.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql` (recria o corpo da
+        `20261199000000`, mesmo md5, sem tocar a ACL nem o comentario, com pre-voo proprio; rodar duas vezes deixa o
+        mesmo estado; NAO apaga nenhuma venda). Com ele **volta o defeito**. Depois dele a `36b` volta a ser
+        POSITIVA e a `36a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `9a`, a
+        `36a` e a `36b` DE NOVO.
+      - **Limites:** `tests/banco/venda-balcao-mesma-chave-viva.cjs` prova o comportamento com DUAS conexoes reais
+        (a corrida na ultima unidade, estoque sobrando, chaves diferentes e venda sem chave que nao se serializam,
+        outro balconista e outro canal, permissao e gate antes da trava, controle com o corpo antigo que reproduz
+        o defeito, rollback, pre-voo que recusa sem escrever, mutantes) e
+        `tests/banco/venda-balcao-mesma-chave-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
+        delas.
+
+  37. **Lote de UMA migration, de apply normal: `20261236000000` (a compra que da R$ 0,00 nao se paga pelo app;
+      DINHEIRO, ESTOQUE E CUPOM, nao muda dado; decisao do dono de 14/10/2026).** Sem `backfillLedger` e sem
+      `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). Troca o corpo de
+      `create_marketplace_order_v24` (so ela; a `v23`, da compra na entrega, NAO e tocada) por `CREATE OR REPLACE`,
+      com o corpo da `20261229000000` mais UM bloco, sem tocar assinatura, `SECURITY DEFINER`, volatilidade,
+      `search_path`, retorno `uuid` nem ACL:
+      - **O defeito:** um cupom que zera a compra, com frete zero (retirada na loja, entrega local gratis ou o proprio
+        desconto cobrindo o frete), deixava o total em R$ 0,00 e o pedido pelo app NASCIA: `aguardando`, com a reserva
+        de 30 minutos, baixando o estoque e gastando a vaga do cupom (inclusive a do cupom de uso unico). Mas
+        `criar-pagamento` recusa pedido de valor zero (nao existe cobranca de R$ 0,00 no Mercado Pago): a cliente nao
+        tinha como pagar, e o pedido segurava estoque e cupom ate expirar.
+      - **A correcao (bloco 6-ter):** `IF p_payment_method = 'online' AND round(v_calculated_total, 2) <= 0` recusa,
+        com uma frase em portugues e o identificador `pedido_sem_valor_a_pagar_pelo_app` no DETAIL, ANTES do INSERT do
+        pedido, da baixa do estoque e do uso do cupom. O total e o CALCULADO pelo servidor (nunca o `p_total_amount`
+        do cliente), arredondado em 2 casas porque o pedido grava `numeric(10,2)`: R$ 0,01 em diante segue nascendo.
+        So o meio `online` muda; `pix`, `card` e `cash` nao, e o pedido de R$ 0,00 na entrega continua nascendo pela
+        `v23`.
+      - **O que a cliente passa a ver:** a recusa com a frase, que o front (`src/lib/recusaDoPedido.ts`) traduz em
+        "trocar a forma de pagamento". Banco antes ou depois do front da no mesmo (com o front antigo a recusa chega
+        pelo toast com o texto do banco). **Pedido que ja nasceu com total zero pelo app (aguardando ou expirado)
+        fica como esta**: a expiracao devolve estoque e cupom pelos caminhos de sempre.
+      - Quem quebra: ninguem (nenhuma assinatura muda). Nenhuma edge function muda. Duas consultas, so leitura, so
+        catalogo, de ROL FECHADO (6 e 5 linhas, so valem com `rol=ok`):
+        - **`37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado`** (a consulta do lote) prova DEPOIS do
+          apply o corpo novo (md5), a recusa no corpo, os atributos de sempre e o `EXECUTE` de sempre (anon,
+          authenticated e service_role sim; PUBLIC nao).
+        - **`37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente`** (`ausenciaConfirmadaPor`) prova o
+          ANTES: o corpo da `20261229000000`, sem a recusa, com os atributos de sempre. **Nao mede a ACL** (o pre-voo
+          da migration a confere). O md5 vem do arquivo da migration, nao de uma loja: **rode a `37b` em CADA loja
+          ANTES do apply**. Loja ainda no corpo da `20261174000000` (o lote da 20261229000000 nao aplicado) reprova aqui e a
+          migration recusa tambem (`B1_BASELINE_DIVERGENT`): aplique o lote da 20261229000000 antes.
+      - **Medir antes:** nao ha `37m`; nenhuma contagem de loja e prova do que o lote muda (uma recusa nova, provada
+        pelo comportamento).
+      - **Caminho, uma loja por vez:** `37a` (sai NEGATIVA) -> `37b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `37a` DE NOVO, que tem de sair POSITIVA. `37a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **A cadeia das sucessoras:** `create_marketplace_order_v24` passa a ser `20261174000000` ->
+        `20261229000000` -> `20261236000000`. A `31a` (o lote da 20261229000000) aceita o corpo novo ao lado do da `20261229000000`
+        (so na linha da `v24`) e segue POSITIVA; as provas vivas da 20261229000000 desfazem esta sucessora antes de medir.
+        Rodar a `31a` DE NOVO depois do apply.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql` (recria o corpo da
+        `20261229000000`, mesmo md5, sem tocar a ACL, com pre-voo proprio; rodar duas vezes deixa o mesmo estado),
+        ANTES do rollback da `20261229000000` (o da 20261229000000 recusa enquanto houver redefinicao posterior no ar). Com ele
+        **volta o beco sem saida**. Depois dele a `37b` volta a ser POSITIVA e a `37a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `31a`, a `37a` e
+        a `37b` DE NOVO.
+      - **Limites:** `tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs` prova o comportamento
+        pelo caminho real do checkout (conta, convidada, retirada, cupom de 100%, cupom de uso unico), a ORDEM por
+        uma sequencia movida por gatilhos (o rollback nao a desfaz), o zero na retirada/entrega nascendo como hoje,
+        o positivo pelo app como hoje, o rollback, o pre-voo e os mutantes;
+        `tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs` prova a decisao das duas
+        consultas, num Postgres 17 efemero. Nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de
+        cada loja nem o corpo vivo delas.
+  38. **Migration de apply normal: `20261237000000` (a lojista renomeia e apaga categoria sem deixar produto
+      orfao; PERMISSAO e REGRA DE DEVOLUCAO, nada se abre e nada se apaga no apply).** Sem `backfillLedger` e sem
+      `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). So CRIA funcoes (`CREATE OR REPLACE`): as
+      tres portas do painel, `renomear_categoria`, `apagar_categoria_vazia` e `categorias_com_uso`, e oito
+      auxiliares internas `categoria__*`. Nenhuma tabela, coluna, politica de RLS, gatilho ou linha de dado muda
+      no apply; so a lojista, usando a tela "Gerenciar categorias", troca dado:
+      - **O defeito:** a categoria do produto e guardada pelo NOME, em quatro lugares (a linha de `categorias`,
+        `produtos.categoria`, `banners.link` nos formatos codificado e cru, e `politica_devolucao.categorias_sem_troca`).
+        Trocar o nome so na linha deixava o produto sumido da vitrine, o banner apontando para pagina vazia e a
+        regra de "sem troca" apontando para um nome que nao existe mais (o produto voltava a ser trocavel).
+      - **Agora:** `renomear_categoria` troca os quatro lugares numa transacao so (falha no meio nao deixa nada
+        trocado), com a trava de admin ATUAL (`is_admin()` e `is_admin_atual()`), recusa nome repetido (maiuscula,
+        acento ou pontuacao a mais) e vazio, e devolve quantos produtos, banners e regras trocou;
+        `apagar_categoria_vazia` recusa com o motivo enquanto houver produto, banner ou regra apontando.
+        "Esconder da vitrine" e a coluna `categorias.ativo`, que ja existia e que a vitrine ja respeita.
+      - **Quem quebra:** ninguem (so a tela nova chama as funcoes). **ORDEM: o banco de CADA loja ANTES do front**,
+        porque front novo contra banco sem as portas deixa a lojista sem renomear nem apagar categoria.
+      - **Duas consultas**, so leitura, so catalogo, de ROL FECHADO (8 e 6 linhas, so valem com `rol=ok`):
+        - **`38a-conferir-gestao-de-categorias-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo (md5)
+          de cada uma das tres portas, os atributos, o EXECUTE so de `authenticated` e `service_role`, as oito
+          auxiliares fechadas e o gatilho `set_ultima_atualizacao` do produto ligado.
+        - **`38b-antes-gestao-de-categorias-funcoes-ausentes`** (`ausenciaConfirmadaPor`) prova o ANTES: as onze
+          funcoes ainda ausentes, as colunas de que a migration depende de pe, `is_admin`, `is_admin_atual` e
+          `f_unaccent` existindo e o gatilho do produto ligado. **Rode a `38b` em CADA loja ANTES do apply**
+          (a migration tambem recusa, `B1_BASELINE_DIVERGENT`, se faltar dependencia).
+      - **Caminho, uma loja por vez:** `38a` (sai NEGATIVA) -> `38b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `38a` DE NOVO, que tem de sair POSITIVA. `38a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261237000000_a_lojista_renomeia_e_apaga_categoria_sem_deixar_produto_orfao.sql` apaga as
+        onze funcoes e so elas. **Nao desfaz nenhum renome ja feito:** os dados trocados ficam como estao (sao
+        dado da lojista). Depois dele a `38b` volta a ser POSITIVA e a `38a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `38a` e a `38b`
+        DE NOVO.
+      - **Limites:** `tests/banco/categorias-gestao-viva.cjs` prova o comportamento (os quatro lugares, nome
+        repetido, apagar com e sem uso, permissao de anon, logado comum e admin rebaixado, a codificacao do link,
+        rollback, mutantes) e `tests/banco/categorias-gestao-portao-viva.cjs` prova a decisao das duas consultas,
+        num Postgres 17 efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja
+        nem o corpo vivo delas. **Corrida conhecida:** uma aba de produto aberta ANTES de um renome, salva
+        DEPOIS, grava o nome antigo no produto. O produto volta a ficar com um nome que nao existe mais na tabela
+        `categorias`; a tela "Gerenciar categorias" NAO o mostra (la so existem as linhas de `categorias`, e esta
+        nao tem linha), ele continua aparecendo em "Todas" na vitrine mas some do filtro da categoria. A lojista
+        so o acha pela lista de produtos e corrige abrindo o produto e escolhendo a categoria de novo.
+      - **Em aberto, declarado (nao e desta migration):**
+        - **R5 (`UPDATE` e `DELETE` direto em `categorias`):** as politicas de RLS de `UPDATE` e de `DELETE` da tabela
+          `categorias` ainda usam `is_admin()` (papel do JWT), nao o admin ATUAL. Por PostgREST um admin consegue
+          trocar `nome` (deixa o produto orfao) e APAGAR a linha mesmo com produto, banner ou regra (o
+          `apagar_categoria_vazia` so protege quem passa por ele). Tarefa separada: `rls_admin_atual` nas duas
+          politicas, como a `20261202000000` fez nas do pedido.
+        - **R6 (link de banner):** link com ENDERECO COMPLETO escrito a mao (`https://<loja>/?category=X`) e link
+          sem a barra (`?category=X`) nao sao reconhecidos: renomear nao os troca (so `/?category=X`, o que o painel
+          grava). O banner antigo continua abrindo uma pagina vazia ate a lojista trocar o link.
+        - **Produto excluido:** conta como "em uso" e a lojista nao o ve nem o move; a categoria so pode ser apagada
+          depois que ele sai dela (hoje, com ajuda do suporte). Se isso deve liberar o apagar, e decisao de produto.
+        - **Nome "Todas"/"all":** recusado ao renomear (banco) e ao criar pela tela; o `INSERT` direto em
+          `categorias` nao e barrado (pediria gatilho/`CHECK`, que muda o contrato da tabela).
+
+  39. **Lote de UMA migration, de apply normal: `20261238000000` (a cliente pede a exclusao da conta e a correcao
+      do e-mail; DADO DE CLIENTE e PERMISSAO (LGPD), ADITIVA: cria uma tabela e nao muda nada que ja exista).** Sem
+      `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). A migration NASCE
+      `public.pedidos_de_privacidade` (o REGISTRO do pedido, que nasce vazio), a funcao de gatilho
+      `pedidos_de_privacidade__carimbar()` e o gatilho `tr_pedidos_de_privacidade_carimbar`, com RLS ligada e tres
+      politicas:
+      - **Quem pode o que:** a cliente le so os pedidos dela e insere so em nome dela (so as colunas `user_id`,
+        `tipo`, `email_novo`); no maximo UM pedido aberto por (cliente, tipo); so o admin de AGORA
+        (`rls_admin_atual()`) le todos e decide (`situacao` e `observacao`), com quem e quando carimbados pelo
+        gatilho; a chave estrangeira para `auth.users(id)` e SEM cascata; **ninguem apaga** (sem grant de DELETE nem
+        para o `service_role`, sem politica de DELETE).
+      - **NAO E REAPLICAVEL:** o pre-voo recusa (`B1_BASELINE_DIVERGENT`) se a tabela ou a funcao ja existirem, e se
+        faltar `auth.users`, `auth.uid()` ou `public.rls_admin_atual()` (a `20261197000000` vem antes). Reaplicar
+        depois de aplicada aborta no pre-voo: o estado se confere pela `39a`, nunca reaplicando. Um bloco `DO` no fim
+        aborta o apply inteiro se a RLS, as politicas, os privilegios de tabela e de coluna, o indice unico parcial, o
+        gatilho ou o `EXECUTE` da funcao nao forem os combinados.
+      - **Ordem:** o banco de CADA loja (IKCOUS, depois Savy) ANTES do front que le a tabela (a tela "Privacidade e
+        meus dados" da cliente e a secao "Pedidos de privacidade dos clientes" do painel dependem dela). Nenhuma edge
+        function muda. Quem quebra: ninguem que ja exista.
+      - **Duas consultas, so leitura, so catalogo, de ROL FECHADO (19 e 9 linhas, so valem com `rol=ok`):**
+        - **`39a-conferir-pedidos-de-privacidade-aplicado`** (a consulta do lote) prova DEPOIS do apply a tabela
+          inteira (colunas, as 8 constraints e a regra de cada CHECK, a chave sem cascata, os dois indices), a RLS ligada
+          com as tres politicas e a expressao delas, os privilegios (PUBLIC e anon nenhum; authenticated so le a tabela
+          e so escreve as colunas do pedido; service_role le, grava e decide, NAO apaga), a funcao do gatilho (corpo por
+          md5, atributos, `EXECUTE` fechado a PUBLIC, anon e authenticated) e o gatilho. O `EXECUTE` do `service_role`
+          nao e medido (a plataforma o concede por padrao e a migration nao o mexe).
+        - **`39b-antes-pedidos-de-privacidade-objetos-ausentes`** (`ausenciaConfirmadaPor`) prova o ANTES: a tabela, os
+          dois indices, a funcao e o gatilho AUSENTES; `auth.users`, `auth.uid()` e `rls_admin_atual()` presentes; e **o
+          papel `postgres` (o que aplica pelo `aplicar-migrations.yml`) com `REFERENCES` em `auth.users`** — o privilegio
+          que a chave estrangeira do pedido exige e que o pre-voo da migration nao confere. **Rode a `39b` em CADA loja
+          ANTES do apply;** um `nao` na linha do `REFERENCES` e a loja onde o apply abortaria no meio (a transacao
+          desfaz, mas e melhor saber antes). Loja com a migration pela metade reprova nas DUAS consultas: PARAR e medir.
+      - **Medir (so leitura, nao e portao):** `39m-medir-privilegios-do-roteiro-de-privacidade` mostra, so por
+        catalogo (nenhuma linha de nenhuma tabela e lida, nem a contagem), se o papel `postgres` da loja tem `UPDATE` e
+        `DELETE` em `auth.users`, `auth.identities`, `auth.audit_log_entries`, `auth.sessions`,
+        `auth.one_time_tokens` e `auth.mfa_factors`, as tabelas de login que o roteiro manual toca. Um `nao` no que o
+        roteiro usa (a coluna `roteiro=` diz o que ele faz em cada tabela) quer dizer que o passo dele falharia nessa
+        loja; nao e defeito da migration.
+      - **O ROTEIRO MANUAL NAO ENTRA NESTE LOTE:** `docs/runbooks/atender-pedido-de-privacidade.md` (o bloco de SQL das
+        linhas ~264-323: anonimizacao de uma conta, que atualiza e APAGA dado real de login) e do DONO, caso a caso,
+        pedido por pedido, sempre depois do ensaio (`v_confirmar := false`). Nenhum workflow, consulta ou comando deste
+        lote o executa; a `39m` so diz se ele esbarraria em falta de privilegio.
+      - **Caminho, uma loja por vez:** `39a` (sai NEGATIVA) -> `39b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `39a` DE NOVO, que tem de sair POSITIVA. `39a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql` (apaga o gatilho, a
+        funcao, as tres politicas e a tabela). **RECUSA se houver QUALQUER pedido registrado:** e registro legal, e
+        arquiva-lo por fora e decisao do dono; rodar duas vezes recusa no pre-voo (nada a desfazer). Depois dele a
+        `39b` volta a ser POSITIVA e a `39a` NEGATIVA. Com o rollback o app volta a nao ter caminho para a cliente
+        pedir a exclusao da conta ou a correcao do e-mail.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `39a` e a `39b`
+        DE NOVO.
+      - **Limites:** `tests/banco/pedidos-de-privacidade-viva.cjs` prova o comportamento com a RLS real,
+        `tests/banco/anonimizar-conta-ensaio-viva.cjs` ensaia o roteiro (com o esquema `auth` emulado) e
+        `tests/banco/pedidos-de-privacidade-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja, o `REFERENCES` do
+        `postgres` real (la ele e superusuario, e o numero que importa e o da `39b` na loja) nem o que ha em
+        `auth.*` de cada uma.
+  40. **Lote de UMA migration, de apply normal: `20261239000000` (a loja PODE declarar razao social, CNPJ/CPF e
+      e-mail de atendimento; ADITIVA e OPCIONAL, nao muda dado).** Sem `backfillLedger` e sem `nuncaAplicar`; valem
+      as duas lojas assinantes (IKCOUS e Savy). Acrescenta tres colunas NULAS e sem default em `store_config`
+      (`store_legal_name`, `store_legal_document`, `store_support_email`), tres CHECK de forma, as tres colunas NO FIM
+      da view `v_store_config` (por `CREATE OR REPLACE VIEW`: de 42 para 45 colunas, ACL e opcoes nao sao
+      recriados) e as tres chaves novas na `upsert_store_config` (o corpo da `20261199000000` mais tres trocas
+      declaradas; salvar um dos tres, ou qualquer outro campo, nao apaga os demais):
+      - **O que muda para a lojista e para a cliente:** a lojista ganha o formulario "Dados da empresa" em Minha loja
+        e a cliente le razao social, CNPJ/CPF e e-mail nos Termos, na Privacidade e no rodape. Quem nao preencher
+        nada nao muda NADA para ninguem; a linha `id = 1` de `store_config` ganha `NULL/NULL/NULL`.
+      - **ORDEM:** o banco de CADA loja (IKCOUS, depois Savy) ANTES de publicar o front desta branch: o front le e
+        grava os tres campos, e front publicado antes do banco procura colunas que a loja ainda nao tem.
+      - Quem quebra: ninguem (nenhuma assinatura muda; as tres chaves sao opcionais). Nenhuma edge function muda.
+        Duas consultas, so leitura, so catalogo, de ROL FECHADO (11 e 10 linhas, so valem com `rol=ok`):
+        - **`40a-conferir-identidade-legal-da-loja-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo da
+          `upsert_store_config` (md5) com os tres CASE, os atributos e o `EXECUTE` fechado ao visitante, as tres
+          colunas (text, nulas, sem default), as tres CHECK, as 45 colunas da view, as opcoes
+          (`security_invoker=on`) e o ACL da view.
+        - **`40b-antes-identidade-legal-da-loja-base-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo da
+          `20261199000000` sem os tres CASE, as tres colunas e as tres CHECK ainda ausentes, a view de 42 colunas com
+          as opcoes e o ACL. **Nao mede o `EXECUTE` da funcao.** O md5 vem do arquivo da migration, nao de uma loja:
+          **rode a `40b` em CADA loja ANTES do apply**; corpo diferente e loja que ninguem mediu (a migration
+          tambem recusa, `B1_BASELINE_DIVERGENT`).
+      - **O ACL DA VIEW e' o que o DESFAZER precisa:** o rollback encolhe a view de 45 para 42 colunas, e o Postgres
+        recusa `CREATE OR REPLACE VIEW` que encolha; por isso ele faz `DROP VIEW` + `CREATE VIEW` +
+        `GRANT ALL ... TO anon, authenticated, service_role`. So devolve o estado vivo se o ACL de hoje for
+        exatamente esse. As DUAS consultas medem a linha "ACL" da view (dono `postgres`; `anon`, `authenticated` e
+        `service_role` com ALL; `PUBLIC` sem nada; nenhum outro papel; nenhum GRANT OPTION): **uma loja com ACL
+        diferente reprova na `40b` e NAO recebe o apply** ate o dono decidir (a alternativa e outro rollback, nao
+        afrouxar a consulta).
+      - **Medir antes (so leitura, nao e portao):** `40m-medir-identidade-legal-da-loja` mostra o ACL CRU da view
+        (`relacl`), o dono e as opcoes, quantos objetos dependem da view (o `DROP VIEW` do rollback recusa se algum
+        depender), a linha unica de `store_config` e o corpo vivo da `upsert_store_config`. So nomes de papeis,
+        letras de privilegio e contagens; nenhum valor de coluna de `store_config`.
+      - **Caminho, uma loja por vez:** `40a` (sai NEGATIVA) -> `40b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `40a` DE NOVO, que tem de sair POSITIVA. `40a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **A cadeia das sucessoras:** `upsert_store_config` passa a ser `20261199000000` -> `20261239000000`. A `8e`
+        (lote 92-202) aceita o corpo novo como sucessor e segue POSITIVA; a `9a` (faixa 60-66) passou a exigir o
+        corpo NOVO dessa funcao (ela prova sempre a migration mais nova que define cada funcao), entao numa loja que
+        ainda nao recebeu este lote a `9a` sai NEGATIVA nessa linha (o `canais-de-backend.json` so a exige, e so na
+        IKCOUS, quando o lote 60-66 e novo para a loja: confira o ledger da IKCOUS antes de assumir que nao e).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261239000000_a_loja_declara_quem_e_na_nota_e_como_falar_com_ela.sql` (recria o corpo da
+        `20261199000000`, mesmo md5; recria a view de 42 colunas; derruba as tres colunas por ULTIMO; **RECUSA**
+        com `DADO_DA_LOJA_NAO_SE_APAGA_SEM_QUERER` se a loja ja preencheu algum dos tres campos: apagar o que a
+        lojista digitou e' ato deliberado, nunca efeito colateral; o cabecalho do arquivo diz como aplicar). Depois
+        dele a `40b` volta a ser POSITIVA e a `40a` NEGATIVA.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `9a`, a
+        `40a` e a `40b` DE NOVO.
+      - **Limites:** `tests/banco/loja-declara-quem-e-viva.cjs` prova o comportamento (salvar um campo nao apaga os
+        outros, a forma recusada pelas CHECK, so o admin atual grava, o visitante le e nao escreve, ida e volta com o
+        corpo da 99 e o ACL da view iguais, o rollback que recusa com dado) e
+        `tests/banco/loja-declara-quem-e-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o ACL vivo
+        delas (isso so a `40b` e a `40m` rodadas contra o ref de cada loja).
+
+  41. **Lote de UMA migration, de apply normal: `20261240000000` (a cliente e avisada quando a loja responde a
+      pergunta dela; DADO DE CLIENTE: o sino e da cliente).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as
+      duas lojas assinantes (IKCOUS e Savy). Troca o corpo das DUAS sobrecargas de `answer_question_atomic` (a de 2
+      argumentos, que o app usa, e a de 3) por `CREATE OR REPLACE`, sem tocar assinatura, `SECURITY DEFINER`,
+      volatilidade, `search_path` nem ACL:
+      - **O defeito:** a tela de perguntas do painel diz "Notificar Cliente", mas a resposta so gravava o texto e uma
+        linha falsa em `push_notifications_log` (0 aparelhos): nenhum push saia e nada chegava ao sino da cliente (quem
+        perguntou "tem no M?" nunca soube que a loja respondeu). A linha falsa ainda empurrava as campanhas reais para
+        fora da lista de 20 do painel.
+      - **O que muda:** a resposta cria UM aviso em `notificacoes` para quem perguntou (tipo `info`, titulo "Sua
+        pergunta foi respondida", mensagem com o nome do produto, destino `/product-detail?id=<produto>`, nao lido) e
+        PARA de gravar a linha falsa. Resposta repetida ou editada nao duplica (um aviso por pergunta; se a cliente
+        dispensou e a loja edita, nasce um aviso novo). Pergunta ja respondida antes do apply NAO ganha aviso em
+        massa: so se a loja editar a resposta. O aviso e best-effort: se falhar, a RESPOSTA nunca se perde. **Nao envia
+        push** (exige a edge function e rede). O sino acende sozinho pelo realtime que o app ja escuta.
+      - **O que NAO muda:** nenhum dado existente (as linhas falsas que ja estao em `push_notifications_log` FICAM no
+        banco; apagar e decisao do dono, e o painel de campanhas as esconde do historico). `reply_review_atomic` (a
+        resposta a AVALIACAO) NAO e tocada: a consulta `27m` usa a linha do log dela como rastro de resposta legitima.
+      - **A MESMA release leva o front** (texto da caixa de resposta "Avisa a cliente no app" e o historico de
+        campanhas sem as linhas da resposta da loja). **Ordem: o banco de CADA loja primeiro, o front depois** (o texto
+        novo so e verdade com a migration aplicada). Quem quebra: ninguem (nenhuma assinatura muda).
+      - Duas consultas, so leitura, so catalogo, de ROL FECHADO (10 e 8 linhas, so valem com `rol=ok`):
+        - **`41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado`** (a consulta do lote) prova DEPOIS do apply,
+          nas DUAS sobrecargas, o corpo novo (md5), o aviso no sino sem o log de push, os atributos de sempre e o
+          `EXECUTE` fechado ao visitante.
+        - **`41b-antes-pergunta-respondida-corpos-vigentes`** (`ausenciaConfirmadaPor`) prova o ANTES: as duas
+          sobrecargas (e so elas) com os corpos da `20261065000000` (2 args) e da `20261064000000` (3 args), sem
+          gravar no sino. **Nao mede a ACL.** O md5 vem dos arquivos das migrations, nao de uma loja: **rode a `41b`
+          em CADA loja ANTES do apply**; corpo diferente e loja que ninguem mediu (a migration tambem recusa,
+          `B1_BASELINE_DIVERGENT`).
+      - **Medir antes (so leitura, nao e portao):** `41m-medir-pergunta-respondida` conta (so numeros, nenhum dado
+        pessoal) quantas perguntas ja foram respondidas sem aviso, quantas linhas falsas ja estao no log de push e se
+        ja existe algum aviso de pergunta no sino (esperado zero).
+      - **Caminho, uma loja por vez:** `41a` (sai NEGATIVA) -> `41b` MAIS NOVA e POSITIVA -> UM comando
+        `aplicar-migrations.yml` com a migration -> o ensaio pede a `41a` DE NOVO, que tem de sair POSITIVA. `41a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill).
+      - **NUNCA reaplicar a `20261064` nem a `20261065` depois desta.** Elas recriam o corpo ANTIGO de
+        `answer_question_atomic` (a linha falsa no log de push, sem aviso no sino) por cima do novo, e o marcador
+        `A10: log honesto` que o `db-apply` confere nelas deixou de existir nessa funcao (segue valendo em
+        `reply_review_atomic`). Se for preciso desfazer, use o rollback abaixo, nunca essas duas.
+      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `rollback-manual-20261240000000_a_cliente_e_avisada_quando_a_loja_responde_sua_pergunta.sql` (recria os dois
+        corpos de antes, mesmo md5; os avisos ja criados em `notificacoes` FICAM, sao avisos verdadeiros). **Este
+        rollback tem pre-voo e conferencia final proprios** (como os outros rollbacks da casa): recusa
+        (`B1_BASELINE_DIVERGENT`) se `answer_question_atomic` nao tem exatamente as duas assinaturas ou se o corpo vivo
+        de qualquer uma nao e o desta migration nem o de antes (alguem trocou o corpo de novo: desfazer por cima
+        apagaria a trava nova em silencio) e, depois de recriar os corpos, aborta se algum nao voltou ao md5 de antes.
+        Depois de desfazer, conferir a `41b` POSITIVA e a `41a` NEGATIVA. Desfazer volta o defeito (a linha falsa no
+        log e nenhum aviso na cliente).
+      - **Desfazer o banco EXIGE desfazer o FRONT junto, e o front vai PRIMEIRO.** Com o banco desfeito e o front
+        desta release ainda no ar, a caixa de resposta do painel (`AdminQAView.tsx`) continua dizendo "Avisa a cliente
+        no app" e isso volta a ser FALSO: a lojista acha que avisou e a cliente nao recebe nada. Ordem: (1) publicar
+        de novo o front de ANTES desta release (ou um front sem essa frase) em TODAS as lojas e conferir
+        `version.json` de cada uma; (2) so entao rodar o rollback do banco, loja por loja. Nunca o contrario. O front
+        de antes funciona com o banco novo (nenhuma assinatura muda), entao desfazer o front primeiro e seguro.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `41a` e a `41b` DE
+        NOVO.
+      - **Limites:** `tests/banco/pergunta-respondida-avisa-viva.cjs` prova o comportamento (defeito antes, aviso so
+        para quem perguntou nas duas sobrecargas, um aviso por pergunta, permissao, falha do aviso sem perder a
+        resposta, corrida de duas conexoes, rollback byte a byte, pre-voo que recusa sem escrever, mutantes) e
+        `tests/banco/pergunta-respondida-avisa-portao-viva.cjs` prova a decisao das duas consultas, num Postgres 17
+        efemero; nao provam o Postgres da Supabase, o papel `supabase_read_only_user` de cada loja nem o corpo vivo
+        delas.
 
 4. **Promover UM front e conferir a frota.**
 

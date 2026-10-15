@@ -271,7 +271,7 @@ npm run size
 `tests/front/`).
 
 **`npm run size` é portão DIVIDIDO** (decisão do dono, 26/09/2026): JS que a cliente pode
-baixar **≤ 550 kB** e JS só do painel **≤ 455 kB** (era 450 até 15/10/2026; brotli por arquivo), CSS ≤ 100 kB, leitor
+baixar **≤ 550 kB** e JS só do painel **≤ 460 kB** (era 450 até 15/10/2026, 455 até a integração dos lotes 36 a 41; brotli por arquivo), CSS ≤ 100 kB, leitor
 zxing ≤ 400 kB (`.size-limit.cjs`). Quem classifica cada chunk é o **grafo real do Rollup**,
 nunca o nome do arquivo: o plugin `scripts/portaoDividido.ts` (`generateBundle`, só no build)
 faz a busca a partir das entradas sem atravessar a fronteira (entrada dinâmica que contém

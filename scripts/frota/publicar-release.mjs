@@ -444,6 +444,18 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "34b-antes-sino-da-retirada-corpo-vigente",
   "35a-conferir-lucro-so-com-custo-aplicado",
   "35b-antes-lucro-so-com-custo-corpo-vigente",
+  "36a-conferir-venda-repetida-do-balcao-aplicado",
+  "36b-antes-venda-repetida-do-balcao-corpo-vigente",
+  "37a-conferir-compra-de-zero-reais-nao-se-paga-pelo-app-aplicado",
+  "37b-antes-compra-de-zero-reais-nao-se-paga-pelo-app-corpo-vigente",
+  "38a-conferir-gestao-de-categorias-aplicado",
+  "38b-antes-gestao-de-categorias-funcoes-ausentes",
+  "39a-conferir-pedidos-de-privacidade-aplicado",
+  "39b-antes-pedidos-de-privacidade-objetos-ausentes",
+  "40a-conferir-identidade-legal-da-loja-aplicado",
+  "40b-antes-identidade-legal-da-loja-base-vigente",
+  "41a-conferir-pergunta-respondida-avisa-a-cliente-aplicado",
+  "41b-antes-pergunta-respondida-corpos-vigentes",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

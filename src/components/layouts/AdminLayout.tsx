@@ -144,6 +144,10 @@ export function AdminLayout({
   const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
   const [devolucoesSolicitadasCount, setDevolucoesSolicitadasCount] =
     React.useState(0);
+  // Pedidos de privacidade (exclusão de conta, correção de e-mail) que a loja
+  // ainda não respondeu: têm prazo legal de 15 dias, então também acendem o sino.
+  const [privacidadeAbertosCount, setPrivacidadeAbertosCount] =
+    React.useState(0);
   const [recebimentosPorMarcarCount, setRecebimentosPorMarcarCount] =
     React.useState(0);
   // Defeito medido em 25/08/2026: quando uma das consultas abaixo
@@ -274,6 +278,20 @@ export function AdminLayout({
           );
         }
 
+        // Mesmo critério da lista em useAvisosDoLojista: só `aberto` espera a
+        // loja. Resposta sem número (nem erro) é falha da fonte, nunca "zero":
+        // o prazo legal corre e a dúvida acende o sino como nas outras fontes.
+        const { count: privacidadeCount, error: privacidadeErr } =
+          await supabase
+            .from("pedidos_de_privacidade")
+            .select("id", { count: "exact", head: true })
+            .eq("situacao", "aberto");
+        if (privacidadeErr || typeof privacidadeCount !== "number") {
+          falhouAlgumaConsulta = true;
+        } else if (podeGravar()) {
+          setPrivacidadeAbertosCount(privacidadeCount);
+        }
+
         // Pedido entregue, pago na entrega, sem recebimento marcado (14/10):
         // a cliente nao consegue pedir devolucao ate a lojista marcar, entao
         // acende o sino. A MESMA regra da lista (`useAvisosDoLojista`), lida
@@ -325,7 +343,8 @@ export function AdminLayout({
     };
 
     // LIMITACAO CONHECIDA, de proposito: nao ha canal de tempo real para
-    // `reviews` nem `devolucoes`. Essas contagens são lidas na busca
+    // `reviews`, `devolucoes` nem `pedidos_de_privacidade` (os pedidos de
+    // privacidade dos clientes). Essas contagens são lidas na busca
     // inicial e nas revalidacoes de `visibilitychange` — uma pendência que
     // chegue com o painel aberto so acende a bolinha na proxima vez que a
     // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
@@ -630,6 +649,7 @@ export function AdminLayout({
     pendingQuestionsCount > 0 ||
     pendingReviewsCount > 0 ||
     devolucoesSolicitadasCount > 0 ||
+    privacidadeAbertosCount > 0 ||
     recebimentosPorMarcarCount > 0;
 
   const { isOffline, latency, quality } = useConnectionDiagnostics();

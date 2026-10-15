@@ -484,6 +484,25 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261234000000: o lucro so conta produto com custo (get_admin_analytics_v2: lucro por dia e top 5 sem a margem inventada de produto sem custo; comportamento e portao 35a/35b).
     "tests/banco/lucro-so-com-custo-viva.cjs",
     "tests/banco/lucro-so-com-custo-portao-viva.cjs",
+    // 20261235000000: a venda repetida do balcao devolve a venda feita (trava consultiva pela chave de idempotencia; comportamento com 2 conexoes e portao 36a/36b).
+    "tests/banco/venda-balcao-mesma-chave-viva.cjs",
+    "tests/banco/venda-balcao-mesma-chave-portao-viva.cjs",
+    // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
+    "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
+    "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",
+    // 20261237000000: a lojista renomeia e apaga categoria sem deixar produto orfao (permissao e regra de devolucao; comportamento e portao 38a/38b).
+    "tests/banco/categorias-gestao-viva.cjs",
+    "tests/banco/categorias-gestao-portao-viva.cjs",
+    // 20261238000000: a cliente pede a exclusao da conta e a correcao do e-mail (tabela pedidos_de_privacidade, dado de cliente; comportamento, ensaio do roteiro de anonimizacao e portao 39a/39b).
+    "tests/banco/pedidos-de-privacidade-viva.cjs",
+    "tests/banco/anonimizar-conta-ensaio-viva.cjs",
+    "tests/banco/pedidos-de-privacidade-portao-viva.cjs",
+    // 20261239000000: a loja declara razao social, CNPJ/CPF e e-mail de atendimento (upsert_store_config, as tres colunas e a v_store_config; comportamento e portao 40a/40b).
+    "tests/banco/loja-declara-quem-e-viva.cjs",
+    "tests/banco/loja-declara-quem-e-portao-viva.cjs",
+    // 20261240000000: a cliente e avisada quando a loja responde a pergunta dela (answer_question_atomic, as duas sobrecargas: aviso no sino em vez da linha falsa no log de push; comportamento e portao 41a/41b).
+    "tests/banco/pergunta-respondida-avisa-viva.cjs",
+    "tests/banco/pergunta-respondida-avisa-portao-viva.cjs",
     // L8 (sem migration): funcao nova de banco nao nasce aberta ao visitante (so le o catalogo; lista versionada).
     "tests/banco/portas-do-visitante-so-as-permitidas-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
