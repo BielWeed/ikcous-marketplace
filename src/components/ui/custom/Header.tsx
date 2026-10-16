@@ -1,9 +1,13 @@
+import {
+  IlhaDeAtualizacao,
+  useIlhaDeAtualizacaoAtiva,
+} from "@/components/pwa/IlhaDeAtualizacao";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { type HeaderToastData, useToastDoHeader } from "@/utils/headerToast";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -59,6 +63,8 @@ export const Header = memo(function Header({
   // — dispensar a cápsula desce o degrau junto, sem estados que divergem.
   const { detalhe: activeToast, dispensar: dispensarToast } =
     useToastDoHeader();
+  const atualizacaoAtiva = useIlhaDeAtualizacaoAtiva();
+  const reduzMovimento = useReducedMotion();
   const logoUrl = config.logoUrl || null;
   const [logoSelection, setLogoSelection] = useState<{
     url: string | null;
@@ -282,11 +288,12 @@ export const Header = memo(function Header({
             className={cn(
               "mx-auto flex min-w-0 flex-1 items-center justify-center overflow-hidden px-1 sm:px-4 md:w-full",
               activeToast ? "max-w-[72px]" : "max-w-[140px]",
+              atualizacaoAtiva && "hidden",
             )}
           />
         ) : (
           <motion.div
-            layout
+            layout={!reduzMovimento}
             transition={{
               type: "spring",
               stiffness: 350,
@@ -298,6 +305,7 @@ export const Header = memo(function Header({
               activeToast
                 ? "max-w-[110px] xs:max-w-[145px] sm:max-w-[220px]"
                 : "max-w-lg",
+              atualizacaoAtiva && "hidden",
             )}
           >
             <SearchBar
@@ -311,116 +319,126 @@ export const Header = memo(function Header({
         )}
 
         {/* RIGHT: Notification Morphing Container (Bell expands into Vinho Nobre rounded capsule) */}
-        <div className="z-[70] flex shrink-0 items-center justify-end gap-1.5 md:min-w-[100px]">
-          <AnimatePresence mode="wait">
-            {activeToast ? (
-              <motion.button
-                type="button"
-                layout
-                key={activeToast.id || "header-dynamic-island-toast"}
-                initial={{ opacity: 0, scale: 0.8, width: 36 }}
-                animate={{ opacity: 1, scale: 1, width: "auto" }}
-                exit={{ opacity: 0, scale: 0.8, width: 36 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 350,
-                  damping: 30,
-                  mass: 0.8,
-                }}
-                onClick={() => {
-                  haptic.light();
-                  dispensarToast();
-                }}
-                // Laudo de acessibilidade 05/09 (onda 3, item B9): era um
-                // motion.div com onClick — invisível para quem navega por
-                // teclado. Virou <button> de verdade: Tab alcança, Enter
-                // fecha nativo; falta só o Esc.
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    dispensarToast();
-                  }
-                }}
-                className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"
-              >
-                <motion.div
-                  initial={{ scale: 0.4, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                >
-                  {renderToastIcon(activeToast.type)}
-                </motion.div>
-
-                <motion.span
-                  initial={{ opacity: 0, x: 8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="max-w-[115px] truncate text-[11px] font-bold tracking-tight text-white/95 xs:max-w-[155px] xs:text-xs sm:max-w-[220px]"
-                >
-                  {activeToast.message}
-                </motion.span>
-
-                <motion.span
-                  initial={{ opacity: 0, scale: 0.5, rotate: -15 }}
-                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
+        <div
+          className={cn(
+            "z-[70] flex items-center justify-end gap-1.5 md:min-w-[100px]",
+            atualizacaoAtiva ? "min-w-0" : "shrink-0",
+          )}
+        >
+          <IlhaDeAtualizacao />
+          {/* Desmonta o canal comum imediatamente: seu exit não deve
+              competir com a atualização nem deixar duas cápsulas juntas. */}
+          {!atualizacaoAtiva && (
+            <AnimatePresence mode="wait">
+              {activeToast ? (
+                <motion.button
+                  type="button"
+                  layout
+                  key={activeToast.id || "header-dynamic-island-toast"}
+                  initial={{ opacity: 0, scale: 0.8, width: 36 }}
+                  animate={{ opacity: 1, scale: 1, width: "auto" }}
+                  exit={{ opacity: 0, scale: 0.8, width: 36 }}
                   transition={{
-                    delay: 0.08,
                     type: "spring",
-                    stiffness: 400,
-                    damping: 20,
+                    stiffness: 350,
+                    damping: 30,
+                    mass: 0.8,
                   }}
-                  className="shrink-0 select-none text-[10px] text-secondary/90"
-                >
-                  ✨
-                </motion.span>
-              </motion.button>
-            ) : (
-              <motion.div
-                layout
-                key="header-standard-actions"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 350,
-                  damping: 30,
-                  mass: 0.8,
-                }}
-                className="flex items-center gap-2"
-              >
-                {/*
-                  O carrinho do topo saiu em 24/08/2026. Ele era `hidden ...
-                  md:flex`, entao em tela larga aparecia AO MESMO TEMPO que o
-                  da barra de baixo — dois carrinhos, medidos vivos em 1280px
-                  nas posicoes (1176, 6) e (663, 716). A barra de baixo nunca
-                  some (em `md` ela so vira flutuante), logo o do topo era o
-                  que sobrava. Quem depende disto: `cartAnimation.ts`, que
-                  mira `#bottom-nav-cart` sempre.
-                */}
-                <button
                   onClick={() => {
                     haptic.light();
-                    onOpenNotifications?.();
+                    dispensarToast();
                   }}
-                  // Laudo de acessibilidade 03/09, achado 5: o contador de
-                  // não lidas da bolinha era mudo para o leitor de tela.
-                  aria-label={
-                    unreadCount > 0
-                      ? `Notificações, ${unreadCount} não ${unreadCount === 1 ? "lida" : "lidas"}`
-                      : "Notificações"
-                  }
-                  className="relative flex size-9 items-center justify-center rounded-full bg-zinc-50 transition-colors after:absolute after:-inset-1 after:content-[''] hover:bg-zinc-100 active:scale-90 xs:size-10"
+                  // Laudo de acessibilidade 05/09 (onda 3, item B9): era um
+                  // motion.div com onClick — invisível para quem navega por
+                  // teclado. Virou <button> de verdade: Tab alcança, Enter
+                  // fecha nativo; falta só o Esc.
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      dispensarToast();
+                    }
+                  }}
+                  className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"
                 >
-                  <Bell className="size-4.5 text-zinc-700 xs:size-5" />
-                  {unreadCount > 0 && (
-                    <span className="animate-pulse-subtle absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white shadow-sm">
-                      {unreadCount}
-                    </span>
-                  )}
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                  <motion.div
+                    initial={{ scale: 0.4, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                  >
+                    {renderToastIcon(activeToast.type)}
+                  </motion.div>
+
+                  <motion.span
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className="max-w-[115px] truncate text-[11px] font-bold tracking-tight text-white/95 xs:max-w-[155px] xs:text-xs sm:max-w-[220px]"
+                  >
+                    {activeToast.message}
+                  </motion.span>
+
+                  <motion.span
+                    initial={{ opacity: 0, scale: 0.5, rotate: -15 }}
+                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                    transition={{
+                      delay: 0.08,
+                      type: "spring",
+                      stiffness: 400,
+                      damping: 20,
+                    }}
+                    className="shrink-0 select-none text-[10px] text-secondary/90"
+                  >
+                    ✨
+                  </motion.span>
+                </motion.button>
+              ) : (
+                <motion.div
+                  layout
+                  key="header-standard-actions"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 350,
+                    damping: 30,
+                    mass: 0.8,
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  {/*
+                    O carrinho do topo saiu em 24/08/2026. Ele era `hidden ...
+                    md:flex`, entao em tela larga aparecia AO MESMO TEMPO que o
+                    da barra de baixo — dois carrinhos, medidos vivos em 1280px
+                    nas posicoes (1176, 6) e (663, 716). A barra de baixo nunca
+                    some (em `md` ela so vira flutuante), logo o do topo era o
+                    que sobrava. Quem depende disto: `cartAnimation.ts`, que
+                    mira `#bottom-nav-cart` sempre.
+                  */}
+                  <button
+                    onClick={() => {
+                      haptic.light();
+                      onOpenNotifications?.();
+                    }}
+                    // Laudo de acessibilidade 03/09, achado 5: o contador de
+                    // não lidas da bolinha era mudo para o leitor de tela.
+                    aria-label={
+                      unreadCount > 0
+                        ? `Notificações, ${unreadCount} não ${unreadCount === 1 ? "lida" : "lidas"}`
+                        : "Notificações"
+                    }
+                    className="relative flex size-9 items-center justify-center rounded-full bg-zinc-50 transition-colors after:absolute after:-inset-1 after:content-[''] hover:bg-zinc-100 active:scale-90 xs:size-10"
+                  >
+                    <Bell className="size-4.5 text-zinc-700 xs:size-5" />
+                    {unreadCount > 0 && (
+                      <span className="animate-pulse-subtle absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white shadow-sm">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          )}
         </div>
       </div>
     </header>
