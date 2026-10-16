@@ -53,10 +53,11 @@ export function useDevolucaoDoPedidoCliente(
   const [linhas, setLinhas] = useState<LinhaDevolucaoDoCliente[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(false);
+  const [idDoErro, setIdDoErro] = useState<string | null>(null);
   // Qual pedido já teve uma leitura bem-sucedida (guarda o id, não um
   // booleano: trocar de pedido volta a "ainda não sei").
   const [lidoDoPedido, setLidoDoPedido] = useState<string | null>(null);
-  const [desistiu, setDesistiu] = useState(false);
+  const [desistiuDe, setDesistiuDe] = useState<string | null>(null);
   // A nova tentativa chama sempre a versão mais recente de `carregar` (o
   // `setTimeout` guardaria a do render em que foi agendado).
   const carregarRef = useRef<() => Promise<void>>(async () => {});
@@ -78,11 +79,12 @@ export function useDevolucaoDoPedidoCliente(
     // tenta de novo algumas vezes e só então desiste. Depois de uma leitura
     // boa, a falha de uma volta do relógio não apaga o que já se sabe.
     const aoFalhar = () => {
+      setIdDoErro(orderId);
       setErro(true);
       if (lidoRef.current === orderId) return;
       falhasRef.current += 1;
       if (falhasRef.current >= TENTATIVAS_ATE_DESISTIR) {
-        setDesistiu(true);
+        setDesistiuDe(orderId);
         return;
       }
       novaTentativaRef.current = setTimeout(() => {
@@ -107,7 +109,7 @@ export function useDevolucaoDoPedidoCliente(
       lidoRef.current = orderId;
       falhasRef.current = 0;
       setLidoDoPedido(orderId);
-      setDesistiu(false);
+      setDesistiuDe(null);
     } catch {
       if (valeAinda()) aoFalhar();
     } finally {
@@ -122,7 +124,7 @@ export function useDevolucaoDoPedidoCliente(
   useEffect(() => {
     ativoRef.current = true;
     falhasRef.current = 0;
-    setDesistiu(false);
+    setDesistiuDe(null);
     if (habilitado) void carregar();
     return () => {
       ativoRef.current = false;
@@ -146,5 +148,11 @@ export function useDevolucaoDoPedidoCliente(
   }, [habilitado, temLinhaAtiva, carregar]);
 
   const lido = lidoDoPedido === orderId;
-  return { linhas, carregando, erro, lido, desistiu: !lido && desistiu };
+  return {
+    linhas,
+    carregando,
+    erro: idDoErro === orderId && erro,
+    lido,
+    desistiu: !lido && desistiuDe === orderId,
+  };
 }
