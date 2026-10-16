@@ -10,6 +10,7 @@ export function useSwipeBack({ onBack, active, mainRef }: UseSwipeBackProps) {
   const startXRef = useRef<number | null>(null);
   const startYRef = useRef<number | null>(null);
   const isSwipingRef = useRef<boolean>(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!active) {
@@ -23,10 +24,35 @@ export function useSwipeBack({ onBack, active, mainRef }: UseSwipeBackProps) {
     const mainEl = mainRef.current;
     if (!mainEl) return;
 
+    const cancelTimer = () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+
+    const resetTransform = () => {
+      mainEl.style.transform = "";
+      mainEl.classList.remove("swipe-back-transition");
+      mainEl.removeEventListener("transitionend", resetTransform);
+    };
+
+    const handleTouchCancel = () => {
+      if (!isSwipingRef.current) return;
+      isSwipingRef.current = false;
+      startXRef.current = null;
+      startYRef.current = null;
+      mainEl.classList.add("swipe-back-transition");
+      mainEl.style.transform = "translate3d(0, 0, 0)";
+      mainEl.addEventListener("transitionend", resetTransform);
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
       // Swipe back starting strictly from the left edge (clientX < 30px)
       if (touch.clientX < 30) {
+        cancelTimer();
+        resetTransform();
         startXRef.current = touch.clientX;
         startYRef.current = touch.clientY;
         isSwipingRef.current = true;
@@ -78,23 +104,19 @@ export function useSwipeBack({ onBack, active, mainRef }: UseSwipeBackProps) {
         mainEl.classList.add("swipe-back-transition");
         mainEl.style.transform = "translate3d(100%, 0, 0)";
 
-        setTimeout(() => {
-          onBack();
-          setTimeout(() => {
-            mainEl.style.transform = "";
-            mainEl.classList.remove("swipe-back-transition");
+        timerRef.current = setTimeout(() => {
+          // Register the reset before onBack, which may unmount this hook.
+          timerRef.current = setTimeout(() => {
+            timerRef.current = null;
+            resetTransform();
           }, 300);
+          onBack();
         }, 150);
       } else {
         // Cancel gesture and bounce back to normal
         mainEl.classList.add("swipe-back-transition");
         mainEl.style.transform = "translate3d(0, 0, 0)";
 
-        const resetTransform = () => {
-          mainEl.style.transform = "";
-          mainEl.classList.remove("swipe-back-transition");
-          mainEl.removeEventListener("transitionend", resetTransform);
-        };
         mainEl.addEventListener("transitionend", resetTransform);
       }
     };
@@ -102,13 +124,18 @@ export function useSwipeBack({ onBack, active, mainRef }: UseSwipeBackProps) {
     mainEl.addEventListener("touchstart", handleTouchStart, { passive: false });
     mainEl.addEventListener("touchmove", handleTouchMove, { passive: false });
     mainEl.addEventListener("touchend", handleTouchEnd);
-    mainEl.addEventListener("touchcancel", handleTouchEnd);
+    mainEl.addEventListener("touchcancel", handleTouchCancel);
 
     return () => {
       mainEl.removeEventListener("touchstart", handleTouchStart);
       mainEl.removeEventListener("touchmove", handleTouchMove);
       mainEl.removeEventListener("touchend", handleTouchEnd);
-      mainEl.removeEventListener("touchcancel", handleTouchEnd);
+      mainEl.removeEventListener("touchcancel", handleTouchCancel);
+      cancelTimer();
+      resetTransform();
+      isSwipingRef.current = false;
+      startXRef.current = null;
+      startYRef.current = null;
     };
   }, [active, onBack, mainRef]);
 }
