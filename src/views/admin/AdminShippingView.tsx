@@ -258,6 +258,9 @@ export const AdminShippingView = memo(function AdminShippingView({
     ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
   >(() => new Map());
   const [credsErro, setCredsErro] = useState(false);
+  // A leitura das transportadoras JÁ chegou ao menos uma vez? Antes disso as
+  // listas vazias são "ainda não sei", não "nenhuma ligada".
+  const [credsLidas, setCredsLidas] = useState(false);
 
   const fetchCreds = useCallback(async () => {
     setCredsErro(false);
@@ -268,6 +271,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     }
     setLigadosSalvos(new Set(resultado.config.ligados));
     setProvedoresSalvos(resultado.config.provedores);
+    setCredsLidas(true);
   }, []);
 
   // A seção de Transportadoras avisa a cada leitura confirmada dela (ao
@@ -279,6 +283,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>,
     ) => {
       setCredsErro(false);
+      setCredsLidas(true);
       setLigadosSalvos(new Set(ligados));
       setProvedoresSalvos(provedores);
     },
@@ -798,6 +803,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                   }
                   enderecoDaLoja={config?.storeAddress}
                   onNavigate={onNavigate}
+                  nomesLigados={credsErro || !credsLidas ? null : nomesLigados}
+                  pagamentoPeloAppLigado={pagamentoPeloAppLigado}
                 />
               </PainelRecolhivel>
 

@@ -12,6 +12,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
 import {
   type ChaveDosSeisPassos,
+  alcanceAoMudarOCepDaLoja,
   entradaDosSeisPassos,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
@@ -231,11 +232,22 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     const enderecoParaGravar = enderecoAlterado
       ? (mudancaEndereco?.valores ?? null)
       : null;
+    // O alcance "só perto da loja" é uma CÓPIA dos 5 primeiros números do CEP:
+    // se o CEP mudou, ele vai junto, NESTA mesma chamada (nunca antes do
+    // Salvar). Alcance vazio, lista ou faixa não são tocados.
+    const alcanceNovo = enderecoParaGravar
+      ? alcanceAoMudarOCepDaLoja(
+          config.originCep,
+          enderecoParaGravar.originCep,
+          config.localCepRange,
+        )
+      : null;
     setSaving(true);
     try {
       const success = await updateConfig(
         {
           ...(enderecoParaGravar ?? {}),
+          ...(alcanceNovo !== null && { localCepRange: alcanceNovo }),
           storeDescription: descricaoDaLojaParaHtml(descricao) || null,
         },
         { isCurrent, silent: true },
@@ -250,7 +262,11 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         setDescricao(descricao.trim());
         // O Salvar do cabeçalho NÃO grava o contato (ele tem o próprio): o aviso
         // diz só o que foi salvo, e o contato pendente segue avisado no topo.
-        toast.success("Endereço e descrição salvos");
+        toast.success(
+          alcanceNovo === null
+            ? "Endereço e descrição salvos"
+            : `Endereço e descrição salvos. Sua entrega acompanhou o novo CEP: CEPs que começam com ${alcanceNovo}.`,
+        );
       } else {
         // silent:true suprime TODOS os toasts de dentro do updateConfig —
         // inclusive o de falha. A falha tem de ser avisada AQUI, com o

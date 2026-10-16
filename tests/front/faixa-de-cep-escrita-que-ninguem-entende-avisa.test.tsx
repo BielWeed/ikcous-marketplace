@@ -85,7 +85,7 @@ describe("avisoDaFaixaDeCep: faixa escrita que o servidor não entende", () => {
     expect(
       avisoDaFaixaDeCep({ originCep: "38400-100", localCepRange: "  " }),
     ).toBe(
-      "Sua entrega local só vale para CEPs que começam com 38400. Se sua cidade tem vários CEPs, preencha a faixa de CEP",
+      "Sua entrega local só vale para CEPs que começam com 38400. Se sua cidade tem vários CEPs, escolha até onde você entrega",
     );
   });
 
@@ -177,7 +177,7 @@ describe("FreteLocalBloco mostra o aviso e o formato", () => {
   it("faixa vazia numa loja de CEP geral: sem aviso nenhum", () => {
     const { texto } = desenhar(CEP_DA_LOJA, "");
     expect(texto).not.toContain(FRASE_DO_AVISO);
-    expect(texto).not.toContain("preencha a faixa de CEP");
+    expect(texto).not.toContain("escolha até onde você entrega");
   });
 
   it("o placeholder e a ajuda deixam o formato explícito", () => {

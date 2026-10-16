@@ -3,6 +3,7 @@ import {
   type ConfigDeFreteNacional,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
+import { alcanceSemNumeros, resumoDoAlcance } from "@/lib/loja-pronta";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import type { StoreConfig } from "@/types";
 
@@ -21,6 +22,7 @@ import type { StoreConfig } from "@/types";
 export type ConfigDaEntrega = Pick<
   StoreConfig,
   | "originCep"
+  | "localCepRange"
   | "freeShippingMin"
   | "localDeliveryFee"
   | "shippingCoverage"
@@ -58,10 +60,6 @@ export function statusDaEntrega({
   const minSalvo = Number(config?.freeShippingMin ?? 0);
   const presetSalvo = presetDoConfig(minSalvo);
   const localFee = Number(config?.localDeliveryFee ?? 10);
-  const cidade = config?.storeCity;
-  const uf = config?.storeState;
-  const ondeCidade =
-    cidade && uf ? `${cidade}/${uf}` : cidade ? cidade : "sua cidade";
 
   const local: StatusDaFaixaFrete = !config?.originCep
     ? {
@@ -76,8 +74,13 @@ export function statusDaEntrega({
           localFee > 0
             ? `R$ ${reais(localFee)} por entrega`
             : "Grátis na cidade",
-        detalhe: `Entrega própria em ${ondeCidade}`,
-        tom: "positivo",
+        // A abrangência REAL, nunca o nome da cidade: com o alcance vazio a
+        // entrega própria vale só para os CEPs que começam com os 5 números
+        // do CEP da loja (um pedaço de bairro), e "em Uberlândia/MG" prometia
+        // a cidade inteira.
+        detalhe: `Entrega própria em ${resumoDoAlcance(config.originCep, config.localCepRange)}`,
+        // Texto escrito sem número nenhum: o servidor não entrega para ninguém.
+        tom: alcanceSemNumeros(config.localCepRange) ? "atencao" : "positivo",
       };
 
   const resumoNacional =

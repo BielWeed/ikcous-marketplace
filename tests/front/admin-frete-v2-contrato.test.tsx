@@ -286,7 +286,10 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     await abrirTela();
 
     expect(textoDaFaixa()).toContain("R$ 10 por entrega");
-    expect(textoDaFaixa()).toContain("Uberlândia/MG");
+    // A promessa é a abrangência REAL (alcance vazio = os 5 primeiros números
+    // do CEP da loja), nunca o nome da cidade.
+    expect(textoDaFaixa()).toContain("CEPs que começam com 38400");
+    expect(textoDaFaixa()).not.toContain("Uberlândia/MG");
     expect(textoDaFaixa()).toContain("Melhor Envio ligado");
     expect(textoDaFaixa()).toContain("Acima de R$ 100");
     // Nada foi mexido: o botão do cabeçalho mostra "Salvo", desabilitado.

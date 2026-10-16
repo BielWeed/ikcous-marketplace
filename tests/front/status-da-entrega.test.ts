@@ -54,10 +54,12 @@ describe("statusDaEntrega — Na sua cidade", () => {
     expect(local.valor).toContain("falta o CEP");
   });
 
-  it("com CEP e taxa: mostra o valor por entrega e a cidade/UF", () => {
+  it("com CEP e taxa: mostra o valor por entrega e os CEPs que a entrega alcança (não a cidade)", () => {
     const [local] = statusDaEntrega(entrada());
     expect(local.valor).toBe("R$ 10 por entrega");
-    expect(local.detalhe).toBe("Entrega própria em Monte Carmelo/MG");
+    // Alcance vazio = só os 5 primeiros números do CEP da loja (01310-100).
+    expect(local.detalhe).toBe("Entrega própria em CEPs que começam com 01310");
+    expect(local.detalhe).not.toContain("Monte Carmelo");
     expect(local.tom).toBe("positivo");
   });
 
@@ -72,19 +74,51 @@ describe("statusDaEntrega — Na sua cidade", () => {
     ).toBe("Grátis na cidade");
   });
 
-  it("sem cidade/UF cai para 'sua cidade'; só cidade omite a UF", () => {
-    expect(
-      statusDaEntrega(
-        entrada({ config: config({ storeCity: null, storeState: null }) }),
-      )[0].detalhe,
-    ).toBe("Entrega própria em sua cidade");
-    expect(
-      statusDaEntrega(
-        entrada({
-          config: config({ storeCity: "Uberlândia", storeState: null }),
-        }),
-      )[0].detalhe,
-    ).toBe("Entrega própria em Uberlândia");
+  it("a promessa nunca é o nome da cidade, com ou sem cidade/UF na config", () => {
+    for (const parcial of [
+      { storeCity: null, storeState: null },
+      { storeCity: "Uberlândia", storeState: null },
+      { storeCity: "Uberlândia", storeState: "MG" },
+    ]) {
+      const [local] = statusDaEntrega(entrada({ config: config(parcial) }));
+      expect(local.detalhe, JSON.stringify(parcial)).toBe(
+        "Entrega própria em CEPs que começam com 01310",
+      );
+    }
+  });
+
+  it("alcance escrito sem número nenhum: diz que nenhum CEP entra e pede atenção (não 'positivo')", () => {
+    const [local] = statusDaEntrega(
+      entrada({ config: config({ localCepRange: "abc" }) }),
+    );
+    expect(local.detalhe).toBe(
+      "Entrega própria em nenhum CEP: o que está escrito não tem números",
+    );
+    expect(local.tom).toBe("atencao");
+    // Vazio de verdade (ou só espaços) segue sendo a região da loja, positivo.
+    const [vazio] = statusDaEntrega(
+      entrada({ config: config({ localCepRange: "  " }) }),
+    );
+    expect(vazio.tom).toBe("positivo");
+  });
+
+  it("diz a abrangência real do alcance escrito: um prefixo, ou 'os CEPs que você escolheu'", () => {
+    const detalhe = (localCepRange: string | undefined) =>
+      statusDaEntrega(entrada({ config: config({ localCepRange }) }))[0]
+        .detalhe;
+    expect(detalhe("38400")).toBe(
+      "Entrega própria em CEPs que começam com 38400",
+    );
+    expect(detalhe("")).toBe("Entrega própria em CEPs que começam com 01310");
+    for (const escrito of [
+      "38400, 38500",
+      "38400-000, 38409-999",
+      "38400000-38409999",
+    ]) {
+      expect(detalhe(escrito), escrito).toBe(
+        "Entrega própria em CEPs que você escolheu",
+      );
+    }
   });
 });
 
