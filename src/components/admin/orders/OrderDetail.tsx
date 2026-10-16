@@ -1553,6 +1553,9 @@ export const OrderDetail = memo(function OrderDetail({
   );
 
   useEffect(() => {
+    // A ficha não desmonta ao trocar de pedido: uma resposta atrasada não
+    // pode substituir tamanho/código nem encerrar o carregamento da nova.
+    let consultaVigente = true;
     const fetchSkus = async () => {
       try {
         const itemsList = JSON.parse(itemsSerialized) as {
@@ -1598,6 +1601,7 @@ export const OrderDetail = memo(function OrderDetail({
             .from("vw_produtos_admin")
             .select("id, codigo")
             .in("id", missingProductIds);
+          if (!consultaVigente) return;
           productsData?.forEach((p) => {
             if (p.codigo) globalSkuCache[`prod-${p.id}`] = p.codigo;
           });
@@ -1608,6 +1612,7 @@ export const OrderDetail = memo(function OrderDetail({
             .from("product_variants")
             .select("id, sku, name, value")
             .in("id", missingVariantIds);
+          if (!consultaVigente) return;
           variantsData?.forEach((v) => {
             if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
             globalVariacaoCache.set(v.id, rotuloDaVariacao(v.name, v.value));
@@ -1626,14 +1631,17 @@ export const OrderDetail = memo(function OrderDetail({
         });
         setSkus(resultSkus);
       } catch (err) {
-        console.error("Error fetching SKUs:", err);
+        if (consultaVigente) console.error("Error fetching SKUs:", err);
       } finally {
-        setLoadingSkus(false);
+        if (consultaVigente) setLoadingSkus(false);
       }
     };
 
     fetchSkus();
-  }, [itemsSerialized]);
+    return () => {
+      consultaVigente = false;
+    };
+  }, [order.id, itemsSerialized]);
 
   const nextStatus = getNextStatus(order.status);
 
