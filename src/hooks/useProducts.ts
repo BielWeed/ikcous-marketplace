@@ -1,6 +1,7 @@
 import { useStore } from "@/contexts/StoreContext";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   caminhoDaCopia,
   caminhoDaImagemDoProduto,
@@ -38,19 +39,24 @@ export async function copiarImagemParaDuplicacao(url: string): Promise<string> {
   const caminho = caminhoDaImagemDoProduto(url);
   if (!caminho) return url;
 
-  const novoCaminho = caminhoDaCopia(caminho);
-  const { error } = await supabase.storage
-    .from("products")
-    .copy(caminho, novoCaminho);
-  if (error) {
-    throw new Error(
-      `Não foi possível copiar a imagem do produto no storage: ${error.message}`,
-    );
+  const desmarcar = marcarOperacaoSensivel("copia-de-imagem-do-produto");
+  try {
+    const novoCaminho = caminhoDaCopia(caminho);
+    const { error } = await supabase.storage
+      .from("products")
+      .copy(caminho, novoCaminho);
+    if (error) {
+      throw new Error(
+        `Não foi possível copiar a imagem do produto no storage: ${error.message}`,
+      );
+    }
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("products").getPublicUrl(novoCaminho);
+    return publicUrl;
+  } finally {
+    desmarcar();
   }
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("products").getPublicUrl(novoCaminho);
-  return publicUrl;
 }
 
 async function callRpcWithRetry<T>(
@@ -125,6 +131,7 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
   const queueStr = localStorage.getItem(chaveDaFila);
   if (!queueStr) return false;
 
+  const desmarcar = marcarOperacaoSensivel("fila-offline-de-produtos");
   try {
     const filaBruta = JSON.parse(queueStr);
     if (!Array.isArray(filaBruta) || filaBruta.length === 0) return false;
@@ -314,6 +321,8 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
   } catch (e) {
     console.error("[Offline Sync] Error parsing offline updates queue:", e);
     return false;
+  } finally {
+    desmarcar();
   }
 }
 
@@ -649,6 +658,7 @@ export function useProducts({ autoFetch = true } = {}) {
 
   const backupStorageFile = useCallback(
     async (url: string): Promise<string | null> => {
+      const desmarcar = marcarOperacaoSensivel("backup-de-imagem-do-produto");
       try {
         if (!url) return null;
         if (url.includes("placehold.co") || url.includes("placeholder"))
@@ -699,6 +709,8 @@ export function useProducts({ autoFetch = true } = {}) {
       } catch (err) {
         console.error("[useProducts] Failed to backup storage file:", err, url);
         return url;
+      } finally {
+        desmarcar();
       }
     },
     [],
@@ -1686,37 +1698,42 @@ export function useProducts({ autoFetch = true } = {}) {
   );
 
   const uploadProductImages = useCallback(async (files: File[]) => {
-    const urls: string[] = [];
+    const desmarcar = marcarOperacaoSensivel("upload-de-imagem-do-produto");
+    try {
+      const urls: string[] = [];
 
-    for (const file of files) {
-      try {
-        // Laudo 0109 (C2): o arquivo cru do celular (foto de 12 MP = vários
-        // MB) ia inteiro ao bucket e era servido a quem escapar do pipeline
-        // de render. Redimensiona ANTES do upload — e `redimensionarImagem`
-        // é fail-open: na falha volta o próprio arquivo, o upload segue.
-        const pronto = await redimensionarImagem(file);
-        const fileExt = pronto.name.split(".").pop();
-        const fileName = `${crypto.randomUUID()}.${fileExt}`;
-        const filePath = `${fileName}`;
+      for (const file of files) {
+        try {
+          // Laudo 0109 (C2): o arquivo cru do celular (foto de 12 MP = vários
+          // MB) ia inteiro ao bucket e era servido a quem escapar do pipeline
+          // de render. Redimensiona ANTES do upload — e `redimensionarImagem`
+          // é fail-open: na falha volta o próprio arquivo, o upload segue.
+          const pronto = await redimensionarImagem(file);
+          const fileExt = pronto.name.split(".").pop();
+          const fileName = `${crypto.randomUUID()}.${fileExt}`;
+          const filePath = `${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from("products")
-          .upload(filePath, pronto);
+          const { error: uploadError } = await supabase.storage
+            .from("products")
+            .upload(filePath, pronto);
 
-        if (uploadError) throw uploadError;
+          if (uploadError) throw uploadError;
 
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("products").getPublicUrl(filePath);
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from("products").getPublicUrl(filePath);
 
-        urls.push(publicUrl);
-      } catch (err) {
-        console.error("Error uploading file:", err);
-        toast.error(`Erro ao enviar imagem ${file.name}`);
+          urls.push(publicUrl);
+        } catch (err) {
+          console.error("Error uploading file:", err);
+          toast.error(`Erro ao enviar imagem ${file.name}`);
+        }
       }
-    }
 
-    return urls;
+      return urls;
+    } finally {
+      desmarcar();
+    }
   }, []);
 
   // Recommendations Logic - Server Side RPC

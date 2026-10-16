@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   TAMANHO_MAXIMO_DA_FOTO,
   TIPOS_DE_FOTO,
@@ -150,6 +151,7 @@ export function useDevolucaoCliente(
     async (
       dados: DadosDaSolicitacao,
     ): Promise<Desfecho<ResultadoSolicitacao>> => {
+      const desmarcar = marcarOperacaoSensivel("solicitacao-de-devolucao");
       try {
         const { data, error } = await supabase.rpc("solicitar_devolucao", {
           p_order_id: orderId,
@@ -174,6 +176,8 @@ export function useDevolucaoCliente(
         return { ok: true, valor: resultado };
       } catch (e) {
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
+      } finally {
+        desmarcar();
       }
     },
     [orderId, carregar],
@@ -195,6 +199,7 @@ export function useDevolucaoCliente(
         crypto.randomUUID(),
         pronto.type,
       );
+      const desmarcar = marcarOperacaoSensivel("foto-de-devolucao");
       try {
         const { error } = await supabase.storage
           .from("devolucoes")
@@ -211,6 +216,8 @@ export function useDevolucaoCliente(
           ok: false,
           erro: mensagemDoErro(e, "Não foi possível enviar a foto."),
         };
+      } finally {
+        desmarcar();
       }
     },
     [orderId],
@@ -226,10 +233,15 @@ export function useDevolucaoCliente(
   const descartarFotos = useCallback(
     async (caminhos: readonly string[]): Promise<void> => {
       if (caminhos.length === 0) return;
+      const desmarcar = marcarOperacaoSensivel(
+        "descarte-de-fotos-de-devolucao",
+      );
       try {
         await supabase.storage.from("devolucoes").remove([...caminhos]);
       } catch {
         // melhor esforço
+      } finally {
+        desmarcar();
       }
     },
     [],
@@ -237,6 +249,7 @@ export function useDevolucaoCliente(
 
   const cancelar = useCallback(
     async (id: string): Promise<Desfecho> => {
+      const desmarcar = marcarOperacaoSensivel("cancelamento-de-devolucao");
       try {
         const { data, error } = await supabase.rpc("cancelar_devolucao", {
           p_id: id,
@@ -249,6 +262,8 @@ export function useDevolucaoCliente(
           : { ok: false, erro: ERRO_GENERICO };
       } catch (e) {
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
+      } finally {
+        desmarcar();
       }
     },
     [carregar],
@@ -256,6 +271,7 @@ export function useDevolucaoCliente(
 
   const informarEnvio = useCallback(
     async (id: string, codigo: string): Promise<Desfecho> => {
+      const desmarcar = marcarOperacaoSensivel("envio-de-devolucao");
       try {
         const { data, error } = await supabase.rpc("informar_envio_devolucao", {
           p_id: id,
@@ -269,6 +285,8 @@ export function useDevolucaoCliente(
           : { ok: false, erro: ERRO_GENERICO };
       } catch (e) {
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
+      } finally {
+        desmarcar();
       }
     },
     [carregar],
