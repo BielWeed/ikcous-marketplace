@@ -16,7 +16,7 @@ import { supabase } from "@/lib/supabase";
 import type { ClienteDoCupom, Coupon } from "@/types";
 import type { Database } from "@/types/database.types";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /** Uma linha da busca de clientes do painel (sem CPF). */
@@ -143,8 +143,10 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     () => cachedCouponsData || [],
   );
   const [loading, setLoading] = useState(() => autoFetch && !cachedCouponsData); // Skip initial loader if cache is available
+  const rodadaRef = useRef(0);
 
   const fetchCoupons = useCallback(async () => {
+    const rodada = ++rodadaRef.current;
     try {
       setLoading(true);
 
@@ -152,6 +154,8 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
         .from("coupons")
         .select("*")
         .order("created_at", { ascending: false });
+
+      if (rodada !== rodadaRef.current) return;
 
       if (error) {
         if (error.code === "PGRST116") {
@@ -171,12 +175,13 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       setCachedCouponsData(formattedCoupons);
       setCoupons(formattedCoupons);
     } catch (error: any) {
+      if (rodada !== rodadaRef.current) return;
       console.error("Error fetching coupons:", error);
       if (error.code !== "PGRST116") {
         toast.error("Não foi possível carregar os cupons.");
       }
     } finally {
-      setLoading(false);
+      if (rodada === rodadaRef.current) setLoading(false);
     }
   }, []);
 
@@ -280,7 +285,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     // O formulário pode gravar regras e clientes em duas chamadas. Só
     // confirmar localmente depois das duas: trocar o alcance antes disso
     // dispara a carga da lista antiga e apaga os clientes recém-escolhidos.
-    const oldCoupons = [...coupons];
+    const anterior = coupons.find((c) => c.id === id);
     if (clientes === undefined) {
       setCoupons((prev) =>
         prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
@@ -325,7 +330,6 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     // "codigo" é mudança e VAI. Cupom que não está na lista carregada tem
     // anterior desconhecido: o pedido vai como veio (nunca engolir a troca).
     if ("alcance" in updates && updates.alcance) {
-      const anterior = oldCoupons.find((c) => c.id === id);
       const mudou =
         !anterior || (anterior.alcance ?? "codigo") !== updates.alcance;
       if (mudou) dbUpdates.alcance = updates.alcance;
@@ -357,7 +361,10 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
           ? "Não foi possível salvar o cupom. Confira e tente de novo."
           : mensagemDeErroDoCupom(error, "Erro ao atualizar cupom"),
       );
-      if (clientes === undefined) setCoupons(oldCoupons);
+      if (clientes === undefined && anterior) {
+        // A falha deste cupom preserva os demais já salvos.
+        setCoupons((prev) => prev.map((c) => (c.id === id ? anterior : c)));
+      }
       throw error;
     }
   };
