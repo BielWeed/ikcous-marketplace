@@ -53,6 +53,7 @@ export function useAddresses() {
     itens: carregarCacheDoDisco(user?.id),
   }));
   const [loading, setLoading] = useState(false);
+  const [contaComErro, setContaComErro] = useState<string | null>(null);
   // Espelho síncrono do estado: as mutações calculam a lista nova a partir
   // DELE (e não num updater funcional), para gravar disco, estado e aviso às
   // outras telas com o MESMO valor.
@@ -105,6 +106,7 @@ export function useAddresses() {
     usuarioAtualRef.current = user?.id;
     consultaRef.current++;
     setLoading(false);
+    setContaComErro(null);
   }, [user?.id]);
 
   // Troca de conta: recarrega o cache DA CONTA CORRENTE.
@@ -162,8 +164,10 @@ export function useAddresses() {
         is_default: a.is_default || false,
       }));
       gravarLista(idDaBusca, mapped);
+      setContaComErro(null);
     } catch (error) {
       if (!atual()) return;
+      setContaComErro(idDaBusca);
       console.error("Error fetching addresses:", error);
       toast.error("Erro ao carregar endereços");
     } finally {
@@ -326,6 +330,7 @@ export function useAddresses() {
   return {
     addresses,
     loading,
+    erroAoCarregar: contaComErro !== null && contaComErro === user?.id,
     fetchAddresses,
     addAddress,
     updateAddress,
