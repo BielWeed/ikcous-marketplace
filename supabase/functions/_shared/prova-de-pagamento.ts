@@ -107,6 +107,21 @@ function comoNumero(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Regra base das três portas: valor normalizado do MP e total relido válidos.
+ * A captura (`total_paid_amount`) continua sendo exigência adicional da prova
+ * imediata; webhook e cron nunca a exigiram. Não comparar juros por igualdade. */
+export function conferirValorDoPagamento(valor: unknown, totalRelido: unknown):
+  | { provado: true; valor: number; total: number }
+  | { provado: false; motivo: "valor_ausente" | "total_do_pedido" | "valor_divergente" } {
+  if (typeof valor !== "number" || !Number.isFinite(valor) || !(valor > 0)) {
+    return { provado: false, motivo: "valor_ausente" };
+  }
+  const total = comoNumero(totalRelido);
+  if (total === null || !(total > 0)) return { provado: false, motivo: "total_do_pedido" };
+  if (Math.abs(valor - total) > TOLERANCIA_DE_VALOR) return { provado: false, motivo: "valor_divergente" };
+  return { provado: true, valor, total };
+}
+
 /** Lista PRESENTE e não vazia — ou qualquer coisa presente que não seja lista
  * (forma desconhecida de um campo de estorno/contestação nunca é "nada"). */
 const temRegistro = (v: unknown): boolean => presente(v) && (!Array.isArray(v) || v.length > 0);
@@ -175,13 +190,10 @@ export function provarPagamentoPelaConsulta(args: {
     if (doPagamento === null || daOrder === null || doPagamento !== daOrder) return recusa("valor_do_pagamento");
   }
 
-  // (e) valor presente, finito e > 0, contra o total RELIDO — a expressão
-  // do webhook (os dois lados já são finitos aqui, NaN nunca chega).
-  const valor = extrairValorDaOrder(o);
-  if (typeof valor !== "number" || !Number.isFinite(valor) || !(valor > 0)) return recusa("valor_ausente");
-  const total = comoNumero(args.totalRelido);
-  if (total === null || !(total > 0)) return recusa("total_do_pedido");
-  if (Math.abs(valor - total) > TOLERANCIA_DE_VALOR) return recusa("valor_divergente");
+  // (e) mesma regra base do webhook e da reconciliação.
+  const conferencia = conferirValorDoPagamento(extrairValorDaOrder(o), args.totalRelido);
+  if (!conferencia.provado) return recusa(conferencia.motivo);
+  const { valor, total } = conferencia;
 
   // (f) o valor PAGO: a raiz manda quando existe; o do pagamento só sem ela.
   const brutoPago = presente(o.total_paid_amount) ? o.total_paid_amount : p.paid_amount;

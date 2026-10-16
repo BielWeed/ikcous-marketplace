@@ -82,6 +82,7 @@ import {
   TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
+import { conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
 import { comTempoLimite, readKey } from "../_shared/webpush.ts";
 import {
   avisarAdminUmaVez,
@@ -787,19 +788,8 @@ async function handler(
         continue;
       }
 
-      // CONFERÊNCIA DE VALOR (laudo caça-bugs 31/08, achado A3 + ressalva 1
-      // da revisão do PR #366): a reconciliação atinge PEDIDO VIVO
-      // ('aguardando' + 'pending', migration 20261010000000) — sem esta
-      // porta, um pagamento divergente recusado pelo webhook era confirmado
-      // AQUI depois, por status, sem ninguém olhar o valor: a dobradiça do
-      // outro lado da porta que o webhook fechou. Mesma tolerância, mesma
-      // fonte (resposta autenticada do MP), mesmo "valor ausente = warn e
-      // segue" do webhook — regra em um lugar só (`_shared/mercadopago.ts`).
-      //
-      // Divergente: NÃO chama a RPC e entra em ignorados — o candidato fica
-      // na fila (reconcilia de novo no próximo ciclo) e o dinheiro divergente
-      // cabe ao lojista resolver no painel do MP. Log error, no padrão dos
-      // 'divergente'/'inexistente' da RPC.
+      // Mesma regra base da prova imediata e do webhook: sem valor ou total
+      // válido NÃO confirma. Só conta ignorado; a fila tenta no próximo ciclo.
       if (statusMapeado === "pago" || statusMapeado === "pago_apos_expirar") {
         const { data: linhaDoPedido, error: erroLeituraTotal } = await supabase
           .from("marketplace_orders")
@@ -808,33 +798,44 @@ async function handler(
           .maybeSingle();
         if (erroLeituraTotal) throw erroLeituraTotal;
 
-        const brutoTotal =
-          (linhaDoPedido as Record<string, unknown> | null)?.total ??
+        const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
           (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
-        const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
-
-        if (linhaDoPedido && typeof valorAprovado === "number") {
-          if (
-            Number.isFinite(totalDoPedido) &&
-            Math.abs(valorAprovado - totalDoPedido) > TOLERANCIA_DE_VALOR
-          ) {
+        const conferencia = conferirValorDoPagamento(valorAprovado, brutoTotal);
+        if (!conferencia.provado) {
+          if (conferencia.motivo === "valor_divergente") {
             console.error(
               "reconciliar-pagamentos: VALOR aprovado diverge do total do pedido — candidato NÃO confirmado; conferir no painel do MP",
               {
                 order_id: candidato.order_id,
                 gateway_payment_id: candidato.gateway_payment_id,
                 valorAprovado,
-                totalDoPedido,
+                totalDoPedido: Number(brutoTotal),
               },
             );
-            ignorados++;
-            continue;
+          } else {
+            console.error(
+              "reconciliar-pagamentos: valor não conferido — candidato NÃO confirmado; aguardando reconsulta",
+              {
+                order_id: candidato.order_id,
+                gateway_payment_id: candidato.gateway_payment_id,
+                motivo: conferencia.motivo,
+              },
+            );
+            await comTempoLimite(avisarAdminUmaVez({
+              supabase,
+              enviarPushContado: deps.enviarPushContado ??
+                ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+              chave: `valor_nao_conferido:${candidato.order_id}:${candidato.gateway_payment_id}`,
+              aviso: {
+                title: "Pagamento precisa de conferência",
+                body: `#${candidato.order_id.slice(0, 8)} · valor não conferido; tentando novamente`,
+                url: "/admin-orders",
+              },
+              rotulo: "reconciliar-pagamentos",
+            }), TETO_DO_PUSH_MS);
           }
-        } else if (linhaDoPedido && valorAprovado === undefined) {
-          console.warn(
-            "reconciliar-pagamentos: valor aprovado não veio na resposta do MP — conferência de valor não rodou",
-            candidato.order_id,
-          );
+          ignorados++;
+          continue;
         }
       }
 
