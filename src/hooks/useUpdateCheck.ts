@@ -1,5 +1,6 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { useStore } from "@/contexts/StoreContext";
+import { autorizarPurgaObrigatoria } from "@/lib/atualizacao/autorizar-purga";
 import { haOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { marcarRecargaPendente } from "@/lib/atualizacao/recarga-pendente";
 import { redeVerificadaParaPurga } from "@/lib/atualizacao/rede-para-purga";
@@ -17,6 +18,7 @@ import {
   navegarPreservandoEndereco,
 } from "@/lib/recuperacao-chunk";
 import {
+  nucleoSemver,
   partesDoNucleoSemver,
   versaoLegivelDeResposta,
 } from "@/lib/versao-do-servidor";
@@ -207,108 +209,101 @@ export function useUpdateCheck() {
   // que é o apply normal e escolhe a purga quando há versão obrigatória
   // pendente). As proteções de pagamento/venda valem aqui também: nenhuma
   // versão, nem a mínima obrigatória, corta pagamento ou venda no meio.
-  const purgaDeVersaoObrigatoria = useCallback(async (requerida: string) => {
-    // Defesa em profundidade: o Gate já vetou, mas aqui é o ponto de não
-    // retorno (apaga SW, caches e IndexedDB), e o mundo pode ter mudado.
-    // Lançar faz o instalador soltar a fase e reavaliar no próximo ponto.
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      throw new Error("[Update] Purge obrigatório adiado: sem rede.");
-    }
-    if (haOperacaoSensivel()) {
-      throw new Error("[Update] Purge obrigatório adiado: operação sensível.");
-    }
+  const purgaDeVersaoObrigatoria = useCallback(
+    async (requerida: string) => {
+      // TUDO o que vem antes do ponto sem volta mora em autorizarPurgaObrigatoria
+      // (provado por teste de comportamento): rede provada AGORA — /version.json
+      // relido neste instante, não a leitura de minutos atrás —, nenhuma operação
+      // sensível, e a trava existente (máx. 2) gasta e CONFIRMADA lendo de volta.
+      // Qualquer recusa lança ANTES de apagar qualquer coisa; "agora não" lança
+      // AtualizacaoAdiada e o instalador DEVOLVE a tentativa (queda de internet
+      // não esgota o orçamento).
+      await autorizarPurgaObrigatoria({
+        requerida,
+        versaoLocal: SAFE_APP_VERSION,
+        online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
+        haOperacaoSensivel,
+        lerVersaoDoServidor: fetchServerVersion,
+        lerTrava: readPurgeGuard,
+        gravarTrava: (required, count) => {
+          localStorage.setItem(
+            MANDATORY_PURGE_GUARD_KEY,
+            JSON.stringify({ required, count }),
+          );
+        },
+        gravarLog: (texto) => {
+          try {
+            localStorage.setItem("pwa_update_log", texto);
+          } catch {
+            // log é melhor esforço
+          }
+        },
+        maximo: MAX_MANDATORY_PURGES,
+      });
 
-    // A trava existente (máx. 2) é gasta AQUI, no instante da purga real, e
-    // CONFIRMADA lendo de volta: sem como contar, não purga (lado seguro).
-    const guard = readPurgeGuard();
-    const tentativas = guard.required === requerida ? guard.count : 0;
-    if (tentativas >= MAX_MANDATORY_PURGES) {
-      throw new Error(
-        `[Update] Purge obrigatório já tentado ${tentativas}x para ${requerida}.`,
+      console.warn(
+        "[Update] 🔴 NUCLEAR_PURGE_START: Initiating full cleanup...",
       );
-    }
-    try {
-      localStorage.setItem(
-        MANDATORY_PURGE_GUARD_KEY,
-        JSON.stringify({ required: requerida, count: tentativas + 1 }),
-      );
-      // Log para o próximo boot saber o que aconteceu.
-      localStorage.setItem(
-        "pwa_update_log",
-        `Version Mismatch: ${SAFE_APP_VERSION} -> ${requerida}`,
-      );
-    } catch {
-      throw new Error("[Update] Purge obrigatório adiado: storage não grava.");
-    }
-    const confirmada = readPurgeGuard();
-    if (
-      confirmada.required !== requerida ||
-      confirmada.count !== tentativas + 1
-    ) {
-      throw new Error(
-        "[Update] Purge obrigatório adiado: trava não confirmou.",
-      );
-    }
 
-    console.warn("[Update] 🔴 NUCLEAR_PURGE_START: Initiating full cleanup...");
+      // 1. Service Worker cleanup
+      if ("serviceWorker" in navigator) {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) {
+            await r.unregister();
+          }
+        } catch (e) {
+          console.error("[Purge] SW error:", e);
+        }
+      }
 
-    // 1. Service Worker cleanup
-    if ("serviceWorker" in navigator) {
+      // 2. Cache storage cleanup — SELETIVO via módulo único: só os caches
+      // `app-cache-*` morrem. `ikcous-identidade` e `supabase-images-cache`
+      // sobrevivem (o activate do SW preserva num update normal; sem a
+      // ficha, o fallback offline devolveria 503 "Loja em manutenção" para
+      // a base instalada).
+      await apagarCachesDoApp();
+
+      // 2.5 IndexedDB cleanup (DataVault deletion) — AGUARDADO (aceite 5):
+      // fire-and-forget corria com a navegação; await literal travaria com
+      // conexão aberta. O módulo faz os dois com prazo + onblocked laudado.
+      await apagarIndexedDBAguardando();
+
+      // 3. Selective localStorage purge
+      // Keep auth tokens, user data, brand specific keys and PENDING writes
+      // — mesma lista branca de GlobalErrorBoundary.tsx
+      // (@/lib/localStoragePurgeWhitelist): esta purga apaga sem ninguém decidir
+      // nada na hora, então uma lista desatualizada aqui apaga fila de escrita
+      // offline — ver o comentário do arquivo compartilhado. As chaves `pwa_*`
+      // (inclusive as travas) sobrevivem de propósito.
       try {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        for (const r of regs) {
-          await r.unregister();
+        for (const key of Object.keys(localStorage)) {
+          if (!chaveSobreviveAPurga(key)) {
+            localStorage.removeItem(key);
+          }
         }
       } catch (e) {
-        console.error("[Purge] SW error:", e);
+        console.error("[Purge] LocalStorage error:", e);
       }
-    }
 
-    // 2. Cache storage cleanup — SELETIVO via módulo único: só os caches
-    // `app-cache-*` morrem. `ikcous-identidade` e `supabase-images-cache`
-    // sobrevivem (o activate do SW preserva num update normal; sem a
-    // ficha, o fallback offline devolveria 503 "Loja em manutenção" para
-    // a base instalada).
-    await apagarCachesDoApp();
+      // 4. Set reload reason for next boot
+      // Peça 22/09: a origem do build permite o boot PROVAR que a recarga
+      // trouxe outro build antes de anunciar "Sistema Atualizado" — no
+      // purge que não curou (a guarda anti-loop), o boot mostra o neutro. A
+      // versão ESPERADA é a mínima exigida: chegar abaixo dela também é neutro.
+      gravaOrigemDeAtualizacao(SAFE_APP_VERSION);
+      gravaVersaoEsperadaDaAtualizacao(requerida);
+      gravaMotivoDeRecarga("atualizacao-aplicada");
 
-    // 2.5 IndexedDB cleanup (DataVault deletion) — AGUARDADO (aceite 5):
-    // fire-and-forget corria com a navegação; await literal travaria com
-    // conexão aberta. O módulo faz os dois com prazo + onblocked laudado.
-    await apagarIndexedDBAguardando();
-
-    // 3. Selective localStorage purge
-    // Keep auth tokens, user data, brand specific keys and PENDING writes
-    // — mesma lista branca de GlobalErrorBoundary.tsx
-    // (@/lib/localStoragePurgeWhitelist): esta purga apaga sem ninguém decidir
-    // nada na hora, então uma lista desatualizada aqui apaga fila de escrita
-    // offline — ver o comentário do arquivo compartilhado. As chaves `pwa_*`
-    // (inclusive as travas) sobrevivem de propósito.
-    try {
-      for (const key of Object.keys(localStorage)) {
-        if (!chaveSobreviveAPurga(key)) {
-          localStorage.removeItem(key);
-        }
-      }
-    } catch (e) {
-      console.error("[Purge] LocalStorage error:", e);
-    }
-
-    // 4. Set reload reason for next boot
-    // Peça 22/09: a origem do build permite o boot PROVAR que a recarga
-    // trouxe outro build antes de anunciar "Sistema Atualizado" — no
-    // purge que não curou (a guarda anti-loop), o boot mostra o neutro. A
-    // versão ESPERADA é a mínima exigida: chegar abaixo dela também é neutro.
-    gravaOrigemDeAtualizacao(SAFE_APP_VERSION);
-    gravaVersaoEsperadaDaAtualizacao(requerida);
-    gravaMotivoDeRecarga("atualizacao-aplicada");
-
-    // 5. Navegação honesta (aceite 6): location.replace não empilha
-    // histórico; pathname+search preservados (?source=pwa da base
-    // instalada sobrevive). A query de força da era antiga morreu sem
-    // consumidor nenhum; recarregar de verdade vem do SW desregistrado,
-    // não de parâmetro de URL que ninguém lê.
-    navegarPreservandoEndereco();
-  }, []);
+      // 5. Navegação honesta (aceite 6): location.replace não empilha
+      // histórico; pathname+search preservados (?source=pwa da base
+      // instalada sobrevive). A query de força da era antiga morreu sem
+      // consumidor nenhum; recarregar de verdade vem do SW desregistrado,
+      // não de parâmetro de URL que ninguém lê.
+      navegarPreservandoEndereco();
+    },
+    [fetchServerVersion],
+  );
 
   // Helper to trigger the update process. É o que o Gate chama (export
   // `performNuclearPurge`, nome mantido porque dezenas de testes mockam este
@@ -463,7 +458,14 @@ export function useUpdateCheck() {
     newVersion,
     checkUpdate: useCallback(
       async (realtimeVersion?: string) => {
-        let targetVer = realtimeVersion;
+        // O canal realtime aceita qualquer string como "versão": só vale a que
+        // tem núcleo semver legível. Lixo (ex.: "binary-v24") é ignorado e a
+        // versão vem do servidor, como se nenhuma tivesse chegado — senão ele
+        // trocaria a chave da trava e a versão exibida por um valor inventado.
+        let targetVer =
+          realtimeVersion && nucleoSemver(realtimeVersion) !== null
+            ? realtimeVersion
+            : undefined;
         if (!targetVer) {
           targetVer = (await fetchServerVersion()) || undefined;
         }

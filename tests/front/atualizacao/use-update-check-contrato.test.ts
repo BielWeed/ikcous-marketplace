@@ -96,22 +96,34 @@ describe("a purga real (só no caminho obrigatório)", () => {
     expect(PURGA).toContain("await apagarCachesDoApp()");
   });
 
-  it("recusa sem rede e com operação sensível (defesa em profundidade) — lançando, para o instalador soltar a fase", () => {
-    expect(PURGA).toContain("navigator.onLine === false");
-    expect(PURGA).toContain("haOperacaoSensivel()");
-    expect(PURGA.match(/throw new Error/g)?.length ?? 0).toBeGreaterThanOrEqual(
-      5,
+  it("TODA a autorização (rede relida AGORA, operação sensível, trava com leitura de volta) é delegada a autorizarPurgaObrigatoria — provada em autorizar-purga.test.ts — e vem ANTES de qualquer apagamento", () => {
+    expect(PURGA).toContain("await autorizarPurgaObrigatoria({");
+    expect(PURGA.indexOf("await autorizarPurgaObrigatoria({")).toBeLessThan(
+      PURGA.indexOf("await apagarCachesDoApp()"),
+    );
+    expect(PURGA.indexOf("await autorizarPurgaObrigatoria({")).toBeLessThan(
+      PURGA.indexOf("getRegistrations()"),
     );
   });
 
-  it("gasta a trava existente no instante da purga e CONFIRMA lendo de volta; sem confirmar, não purga", () => {
-    expect(PURGA).toContain("localStorage.setItem( MANDATORY_PURGE_GUARD_KEY");
-    expect(PURGA).toContain("const confirmada = readPurgeGuard()");
-    expect(PURGA).toContain("confirmada.count !== tentativas + 1");
-    // a gravação da trava vem ANTES de qualquer apagamento
-    expect(PURGA.indexOf("const confirmada = readPurgeGuard()")).toBeLessThan(
-      PURGA.indexOf("await apagarCachesDoApp()"),
+  it("a colagem passa os fatos certos: navigator.onLine, o registro de operações sensíveis, a leitura de /version.json, a trava EXISTENTE e o máximo de 2", () => {
+    const CHAMADA = trecho(
+      "await autorizarPurgaObrigatoria({",
+      "maximo: MAX_MANDATORY_PURGES,",
     );
+    expect(CHAMADA).toContain("navigator.onLine");
+    expect(CHAMADA).toContain("haOperacaoSensivel,");
+    expect(CHAMADA).toContain("lerVersaoDoServidor: fetchServerVersion");
+    expect(CHAMADA).toContain("lerTrava: readPurgeGuard");
+    expect(CHAMADA).toContain(
+      "localStorage.setItem( MANDATORY_PURGE_GUARD_KEY",
+    );
+    expect(FONTE).toContain("maximo: MAX_MANDATORY_PURGES,");
+  });
+
+  it("não sobrou verificação duplicada dentro do hook (uma definição só, a testada)", () => {
+    expect(PURGA).not.toContain("const confirmada = readPurgeGuard()");
+    expect(PURGA).not.toContain("tentativas >= MAX_MANDATORY_PURGES");
   });
 
   it("grava origem + versão ESPERADA (a mínima exigida) antes de navegar", () => {
@@ -156,5 +168,17 @@ describe("o apply e o valor retornado", () => {
       "updateAvailable: needRefresh || obrigatoria !== null",
     );
     expect(FONTE).toContain("isMandatory: obrigatoria !== null");
+  });
+});
+
+describe("o canal realtime não inventa versão", () => {
+  const CHECK = trecho("checkUpdate: useCallback(", "setNewVersion(targetVer)");
+
+  it("só vale versão do realtime com núcleo semver legível; lixo cai na leitura do servidor", () => {
+    expect(CHECK).toContain(
+      "realtimeVersion && nucleoSemver(realtimeVersion) !== null",
+    );
+    expect(CHECK).toContain("await fetchServerVersion()");
+    expect(FONTE).toContain("nucleoSemver,");
   });
 });

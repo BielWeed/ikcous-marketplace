@@ -8,9 +8,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CHAVE_DA_TRAVA_DE_ATUALIZACAO,
+  CHAVE_DA_TRAVA_POR_ORIGEM,
   MAX_TENTATIVAS_POR_VERSAO,
+  devolverTentativa,
   podeTentarAtualizar,
   reservarTentativa,
+  tentativasDaOrigem,
   tentativasFeitas,
 } from "@/lib/atualizacao/trava-anti-repeticao";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
@@ -137,6 +140,105 @@ describe("trava anti-repeticao", () => {
         removeItem: () => {},
       });
       expect(reservarTentativa("alvo")).toBe(false);
+    });
+  });
+  // ── O teto por build de ORIGEM (16/10, revisão Opus) ─────────────────────
+  //
+  // A chave por versão-alvo sozinha é contornável: ela muda entre aberturas
+  // ("1.5.32-sha.x" vs "desconhecida-de-1.5.0") e o canal realtime aceita
+  // qualquer string como versão. O teto por origem não depende do alvo: no
+  // máximo 2 tentativas automáticas saindo do MESMO build instalado.
+  describe("teto por build de origem", () => {
+    it("a chave sobrevive à purga (pwa_)", () => {
+      expect(chaveSobreviveAPurga(CHAVE_DA_TRAVA_POR_ORIGEM)).toBe(true);
+    });
+
+    it("2 tentativas saindo da mesma origem esgotam o teto, QUALQUER que seja o alvo", () => {
+      expect(reservarTentativa("alvo-A", "1.5.0-sha.o")).toBe(true);
+      expect(reservarTentativa("alvo-B", "1.5.0-sha.o")).toBe(true);
+      // alvo novinho em folha, mas a origem já gastou as 2
+      expect(podeTentarAtualizar("alvo-C", "1.5.0-sha.o")).toBe(false);
+      expect(reservarTentativa("alvo-C", "1.5.0-sha.o")).toBe(false);
+      expect(tentativasDaOrigem("1.5.0-sha.o")).toBe(2);
+    });
+
+    it("ALTERNAR as chaves (versão real / desconhecida-de / lixo do realtime) NÃO escapa do teto", () => {
+      const origem = "1.5.0-sha.o";
+      const alvos = [
+        "1.5.32-sha.real",
+        `desconhecida-de-${origem}`,
+        "binary-v24",
+        "1.5.33-sha.outra",
+        "x".repeat(40),
+        "1.5.32-sha.real",
+      ];
+      let passaram = 0;
+      for (const alvo of alvos) {
+        if (reservarTentativa(alvo, origem)) passaram += 1;
+      }
+      expect(passaram).toBe(2);
+    });
+
+    it("origem DIFERENTE (o app foi atualizado de verdade) zera o teto", () => {
+      reservarTentativa("alvo-A", "1.5.0-sha.o");
+      reservarTentativa("alvo-B", "1.5.0-sha.o");
+      expect(podeTentarAtualizar("alvo-C", "1.5.0-sha.o")).toBe(false);
+      expect(podeTentarAtualizar("alvo-C", "1.5.32-sha.nova-origem")).toBe(
+        true,
+      );
+      expect(reservarTentativa("alvo-C", "1.5.32-sha.nova-origem")).toBe(true);
+      expect(tentativasDaOrigem("1.5.32-sha.nova-origem")).toBe(1);
+    });
+
+    it("sem origem informada, vale só a conta por alvo (compatível com quem não passa)", () => {
+      expect(reservarTentativa("a")).toBe(true);
+      expect(reservarTentativa("b")).toBe(true);
+      expect(reservarTentativa("c")).toBe(true);
+    });
+
+    it("a gravação do teto de origem também é CONFIRMADA lendo de volta: não confirmou, não reserva", () => {
+      vi.stubGlobal("localStorage", {
+        getItem: (k: string) =>
+          k === CHAVE_DA_TRAVA_POR_ORIGEM ? null : (local.get(k) ?? null),
+        setItem: (k: string, v: string) => {
+          if (k !== CHAVE_DA_TRAVA_POR_ORIGEM) local.set(k, v);
+        },
+        removeItem: (k: string) => {
+          local.delete(k);
+        },
+      });
+      expect(reservarTentativa("alvo", "1.5.0-sha.o")).toBe(false);
+    });
+
+    it("valor corrompido do teto de origem vale como zero (não trava para sempre)", () => {
+      local.set(CHAVE_DA_TRAVA_POR_ORIGEM, "{lixo");
+      expect(podeTentarAtualizar("alvo", "1.5.0-sha.o")).toBe(true);
+      expect(reservarTentativa("alvo", "1.5.0-sha.o")).toBe(true);
+    });
+  });
+
+  describe("devolverTentativa (recusa ANTES de apagar qualquer coisa)", () => {
+    it("devolve a que foi gasta, nos dois contadores: recusas 'agora não' nunca esgotam o orçamento", () => {
+      for (let i = 0; i < 10; i += 1) {
+        expect(reservarTentativa("alvo", "1.5.0-sha.o")).toBe(true);
+        devolverTentativa("alvo", "1.5.0-sha.o");
+      }
+      expect(tentativasFeitas("alvo")).toBe(0);
+      expect(tentativasDaOrigem("1.5.0-sha.o")).toBe(0);
+    });
+
+    it("não passa de zero e não mexe em outro alvo/origem", () => {
+      devolverTentativa("alvo", "1.5.0-sha.o");
+      expect(tentativasFeitas("alvo")).toBe(0);
+      reservarTentativa("alvo-A", "o1");
+      devolverTentativa("alvo-B", "o2");
+      expect(tentativasFeitas("alvo-A")).toBe(1);
+      expect(tentativasDaOrigem("o1")).toBe(1);
+    });
+
+    it("storage lançando: não derruba", () => {
+      vi.stubGlobal("localStorage", storageQueLanca);
+      expect(() => devolverTentativa("alvo", "o")).not.toThrow();
     });
   });
 });

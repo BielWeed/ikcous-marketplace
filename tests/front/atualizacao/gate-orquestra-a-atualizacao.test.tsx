@@ -320,6 +320,39 @@ describe("PWAUpdateGate orquestra a atualização", () => {
     });
   });
 
+  describe("teto por build de origem (a chave do alvo muda; a origem não)", () => {
+    it("com 2 tentativas já gastas saindo DESTE build, um alvo NOVO e virgem não instala (o gate passa a origem à trava)", async () => {
+      local.set(
+        "pwa_atualizacao_tentativas_origem",
+        JSON.stringify({
+          origem: "1.31.0-sha.abcdef",
+          count: 2,
+          ultimaEm: 1,
+        }),
+      );
+      hook({ updateAvailable: true, newVersion: "9.9.9-sha.novo" });
+      montar("home");
+      await passarAGraca();
+      await navegarPara("favorites");
+      await navegarPara("home");
+      expect(aplicar).not.toHaveBeenCalled();
+      expect(local.get("pwa_instalando")).toBeUndefined();
+      expect(obterEstadoDaAtualizacao().fase).toBe("nenhuma");
+    });
+
+    it("controle: origem DIFERENTE esgotada não impede este build de tentar", async () => {
+      local.set(
+        "pwa_atualizacao_tentativas_origem",
+        JSON.stringify({ origem: "1.20.0-sha.velho", count: 2, ultimaEm: 1 }),
+      );
+      hook({ updateAvailable: true, newVersion: "9.9.9-sha.novo" });
+      montar("home");
+      await passarAGraca();
+      await navegarPara("favorites");
+      expect(aplicar).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("o apply que falha não prende a fase", () => {
     it("performNuclearPurge que REJEITA: a fase volta a 'aguardando'", async () => {
       aplicar.mockImplementation(() => Promise.reject(new Error("sem rede")));
