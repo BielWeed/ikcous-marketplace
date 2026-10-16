@@ -243,6 +243,27 @@ describe("Novidades do app na central do lojista", () => {
     ).toBe("false");
   });
 
+  it("leva o foco do teclado ao título quando o botão some", async () => {
+    guardar([NOVA, { ...ANTIGA, lida: false }]);
+    await montar();
+
+    act(() => botaoComTexto("Marcar tudo como lido").click());
+
+    expect(document.activeElement?.tagName).toBe("H2");
+    expect(document.activeElement?.textContent).toBe("Novidades do app");
+  });
+
+  it("leva o foco ao botão do cartão quando 'Marcar como lida' some", async () => {
+    guardar([NOVA]);
+    await montar();
+
+    act(() => botaoComTexto("Marcar como lida").click());
+
+    expect(document.activeElement).toBe(
+      botaoComTexto("Mais facilidade no dia a dia"),
+    );
+  });
+
   it("não oferece marcar tudo quando só há entradas lidas", async () => {
     guardar([ANTIGA]);
     await montar();

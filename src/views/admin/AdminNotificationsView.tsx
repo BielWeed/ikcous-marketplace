@@ -25,7 +25,7 @@ import {
   Wallet,
   XCircle,
 } from "lucide-react";
-import { memo, useId, useState } from "react";
+import { memo, useId, useRef, useState } from "react";
 
 interface AdminNotificationsViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -109,6 +109,7 @@ function formatarQuando(quando: string): string {
 function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
   const [aberta, setAberta] = useState(!novidade.lida);
   const conteudoId = useId();
+  const botaoDoCartao = useRef<HTMLButtonElement>(null);
   const grupos = [
     { titulo: "Novidades", itens: novidade.novidades },
     { titulo: "Correções", itens: novidade.correcoes },
@@ -132,6 +133,7 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
     >
       <h3>
         <button
+          ref={botaoDoCartao}
           type="button"
           aria-expanded={aberta}
           aria-controls={conteudoId}
@@ -193,7 +195,11 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
         {!novidade.lida && (
           <button
             type="button"
-            onClick={() => marcarNovidadeComoLida(novidade.versao)}
+            onClick={() => {
+              // O botão some ao marcar: o foco vai para o título do cartão.
+              botaoDoCartao.current?.focus();
+              marcarNovidadeComoLida(novidade.versao);
+            }}
             className="min-h-11 rounded-lg border border-white/10
               bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300
               transition-all hover:border-white/20 hover:text-white
@@ -211,6 +217,7 @@ function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
 function NovidadesDoApp() {
   const { novidades, naoLidas } = useNovidadesDoAparelho();
   const tituloId = useId();
+  const titulo = useRef<HTMLHeadingElement>(null);
 
   if (novidades.length === 0) return null;
 
@@ -218,7 +225,9 @@ function NovidadesDoApp() {
     <section aria-labelledby={tituloId} className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
         <h2
+          ref={titulo}
           id={tituloId}
+          tabIndex={-1}
           className="text-[11px] font-black uppercase tracking-widest
             text-admin-gold/70"
         >
@@ -227,7 +236,11 @@ function NovidadesDoApp() {
         {naoLidas > 0 && (
           <button
             type="button"
-            onClick={marcarTodasComoLidas}
+            onClick={() => {
+              // O botão some quando não sobra nada por ler: o foco vai ao título.
+              titulo.current?.focus();
+              marcarTodasComoLidas();
+            }}
             className="min-h-11 rounded-lg border border-white/10
               bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300
               transition-all hover:border-white/20 hover:text-white
