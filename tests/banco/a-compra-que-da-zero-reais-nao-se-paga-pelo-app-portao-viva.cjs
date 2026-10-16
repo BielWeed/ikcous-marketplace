@@ -453,7 +453,14 @@ async function provar() {
     [
       "37a com o md5 do corpo novo trocado",
       A,
-      trocar(SQL_A, `'${H37}'`, `'${zero}'`),
+      // so a linha `esperado` (a 37a repete o md5 no CASE que aceita a sucessora, a 20261244): o vivo segue o da migration
+      trocar(
+        SQL_A,
+        `         '${H37}',
+`,
+        `         '${zero}',
+`,
+      ),
       DEPOIS,
       "positivo",
     ],

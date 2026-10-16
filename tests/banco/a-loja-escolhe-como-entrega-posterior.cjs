@@ -12,8 +12,10 @@
  * entrada única para essas provas, no formato { nome, noAr } que as outras listas de "posteriores" já usam (o mesmo molde de
  * desfazer-recebimento-posterior.cjs e reembolso-em-duvida-posterior.cjs).
  *
- * O rollback COMUM dela só troca três corpos, apaga a trigger e refaz a view: não apaga dado, e as colunas ficam. Num
- * clone recém-migrado nenhuma loja está em "Só retiro" (o padrão é entrega própria ligada), então ele não recusa.
+ * Desfaz nos DOIS degraus: o rollback COMUM (três corpos, a trigger e a view; as colunas ficam) e o DESTRUTIVO (apaga as
+ * duas colunas), para que a prova antecessora veja o esquema EXATO de antes desta migration (a view pública, por exemplo,
+ * é comparada com as colunas da tabela). Num clone recém-migrado nenhuma loja está em "Só retiro" nem com prazo diferente
+ * de 1 (o padrão), então nenhum dos dois recusa.
  */
 
 /* eslint-disable security/detect-non-literal-fs-filename --
@@ -49,6 +51,19 @@ async function desfazerEntregaNaCidadeNaTransacao(cliente) {
     "utf8",
   );
   await cliente.query(sql);
+  await cliente.query(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        `rollback-manual-destrutivo-${NOME}`,
+      ),
+      "utf8",
+    ),
+  );
   return true;
 }
 
