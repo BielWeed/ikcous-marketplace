@@ -89,8 +89,14 @@ function aviso(id: string, usuario: string | null) {
 const espelho: { atual: ReturnType<typeof useNotificationCenter> | null } = {
   atual: null,
 };
+const quadros: { dono: string; ids: string[]; naoLidas: number }[] = [];
 function Sonda() {
   const contexto = useNotificationCenter();
+  quadros.push({
+    dono: rede.user?.id ?? "",
+    ids: contexto.notifications.map((n) => n.id),
+    naoLidas: contexto.unreadCount,
+  });
   useEffect(() => {
     espelho.atual = contexto;
   });
@@ -156,8 +162,17 @@ describe("notificações — troca direta de conta não mistura dados", () => {
   it("remove os dados de A antes da consulta de B e mantém a lista vazia se B falhar", async () => {
     const consultaDeB = pendente<ResultadoConsulta>();
     rede.consulta = consultaDeB.promessa;
+    quadros.length = 0;
     rede.user = { id: "cliente-b" };
     await renderizar();
+
+    // Nenhuma renderização de B (nem o primeiro quadro) expõe o aviso de A.
+    const quadrosDeB = quadros.filter((q) => q.dono === "cliente-b");
+    expect(quadrosDeB.length).toBeGreaterThan(0);
+    for (const quadro of quadrosDeB) {
+      expect(quadro.ids).not.toContain("aviso-a");
+      expect(quadro.naoLidas).toBe(0);
+    }
 
     expect(espelho.atual!.loading).toBe(true);
     expect(espelho.atual!.notifications).toEqual([]);

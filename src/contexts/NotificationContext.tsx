@@ -68,6 +68,15 @@ export function NotificationProvider({
   // "Tudo em ordem" para uma cliente com avisos não lidos que a consulta
   // não conseguiu trazer.
   const [erro, setErro] = useState<string | null>(null);
+  // Troca direta de conta (A→B sem passar por deslogado): o efeito de limpeza
+  // roda DEPOIS do primeiro quadro, que mostraria os avisos de A para B. Zerar
+  // durante a renderização faz o React descartar esse quadro antes de pintar.
+  const [donoDosAvisos, setDonoDosAvisos] = useState(user?.id ?? null);
+  if (donoDosAvisos !== (user?.id ?? null)) {
+    setDonoDosAvisos(user?.id ?? null);
+    setNotifications([]);
+    setErro(null);
+  }
   const lastFetchRef = useRef<number>(0);
   // ids da última busca cujo usuario_id era nulo (aviso de campanha) — é o
   // que diferencia, em markAsRead/markAllAsRead/deleteNotification, uma
