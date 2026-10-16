@@ -35,6 +35,11 @@ import {
   EstadoDeErro,
   Segmentado,
 } from "./partes";
+import {
+  chaveEmAbertoDoConteudo,
+  esquecerChaveEmAberto,
+  guardarChaveEmAberto,
+} from "./tentativasEmAberto";
 
 const ID_FORM = "fin-novo-lancamento";
 
@@ -173,16 +178,23 @@ export function NovoLancamentoFolha({
     const erroDePrazo = new Error(
       "A internet demorou demais. O lançamento pode ter sido salvo; se salvar de novo sem mudar os campos, não duplica.",
     );
+    // Mesmo conteúdo de uma tentativa que não deu resposta (mesmo em outra
+    // abertura do formulário) reaproveita a chave dela: se aquela gravação ainda
+    // estiver viva no servidor, esta devolve o mesmo lançamento em vez de somar.
+    const conteudo = JSON.stringify(resultado.payload);
+    const chave = chaveEmAbertoDoConteudo(conteudo) ?? chaveDaTentativa.current;
+    guardarChaveEmAberto(conteudo, chave);
     try {
       // O prazo solta a tela, mas não cancela a gravação no servidor.
       const ids = await aguardarComPrazo(
         salvarLancamento({
           ...resultado.payload,
-          chave_idempotencia: chaveDaTentativa.current,
+          chave_idempotencia: chave,
         }),
         30_000,
         () => erroDePrazo,
       );
+      esquecerChaveEmAberto(conteudo);
       aoSalvar(
         ids.length > 1
           ? `${ids.length} parcelas lançadas.`

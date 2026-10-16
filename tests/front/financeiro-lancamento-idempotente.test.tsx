@@ -3,6 +3,7 @@
 // Financeiro — "Novo lançamento": a chave de idempotência da tentativa (20261246).
 
 import { NovoLancamentoFolha } from "@/components/admin/financeiro/NovoLancamentoFolha";
+import { esquecerTodasAsChavesEmAberto } from "@/components/admin/financeiro/tentativasEmAberto";
 import {
   CONTA_BANCARIA,
   CONTA_CAIXA_DA_LOJA,
@@ -128,6 +129,7 @@ describe("lançamento: a tentativa sobrevive ao prazo, só muda com o conteúdo"
     });
   }
   beforeEach(async () => {
+    esquecerTodasAsChavesEmAberto();
     vi.useFakeTimers();
     rpcFalso.mockReset().mockImplementation(() => new Promise(() => {}));
     host = document.createElement("div");
@@ -239,13 +241,36 @@ describe("lançamento: a tentativa sobrevive ao prazo, só muda com o conteúdo"
     expect(payload(5).tipo).toBe("transferencia");
   });
 
-  it("outra abertura gera outra chave mesmo com conteúdo igual", async () => {
+  it("reabrir depois de um envio que não respondeu reaproveita a chave; depois de sucesso, não", async () => {
     await enviar();
+    await vencerPrazo(); // prazo estourou, a gravação original pode estar viva
     const primeira = payload(0).chave_idempotencia;
     await act(async () => {
       raiz.render(null);
     });
     await abrir();
+    rpcFalso.mockResolvedValueOnce({
+      data: { ids: ["original"] },
+      error: null,
+    });
+    await enviar();
+    expect(payload(1).chave_idempotencia).toBe(primeira);
+    expect(salvo).toHaveBeenCalled();
+    // Já houve sucesso: um lançamento igual de propósito agora é outro.
+    await abrir();
+    await enviar();
+    expect(payload(2).chave_idempotencia).not.toBe(primeira);
+  });
+
+  it("reabrir com o conteúdo mudado gera outra chave mesmo depois de um prazo estourado", async () => {
+    await enviar();
+    await vencerPrazo();
+    const primeira = payload(0).chave_idempotencia;
+    await act(async () => {
+      raiz.render(null);
+    });
+    await abrir();
+    await mudar("fin-lanc-valor", "13000");
     await enviar();
     expect(payload(1).chave_idempotencia).not.toBe(primeira);
   });

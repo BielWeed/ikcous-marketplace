@@ -919,6 +919,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      fin_lancamento_tentativas: {
+        Row: {
+          chave: string;
+          conteudo_hash: string;
+          criado_em: string;
+          ids: string[];
+        };
+        Insert: {
+          chave: string;
+          conteudo_hash: string;
+          criado_em?: string;
+          ids: string[];
+        };
+        Update: {
+          chave?: string;
+          conteudo_hash?: string;
+          criado_em?: string;
+          ids?: string[];
+        };
+        Relationships: [];
+      };
       fin_lancamentos: {
         Row: {
           caixa_sessao_id: string | null;
