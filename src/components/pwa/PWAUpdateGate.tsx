@@ -98,12 +98,17 @@ export const PWAUpdateManager = memo(function PWAUpdateManager({
     ativo: updateAvailable || recargaPendente,
     modo: recargaPendente ? "so-recarregar" : "instalar",
     alvo,
+    // O teto de 2 tentativas por build de ORIGEM não depende do alvo: trocar
+    // a chave (versão real, desconhecida, versão arbitrária do realtime) não
+    // dá tentativas a mais.
+    origem: VERSAO_DO_APP,
     versaoNova,
     view: currentView,
     adminDirty: adminDirty ?? false,
     instalar,
-    // Versão mínima obrigatória: no boot o ponto de parada já está satisfeito
-    // (as proteções de pagamento/venda continuam valendo).
+    // Versão mínima obrigatória detectada no BOOT: o ponto de parada já está
+    // satisfeito (as proteções de pagamento/venda continuam valendo). Detectada
+    // depois do boot, o instalador ignora isto e espera um ponto de parada.
     pontoDeParadaInicial: isMandatory === true,
   });
 

@@ -38,6 +38,7 @@
  * fallback offline do sw.ts vira 503 "Loja em manutenção" — violação do
  * aceite 7), localStorage (a lista branca já protege o que importa).
  */
+import { recarregarSeSeguro } from "@/lib/atualizacao/veto-de-recarga";
 import {
   type MotivoDeRecarga,
   gravaMotivoDeRecarga,
@@ -398,11 +399,20 @@ export function aplicarAtualizacaoPendenteERecarregar(opcoes: {
 
   const recarregarUmaVez = (motivo: MotivoDeRecarga) => {
     if (recarregou) return;
+    // Este caminho acaba AQUI, recarregando ou sendo vetado: o prazo e o ouvinte
+    // que sobrariam não podem tentar de novo por conta própria (sem laço).
     recarregou = true;
     if (prazo !== null) clearTimeout(prazo);
     limparOuvinte();
-    gravaMotivoDeRecarga(motivo);
-    window.location.reload();
+    // VETO LOCAL no instante do reload (atualização única e obrigatória,
+    // 16/10/2026): o instalador decidiu começar num momento seguro, mas a
+    // pessoa pode ter entrado no checkout enquanto o SW assumia. Vetado, não
+    // recarrega: a recarga fica PENDENTE e o gate a faz no próximo ponto de
+    // parada seguro. O motivo só é gravado por quem de fato recarregar.
+    recarregarSeSeguro(() => {
+      gravaMotivoDeRecarga(motivo);
+      window.location.reload();
+    });
   };
 
   // O prazo armado ANTES de qualquer await/then: nenhuma forma de `acionar`
