@@ -4,6 +4,7 @@ import { useCart } from "@/hooks/useCart";
 // FreeShippingBlock — o lembrete só conhecia a regra LOCAL e dizia "toda a
 // loja" sem qualificar; agora usa `promessasDeFrete` para saber se precisa
 // do qualificador "na cidade" (quando local e nacional divergem).
+import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { formatCurrency } from "@/lib/utils";
@@ -46,7 +47,8 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
   const soLocal = !promessasDeFrete(config).iguais;
   const isFree =
     isSempreGratis ||
-    (hasFreeShippingGoal && totalAmount >= config.freeShippingMin);
+    (hasFreeShippingGoal &&
+      atingiuOMinimo(totalAmount, config.freeShippingMin));
   const amountToFree = hasFreeShippingGoal
     ? Math.max(0, config.freeShippingMin - totalAmount)
     : 0;
