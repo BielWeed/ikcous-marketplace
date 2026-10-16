@@ -261,6 +261,7 @@ function ConteudoDaGestao() {
                     }
                     type="text"
                     value={valor}
+                    disabled={nestaLinha}
                     maxLength={LIMITE_DO_NOME_DA_CATEGORIA}
                     onChange={(e) =>
                       setEditando({ id: c.id, valor: e.target.value })
