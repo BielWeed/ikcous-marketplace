@@ -44,6 +44,9 @@ function produto(p: Partial<Product> & Pick<Product, "id">): Product {
 }
 
 let catalogo: Product[] = [];
+let catalogoErro = false;
+let loading = false;
+const fetchProducts = vi.fn();
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: catalogo }),
@@ -51,6 +54,9 @@ vi.mock("@/hooks/useProducts", () => ({
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: { enableReviews: false, shippingFee: 10, freeShippingMin: 0 },
+    catalogoErro,
+    loadingProducts: loading,
+    fetchProducts,
   }),
 }));
 vi.mock("@/hooks/useFavorites", () => ({
@@ -81,6 +87,9 @@ describe("SearchView — produto pausado não aparece nos resultados", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    catalogoErro = false;
+    loading = false;
+    fetchProducts.mockReset();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -119,6 +128,37 @@ describe("SearchView — produto pausado não aparece nos resultados", () => {
     expect(host.textContent).toContain("Encontramos 1 resultados");
     expect(chips(host)).toContain("Vestidos");
     expect(chips(host)).not.toContain("Bolsas");
+  });
+
+  it("falha da busca mostra erro, permite tentar novamente e só depois mostra vazio", async () => {
+    catalogo = [];
+    catalogoErro = true;
+    fetchProducts.mockImplementation(async () => {
+      catalogoErro = false;
+    });
+    const host = await renderizarBusca();
+    expect(host.textContent).toContain(
+      "Não conseguimos carregar a busca agora",
+    );
+    expect(host.textContent).not.toContain("Ué, nenhum resultado?");
+    const tentar = [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === "Tentar de novo",
+    );
+    expect(tentar).toBeTruthy();
+    await act(async () => {
+      tentar!.click();
+    });
+    expect(fetchProducts).toHaveBeenCalledTimes(1);
+    await renderizarBusca();
+    expect(host.textContent).toContain("Ué, nenhum resultado?");
+  });
+
+  it("durante a primeira carga não anuncia nenhum resultado", async () => {
+    catalogo = [];
+    loading = true;
+    const host = await renderizarBusca();
+    expect(host.textContent).toContain("Carregando busca");
+    expect(host.textContent).not.toContain("Ué, nenhum resultado?");
   });
 
   it("controle: com os dois ativos, os dois aparecem — o filtro é o `isActive`, não a categoria", async () => {

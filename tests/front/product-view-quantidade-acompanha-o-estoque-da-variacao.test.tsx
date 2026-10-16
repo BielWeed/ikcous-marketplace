@@ -287,6 +287,46 @@ describe("ProductView — a quantidade acompanha o estoque da variação", () =>
     expect(adicionarAoCarrinho).not.toHaveBeenCalled();
   });
 
+  it("variação selecionada e depois desativada bloqueia comprar até escolher outra", async () => {
+    const vermelho = cor("v-verm", "Vermelho", 10);
+    const azul = cor("v-azul", "Azul", 2);
+    await montar(produtoCom([vermelho, azul]));
+    await tocar(opcao("Vermelho"));
+
+    await montar(produtoCom([{ ...vermelho, active: false }, azul]));
+    expect(hospedeiro.textContent).toContain(
+      "Esta opção não está mais disponível",
+    );
+    const bloqueados = [...hospedeiro.querySelectorAll("button")].filter(
+      (b) => b.textContent === "Indisponível",
+    );
+    expect(bloqueados).toHaveLength(1);
+    for (const botao of bloqueados) {
+      expect(botao.disabled).toBe(true);
+      await tocar(botao);
+    }
+    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+
+    await tocar(opcao("Azul"));
+    await comprar();
+    expect(adicionarAoCarrinho.mock.calls[0][1]).toBe("v-azul");
+  });
+
+  it("todas as variações desativadas não permitem comprar o produto base", async () => {
+    await montar(
+      produtoCom([{ ...cor("v-verm", "Vermelho", 10), active: false }]),
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Este produto está sem opções disponíveis",
+    );
+    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+    expect(
+      [...hospedeiro.querySelectorAll("button")].some((b) =>
+        b.textContent?.includes("Adicionar ao Carrinho"),
+      ),
+    ).toBe(false);
+  });
+
   it("desmarcar funciona também com dois grupos", async () => {
     // Estoque da combinação cai a 0 por causa do OUTRO grupo: o botão da
     // escolha atual não pode virar armadilha (disabled sem como desmarcar).
