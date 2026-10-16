@@ -1346,6 +1346,9 @@ export const OrderDetail = memo(function OrderDetail({
   // componente tem que morar AQUI, não só dentro do card.
   const orderIdAtualRef = useRef(order.id);
   orderIdAtualRef.current = order.id;
+  // Cada salvamento de notas ganha um número; trocar de pedido invalida os
+  // que estavam no ar (ir de A para B e voltar a A não revive a resposta).
+  const salvamentoNotasRef = useRef(0);
 
   const [localNotes, setLocalNotes] = useState(order.notes || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -1536,6 +1539,7 @@ export const OrderDetail = memo(function OrderDetail({
     setIsSavingTracking(false);
     setIsEditingNotes(false);
     setIsSavingNotes(false);
+    salvamentoNotasRef.current++;
   }, [order.id]);
 
   const itemsSerialized = JSON.stringify(
@@ -1722,6 +1726,10 @@ export const OrderDetail = memo(function OrderDetail({
 
   const handleSaveNotes = async () => {
     const pedidoId = order.id;
+    const salvamento = ++salvamentoNotasRef.current;
+    const vigente = () =>
+      orderIdAtualRef.current === pedidoId &&
+      salvamentoNotasRef.current === salvamento;
     try {
       setIsSavingNotes(true);
       const { error } = await supabase
@@ -1729,18 +1737,18 @@ export const OrderDetail = memo(function OrderDetail({
         .update({ notes: notesValue.trim() || null })
         .eq("id", pedidoId);
 
-      // A resposta só pode alterar a ficha do pedido que foi salvo.
-      if (orderIdAtualRef.current !== pedidoId) return;
+      // A resposta só pode alterar a ficha deste pedido E deste salvamento.
+      if (!vigente()) return;
       if (error) throw error;
       setLocalNotes(notesValue.trim());
       setIsEditingNotes(false);
       toast.success("Notas operacionais salvas!");
     } catch (err) {
-      if (orderIdAtualRef.current !== pedidoId) return;
+      if (!vigente()) return;
       console.error("Error saving notes:", err);
       toast.error("Erro ao salvar notas operacionais.");
     } finally {
-      if (orderIdAtualRef.current === pedidoId) setIsSavingNotes(false);
+      if (vigente()) setIsSavingNotes(false);
     }
   };
 

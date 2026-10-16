@@ -180,6 +180,26 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(hospedeiro.textContent).toContain("Nova nota de B");
   });
 
+  it("ir de A para B e voltar a A não faz a resposta antiga de A fechar o editor novo", async () => {
+    const envioA = envioPendente();
+    salvar.mockReturnValueOnce(envioA.resposta);
+    await mostrar(pedido("A"));
+    clicar("Editar notas");
+    digitar("#notes-textarea", "Primeira nota de A");
+    clicar("Salvar");
+    await mostrar(pedido("B"));
+    await mostrar(pedido("A"));
+    clicar("Editar notas");
+    expect(campo("#notes-textarea").disabled).toBe(false);
+    digitar("#notes-textarea", "Rascunho novo de A");
+
+    await act(async () => envioA.concluir({ error: null }));
+
+    expect(campo("#notes-textarea").value).toBe("Rascunho novo de A");
+    expect(campo("#notes-textarea").disabled).toBe(false);
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
   it("salvar no pedido atual mostra a nota salva e fecha o editor", async () => {
     await mostrar(pedido());
     clicar("Editar notas");
