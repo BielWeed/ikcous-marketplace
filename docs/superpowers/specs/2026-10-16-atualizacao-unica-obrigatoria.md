@@ -91,3 +91,11 @@ uma linha no `docs/runbooks/producao-unica-fonte.md`.
 
 ## Como desfazer
 Publicar a versão anterior (o mecanismo de atualização dos aparelhos a instala sozinho). Não há banco nem migration.
+
+## Emendas pós-revisão (16/10/2026)
+
+- **`src/sw/sw.ts` e `src/lib/recuperacao-chunk.ts` mudaram** (a seção "O que NÃO muda" ficou para trás): o service worker ganhou guarda para navegador sem `BroadcastChannel`, e a recuperação de chunk passou a consultar o veto de operação sensível antes de recarregar. Publicar esta versão exige o service worker novo em TODAS as lojas.
+- **A ilha não usa framer-motion** (o caminho do primeiro paint não pode baixá-lo): a entrada é CSS (`tailwindcss-animate`, `motion-safe:`). `aoIniciarAposAtualizacao` mora em `src/components/pwa/ao-iniciar-apos-atualizacao.ts`, fora do arquivo da ilha.
+- **Novidades na primeira passagem 1.5.31→1.5.32:** o build 1.5.31 nunca gravou a chave "última versão vista"; quando a troca de build está provada, a origem gravada pela própria atualização (`de`) faz as vezes dessa chave.
+- **Caminho de falha:** quando a recarga não traz versão nova, o boot ainda mostra um toast neutro ("não houve confirmação"). É a única segunda superfície; só aparece em falha.
+- **A primeira passagem para esta versão é conduzida pelo código antigo** já instalado nos aparelhos, então o aviso antigo (com "Depois") aparece mais uma vez.

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { aoIniciarAposAtualizacao } from "@/components/pwa/IlhaDeAtualizacao";
+import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import {
   definirEstadoDaAtualizacao,
   obterEstadoDaAtualizacao,
@@ -23,7 +23,7 @@ function storageEmMemoria(): Storage {
     },
     clear: () => dados.clear(),
     getItem: (chave) => dados.get(chave) ?? null,
-    key: (indice) => [...dados.keys()][indice] ?? null,
+    key: (indice) => [...dados.keys()].at(indice) ?? null,
     removeItem: (chave) => {
       dados.delete(chave);
     },

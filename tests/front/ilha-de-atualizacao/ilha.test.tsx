@@ -9,12 +9,6 @@ import {
   definirEstadoDaAtualizacao,
 } from "@/lib/atualizacao/estado-da-atualizacao";
 
-const movimento = vi.hoisted(() => ({ reduzido: false }));
-vi.mock("framer-motion", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("framer-motion")>()),
-  useReducedMotion: () => movimento.reduzido,
-}));
-
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -24,7 +18,6 @@ describe("ilha da atualização", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    movimento.reduzido = false;
     definirEstadoDaAtualizacao({ fase: "nenhuma", versaoNova: null });
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -100,15 +93,16 @@ describe("ilha da atualização", () => {
     expect(host.textContent).toBe("");
   });
 
-  it("menos movimento mostra o texto inteiro sem expansão nem giro", () => {
-    movimento.reduzido = true;
+  it("o movimento é só de CSS e respeita 'menos movimento' (motion-safe), sem framer-motion", () => {
     definirEstadoDaAtualizacao({ fase: "instalando" });
     act(() => raiz.render(<IlhaDeAtualizacao />));
     expect(host.textContent).toBe("Atualizando o app…");
-    const capsula = host.querySelector('[role="status"] > span');
-    expect(capsula?.getAttribute("style") ?? "").not.toMatch(
-      /scale\(0|width: 36/,
-    );
+    const capsula = host.querySelector('[role="status"] > span')!;
+    expect(capsula.className).toContain("motion-safe:animate-in");
+    expect(capsula.getAttribute("style") ?? "").toBe("");
+    expect(
+      host.querySelector('[class~="motion-safe:animate-spin"]'),
+    ).not.toBeNull();
     expect(host.querySelector(".animate-spin")).toBeNull();
     act(() => definirEstadoDaAtualizacao({ fase: "concluida" }));
     expect(host.textContent).toBe("Pronto! App atualizado");

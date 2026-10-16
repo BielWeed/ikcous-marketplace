@@ -7,7 +7,7 @@ import React, {
 } from "react";
 
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
-import { aoIniciarAposAtualizacao } from "@/components/pwa/IlhaDeAtualizacao";
+import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
 import {
   destinoPosLogin,

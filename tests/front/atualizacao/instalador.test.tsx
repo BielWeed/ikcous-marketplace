@@ -584,8 +584,8 @@ describe("instalador no ponto de parada", () => {
         { alvo: "desconhecida-de-1.31.0-sha.origem", versaoNova: null },
       ];
       montar(chaves[0]);
-      for (let i = 0; i < chaves.length; i += 1) {
-        await navegarPara(i % 2 === 0 ? "favorites" : "home", chaves[i]);
+      for (const [i, chave] of chaves.entries()) {
+        await navegarPara(i % 2 === 0 ? "favorites" : "home", chave);
       }
       expect(instalar).toHaveBeenCalledTimes(2);
       expect(tentativasDaOrigem("1.31.0-sha.origem")).toBe(2);

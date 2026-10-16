@@ -157,11 +157,19 @@ export function registrarNovidadesDaAtualizacao({
 }
 
 /** A versão vista sobrevive ao fechamento do app e à purga da atualização. */
-export function registrarNovidadesAoIniciar(versaoAtual: string): void {
+export function registrarNovidadesAoIniciar(
+  versaoAtual: string,
+  origemProvada?: string | null,
+): void {
   const para = nucleoSemver(versaoAtual);
   if (!para || typeof window === "undefined") return;
   try {
-    const de = nucleoSemver(window.localStorage.getItem(CHAVE_ULTIMA_VISTA));
+    // Sem a chave (aparelho que ainda roda o build anterior a ela), a origem
+    // PROVADA da troca de build — gravada pela própria atualização — faz as
+    // vezes da última versão vista; sem prova, só se estabelece a referência.
+    const de =
+      nucleoSemver(window.localStorage.getItem(CHAVE_ULTIMA_VISTA)) ??
+      nucleoSemver(origemProvada ?? null);
     // Primeiro acesso (ou origem ilegível) só estabelece a referência.
     if (de && de !== para) registrarNovidadesDaAtualizacao({ de, para });
     window.localStorage.setItem(CHAVE_ULTIMA_VISTA, para);

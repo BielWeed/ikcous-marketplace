@@ -2,21 +2,9 @@ import {
   anunciarAtualizacaoConcluida,
   useEstadoDaAtualizacao,
 } from "@/lib/atualizacao/estado-da-atualizacao";
-import {
-  CHAVE_MOTIVO_DE_RECARGA,
-  type RecargaDescrita,
-  consumirOrigemDaAtualizacao,
-  descreveMotivoDeRecarga,
-  limpaMotivoDeRecarga,
-} from "@/lib/motivo-de-recarga";
-import { registrarNovidadesAoIniciar } from "@/lib/novidades/armazenamento-local";
 import { cn } from "@/lib/utils";
-import { motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Clock3, LoaderCircle } from "lucide-react";
 import { useEffect } from "react";
-
-/** Se nenhuma ilha chegar a montar, a conclusão some sozinha depois disto. */
-const PRAZO_DE_RESERVA_DO_BOOT_MS = 15_000;
 
 type VarianteDaIlha = "cliente" | "painel";
 
@@ -40,7 +28,6 @@ export function IlhaDeAtualizacao({
   className?: string;
 }) {
   const { fase } = useEstadoDaAtualizacao();
-  const reduzMovimento = useReducedMotion();
   // O boot anuncia a conclusão com um prazo longo de reserva: no painel, a
   // barra só monta depois de o acesso ser conferido, e os 3 s não podem
   // correr antes de a ilha existir na tela. Ao montar, o prazo recomeça —
@@ -71,18 +58,11 @@ export function IlhaDeAtualizacao({
       className="contents"
     >
       {texto && (
-        <motion.span
-          initial={
-            reduzMovimento ? false : { opacity: 0, scale: 0.8, width: 36 }
-          }
-          animate={{ opacity: 1, scale: 1, width: "auto" }}
-          transition={
-            reduzMovimento
-              ? { duration: 0 }
-              : { type: "spring", stiffness: 350, damping: 30, mass: 0.8 }
-          }
+        <span
           className={cn(
-            "inline-flex min-h-9 min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-full border border-zinc-700 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)]",
+            // Entrada por CSS (tailwindcss-animate), sem framer-motion no
+            // primeiro paint; `motion-safe:` já respeita "menos movimento".
+            "inline-flex min-h-9 min-w-0 max-w-full motion-safe:duration-300 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-90 items-center gap-2 overflow-hidden rounded-full border border-zinc-700 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)]",
             variante === "painel" && "min-h-6 gap-1 px-2 py-0.5 shadow-sm",
             className,
           )}
@@ -93,9 +73,7 @@ export function IlhaDeAtualizacao({
               "shrink-0",
               variante === "painel" ? "size-3.5" : "size-5",
               fase === "concluida" ? "text-emerald-300" : "text-zinc-200",
-              fase === "instalando" &&
-                !reduzMovimento &&
-                "animate-spin motion-reduce:animate-none",
+              fase === "instalando" && "motion-safe:animate-spin",
             )}
           />
           <span
@@ -107,35 +85,8 @@ export function IlhaDeAtualizacao({
           >
             {texto}
           </span>
-        </motion.span>
+        </span>
       )}
     </span>
   );
-}
-
-/** Consome a prova uma vez. Só o boot de outro build anuncia conclusão;
- * recuperações continuam com seu aviso neutro, devolvido para o App. */
-export function aoIniciarAposAtualizacao(
-  versaoAtual: string,
-): RecargaDescrita | null {
-  registrarNovidadesAoIniciar(versaoAtual);
-  let bruto: string | null = null;
-  try {
-    bruto = localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA);
-  } catch {
-    // A evidência da aba ainda pode existir com localStorage indisponível.
-  }
-  const { trocouDeBuild } = consumirOrigemDaAtualizacao(versaoAtual);
-  limpaMotivoDeRecarga();
-  if (trocouDeBuild) {
-    anunciarAtualizacaoConcluida({ duracaoMs: PRAZO_DE_RESERVA_DO_BOOT_MS });
-    return null;
-  }
-
-  const motivo = descreveMotivoDeRecarga(bruto);
-  // Inclui os motivos antigos de atualização: sem prova, nenhum deles
-  // pode ressuscitar o toast de sucesso que a ilha substituiu.
-  return motivo?.tom === "success"
-    ? descreveMotivoDeRecarga("atualizacao-nao-confirmada")
-    : motivo;
 }

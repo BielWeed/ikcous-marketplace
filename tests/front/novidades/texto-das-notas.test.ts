@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import notasDasVersoes from "@/novidades/notas-das-versoes.json";
 import { describe, expect, it } from "vitest";
 
 const proibidas = [
@@ -18,10 +18,10 @@ const proibidas = [
 
 // As bordas Unicode evitam aceitar jargão colado em acentos e não confundem
 // palavras comuns, como "própria", com a sigla "PR".
-const jargao = new RegExp(
-  `(?:^|[^\\p{L}\\p{N}_])(?:${proibidas.join("|")})(?=$|[^\\p{L}\\p{N}_])`,
-  "iu",
-);
+// Literal (sem `new RegExp`): a lista abaixo espelha `proibidas`, e o segundo
+// teste prova que cada palavra de `proibidas` é pega por ela.
+const jargao =
+  /(?:^|[^\p{L}\p{N}_])(?:PR|migration|deploy|cache|service worker|SHA|commit|API|banco de dados|RPC|build|calculado por edge)(?=$|[^\p{L}\p{N}_])/iu;
 
 function validarTexto(valor: unknown): void {
   expect(typeof valor).toBe("string");
@@ -32,15 +32,7 @@ function validarTexto(valor: unknown): void {
 
 describe("texto das notas publicadas", () => {
   it("tem título e listas com texto simples, sem termos técnicos", () => {
-    const catalogo: unknown = JSON.parse(
-      readFileSync(
-        new URL(
-          "../../../src/novidades/notas-das-versoes.json",
-          import.meta.url,
-        ),
-        "utf8",
-      ),
-    );
+    const catalogo: unknown = notasDasVersoes;
     expect(catalogo).toBeTypeOf("object");
     expect(catalogo).not.toBeNull();
     if (!catalogo || typeof catalogo !== "object") return;
@@ -51,8 +43,11 @@ describe("texto das notas publicadas", () => {
       if (!nota || typeof nota !== "object") continue;
       const campos = nota as Record<string, unknown>;
       validarTexto(campos.titulo);
-      for (const campo of ["novidades", "correcoes", "melhorias"]) {
-        const lista = campos[campo];
+      for (const lista of [
+        campos.novidades,
+        campos.correcoes,
+        campos.melhorias,
+      ]) {
         expect(Array.isArray(lista)).toBe(true);
         if (Array.isArray(lista)) {
           for (const texto of lista) validarTexto(texto);

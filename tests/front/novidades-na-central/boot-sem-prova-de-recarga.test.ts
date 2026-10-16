@@ -20,7 +20,7 @@ vi.mock("@/novidades/notas-das-versoes.json", () => ({
 }));
 
 const CHAVE_ULTIMA_VISTA = "notificacoes-ultima-versao-vista-do-app-v1";
-let ilha: typeof import("@/components/pwa/IlhaDeAtualizacao");
+let ilha: typeof import("@/components/pwa/ao-iniciar-apos-atualizacao");
 let armazenamento: typeof import("@/lib/novidades/armazenamento-local");
 let estado: typeof import("@/lib/atualizacao/estado-da-atualizacao");
 
@@ -28,7 +28,7 @@ beforeEach(async () => {
   vi.resetModules();
   localStorage.clear();
   sessionStorage.clear();
-  ilha = await import("@/components/pwa/IlhaDeAtualizacao");
+  ilha = await import("@/components/pwa/ao-iniciar-apos-atualizacao");
   armazenamento = await import("@/lib/novidades/armazenamento-local");
   estado = await import("@/lib/atualizacao/estado-da-atualizacao");
 });
@@ -65,7 +65,7 @@ describe("novidades no boot sem prova de recarga", () => {
     expect(armazenamento.listarNovidades()).toEqual([]);
   });
 
-  it("primeiro boot com prova de recarga anuncia Pronto, mas não inventa histórico", async () => {
+  it("primeiro boot com prova de recarga anuncia Pronto e usa a origem provada para as novidades", async () => {
     const { gravaOrigemDeAtualizacao } = await import(
       "@/lib/motivo-de-recarga"
     );
@@ -75,6 +75,21 @@ describe("novidades no boot sem prova de recarga", () => {
 
     expect(estado.obterEstadoDaAtualizacao().fase).toBe("concluida");
     expect(localStorage.getItem(CHAVE_ULTIMA_VISTA)).toBe("1.5.32");
+    // O aparelho vinha da 1.5.31, que nunca gravou a "última versão vista":
+    // a origem provada pela própria atualização supre a chave.
+    expect(armazenamento.listarNovidades().map((n) => n.versao)).toEqual([
+      "1.5.32",
+    ]);
+  });
+
+  it("origem ilegível ou sem prova de troca de build continua sem inventar histórico", async () => {
+    const { gravaOrigemDeAtualizacao } = await import(
+      "@/lib/motivo-de-recarga"
+    );
+    gravaOrigemDeAtualizacao("lixo");
+
+    ilha.aoIniciarAposAtualizacao("1.5.32-sha.novo");
+
     expect(armazenamento.listarNovidades()).toEqual([]);
   });
 
