@@ -170,8 +170,16 @@ test('cartão recusado → "Tentar outro cartão" → segundo cartão aprovado: 
   expect(sim.contagemPorMetodo()).toEqual({ cartao: 1 });
   sim.portaoDaEdge.abrir();
 
-  // A recusa: o motivo, "Tentar outro cartão" e — só AGORA — "Pagar com PIX".
-  await expect(page.getByText(MOTIVO_DA_RECUSA_SIMULADA)).toBeVisible();
+  // A recusa: a frase da CATEGORIA (redesenho de 16/10/2026 — o texto do
+  // servidor não vai à tela), "Tentar outro cartão" e — só AGORA — "Pagar com
+  // PIX". O Brick segue na tela: quem digitou não redigita nada.
+  await expect(
+    page.getByText(
+      "Não conseguimos concluir este pagamento. Nenhum valor foi cobrado",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(MOTIVO_DA_RECUSA_SIMULADA)).toHaveCount(0);
+  await expect(page.getByTestId("cartao-simulado-pagar")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Tentar outro cartão" }),
   ).toBeVisible();

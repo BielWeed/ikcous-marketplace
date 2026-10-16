@@ -498,15 +498,13 @@ describe("Lacuna L1 — soltura da vaga seguida da expiração do pedido", () =>
       },
       ORDER,
     );
-    expect(hospedeiro.textContent).toContain("Pagamento em análise pelo banco");
+    expect(hospedeiro.textContent).toContain("Seu banco está analisando");
 
     soltarAVaga();
     expirarOPedido();
     await verificacaoPeriodica();
 
-    expect(hospedeiro.textContent).not.toContain(
-      "Pagamento em análise pelo banco",
-    );
+    expect(hospedeiro.textContent).not.toContain("Seu banco está analisando");
     esperarPedidoFechadoVisivel(PRAZO_ACABOU);
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
