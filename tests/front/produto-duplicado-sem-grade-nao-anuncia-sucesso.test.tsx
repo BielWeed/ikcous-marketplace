@@ -271,19 +271,9 @@ describe("AdminProductsView — duplicação com grade não salva", () => {
 
       expect(addProduct).toHaveBeenCalledTimes(1);
       expect(toastSuccess).not.toHaveBeenCalled();
-      expect(toastError).toHaveBeenCalledTimes(1);
-      const [titulo, opcoes] = toastError.mock.calls[0];
-      expect(titulo).toMatch(/cópia criada/i);
-      expect(opcoes.description).toMatch(/cópia foi criada/i);
-      expect(opcoes.description).toMatch(
-        /variações \(tamanhos\) não foram salvas/i,
-      );
-      expect(opcoes.description).toContain("Camiseta Base (Cópia)");
-      expect(opcoes.description).toMatch(/abra.*cópia.*refaça.*grade/i);
-      // O produto já existe: repetir a duplicação criaria outra cópia vazia.
-      expect(`${titulo} ${opcoes.description}`).not.toMatch(
-        /duplicar|duplique|nova cópia|tente novamente/i,
-      );
+      // O aviso com o motivo já saiu de `addProduct` (mockado aqui): a tela
+      // não empilha um segundo erro, só deixa de anunciar sucesso.
+      expect(toastError).not.toHaveBeenCalled();
       expect(
         localizarBotaoPorTexto(hospedeiro, "Confirmar Duplicação"),
       ).toBeUndefined();
