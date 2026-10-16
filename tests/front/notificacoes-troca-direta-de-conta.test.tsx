@@ -89,13 +89,21 @@ function aviso(id: string, usuario: string | null) {
 const espelho: { atual: ReturnType<typeof useNotificationCenter> | null } = {
   atual: null,
 };
-const quadros: { dono: string; ids: string[]; naoLidas: number }[] = [];
+const quadros: {
+  dono: string;
+  ids: string[];
+  naoLidas: number;
+  loading: boolean;
+  erro: string | null;
+}[] = [];
 function Sonda() {
   const contexto = useNotificationCenter();
   quadros.push({
     dono: rede.user?.id ?? "",
     ids: contexto.notifications.map((n) => n.id),
     naoLidas: contexto.unreadCount,
+    loading: contexto.loading,
+    erro: contexto.erro,
   });
   useEffect(() => {
     espelho.atual = contexto;
@@ -172,6 +180,8 @@ describe("notificações — troca direta de conta não mistura dados", () => {
     for (const quadro of quadrosDeB) {
       expect(quadro.ids).not.toContain("aviso-a");
       expect(quadro.naoLidas).toBe(0);
+      // Nem o primeiro quadro de B anuncia "Tudo em ordem": ele já está carregando.
+      expect(quadro.loading).toBe(true);
     }
 
     expect(espelho.atual!.loading).toBe(true);
@@ -304,9 +314,16 @@ describe("notificações — troca direta de conta não mistura dados", () => {
 
     const consultaDeB = pendente<ResultadoConsulta>();
     rede.consulta = consultaDeB.promessa;
+    quadros.length = 0;
     rede.user = { id: "cliente-b" };
     await renderizar();
 
+    // O erro de A não aparece para B nem no primeiro quadro.
+    const quadrosDeB = quadros.filter((q) => q.dono === "cliente-b");
+    expect(quadrosDeB.length).toBeGreaterThan(0);
+    for (const quadro of quadrosDeB) {
+      expect(quadro.erro).toBeNull();
+    }
     expect(espelho.atual!.notifications).toEqual([]);
     expect(espelho.atual!.erro).toBeNull();
     expect(espelho.atual!.loading).toBe(true);

@@ -76,6 +76,9 @@ export function NotificationProvider({
     setDonoDosAvisos(user?.id ?? null);
     setNotifications([]);
     setErro(null);
+    // O efeito logo abaixo busca os avisos da conta nova: até lá o quadro já
+    // diz "carregando", em vez de anunciar uma caixa vazia ("Tudo em ordem").
+    setLoading(user != null);
   }
   const lastFetchRef = useRef<number>(0);
   // ids da última busca cujo usuario_id era nulo (aviso de campanha) — é o
