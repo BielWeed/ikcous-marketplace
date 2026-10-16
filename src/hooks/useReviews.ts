@@ -223,6 +223,8 @@ export function useReviews() {
           setErroDaListagemProduto(null);
         }
         updateReviewsCacheSeMesmaGeracao(productId, formattedReviews, geracao);
+        // A lista já chegou: o "Carregando" não espera a leitura dos votos.
+        if (latestProductIdRef.current === productId) setLoading(false);
 
         // A RPC é void inclusive no voto repetido. Só os próprios registros
         // dizem quais botões já devem nascer marcados, numa consulta em lote.
