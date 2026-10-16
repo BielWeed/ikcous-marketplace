@@ -1651,6 +1651,29 @@ export function OrderDetailsView({
             </button>
           )}
 
+          {podeUsarDevolucao &&
+            devolucaoDoProduto.erro &&
+            !devolucaoDoProduto.carregando && (
+              <div
+                role="alert"
+                className="border-b border-zinc-100 px-5 py-3.5 last:border-b-0"
+              >
+                <p className="text-sm text-zinc-600">
+                  Não conseguimos carregar as informações de devolução deste
+                  pedido.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void devolucaoDoProduto.recarregar();
+                  }}
+                  className="mt-2 min-h-11 rounded-xl bg-zinc-100 px-3 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-200 active:bg-zinc-300"
+                >
+                  Tentar de novo
+                </button>
+              </div>
+            )}
+
           {/* Devolução ou troca (CDC art. 49 e Decreto 7.962/2013: o cliente
               desiste pelo MESMO canal da compra). A linha só existe quando o
               servidor diz que pode (`devolucao_elegibilidade.pode`); quando
