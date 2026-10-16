@@ -139,7 +139,8 @@ vi.mock("@/contexts/StoreContext", () => ({
 // padrão (beforeEach) é leitura que FALHA: o checkout se comporta como se
 // não soubesse se a conta tem CPF (não preenche, não mostra a caixa, não
 // grava), que é o que os testes mais antigos deste arquivo esperam.
-vi.mock("@/lib/cpf-da-conta", () => ({
+vi.mock("@/lib/cpf-da-conta", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/cpf-da-conta")>()),
   lerCpfDaConta: (...a: unknown[]) => cpfDaConta.ler(...a),
   gravarCpfDaConta: (...a: unknown[]) => cpfDaConta.gravar(...a),
 }));
@@ -912,8 +913,45 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
 
     expect(createOrder).toHaveBeenCalledTimes(1);
     expect(cpfDaConta.gravar).toHaveBeenCalledTimes(1);
-    expect(cpfDaConta.gravar).toHaveBeenCalledWith("11144477735");
+    expect(cpfDaConta.gravar).toHaveBeenCalledWith("11144477735", "user-1");
   });
+
+  it.each(["conta_trocada", "falha"] as const)(
+    "falha opcional do CPF (%s) só avisa e não interrompe o pedido criado",
+    async (motivo) => {
+      const { mensagemFalhaCpf } = await import("@/lib/cpf-da-conta");
+      cpfDaConta.ler.mockResolvedValue({ ok: true, cpf: null });
+      let resolverCpf!: (valor: { ok: false; motivo: typeof motivo }) => void;
+      cpfDaConta.gravar.mockReturnValue(
+        new Promise((resolve) => {
+          resolverCpf = resolve;
+        }),
+      );
+      cotacoesControladas({ "01001000": [PAC_SP] });
+      await montar();
+      await finalizarComTransportadora("123.456.789-09");
+      await act(async () => caixaSalvarNaConta()?.click());
+      await act(async () => botaoFinalizar().click());
+      await drenar();
+
+      expect(cpfDaConta.gravar).toHaveBeenCalledExactlyOnceWith(
+        "12345678909",
+        "user-1",
+      );
+      // O pagamento já abre enquanto a conveniência do CPF ainda está em voo.
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
+      await act(async () => resolverCpf({ ok: false, motivo }));
+      await drenar();
+
+      expect(toastError).toHaveBeenCalledWith(mensagemFalhaCpf(motivo));
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(createOrder.mock.calls[0][0].addressData).toEqual({
+        cpf: "12345678909",
+      });
+      expect(cpfDaConta.gravar).toHaveBeenCalledTimes(1);
+      expect(contaEstavel.user.id).toBe("user-1");
+    },
+  );
 
   it("conta JÁ com CPF: o campo vem preenchido, a caixa não aparece e nada é gravado na conta", async () => {
     cpfDaConta.ler.mockResolvedValue({ ok: true, cpf: "52998224725" });

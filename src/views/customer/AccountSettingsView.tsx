@@ -543,7 +543,10 @@ export function AccountSettingsView() {
 
       if (cpfMudou) {
         if (!contaAindaEhDona()) return;
-        const resultadoCpf = await gravarCpfDaConta(digitosCpfAtual);
+        const resultadoCpf = await gravarCpfDaConta(
+          digitosCpfAtual,
+          contaDonaId,
+        );
         if (!contaAindaEhDona()) return;
         if (!resultadoCpf.ok) {
           toast.error(mensagemFalhaCpf(resultadoCpf.motivo));
