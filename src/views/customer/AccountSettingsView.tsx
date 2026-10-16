@@ -50,12 +50,20 @@ import {
   UploadCloud,
   User,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export function AccountSettingsView() {
   const { user, profile, fetchProfile, updateProfile, updatePassword } =
     useAuth();
+  const contaAtualIdRef = useRef<string | null>(user?.id ?? null);
+  useEffect(() => {
+    contaAtualIdRef.current = user?.id ?? null;
+    return () => {
+      // A continuação antiga também perde a dona quando a tela desmonta.
+      contaAtualIdRef.current = null;
+    };
+  }, [user?.id]);
   const [loading, setLoading] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "security">("profile");
@@ -389,6 +397,9 @@ export function AccountSettingsView() {
 
   const handleUpdateProfile = async () => {
     if (!user) return;
+    const contaDonaId = user.id;
+    const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
+    if (!contaAindaEhDona()) return;
 
     // Camada 2 de defesa do CONTA-01: mesmo que o botão tivesse sido
     // clicado com a carga ainda não terminada (bug futuro na trava de UI
@@ -467,6 +478,7 @@ export function AccountSettingsView() {
         },
       );
 
+      if (!contaAindaEhDona()) return;
       if (error) throw error;
 
       // O nome já foi salvo, mas uma edição feita durante o envio fica na tela.
@@ -476,7 +488,9 @@ export function AccountSettingsView() {
       );
 
       if (cpfMudou) {
+        if (!contaAindaEhDona()) return;
         const resultadoCpf = await gravarCpfDaConta(digitosCpfAtual);
+        if (!contaAindaEhDona()) return;
         if (!resultadoCpf.ok) {
           toast.error(mensagemFalhaCpf(resultadoCpf.motivo));
           // O resto do perfil (nome/WhatsApp) JÁ foi salvo com sucesso —
@@ -488,14 +502,16 @@ export function AccountSettingsView() {
 
       // Refresh global profile in context (ZENITH v21.7)
       await fetchProfile();
+      if (!contaAindaEhDona()) return;
 
       toast.success("Perfil atualizado com sucesso");
     } catch (error) {
+      if (!contaAindaEhDona()) return;
       console.error("Update error:", error);
       toast.error("Erro ao atualizar perfil");
     } finally {
       desmarcar();
-      setLoading(false);
+      if (contaAindaEhDona()) setLoading(false);
     }
   };
 
