@@ -868,6 +868,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (previousUserId && currentUserId && previousUserId !== currentUserId) {
+        // `user` vira a nova conta já neste evento; o perfil da anterior sai
+        // junto — se a consulta do perfil da nova falhar, nada o substituiria
+        // e a nova veria nome, avatar e capa de quem saiu.
+        setProfile(null);
         limparCachesDeAdmin();
         // Avaliações guardadas (inclui as não aprovadas, com nome do autor):
         // memória e chaves do `localStorage`, pois esta troca não passa por
