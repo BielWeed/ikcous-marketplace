@@ -1,0 +1,13 @@
+{
+  "1.5.31": {
+    "titulo": "Entrega na sua cidade e pedidos mais seguros",
+    "novidades": [
+      "Agora você escolhe como entrega na sua cidade: entrega própria ou só retirada, direto no painel."
+    ],
+    "correcoes": [
+      "A busca de produtos não mostra mais produtos pausados.",
+      "Se o cliente voltar para pagar um pedido que já começou, o app reabre o mesmo pedido em vez de criar outro por engano."
+    ],
+    "melhorias": []
+  }
+}
