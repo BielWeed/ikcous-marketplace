@@ -267,17 +267,25 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     }
   };
 
-  const updateCoupon = async (id: string, updates: Partial<Coupon>) => {
+  const updateCoupon = async (
+    id: string,
+    updates: Partial<Coupon>,
+    clientes?: readonly string[],
+  ) => {
     if (!isAdmin) {
       toast.error("Permissão negada");
       return;
     }
 
-    // Optimistic Update
+    // O formulário pode gravar regras e clientes em duas chamadas. Só
+    // confirmar localmente depois das duas: trocar o alcance antes disso
+    // dispara a carga da lista antiga e apaga os clientes recém-escolhidos.
     const oldCoupons = [...coupons];
-    setCoupons((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-    );
+    if (clientes === undefined) {
+      setCoupons((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+      );
+    }
 
     /*
       O UPDATE é montado por PRESENÇA DE CHAVE, não por valor (ADMIN-050, #96).
@@ -331,14 +339,25 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
 
       if (error) throw error;
 
+      if (clientes !== undefined) {
+        await definirClientesDoCupom(id, clientes);
+        setCoupons((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+        );
+      }
+
       toast.success("Cupom atualizado");
       if (autoFetch) fetchCoupons();
     } catch (error) {
       console.error("Error updating coupon:", error);
       // Mesma régua do addCoupon (laudo 0109, A4): trocar o código por um
       // que já existe é recusa de constraint, não "revise as regras".
-      toast.error(mensagemDeErroDoCupom(error, "Erro ao atualizar cupom"));
-      setCoupons(oldCoupons);
+      toast.error(
+        clientes !== undefined
+          ? "Não foi possível salvar o cupom. Confira e tente de novo."
+          : mensagemDeErroDoCupom(error, "Erro ao atualizar cupom"),
+      );
+      if (clientes === undefined) setCoupons(oldCoupons);
       throw error;
     }
   };

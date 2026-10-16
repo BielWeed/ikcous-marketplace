@@ -313,7 +313,27 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
           );
           return;
         }
-        await updateCoupon(editingCoupon.id, dataToSubmit);
+        // O hook só confirma o salvamento depois das regras E da lista.
+        // Em falha parcial, os campos e o estado sujo ficam para nova tentativa.
+        const clientesParaSalvar =
+          alcanceSuportado &&
+          alcance === "exclusivo" &&
+          (clientesMudaram || alcanceMudou)
+            ? idsDosClientes
+            : alcanceMudou &&
+                initialData.alcance === "exclusivo" &&
+                clientesIniciais.length > 0
+              ? []
+              : undefined;
+        if (clientesParaSalvar !== undefined) {
+          await updateCoupon(
+            editingCoupon.id,
+            dataToSubmit,
+            clientesParaSalvar,
+          );
+        } else {
+          await updateCoupon(editingCoupon.id, dataToSubmit);
+        }
         idSalvo = editingCoupon.id;
       } else {
         const criado = await addCoupon(
@@ -324,12 +344,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
 
       // 2º passo (frente B): a lista do exclusivo. Falha aqui NUNCA abre o
       // cupom — exclusivo sem lista vale para ninguém — mas a tela avisa.
-      if (
-        idSalvo &&
-        alcanceSuportado &&
-        alcance === "exclusivo" &&
-        (clientesMudaram || alcanceMudou || !couponId)
-      ) {
+      if (idSalvo && !couponId && alcanceSuportado && alcance === "exclusivo") {
         try {
           await definirClientesDoCupom(idSalvo, idsDosClientes);
         } catch (erro) {
@@ -341,15 +356,6 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
             duration: 10000,
           });
         }
-      } else if (
-        idSalvo &&
-        alcanceMudou &&
-        initialData.alcance === "exclusivo" &&
-        clientesIniciais.length > 0
-      ) {
-        // Deixou de ser exclusivo: a lista antiga some (não volta sozinha se
-        // um dia ele virar exclusivo de novo). Sem efeito no desconto.
-        await definirClientesDoCupom(idSalvo, []).catch(() => {});
       }
 
       if (onSetDirty) onSetDirty(false); // Reset dirty state before navigating
