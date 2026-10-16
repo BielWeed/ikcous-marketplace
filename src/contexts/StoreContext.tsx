@@ -399,6 +399,7 @@ export function StoreProvider({
   const tentativasDoCatalogoRef = useRef(0);
   const timerDoCatalogoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const consultaDoCatalogoRef = useRef(0);
+  const catalogoDaRedeAplicadoRef = useRef(false);
   const produtosNaTelaRef = useRef(0);
   const buscarProdutosRef = useRef<() => Promise<void>>(async () => {});
   const montadoRef = useRef(true);
@@ -489,7 +490,13 @@ export function StoreProvider({
 
         // Load products from IDB
         const cachedProducts = await vault.getAll<Product>("products");
-        if (cachedProducts.length > 0 && !cancelled) {
+        // O cofre pode terminar depois da rede: nunca devolver preço/estoque
+        // antigos à vitrine. Consulta pendente ou falha ainda permite o cache.
+        if (
+          cachedProducts.length > 0 &&
+          !cancelled &&
+          !catalogoDaRedeAplicadoRef.current
+        ) {
           setProducts(cachedProducts);
           setLoadingProducts(false);
         }
@@ -1048,6 +1055,7 @@ export function StoreProvider({
 
       const mapped = (data as any[]).map((item: any) => mapProductFromDB(item));
 
+      catalogoDaRedeAplicadoRef.current = true;
       setProducts((prev) => {
         if (minhaConsulta !== consultaDoCatalogoRef.current) return prev;
         if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;

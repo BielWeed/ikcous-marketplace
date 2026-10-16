@@ -28,6 +28,7 @@ const controle = vi.hoisted(() => {
     loading: true,
     consultas: [] as ReturnType<typeof criarConsulta>[],
     produtosNoCofre: [] as Product[],
+    getAll: vi.fn<() => Promise<Product[]>>(),
     replaceAll: vi.fn(),
     setLastSync: vi.fn().mockResolvedValue(undefined),
   };
@@ -49,7 +50,7 @@ vi.mock("@/lib/dataVault", () => ({
   DataVault: {
     init: vi.fn().mockResolvedValue({
       getById: vi.fn().mockResolvedValue(null),
-      getAll: vi.fn(async () => controle.produtosNoCofre),
+      getAll: controle.getAll,
       put: vi.fn().mockResolvedValue(undefined),
       replaceAll: controle.replaceAll,
       setLastSync: controle.setLastSync,
@@ -178,6 +179,21 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
     await assentar();
   }
 
+  function atrasarCache(produtos: Product[]) {
+    let liberar!: () => void;
+    const leitura = new Promise<Product[]>((resolve) => {
+      liberar = () => resolve(produtos);
+    });
+    controle.getAll.mockReturnValueOnce(leitura);
+    return async () => {
+      await act(async () => {
+        liberar();
+        await leitura;
+      });
+      await assentar();
+    };
+  }
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
@@ -187,6 +203,7 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
     controle.loading = true;
     controle.consultas = [];
     controle.produtosNoCofre = [];
+    controle.getAll.mockImplementation(async () => controle.produtosNoCofre);
     controle.replaceAll.mockImplementation(
       async (_tabela: string, produtos: Product[]) => {
         controle.produtosNoCofre = produtos;
@@ -209,6 +226,74 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
     hospedeiro.remove();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("cache lento não sobrescreve o preço e o estoque já atualizados pela rede", async () => {
+    const liberarCache = atrasarCache([
+      { ...produtoDoCofre(), id: "p1", price: 10, stock: 5 },
+    ]);
+    await renderizar();
+    expect(retrato.products).toEqual([]);
+
+    await responder(0, { data: [linhaDaView(20)], error: null });
+    expect(retrato.products).toEqual([
+      expect.objectContaining({ id: "p1", price: 20, stock: 0 }),
+    ]);
+
+    await liberarCache();
+    expect(retrato.products).toEqual([
+      expect.objectContaining({ id: "p1", price: 20, stock: 0 }),
+    ]);
+    expect(retrato.loadingProducts).toBe(false);
+    expect(retrato.catalogoErro).toBe(false);
+  });
+
+  it.each([true, false])(
+    "cache lento continua disponível sem resposta válida da rede (rede já falhou: %s)",
+    async (redeFalhou) => {
+      const salvos = [produtoDoCofre()];
+      const liberarCache = atrasarCache(salvos);
+      await renderizar();
+      expect(retrato.products).toEqual([]);
+
+      if (redeFalhou) {
+        await responder(0, { data: null, error: { message: "network" } });
+      }
+      await liberarCache();
+      expect(retrato.products).toEqual(salvos);
+      expect(retrato.loadingProducts).toBe(false);
+      expect(retrato.catalogoErro).toBe(redeFalhou);
+    },
+  );
+
+  it("cache rápido aparece enquanto a rede espera e depois recebe preço e estoque atuais", async () => {
+    controle.produtosNoCofre = [
+      { ...produtoDoCofre(), id: "p1", price: 10, stock: 5 },
+    ];
+    await renderizar();
+    expect(retrato.products).toEqual([
+      expect.objectContaining({ id: "p1", price: 10, stock: 5 }),
+    ]);
+
+    await responder(0, { data: [linhaDaView(20)], error: null });
+    expect(retrato.products).toEqual([
+      expect.objectContaining({ id: "p1", price: 20, stock: 0 }),
+    ]);
+  });
+
+  it("cache lento não repõe produtos depois de uma resposta vazia legítima da rede", async () => {
+    const liberarCache = atrasarCache([produtoDoCofre()]);
+    await renderizar();
+
+    await responder(0, { data: [], error: null });
+    expect(retrato.products).toEqual([]);
+    expect(retrato.loadingProducts).toBe(false);
+    expect(retrato.catalogoErro).toBe(false);
+
+    await liberarCache();
+    expect(retrato.products).toEqual([]);
+    expect(retrato.loadingProducts).toBe(false);
+    expect(retrato.catalogoErro).toBe(false);
   });
 
   it("respostas fora de ordem mantêm preço e estoque da consulta mais nova na tela e no cache", async () => {
