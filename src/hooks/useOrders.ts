@@ -1222,6 +1222,37 @@ export function mesclarAtualizacaoRealtime(
   return { ...pedidoAtual, ...mapeado, ...preservados };
 }
 
+// Uma leitura iniciada antes do realtime não pode apagar a versão mais nova.
+// Só preserva ausentes que chegaram durante o voo: outra página/filtro ainda
+// precisa substituir os pedidos que já estavam na lista antes da consulta.
+function mesclarPedidosDaConsulta(
+  atuais: Order[],
+  resposta: Order[],
+  idsNoInicio: Set<string>,
+): Order[] {
+  const porId = new Map(atuais.map((pedido) => [pedido.id, pedido]));
+  const idsDaResposta = new Set(resposta.map((pedido) => pedido.id));
+  let mudou = false;
+  const mesclados = resposta.map((pedido) => {
+    const atual = porId.get(pedido.id);
+    if (atual && Date.parse(atual.updatedAt) > Date.parse(pedido.updatedAt)) {
+      mudou = true;
+      return atual;
+    }
+    return pedido;
+  });
+  const chegaramNoVoo = atuais.filter(
+    (pedido) => !idsNoInicio.has(pedido.id) && !idsDaResposta.has(pedido.id),
+  );
+  if (chegaramNoVoo.length > 0) {
+    mudou = true;
+    mesclados.unshift(...chegaramNoVoo);
+  }
+  // Nada a preservar: devolve a MESMA lista da resposta (o cache de módulo e o
+  // estado continuam apontando para o mesmo array, como antes).
+  return mudou ? mesclados : resposta;
+}
+
 /**
  * Deriva o novo valor de `cancelledAfterShipping` para o UPDATE OTIMISTA de
  * `updateOrderStatus` (achado da Task 5 do plano de cancelamento-com-
@@ -1755,6 +1786,7 @@ export function useOrders(
       }
       userOrdersAbortControllerRef.current = new AbortController();
       const signal = userOrdersAbortControllerRef.current.signal;
+      const idsNoInicio = new Set(ordersRef.current.map((pedido) => pedido.id));
 
       if (!hasCache) {
         setLoading(true);
@@ -1782,23 +1814,25 @@ export function useOrders(
         if (error) throw error;
 
         if (data) {
-          const mappedOrders = data.map((item) => mapOrderFromDB(item as any));
-          const serializado = JSON.stringify(mappedOrders);
-
-          // Devolver a MESMA referência quando o resultado não mudou faz o React
-          // desistir do re-render. Sem isto, `setOrders` trocava a referência a
-          // cada volta — inclusive para lista vazia, porque `if (data)` é
-          // verdadeiro para `[]` — e quem tivesse `orders` nas dependências de um
-          // useCallback ficava em loop de requisição. Era o caso do
-          // OrderDetailsView para usuário logado sem nenhum pedido (PEDIDO-040,
-          // #84).
-          //
-          // A comparação é contra o state ATUAL, não contra o último fetch: se um
-          // update otimista mexeu na lista e o servidor devolver o valor antigo,
-          // a tela precisa voltar para o que o servidor diz.
-          setOrders((atual) =>
-            JSON.stringify(atual) === serializado ? atual : mappedOrders,
+          const mappedOrders = mesclarPedidosDaConsulta(
+            ordersRef.current,
+            data.map((item) => mapOrderFromDB(item as any)),
+            idsNoInicio,
           );
+          const serializado = JSON.stringify(mappedOrders);
+          // O updater também confere o estado mais recente do React, inclusive
+          // quando o evento e esta resposta são processados no mesmo lote.
+          setOrders((atual) => {
+            const mesclados = mesclarPedidosDaConsulta(
+              atual,
+              mappedOrders,
+              idsNoInicio,
+            );
+            // Mantém a referência quando nada mudou, evitando loops no cliente.
+            return JSON.stringify(atual) === JSON.stringify(mesclados)
+              ? atual
+              : mesclados;
+          });
           // Resposta ok (inclusive com 0 pedidos): a falha anterior acabou.
           setOrdersLoadError(null);
           // P-2 (laudo varredura 01/09): o setItem do cache está sob
@@ -1888,6 +1922,7 @@ export function useOrders(
       }
       adminOrdersAbortControllerRef.current = new AbortController();
       const signal = adminOrdersAbortControllerRef.current.signal;
+      const idsNoInicio = new Set(ordersRef.current.map((pedido) => pedido.id));
 
       try {
         if (!silent) {
@@ -1917,10 +1952,14 @@ export function useOrders(
           const orderData = data.data || [];
           const totalCount = Number(data.total_count) || 0;
 
-          const mappedOrders = orderData.map((item: any) =>
-            mapOrderFromDB(item),
+          const mappedOrders = mesclarPedidosDaConsulta(
+            ordersRef.current,
+            orderData.map((item: any) => mapOrderFromDB(item)),
+            idsNoInicio,
           );
-          setOrders(mappedOrders);
+          setOrders((atual) =>
+            mesclarPedidosDaConsulta(atual, mappedOrders, idsNoInicio),
+          );
           setTotalOrders(totalCount);
 
           cachedAdminOrders = mappedOrders;
@@ -2553,12 +2592,37 @@ export function useOrders(
   const handleRealtimeUpdate = useCallback(
     (updatedOrder: any) => {
       if (!updatedOrder.id) return;
+      const filtro = isAdmin ? ultimaConsultaAdminRef.current?.[2] : undefined;
+      const filtroConhecido =
+        filtro === "open" || statusConfigByKey.has(filtro as OrderStatus);
+      const casaStatus =
+        !filtroConhecido ||
+        (filtro === "open"
+          ? !["cancelled", "delivered"].includes(updatedOrder.status)
+          : updatedOrder.status === filtro);
+      const jaNaLista = ordersRef.current.some(
+        (pedido) => pedido.id === updatedOrder.id,
+      );
+      // A RPC existente recompõe página e total quando alguém entra ou sai
+      // do recorte. O mesmo debounce do INSERT absorve rajadas de eventos.
+      if (filtroConhecido && (casaStatus ? !jaNaLista : jaNaLista)) {
+        if (debounceRecarregarInsertRef.current) {
+          clearTimeout(debounceRecarregarInsertRef.current);
+        }
+        debounceRecarregarInsertRef.current = setTimeout(() => {
+          debounceRecarregarInsertRef.current = null;
+          recarregarAposReconexaoRef
+            .current({ silencioso: true })
+            .catch(() => {});
+        }, DEBOUNCE_RECARREGAR_INSERT_MS);
+      }
       setOrders((prev) =>
-        prev.map((o) =>
-          o.id === updatedOrder.id
-            ? mesclarAtualizacaoRealtime(o, updatedOrder)
-            : o,
-        ),
+        prev.flatMap((o) => {
+          if (o.id !== updatedOrder.id) return [o];
+          return casaStatus
+            ? [mesclarAtualizacaoRealtime(o, updatedOrder)]
+            : [];
+        }),
       );
       // P-2 (laudo varredura 01/09): SEM gravação de cache aqui — mesmo
       // motivo do insert acima (serialização por evento + linha sem
@@ -3035,8 +3099,9 @@ export function useOrders(
       silent = false,
       statusEsperado?: OrderStatus,
     ) => {
-      const originalOrders = [...orders];
-      let originalCache: Order[] | null = null;
+      const originalOrder = orders.find((pedido) => pedido.id === orderId);
+      let originalCache: Order | undefined;
+      let atualizacaoOtimistaAplicada = false;
       try {
         // Find the order in the current state to check its existing status
         const order = orders.find((o) => o.id === orderId);
@@ -3247,7 +3312,10 @@ export function useOrders(
         }
 
         // Optimistic update
-        originalCache = cachedAdminOrders ? [...cachedAdminOrders] : null;
+        originalCache = cachedAdminOrders?.find(
+          (pedido) => pedido.id === orderId,
+        );
+        atualizacaoOtimistaAplicada = true;
         cachedAdminOrders = (cachedAdminOrders || []).map((o) => {
           if (o.id === orderId) {
             const updatedOrder = Object.assign({}, o);
@@ -3363,33 +3431,9 @@ export function useOrders(
         }
       } catch (err: any) {
         console.error("Error updating status:", err);
-        // L-9 front: os três erros da releitura acima já cuidaram do
-        // próprio aviso (`toast.warning`, não `toast.error`) — cair no
-        // `toast.error` genérico aqui empilharia um SEGUNDO toast para o
-        // mesmo clique. `ErroPedidoMudou` especificamente já corrigiu
-        // `orders`/`cachedAdminOrders` para o status VERDADEIRO logo
-        // acima: reverter para `originalOrders`/`originalCache` aqui
-        // devolveria a tela ao status velho — o próprio defeito que esta
-        // releitura existe para fechar.
-        //
-        // Achado 2 do laudo da rodada 2: nenhum dos três lançou update
-        // OTIMISTA (a variável `originalCache` só recebe valor DEPOIS de
-        // toda a guarda, na linha do `// Optimistic update` abaixo) — mas
-        // `originalCache` nasce `null`, e reverter para ele fazia
-        // `cachedAdminOrders = null`, zerando o cache do painel inteiro
-        // numa falha de rede que não tinha nada a ver com o conteúdo dele.
-        // O comentário anterior aqui dizia que isso era "inofensivo" — não
-        // era: `setOrders(originalOrders)` de fato é um no-op (mesmo
-        // conteúdo de antes), mas `cachedAdminOrders = originalCache`
-        // apagava a SWR cache. Por isso os três erros pulam a reversão
-        // inteira, não só a de `orders`.
-        //
-        // Achado 1, rodada 5: `ErroCancelamentoOfflineRecusado` entra no
-        // mesmo grupo pelo MESMO motivo — lançado antes do update otimista,
-        // `originalCache` ainda é `null` neste ponto, e já disparou seu
-        // próprio `toast.warning` na hora de nascer (acima).
-        // S1 (04/10/2026): `ErroCancelamentoNaoConcluido` também — nasce
-        // ANTES de qualquer mudança local e já mostrou o próprio aviso.
+        // As guardas anteriores à atualização já mostram o próprio aviso.
+        // Na falha da gravação, reverta só este pedido: eventos de outros
+        // pedidos e novas vendas recebidos durante o envio continuam válidos.
         const erroJaTratado =
           err instanceof ErroPedidoMudou ||
           err instanceof ErroReleituraDeStatusFalhou ||
@@ -3397,9 +3441,20 @@ export function useOrders(
           err instanceof ErroCancelamentoOfflineRecusado ||
           err instanceof ErroFilaOfflineSemSessao ||
           err instanceof ErroCancelamentoNaoConcluido;
-        if (!erroJaTratado) {
-          cachedAdminOrders = originalCache;
-          setOrders(originalOrders);
+        if (!erroJaTratado && atualizacaoOtimistaAplicada) {
+          const pedidoDoCache = originalCache;
+          if (pedidoDoCache && cachedAdminOrders) {
+            cachedAdminOrders = cachedAdminOrders.map((pedido) =>
+              pedido.id === orderId ? pedidoDoCache : pedido,
+            );
+          }
+          if (originalOrder) {
+            setOrders((atuais) =>
+              atuais.map((pedido) =>
+                pedido.id === orderId ? originalOrder : pedido,
+              ),
+            );
+          }
         }
         // P-2 (ressalva da revisão da onda 3): sem escrita de cache aqui
         // também — a reversão é em memória; o cache se renova no fetch.
