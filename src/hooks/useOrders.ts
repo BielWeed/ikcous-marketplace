@@ -3571,9 +3571,12 @@ export function useOrders(
         return data;
       } catch (err: any) {
         console.error("Error registering payment received:", err);
-        toast.error("Não foi possível registrar o pagamento recebido.", {
-          description: err?.message,
-        });
+        toast.error(
+          recebido
+            ? "Não foi possível registrar o pagamento recebido."
+            : "Não foi possível desfazer o recebimento.",
+          { description: err?.message },
+        );
         throw err;
       }
     },
