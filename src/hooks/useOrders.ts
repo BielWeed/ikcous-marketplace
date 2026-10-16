@@ -1256,6 +1256,25 @@ function mesclarPedidosDaConsulta(
   return mudou ? mesclados : resposta;
 }
 
+// A mesma reconciliação de `mesclarPedidosDaConsulta`, aplicada ao TOTAL: os
+// pedidos que o realtime inseriu durante a leitura e que a resposta (um
+// retrato anterior a eles) não contém já foram somados ao total na hora da
+// inserção — a contagem velha da resposta não pode apagá-los.
+function contarInseridosNoVoo(
+  atuais: Order[],
+  resposta: Order[],
+  idsNoInicio: Set<string>,
+  idsInseridosPeloRealtime: Set<string>,
+): number {
+  const idsDaResposta = new Set(resposta.map((pedido) => pedido.id));
+  return atuais.filter(
+    (pedido) =>
+      !idsNoInicio.has(pedido.id) &&
+      !idsDaResposta.has(pedido.id) &&
+      idsInseridosPeloRealtime.has(pedido.id),
+  ).length;
+}
+
 /**
  * Deriva o novo valor de `cancelledAfterShipping` para o UPDATE OTIMISTA de
  * `updateOrderStatus` (achado da Task 5 do plano de cancelamento-com-
@@ -1953,11 +1972,21 @@ export function useOrders(
 
         if (data) {
           const orderData = data.data || [];
-          const totalCount = Number(data.total_count) || 0;
+          const respostaMapeada: Order[] = orderData.map((item: any) =>
+            mapOrderFromDB(item),
+          );
+          const totalCount =
+            (Number(data.total_count) || 0) +
+            contarInseridosNoVoo(
+              ordersRef.current,
+              respostaMapeada,
+              idsNoInicio,
+              idsInseridosPeloRealtimeRef.current,
+            );
 
           const mappedOrders = mesclarPedidosDaConsulta(
             ordersRef.current,
-            orderData.map((item: any) => mapOrderFromDB(item)),
+            respostaMapeada,
             idsNoInicio,
           );
           setOrders((atual) =>
