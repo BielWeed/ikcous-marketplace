@@ -727,6 +727,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
   const [uploading, setUploading] = useState(false);
+  const geracaoDoEditor = useRef(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTab, setSelectedTab] = useLocalStorage<
     "all" | "home_top" | "home_middle" | "home_bottom"
@@ -1251,6 +1252,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   // Reset modal and adjuster states when active is false to prevent focus traps and scroll lock
   useEffect(() => {
     if (!active) {
+      geracaoDoEditor.current += 1;
       setIsDialogOpen(false);
       setShowHelpModal(false);
       setEditingBanner(null);
@@ -1456,6 +1458,8 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleOpenDialog = (banner?: Banner) => {
+    geracaoDoEditor.current += 1;
+    setUploading(false);
     setActiveColorElement("titleColor");
     setProductSearch("");
 
@@ -1551,6 +1555,8 @@ export const AdminBannersView = memo(function AdminBannersView({
       // ar. Ignora a tentativa: no sucesso o diálogo se fecha sozinho; na
       // falha ele segue aberto com o toast de erro e o lojista decide.
       if (isSubmittingRef.current) return;
+      geracaoDoEditor.current += 1;
+      setUploading(false);
       setProductSearch("");
       setSelectedCouponCode("");
       if (!isSavedRef.current) {
@@ -1719,21 +1725,33 @@ export const AdminBannersView = memo(function AdminBannersView({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const geracaoDoUpload = geracaoDoEditor.current;
     setUploading(true);
     const loadingToast = toast.loading("Enviando imagem do banner...");
     const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       const url = await uploadBannerImage(file);
+      // O upload pertence à abertura que o iniciou.
+      if (geracaoDoUpload !== geracaoDoEditor.current) {
+        toast.dismiss(loadingToast);
+        return;
+      }
       if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
         deleteStorageFile(formData.imageUrl).catch(() => {});
       }
       setFormData((prev) => ({ ...prev, imageUrl: url }));
       toast.success("Imagem enviada com sucesso", { id: loadingToast });
     } catch {
+      if (geracaoDoUpload !== geracaoDoEditor.current) {
+        toast.dismiss(loadingToast);
+        return;
+      }
       toast.error("Erro ao enviar imagem", { id: loadingToast });
     } finally {
       fim();
-      setUploading(false);
+      if (geracaoDoUpload === geracaoDoEditor.current) {
+        setUploading(false);
+      }
     }
   };
 
