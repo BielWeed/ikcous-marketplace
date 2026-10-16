@@ -2637,7 +2637,7 @@ export function useOrders(
   );
 
   const handleRealtimeUpdate = useCallback(
-    (updatedOrder: any) => {
+    (updatedOrder: any, oldOrder: any) => {
       if (!updatedOrder.id) return;
       const filtro = isAdmin ? ultimaConsultaAdminRef.current?.[2] : undefined;
       const filtroConhecido =
@@ -2652,7 +2652,14 @@ export function useOrders(
       );
       // A RPC existente recompõe página e total quando alguém entra ou sai
       // do recorte. O mesmo debounce do INSERT absorve rajadas de eventos.
-      if (filtroConhecido && (casaStatus ? !jaNaLista : jaNaLista)) {
+      if (
+        (filtroConhecido ||
+          (isAdmin &&
+            ultimaConsultaAdminRef.current?.[7] === "pago" &&
+            updatedOrder.payment_status === "pago" &&
+            oldOrder?.payment_status !== "pago")) &&
+        (casaStatus ? !jaNaLista : jaNaLista)
+      ) {
         if (debounceRecarregarInsertRef.current) {
           clearTimeout(debounceRecarregarInsertRef.current);
         }
@@ -2849,7 +2856,7 @@ export function useOrders(
       ) {
         await handleRealtimeInsertRef.current(payload.new);
       } else if (payload.eventType === "UPDATE" && payload.new) {
-        handleRealtimeUpdateRef.current(payload.new);
+        handleRealtimeUpdateRef.current(payload.new, payload.old);
       } else if (payload.eventType === "DELETE") {
         handleRealtimeDeleteRef.current(oldId);
       }
