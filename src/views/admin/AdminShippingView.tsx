@@ -37,7 +37,7 @@ import {
   modoDaEntregaNaCidade,
   retiradaLigadaNaLista,
 } from "@/lib/guarda-de-frete";
-import { alcanceAoMudarOCepDaLoja } from "@/lib/loja-pronta";
+import { alcanceAoMudarOCepDaLoja, cepCompleto } from "@/lib/loja-pronta";
 import { usePagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
 import {
   type PresetFreteGratis,
@@ -482,6 +482,14 @@ export const AdminShippingView = memo(function AdminShippingView({
     formData.modo !== modoDaEntregaNaCidade(config) &&
     !temEnderecoDaLoja;
 
+  // "Só retiro" sem o CEP completo da loja: a edge e as RPCs recusam toda
+  // compra (origin_cep vazio). Vale também para a loja que JÁ está nesse modo:
+  // o salvar fica travado enquanto o modo resultante for "Só retiro".
+  const soRetiroSemCep =
+    !!config &&
+    formData.modo === "so_retiro" &&
+    !cepCompleto(config.originCep);
+
   // ── Dirty check NACIONAL (T4, herdado) ─────────────────────────────────
   const isFormDirtyNacional = useMemo(() => {
     if (!config) return false;
@@ -600,6 +608,14 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
+    if (soRetiroSemCep) {
+      toast.error("Cadastre o CEP da loja em Minha loja", {
+        description:
+          "Para vender só com retirada, a loja precisa do CEP. Ou escolha outra forma de entrega.",
+      });
+      return;
+    }
+
     setIsSaving(true);
     haptic.medium();
 
@@ -708,7 +724,8 @@ export const AdminShippingView = memo(function AdminShippingView({
     !isOffline &&
     isFormDirty &&
     !erroNacional &&
-    !retiradaSemEndereco;
+    !retiradaSemEndereco &&
+    !soRetiroSemCep;
 
   // Map (não Record indexado por variável): indexação dinâmica dispara
   // `security/detect-object-injection` do eslint e o teto do lint reprova

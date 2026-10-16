@@ -18,6 +18,7 @@ import {
   prefixoDoCepDaLoja,
   resumoDoAlcance,
 } from "@/lib/loja-pronta";
+import { cepCompleto } from "@/lib/loja-pronta";
 import { reais } from "@/lib/status-da-entrega";
 import type { View } from "@/types";
 import { memo, useEffect, useRef, useState } from "react";
@@ -204,6 +205,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   readonly pagamentoPeloAppLigado?: boolean | null;
 }) {
   const [semEnderecoAoEscolher, setSemEnderecoAoEscolher] = useState(false);
+  const [semCepAoEscolher, setSemCepAoEscolher] = useState(false);
   const soRetiro = modo === "so_retiro";
   const prefixo = prefixoDoCepDaLoja(cepDaLoja);
   const soPerto = alcanceEhSoPertoDaLoja(cepDaLoja, faixa);
@@ -243,6 +245,16 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           : semEnderecoAoEscolher
             ? "Para escolher a retirada, cadastre o endereço da loja em Minha loja. O cliente precisa saber onde buscar."
             : null;
+  // "Só retiro" sem o CEP completo da loja: a edge e as RPCs recusam toda compra
+  // (origin_cep vazio), então a escolha não vale e o estado salvo avisa. A
+  // régua de "CEP completo" é a MESMA da loja pronta.
+  const semCepDaLoja = !cepCompleto(cepDaLoja);
+  const avisoDoCep: string | null =
+    onModo && semCepDaLoja && (soRetiro || semCepAoEscolher)
+      ? "Para vender só com retirada, cadastre o CEP da loja em Minha loja."
+      : null;
+  // UM alerta só: a falta do CEP vem antes da falta do endereço.
+  const alertaDoModo = avisoDoCep ?? avisoDoEndereco;
   const entraNoTeste =
     prefixo !== null && cepDeTeste.replace(/\D/g, "").length === 8
       ? cepEhLocal(cepDaLoja ?? "", cepDeTeste, faixa)
@@ -332,27 +344,44 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 efeito={r.efeito}
                 desabilitado={desabilitado}
                 onEscolher={() => {
+                  // Só retiro sem CEP da loja: ninguém consegue comprar.
+                  if (r.modo === "so_retiro" && semCepDaLoja) {
+                    setSemCepAoEscolher(true);
+                    setSemEnderecoAoEscolher(false);
+                    return;
+                  }
                   // Retirada sem endereço seria promessa vazia: a escolha não
                   // vale e a tela manda cadastrar o endereço.
                   if (r.modo !== "entrego" && !temEndereco) {
                     setSemEnderecoAoEscolher(true);
+                    setSemCepAoEscolher(false);
                     return;
                   }
                   setSemEnderecoAoEscolher(false);
+                  setSemCepAoEscolher(false);
                   onModo(r.modo);
                 }}
               />
             ))}
           </div>
-          {avisoDoEndereco && (
+          {alertaDoModo && (
             // Colado nos cartões: no celular um aviso lá embaixo ficava fora
             // da tela e parecia que o toque não tinha feito nada.
             <p
               role="alert"
               className="mt-3 text-[12.5px] leading-snug text-amber-300"
             >
-              {avisoDoEndereco}
+              {alertaDoModo}
             </p>
+          )}
+          {avisoDoCep && onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate("admin-about-store")}
+              className="mt-2 flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+            >
+              Abrir Minha loja
+            </button>
           )}
         </div>
       )}
@@ -545,13 +574,16 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
         </p>
       )}
 
-      {onModo && (
+      {/* Em "Entrego" a cliente NÃO pode retirar: com endereço cadastrado a
+          linha afirmaria o contrário, então só aparece sem endereço (o botão
+          de cadastrar é o caminho para ligar a retirada depois). */}
+      {onModo && (modo !== "entrego" || !temEndereco) && (
         <Linha
           nome="Endereço da retirada"
           dica={
             temEndereco
               ? `${soRetiro ? "Todo cliente" : "Quem é da mesma área da entrega local"} pode buscar o pedido de graça em: ${(enderecoDaLoja ?? "").trim()}`
-              : avisoDoEndereco
+              : alertaDoModo
                 ? undefined
                 : "Para oferecer a retirada, cadastre o endereço da loja em Minha loja — o cliente precisa saber onde buscar o pedido."
           }

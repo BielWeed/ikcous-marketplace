@@ -20,7 +20,7 @@ import type { View } from "@/types";
 export type EstadoDoItem = "carregando" | "feito" | "pendente";
 
 /** CEP completo: oito dígitos, com ou sem o hífen após o quinto. */
-function cepCompleto(cep: string | null | undefined): boolean {
+export function cepCompleto(cep: string | null | undefined): boolean {
   return /^\d{5}-?\d{3}$/.test(cep?.trim() ?? "");
 }
 
