@@ -102,6 +102,11 @@ export function useWebVitals() {
 
     // CLS
     let clsValue = 0;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && clsValue > 0) {
+        logVital("CLS", clsValue * 1000, clsValue * 1000); // store as ms-scale for consistency
+      }
+    };
     try {
       if (PerformanceObserver.supportedEntryTypes?.includes("layout-shift")) {
         const clsObs = new PerformanceObserver((list) => {
@@ -119,15 +124,9 @@ export function useWebVitals() {
         observers.push(clsObs);
       }
       // Log CLS on page unload
-      document.addEventListener(
-        "visibilitychange",
-        () => {
-          if (document.visibilityState === "hidden" && clsValue > 0) {
-            logVital("CLS", clsValue * 1000, clsValue * 1000); // store as ms-scale for consistency
-          }
-        },
-        { once: true },
-      );
+      document.addEventListener("visibilitychange", handleVisibilityChange, {
+        once: true,
+      });
     } catch {
       /* not supported */
     }
@@ -185,6 +184,9 @@ export function useWebVitals() {
       /* not supported */
     }
 
-    return () => observers.forEach((o) => o.disconnect());
+    return () => {
+      observers.forEach((o) => o.disconnect());
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 }
