@@ -382,6 +382,21 @@ describe("o cartão do Início", () => {
   });
 });
 
+describe("entregaComAlcanceCurto em Só retiro", () => {
+  it("sem entrega própria não há alcance a confirmar, nem com CEP de rua e alcance vazio", () => {
+    expect(
+      entregaComAlcanceCurto({ originCep: CEP_DE_RUA, localCepRange: "" }),
+    ).toBe(true);
+    expect(
+      entregaComAlcanceCurto({
+        originCep: CEP_DE_RUA,
+        localCepRange: "",
+        localDeliveryEnabled: false,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("Ajustes: o subtítulo do grupo 'Entrega e frete' fala a mesma regra", () => {
   type Entrada = Parameters<typeof subtitulosDosGrupos>[0];
 
@@ -435,5 +450,37 @@ describe("Ajustes: o subtítulo do grupo 'Entrega e frete' fala a mesma regra", 
     expect(
       subtituloDaEntrega({ originCep: CEP_GERAL_DE_CIDADE, localCepRange: "" }),
     ).toBe("R$ 10 por entrega · Só na sua cidade");
+  });
+
+  it("Só retiro com CEP de rua e alcance vazio: falta o ENDEREÇO, não o alcance", () => {
+    expect(
+      subtituloDaEntrega({
+        originCep: CEP_DE_RUA,
+        localCepRange: "",
+        localDeliveryEnabled: false,
+        enabledShippingMethods: ["store-pickup"],
+      }),
+    ).toBe("Falta: endereço da loja");
+  });
+
+  it("Só retiro com o endereço conferido: pronto, sem olhar o alcance", () => {
+    const { originCep, storeAddress } = montarEnderecoDaLoja({
+      cep: "30130010",
+      rua: "Avenida Afonso Pena",
+      numero: "100",
+      complemento: "",
+      bairro: "Centro",
+      cidade: "Belo Horizonte",
+      uf: "MG",
+    });
+    expect(
+      subtituloDaEntrega({
+        originCep,
+        storeAddress,
+        localCepRange: "",
+        localDeliveryEnabled: false,
+        enabledShippingMethods: ["store-pickup"],
+      }),
+    ).toBe("Só retiro · Só retirada");
   });
 });

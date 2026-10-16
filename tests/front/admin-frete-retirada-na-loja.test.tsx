@@ -34,6 +34,9 @@ type ConfigDeTeste = {
   freeShippingMin?: number;
   shippingProvider?: string;
   localDeliveryFee?: number;
+  localDeliveryEnabled?: boolean;
+  localDeliveryDays?: number;
+  localCepRange?: string;
   enabledShippingMethods?: string[];
   storeAddress?: string | null;
 };
@@ -182,11 +185,11 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     await drenar();
   }
 
-  function chaveDaRetirada(): HTMLButtonElement {
-    const chave = hospedeiro.querySelector(
-      'button[role="switch"][aria-label="Permitir retirada na loja"]',
-    ) as HTMLButtonElement | null;
-    expect(chave).not.toBeNull();
+  function chaveDaRetirada(titulo = "Entrego e retiro"): HTMLButtonElement {
+    const chave = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>('button[role="radio"]'),
+    ].find((b) => b.querySelector("span")?.textContent === titulo);
+    expect(chave).toBeDefined();
     return chave as HTMLButtonElement;
   }
 
@@ -239,7 +242,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     };
     await renderizarFrete();
     expect(chaveDaRetirada().getAttribute("aria-checked")).toBe("true");
-    await clicar(chaveDaRetirada());
+    await clicar(chaveDaRetirada("Entrego"));
     await clicar(botaoSalvar());
     expect(updateConfig.mock.calls[0][0].enabledShippingMethods).toEqual([
       "pac",
@@ -340,6 +343,266 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
       "Minha loja",
     );
+  });
+
+  it.each([
+    ["Entrego", false, ["pac", "store-pickup"], true, ["pac"]],
+    ["Entrego e retiro", true, ["pac"], true, ["pac", "store-pickup"]],
+    ["Só retiro", true, ["pac"], false, ["pac", "store-pickup"]],
+  ] as const)(
+    "%s grava entrega própria e retirada juntas",
+    async (titulo, inicial, metodos, ligada, esperados) => {
+      estadoDaLoja.atual = {
+        originCep: "38500-000",
+        storeAddress: ENDERECO_FICTICIO,
+        localDeliveryEnabled: inicial,
+        enabledShippingMethods: [...metodos],
+      };
+      await renderizarFrete();
+      await clicar(chaveDaRetirada(titulo));
+      await clicar(botaoSalvar());
+      expect(updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          localDeliveryEnabled: ligada,
+          enabledShippingMethods: [...esperados],
+          localDeliveryDays: 1,
+        }),
+      );
+    },
+  );
+
+  it("Só retiro sem endereço não muda o formulário nem permite salvar", async () => {
+    estadoDaLoja.atual = { originCep: "38500-000", storeAddress: "  " };
+    await renderizarFrete();
+    await clicar(chaveDaRetirada("Só retiro"));
+    expect(chaveDaRetirada("Só retiro").getAttribute("aria-checked")).toBe(
+      "false",
+    );
+    expect(botaoSalvar()?.disabled).toBe(true);
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "Minha loja",
+    );
+  });
+
+  it("eco sem storeAddress usa a mesma fonte do bloco e impede Só retiro", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete();
+    estadoDaLoja.atual = { originCep: "38500-000" };
+    await renderizarFrete();
+    await clicar(chaveDaRetirada("Só retiro"));
+    expect(chaveDaRetirada("Só retiro").getAttribute("aria-checked")).toBe(
+      "false",
+    );
+    expect(botaoSalvar()?.disabled).toBe(true);
+  });
+
+  it("endereço some depois da escolha: salvar não envia Só retiro", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete();
+    await clicar(chaveDaRetirada("Só retiro"));
+    estadoDaLoja.atual = { originCep: "38500-000" };
+    await renderizarFrete();
+    await clicar(botaoSalvar());
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+
+  function digitar(seletor: string, valor: string) {
+    const campo = hospedeiro.querySelector<HTMLInputElement>(seletor);
+    expect(campo).not.toBeNull();
+    act(() => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(campo, valor);
+      campo?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  it.each([0, 30])("prazo %i dias é preservado no salvamento", async (dias) => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete();
+    digitar("#local-delivery-days", String(dias));
+    await clicar(botaoSalvar());
+    expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ localDeliveryDays: dias }),
+    );
+  });
+
+  it.each(["-1", "31", "365", "1.5"])(
+    "prazo inválido %s não é salvo",
+    async (dias) => {
+      estadoDaLoja.atual = {
+        originCep: "38500-000",
+        storeAddress: ENDERECO_FICTICIO,
+      };
+      await renderizarFrete();
+      digitar("#local-delivery-days", dias);
+      await clicar(chaveDaRetirada("Entrego e retiro"));
+      await clicar(botaoSalvar());
+      expect(updateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ localDeliveryDays: 1 }),
+      );
+    },
+  );
+
+  it("Só retiro oculta campos inaplicáveis e voltar preserva valor, prazo e alcance", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+      localDeliveryFee: 12,
+      localDeliveryDays: 3,
+      localCepRange: "38500",
+    };
+    await renderizarFrete();
+    await clicar(chaveDaRetirada("Só retiro"));
+    expect(hospedeiro.querySelector("#local-delivery-days")).toBeNull();
+    expect(hospedeiro.querySelector("#local-delivery-fee")).toBeNull();
+    expect(hospedeiro.querySelector("#local-cep-range")).toBeNull();
+    await clicar(chaveDaRetirada("Entrego"));
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#local-delivery-days")?.value,
+    ).toBe("3");
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#local-delivery-fee")?.value,
+    ).toBe("12");
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#local-cep-range")?.value,
+    ).toBe("38500");
+    expect(botaoSalvar()?.disabled).toBe(true);
+  });
+
+  it("CEP mudou enquanto editava: salvar acompanha o novo CEP sem perder serviços atuais", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      localCepRange: "38500",
+      storeAddress: ENDERECO_FICTICIO,
+      enabledShippingMethods: ["pac"],
+    };
+    await renderizarFrete();
+    await clicar(chaveDaRetirada("Entrego e retiro"));
+    estadoDaLoja.atual = {
+      ...estadoDaLoja.atual,
+      originCep: "38400-100",
+      localCepRange: "38400",
+      enabledShippingMethods: ["jadlog"],
+    };
+    await renderizarFrete();
+    await clicar(botaoSalvar());
+    expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        localCepRange: "38400",
+        enabledShippingMethods: ["jadlog", "store-pickup"],
+      }),
+    );
+  });
+
+  it("cada resposta diz o efeito para a cliente, em português simples", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete();
+    expect(chaveDaRetirada("Só retiro").textContent).toContain(
+      "Seus clientes só poderão retirar na loja. Não oferecemos entrega.",
+    );
+    expect(chaveDaRetirada("Entrego").textContent).toContain(
+      "Ele não pode retirar na loja",
+    );
+    expect(chaveDaRetirada("Entrego e retiro").textContent).toContain(
+      "retira na loja, de graça",
+    );
+  });
+
+  it("loja já em Só retiro abre marcada, com a retirada e sem prazo nem valor", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+      localDeliveryEnabled: false,
+      enabledShippingMethods: ["pac", "store-pickup"],
+    };
+    await renderizarFrete();
+    expect(chaveDaRetirada("Só retiro").getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    expect(chaveDaRetirada("Entrego").getAttribute("aria-checked")).toBe(
+      "false",
+    );
+    expect(hospedeiro.querySelector("#local-delivery-days")).toBeNull();
+    expect(hospedeiro.textContent).toContain(
+      "Todo cliente pode buscar o pedido",
+    );
+  });
+
+  it("padrões intactos: mexer só na taxa não muda o modo nem a lista, e manda entrega ligada e 1 dia", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+      enabledShippingMethods: ["sedex", "pac"],
+    };
+    await renderizarFrete();
+    digitar("#local-delivery-fee", "7");
+    await clicar(botaoSalvar());
+    const enviado = updateConfig.mock.calls[0][0];
+    expect(enviado).toMatchObject({
+      localDeliveryFee: 7,
+      localDeliveryEnabled: true,
+      localDeliveryDays: 1,
+    });
+    expect(enviado).not.toHaveProperty("enabledShippingMethods");
+  });
+
+  it.each(["-1", "31", "365", "1.5", "abc"])(
+    "prazo %s nem entra no campo: continua o valor anterior",
+    async (digitado) => {
+      estadoDaLoja.atual = {
+        originCep: "38500-000",
+        storeAddress: ENDERECO_FICTICIO,
+        localDeliveryDays: 7,
+      };
+      await renderizarFrete();
+      digitar("#local-delivery-days", digitado);
+      expect(
+        hospedeiro.querySelector<HTMLInputElement>("#local-delivery-days")
+          ?.value,
+      ).toBe("7");
+    },
+  );
+
+  it("apagar o prazo e salvar volta ao padrão de 1 dia", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+      localDeliveryDays: 5,
+    };
+    await renderizarFrete();
+    digitar("#local-delivery-days", "");
+    await clicar(botaoSalvar());
+    expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ localDeliveryDays: 1 }),
+    );
+  });
+
+  it("os cartões das respostas e o botão de cadastrar endereço têm border-solid; a faixa tem seta", async () => {
+    estadoDaLoja.atual = { originCep: "38500-000", storeAddress: null };
+    await renderizarFrete(vi.fn());
+    expect(chaveDaRetirada("Só retiro").className).toContain("border-solid");
+    const cadastrar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Cadastrar endereço em Minha loja",
+    );
+    expect(cadastrar?.className).toContain("border-solid");
+    const resumo = [...hospedeiro.querySelectorAll("summary")].find((x) =>
+      x.textContent?.includes("Escrever faixa de CEP"),
+    );
+    expect(resumo?.className).toContain("before:content-");
   });
 
   // RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md): os dois testes "Transportadoras: ..."

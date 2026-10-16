@@ -339,3 +339,44 @@ describe("estadoDaEntrega", () => {
     expect(passoDosSeis("entrega", {}, { entrega }).estado).toBe("pendente");
   });
 });
+
+describe("Só retiro: entrega pronta pelo endereço conferido", () => {
+  const config = {
+    ...ENDERECO_PRONTO,
+    localDeliveryEnabled: false,
+    enabledShippingMethods: ["store-pickup"],
+    localCepRange: "",
+  };
+  it("endereço conferido basta mesmo sem alcance", () => {
+    expect(estadoDaEntrega(config, false)).toBe("feito");
+  });
+  it.each([undefined, "", "Rua antiga, 10"])(
+    "sem endereço conferido (%s), não está pronta",
+    (storeAddress) => {
+      expect(
+        estadoDaEntrega(
+          { ...config, storeAddress, localCepRange: "01310" },
+          false,
+        ),
+      ).toBe("pendente");
+    },
+  );
+  it("sem retirada ligada, não está pronta", () => {
+    expect(
+      estadoDaEntrega(
+        { ...config, enabledShippingMethods: [], localCepRange: "01310" },
+        false,
+      ),
+    ).toBe("pendente");
+  });
+  it("durante carga não afirma pronta", () => {
+    expect(estadoDaEntrega(config, true)).toBe("carregando");
+  });
+  it("modo antigo e padrão explícito continuam pendentes pelo alcance", () => {
+    const antigo = { originCep: "01310-100", localCepRange: "" };
+    expect(estadoDaEntrega(antigo, false)).toBe("pendente");
+    expect(
+      estadoDaEntrega({ ...antigo, localDeliveryEnabled: true }, false),
+    ).toBe("pendente");
+  });
+});

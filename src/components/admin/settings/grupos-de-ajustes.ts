@@ -163,11 +163,15 @@ function entregaEmAjustes(
   const estado = estadoDaEntrega(config, false);
   if (estado === "pendente") {
     // Há CEP, mas o alcance é curto: falta ampliar, não cadastrar o CEP.
+    // Em "Só retiro" não há alcance: com CEP, o que falta é o endereço.
     return {
       estado,
-      texto: entregaComAlcanceCurto(config)
-        ? "Falta: confirmar até onde você entrega"
-        : "Falta: CEP da loja",
+      texto:
+        config.localDeliveryEnabled === false && config.originCep
+          ? "Falta: endereço da loja"
+          : entregaComAlcanceCurto(config)
+            ? "Falta: confirmar até onde você entrega"
+            : "Falta: CEP da loja",
     };
   }
   const soNaCidade = (config.shippingCoverage || "national") === "local";

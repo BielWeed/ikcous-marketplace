@@ -315,13 +315,12 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
 
     // A credencial da transportadora NÃO tem chave clicável (é de Ajustes —
     // aqui é exibição). As chaves interativas são SÓ as que têm campo
-    // gravável real por trás: a cobertura e, desde a release 1.5.3, a
-    // retirada na loja (chave `store-pickup` em enabledShippingMethods —
-    // provada em admin-frete-retirada-na-loja.test.tsx).
+    // gravável real por trás: a cobertura. A retirada deixou de ser chave
+    // (16/10/2026): são as três respostas "Como você entrega" — provadas em
+    // admin-frete-retirada-na-loja.test.tsx.
     const chaves = [...hospedeiro.querySelectorAll('[role="switch"]')];
     expect(chaves.map((c) => c.getAttribute("aria-label"))).toEqual([
       "Só entregar na cidade",
-      "Permitir retirada na loja",
     ]);
     const cobertura = chaves[0] as HTMLElement;
     expect(cobertura.getAttribute("aria-checked")).toBe("false");

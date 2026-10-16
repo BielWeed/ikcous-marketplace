@@ -213,3 +213,43 @@ describe("statusDaEntrega — Frete grátis local", () => {
     ).toBe("Por produto marcado");
   });
 });
+
+describe("status da entrega em Só retiro", () => {
+  it("não promete entrega ou transportadora e informa retirada para quem é de fora", () => {
+    const [local, nacional, gratis] = statusDaEntrega(
+      entrada({
+        config: config({
+          localDeliveryEnabled: false,
+          enabledShippingMethods: ["store-pickup"],
+          storeAddress: "Rua de Teste, 10",
+        }),
+        nomesLigados: ["Melhor Envio"],
+      }),
+    );
+    expect(local.valor).toBe("Só retiro");
+    expect(local.tom).toBe("positivo");
+    expect(nacional.detalhe).toContain("retirar na loja");
+    expect(gratis.valor).toBe("Retirada grátis");
+  });
+  it("sem endereço, avisa a pendência", () => {
+    const [local] = statusDaEntrega(
+      entrada({
+        config: config({
+          localDeliveryEnabled: false,
+          enabledShippingMethods: ["store-pickup"],
+        }),
+      }),
+    );
+    expect(local.tom).toBe("atencao");
+    expect(local.detalhe).toContain("endereço");
+  });
+  it("padrões explícitos preservam todos os resumos antigos", () => {
+    expect(
+      statusDaEntrega(
+        entrada({
+          config: config({ localDeliveryEnabled: true }),
+        }),
+      ),
+    ).toEqual(statusDaEntrega(entrada()));
+  });
+});
