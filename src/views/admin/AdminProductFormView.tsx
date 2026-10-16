@@ -40,6 +40,7 @@ import { useProducts } from "@/hooks/useProducts";
 // não puxa `useVendaPresencial.ts` (nem o cliente Supabase) para este chunk.
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import {
@@ -846,6 +847,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const file = arquivoDaImagemRecortada(croppedBlob, "product-image-");
     const loadingToast = toast.loading("Enviando imagem recortada...");
 
+    const fim = marcarOperacaoSensivel("upload-de-foto-do-produto");
     try {
       // Mesmo prazo das fotos novas: o botão Publicar fica desligado enquanto
       // este envio roda, e um upload que nunca responde o prenderia.
@@ -900,6 +902,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             : undefined,
       });
     } finally {
+      fim();
       setIsUploadingAdjusted(false);
     }
   };
@@ -1528,6 +1531,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
       const falhas: FotoComFalha[] = [];
       let enviadas = 0;
+      const fim = marcarOperacaoSensivel("upload-de-foto-do-produto");
       try {
         // Uma foto por vez, cada uma com o próprio prazo: a que trava não
         // arrasta as outras, e a lojista vê "N de M" andar.
@@ -1600,6 +1604,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           );
         }
       } finally {
+        fim();
         // Sempre volta ao normal -- é isto que garante que o botão nunca
         // fica preso por um envio que acabou (ou estourou).
         setIsUploadingImages(false);
@@ -2218,6 +2223,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           : null,
     };
 
+    const fim = marcarOperacaoSensivel("salvar-produto");
     try {
       if (productId) {
         // 1. Atualizar produto principal. O estoque só vai se a lojista mexeu
@@ -2436,6 +2442,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // Laudo 0109 (A12): o toast ficou no hook (useProducts traduz o erro
       // com mensagemAmigavelErroProduto e já avisou) — a tela não repete
       // com um aviso genérico por cima (era o "dois toasts empilhados").
+    } finally {
+      fim();
     }
   };
 
