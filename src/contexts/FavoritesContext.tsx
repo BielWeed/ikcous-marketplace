@@ -215,39 +215,75 @@ export function FavoritesProvider({
   // Cada consulta pega um número de rodada e, ao voltar, só grava se ainda é a
   // mais nova E se o usuário atual continua o mesmo que a disparou.
   const rodadaRef = useRef(0);
+  // Leituras anteriores ou durante uma gravação podem trazer um retrato velho.
+  // O controle pertence à sessão: terminar uma escrita de A não invalida B.
+  const gravacoesRef = useRef({
+    pendentes: 0,
+    ultimaLeitura: 0,
+    reconsultar: false,
+  });
   const usuarioAtualIdRef = useRef<string | null>(user?.id ?? null);
   useEffect(() => {
-    usuarioAtualIdRef.current = user?.id ?? null;
-  }, [user]);
-
-  const fetchDbFavorites = useCallback(async () => {
-    if (!user) return;
-    const rodada = ++rodadaRef.current;
-    const donoDaRodada = user.id;
-    const ehVelha = () =>
-      rodada !== rodadaRef.current ||
-      usuarioAtualIdRef.current !== donoDaRodada;
-    try {
-      const { data, error } = await supabase
-        .from("favorites")
-        .select("product_id")
-        .eq("user_id", user.id);
-
-      if (ehVelha()) return;
-      if (error) {
-        console.error("Error fetching favorites", error);
-        setErro("Não conseguimos carregar seus favoritos.");
-      } else if (data) {
-        const newIds = data.map((f) => f.product_id);
-        setDbFavoriteIds(newIds);
-        setErro(null);
-      }
-    } catch (err) {
-      if (ehVelha()) return;
-      console.error("Fetch favorites failed", err);
-      setErro("Não conseguimos carregar seus favoritos.");
+    const userId = user?.id ?? null;
+    if (usuarioAtualIdRef.current !== userId) {
+      gravacoesRef.current = {
+        pendentes: 0,
+        ultimaLeitura: 0,
+        reconsultar: false,
+      };
     }
+    usuarioAtualIdRef.current = userId;
   }, [user]);
+
+  const fetchDbFavorites = useCallback(
+    async function consultarFavoritos() {
+      if (!user || usuarioAtualIdRef.current !== user.id) return;
+      const rodada = ++rodadaRef.current;
+      const donoDaRodada = user.id;
+      const gravacoes = gravacoesRef.current;
+      gravacoes.ultimaLeitura = rodada;
+      const ehVelha = () => {
+        if (
+          usuarioAtualIdRef.current !== donoDaRodada ||
+          gravacoes !== gravacoesRef.current ||
+          rodada !== gravacoes.ultimaLeitura
+        )
+          return true;
+        if (rodada !== rodadaRef.current || gravacoes.pendentes > 0) {
+          // Só a leitura mais recente pede reposição. As anteriores não criam
+          // um ciclo de consultas; se a escrita já terminou, repõe agora.
+          gravacoes.reconsultar = true;
+          if (gravacoes.pendentes === 0) {
+            gravacoes.reconsultar = false;
+            void consultarFavoritos();
+          }
+          return true;
+        }
+        return false;
+      };
+      try {
+        const { data, error } = await supabase
+          .from("favorites")
+          .select("product_id")
+          .eq("user_id", user.id);
+
+        if (ehVelha()) return;
+        if (error) {
+          console.error("Error fetching favorites", error);
+          setErro("Não conseguimos carregar seus favoritos.");
+        } else if (data) {
+          const newIds = data.map((f) => f.product_id);
+          setDbFavoriteIds(newIds);
+          setErro(null);
+        }
+      } catch (err) {
+        if (ehVelha()) return;
+        console.error("Fetch favorites failed", err);
+        setErro("Não conseguimos carregar seus favoritos.");
+      }
+    },
+    [user],
+  );
 
   // Fila serializada de gravações por produto de cada conta: toque do usuário
   // E drenagem da fila pendente passam por ela, para uma gravação em voo nunca
@@ -256,6 +292,14 @@ export function FavoritesProvider({
   const enfileirarGravacao = useCallback(
     async <T,>(chave: string, gravar: () => PromiseLike<T>) => {
       const filas = gravacoesPorProdutoRef.current;
+      const gravacoes =
+        user && usuarioAtualIdRef.current === user.id
+          ? gravacoesRef.current
+          : null;
+      if (gravacoes) {
+        gravacoes.pendentes++;
+        ++rodadaRef.current;
+      }
       // Cada produto de cada conta segue a ordem dos toques, inclusive após uma falha.
       const gravacao = (filas.get(chave) ?? Promise.resolve())
         .catch(() => {})
@@ -266,9 +310,18 @@ export function FavoritesProvider({
         return { resultado, ultima: filas.get(chave) === gravacao };
       } finally {
         if (filas.get(chave) === gravacao) filas.delete(chave);
+        if (gravacoes && gravacoes === gravacoesRef.current) {
+          gravacoes.pendentes--;
+          ++rodadaRef.current;
+          if (gravacoes.pendentes === 0 && gravacoes.reconsultar) {
+            gravacoes.reconsultar = false;
+            // Deixa o chamador concluir seu rollback antes de aplicar a releitura.
+            void Promise.resolve().then(fetchDbFavorites);
+          }
+        }
       }
     },
-    [],
+    [user, fetchDbFavorites],
   );
   // Quantas remoções JÁ CONCLUÍDAS (com sucesso) cada produto de cada conta
   // teve. A drenagem anota o número ao entrar na fila e, quando chega a vez
