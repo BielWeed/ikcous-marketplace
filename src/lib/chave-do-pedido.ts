@@ -23,7 +23,7 @@
 const CHAVE_DE_ARMAZENAMENTO = "ikcous-chave-do-pedido";
 
 /** randomUUID não existe em HTTP na rede local; getRandomValues continua disponível. */
-export function gerarUuidDaCompra(): string {
+function gerarUuidDaCompra(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
   }

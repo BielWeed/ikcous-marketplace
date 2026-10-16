@@ -69,15 +69,22 @@ describe("tentativas em aberto do lançamento", () => {
     vi.unstubAllGlobals();
   });
 
-  it("registro com formato errado no armazenamento é ignorado", async () => {
+  it("registro do próprio conteúdo com formato errado é ignorado", async () => {
+    const primeiro = await import(MODULO);
+    primeiro.guardarChaveEmAberto(CONTEUDO, "chave-1");
+    const armazem = "fin-lancamento-tentativas-em-aberto";
+    const chaveDoResumo = Object.keys(
+      JSON.parse(sessionStorage.getItem(armazem) ?? "{}"),
+    )[0];
     sessionStorage.setItem(
-      "fin-lancamento-tentativas-em-aberto",
-      JSON.stringify({ qualquer: 42, outro: null }),
+      armazem,
+      JSON.stringify({ [chaveDoResumo]: { chave: 42, em: Date.now() } }),
     );
+    vi.resetModules();
     const m = await import(MODULO);
     expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
-    m.guardarChaveEmAberto(CONTEUDO, "chave-1");
-    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBe("chave-1");
+    sessionStorage.setItem(armazem, JSON.stringify({ [chaveDoResumo]: null }));
+    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
   });
 
   it("registro corrompido no armazenamento é ignorado", async () => {
