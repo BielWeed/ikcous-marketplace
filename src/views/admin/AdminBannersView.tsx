@@ -1733,6 +1733,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       const url = await uploadBannerImage(file);
       // O upload pertence à abertura que o iniciou.
       if (geracaoDoUpload !== geracaoDoEditor.current) {
+        deleteStorageFile(url).catch(() => {});
         toast.dismiss(loadingToast);
         return;
       }
