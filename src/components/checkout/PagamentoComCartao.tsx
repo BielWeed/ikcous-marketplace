@@ -42,6 +42,7 @@ import {
   type CategoriaDaRecusa,
   TEXTOS_DO_CARTAO,
   categoriaDaRecusa,
+  categoriaDoServidor,
   formatarHoraDoPrazo,
   lerPrazoEmMs,
 } from "./mensagens-do-cartao";
@@ -111,7 +112,12 @@ export type ResultadoDoCartao =
       readonly url: string;
       readonly paymentId: string | null;
     }
-  | { readonly tipo: "recusado"; readonly motivo: string }
+  | {
+      readonly tipo: "recusado";
+      readonly motivo: string;
+      /** Categoria já vista pelo servidor; ausente = usa o mapa por frase. */
+      readonly categoria?: CategoriaDaRecusa;
+    }
   // Redesenho (16/10/2026): a validação LOCAL falhou — nada foi enviado ao
   // servidor, nunca existiu cobrança. Antes era `erro` + `semCobranca`, e o pai
   // trocava a tela inteira; agora a tela mostra a frase curada sem desmontar o
@@ -614,7 +620,12 @@ export function classificarRespostaCartao(
         categoria: "terminal",
       };
     }
-    return { tipo: "recusado", motivo: motivo ?? MOTIVO_PADRAO_DA_RECUSA };
+    const categoria = categoriaDoServidor(r.categoriaDaRecusa);
+    return {
+      tipo: "recusado",
+      motivo: motivo ?? MOTIVO_PADRAO_DA_RECUSA,
+      ...(categoria ? { categoria } : {}),
+    };
   }
 
   if (r?.statusPagamento === "expirado") {
@@ -1188,7 +1199,9 @@ export function PagamentoComCartao({
           // é refeito, por escolha dela). Relança para o Brick sair do
           // "processando" e liberar o botão.
           mostrarAviso(
-            tipoDoAvisoDaRecusa(categoriaDaRecusa(resultado.motivo)),
+            tipoDoAvisoDaRecusa(
+              resultado.categoria ?? categoriaDaRecusa(resultado.motivo),
+            ),
           );
           throw new Error(resultado.motivo);
         }

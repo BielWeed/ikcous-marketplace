@@ -17,16 +17,17 @@ export type CategoriaDaRecusa =
  * O servidor NÃO devolve o código do motivo ao navegador: `criar-pagamento`
  * traduz o `status_detail` do Mercado Pago para uma FRASE CURADA
  * (`MOTIVOS_DE_RECUSA` em `supabase/functions/_shared/mercadopago.ts`) e só
- * ela viaja em `motivoRecusa`. A categoria sai da frase, por igualdade EXATA
- * — a única informação que existe do lado de cá.
+ * ela viaja em `motivoRecusa`. Desde a rodada de 16/10 a resposta também traz
+ * `categoriaDaRecusa` (conjunto fechado, `categoriaDoServidor`); o mapa por
+ * frase, por igualdade EXATA, é só a compatibilidade com servidor antigo.
  *
  * Frase que não está aqui (o servidor mudou o texto, ou é um motivo sem
  * categoria própria — banco emissor, cartão desabilitado, parcelamento,
  * segurança, 3DS) cai em "geral". ATENÇÃO: "geral" afirma que nada foi
  * cobrado; isso só é verdade porque hoje o servidor SÓ devolve `recusado`
- * depois de soltar a vaga (recusa definitiva). Ao adotar `categoriaDaRecusa`
- * no front, essa frase deve depender de prova de recusa definitiva, não de a
- * frase ser desconhecida. O teste
+ * depois de soltar a vaga (recusa definitiva); o front só chega a "geral"
+ * quando a categoria do servidor é "outra" ou a frase é desconhecida num
+ * servidor antigo. O teste
  * `cartao-redesenho-mensagens.test.ts` lê o arquivo do servidor e reprova se
  * uma destas frases sumir de lá.
  */
@@ -49,6 +50,29 @@ const CATEGORIA_POR_FRASE: ReadonlyMap<string, CategoriaDaRecusa> = new Map(
 export function categoriaDaRecusa(motivo: unknown): CategoriaDaRecusa {
   const frase = typeof motivo === "string" ? motivo.trim() : "";
   return CATEGORIA_POR_FRASE.get(frase) ?? "geral";
+}
+
+/**
+ * A categoria que o SERVIDOR já classificou (`categoriaDaRecusa` na resposta de
+ * `criar-pagamento`, conjunto fechado). Valor fora do conjunto (ausente, lixo,
+ * servidor antigo) devolve `null`: quem chama cai no mapa por frase. "O banco
+ * pediu confirmação" (3DS não concluído) lê-se na tela como o pedido de
+ * autorização no app do banco.
+ */
+export function categoriaDoServidor(valor: unknown): CategoriaDaRecusa | null {
+  switch (valor) {
+    case "dados_do_cartao":
+      return "dados";
+    case "sem_limite":
+      return "sem-limite";
+    case "banco_pediu_autorizacao":
+    case "banco_pediu_confirmacao":
+      return "autorizacao";
+    case "outra":
+      return "geral";
+    default:
+      return null;
+  }
 }
 
 /** As frases que o cliente lê — uma por categoria, em português de gente. */

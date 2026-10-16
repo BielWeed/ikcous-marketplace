@@ -444,6 +444,38 @@ describe("tela do cartão redesenhada", () => {
       expect(document.activeElement?.textContent).toBe(TITULO_LIMITE);
     });
 
+    it("a categoria que o servidor mandou vale mais que a frase genérica", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockResolvedValue({
+        paymentId: null,
+        statusPagamento: "recusado",
+        expiraEm: new Date(Date.now() + 20 * 60_000).toISOString(),
+        motivoRecusa: "Não foi possível concluir o pagamento.",
+        categoriaDaRecusa: "sem_limite",
+        podeTentarDeNovo: true,
+      });
+      await render();
+      await enviar(create);
+
+      expect(document.activeElement?.textContent).toBe(TITULO_LIMITE);
+    });
+
+    it("categoria desconhecida do servidor cai no mapa por frase", async () => {
+      const { create } = instalarSdkFalso();
+      criarPagamento.mockResolvedValue({
+        paymentId: null,
+        statusPagamento: "recusado",
+        expiraEm: new Date(Date.now() + 20 * 60_000).toISOString(),
+        motivoRecusa: FRASE_LIMITE,
+        categoriaDaRecusa: "inventada",
+        podeTentarDeNovo: true,
+      });
+      await render();
+      await enviar(create);
+
+      expect(document.activeElement?.textContent).toBe(TITULO_LIMITE);
+    });
+
     it("o painel é anunciado: fica dentro da região aria-live que já existia", async () => {
       const { create } = instalarSdkFalso();
       recusa(FRASE_LIMITE);

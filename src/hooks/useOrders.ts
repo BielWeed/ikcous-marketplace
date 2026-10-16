@@ -827,6 +827,9 @@ export type RespostaCriarPagamento = {
   desafio3ds?: { url: string };
   // Cartão recusado: frase curada pela edge para o cliente.
   motivoRecusa?: string;
+  // Cartão recusado: categoria que a edge já classificou (conjunto fechado,
+  // aditivo; servidor antigo não manda). Valor desconhecido a tela ignora.
+  categoriaDaRecusa?: string;
   // Cartão recusado: `false` quando este pedido não aceita mais tentativa
   // (reserva vencida, limite de tentativas) — a tela não oferece outro
   // cartão nem PIX.
