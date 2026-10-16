@@ -46,9 +46,8 @@ function fazDeploy(branch: string) {
 }
 
 describe("vercel.json — só constrói o que vai ao ar", () => {
-  it("a branch principal e as de integração seguem fazendo deploy", () => {
+  it("as branches de integração e de produção seguem fazendo deploy", () => {
     for (const branch of [
-      BRANCH_PRINCIPAL,
       "production",
       "main",
       "develop",
@@ -57,6 +56,14 @@ describe("vercel.json — só constrói o que vai ao ar", () => {
     ]) {
       expect(fazDeploy(branch), branch).toBe(true);
     }
+  });
+
+  // 16/10/2026, ordem do dono: prévia não serve a nada aqui (a produção sai pela CLI e os testes de navegador
+  // rodam no CI). Cada merge na branch principal gerava um deploy real: 96 em 24 h.
+  it("a branch principal também não gera prévia, e a chave dela não aparece duplicada", () => {
+    expect(fazDeploy(BRANCH_PRINCIPAL), BRANCH_PRINCIPAL).toBe(false);
+    const texto = readFileSync("vercel.json", "utf8");
+    expect(texto.split(`"${BRANCH_PRINCIPAL}":`).length - 1).toBe(1);
   });
 
   it("toda família de branch de PR deixa de gerar prévia, mesmo com barras dentro", () => {
