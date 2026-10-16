@@ -23,24 +23,29 @@ function resumoDoConteudo(conteudo: string): string {
   return `${(h >>> 0).toString(16)}:${conteudo.length}`;
 }
 
-function ler(): Record<string, Registro> {
+function ler(): Map<string, Registro> {
   try {
     const bruto = globalThis.sessionStorage?.getItem(CHAVE_DO_ARMAZEM);
     if (bruto) {
       const lido = JSON.parse(bruto);
-      if (lido && typeof lido === "object") return lido;
+      if (lido && typeof lido === "object") {
+        return new Map(Object.entries(lido as Record<string, Registro>));
+      }
     }
   } catch {
     // Sem armazenamento (aba privada, bloqueio): vale só a memória do módulo.
   }
-  return Object.fromEntries(emMemoria);
+  return new Map(emMemoria);
 }
 
-function gravar(todos: Record<string, Registro>): void {
+function gravar(todos: Map<string, Registro>): void {
   emMemoria.clear();
-  for (const [k, v] of Object.entries(todos)) emMemoria.set(k, v);
+  for (const [k, v] of todos) emMemoria.set(k, v);
   try {
-    globalThis.sessionStorage?.setItem(CHAVE_DO_ARMAZEM, JSON.stringify(todos));
+    globalThis.sessionStorage?.setItem(
+      CHAVE_DO_ARMAZEM,
+      JSON.stringify(Object.fromEntries(todos)),
+    );
   } catch {
     // Idem: a memória do módulo já foi atualizada acima.
   }
@@ -49,14 +54,14 @@ function gravar(todos: Record<string, Registro>): void {
 export function chaveEmAbertoDoConteudo(conteudo: string): string | null {
   const resumo = resumoDoConteudo(conteudo);
   const todos = ler();
-  const achada = todos[resumo];
+  const achada = todos.get(resumo);
   if (!achada) return null;
   if (
     typeof achada.chave !== "string" ||
     typeof achada.em !== "number" ||
     Date.now() - achada.em > VALIDADE_MS
   ) {
-    delete todos[resumo];
+    todos.delete(resumo);
     gravar(todos);
     return null;
   }
@@ -65,16 +70,16 @@ export function chaveEmAbertoDoConteudo(conteudo: string): string | null {
 
 export function guardarChaveEmAberto(conteudo: string, chave: string): void {
   const todos = ler();
-  todos[resumoDoConteudo(conteudo)] = { chave, em: Date.now() };
+  todos.set(resumoDoConteudo(conteudo), { chave, em: Date.now() });
   gravar(todos);
 }
 
 export function esquecerChaveEmAberto(conteudo: string): void {
   const todos = ler();
-  delete todos[resumoDoConteudo(conteudo)];
+  todos.delete(resumoDoConteudo(conteudo));
   gravar(todos);
 }
 
 export function esquecerTodasAsChavesEmAberto(): void {
-  gravar({});
+  gravar(new Map());
 }
