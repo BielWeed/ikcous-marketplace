@@ -51,7 +51,7 @@ describe("avisoDaFaixaDeCep (pendência da loja pronta)", () => {
       localCepRange: "",
     });
     expect(aviso).toBe(
-      "Sua entrega local só vale para CEPs que começam com 38400. Se sua cidade tem vários CEPs, preencha a faixa de CEP",
+      "Sua entrega local só vale para CEPs que começam com 38400. Se sua cidade tem vários CEPs, escolha até onde você entrega",
     );
   });
   it("faixa só com espaços também conta como vazia", () => {
@@ -119,17 +119,17 @@ describe("FreteLocalBloco diz a regra real", () => {
     const texto = desenhar("38400-100", "");
     expect(texto).not.toContain("inteira");
     expect(texto).toContain("Vazio = só CEPs que começam com 38400");
-    expect(texto).toContain("preencha a faixa de CEP");
+    expect(texto).toContain("escolha até onde você entrega");
   });
 
   it("faixa preenchida: sem o aviso", () => {
     const texto = desenhar("38400-100", "38400-000, 38415-999");
-    expect(texto).not.toContain("preencha a faixa de CEP");
+    expect(texto).not.toContain("escolha até onde você entrega");
   });
 
   it("CEP geral da cidade: dica sem o aviso", () => {
     const texto = desenhar("38500-000", "");
     expect(texto).toContain("Vazio = só CEPs que começam com 38500");
-    expect(texto).not.toContain("preencha a faixa de CEP");
+    expect(texto).not.toContain("escolha até onde você entrega");
   });
 });

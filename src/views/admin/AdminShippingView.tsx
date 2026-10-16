@@ -798,6 +798,9 @@ export const AdminShippingView = memo(function AdminShippingView({
                   }
                   enderecoDaLoja={config?.storeAddress}
                   onNavigate={onNavigate}
+                  transportadoraLigada={
+                    credsErro ? null : nomesLigados.length > 0
+                  }
                 />
               </PainelRecolhivel>
 

@@ -163,12 +163,13 @@ describe("o passo 'Como você entrega' diz o motivo com palavras de lojista", ()
     return passo;
   }
 
-  it("alcance curto: pede para ampliar o alcance e explica que clientes de outros bairros podem não conseguir comprar; leva ao Frete", () => {
+  it("alcance curto: pede para confirmar até onde entrega e diz em quais CEPs a loja entrega hoje; leva ao Frete", () => {
     const passo = passoDeEntrega({ originCep: CEP_DE_RUA, localCepRange: "" });
     expect(passo.estado).toBe("pendente");
-    expect(passo.rotuloPendente).toBe("Ampliar o alcance da entrega");
-    expect(passo.explicacaoPendente).toMatch(/outros bairros/i);
-    expect(passo.explicacaoPendente).toMatch(/n[ãa]o conseguir comprar/i);
+    expect(passo.rotuloPendente).toBe("Confirmar até onde você entrega");
+    expect(passo.explicacaoPendente).toBe(
+      "Hoje você entrega só em CEPs que começam com 30130",
+    );
     expect(passo.destino).toBe("admin-shipping");
   });
 
@@ -262,10 +263,12 @@ describe("o cartão do Início", () => {
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("5 de 6 prontos");
     expect(texto).not.toContain("Loja pronta para vender");
-    expect(texto).toMatch(/outros bairros/i);
+    expect(texto).toContain(
+      "Hoje você entrega só em CEPs que começam com 30130",
+    );
 
     const proximo = botaoComTexto(
-      "Próximo passo: Ampliar o alcance da entrega",
+      "Próximo passo: Confirmar até onde você entrega",
     );
     expect(proximo).toBeTruthy();
     await act(async () => {
@@ -279,7 +282,7 @@ describe("o cartão do Início", () => {
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Loja pronta para vender");
     expect(texto).not.toContain("de 6 prontos");
-    expect(texto).not.toMatch(/outros bairros/i);
+    expect(texto).not.toContain("Hoje você entrega só em CEPs");
     expect(texto).not.toContain("só vale para CEPs que começam com");
   });
 
@@ -292,7 +295,7 @@ describe("o cartão do Início", () => {
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Loja pronta para vender");
     expect(texto).not.toContain("de 6 prontos");
-    expect(texto).not.toMatch(/outros bairros/i);
+    expect(texto).not.toContain("Hoje você entrega só em CEPs");
     expect(texto).toContain(aviso as string);
 
     const hospedeiroDoFrete = document.createElement("div");
@@ -343,7 +346,7 @@ describe("o cartão do Início", () => {
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toMatch(/conferindo/i);
     expect(texto).not.toContain("Próximo passo");
-    expect(texto).not.toMatch(/outros bairros/i);
+    expect(texto).not.toContain("Hoje você entrega só em CEPs");
   });
 
   it("cartão e tela de Frete mostram o MESMO aviso (a mesma função)", async () => {
@@ -407,10 +410,10 @@ describe("Ajustes: o subtítulo do grupo 'Entrega e frete' fala a mesma regra", 
     return subtitulosDosGrupos(entrada).get("entrega");
   }
 
-  it("CEP de rua + alcance vazio: 'Falta: alcance da entrega' (e não o resumo de antes)", () => {
+  it("CEP de rua + alcance vazio: 'Falta: confirmar até onde você entrega' (e não o resumo de antes)", () => {
     expect(
       subtituloDaEntrega({ originCep: CEP_DE_RUA, localCepRange: "" }),
-    ).toBe("Falta: alcance da entrega");
+    ).toBe("Falta: confirmar até onde você entrega");
   });
 
   it("CEP de rua + alcance que cobre a cidade: o resumo da entrega, como antes", () => {

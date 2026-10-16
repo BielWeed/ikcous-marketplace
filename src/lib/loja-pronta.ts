@@ -88,12 +88,87 @@ export function prefixoDoCepDaLoja(
   return cepCompleto(cep) ? (cep as string).trim().slice(0, 5) : null;
 }
 
-/** A dica do campo "Alcance por CEP" quando a faixa está vazia. */
+/** A dica do campo de texto "Escrever faixa de CEP" quando ele está vazio. */
 export function dicaDaFaixaVazia(cepDaLoja: string | null | undefined): string {
   const prefixo = prefixoDoCepDaLoja(cepDaLoja);
   return prefixo
     ? `Vazio = só CEPs que começam com ${prefixo}`
     : "Vazio = só CEPs que começam com os mesmos 5 números do CEP da loja";
+}
+
+/** Os itens do texto do alcance: separados por vírgula, só os que têm número. */
+function itensDoAlcance(faixa: string | null | undefined): string[] {
+  return (faixa ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => /\d/.test(item));
+}
+
+const soNumeros = (texto: string): string => texto.replace(/\D/g, "");
+
+/**
+ * O alcance é EXATAMENTE os 5 primeiros números do CEP da loja? Gravar isso dá
+ * a mesma regra do alcance vazio nas três cópias do servidor (`is_local_cep`,
+ * edge e `cepEhLocal`) — por isso "Só perto da loja" pode gravar o número em
+ * vez de um campo novo. Alcance vazio NÃO conta: o lojista ainda não confirmou.
+ */
+export function alcanceEhSoPertoDaLoja(
+  cepDaLoja: string | null | undefined,
+  faixa: string | null | undefined,
+): boolean {
+  const prefixo = prefixoDoCepDaLoja(cepDaLoja);
+  const itens = itensDoAlcance(faixa);
+  return prefixo !== null && itens.length === 1 && itens[0] === prefixo;
+}
+
+/**
+ * "Incluir a região deste CEP": acrescenta os 5 primeiros números do CEP do
+ * cliente ao alcance, sem tirar ninguém e sem mudar o sentido do que já estava.
+ *
+ * Dois cuidados que o servidor impõe (mesma regra nas três cópias):
+ * 1. Alcance VAZIO quer dizer "a região da loja". Escrever só a região nova
+ *    tiraria a da loja — então a loja entra junto.
+ * 2. DOIS CEPs completos separados por vírgula são a FAIXA entre eles; um
+ *    terceiro item faria o servidor ler "três CEPs exatos". Esse par vira o
+ *    bloco longo "início-fim" (que o servidor lê como a mesma faixa) antes de
+ *    acrescentar.
+ * Região já presente: devolve o texto como estava. CEP do cliente com menos de
+ * 5 números, ou loja sem CEP completo: também.
+ */
+export function incluirRegiaoNoAlcance(
+  faixa: string,
+  cepDaLoja: string | null | undefined,
+  cepDoCliente: string,
+): string {
+  const regiao = soNumeros(cepDoCliente).slice(0, 5);
+  const daLoja = prefixoDoCepDaLoja(cepDaLoja);
+  if (regiao.length < 5 || daLoja === null) return faixa;
+  let itens = itensDoAlcance(faixa);
+  if (itens.length === 0) itens = [daLoja];
+  if (itens.some((item) => soNumeros(item) === regiao)) return faixa;
+  if (itens.length === 2 && itens.every((i) => soNumeros(i).length === 8)) {
+    itens = [`${soNumeros(itens[0])}-${soNumeros(itens[1])}`];
+  }
+  return [...itens, regiao].join(", ");
+}
+
+/**
+ * Em palavras da lojista, até onde vai a entrega própria (a faixa-resumo do
+ * Frete). Nunca "a cidade": o alcance vazio é só a região do CEP da loja.
+ */
+export function resumoDoAlcance(
+  cepDaLoja: string | null | undefined,
+  faixa: string | null | undefined,
+): string {
+  const itens = itensDoAlcance(faixa);
+  if (itens.length === 0) {
+    const prefixo = prefixoDoCepDaLoja(cepDaLoja);
+    return prefixo ? `CEPs que começam com ${prefixo}` : "CEPs perto da loja";
+  }
+  const digitos = itens.length === 1 ? soNumeros(itens[0]) : "";
+  return digitos !== "" && digitos.length < 8 && !itens[0].includes("-")
+    ? `CEPs que começam com ${digitos}`
+    : "CEPs que você escolheu";
 }
 
 /**
@@ -140,7 +215,7 @@ export function avisoDaFaixaDeCep(config: {
   if (prefixo === null) return null;
   const cepLimpo = (config.originCep as string).replace(/\D/g, "");
   if (cepLimpo.endsWith("000")) return null;
-  return `Sua entrega local só vale para CEPs que começam com ${prefixo}. Se sua cidade tem vários CEPs, preencha a faixa de CEP`;
+  return `Sua entrega local só vale para CEPs que começam com ${prefixo}. Se sua cidade tem vários CEPs, escolha até onde você entrega`;
 }
 
 // ── Os SEIS passos do painel simples (spec §8) ──────────────────────────────
@@ -214,6 +289,8 @@ export interface EntradaDosSeisPassos {
    * passo "entrega"; ausente = falta o CEP (o texto de antes).
    */
   readonly entregaAlcanceCurto?: boolean;
+  /** Os 5 primeiros números do CEP da loja — o que a explicação do passo cita. */
+  readonly entregaPrefixo?: string | null;
 }
 
 function textoPreenchido(texto: string | null | undefined): boolean {
@@ -249,6 +326,7 @@ export function entradaDosSeisPassos(
     // aqui só se descobre, com a MESMA função do aviso, QUAL é a pendência.
     entregaAlcanceCurto:
       fatos.entrega === "pendente" && entregaComAlcanceCurto(config),
+    entregaPrefixo: prefixoDoCepDaLoja(config.originCep),
     estados: {
       marca: daConfig(
         textoPreenchido(config.storeName) && textoPreenchido(config.logoUrl),
@@ -281,7 +359,12 @@ export function entradaDosSeisPassos(
 export function seisPassosDaLojaPronta(
   entrada: EntradaDosSeisPassos,
 ): readonly PassoDaLoja[] {
-  const { estados, pixOk, entregaAlcanceCurto = false } = entrada;
+  const {
+    estados,
+    pixOk,
+    entregaAlcanceCurto = false,
+    entregaPrefixo = null,
+  } = entrada;
   return [
     {
       chave: "marca",
@@ -322,13 +405,16 @@ export function seisPassosDaLojaPronta(
       rotulo: "Como você entrega",
       rotuloFeito: "Entrega configurada",
       // Com CEP mas alcance curto, o que falta não é "configurar a entrega":
-      // é ampliar até onde ela vale (a tela de Frete, no "Alcance por CEP").
+      // é a lojista CONFIRMAR até onde ela vale — "só perto da loja" é uma
+      // resposta tão boa quanto "em mais lugares" (a tela de Frete, em "Entrega
+      // na sua cidade", deixa dizer as duas).
       rotuloPendente: entregaAlcanceCurto
-        ? "Ampliar o alcance da entrega"
+        ? "Confirmar até onde você entrega"
         : "Configurar a entrega",
       ...(entregaAlcanceCurto && {
-        explicacaoPendente:
-          "Clientes de outros bairros podem não conseguir comprar.",
+        explicacaoPendente: entregaPrefixo
+          ? `Hoje você entrega só em CEPs que começam com ${entregaPrefixo}`
+          : "Hoje você entrega só perto da loja",
       }),
       estado: estados.entrega,
       destino: "admin-shipping",

@@ -114,7 +114,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
 // ESCOLHE qual passo fala por qual grupo e como o texto se escreve.
 //
 //   minha-loja  → marca + endereço + WhatsApp: "Falta: …" ou "Tudo preenchido"
-//   entrega     → o passo "entrega": "Falta: CEP da loja", "Falta: alcance da entrega" ou o resumo da cidade e do país
+//   entrega     → o passo "entrega": "Falta: CEP da loja", "Falta: confirmar até onde você entrega" ou o resumo da cidade e do país
 //   pagamentos  → o passo "recebe": o que está ativo, ou "Falta: Como você recebe"
 //   aparencia, devolucao, ferramentas → sem passo próprio: sem subtítulo
 //
@@ -166,7 +166,7 @@ function entregaEmAjustes(
     return {
       estado,
       texto: entregaComAlcanceCurto(config)
-        ? "Falta: alcance da entrega"
+        ? "Falta: confirmar até onde você entrega"
         : "Falta: CEP da loja",
     };
   }
