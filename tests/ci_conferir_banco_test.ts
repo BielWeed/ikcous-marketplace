@@ -2180,6 +2180,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           versao: "20261242000000",
         },
         {
+          fn: "get_admin_analytics_v2",
+          h: "ab25e738a3101cccbb0c09450b660ee0",
+          versao: "20261245000000",
+        },
+        {
           fn: "get_admin_customers_paged",
           h: "d6c092c3e0d8069891af795147d65e9e",
           versao: "20261230000000",
@@ -7776,12 +7781,24 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpoSucessora42.replace(/\n/g, "\r\n"), "utf8")
       .digest("hex"),
   };
+  // A 45 sucede a 42: deriva os hashes LF/CRLF do corpo real, como os elos anteriores.
+  const texto45 = (await Deno.readTextFile(
+    `${MIGRATIONS_DIR}/20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql`,
+  )).replace(/\r\n/g, "\n");
+  const ini45 = texto45.indexOf(cabecalhoDepois17("get_admin_analytics_v2"));
+  assert(ini45 >= 0);
+  const abre45 = texto45.indexOf("AS $$", ini45) + 5;
+  const corpo45 = texto45.slice(abre45, texto45.indexOf("$$;", abre45));
+  const shaSucessora45 = {
+    lf: criarHash("sha256").update(corpo45).digest("hex"),
+    crlf: criarHash("sha256").update(corpo45.replace(/\n/g, "\r\n")).digest("hex"),
+  };
   for (const [nome, sql, lado, outro, rotulo] of [
     [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 4 da de get_admin_analytics_v2 (a 20261234 e a 20261242)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
@@ -7796,6 +7813,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessoraAn.crlf,
                 shaSucessora42.lf,
                 shaSucessora42.crlf,
+                shaSucessora45.lf,
+                shaSucessora45.crlf,
               ]
             : [];
         assertEquals(new Set(todos).size, 6);
@@ -7824,6 +7843,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                     shaSucessoraAn.crlf,
                     shaSucessora42.lf,
                     shaSucessora42.crlf,
+                    shaSucessora45.lf,
+                    shaSucessora45.crlf,
                     x.lf,
                   ]
                 : [x.lf, x.lf, x.crlf, x.lf],
@@ -7843,6 +7864,10 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora.crlf,
               shaSucessoraAn.lf,
               shaSucessoraAn.crlf,
+              shaSucessora42.lf,
+              shaSucessora42.crlf,
+              shaSucessora45.lf,
+              shaSucessora45.crlf,
             ])
               assert(!sql.includes(proibido), `${nome} aceitaria a sucessora`);
         }
@@ -13898,8 +13923,8 @@ Deno.test("43a/43b — o rpc-ci.yml roda as duas provas vivas do lote (comportam
 
 // 44m — MEDICAO dos numeros enganosos por pedido de R$ 0,00 e por desconto (15/10/2026), ANTES de qualquer migration.
 // Consulta de LEITURA, de rol ABERTO (molde da 35m/42m: tipo/objeto/detalhe, sem coluna `ok`, nunca prova do portao).
-// O que este teste prende: o filtro do painel IDENTICO ao de get_admin_analytics_v2 (corpo vigente da 20261234000000),
-// a conta do lucro do painel IDENTICA (sem ratear o desconto), a regra de venda e de chave de cliente IDENTICA a
+// O que este teste prende: o filtro do painel IDENTICO ao de get_admin_analytics_v2 (corpo vigente da 20261245000000),
+// a conta histórica do lucro IDENTICA após retirar SOMENTE o rateio da 45 e usar o custo de hoje, a regra de venda e de chave de cliente IDENTICA a
 // crm__vendas (20261178000000), a lista de payment_status IGUAL a CHECK da 20261020000000, o controle de RLS, as
 // tabelas lidas e que NENHUM id, nome, e-mail, telefone ou WhatsApp sai no log do run.
 const NOME_44M = "44m-medir-pedidos-de-zero-e-desconto";
@@ -14058,22 +14083,44 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
     },
   );
   await t.step(
-    "o filtro e o lucro do painel sao IDENTICOS aos de get_admin_analytics_v2, e a 20261234000000 e o corpo vigente",
+    "a 45 vigente so acrescenta o rateio nas duas formulas da 42; filtro e lucro historico da 44m seguem identicos",
     async () => {
       const vigente = await ultimaQueDefine(
         "FUNCTION public.get_admin_analytics_v2",
       );
-      // A 20261242000000 (o lucro usa o custo do dia da venda) trocou SO a fonte do custo no grafico: o resto da regra
-      // (filtro, juncao, janela) segue o da 34. A 44m mede com o custo de HOJE de proposito (ver o cabecalho dela):
-      // aqui a regra e' comparada com o corpo vigente trocando a fonte nova pelo custo de hoje.
+      // A 44m mede o lucro histórico SEM rateio e com custo de HOJE. A 42 só trocou a fonte do custo;
+      // a 45 acrescentou o rateio no diário E ranking. Prendemos a função INTEIRA da 45 à da 42,
+      // retirando exatamente as duas fórmulas declaradas, antes de comparar a regra histórica à 44m.
       assertEquals(
         vigente,
-        "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql",
+        "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql",
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
-      const mig = normal(
-        await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`),
+      const funcao = (sql: string) => {
+        const i = sql.indexOf("CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(");
+        const fim = sql.indexOf("$$;", i);
+        assert(i >= 0 && fim > i, "não achei a função inteira do analytics");
+        return sql.slice(i, fim + 3);
+      };
+      const atual = funcao((await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`)).replace(/\r/g, ""));
+      const anterior = funcao((await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql`,
+      )).replace(/\r/g, ""));
+      const comRateio = `oi.quantity * (oi.price - COALESCE(oic.custo, p.custo) - CASE
+                    WHEN COALESCE(o.discount, 0) <= 0 THEN 0
+                    ELSE oi.price * LEAST(1, GREATEST(0, COALESCE(o.discount, 0)) / NULLIF(
+                        (SELECT SUM(desconto_item.quantity * desconto_item.price)
+                           FROM public.marketplace_order_items desconto_item
+                          WHERE desconto_item.order_id = o.id), 0))
+                END)`;
+      assertEquals(atual.split(comRateio).length - 1, 2, "o rateio exato deve ocorrer no diário e no ranking");
+      const semRateio = atual.replaceAll(comRateio, "oi.quantity * (oi.price - COALESCE(oic.custo, p.custo))");
+      assertEquals(
+        semRateio,
+        anterior,
+        "a 45 só pode diferir da função da 42 nas duas fórmulas de lucro; filtros, junções e janelas devem permanecer iguais",
       );
+      const mig = normal(semRateio);
       // o grafico do lucro (daily_items) da migration: o mesmo JOIN, o mesmo filtro, a mesma conta
       const daily = mig
         .slice(

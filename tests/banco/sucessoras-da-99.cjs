@@ -72,6 +72,8 @@ const NOMES = [
   // So o upsert e um dos 42 da 99 (a CADEIA 99 -> 39 -> 44: o `hashVigente` da 44 e o `hashDesta` da 39); v23 e v24 entram
   // porque o rollback desfaz as tres de uma vez e a conferencia "devolveu o corpo anterior" vale para cada uma.
   "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
+  // A 45 sucede o analytics da 42: desfazer primeiro, sem afrouxar hash de ancestral.
+  "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -174,6 +176,7 @@ const NOME_CUSTO_DO_DIA =
  * estiver no ar (idempotente). Devolve true se desfez.
  */
 async function devolverAoEstadoAnteriorAoCustoDoDia(c) {
+  await require("./lucro-com-desconto-posterior.cjs").desfazerLucroComDescontoNaTransacao(c);
   const alvo = SUCESSORAS_DA_99.find((s) => s.nome === NOME_CUSTO_DO_DIA);
   assert.ok(alvo, "a migration do custo do dia sumiu da lista de sucessoras");
   if ((await hashVivo(c, alvo.assinatura)) !== alvo.hashDesta) return false;

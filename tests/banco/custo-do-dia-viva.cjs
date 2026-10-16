@@ -1909,6 +1909,8 @@ async function main() {
   const linhas = [];
   const titulo = "Prova viva do custo do dia da venda (rpc-ci)";
   try {
+    // Mede a 42 isolada; a 45 redefine seu analytics e os pre-voos antigos devem continuar recusando.
+    await require("./lucro-com-desconto-posterior.cjs").desfazerLucroComDescontoNaTransacao(cliente);
     for (const { nome, corpo } of PROVAS) {
       try {
         await corpo(cliente);

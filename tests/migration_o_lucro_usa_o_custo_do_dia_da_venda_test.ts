@@ -59,6 +59,17 @@ const VIGENTE = {
   [DRE]: "e58ac49d3881a459b929064a3acb470a",
 };
 
+Deno.test("20261242 — a 45 sucede só o analytics: a 45a aceita o novo hash exato e as provas da 42 desfazem a 45 primeiro", () => {
+  const nome45 = "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql";
+  const h45 = md5(corpoDe(ler(nome45), ANALYTICS));
+  const a45 = lerArq("scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql");
+  assert.ok(a45.includes(`f.m IN ('${DESTA[ANALYTICS]}', '${h45}')`));
+  assert.ok(a45.includes(`'${DESTA[DRE]}'`));
+  for (const n of ["custo-do-dia-viva.cjs", "custo-do-dia-portao-viva.cjs"])
+    assert.ok(lerArq(`tests/banco/${n}`).includes("desfazerLucroComDescontoNaTransacao"));
+  assert.equal(md5(corpoDe(ler(`rollback-manual-${nome45}`), ANALYTICS)), DESTA[ANALYTICS]);
+});
+
 Deno.test("20261242 — o md5 do corpo de cada uma das tres funcoes e o do pre-voo, o da conferencia final e o da 45a", () => {
   const a45 = lerArq(
     "scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql",

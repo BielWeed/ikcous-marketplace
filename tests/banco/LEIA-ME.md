@@ -802,7 +802,8 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   desfeita, para provar grants/RLS/view — o admin grava
   `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
 - **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
-  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261234, 20261235, 20261239) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  `20261199000000` (20261212, 20261214, 20261227, 20261228, 20261230, 20261231, 20261232, 20261234,
+  20261235, 20261239, 20261242, 20261244, 20261245) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
   reprova se aparecer uma sucessora que não esteja na lista.
 - **função nova não nasce aberta (`portas-do-visitante-so-as-permitidas-viva.cjs`, via `rodar-isolado.cjs`)**: L8 da
   auditoria de 12/10, sem migration. Com todas as migrations aplicadas, toda função de `public` que anon,
@@ -812,6 +813,19 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   duplicada e linha de função que não existe mais. A lista é a foto das duas lojas reais de 14/10/2026. Para
   abrir uma função de propósito: a linha entra no mesmo PR da migration. Um autoteste prova que o detector
   enxerga função sem REVOKE, com REVOKE só de PUBLIC, com `authenticated` esquecido e de extensão.
+
+- **lucro com desconto (`lucro-com-desconto-viva.cjs`, via `rodar-isolado.cjs`)**: migration 20261245.
+  Venda de 100/custo 60/cupom 30 = lucro 10 no diário e ranking, pela v24 com cupom e pelo balcão com
+  p_desconto. Rateio proporcional por quantidade e preço, teto de desconto, item sem custo ou sem produto,
+  venda antiga sem subtotal/custo do dia, cancelado/não pago fora, frete fora, custo do dia preservado.
+  Os dois corpos no MESMO banco provam JSON idêntico sem desconto (NULL/0) e mesmas chaves com desconto;
+  fin_dre já lê o total líquido e fica intacta. ACL/dono, rollback byte a byte, 2x, CRLF, recusa sem escrita,
+  e mutantes (sem teto, o.subtotal, sem desconto no ranking, denominador filtrado) têm asserções próprias.
+  `lucro-com-desconto-posterior.cjs` desfaz a 45 antes das provas da 42; `sucessoras-da-99.cjs` inclui
+  o novo elo 99 → 14 → 34 → 42 → 45 e continua recusando qualquer sucessora não listada.
+  Não prova ambiente externo. Execução de banco pendente na entrega desta frente.
+  A mesma prova executa os portões `48a`/`48b` (antes/depois, rol fechado, corpo estranho, atributo e ACL)
+  e confere que `45a`, `35a`, `17a` e `8e` continuam positivos com o corpo exato da 45.
 
 ## Como rodar
 

@@ -1208,6 +1208,10 @@ async function main() {
         "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
         "public.upsert_store_config(jsonb)",
       ],
+      [
+        "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

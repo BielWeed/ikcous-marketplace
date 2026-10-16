@@ -189,6 +189,8 @@ on:
           - 46b-antes-desfazer-recebimento-base-vigente
           - 47a-conferir-a-loja-escolhe-como-entrega-aplicado
           - 47b-antes-a-loja-escolhe-como-entrega-base-vigente
+          - 48a-conferir-lucro-com-desconto-aplicado
+          - 48b-antes-lucro-com-desconto-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

@@ -1903,6 +1903,20 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs` (as consultas), num Postgres 17 efemero; nao provam o
         Postgres da Supabase nem o corpo vivo de cada loja.
 
+   48. **Lote de UMA migration, de apply normal: `20261245000000` (o lucro desconta o cupom do pedido).**
+       Muda só duas fórmulas de `get_admin_analytics_v2`: o lucro diário e o ranking descontam a parte proporcional
+       de cada item sobre a soma de TODOS os itens do próprio pedido, com fração entre 0 e 1. Exemplo: venda 100,
+       custo 60, desconto 30 → lucro 10 em vez de 40. Frete fica fora; item sem custo e a parte do desconto dele
+       ficam fora. `cost_sold`, JSON, assinatura e ACL iguais. `fin_dre` já usa o total pago líquido e não muda.
+       Depois da `20261242000000`, conferir `48a-conferir-lucro-com-desconto-aplicado`; se NEGATIVA, exigir
+       `48b-antes-lucro-com-desconto-base-vigente` MAIS NOVA e POSITIVA antes de aplicar. São consultas de catálogo,
+       rol fechado de quatro linhas, com hash, atributos e ACL. Corpo desconhecido exige parar. Depois, repetir
+       a 48a: POSITIVA. A 45a, 35a, 17a e 8e aceitam o sucessor exato e continuam positivas. Nenhum front ou edge
+       depende deste lote. Rollback `rollback-manual-20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql` devolve
+       a 42 byte a byte; desfazer a 45 ANTES da 42 ou de qualquer ancestral. Volta o defeito de lucro sem cupom.
+       Provas e mutantes: `tests/banco/lucro-com-desconto-viva.cjs` (inclui 48a/48b); validação em Postgres 17
+       efêmero pendente na entrega desta frente. Nada aqui comprova banco externo.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

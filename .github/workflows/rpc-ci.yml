@@ -124,6 +124,8 @@ on:
       - "scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql"
       - "scripts/publicacao/consultas/47a-conferir-a-loja-escolhe-como-entrega-aplicado.sql"
       - "scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql"
+      - "scripts/publicacao/consultas/48a-conferir-lucro-com-desconto-aplicado.sql"
+      - "scripts/publicacao/consultas/48b-antes-lucro-com-desconto-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -217,6 +219,8 @@ on:
       - "scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql"
       - "scripts/publicacao/consultas/47a-conferir-a-loja-escolhe-como-entrega-aplicado.sql"
       - "scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql"
+      - "scripts/publicacao/consultas/48a-conferir-lucro-com-desconto-aplicado.sql"
+      - "scripts/publicacao/consultas/48b-antes-lucro-com-desconto-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -833,6 +837,11 @@ jobs:
       - name: Prova viva do portao do custo do dia (consultas 45a, 45b e 45m)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/custo-do-dia-portao-viva.cjs
+      # O lucro desconta o cupom (20261245, dinheiro): vendas v24 e balcão, rateio proporcional, teto,
+      # legado sem subtotal/custo do dia, igualdade sem desconto, ACL, rollback e mutantes. CLONE próprio.
+      - name: Prova viva do lucro com desconto (migration 20261245)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-com-desconto-viva.cjs
       # O sino do pedido de retirada (migration 20261233, dado de cliente; cacada de 14/10/2026): o pedido de RETIRADA na loja
       # (customer_data->>'shipping_option_id' = 'store-pickup') avisa "Pedido pronto para retirar" e "Pedido retirado" no sino, e
       # o resto fica byte a byte como era. COMPORTAMENTO com a trigger real: o fluxo de entrega e o de retirada, o cancelamento
