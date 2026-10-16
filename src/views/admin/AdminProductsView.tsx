@@ -624,12 +624,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       setProductToDelete(null);
     }
-  }, [
-    deleteProduct,
-    productToDelete,
-    isOffline,
-    refreshFinancialStats,
-  ]);
+  }, [deleteProduct, productToDelete, isOffline, refreshFinancialStats]);
 
   const handleDuplicate = useCallback(
     (product: any) => {
