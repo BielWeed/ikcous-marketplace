@@ -13,6 +13,7 @@ import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { cpfValido, formatarCpf, somenteDigitosDoCpf } from "@/lib/cpf";
 import {
   gravarCpfDaConta,
+  gravarPerfilDaConta,
   lerCpfDaConta,
   mensagemFalhaCpf,
 } from "@/lib/cpf-da-conta";
@@ -524,16 +525,22 @@ export function AccountSettingsView() {
       // quando o campo não foi editado faz o banco PRESERVAR o valor real
       // que já estava salvo, em vez de regravar por cima com o que a tela
       // mostra (que pode estar truncado/mascarado por `formatarWhatsApp`).
-      const { error } = await (supabase as any).rpc(
-        "update_my_profile_secure",
+      const resultado = await gravarPerfilDaConta(
         {
           p_full_name: nomeAparado,
           p_whatsapp: whatsappEditado ? perfilEnviado.phone : null,
         },
+        contaDonaId,
       );
 
       if (!contaAindaEhDona()) return;
-      if (error) throw error;
+      if (!resultado.ok) {
+        if (resultado.motivo === "conta_trocada") {
+          toast.error(mensagemFalhaCpf(resultado.motivo));
+          return;
+        }
+        throw resultado;
+      }
 
       // O nome já foi salvo, mas uma edição feita durante o envio fica na tela.
       setProfileDataOriginal({ ...perfilEnviado, name: nomeAparado });

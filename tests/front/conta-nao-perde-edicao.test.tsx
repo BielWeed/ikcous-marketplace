@@ -33,7 +33,7 @@ vi.mock("@/lib/supabase", () => ({
     },
     rpc: (...args: unknown[]) => {
       const resposta = rpc(...args);
-      return args[0] === "set_my_cpf"
+      return args[0] === "set_my_cpf" || args[0] === "update_my_profile_secure"
         ? pedidoCpfComCabecalho(resposta)
         : resposta;
     },
