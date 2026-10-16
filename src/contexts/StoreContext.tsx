@@ -410,9 +410,13 @@ export function StoreProvider({
   const timerDaConfigRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const configResolvidaRef = useRef(false);
   const configFalhouRef = useRef(false);
+  const geracaoDaConfigRef = useRef(0);
   const consultasDaConfigEmVooRef = useRef(0);
   const ultimaConsultaDaConfigEmRef = useRef(0);
   const buscarConfigRef = useRef<() => Promise<void>>(async () => {});
+  // Geração da config para a qual já se pediu a releitura que substitui uma
+  // leitura descartada (uma só por geração, mesmo com várias leituras em voo).
+  const releituraPedidaNaGeracaoRef = useRef(-1);
   const limparTimerDaConfig = useCallback(() => {
     if (timerDaConfigRef.current) {
       clearTimeout(timerDaConfigRef.current);
@@ -780,6 +784,17 @@ export function StoreProvider({
   }, []);
 
   const fetchConfig = useCallback(async () => {
+    const geracao = geracaoDaConfigRef.current;
+    // Esta leitura foi ultrapassada por uma escrita confirmada: o que ela
+    // trouxe é velho, mas os campos que a escrita NÃO tocou (endereço, formas
+    // de pagamento...) só se corrigem relendo — uma releitura por geração.
+    const pedirReleituraDaGeracaoNova = () => {
+      if (releituraPedidaNaGeracaoRef.current === geracaoDaConfigRef.current) {
+        return;
+      }
+      releituraPedidaNaGeracaoRef.current = geracaoDaConfigRef.current;
+      void buscarConfigRef.current();
+    };
     consultasDaConfigEmVooRef.current += 1;
     ultimaConsultaDaConfigEmRef.current = Date.now();
     // Sem resposta do servidor (rede, servidor fora): é o único caso em que a
@@ -793,6 +808,11 @@ export function StoreProvider({
         .select("*")
         .single();
 
+      // Uma escrita confirmada torna esta leitura anterior ultrapassada.
+      if (geracao !== geracaoDaConfigRef.current) {
+        pedirReleituraDaGeracaoNova();
+        return;
+      }
       if (error) {
         console.error("[StoreContext] Config fetch error:", error);
         // PGRST116 = "nenhuma linha": o servidor respondeu.
@@ -844,9 +864,14 @@ export function StoreProvider({
             .select()
             .single()) as any;
 
+          if (geracao !== geracaoDaConfigRef.current) {
+            pedirReleituraDaGeracaoNova();
+            return;
+          }
           if (!insertError && newData) {
             const mapped = mapConfig(newData);
             setConfig((prev) => {
+              if (geracao !== geracaoDaConfigRef.current) return prev;
               if (configIgual(mapped, prev)) return prev;
               vaultRef.current
                 ?.put("store_config", { id: "singleton", ...mapped })
@@ -859,6 +884,7 @@ export function StoreProvider({
       } else if (data) {
         const mapped = mapConfig(data);
         setConfig((prev) => {
+          if (geracao !== geracaoDaConfigRef.current) return prev;
           if (configIgual(mapped, prev)) return prev;
           // Sempre pelo singleton: após um onversionchange (outra aba subiu a
           // versão) a conexão que vaultRef segurava está FECHADA — init()
@@ -866,9 +892,10 @@ export function StoreProvider({
           // como o cache offline morreu invisível (defeito confirmado na
           // revisão cruzada 20260825-1050).
           DataVault.init()
-            .then((vault) =>
-              vault.put("store_config", { id: "singleton", ...mapped }),
-            )
+            .then((vault) => {
+              if (geracao !== geracaoDaConfigRef.current) return;
+              return vault.put("store_config", { id: "singleton", ...mapped });
+            })
             .catch((err) =>
               console.warn(
                 "[StoreContext] config não gravada no cache offline:",
@@ -881,6 +908,10 @@ export function StoreProvider({
         configResolvidaRef.current = true;
       }
     } catch (err) {
+      if (geracao !== geracaoDaConfigRef.current) {
+        pedirReleituraDaGeracaoNova();
+        return;
+      }
       console.error("[StoreContext] Config error:", err);
       semResposta = true;
     } finally {
@@ -1292,6 +1323,7 @@ export function StoreProvider({
         }
 
         if (!current()) return false;
+        geracaoDaConfigRef.current += 1;
         setConfig((prev) => {
           if (!current()) return prev;
           const {

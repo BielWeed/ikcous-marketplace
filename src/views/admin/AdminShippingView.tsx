@@ -174,6 +174,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   const isOffline = useOnlineStatus();
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const sincronizacaoSuspensaRef = useRef(false);
   const [falhaAoSalvar, setFalhaAoSalvar] = useState(false);
 
   // Painéis recolhíveis (pedido do dono, 23/09/2026): todos nascem
@@ -321,16 +322,8 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Token digitado e não salvo numa transportadora: entra na guarda de
   // navegação da tela (onSetDirty), mas não no botão Salvar do cabeçalho —
   // a chave tem o Salvar do próprio cartão.
-  const [transportadorasPendentes, setTransportadorasPendentes] =
+  const [transportadorasPendentes, marcarTransportadorasPendentes] =
     useState(false);
-  // Espelho em ref, escrito no MESMO instante do aviso: o `handleSave` lê a
-  // pendência DEPOIS do `await` do salvar, e o valor capturado no clique
-  // estaria velho se a lojista colou um token enquanto as regras salvavam.
-  const transportadorasPendentesRef = useRef(false);
-  const marcarTransportadorasPendentes = useCallback((pendente: boolean) => {
-    transportadorasPendentesRef.current = pendente;
-    setTransportadorasPendentes(pendente);
-  }, []);
 
   // ── Sincronização LOCAL (achado 3 da auditoria, intacta) ──────────────
   const jaSincronizouRef = useRef(false);
@@ -338,7 +331,10 @@ export const AdminShippingView = memo(function AdminShippingView({
 
   useEffect(() => {
     if (isLoaded && config) {
-      if (jaSincronizouRef.current && isFormDirtyRef.current) {
+      if (
+        jaSincronizouRef.current &&
+        (isFormDirtyRef.current || sincronizacaoSuspensaRef.current)
+      ) {
         return;
       }
       jaSincronizouRef.current = true;
@@ -366,7 +362,10 @@ export const AdminShippingView = memo(function AdminShippingView({
 
   useEffect(() => {
     if (isLoaded && config) {
-      if (jaSincronizouNacionalRef.current && isFormDirtyNacionalRef.current) {
+      if (
+        jaSincronizouNacionalRef.current &&
+        (isFormDirtyNacionalRef.current || sincronizacaoSuspensaRef.current)
+      ) {
         return;
       }
       jaSincronizouNacionalRef.current = true;
@@ -510,6 +509,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   useEffect(() => {
     isFormDirtyNacionalRef.current = isFormDirtyNacional;
   }, [isFormDirtyNacional]);
+  useEffect(() => {
+    // Libera só depois de comparar o formulário com o config confirmado.
+    if (!isSaving) sincronizacaoSuspensaRef.current = false;
+  }, [isSaving]);
 
   // Um sinal só sai para o pai (gate de navegação do App) — ele nunca soube
   // que existiam duas metades. O token não salvo das Transportadoras soma
@@ -614,6 +617,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
+    sincronizacaoSuspensaRef.current = true;
     setIsSaving(true);
     haptic.medium();
 
@@ -678,11 +682,17 @@ export const AdminShippingView = memo(function AdminShippingView({
         return;
       }
 
-      // Espelha o AJUSTADO no formData nacional (REVISÃO herdada de
-      // AdminShippingNationalView, correção 1): sem isso, um mínimo/valor
-      // "esquecido" de uma estratégia anterior deixaria `isFormDirty`
-      // nacional preso em `true` para sempre.
-      setFormDataNacional(nacionalAjustado);
+      // Normaliza só o formulário enviado; preserva edições feitas na espera.
+      // O config confirmado passa a ser a referência do dirty check.
+      setFormDataNacional((atual) =>
+        atual.estrategia === formDataNacional.estrategia &&
+        atual.minimo === formDataNacional.minimo &&
+        atual.tipoDesconto === formDataNacional.tipoDesconto &&
+        atual.valorDesconto === formDataNacional.valorDesconto &&
+        atual.alcance === formDataNacional.alcance
+          ? nacionalAjustado
+          : atual,
+      );
       if (alcance !== alcanceAntes) {
         // O alcance foi regravado: o formulário o acompanha, senão ficaria
         // "diferente do salvo" para sempre — mas só se o campo ainda é o de
@@ -694,9 +704,7 @@ export const AdminShippingView = memo(function AdminShippingView({
         );
       }
       setFalhaAoSalvar(false);
-      // As regras salvaram; um token de transportadora ainda não salvo
-      // continua segurando a guarda.
-      onSetDirty?.(transportadorasPendentesRef.current);
+      // A guarda acompanha o dirty check e os tokens pendentes pelo efeito.
       haptic.success();
       toast.success("Regras de frete salvas!");
     } catch (err) {
