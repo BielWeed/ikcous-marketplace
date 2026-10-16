@@ -8,9 +8,23 @@
 // retomada casando userId+email, dedupe de evento duplicado, e que
 // storage indisponível nunca quebra o fluxo.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pedidoCpfComCabecalho } from "./helpers/pedido-cpf-com-cabecalho";
 
-const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
-vi.mock("@/lib/supabase", () => ({ supabase: { rpc } }));
+const { rpc, getSession } = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  getSession: vi.fn(),
+}));
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    auth: { getSession },
+    rpc: (...args: unknown[]) => {
+      const resposta = rpc(...args);
+      return args[0] === "set_my_cpf"
+        ? pedidoCpfComCabecalho(resposta)
+        : resposta;
+    },
+  },
+}));
 
 const CPF = "52998224725"; // 529.982.247-25 — dígitos válidos, de teste.
 const USER_ID = "user-1";
@@ -40,6 +54,12 @@ describe("cpf-pendente-do-cadastro", () => {
   beforeEach(() => {
     vi.resetModules();
     rpc.mockReset();
+    getSession.mockReset();
+    getSession.mockResolvedValue({
+      data: {
+        session: { access_token: "token-user-1", user: { id: USER_ID } },
+      },
+    });
     armazem = armazemFalso();
     vi.stubGlobal("localStorage", armazem);
   });
@@ -237,6 +257,27 @@ describe("cpf-pendente-do-cadastro", () => {
       expect(armazem.getItem(CHAVE)).toBeNull();
     });
 
+    it("a sessão do evento é A mas o SDK já tem B: remove como outra_conta sem gravar", async () => {
+      gravarPendenteBruto();
+      getSession.mockResolvedValueOnce({
+        data: {
+          session: {
+            access_token: "token-outra-conta",
+            user: { id: "outra-conta" },
+          },
+        },
+      });
+      const { retomarCpfPendente } = await import(
+        "@/lib/cpf-pendente-do-cadastro"
+      );
+
+      expect(await retomarCpfPendente({ userId: USER_ID, email: EMAIL })).toBe(
+        "outra_conta",
+      );
+      expect(rpc).not.toHaveBeenCalled();
+      expect(armazem.getItem(CHAVE)).toBeNull();
+    });
+
     it("e-mail da sessão diverge (mesmo userId por coincidência não é o caso real, mas o contrato pede o par): remove sem gravar", async () => {
       gravarPendenteBruto();
       const { retomarCpfPendente } = await import(
@@ -326,6 +367,8 @@ describe("cpf-pendente-do-cadastro", () => {
       const p1 = retomarCpfPendente({ userId: USER_ID, email: EMAIL });
       const p2 = retomarCpfPendente({ userId: USER_ID, email: EMAIL });
 
+      // A gravação agora obtém o retrato da sessão antes de montar a RPC.
+      await Promise.resolve();
       resolverRpc!({ data: null, error: null });
       const [r1, r2] = await Promise.all([p1, p2]);
 

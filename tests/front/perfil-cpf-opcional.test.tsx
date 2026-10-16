@@ -8,6 +8,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pedidoCpfComCabecalho } from "./helpers/pedido-cpf-com-cabecalho";
 
 const fetchProfile = vi.fn();
 const updateProfile = vi.fn();
@@ -37,8 +38,19 @@ const { rpc, cpfNaContaMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    auth: { updateUser: vi.fn() },
-    rpc: (...args: unknown[]) => rpc(...args),
+    auth: {
+      updateUser: vi.fn(),
+      getSession: () =>
+        Promise.resolve({
+          data: { session: { access_token: "token-cliente-1", user: USUARIO } },
+        }),
+    },
+    rpc: (...args: unknown[]) => {
+      const resposta = rpc(...args);
+      return args[0] === "set_my_cpf"
+        ? pedidoCpfComCabecalho(resposta)
+        : resposta;
+    },
   },
 }));
 

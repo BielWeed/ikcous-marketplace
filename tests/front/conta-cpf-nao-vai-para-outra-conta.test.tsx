@@ -6,9 +6,11 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pedidoCpfComCabecalho } from "./helpers/pedido-cpf-com-cabecalho";
 
-const { rpc, fetchProfile } = vi.hoisted(() => ({
+const { rpc, fetchProfile, getSession } = vi.hoisted(() => ({
   rpc: vi.fn(),
+  getSession: vi.fn(),
   fetchProfile: vi.fn(),
 }));
 const CONTA_A = { id: "conta-a", email: "conta-a@example.com" };
@@ -28,7 +30,17 @@ vi.mock("@/hooks/useAuth", () => ({
     updatePassword: vi.fn(),
   }),
 }));
-vi.mock("@/lib/supabase", () => ({ supabase: { rpc } }));
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    auth: { getSession },
+    rpc: (...args: unknown[]) => {
+      const resposta = rpc(...args);
+      return args[0] === "set_my_cpf"
+        ? pedidoCpfComCabecalho(resposta)
+        : resposta;
+    },
+  },
+}));
 vi.mock("@/components/account/PrivacidadeEMeusDados", () => ({
   PrivacidadeEMeusDados: () => null,
 }));
@@ -91,6 +103,9 @@ describe("Conta — CPF pertence à conta que começou a salvar", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    getSession.mockResolvedValue({
+      data: { session: { access_token: "token-a", user: CONTA_A } },
+    });
     autenticacao.user = CONTA_A;
     autenticacao.cpfInicial = "";
     vi.spyOn(cpfDaConta, "gravarCpfDaConta");
@@ -189,12 +204,54 @@ describe("Conta — CPF pertence à conta que começou a salvar", () => {
     });
     expect(cpfDaConta.gravarCpfDaConta).toHaveBeenCalledExactlyOnceWith(
       "52998224725",
+      CONTA_A.id,
     );
     expect(rpc).toHaveBeenCalledWith("set_my_cpf", { p_cpf: "52998224725" });
     expect(fetchProfile).toHaveBeenCalledTimes(1);
     expect(toast.success).toHaveBeenCalledWith("Perfil atualizado com sucesso");
     expect(campo("full_name").value).toBe("Nome novo de A");
     expect(botaoSalvar().disabled).toBe(false);
+  });
+
+  it("tela ainda mostra A mas o SDK já tem B: avisa sem gravar nem descartar a edição", async () => {
+    await montar();
+    getSession.mockResolvedValueOnce({
+      data: { session: { access_token: "token-b", user: CONTA_B } },
+    });
+    digitar("cpf", "12345678909");
+    await salvar();
+
+    expect(cpfDaConta.gravarCpfDaConta).toHaveBeenCalledWith(
+      "12345678909",
+      CONTA_A.id,
+    );
+    expect(rpc.mock.calls.some(([nome]) => nome === "set_my_cpf")).toBe(false);
+    expect(toast.error).toHaveBeenCalledWith(
+      cpfDaConta.mensagemFalhaCpf("conta_trocada"),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(fetchProfile).not.toHaveBeenCalled();
+    expect(campo("cpf").value).toBe("123.456.789-09");
+  });
+
+  it("conta_trocada fica silenciosa se a tela também já mudou para B", async () => {
+    await montar();
+    const leitura = adiar<{
+      data: { session: { access_token: string; user: typeof CONTA_B } };
+    }>();
+    getSession.mockReturnValueOnce(leitura.promessa);
+    digitar("cpf", "12345678909");
+    await salvar();
+
+    await trocarConta();
+    await act(async () =>
+      leitura.resolver({
+        data: { session: { access_token: "token-b", user: CONTA_B } },
+      }),
+    );
+
+    expect(rpc.mock.calls.some(([nome]) => nome === "set_my_cpf")).toBe(false);
+    esperarSemContinuacao();
   });
 
   it.each(["", "52998224725"])(
