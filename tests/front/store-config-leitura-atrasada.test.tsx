@@ -148,6 +148,8 @@ describe("StoreContext — leitura anterior ao salvar não volta para a tela nem
       expect(hospedeiro.textContent).toBe("Segunda: 10h às 19h");
       const escritasAntes = rede.put.mock.calls.length;
 
+      // A leitura descartada pede uma releitura: o servidor já tem o horário salvo.
+      rede.leitura = Promise.resolve(HORARIO_NOVO);
       await act(async () => {
         lenta.resolver(HORARIO_ANTIGO);
         await refresh;
@@ -162,6 +164,27 @@ describe("StoreContext — leitura anterior ao salvar não volta para a tela nem
       expect(rede.put.mock.calls.length).toBe(escritasAntes);
     },
   );
+
+  it("depois de descartar a leitura antiga, relê e traz os campos que o salvamento não tocou", async () => {
+    const lenta = pendente();
+    rede.leitura = lenta.promessa;
+    await montar();
+    await act(async () => {
+      await loja().updateConfig({ businessHours: "Segunda: 10h às 19h" });
+    });
+    // Enquanto isso o servidor ganhou um endereço novo (outro aparelho).
+    rede.leitura = Promise.resolve({
+      data: {
+        business_hours: "Segunda: 10h às 19h",
+        store_address: "Rua Nova, 2",
+      },
+      error: null,
+    });
+    await act(async () => lenta.resolver(HORARIO_ANTIGO));
+
+    expect(loja().config.storeAddress).toBe("Rua Nova, 2");
+    expect(hospedeiro.textContent).toBe("Segunda: 10h às 19h");
+  });
 
   it("aceita uma leitura iniciada depois do salvamento", async () => {
     await montar();

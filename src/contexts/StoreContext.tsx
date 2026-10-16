@@ -414,6 +414,9 @@ export function StoreProvider({
   const consultasDaConfigEmVooRef = useRef(0);
   const ultimaConsultaDaConfigEmRef = useRef(0);
   const buscarConfigRef = useRef<() => Promise<void>>(async () => {});
+  // Geração da config para a qual já se pediu a releitura que substitui uma
+  // leitura descartada (uma só por geração, mesmo com várias leituras em voo).
+  const releituraPedidaNaGeracaoRef = useRef(-1);
   const limparTimerDaConfig = useCallback(() => {
     if (timerDaConfigRef.current) {
       clearTimeout(timerDaConfigRef.current);
@@ -782,6 +785,16 @@ export function StoreProvider({
 
   const fetchConfig = useCallback(async () => {
     const geracao = geracaoDaConfigRef.current;
+    // Esta leitura foi ultrapassada por uma escrita confirmada: o que ela
+    // trouxe é velho, mas os campos que a escrita NÃO tocou (endereço, formas
+    // de pagamento...) só se corrigem relendo — uma releitura por geração.
+    const pedirReleituraDaGeracaoNova = () => {
+      if (releituraPedidaNaGeracaoRef.current === geracaoDaConfigRef.current) {
+        return;
+      }
+      releituraPedidaNaGeracaoRef.current = geracaoDaConfigRef.current;
+      void buscarConfigRef.current();
+    };
     consultasDaConfigEmVooRef.current += 1;
     ultimaConsultaDaConfigEmRef.current = Date.now();
     // Sem resposta do servidor (rede, servidor fora): é o único caso em que a
@@ -796,7 +809,10 @@ export function StoreProvider({
         .single();
 
       // Uma escrita confirmada torna esta leitura anterior ultrapassada.
-      if (geracao !== geracaoDaConfigRef.current) return;
+      if (geracao !== geracaoDaConfigRef.current) {
+        pedirReleituraDaGeracaoNova();
+        return;
+      }
       if (error) {
         console.error("[StoreContext] Config fetch error:", error);
         // PGRST116 = "nenhuma linha": o servidor respondeu.
@@ -848,7 +864,10 @@ export function StoreProvider({
             .select()
             .single()) as any;
 
-          if (geracao !== geracaoDaConfigRef.current) return;
+          if (geracao !== geracaoDaConfigRef.current) {
+            pedirReleituraDaGeracaoNova();
+            return;
+          }
           if (!insertError && newData) {
             const mapped = mapConfig(newData);
             setConfig((prev) => {
@@ -889,7 +908,10 @@ export function StoreProvider({
         configResolvidaRef.current = true;
       }
     } catch (err) {
-      if (geracao !== geracaoDaConfigRef.current) return;
+      if (geracao !== geracaoDaConfigRef.current) {
+        pedirReleituraDaGeracaoNova();
+        return;
+      }
       console.error("[StoreContext] Config error:", err);
       semResposta = true;
     } finally {
