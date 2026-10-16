@@ -473,7 +473,12 @@ sw.addEventListener("fetch", (event: any) => {
 });
 
 // ETERNAL HEARTBEAT: Listen for pings to stay alive and confirm health.
-const heartbeatChannel = new BroadcastChannel("sw-heartbeat");
+// Safari antigo não tem BroadcastChannel: sem esta guarda o script inteiro do
+// service worker falharia ao carregar e o app nunca instalaria o SW.
+const heartbeatChannel =
+  typeof BroadcastChannel === "undefined"
+    ? null
+    : new BroadcastChannel("sw-heartbeat");
 
 sw.addEventListener("message", (event: any) => {
   if (event.data === "HEARTBEAT_PING") {
@@ -481,7 +486,7 @@ sw.addEventListener("message", (event: any) => {
     if (event.source) {
       event.source.postMessage("HEARTBEAT_ACK");
     } else {
-      heartbeatChannel.postMessage("HEARTBEAT_ACK");
+      heartbeatChannel?.postMessage("HEARTBEAT_ACK");
     }
   }
 
@@ -503,6 +508,7 @@ sw.addEventListener("message", (event: any) => {
   if (event.data?.type === "MANUAL_PURGE") {
     caches.keys().then((cacheNames) => {
       Promise.all(cacheNames.map((name) => caches.delete(name))).then(() => {
+        if (typeof BroadcastChannel === "undefined") return;
         const bc = new BroadcastChannel("sw-messages");
         bc.postMessage({ type: "PURGE_COMPLETE" });
         bc.close();

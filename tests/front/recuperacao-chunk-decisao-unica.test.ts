@@ -196,27 +196,26 @@ describe("pedirRecargaSubordinada — a mesma chave para o sentinela pedir recar
     expect(pedirRecargaSubordinada(5000)).toBe(false);
   });
 
-  it("aceita fora da janela e grava o carimbo sem estourar o contador de degraus", () => {
+  it("aceita fora da janela e consome uma tentativa do contador da versao", () => {
     reportarErroChunk(1000);
 
     const aceitou = pedirRecargaSubordinada(1000 + 16000);
 
     expect(aceitou).toBe(true);
     const estado = lerEstadoGravado();
-    expect(estado?.count).toBe(1);
+    expect(estado?.count).toBe(2);
     expect(estado?.lastAt).toBe(1000 + 16000);
   });
 
-  it("FORA da janela o sentinela é permitido mesmo com os degraus do chunk esgotados", () => {
-    // Os degraus esgotados são regra da ESCADA DE CHUNK (reportarErroChunk);
-    // o pulso perdido do sentinela é OUTRO problema — a chave só impõe uma
-    // recuperação POR VEZ (a janela), não o monopólio da versão inteira.
+  it("com os degraus da versao esgotados o sentinela tambem e recusado", () => {
+    // O pulso perdido do sentinela agora gasta a MESMA escada de chunk: uma
+    // versao que ja recarregou duas vezes sem consertar nao ganha mais laco.
     gravarEstadoDireto({
       versao: VERSAO_FALLBACK_DO_APP,
       count: 2,
       lastAt: 1000,
     });
 
-    expect(pedirRecargaSubordinada(1000 + 60000)).toBe(true);
+    expect(pedirRecargaSubordinada(1000 + 60000)).toBe(false);
   });
 });

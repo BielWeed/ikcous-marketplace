@@ -75,6 +75,7 @@ const itemVariants = {
 
 import { useStore } from "@/contexts/StoreContext";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
@@ -140,6 +141,7 @@ export function ProfileView({
   const handleSelectPredefinedAvatar = async (avatar: any) => {
     setIsUpdatingAvatar(true);
     haptic.light();
+    const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
     try {
       const svgUrl = getPredefinedAvatarSvg(
         avatar.emoji,
@@ -155,6 +157,7 @@ export function ProfileView({
       console.error("Error setting avatar:", error);
       toast.error("Erro ao salvar avatar.");
     } finally {
+      desmarcar();
       setIsUpdatingAvatar(false);
     }
   };
@@ -180,13 +183,18 @@ export function ProfileView({
           return;
         }
 
-        const compressed = await compressImage(base64, 200, 200);
-        const success = await updateProfile({ avatar_url: compressed });
-        if (success) {
-          toast.success("Foto de perfil atualizada!");
-          setIsAvatarModalOpen(false);
+        const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
+        try {
+          const compressed = await compressImage(base64, 200, 200);
+          const success = await updateProfile({ avatar_url: compressed });
+          if (success) {
+            toast.success("Foto de perfil atualizada!");
+            setIsAvatarModalOpen(false);
+          }
+          setIsUpdatingAvatar(false);
+        } finally {
+          desmarcar();
         }
-        setIsUpdatingAvatar(false);
       };
       reader.onerror = () => {
         toast.error("Erro ao ler o arquivo.");
@@ -203,6 +211,7 @@ export function ProfileView({
   const handleRemoveAvatar = async () => {
     setIsUpdatingAvatar(true);
     haptic.light();
+    const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
     try {
       const success = await updateProfile({ avatar_url: "REMOVE" });
       if (success) {
@@ -213,6 +222,7 @@ export function ProfileView({
       console.error("Error removing avatar:", error);
       toast.error("Erro ao remover avatar.");
     } finally {
+      desmarcar();
       setIsUpdatingAvatar(false);
     }
   };

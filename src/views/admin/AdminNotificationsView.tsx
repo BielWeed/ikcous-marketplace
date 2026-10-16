@@ -1,11 +1,18 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAvisosDoLojista } from "@/hooks/useAvisosDoLojista";
+import {
+  type Novidade,
+  marcarNovidadeComoLida,
+  marcarTodasComoLidas,
+  useNovidadesDoAparelho,
+} from "@/lib/novidades/armazenamento-local";
 import type { View } from "@/types";
 import type { Aviso, TipoDeAviso } from "@/utils/avisos-do-lojista";
 import {
   Bell,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   MessageSquare,
   Package,
@@ -18,7 +25,7 @@ import {
   Wallet,
   XCircle,
 } from "lucide-react";
-import { memo } from "react";
+import { memo, useId, useRef, useState } from "react";
 
 interface AdminNotificationsViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -97,6 +104,158 @@ function formatarQuando(quando: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function CartaoDeNovidade({ novidade }: { novidade: Readonly<Novidade> }) {
+  const [aberta, setAberta] = useState(!novidade.lida);
+  const conteudoId = useId();
+  const botaoDoCartao = useRef<HTMLButtonElement>(null);
+  const grupos = [
+    { titulo: "Novidades", itens: novidade.novidades },
+    { titulo: "Correções", itens: novidade.correcoes },
+    { titulo: "Melhorias", itens: novidade.melhorias },
+  ];
+
+  function alternar() {
+    const vaiAbrir = !aberta;
+    setAberta(vaiAbrir);
+    if (vaiAbrir && !novidade.lida) {
+      marcarNovidadeComoLida(novidade.versao);
+    }
+  }
+
+  return (
+    <article
+      className={`overflow-hidden rounded-2xl border bg-zinc-900/70
+        bg-gradient-to-r from-white/[0.05] to-transparent shadow-lg ${
+          novidade.lida ? "border-white/10" : "border-admin-gold/40"
+        }`}
+    >
+      <h3>
+        <button
+          ref={botaoDoCartao}
+          type="button"
+          aria-expanded={aberta}
+          aria-controls={conteudoId}
+          onClick={alternar}
+          className="group flex min-h-11 w-full items-center gap-3
+            rounded-2xl p-3.5 text-left transition-all
+            hover:bg-admin-gold/[0.08] focus-visible:outline-none
+            focus-visible:ring-2 focus-visible:ring-inset
+            focus-visible:ring-admin-gold active:scale-[0.99]"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-bold text-white">
+              {novidade.titulo}
+            </span>
+            <span className="mt-1 block text-xs text-zinc-400">
+              Versão {novidade.versao} ·{" "}
+              <time dateTime={novidade.registradaEm}>
+                {new Date(novidade.registradaEm).toLocaleDateString("pt-BR")}
+              </time>
+            </span>
+            {!novidade.lida && (
+              <span
+                className="mt-1 flex items-center gap-1.5 text-xs
+                  font-medium text-admin-gold"
+              >
+                <span
+                  aria-hidden="true"
+                  className="size-2 shrink-0 rounded-full bg-admin-gold"
+                />
+                Não lida
+              </span>
+            )}
+          </span>
+          <ChevronDown
+            aria-hidden="true"
+            className={`size-5 shrink-0 text-zinc-400 ${
+              aberta ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+      </h3>
+
+      <div id={conteudoId} hidden={!aberta} className="space-y-3 px-3.5 pb-3.5">
+        {grupos.map(({ titulo, itens }) =>
+          itens.length > 0 ? (
+            <div key={titulo} className="space-y-1">
+              <h4 className="text-xs font-bold text-zinc-300">{titulo}</h4>
+              <ul
+                className="list-disc space-y-1 pl-5 text-sm
+                  leading-snug text-zinc-300"
+              >
+                {itens.map((texto, indice) => (
+                  <li key={`${indice}-${texto}`}>{texto}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null,
+        )}
+        {!novidade.lida && (
+          <button
+            type="button"
+            onClick={() => {
+              // O botão some ao marcar: o foco vai para o título do cartão.
+              botaoDoCartao.current?.focus();
+              marcarNovidadeComoLida(novidade.versao);
+            }}
+            className="min-h-11 rounded-lg border border-white/10
+              bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300
+              transition-all hover:border-white/20 hover:text-white
+              focus-visible:outline-none focus-visible:ring-2
+              focus-visible:ring-admin-gold active:scale-95"
+          >
+            Marcar como lida
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function NovidadesDoApp() {
+  const { novidades, naoLidas } = useNovidadesDoAparelho();
+  const tituloId = useId();
+  const titulo = useRef<HTMLHeadingElement>(null);
+
+  if (novidades.length === 0) return null;
+
+  return (
+    <section aria-labelledby={tituloId} className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <h2
+          ref={titulo}
+          id={tituloId}
+          tabIndex={-1}
+          className="text-[11px] font-black uppercase tracking-widest
+            text-admin-gold/70"
+        >
+          Novidades do app
+        </h2>
+        {naoLidas > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              // O botão some quando não sobra nada por ler: o foco vai ao título.
+              titulo.current?.focus();
+              marcarTodasComoLidas();
+            }}
+            className="min-h-11 rounded-lg border border-white/10
+              bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300
+              transition-all hover:border-white/20 hover:text-white
+              focus-visible:outline-none focus-visible:ring-2
+              focus-visible:ring-admin-gold active:scale-95"
+          >
+            Marcar tudo como lido
+          </button>
+        )}
+      </div>
+      {novidades.map((novidade) => (
+        <CartaoDeNovidade key={novidade.versao} novidade={novidade} />
+      ))}
+    </section>
+  );
 }
 
 const LinhaDeAviso = memo(function LinhaDeAviso({
@@ -228,6 +387,8 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
       </div>
 
       <div className="mx-auto max-w-3xl space-y-4 p-4">
+        <NovidadesDoApp />
+
         {fontesComFalha.length > 0 && (
           <div className="flex items-start gap-2.5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-400" />
