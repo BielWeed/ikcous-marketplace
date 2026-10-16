@@ -35,8 +35,27 @@ import {
   EstadoDeErro,
   Segmentado,
 } from "./partes";
+import {
+  chaveEmAbertoDoConteudo,
+  esquecerChaveEmAberto,
+  guardarChaveEmAberto,
+} from "./tentativasEmAberto";
 
 const ID_FORM = "fin-novo-lancamento";
+
+/** Em HTTP local, randomUUID pode faltar; getRandomValues ainda gera UUID v4. */
+function gerarChaveDaTentativa(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 const PARCELAS = Array.from({ length: MAXIMO_DE_PARCELAS }, (_, i) => i + 1);
 
@@ -85,6 +104,9 @@ export function NovoLancamentoFolha({
     }),
   );
   const [form, setForm] = useState<FormularioDoLancamento>(formInicial);
+  const formRef = useRef(formInicial);
+  const [chaveInicial] = useState(gerarChaveDaTentativa);
+  const chaveDaTentativa = useRef(chaveInicial);
   // "Sujo" = diferente do que abriu (desfazer à mão limpa o aviso). Tocar e
   // sair de um campo sem mudar nada não conta.
   const sujo = JSON.stringify(form) !== JSON.stringify(formInicial);
@@ -114,7 +136,14 @@ export function NovoLancamentoFolha({
   );
 
   function atualizar(parcial: Partial<FormularioDoLancamento>) {
-    setForm((atual) => ({ ...atual, ...parcial }));
+    const proximo = { ...formRef.current, ...parcial };
+    // Blur/debounce sem mudança não cria outra tentativa. A ref muda no evento,
+    // antes de um submit no mesmo tique; nenhum efeito/updater regenera a chave.
+    if (JSON.stringify(proximo) !== JSON.stringify(formRef.current)) {
+      chaveDaTentativa.current = gerarChaveDaTentativa();
+      formRef.current = proximo;
+      setForm(proximo);
+    }
     setErroDoServidor(null);
   }
 
@@ -140,22 +169,32 @@ export function NovoLancamentoFolha({
     evento?.preventDefault();
     if (enviandoRef.current) return;
     setTentouSalvar(true);
-    const resultado = validarLancamento(form, hoje);
+    const resultado = validarLancamento(formRef.current, hoje);
     if (!resultado.ok) return;
     enviandoRef.current = true;
     aoMudarEnviando?.(true);
     setEnviando(true);
     setErroDoServidor(null);
     const erroDePrazo = new Error(
-      "A internet demorou demais. Confira o lançamento antes de tentar de novo — ele pode ter sido salvo.",
+      "A internet demorou demais. O lançamento pode ter sido salvo; se salvar de novo sem mudar os campos, não duplica.",
     );
+    // Mesmo conteúdo de uma tentativa que não deu resposta (mesmo em outra
+    // abertura do formulário) reaproveita a chave dela: se aquela gravação ainda
+    // estiver viva no servidor, esta devolve o mesmo lançamento em vez de somar.
+    const conteudo = JSON.stringify(resultado.payload);
+    const chave = chaveEmAbertoDoConteudo(conteudo) ?? chaveDaTentativa.current;
+    guardarChaveEmAberto(conteudo, chave);
     try {
       // O prazo solta a tela, mas não cancela a gravação no servidor.
       const ids = await aguardarComPrazo(
-        salvarLancamento(resultado.payload),
+        salvarLancamento({
+          ...resultado.payload,
+          chave_idempotencia: chave,
+        }),
         30_000,
         () => erroDePrazo,
       );
+      esquecerChaveEmAberto(conteudo);
       aoSalvar(
         ids.length > 1
           ? `${ids.length} parcelas lançadas.`

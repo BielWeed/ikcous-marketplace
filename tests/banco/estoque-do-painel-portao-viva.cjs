@@ -1212,6 +1212,10 @@ async function main() {
         "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
+      [
+        "20261246000000_o_lancamento_repetido_nao_duplica.sql",
+        "public.fin_lancamento_salvar(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

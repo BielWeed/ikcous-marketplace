@@ -217,6 +217,9 @@ describe("Financeiro — Novo lançamento", () => {
     expect(rpcFalso).toHaveBeenCalledTimes(1);
     expect(rpcFalso).toHaveBeenCalledWith("fin_lancamento_salvar", {
       p: {
+        chave_idempotencia: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        ),
         tipo: "saida",
         valor: 1234.56,
         conta_id: CONTA_BANCARIA,
@@ -244,6 +247,9 @@ describe("Financeiro — Novo lançamento", () => {
 
     expect(rpcFalso).toHaveBeenCalledWith("fin_lancamento_salvar", {
       p: {
+        chave_idempotencia: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        ),
         tipo: "entrada",
         valor: 50,
         conta_id: CONTA_CAIXA_DA_LOJA,

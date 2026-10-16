@@ -136,8 +136,16 @@ module.exports = [
     // pagamento em dobro. Medido 465,17 kB (base 462,83; +2,34 do R1 já
     // compactado: contrato do saldo do servidor, bloco da devolução, saída dos
     // 7 dias). Código morto citado acima não devolve byte. Cliente 540,60/550.
+    //
+    // 16/10/2026 — teto 466 -> 467 kB (a subida anterior foi delegada à hub; a
+    // sessão que coordena o lote autorizou só este passo; o dono pode vetar e
+    // voltar a 466 em uma linha): +0,24 kB acima do teto, medido 466,24 kB. É a
+    // chave anti-duplicação do lançamento financeiro (PR #981): chave por
+    // tentativa, reaproveitada ao reabrir ou recarregar o formulário depois do
+    // aviso de internet lenta. O gerador de UUID já existia e foi reaproveitado
+    // (sem cópia no painel); a proteção contra recarregar a página fica.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "466 kB",
+    limit: "467 kB",
     webpack: false,
     running: false,
   },

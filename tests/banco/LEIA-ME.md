@@ -856,3 +856,18 @@ reesrita autocontida — com três diferenças documentadas no cabeçalho do
 `provisionar.cjs` (auth.uid() lendo GUC, auth.users com raw_app_meta_data e
 o stub do pg_cron), todas necessárias para PROVAR comportamento, não só
 aplicação.
+
+- **`lancamento-idempotente-viva.cjs`** (20261246000000): execute pelo
+  `node tests/banco/rodar-isolado.cjs tests/banco/lancamento-idempotente-viva.cjs`.
+  Criação com chave devolve os mesmos ids em replay de despesa, três parcelas e transferência;
+  outro conteúdo recusa, cliente antigo sem chave continua criando. Duas conexões observam
+  o bloqueio real no índice único, tanto com commit quanto com aborto da primeira transação.
+  Um trigger de fixture falha na segunda parcela, depois da reserva, e prova atomicidade.
+  ACL/RLS fecham a tabela até para service_role; uma trava exclusiva prova que não-admin e
+  admin rebaixado recusam ANTES de qualquer acesso à tentativa. Os dois corpos são executados
+  no mesmo banco para comparar linhas/JSON sem chave e edição. Apply 2x, pré-voo divergente,
+  rollback comum preservando registros e destrutivo com confirmação. Três mutantes (sem
+  ON CONFLICT, sem comparação de hash, reserva só no fim) devem deixar as provas vermelhas.
+  Uma linha por criação com chave, sem expurgo automático. Banco antes do front.
+  A cadeia da 99 inclui a 246 em `sucessoras-da-99.cjs`; isso alcança admin-atual-portas-viva,
+  admin-atual-viva e pagamentos-rpc-viva sem relaxar os hashes originais.

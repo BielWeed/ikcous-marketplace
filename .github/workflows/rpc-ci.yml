@@ -126,6 +126,8 @@ on:
       - "scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql"
       - "scripts/publicacao/consultas/48a-conferir-lucro-com-desconto-aplicado.sql"
       - "scripts/publicacao/consultas/48b-antes-lucro-com-desconto-base-vigente.sql"
+      - "scripts/publicacao/consultas/49a-conferir-lancamento-idempotente-aplicado.sql"
+      - "scripts/publicacao/consultas/49b-antes-lancamento-idempotente-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -221,6 +223,8 @@ on:
       - "scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql"
       - "scripts/publicacao/consultas/48a-conferir-lucro-com-desconto-aplicado.sql"
       - "scripts/publicacao/consultas/48b-antes-lucro-com-desconto-base-vigente.sql"
+      - "scripts/publicacao/consultas/49a-conferir-lancamento-idempotente-aplicado.sql"
+      - "scripts/publicacao/consultas/49b-antes-lancamento-idempotente-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -993,6 +997,9 @@ jobs:
       - name: Medicao das portas do anonimo - estoque, OTP e servico (A5c, nao e portao)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/portas-anon-exploracao-estoque-otp.cjs
+      - name: Prova viva do lancamento idempotente (20261246000000, concorrencia e mutantes)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lancamento-idempotente-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

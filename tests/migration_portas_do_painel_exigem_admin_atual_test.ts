@@ -175,6 +175,27 @@ const PAPEL = [
 const BASELINE = "20260806000000_baseline_do_schema_vivo.sql";
 const TODAS = [...PAPEL.map((n) => [n, BASELINE]), ...RPCS];
 
+Deno.test("sucessora 246 mantém as duas portas antes da tabela de tentativas; rollback devolve o corpo da 99", () => {
+  const nome = "20261246000000_o_lancamento_repetido_nao_duplica.sql";
+  const novo = funcao(ler(nome), "fin_lancamento_salvar");
+  const devolvido = funcao(
+    ler(`rollback-manual-${nome}`),
+    "fin_lancamento_salvar",
+  );
+  const vigente = funcao(migration, "fin_lancamento_salvar");
+  assertEquals(devolvido, vigente);
+  const gates = (t) =>
+    corpo(t).slice(
+      corpo(t).indexOf("BEGIN\n"),
+      corpo(t).indexOf("  IF p IS NULL"),
+    );
+  assertEquals(gates(novo), gates(vigente));
+  assert(
+    novo.indexOf("public.is_admin_atual()") <
+      novo.indexOf("INSERT INTO public.fin_lancamento_tentativas"),
+  );
+});
+
 /** A regra da guarda: copia o bloco do is_admin() com is_admin_atual(), logo depois dele. */
 const comGuarda = (nome, src) => {
   const alvo = "public.is_admin()";

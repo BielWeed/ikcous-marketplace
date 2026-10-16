@@ -2034,3 +2034,18 @@ nunca confirma.
 
 - Ignore step: `commandForIgnoringBuildStep = null`.
 - Ruleset: remover `producao-unica-fonte` (id 24166103).
+
+49. **Lote de UMA migration, de apply normal: `20261246000000` — o lançamento repetido não duplica.**
+    Consultas de catálogo `49a-conferir-lancamento-idempotente-aplicado` (depois) e
+    `49b-antes-lancamento-idempotente-base-vigente` (antes), seis linhas cada, rol fechado.
+    A 49b aceita a tabela ausente ou preservada na forma correta pelo rollback comum.
+    **Ordem: banco antes do front.** A mensagem de tentar salvar de novo sem duplicar depende
+    da proteção no servidor. Sem chave, o front antigo continua funcionando. Uma linha por
+    tentativa criada, sem expurgo automático. Não há backfill nem job.
+    **Desfazer:** retirar o front novo antes de executar
+    `rollback-manual-20261246000000_o_lancamento_repetido_nao_duplica.sql`, que restaura o corpo
+    da 99 e preserva os ids guardados. A tabela só é apagada pelo arquivo separado
+    `rollback-manual-destrutivo-20261246000000_o_lancamento_repetido_nao_duplica.sql`, com o dono,
+    confirmação de sessão e função antiga. Perder os registros permite duplicar uma tentativa
+    antiga depois de reaplicar. A 8e aceita os hashes anterior e sucessor conhecidos; os
+    rollbacks da 99/97 desfazem esta sucessora primeiro. Nenhum apply é feito por este roteiro.
