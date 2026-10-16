@@ -169,6 +169,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     }
 
     timerRef.current = setTimeout(() => {
+      timerRef.current = null;
       onFlushRef.current(rawVal);
     }, delay);
   };
@@ -180,10 +181,10 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     }
   };
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    isFocusedRef.current = false;
-    if (timerRef.current) {
+  const flushBufferedValue = () => {
+    if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
     const val =
       localVal !== undefined && localVal !== null ? localVal.toString() : "";
@@ -194,8 +195,26 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
       rawVal = parseCurrencyToFloatString(val, permiteNegativo);
     }
     onFlushRef.current(rawVal);
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    isFocusedRef.current = false;
+    flushBufferedValue();
     if (props.onBlur) {
       props.onBlur(e);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (
+      e.key === "Enter" &&
+      !e.nativeEvent.isComposing &&
+      timerRef.current !== null
+    ) {
+      flushBufferedValue();
+    }
+    if (props.onKeyDown) {
+      props.onKeyDown(e);
     }
   };
 
@@ -212,6 +231,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
           className={cn(
             className,
             error &&
@@ -226,6 +246,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
           className={cn(
             className,
             error &&
