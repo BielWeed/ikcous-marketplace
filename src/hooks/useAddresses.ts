@@ -12,11 +12,17 @@ const LISTA_VAZIA: Address[] = [];
 // endereço) não existia para o carrinho, que seguia cotando o frete do
 // principal. Toda lista gravada (busca, inclusão, edição, remoção) é
 // publicada aqui; as outras instâncias DA MESMA CONTA adotam.
-type OuvinteDaLista = (dono: string, itens: Address[], origem: symbol) => void;
+interface PublicacaoDaLista {
+  dono: string;
+  itens: Address[];
+  origem: symbol;
+  leituraConfirmada: boolean;
+}
+type OuvinteDaLista = (publicacao: PublicacaoDaLista) => void;
 const ouvintesDaLista = new Set<OuvinteDaLista>();
 
-function publicarLista(dono: string, itens: Address[], origem: symbol) {
-  for (const ouvir of ouvintesDaLista) ouvir(dono, itens, origem);
+function publicarLista(publicacao: PublicacaoDaLista) {
+  for (const ouvir of ouvintesDaLista) ouvir(publicacao);
 }
 
 interface EstadoDaLista {
@@ -62,7 +68,7 @@ export function useAddresses() {
   const consultaRef = useRef(0);
 
   const gravarLista = useCallback(
-    (dono: string, itens: Address[]) => {
+    (dono: string, itens: Address[], leituraConfirmada = false) => {
       // Uma gravação confirmada invalida buscas iniciadas antes dela.
       consultaRef.current++;
       setLoading(false);
@@ -77,13 +83,18 @@ export function useAddresses() {
       } catch {
         // cota/modo privado: a lista em memória continua valendo
       }
-      publicarLista(dono, itens, identidade);
+      publicarLista({ dono, itens, origem: identidade, leituraConfirmada });
     },
     [identidade],
   );
 
   useEffect(() => {
-    const ouvir: OuvinteDaLista = (dono, itens, origem) => {
+    const ouvir: OuvinteDaLista = ({
+      dono,
+      itens,
+      origem,
+      leituraConfirmada,
+    }) => {
       if (origem === identidade) return;
       // Lista de OUTRA conta nunca entra (troca de conta em voo).
       if (dono !== usuarioAtualRef.current) return;
@@ -92,6 +103,8 @@ export function useAddresses() {
       const novo = { dono, itens };
       estadoRef.current = novo;
       setEstado(novo);
+      // Mutação sobre o cache não confirma que a lista inteira foi lida.
+      if (leituraConfirmada) setContaComErro(null);
     };
     ouvintesDaLista.add(ouvir);
     return () => {
@@ -163,7 +176,7 @@ export function useAddresses() {
         reference: a.reference,
         is_default: a.is_default || false,
       }));
-      gravarLista(idDaBusca, mapped);
+      gravarLista(idDaBusca, mapped, true);
       setContaComErro(null);
     } catch (error) {
       if (!atual()) return;
