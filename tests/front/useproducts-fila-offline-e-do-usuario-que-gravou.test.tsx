@@ -67,7 +67,18 @@ vi.mock("@/lib/supabase", () => ({
         eq: (_coluna: string, id: string) => {
           mock.atualizados.push({ id, payload });
           mock.aoAtualizar?.();
-          return Promise.resolve({ error: mock.erroNoUpdate });
+          // O envio compara a versao-base e exige o id de volta
+          // (.eq(id).eq(versao).is(deleted_at).select(id)).
+          const encadeado = {
+            eq: () => encadeado,
+            is: () => encadeado,
+            select: () =>
+              Promise.resolve({
+                data: mock.erroNoUpdate ? null : [{ id }],
+                error: mock.erroNoUpdate,
+              }),
+          };
+          return encadeado;
         },
       }),
     }),
@@ -94,7 +105,12 @@ let raiz: Root;
 let onLine: ReturnType<typeof vi.spyOn>;
 
 function itemDe(id: string, updates: object, idadeMs = HORA) {
-  return { id, updates, timestamp: Date.now() - idadeMs };
+  return {
+    id,
+    updates,
+    baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+    timestamp: Date.now() - idadeMs,
+  };
 }
 
 function filaDe(uid: string): any[] | null {

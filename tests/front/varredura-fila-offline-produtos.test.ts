@@ -20,11 +20,20 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       update: (payload: unknown) => ({
-        eq: (_col: string, id: string) =>
-          new Promise((resolve) => {
-            updates.push({ id, payload });
-            liberarUpdate.fn = () => resolve({ error: null });
-          }),
+        eq: (_col: string, id: string) => {
+          // Fila: .eq(id).eq(versao).is(deleted_at).select(id).
+          const encadeado = {
+            eq: () => encadeado,
+            is: () => encadeado,
+            select: () =>
+              new Promise((resolve) => {
+                updates.push({ id, payload });
+                liberarUpdate.fn = () =>
+                  resolve({ data: [{ id }], error: null });
+              }),
+          };
+          return encadeado;
+        },
       }),
     }),
     rpc: vi.fn(),
@@ -69,7 +78,12 @@ describe("fila offline de produtos — edição feita DURANTE o sync não se per
     localStorage.setItem(
       CHAVE,
       JSON.stringify([
-        { id: "p1", updates: { name: "A" }, timestamp: Date.now() },
+        {
+          id: "p1",
+          updates: { name: "A" },
+          baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+          timestamp: Date.now(),
+        },
       ]),
     );
 
@@ -78,7 +92,12 @@ describe("fila offline de produtos — edição feita DURANTE o sync não se per
     // editou o p2, que foi para a fila.
     await vi.waitFor(() => expect(updates).toHaveLength(1));
     const fila = JSON.parse(localStorage.getItem(CHAVE) ?? "[]");
-    fila.push({ id: "p2", updates: { name: "B" }, timestamp: Date.now() + 1 });
+    fila.push({
+      id: "p2",
+      updates: { name: "B" },
+      baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+      timestamp: Date.now() + 1,
+    });
     localStorage.setItem(CHAVE, JSON.stringify(fila));
 
     liberarUpdate.fn?.();
@@ -95,7 +114,12 @@ describe("fila offline de produtos — edição feita DURANTE o sync não se per
     localStorage.setItem(
       CHAVE,
       JSON.stringify([
-        { id: "p1", updates: { name: "A" }, timestamp: Date.now() },
+        {
+          id: "p1",
+          updates: { name: "A" },
+          baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+          timestamp: Date.now(),
+        },
       ]),
     );
     const sync = _syncOfflineUpdatesParaTeste("lojista-1");
