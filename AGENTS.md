@@ -271,7 +271,7 @@ npm run size
 `tests/front/`).
 
 **`npm run size` é portão DIVIDIDO** (decisão do dono, 26/09/2026): JS que a cliente pode
-baixar **≤ 550 kB** e JS só do painel **≤ 466 kB** (era 450 até 15/10/2026, 455 até a integração dos lotes 36 a 41, 460 até juntar com o lote 4, 464,5 até o lote R1 do reembolso — esse último passo é decisão do dono, delegada à hub em 15/10/2026 ("você escolhe a melhor opção por mim"), registrada em `.size-limit.cjs`; o dono pode vetar e voltar a 464,5; brotli por arquivo), CSS ≤ 100 kB, leitor
+baixar **≤ 552 kB** (era 550 até 16/10/2026 — proposta aguardando o dono, ver `.size-limit.cjs`) e JS só do painel **≤ 466 kB** (era 450 até 15/10/2026, 455 até a integração dos lotes 36 a 41, 460 até juntar com o lote 4, 464,5 até o lote R1 do reembolso — esse último passo é decisão do dono, delegada à hub em 15/10/2026 ("você escolhe a melhor opção por mim"), registrada em `.size-limit.cjs`; o dono pode vetar e voltar a 464,5; brotli por arquivo), CSS ≤ 100 kB, leitor
 zxing ≤ 400 kB (`.size-limit.cjs`). Quem classifica cada chunk é o **grafo real do Rollup**,
 nunca o nome do arquivo: o plugin `scripts/portaoDividido.ts` (`generateBundle`, só no build)
 faz a busca a partir das entradas sem atravessar a fronteira (entrada dinâmica que contém
