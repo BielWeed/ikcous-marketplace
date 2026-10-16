@@ -147,6 +147,17 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     return config.homeSections ?? defaultHomeSections;
   }, [config.homeSections, defaultHomeSections]);
 
+  const [salvandoVitrines, setSalvandoVitrines] = useState(false);
+  const gravacaoEmAndamentoRef = useRef<{
+    chave: string;
+    promessa: Promise<boolean>;
+  } | null>(null);
+  const [ordemArrastada, setOrdemArrastada] = useState<SecaoDaHome[] | null>(
+    null,
+  );
+  const [salvandoOrdem, setSalvandoOrdem] = useState(false);
+  const ordemArrastadaRef = useRef<SecaoDaHome[] | null>(null);
+
   // Tecla Esc fecha a ajuda. O painel de edição e os diálogos de confirmação
   // são do Radix e já fecham sozinhos com Esc.
   useEffect(() => {
@@ -166,28 +177,56 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
    * sucesso!" em cima de uma gravação que não aconteceu — e a vitrine sumia da
    * lista no próximo carregamento (ADMIN-010, #94).
    */
-  const handleUpdateHomeSections = async (
+  const handleUpdateHomeSections = (
     updated: typeof homeSections,
     showToast = false,
   ): Promise<boolean> => {
-    try {
-      // O toast de erro sai de dentro do `updateConfig`; não duplicar aqui.
-      const salvou = await updateConfig({ homeSections: updated });
-      if (!salvou) return false;
-      onSetDirty?.(false);
-      if (showToast) {
-        toast.success("Vitrines salvas com sucesso!");
-      }
-      return true;
-    } catch (error) {
-      console.error("Erro ao atualizar as vitrines:", error);
-      toast.error("Erro ao salvar ordem das vitrines.");
-      return false;
+    // Toda ação substitui a MESMA lista no banco. Travas por vitrine ou só
+    // por estado React deixam duas gravações sair sobre a mesma base antiga.
+    const chave = JSON.stringify(updated);
+    const emAndamento = gravacaoEmAndamentoRef.current;
+    if (emAndamento) {
+      // O blur pode repetir o nome que o debounce já está gravando: Concluir
+      // precisa aguardar essa confirmação, sem duplicar nem anunciar falha.
+      return emAndamento.chave === chave
+        ? emAndamento.promessa
+        : Promise.resolve(false);
     }
+
+    // Uma gravação iniciada no meio de um arrasto cancela só o seu preview.
+    // Ao soltar, não pode sobrar uma ordem montada antes da confirmação.
+    if (ordemArrastadaRef.current) {
+      ordemArrastadaRef.current = null;
+      setOrdemArrastada(null);
+    }
+    setSalvandoVitrines(true);
+    // Registra a trava antes de chamar a rede, inclusive se ela lançar erro
+    // síncrono. Não há duas respostas concorrentes para publicar fora de ordem.
+    const promessa = Promise.resolve().then(async () => {
+      try {
+        // O toast de erro sai de dentro do `updateConfig`; não duplicar aqui.
+        const salvou = await updateConfig({ homeSections: updated });
+        if (!salvou) return false;
+        onSetDirty?.(false);
+        if (showToast) {
+          toast.success("Vitrines salvas com sucesso!");
+        }
+        return true;
+      } catch (error) {
+        console.error("Erro ao atualizar as vitrines:", error);
+        toast.error("Erro ao salvar ordem das vitrines.");
+        return false;
+      } finally {
+        gravacaoEmAndamentoRef.current = null;
+        setSalvandoVitrines(false);
+      }
+    });
+    gravacaoEmAndamentoRef.current = { chave, promessa };
+    return promessa;
   };
 
   const handleToggleSectionActive = (sectionId: string) => {
-    if (salvandoOrdem) return;
+    if (gravacaoEmAndamentoRef.current) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para alterar a visibilidade.",
@@ -209,7 +248,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     // O campo de nome grava ao sair dele, mesmo sem ter mudado nada: sem este
     // corte, abrir e fechar o painel regravava a vitrine (e, sem internet,
     // reclamava de uma edição que ninguém fez).
-    if (homeSections.find((s) => s.id === sectionId)?.title === newTitle) {
+    if (
+      !gravacaoEmAndamentoRef.current &&
+      homeSections.find((s) => s.id === sectionId)?.title === newTitle
+    ) {
       return true;
     }
     if (isOffline) {
@@ -242,7 +284,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const moveSection = (index: number, direction: "up" | "down") => {
-    if (salvandoOrdem) return;
+    if (gravacaoEmAndamentoRef.current) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para reordenar.",
@@ -270,23 +312,18 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   // `homeSections` ainda está na ordem ANTIGA enquanto a tela mostra a nova.
   // Qualquer outra gravação nessa janela (seta, liga/desliga, painel, nova
   // vitrine) montaria a lista sobre a ordem velha e desfaria o arrasto em
-  // silêncio. Por isso a lista TRAVA (`salvandoOrdem`) até a confirmação: o
+  // silêncio. Por isso TODA gravação trava a lista até a confirmação: o
   // que está na tela volta a ser a base de toda gravação.
-  const [ordemArrastada, setOrdemArrastada] = useState<SecaoDaHome[] | null>(
-    null,
-  );
-  const [salvandoOrdem, setSalvandoOrdem] = useState(false);
-  const ordemArrastadaRef = useRef<SecaoDaHome[] | null>(null);
   const secoesNaLista = ordemArrastada ?? homeSections;
 
   const handleReordenando = (novaOrdem: SecaoDaHome[]) => {
-    if (salvandoOrdem) return;
+    if (gravacaoEmAndamentoRef.current) return;
     ordemArrastadaRef.current = novaOrdem;
     setOrdemArrastada(novaOrdem);
   };
 
   const handleSoltou = async () => {
-    if (salvandoOrdem) return;
+    if (gravacaoEmAndamentoRef.current) return;
     const novaOrdem = ordemArrastadaRef.current;
     ordemArrastadaRef.current = null;
     if (!novaOrdem) return;
@@ -332,7 +369,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const handleAddCustomVitrine = async () => {
-    if (criandoVitrine) return;
+    if (gravacaoEmAndamentoRef.current) return;
     if (!newVitrineTitle.trim()) {
       toast.error("Informe um título para a vitrine");
       return;
@@ -550,7 +587,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         type="button"
                         aria-label="Mais ações"
                         title="Mais ações"
-                        disabled={salvandoOrdem}
+                        disabled={salvandoVitrines}
                         className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors hover:text-white"
                       >
                         <MoreHorizontal className="size-[17px]" />
@@ -603,7 +640,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           <button
             type="button"
             onClick={() => setShowAddVitrineModal(true)}
-            disabled={salvandoOrdem}
+            disabled={salvandoVitrines}
             className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-admin-gold px-6 text-[14.5px] font-extrabold text-zinc-950 shadow-[0_10px_24px_-10px] shadow-admin-gold/55 transition-all hover:bg-admin-gold/90 active:scale-[0.99] disabled:opacity-60 sm:h-auto sm:w-56"
           >
             <Plus className="size-[18px] stroke-[2.5]" />
@@ -620,7 +657,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
         <Reorder.Group
           as="div"
           axis="y"
-          aria-busy={salvandoOrdem}
+          aria-busy={salvandoVitrines}
           values={secoesNaLista}
           onReorder={handleReordenando}
           className="flex flex-col gap-2.5"
@@ -636,7 +673,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               aoAlternarAtiva={handleToggleSectionActive}
               aoMover={moveSection}
               aoSoltar={handleSoltou}
-              travado={salvandoOrdem}
+              travado={salvandoVitrines}
             />
           ))}
         </Reorder.Group>
@@ -649,7 +686,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           aoMudarTitulo={setNewVitrineTitle}
           aoCriar={handleAddCustomVitrine}
           aoFechar={() => setShowAddVitrineModal(false)}
-          criando={criandoVitrine}
+          criando={criandoVitrine || salvandoVitrines}
         />
       )}
 
@@ -725,6 +762,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
+              disabled={salvandoVitrines}
               onClick={handleResetDefaultVitrines}
               className="h-11 rounded-[14px] border-0 bg-red-600 px-5 text-sm font-bold text-white hover:bg-red-700"
             >
@@ -768,6 +806,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
+              disabled={salvandoVitrines}
               onClick={() => {
                 if (vitrineParaExcluir) {
                   handleDeleteVitrine(vitrineParaExcluir.id);
