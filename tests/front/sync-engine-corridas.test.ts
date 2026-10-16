@@ -442,6 +442,48 @@ describe("motor — detalhes de catchUp anteriores ao realtime", () => {
     });
   });
 
+  it("busca de novo o produto descartado mesmo quando o evento ao vivo igualou o horário do cache", async () => {
+    const cofre = bancoEmMemoria()();
+    await aplicar(cofre, "produtos", produto(), "INSERT");
+    const concluir = await iniciarDetalhesLentos(cofre);
+    // O gatilho do banco emite este evento do produto a cada venda de variação.
+    await aplicar(cofre, "produtos", {
+      id: "camisa",
+      nome: "Camisa",
+      estoque: 10,
+      ultima_atualizacao: "2026-10-16T12:00:00.000Z",
+    });
+    await concluir();
+    expect(await cofre.getById("product_variants", "m")).toBeUndefined();
+
+    // Agora o horário do cache é igual ao do servidor: só a fila de descartados
+    // faz a próxima rodada buscar o produto.
+    const refeita = vi.fn(async () => ({
+      data: [
+        {
+          ...produto(),
+          ultima_atualizacao: "2026-10-16T12:00:00.000Z",
+          product_variants: [variacao("p", 0), variacao("m", 2)],
+        },
+      ],
+      error: null as null,
+    }));
+    rede.detalhes.mockImplementationOnce(refeita);
+    await motor.catchUp(cofre, false);
+
+    expect(refeita).toHaveBeenCalledTimes(1);
+    expect(await cofre.getById("product_variants", "m")).toMatchObject({
+      stockIncrement: 2,
+    });
+    const final = await cofre.getById<Product>("products", "camisa");
+    expect(final?.variants?.map((v) => v.stockIncrement)).toEqual([0, 2]);
+
+    // Depois de gravado, não volta à fila: a terceira rodada não busca.
+    rede.detalhes.mockClear();
+    await motor.catchUp(cofre, false);
+    expect(rede.detalhes).not.toHaveBeenCalled();
+  });
+
   it("não manda às outras abas o produto nem as variações que o realtime tocou", async () => {
     const aviso = vi.spyOn(BroadcastChannel.prototype, "postMessage");
     try {
