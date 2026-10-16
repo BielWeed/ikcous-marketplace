@@ -9,6 +9,10 @@ import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { DataVault } from "@/lib/dataVault";
 import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import {
+  diasDaEntregaPropria,
+  entregaPropriaLigada,
+} from "@/lib/guarda-de-frete";
 import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -130,6 +134,13 @@ export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
   ["free_shipping_min", "numeric"],
   ["shipping_fee", "numeric"],
   ["local_delivery_fee", "numeric"],
+  // "Como entrego na minha cidade" (16/10/2026): entrega própria ligada e o
+  // prazo dela — sem entrada aqui `updateConfig` gravaria a coluna mas o
+  // comparador de "gravou mesmo?" acusaria falha (coluna desconhecida nunca
+  // confirma). Num banco SEM a migration a RPC descarta a chave, a coluna
+  // não volta na linha, e a falha é a resposta certa (não gravou).
+  ["local_delivery_enabled", "boolean"],
+  ["local_delivery_days", "numeric"],
   ["whatsapp_number", "texto"],
   ["share_text", "texto"],
   ["business_hours", "texto"],
@@ -705,6 +716,24 @@ export function StoreProvider({
         defaultStoreConfig.shippingCoverage,
       ),
       localDeliveryFee: Number(localFee),
+      // "Como entrego na minha cidade" (16/10/2026): coluna ausente (banco
+      // sem a migration), nula ou inválida lê como o padrão de hoje —
+      // entrega ligada, 1 dia. Os dois normalizadores são a fonte única
+      // dessa leitura (a mesma que o carimbo do cache de frete usa).
+      localDeliveryEnabled: entregaPropriaLigada(
+        getVal(
+          "local_delivery_enabled",
+          "localDeliveryEnabled",
+          defaultStoreConfig.localDeliveryEnabled,
+        ),
+      ),
+      localDeliveryDays: diasDaEntregaPropria(
+        getVal(
+          "local_delivery_days",
+          "localDeliveryDays",
+          defaultStoreConfig.localDeliveryDays,
+        ),
+      ),
       localCepRange: getVal(
         "local_cep_range",
         "localCepRange",
@@ -1172,6 +1201,13 @@ export function StoreProvider({
           dbUpdates.shipping_coverage = updates.shippingCoverage;
         if (updates.localDeliveryFee !== undefined)
           dbUpdates.local_delivery_fee = updates.localDeliveryFee;
+        // "Como entrego na minha cidade" (16/10/2026): chave omitida =>
+        // `upsert_store_config` preserva o valor atual; `false` e `0` são
+        // valores (por isso `!== undefined`, nunca truthiness).
+        if (updates.localDeliveryEnabled !== undefined)
+          dbUpdates.local_delivery_enabled = updates.localDeliveryEnabled;
+        if (updates.localDeliveryDays !== undefined)
+          dbUpdates.local_delivery_days = updates.localDeliveryDays;
         if (updates.localCepRange !== undefined)
           dbUpdates.local_cep_range = updates.localCepRange;
         if (updates.homeSections !== undefined)
@@ -1316,10 +1352,17 @@ export function StoreProvider({
             err && typeof err === "object" && "message" in err
               ? (err as { message?: unknown }).message
               : undefined;
+          // "Como entrego na minha cidade" (16/10/2026): a trigger
+          // `store_config_so_retirada_exige_retirada` recusa "Só retiro"
+          // (entrega própria desligada) sem a retirada ligada e sem o
+          // endereço da loja — a lojista corrige na própria tela, e o texto
+          // diz como.
           toast.error(
             mensagemCrua === "LOJA_SEM_FORMA_DE_PAGAMENTO"
               ? "Ligue ao menos uma forma de pagamento — o PIX pelo app está desligado"
-              : "Erro ao salvar as configurações",
+              : mensagemCrua === "LOJA_SO_RETIRADA_SEM_RETIRADA"
+                ? "Para entregar só por retirada, ligue a retirada na loja e cadastre o endereço da loja."
+                : "Erro ao salvar as configurações",
           );
         }
         return false;

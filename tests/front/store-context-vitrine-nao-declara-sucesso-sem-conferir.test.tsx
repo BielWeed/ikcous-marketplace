@@ -784,6 +784,10 @@ describe("StoreContext.updateConfig — não declara sucesso sem conferir o reto
       enabledShippingMethods: ["sedex"],
       shippingCoverage: "national",
       localDeliveryFee: 1,
+      // "Como entrego na minha cidade" (16/10/2026): a entrega própria
+      // ligada e o prazo dela — o updateConfig tem o `if` de cada uma.
+      localDeliveryEnabled: false,
+      localDeliveryDays: 3,
       localCepRange: "x",
       homeSections: [],
       // 20261171000000: estratégias de frete NACIONAL (T3, 23/09) — a

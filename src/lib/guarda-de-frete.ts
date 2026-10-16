@@ -59,6 +59,89 @@ export function chavesDeTransportadoraDaLista(
   return (metodos ?? []).filter((m) => m !== ID_RETIRADA_NA_LOJA);
 }
 
+// "COMO ENTREGO NA MINHA CIDADE" (16/10/2026): a lojista responde em três
+// opções, e no banco isso são DUAS coisas já existentes ou novas —
+// `store_config.local_delivery_enabled` (a entrega própria está ligada?) e a
+// chave `store-pickup` em `enabled_shipping_methods` (a retirada está
+// ligada?). Esta é a ÚNICA junção das duas; o painel e o checkout leem o
+// modo por aqui, nunca recombinam os dois campos por conta própria.
+//
+//   Entrego            = entrega ligada + retirada desligada
+//   Entrego e retiro   = entrega ligada + retirada ligada
+//   Só retiro          = entrega desligada (a retirada vale para QUALQUER
+//                        CEP; a trigger do banco exige a retirada ligada)
+//
+// COLUNA AUSENTE (banco ainda sem a migration) lê como o padrão de hoje:
+// entrega ligada e 1 dia. O front vai ao ar DEPOIS do banco, mas o código
+// não depende dessa ordem.
+export type ModoDaEntregaNaCidade =
+  | "entrego"
+  | "entrego_e_retiro"
+  | "so_retiro";
+
+/** Prazo da entrega própria quando a loja não disse (o "1 dia" de sempre). */
+export const DIAS_DA_ENTREGA_PROPRIA_PADRAO = 1;
+const DIAS_MAXIMO_DA_ENTREGA_PROPRIA = 30;
+
+/**
+ * A entrega própria está ligada? Só `false` desliga: ausente, nulo ou valor
+ * estranho leem como ligada — o comportamento de hoje e o que a edge faz
+ * quando não consegue ler a coluna.
+ */
+export function entregaPropriaLigada(valor: unknown): boolean {
+  return valor !== false;
+}
+
+/**
+ * Prazo (em dias) da entrega própria: inteiro de 0 a 30 (o CHECK do banco);
+ * qualquer outra coisa — ausente, nulo, fracionário, fora da faixa, texto —
+ * lê como o padrão (1). Nunca inventa um prazo que a loja não escolheu.
+ */
+export function diasDaEntregaPropria(valor: unknown): number {
+  if (
+    typeof valor === "number" &&
+    Number.isInteger(valor) &&
+    valor >= 0 &&
+    valor <= DIAS_MAXIMO_DA_ENTREGA_PROPRIA
+  ) {
+    return valor;
+  }
+  return DIAS_DA_ENTREGA_PROPRIA_PADRAO;
+}
+
+/** O modo que a lojista escolheu para a cidade dela. */
+export function modoDaEntregaNaCidade(
+  config:
+    | {
+        readonly localDeliveryEnabled?: boolean | null;
+        readonly enabledShippingMethods?: readonly string[] | null;
+      }
+    | null
+    | undefined,
+): ModoDaEntregaNaCidade {
+  if (!entregaPropriaLigada(config?.localDeliveryEnabled)) return "so_retiro";
+  return retiradaLigadaNaLista(config?.enabledShippingMethods)
+    ? "entrego_e_retiro"
+    : "entrego";
+}
+
+/**
+ * A retirada vale para QUALQUER CEP? Só em "Só retiro" e só com a opção
+ * `store-pickup` de fato marcada — o espelho do `v_retirada_livre` da RPC
+ * do pedido (create_marketplace_order_v23/v24). Nos outros modos a edge só
+ * oferece a retirada à área local, então a regra do convidado
+ * ("fora da cidade é só com conta") segue valendo inteira.
+ */
+export function retiradaLivreParaQualquerCep(
+  config: Parameters<typeof modoDaEntregaNaCidade>[0],
+  idDaOpcaoMarcada: string | null | undefined,
+): boolean {
+  return (
+    modoDaEntregaNaCidade(config) === "so_retiro" &&
+    ehRetiradaNaLoja(idDaOpcaoMarcada)
+  );
+}
+
 // Laudo caça-bugs 31/08 (B2): a guarda do Finalizar vivia inline no
 // CheckoutView como `cart.length > 0 && shipping > 0 &&
 // !selectedShippingOption` — e IGNORAVA a bandeira `freteIndefinido`.

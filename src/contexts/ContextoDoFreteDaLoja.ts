@@ -1,4 +1,10 @@
-import { listaComRetirada, retiradaLigadaNaLista } from "@/lib/guarda-de-frete";
+import {
+  DIAS_DA_ENTREGA_PROPRIA_PADRAO,
+  diasDaEntregaPropria,
+  entregaPropriaLigada,
+  listaComRetirada,
+  retiradaLigadaNaLista,
+} from "@/lib/guarda-de-frete";
 import type { StoreConfig } from "@/types";
 import { createContext, useContext } from "react";
 
@@ -25,24 +31,43 @@ export const VERSAO_DO_CONTRATO_DE_COTACAO = "cotacao-3";
  * este texto e recota quando ele muda — senão a tela ofereceria, por até
  * 2 h, a retirada que a loja desligou ou o endereço de onde ela saiu.
  * Lista NULL lê como a edge (`["sedex","pac"]`, via `listaComRetirada`).
+ *
+ * "COMO ENTREGO NA MINHA CIDADE" (16/10/2026): a entrega própria desligada
+ * ("Só retiro") e o prazo dela mudam o que a edge responde, então entram no
+ * carimbo — mas SÓ quando diferem do padrão (ligada, 1 dia). Com os padrões
+ * o texto é BYTE A BYTE o de antes (provado em
+ * `tests/front/contexto-do-frete-modo-e-prazo.test.ts`): o deploy não
+ * invalida o cache de ninguém que não mudou nada. O trecho vai DEPOIS da
+ * versão do contrato, para a posição dos campos antigos não andar. A troca
+ * entre "Entrego" e "Entrego e retiro" já muda o carimbo pela retirada.
  */
 export function contextoDaLojaParaFrete(
   config:
     | Pick<
         StoreConfig,
-        "shippingProvider" | "enabledShippingMethods" | "storeAddress"
+        | "shippingProvider"
+        | "enabledShippingMethods"
+        | "storeAddress"
+        | "localDeliveryEnabled"
+        | "localDeliveryDays"
       >
     | null
     | undefined,
 ): string {
   const metodos = config?.enabledShippingMethods;
-  return JSON.stringify([
+  const carimbo: unknown[] = [
     config?.shippingProvider ?? "",
     [...listaComRetirada(metodos, false)].sort(),
     retiradaLigadaNaLista(metodos),
     (config?.storeAddress ?? "").trim(),
     VERSAO_DO_CONTRATO_DE_COTACAO,
-  ]);
+  ];
+  const entregaLigada = entregaPropriaLigada(config?.localDeliveryEnabled);
+  const dias = diasDaEntregaPropria(config?.localDeliveryDays);
+  if (!entregaLigada || dias !== DIAS_DA_ENTREGA_PROPRIA_PADRAO) {
+    carimbo.push(["entrega-propria", entregaLigada, dias]);
+  }
+  return JSON.stringify(carimbo);
 }
 
 /**
