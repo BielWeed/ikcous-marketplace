@@ -8,6 +8,7 @@ import { StarRating } from "./StarRating";
 
 interface ReviewCardProps {
   review: Review;
+  jaVotou?: boolean;
   // A união abaixo é deliberada: o chamador pode passar um handler síncrono
   // (void) ou um que devolve o resultado da gravação (Promise<boolean>), e os
   // dois já existem no código. Estreitar isso é mudança de contrato de uma prop
@@ -18,13 +19,21 @@ interface ReviewCardProps {
   onNavigate?: (view: View, id?: string) => void;
 }
 
-export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
-  const [hasMarkedHelpful, setHasMarkedHelpful] = useState(false);
+export function ReviewCard({
+  review,
+  jaVotou,
+  onHelpful,
+  onNavigate,
+}: ReviewCardProps) {
+  const [votoLocal, setHasMarkedHelpful] = useState(jaVotou ?? false);
+  // A leitura do hook acompanha login/logout e remontagem. O estado local
+  // continua atendendo os chamadores que não fornecem a marcação do banco.
+  const hasMarkedHelpful = jaVotou ?? votoLocal;
   const votoEmVooRef = useRef(false);
   const [votoEmVoo, setVotoEmVoo] = useState(false);
 
   // Trava o botão só quando o voto VALEU (o hook marcaHelpful devolve
-  // `false` quando o RPC falha e reverte o contador). Antes, a trava era
+  // `false` quando o RPC falha e mantém o contador). Antes, a trava era
   // local e definitiva: um erro de rede deixava o botão morto e o voto
   // que o banco nunca gravou travado para sempre.
   const handleHelpful = async () => {
@@ -39,7 +48,6 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
       setVotoEmVoo(false);
     }
   };
-  // Ao remontar, a RPC void não distingue voto novo de voto já registrado.
 
   const handleUserClick = () => {
     if (onNavigate && review.userId) {
@@ -185,10 +193,9 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
           <ThumbsUp
             className={`size-3 ${hasMarkedHelpful ? "fill-current" : ""}`}
           />
-          {/* O contador vem do objeto já atualizado pelo update otimista de
+          {/* O contador vem do objeto confirmado pela releitura de
               useReviews.markHelpful — somar +1 aqui contava o clique duas
-              vezes (e deixava um voto fantasma quando o RPC falhava e o hook
-              revertia). */}
+              vezes. */}
           <span>Útil ({review.helpful})</span>
         </button>
 

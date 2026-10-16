@@ -1,19 +1,7 @@
 // @vitest-environment jsdom
 //
-// O contador de "Útil" somava o clique DUAS VEZES.
-//
-// O DEFEITO (auditoria 22/08, achado 68): ao clicar, o hook useReviews já
-// aplica o update otimista (`helpful + 1` no objeto da review, useReviews.ts
-// markHelpful) e o ReviewCard SOMAVA +1 DE NOVO no rótulo
-// (`Útil ({review.helpful + (hasMarkedHelpful ? 1 : 0)})`). Um clique em uma
-// avaliação com 2 votos mostrava 4 — e, se o RPC falhava e o hook revertia,
-// o rótulo continuava mostrando um voto a mais que a verdade (o +1 de
-// compensação ficava pendurado no estado local do card).
-//
-// Este teste reproduz o enxerto real: o card é renderizado dentro de um
-// pai que faz exatamente o que o `markHelpful` faz com o objeto (soma +1),
-// e cobra que o rótulo mostre old+1 — não old+2. Com a expressão antiga do
-// rótulo de volta, este teste CAI.
+// O card recebe o contador confirmado pelo hook e nunca soma outro voto no
+// rótulo. O teste de integração vizinho cobre RPC, releitura e cache reais.
 
 vi.hoisted(() => {
   // jsdom não traz IntersectionObserver nem matchMedia (_REGRAS do mural):
@@ -70,33 +58,28 @@ const AVALIACAO_BASE: Review = {
   createdAt: "2026-08-20T12:00:00.000Z",
 };
 
-/** O pai imita o `markHelpful` do useReviews: no clique, soma +1 no objeto
- * da review (update otimista). É o enxerto real de ProductView.tsx:1307. */
+/** O pai entrega o número confirmado pela releitura do servidor. */
 function PaiComMarkHelpful({ revisao }: { revisao: Review }) {
   const [review, setReview] = useState(revisao);
   return (
     <ReviewCard
       review={review}
-      onHelpful={() => {
-        setReview((atual) => ({ ...atual, helpful: atual.helpful + 1 }));
+      onHelpful={async () => {
+        await Promise.resolve();
+        setReview((atual) => ({ ...atual, helpful: 3 }));
+        return true;
       }}
     />
   );
 }
 
-/** O pai imita o `markHelpful` QUANDO O RPC FALHA: soma +1 otimista, o RPC
- * devolve erro, o hook REVERTE o +1 e devolve `false`. É a evidência do
- * CACADOR-A (msg #14): o card antigo travava o botão mesmo assim — voto
- * que o banco nunca gravou, botão morto até remontar a tela. */
+/** Falha da RPC mantém o último contador confirmado e permite repetir. */
 function PaiComMarkHelpfulQueFalha({ revisao }: { revisao: Review }) {
-  const [review, setReview] = useState(revisao);
   return (
     <ReviewCard
-      review={review}
+      review={revisao}
       onHelpful={async () => {
-        setReview((atual) => ({ ...atual, helpful: atual.helpful + 1 }));
         await Promise.resolve();
-        setReview((atual) => ({ ...atual, helpful: atual.helpful - 1 }));
         return false;
       }}
     />
@@ -133,8 +116,7 @@ describe("voto Útil — um clique conta um voto, não dois", () => {
       botaoUtil?.click();
     });
 
-    // O objeto já somou +1 (update otimista do hook, imitado pelo pai).
-    // O rótulo não pode somar +1 POR CIMA disso: 2 + 1 clique = 3.
+    // O objeto já contém o 3 confirmado: o rótulo não pode somar de novo.
     expect(botaoUtil?.textContent).toContain("Útil (3)");
     expect(botaoUtil?.textContent).not.toContain("Útil (4)");
   });
@@ -147,7 +129,7 @@ describe("voto Útil — um clique conta um voto, não dois", () => {
     expect(botaoUtil?.textContent).toContain("Útil (2)");
   });
 
-  it("quando o RPC falha e o hook reverte, o botão NÃO trava e o contador volta à verdade", async () => {
+  it("quando o RPC falha, o botão NÃO trava e o contador continua confirmado", async () => {
     // Evidência do CACADOR-A: o card antigo marcava hasMarkedHelpful no
     // clique, sem saber se o voto gravou. Erro de rede = botão morto com
     // voto que não existe. O contrato novo: markHelpful devolve false e o
@@ -164,7 +146,7 @@ describe("voto Útil — um clique conta um voto, não dois", () => {
       await Promise.resolve();
     });
 
-    // O +1 otimista foi revertido pelo hook: contador de volta a 2.
+    // Falha de gravação não altera o 2 que já veio do servidor.
     expect(botaoUtil?.textContent).toContain("Útil (2)");
     // E o botão não trava: a pessoa pode tentar de novo quando a rede voltar.
     expect(botaoUtil?.hasAttribute("disabled")).toBe(false);

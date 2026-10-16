@@ -4,7 +4,6 @@ import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   geracaoAtualDoCache,
   getReviewsCache,
-  updateReviewsCache,
   updateReviewsCacheSeMesmaGeracao,
 } from "@/lib/cache-de-avaliacoes";
 import { supabase } from "@/lib/supabase";
@@ -105,6 +104,9 @@ export function useReviews() {
   const { user, isAdmin } = useAuth();
   const { isLeader } = useLeaderElection();
   const [reviews, setReviews] = useState<Review[]>([]);
+  // Voto é da pessoa, não do produto: não vai para o cache compartilhado.
+  const [votosUteis, setVotosUteis] = useState<Set<string>>(() => new Set());
+  const votosEmVooRef = useRef(new Set<string>());
   const [adminReviews, setAdminReviews] = useState<AdminReview[]>(() => {
     return isAdmin && cachedReviewsData ? cachedReviewsData : [];
   });
@@ -127,6 +129,7 @@ export function useReviews() {
     consultaDoProdutoRef.current++;
     latestProductIdRef.current = null;
     setReviews([]);
+    setVotosUteis(new Set());
     setAdminReviews([]);
     setErroDaListagemAdmin(null);
     setErroDaListagemProduto(null);
@@ -137,6 +140,7 @@ export function useReviews() {
   const getReviewsByProduct = useCallback(
     async (productId: string) => {
       if (usuarioAtualRef.current !== user?.id) return;
+      if (latestProductIdRef.current !== productId) setVotosUteis(new Set());
       latestProductIdRef.current = productId;
       const consulta = ++consultaDoProdutoRef.current;
       setErroDaListagemProduto(null);
@@ -219,6 +223,35 @@ export function useReviews() {
           setErroDaListagemProduto(null);
         }
         updateReviewsCacheSeMesmaGeracao(productId, formattedReviews, geracao);
+
+        // A RPC é void inclusive no voto repetido. Só os próprios registros
+        // dizem quais botões já devem nascer marcados, numa consulta em lote.
+        if (user && formattedReviews.length > 0) {
+          try {
+            const { data: votos, error: erroDosVotos } = await supabase
+              .from("review_votes")
+              .select("review_id")
+              .eq("user_id", user.id)
+              .in(
+                "review_id",
+                formattedReviews.map((review) => review.id),
+              );
+            if (!atual()) return;
+            if (erroDosVotos) throw erroDosVotos;
+            setVotosUteis((atuais) => {
+              if (!atual()) return atuais;
+              // Não existe desvoto: uma leitura iniciada antes do clique não
+              // pode apagar o voto que a RPC acabou de confirmar nesta tela.
+              return new Set([
+                ...atuais,
+                ...(votos || []).map((voto) => voto.review_id),
+              ]);
+            });
+          } catch (erroDosVotos) {
+            if (atual())
+              console.error("Error fetching review votes:", erroDosVotos);
+          }
+        }
       } catch (error: any) {
         if (!atual()) return;
         console.error("Error fetching reviews:", error);
@@ -307,62 +340,65 @@ export function useReviews() {
 
   const markHelpful = useCallback(
     async (reviewId: string): Promise<boolean> => {
+      if (!user) {
+        toast.error("Faça login para marcar como útil.");
+        return false;
+      }
+      const productId = latestProductIdRef.current;
+      const geracao = geracaoAtualDoCache();
+      const atual = () =>
+        geracao === geracaoAtualDoCache() &&
+        usuarioAtualRef.current === user.id &&
+        latestProductIdRef.current === productId;
+      const chave = `${geracao}:${user.id}:${productId}:${reviewId}`;
+      if (!productId || !atual() || votosEmVooRef.current.has(chave))
+        return false;
+      votosEmVooRef.current.add(chave);
       try {
-        // ZENITH v21.7: Rely on AuthContext's verified user
-        if (!user) {
-          toast.error("Faça login para marcar como útil.");
-          return false;
-        }
-
-        // Geração do cache ao começar: a reversão (depois do await) não pode
-        // regravar o que o Sair/troca de conta apagou no meio do caminho.
-        const geracao = geracaoAtualDoCache();
-
-        // Optimistic update
-        let pId: string | undefined;
-        setReviews((current) => {
-          const reviewObj = current.find((r) => r.id === reviewId);
-          pId = reviewObj?.productId;
-          const updated = current.map((review) =>
-            review.id === reviewId
-              ? { ...review, helpful: review.helpful + 1 }
-              : review,
-          );
-          if (pId) {
-            updateReviewsCache(pId, updated);
-          }
-          return updated;
-        });
-
         const { error } = await supabase.rpc("increment_helpful" as any, {
           review_id: reviewId,
         });
+        if (!atual()) return false;
+        if (error) throw error;
+        setVotosUteis((atuais) =>
+          atual() ? new Set([...atuais, reviewId]) : atuais,
+        );
 
-        if (error) {
-          // Revert on error
+        // Sucesso void também significa "já votou". Persistir local + 1
+        // inventava um voto; o contador confirmado vem sempre do servidor.
+        try {
+          const { data, error: erroDaReleitura } = await supabase
+            .from("reviews")
+            .select("helpful")
+            .eq("id", reviewId)
+            .single();
+          if (!atual()) return false;
+          if (erroDaReleitura) throw erroDaReleitura;
+          if (!data) throw new Error("Avaliação indisponível na releitura.");
           setReviews((current) => {
-            const reviewObj = current.find((r) => r.id === reviewId);
-            const productId = reviewObj?.productId;
-            const reverted = current.map((review) =>
+            if (!atual()) return current;
+            const updated = current.map((review) =>
               review.id === reviewId
-                ? { ...review, helpful: review.helpful - 1 }
+                ? { ...review, helpful: data.helpful ?? 0 }
                 : review,
             );
-            if (productId) {
-              updateReviewsCacheSeMesmaGeracao(productId, reverted, geracao);
-            }
-            return reverted;
+            updateReviewsCacheSeMesmaGeracao(productId, updated, geracao);
+            return updated;
           });
-          throw error;
+        } catch (erroDaReleitura) {
+          if (!atual()) return false;
+          // O voto já foi aceito: falha de leitura mantém o último número
+          // confirmado, sem anunciar recusa nem destravar um voto já dado.
+          console.error("Error refreshing helpful count:", erroDaReleitura);
         }
-        // O retorno diz ao card se o voto VALEU: quem chama só trava o
-        // botão quando o banco gravou de verdade — travar no erro deixava o
-        // contador revertido e o botão morto até remontar a tela.
         return true;
       } catch (error) {
+        if (!atual()) return false;
         console.error("Error marking helpful:", error);
         toast.error("Erro ao marcar como útil.");
         return false;
+      } finally {
+        votosEmVooRef.current.delete(chave);
       }
     },
     [user],
@@ -806,6 +842,8 @@ export function useReviews() {
 
   return {
     reviews: donoDasAvaliacoes === user?.id ? reviews : [],
+    votosUteis:
+      donoDasAvaliacoes === user?.id && user ? votosUteis : new Set<string>(),
     adminReviews: donoDasAvaliacoes === user?.id && isAdmin ? adminReviews : [],
     loading,
     erroDaListagemAdmin,
