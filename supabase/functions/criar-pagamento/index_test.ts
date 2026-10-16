@@ -3070,7 +3070,7 @@ Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cart�
   // identificador do `error:` (literal ou variável) -> status esperado,
   // para cada um dos pontos de retorno que TEM que levar a flag.
   const comFlagEsperada = new Map<string, number>([
-    ["Há um pagamento com cartão em análise para este pedido.", 409], // 1 e 2
+    ["Há um pagamento com cartão em análise para este pedido.", 409], // 1, 2 e 3 (vaga (a) com PIX pedido)
     ["r.erro", 502], // 3 — reconsulta da vaga (`consultarOrder`) falhou
     ["erroOriginal", 502], // 4 — criação ambígua (respostaCartaoAmbiguoNaCriacao)
     ["Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.", 409], // 5, 11 e 12 — N7, achado A (migration 80) e A3.2
@@ -12649,6 +12649,20 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-a): reconsulta de CARTÃO com cartão PAGO 
   assertEquals(ef.pushes, [PUSH_PAGO_CI]);
   assertEquals(ef.comprovantes, [UUID]);
   assertEquals(escritas.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-a, PIX pedido): cartão PAGO na vaga COM prova e pedido de PIX -> 200 'pago' (nunca o 409 'em análise'), RPC 1x, ZERO POST", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+  const ef = efeitosCI();
+  const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, ef.deps);
+
+  // Par do teste "vaga (f)... 409": só quando o BANCO não confirma é que o PIX
+  // recebe o 409; com prova e RPC o caminho é o 'pago' de sempre.
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).length, 1);
   assertEquals(mp.posts, []);
 });
 
