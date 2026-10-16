@@ -343,6 +343,52 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     cartRef.current = cart;
   }, [cart]);
 
+  // O carrinho que está no BANCO só é conhecido depois que a leitura inicial
+  // teve sucesso e foi mesclada ao daqui. Até lá NADA vai ao servidor: a RPC
+  // `sync_cart_atomic` apaga o carrinho salvo antes de gravar, então mandar só
+  // o que há neste aparelho (ex.: o carrinho de convidado) apagaria o que a
+  // cliente já tinha na conta. O destravamento da tela (`syncLocked`,
+  // `isInitialLoad`, `isLoading`) é outra coisa: o carrinho local funciona
+  // mesmo com a leitura falhando.
+  // O estado `remotoMesclado` só vira verdadeiro no MESMO render que aplica a
+  // junção; o ref (lido por quem grava) acompanha no efeito DEPOIS desse render,
+  // quando o temporizador de gravação velho (com o carrinho sem a junção) já foi
+  // cancelado — antes disso a trava segue fechada.
+  const [remotoMesclado, setRemotoMesclado] = useState(false);
+  const remotoMescladoRef = useRef(false);
+  useEffect(() => {
+    remotoMescladoRef.current = remotoMesclado;
+  }, [remotoMesclado]);
+
+  // Leitura inicial que falhou: relê com espera crescente e teto (mesmos
+  // limites do reenvio da gravação), e ainda ao voltar online, ao ficar
+  // visível e na próxima edição da cliente (ver os efeitos mais abaixo).
+  const falhasDeLeitura = useRef(0);
+  const timerDaReleitura = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncFromDBRef = useRef<(force?: boolean) => Promise<void>>(
+    async () => {},
+  );
+  const cancelarReleitura = useCallback(() => {
+    if (timerDaReleitura.current === null) return;
+    clearTimeout(timerDaReleitura.current);
+    timerDaReleitura.current = null;
+  }, []);
+  const agendarReleitura = useCallback(() => {
+    falhasDeLeitura.current += 1;
+    if (falhasDeLeitura.current > MAX_REENVIOS_APOS_FALHA) return;
+    // Sem rede quem retoma é o evento `online`.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    cancelarReleitura();
+    const espera = Math.min(
+      ESPERA_BASE_REENVIO_MS * 2 ** (falhasDeLeitura.current - 1),
+      ESPERA_MAX_REENVIO_MS,
+    );
+    timerDaReleitura.current = setTimeout(() => {
+      timerDaReleitura.current = null;
+      void syncFromDBRef.current(true);
+    }, espera);
+  }, [cancelarReleitura]);
+
   // CONVIDADO (sem conta não há `syncFromDB` para reler o catálogo): ao abrir o
   // app, relê preço, estoque e situação de cada item e deixa o carrinho como o
   // catálogo está HOJE. Falhou a leitura -> o carrinho fica como estava (nunca
@@ -574,13 +620,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const mergedArray = Array.from(mergedMap.values());
             return comOCatalogo(mergedArray);
           });
+          // Carrinho do banco lido e mesclado: agora a gravação sabe o que
+          // vai substituir. No mesmo lote da junção (ver `remotoMesclado`).
+          falhasDeLeitura.current = 0;
+          cancelarReleitura();
+          setRemotoMesclado(true);
           avisarDoCarrinho(avisos);
         }
       } catch (err) {
         console.error("[CartContext] ❌ Sync error:", err);
+        // Sem a leitura o banco segue desconhecido e a gravação, travada:
+        // tenta de novo em vez de seguir como se o carrinho remoto não
+        // existisse.
+        if (
+          !remotoMescladoRef.current &&
+          userIdAtualRef.current === (uidDaLeitura ?? null)
+        ) {
+          agendarReleitura();
+        }
       } finally {
         // Leitura de uma conta que já saiu não destrava o carregamento da
-        // conta atual (que tem a própria leitura em curso).
+        // conta atual (que tem a própria leitura em curso). Destrava a TELA e
+        // o carrinho local; a gravação no servidor segue presa a
+        // `remotoMesclado`, que só a junção bem-sucedida libera.
         if (userIdAtualRef.current === (uidDaLeitura ?? null)) {
           syncLocked.current = false;
           setIsLoading(false);
@@ -588,8 +650,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [userId, authLoading, renovarPeloCatalogo],
+    [
+      userId,
+      authLoading,
+      renovarPeloCatalogo,
+      cancelarReleitura,
+      agendarReleitura,
+    ],
   );
+
+  useEffect(() => {
+    syncFromDBRef.current = syncFromDB;
+  }, [syncFromDB]);
 
   // Initial Sync from Supabase
   useEffect(() => {
@@ -615,11 +687,37 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setShippingCep(null);
       isInitialLoad.current = true;
       syncLocked.current = true;
+      // O carrinho do banco da conta anterior não diz nada sobre o desta.
+      remotoMescladoRef.current = false;
+      setRemotoMesclado(false);
+      falhasDeLeitura.current = 0;
+      cancelarReleitura();
       lastSessionUserId.current = currentUserId;
     }
 
     syncFromDB();
-  }, [userId, syncFromDB, setSelectedShippingOption]);
+  }, [userId, syncFromDB, setSelectedShippingOption, cancelarReleitura]);
+
+  // Leitura inicial que ainda não teve sucesso: o que sobra de gatilho além da
+  // espera crescente é a rede voltar ou o app voltar a ficar visível.
+  useEffect(() => {
+    const reler = () => {
+      if (!userId || remotoMescladoRef.current) return;
+      falhasDeLeitura.current = 0;
+      cancelarReleitura();
+      void syncFromDB(true);
+    };
+    const aoFicarVisivel = () => {
+      if (document.visibilityState === "visible") reler();
+    };
+    window.addEventListener("online", reler);
+    document.addEventListener("visibilitychange", aoFicarVisivel);
+    return () => {
+      window.removeEventListener("online", reler);
+      document.removeEventListener("visibilitychange", aoFicarVisivel);
+    };
+  }, [userId, syncFromDB, cancelarReleitura]);
+  useEffect(() => cancelarReleitura, [cancelarReleitura]);
 
   // Realtime subscription for cart updates
   useEffect(() => {
@@ -742,6 +840,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     async (currentCart: CartItem[], immediate = false) => {
       if (!user || authLoading || isInitialLoad.current || syncLocked.current)
         return;
+      // Banco ainda desconhecido (a leitura inicial não teve sucesso): gravar
+      // agora apagaria o carrinho salvo da conta (ver `remotoMesclado`).
+      if (!remotoMescladoRef.current) return;
 
       const cartHash = JSON.stringify(currentCart);
       if (cartHash === lastSyncedCart.current && !immediate) return;
@@ -822,6 +923,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (isInitialLoad.current || syncLocked.current) return;
 
     const timer = setTimeout(() => {
+      if (!remotoMescladoRef.current) {
+        // A cliente mexeu no carrinho e o banco ainda é desconhecido: não
+        // grava, relê. Se a leitura voltar, a junção muda o carrinho e este
+        // efeito grava a união.
+        if (user) void syncFromDB(true);
+        return;
+      }
       if (!syncPending.current) {
         syncToDB(cart);
       } else {
@@ -831,7 +939,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     return () => clearTimeout(timer);
     // `reenvio` reabre o efeito quando o sync em voo termina (ver acima).
-  }, [cart, syncToDB, reenvio]);
+  }, [cart, syncToDB, reenvio, syncFromDB, user]);
 
   const addToCart = useCallback(
     (
