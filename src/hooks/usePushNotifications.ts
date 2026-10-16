@@ -472,10 +472,28 @@ export function usePushNotifications() {
         );
       }
 
+      const desfazerInscricaoNova = async () => {
+        if (inscricaoJaExistiaAntesDestaChamada) return;
+        try {
+          await newSubscription.unsubscribe();
+        } catch (unsubscribeError) {
+          console.error(
+            "Falha ao desfazer inscrição antiga do navegador:",
+            unsubscribeError,
+          );
+        }
+      };
+
       // `user` já foi garantido acima, antes de pedir a permissão —
       // capturado no fechamento desta chamada e imutável durante a
       // execução (closure de `useCallback`), então segue não-nulo aqui.
       const subJSON = newSubscription.toJSON();
+
+      // A conta pode ter mudado enquanto o navegador criava a inscrição.
+      if (geracaoDaInscricao.current !== geracaoDaAtivacao) {
+        await desfazerInscricaoNova();
+        return;
+      }
 
       const { error } = await (
         supabase.from("push_subscriptions" as any) as any
@@ -490,7 +508,10 @@ export function usePushNotifications() {
       );
 
       // Sair e voltar à mesma conta também invalida a resposta antiga.
-      if (geracaoDaInscricao.current !== geracaoDaAtivacao) return;
+      if (geracaoDaInscricao.current !== geracaoDaAtivacao) {
+        await desfazerInscricaoNova();
+        return;
+      }
 
       if (error) {
         // O navegador JÁ criou a inscrição — o que falhou foi salvar no
