@@ -86,9 +86,22 @@ function ConteudoDaGestao() {
   const manterRef = useRef<HTMLButtonElement | null>(null);
   const [devolverFoco, setDevolverFoco] = useState<string | null>(null);
   const idEditando = editando?.id ?? null;
+  const editorOcupadoRef = useRef<string | null>(null);
   useEffect(() => {
     if (idEditando) campoDoNomeRef.current?.focus();
   }, [idEditando]);
+  useEffect(() => {
+    // Se a gravação terminou e o mesmo editor ficou aberto, o nome voltou a
+    // aceitar correção. Desabilitar o campo durante o envio tirou seu foco.
+    if (
+      idEditando !== null &&
+      editorOcupadoRef.current === idEditando &&
+      ocupado !== idEditando
+    ) {
+      campoDoNomeRef.current?.focus();
+    }
+    editorOcupadoRef.current = ocupado === idEditando ? idEditando : null;
+  }, [idEditando, ocupado]);
   useEffect(() => {
     if (apagando) manterRef.current?.focus();
   }, [apagando]);

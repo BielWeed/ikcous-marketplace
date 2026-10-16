@@ -17,6 +17,7 @@
  * aplicavam o resultado a QUALQUER modalidade (inclusive transportadora) —
  * o bug que esta frente corrige. Daqui para frente, todos passam por aqui.
  */
+import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
 import { ehModalidadeDaLoja } from "@/lib/guarda-de-frete";
 import {
   type PresetFreteGratis,
@@ -95,7 +96,7 @@ function precoComRegraLocal(
   if (preset === "sempre") return 0;
   if (preset === "por_produto") return ctx.temItemMarcado ? 0 : preco;
   if (preset === "acima_de_valor")
-    return ctx.subtotal >= ctx.config.freeShippingMin ? 0 : preco;
+    return atingiuOMinimo(ctx.subtotal, ctx.config.freeShippingMin) ? 0 : preco;
   return preco;
 }
 
