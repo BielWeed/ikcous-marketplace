@@ -213,9 +213,24 @@ export function AdminPdvView({
     return data as unknown as RespostaDoCodigo;
   }
 
+  // Chave da venda em andamento: a resposta de uma leitura só vale para a
+  // venda em que o código foi lido. Cancelar a venda gira a chave, e a
+  // resposta atrasada não pode colocar a peça da venda cancelada na nova.
+  const chaveDaVendaRef = useRef(estado.chaveDeIdempotencia);
+  useEffect(() => {
+    chaveDaVendaRef.current = estado.chaveDeIdempotencia;
+  }, [estado.chaveDeIdempotencia]);
+
   async function aoLerCodigo(leitura: Leitura): Promise<void> {
+    if (estado.enviando) {
+      // O cupom já foi copiado para o envio: a peça lida agora não entraria.
+      toast.error("Aguarde: a venda está sendo registrada.");
+      return;
+    }
+    const chaveDaLeitura = chaveDaVendaRef.current;
     try {
       const resposta = await buscarPorCodigo(leitura.codigo);
+      if (chaveDaLeitura !== chaveDaVendaRef.current) return;
       despachar({
         tipo: "codigo_resolvido",
         codigo: leitura.codigo,

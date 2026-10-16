@@ -426,15 +426,28 @@ export function podeIrPara(
   return true;
 }
 
+/** Soma em CENTAVOS inteiros: 3 × 19,90 em ponto flutuante dá 59,699999…, e a
+ * tela mostrava R$ 59,70 mas recusava um desconto de R$ 59,70 como "maior
+ * que o subtotal". */
 export function subtotalDaVenda(itens: readonly ItemDoCupom[]): number {
-  return itens.reduce((soma, item) => soma + item.preco * item.quantidade, 0);
+  const centavos = itens.reduce(
+    (soma, item) => soma + Math.round(item.preco * 100) * item.quantidade,
+    0,
+  );
+  return centavos / 100;
 }
 
 /** `subtotal - desconto`, nunca negativo — o clamp é só de exibição; quem
  * RECUSA desconto maior que o subtotal é `vendaPodeSerRegistrada` (e,
  * atrás dela, a RPC). */
 export function totalDaVenda(estado: EstadoDaVenda): number {
-  return Math.max(0, subtotalDaVenda(estado.itens) - estado.desconto);
+  return (
+    Math.max(
+      0,
+      Math.round(subtotalDaVenda(estado.itens) * 100) -
+        Math.round(estado.desconto * 100),
+    ) / 100
+  );
 }
 
 /**
@@ -479,7 +492,10 @@ export function vendaPodeSerRegistrada(
     // migration 20261162000000:286
     return { ok: false, motivo: "Informe o motivo do desconto." };
   }
-  if (estado.desconto > subtotalDaVenda(estado.itens)) {
+  if (
+    Math.round(estado.desconto * 100) >
+    Math.round(subtotalDaVenda(estado.itens) * 100)
+  ) {
     // migration 20261162000000:360
     return {
       ok: false,
@@ -538,10 +554,26 @@ function entrarItemNoCupom(
   };
 }
 
+/** O que muda o conteúdo da venda. Com o envio pendente o cupom já foi
+ * copiado para a requisição: aceitar mais uma edição agora mostraria R$ 40
+ * na tela enquanto o servidor grava R$ 20, e a confirmação apagaria a
+ * edição junto com o rascunho. */
+const EDICOES_DO_CUPOM = new Set<AcaoDaVenda["tipo"]>([
+  "codigo_resolvido",
+  "variacao_escolhida",
+  "item_adicionado_manualmente",
+  "quantidade_alterada",
+  "item_removido",
+  "cliente_definido",
+  "pagamento_escolhido",
+  "desconto_alterado",
+]);
+
 export function reducerDaVenda(
   estado: EstadoDaVenda,
   acao: AcaoDaVenda,
 ): EstadoDaVenda {
+  if (estado.enviando && EDICOES_DO_CUPOM.has(acao.tipo)) return estado;
   switch (acao.tipo) {
     case "codigo_resolvido": {
       // A guarda da leitura repetida vem PRIMEIRO: nenhum dos cinco
