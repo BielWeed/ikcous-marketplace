@@ -103,6 +103,7 @@ export function ReviewForm({
                       <button
                         key={star}
                         type="button"
+                        disabled={isSubmitting}
                         className="relative p-0.5 transition-all active:scale-90"
                         onMouseEnter={() => setHoverRating(star)}
                         onMouseLeave={() => setHoverRating(0)}
@@ -138,6 +139,7 @@ export function ReviewForm({
                     placeholder="Conte-nos os detalhes que lhe surpreenderam..."
                     className="min-h-[110px] resize-none rounded-2xl border-zinc-200/60 bg-zinc-50 p-4 text-xs shadow-none transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:ring-0 md:text-sm"
                     {...field}
+                    disabled={isSubmitting}
                   />
                 </FormControl>
                 <FormMessage className="text-[10px] font-bold uppercase tracking-wider text-red-500" />
