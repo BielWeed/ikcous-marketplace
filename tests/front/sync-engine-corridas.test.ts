@@ -7,21 +7,30 @@ import type { Product } from "@/types";
 
 const rede = vi.hoisted(() => ({
   resumo: vi.fn<() => Promise<{ data: { id: string }[]; error: null }>>(),
+  detalhes:
+    vi.fn<() => Promise<{ data: ReturnType<typeof produto>[]; error: null }>>(),
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
+      let detalhe = false;
       const consulta = {
         select: () => consulta,
         order: () => consulta,
         is: () => consulta,
+        in: () => {
+          detalhe = true;
+          return consulta;
+        },
         single: async () => ({ data: null, error: null }),
         // biome-ignore lint/suspicious/noThenProperty: query builder do Supabase é thenable
         then: (
           resolve: (valor: { data: { id: string }[]; error: null }) => unknown,
         ) =>
           (tabela === "vw_produtos_public"
-            ? rede.resumo()
+            ? detalhe
+              ? rede.detalhes()
+              : rede.resumo()
             : Promise.resolve({ data: [], error: null })
           ).then(resolve),
       };
@@ -203,10 +212,36 @@ function aplicar(
   );
 }
 
+async function iniciarDetalhesLentos(cofre: DataVault, produtos = [produto()]) {
+  rede.resumo.mockResolvedValue({
+    data: produtos.map((p) => ({
+      id: p.id,
+      ultima_atualizacao: "2026-10-16T12:00:00.000Z",
+    })),
+    error: null,
+  });
+  const iniciou = pendente<void>();
+  const resposta = pendente<{
+    data: ReturnType<typeof produto>[];
+    error: null;
+  }>();
+  rede.detalhes.mockImplementationOnce(() => {
+    iniciou.concluir();
+    return resposta.promessa;
+  });
+  const rodada = motor.catchUp(cofre, false);
+  await iniciou.promessa;
+  return async () => {
+    resposta.concluir({ data: produtos, error: null });
+    await rodada;
+  };
+}
+
 let eventos: SyncEvent[];
 let remover: () => void;
 beforeEach(() => {
   rede.resumo.mockReset().mockResolvedValue({ data: [], error: null });
+  rede.detalhes.mockReset().mockResolvedValue({ data: [], error: null });
   eventos = [];
   remover = motor.onSync((evento) => eventos.push(evento));
 });
@@ -338,6 +373,95 @@ describe("motor — resumo de catchUp anterior ao realtime", () => {
     await motor.catchUp(cofre, false);
     expect(await cofre.getAllOrThrow("products")).toEqual([]);
     expect(eventos.some((e) => e.store === "products")).toBe(true);
+  });
+});
+
+describe("motor — detalhes de catchUp anteriores ao realtime", () => {
+  it("não regrava estoque 5 sobre o 0 aplicado via realtime durante detalhes lentos", async () => {
+    const cofre = bancoEmMemoria()();
+    await aplicar(cofre, "produtos", produto(), "INSERT");
+    const concluir = await iniciarDetalhesLentos(cofre);
+    await aplicar(cofre, "product_variants", variacao("p", 0));
+    await concluir();
+    const final = await cofre.getById<Product>("products", "camisa");
+    expect(final?.variants?.map((v) => v.stockIncrement)).toEqual([0, 5]);
+    expect(final?.stock).toBe(5);
+    expect(await cofre.getById("product_variants", "p")).toMatchObject({
+      stockIncrement: 0,
+    });
+  });
+
+  it("grava produto não tocado pelo detalhe enquanto preserva o produto tocado", async () => {
+    const cofre = bancoEmMemoria()();
+    await aplicar(cofre, "produtos", produto(), "INSERT");
+    const outro = {
+      ...produto(),
+      id: "calca",
+      nome: "Calça",
+      preco_venda: 40,
+      product_variants: [],
+    };
+    const concluir = await iniciarDetalhesLentos(cofre, [produto(), outro]);
+    await aplicar(cofre, "produtos", {
+      id: "camisa",
+      nome: "Camisa nova",
+      estoque: 10,
+    });
+    await concluir();
+    expect(await cofre.getById("products", "calca")).toMatchObject({
+      name: "Calça",
+      price: 40,
+      stock: 10,
+    });
+    expect(await cofre.getById("products", "camisa")).toMatchObject({
+      name: "Camisa nova",
+    });
+  });
+
+  it("pula variações do produto tocado mas grava variação de outro produto", async () => {
+    const cofre = bancoEmMemoria()();
+    await aplicar(cofre, "produtos", produto(), "INSERT");
+    const outro = {
+      ...produto(),
+      id: "calca",
+      product_variants: [{ ...variacao("g", 3), product_id: "calca" }],
+    };
+    const concluir = await iniciarDetalhesLentos(cofre, [produto(), outro]);
+    // Um evento no pai protege também as variações que não tiveram evento.
+    await aplicar(cofre, "produtos", {
+      id: "camisa",
+      nome: "Camisa nova",
+      estoque: 10,
+    });
+    await concluir();
+    expect(await cofre.getById("product_variants", "p")).toBeUndefined();
+    expect(await cofre.getById("product_variants", "m")).toBeUndefined();
+    expect(await cofre.getById("product_variants", "g")).toMatchObject({
+      productId: "calca",
+      stockIncrement: 3,
+    });
+  });
+
+  it("reconcilia pelo servidor na próxima rodada sem carregar os ids tocados", async () => {
+    const cofre = bancoEmMemoria()();
+    await aplicar(cofre, "produtos", produto(), "INSERT");
+    const concluir = await iniciarDetalhesLentos(cofre);
+    await aplicar(cofre, "product_variants", variacao("p", 0));
+    await concluir();
+    expect(await cofre.getById("product_variants", "p")).toMatchObject({
+      stockIncrement: 0,
+    });
+    rede.detalhes.mockResolvedValue({
+      data: [{ ...produto(), product_variants: [variacao("p", 2)] }],
+      error: null,
+    });
+    await motor.catchUp(cofre, false);
+    const final = await cofre.getById<Product>("products", "camisa");
+    expect(final?.variants?.map((v) => v.stockIncrement)).toEqual([2]);
+    expect(final?.stock).toBe(2);
+    expect(await cofre.getById("product_variants", "p")).toMatchObject({
+      stockIncrement: 2,
+    });
   });
 });
 
