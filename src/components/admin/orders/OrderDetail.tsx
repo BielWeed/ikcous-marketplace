@@ -1346,9 +1346,10 @@ export const OrderDetail = memo(function OrderDetail({
   // componente tem que morar AQUI, não só dentro do card.
   const orderIdAtualRef = useRef(order.id);
   orderIdAtualRef.current = order.id;
-  // Cada salvamento de notas ganha um número; trocar de pedido invalida os
+  // Cada salvamento ganha um número; trocar de pedido invalida os
   // que estavam no ar (ir de A para B e voltar a A não revive a resposta).
   const salvamentoNotasRef = useRef(0);
+  const salvamentoRastreioRef = useRef(0);
 
   const [localNotes, setLocalNotes] = useState(order.notes || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -1540,6 +1541,7 @@ export const OrderDetail = memo(function OrderDetail({
     setIsEditingNotes(false);
     setIsSavingNotes(false);
     salvamentoNotasRef.current++;
+    salvamentoRastreioRef.current++;
   }, [order.id]);
 
   const itemsSerialized = JSON.stringify(
@@ -1702,25 +1704,30 @@ export const OrderDetail = memo(function OrderDetail({
 
   const handleSaveTracking = async () => {
     const pedidoId = order.id;
+    const codigo = trackingValue.trim();
+    const salvamento = ++salvamentoRastreioRef.current;
+    const vigente = () =>
+      orderIdAtualRef.current === pedidoId &&
+      salvamentoRastreioRef.current === salvamento;
     try {
       setIsSavingTracking(true);
       const { error } = await supabase
         .from("marketplace_orders")
-        .update({ tracking_code: trackingValue.trim() || null })
+        .update({ tracking_code: codigo || null })
         .eq("id", pedidoId);
 
-      // A ficha pode ter trocado de pedido enquanto o envio estava em voo.
-      if (orderIdAtualRef.current !== pedidoId) return;
+      // Só o salvamento vigente pode alterar a ficha.
+      if (!vigente()) return;
       if (error) throw error;
-      setLocalTrackingCode(trackingValue.trim());
+      setLocalTrackingCode(codigo);
       setIsEditingTracking(false);
       toast.success("Código de rastreamento salvo!");
     } catch (err) {
-      if (orderIdAtualRef.current !== pedidoId) return;
+      if (!vigente()) return;
       console.error("Error saving tracking code:", err);
       toast.error("Erro ao salvar código de rastreamento.");
     } finally {
-      if (orderIdAtualRef.current === pedidoId) setIsSavingTracking(false);
+      if (vigente()) setIsSavingTracking(false);
     }
   };
 
