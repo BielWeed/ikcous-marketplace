@@ -807,11 +807,7 @@ export function useProducts({ autoFetch = true } = {}) {
           .select("*")
           .eq("product_id", id);
 
-        if (vErr)
-          console.error(
-            "[useProducts] Error fetching variants for product:",
-            vErr,
-          );
+        if (vErr) throw vErr;
 
         const productData = {
           ...(p as any),
