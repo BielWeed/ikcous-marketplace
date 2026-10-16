@@ -429,9 +429,12 @@ export type DesfechoComprovante =
  * tentativa — segura porque a RPC e um UPDATE idempotente (poe NULL). Nunca
  * lanca: quem chama ja esta devolvendo `envio_falhou`.
  */
-async function devolverReserva(
+export async function devolverReserva(
   supabase: ReturnType<typeof createClient>,
   orderId: string,
+  // EST-EDGE-DIN-3: o aviso de pagamento atrasado (efeitos-do-pagamento) usa a
+  // MESMA reserva e a mesma devolução — só o rótulo do log muda.
+  rotulo = "comprovante",
 ): Promise<void> {
   for (let tentativa = 1; tentativa <= 2; tentativa++) {
     try {
@@ -440,12 +443,12 @@ async function devolverReserva(
       });
       if (!error) return;
       console.error(
-        `comprovante: liberar reserva falhou (tentativa ${tentativa} de 2):`,
+        `${rotulo}: liberar reserva falhou (tentativa ${tentativa} de 2):`,
         error.message ?? error,
       );
     } catch (erro) {
       console.error(
-        `comprovante: liberar reserva falhou (tentativa ${tentativa} de 2):`,
+        `${rotulo}: liberar reserva falhou (tentativa ${tentativa} de 2):`,
         erro,
       );
     }

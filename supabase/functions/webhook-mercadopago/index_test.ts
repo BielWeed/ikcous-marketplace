@@ -7642,3 +7642,114 @@ Deno.test("cartão parcelado 3x — CONTROLE: o MESMO parcelado com total_amount
   assertEquals(corpo.ignorado, "valor divergente");
   assertEquals(registro.chamadasRpc.length, 0);
 });
+
+// --- EST-EDGE-DIN-3 (16/10/2026): a reentrega 'ja_pago' do pagamento atrasado ---
+// O pedido virou 'pago_apos_expirar' e o aviso ao cliente não saiu (SMTP fora
+// do ar; a reserva do e-mail foi devolvida). A notificação seguinte do MP
+// recebe 'ja_pago': antes pulava TODOS os efeitos e o cliente ficava sem o
+// aviso para sempre. Agora a reentrega repete SÓ o aviso pendente, e só com a
+// reserva livre; push ao lojista nunca (já foi avisado na transição).
+
+function webhookComJaPago(pedidoNoBanco: Record<string, unknown>) {
+  const chamadasRpc: string[] = [];
+  const supabase = {
+    rpc: async (nome: string) => {
+      chamadasRpc.push(nome);
+      if (nome === "confirmar_pagamento") return { data: "ja_pago", error: null };
+      return { data: null, error: null };
+    },
+    from(tabela: string) {
+      return {
+        select(_cols: string) {
+          return {
+            eq(_col: string, _val: unknown) {
+              return { maybeSingle: async () => ({ data: tabela === "marketplace_orders" ? pedidoNoBanco : null, error: null }) };
+            },
+          };
+        },
+      };
+    },
+  };
+  return { supabase, chamadasRpc };
+}
+
+async function entregarJaPago(pedidoNoBanco: Record<string, unknown>) {
+  const { supabase, chamadasRpc } = webhookComJaPago(pedidoNoBanco);
+  const avisosAtrasados: unknown[] = [];
+  const comprovantes: unknown[] = [];
+  const pushes: unknown[] = [];
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    transaction_amount: 149.9,
+    external_reference: UUID_PEDIDO,
+  });
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl,
+    enviarPush: async (a: unknown) => void pushes.push(a),
+    enviarComprovante: async (a: unknown) => void comprovantes.push(a),
+    enviarAvisoAtrasado: async (a: unknown) => void avisosAtrasados.push(a),
+  });
+  return { resposta, avisosAtrasados, comprovantes, pushes, chamadasRpc };
+}
+
+const PEDIDO_PAGO_APOS_EXPIRAR = {
+  id: UUID_PEDIDO,
+  customer_name: "Maria",
+  customer_data: { email: "cliente@exemplo.com" },
+  total: 149.9,
+  total_amount: null,
+  payment_status: "pago_apos_expirar",
+  confirmation_email_sent_at: null,
+};
+
+Deno.test("EST-EDGE-DIN-3 - 'ja_pago' num pedido 'pago_apos_expirar' com a reserva LIVRE reenvia o aviso atrasado UMA vez, sem push e sem comprovante", async () => {
+  const r = await entregarJaPago(PEDIDO_PAGO_APOS_EXPIRAR);
+  assertEquals(r.resposta.status, 200);
+  assertEquals((await r.resposta.json()).resultado, "ja_pago");
+  assertEquals(r.avisosAtrasados.length, 1);
+  assertEquals(r.pushes.length, 0);
+  assertEquals(r.comprovantes.length, 0);
+});
+
+Deno.test("EST-EDGE-DIN-3 - 'ja_pago' com o e-mail JÁ enviado (reserva presa) não reenvia nada", async () => {
+  const r = await entregarJaPago({ ...PEDIDO_PAGO_APOS_EXPIRAR, confirmation_email_sent_at: "2026-10-16T10:00:00Z" });
+  assertEquals(r.resposta.status, 200);
+  assertEquals(r.avisosAtrasados.length, 0);
+  assertEquals(r.pushes.length, 0);
+});
+
+Deno.test("EST-EDGE-DIN-3 - 'ja_pago' num pedido 'pago' comum não dispara aviso atrasado nem comprovante (fora do escopo desta frente)", async () => {
+  const r = await entregarJaPago({ ...PEDIDO_PAGO_APOS_EXPIRAR, payment_status: "pago" });
+  assertEquals(r.resposta.status, 200);
+  assertEquals(r.avisosAtrasados.length, 0);
+  assertEquals(r.comprovantes.length, 0);
+});
+
+Deno.test("EST-EDGE-DIN-3 - o reenvio que LANÇA não derruba o webhook: 200 e o evento sai da fila do MP", async () => {
+  const { supabase } = webhookComJaPago(PEDIDO_PAGO_APOS_EXPIRAR);
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    transaction_amount: 149.9,
+    external_reference: UUID_PEDIDO,
+  });
+  const erro = console.error;
+  console.error = () => {};
+  try {
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl,
+      enviarPush: async () => {},
+      enviarAvisoAtrasado: async () => {
+        throw new Error("SMTP fora do ar");
+      },
+    });
+    assertEquals(resposta.status, 200);
+  } finally {
+    console.error = erro;
+  }
+});

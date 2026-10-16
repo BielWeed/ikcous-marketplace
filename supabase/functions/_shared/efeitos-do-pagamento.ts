@@ -48,7 +48,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { dispararPushContadoReal } from "./aviso-ao-lojista.ts";
-import { enviarComprovantePedido } from "./comprovante.ts";
+import { devolverReserva, enviarComprovantePedido } from "./comprovante.ts";
 import { escaparHtml, formatarBRL, numeroDoPedido } from "./pedido.ts";
 import { resolverRemetente } from "./email-da-loja.ts";
 import { enviarEmail } from "./smtp.ts";
@@ -335,15 +335,65 @@ export async function dispararAvisoDePagamentoAtrasadoReal(args: {
         html: htmlDoAvisoDePagamentoAtrasado({ orderId, nomeDaLoja }),
       }, remetente);
     } catch (erroEnvio) {
-      await supabase
-        .rpc("liberar_email_de_confirmacao", { p_order_id: orderId })
-        .then(undefined, () => {
-          console.error("efeitos-do-pagamento: liberar reserva do aviso de pagamento atrasado falhou", orderId);
-        });
+      // EST-EDGE-DIN-3: o cliente do Supabase NÃO rejeita em falha — resolve
+      // com `{ error }`, que o `.then(undefined, …)` de antes jamais via: a
+      // reserva ficava presa e a reentrega do MP já não reenviava o aviso.
+      // `devolverReserva` (a MESMA do comprovante) lê o resultado, registra e
+      // tenta mais uma vez.
+      await devolverReserva(supabase, orderId, "efeitos-do-pagamento");
       throw erroEnvio;
     }
     console.log(`efeitos-do-pagamento: aviso de pagamento atrasado enviado para ${orderId}`);
   } catch (_erro) {
     console.error("efeitos-do-pagamento: falha ao enviar aviso de pagamento atrasado ao cliente", orderId);
+  }
+}
+
+/**
+ * EST-EDGE-DIN-3 (16/10/2026) — a REENTREGA do aviso de pagamento atrasado.
+ *
+ * O buraco: o pedido vira 'pago_apos_expirar', o SMTP falha, a reserva do
+ * e-mail é devolvida e o webhook responde 200. A notificação seguinte do MP
+ * (ou a reentrega) recebe 'ja_pago' da RPC e, pela regra "efeito só para quem
+ * fez a transição", não fazia NADA; o cron também não ajuda (exclui pedido com
+ * `paid_at`). O cliente que pagou depois do cancelamento nunca era avisado.
+ *
+ * O que faz: só quando o pedido está em 'pago_apos_expirar' E a reserva do
+ * e-mail está livre (`confirmation_email_sent_at` nulo — ninguém enviou nem
+ * está enviando), repete UM efeito, o aviso ao cliente. Nada de push (o
+ * lojista já foi avisado na transição, e o push não tem reserva própria) e
+ * nada para 'pago' comum: o comprovante tem o botão de reenvio do lojista e
+ * esta frente não o cobre.
+ *
+ * IDEMPOTENTE e à prova de corrida pela MESMA reserva do comprovante: a leitura
+ * daqui é só um filtro barato (poupa o SMTP e a leitura do remetente nas
+ * reentregas comuns); quem decide de verdade é `reivindicar_email_de_confirmacao`,
+ * um UPDATE condicional atômico dentro do próprio aviso — duas reentregas
+ * simultâneas com a reserva livre mandam UM e-mail. Nunca lança.
+ */
+export async function reenviarAvisoPendenteDoPagamentoAtrasado(args: {
+  supabase: Supabase;
+  orderId: string;
+  enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
+}): Promise<void> {
+  const { supabase, orderId } = args;
+  try {
+    const { data, error } = await supabase
+      .from("marketplace_orders")
+      .select("payment_status, confirmation_email_sent_at")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) throw error;
+    const pedido = data as Record<string, unknown> | null;
+    if (!pedido) return;
+    if (pedido.payment_status !== "pago_apos_expirar") return;
+    // Falha FECHADA: só o `null` explícito do banco é "reserva livre". Coluna
+    // ausente na resposta (`undefined`) é "não sei" — e na dúvida não se manda
+    // um e-mail que talvez já tenha saído.
+    if (pedido.confirmation_email_sent_at !== null) return;
+    const enviarAvisoAtrasado = args.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
+    await enviarAvisoAtrasado({ supabase, orderId });
+  } catch (_erro) {
+    console.error("efeitos-do-pagamento: reenvio do aviso de pagamento atrasado falhou", { orderId });
   }
 }

@@ -119,6 +119,7 @@ import {
   aplicarEfeitosDoPagamentoConfirmado,
   type DepsDosEfeitos,
   desfechoComEfeito,
+  reenviarAvisoPendenteDoPagamentoAtrasado,
 } from "../_shared/efeitos-do-pagamento.ts";
 // Os testes e o contrato antigo importam estes dois DAQUI: a definição é uma só.
 export {
@@ -2187,6 +2188,18 @@ async function handler(
       resultado,
       enviarPush: deps.enviarPush,
       enviarComprovante: deps.enviarComprovante,
+      enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
+    });
+  } else if (resultado === "ja_pago") {
+    // EST-EDGE-DIN-3 (16/10/2026): 'ja_pago' continua sem push e sem
+    // comprovante (a transição já os disparou), MAS o aviso de pagamento
+    // atrasado pode não ter saído (SMTP fora do ar: a reserva do e-mail foi
+    // devolvida e o pedido, com `paid_at`, sai da vista do cron). Só então —
+    // pedido em 'pago_apos_expirar' com a reserva livre — a reentrega repete
+    // esse único efeito. Idempotente pela reserva; nunca lança.
+    await reenviarAvisoPendenteDoPagamentoAtrasado({
+      supabase,
+      orderId,
       enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
     });
   } else if (resultado === "divergente" || resultado === "inexistente") {
