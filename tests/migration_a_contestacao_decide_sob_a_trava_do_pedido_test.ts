@@ -490,6 +490,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261242000000: o lucro usa o custo do dia da venda (tabela lateral so do servidor, gatilho que nunca derruba a compra, get_admin_analytics_v2 e fin_dre leem o custo do dia; comportamento e portao 45a/45b/45m).
     "tests/banco/custo-do-dia-viva.cjs",
     "tests/banco/custo-do-dia-portao-viva.cjs",
+    // 20261245: o cupom desconta do lucro diário e do ranking; mantém a cadeia de custo do dia.
+    "tests/banco/lucro-com-desconto-viva.cjs",
     // 20261235000000: a venda repetida do balcao devolve a venda feita (trava consultiva pela chave de idempotencia; comportamento com 2 conexoes e portao 36a/36b).
     "tests/banco/venda-balcao-mesma-chave-viva.cjs",
     "tests/banco/venda-balcao-mesma-chave-portao-viva.cjs",

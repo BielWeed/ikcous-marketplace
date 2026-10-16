@@ -91,12 +91,14 @@ const {
 // Esta prova mede as dez sucessoras originais e a 20261246 (fin_lancamento_salvar). A 20261242000000 (o custo do dia: sucessora de
 // get_admin_analytics_v2 e a primeira de fin_dre) tem a PROVA PRÓPRIA do que a 8e faz com ela em
 // tests/banco/custo-do-dia-portao-viva.cjs (item 8); aqui `noEstado` devolve o clone ao estado anterior a ela.
+// A 20261245000000 (o lucro desconta o cupom: sucessora do analytics da 42) tem a PROVA PRÓPRIA em tests/banco/lucro-com-desconto-viva.cjs; `devolverAoEstadoAnteriorAoCustoDoDia` a desfaz antes.
 // A 20261244000000 (a loja escolhe como entrega na cidade: a SEGUNDA sucessora de upsert_store_config, a cadeia 99 -> 39 -> 44)
 // tem a PROVA PRÓPRIA em tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs (a 8e POSITIVA com ela no ar e desfeita);
 // aqui `noEstado` também a desfaz antes de montar o estado (o módulo "posterior" dela, a mesma régua da 20261242).
 const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
   (s) =>
     s.nome !== NOME_CUSTO_DO_DIA &&
+    s.nome !== "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql" &&
     s.nome !== "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
 );
 

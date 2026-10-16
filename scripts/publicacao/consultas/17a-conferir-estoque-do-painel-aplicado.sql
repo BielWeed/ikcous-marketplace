@@ -131,7 +131,9 @@ WITH alvo(nome, assinatura) AS (
                                             '7447521c32fe9dcfa498f4c7a9bbaf98adb35a4fb39ce715e2aa13c3ea72e2ff',
                                             '4c5314ab0650a56971274ef3ea3d3524b1b8caed2e9ca3863320ae366bcb3602',
                                             'f449361e99245580f39e7f559e9ef48e50e31ab3ecb8fcf90e8336b831982ff9',
-                                            'da008983c697cda3e688be5ec6cf89a2480bb671715d916464763a41735d5626')
+                                            'da008983c697cda3e688be5ec6cf89a2480bb671715d916464763a41735d5626',
+                                            '34c8daf4c19c99de16dd6c6766c38404a2ba30dee172826e91b4cd1d99c218fa',
+                                            '8883b3a30f05727d9a8485b9ac72c63f5ea7450c5d14da583fa94a4e382f39b4')
                                THEN '297e4f2919cfdd3c2a3f66ebaa7109ced7e9602b435f67f07087a1da259558dc'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_admin_analytics_v2'), 'AUSENTE')

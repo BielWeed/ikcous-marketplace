@@ -536,6 +536,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "46b-antes-desfazer-recebimento-base-vigente",
   "47a-conferir-a-loja-escolhe-como-entrega-aplicado",
   "47b-antes-a-loja-escolhe-como-entrega-base-vigente",
+  "48a-conferir-lucro-com-desconto-aplicado",
+  "48b-antes-lucro-com-desconto-base-vigente",
   "49a-conferir-lancamento-idempotente-aplicado",
   "49b-antes-lancamento-idempotente-base-vigente",
 ]);

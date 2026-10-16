@@ -2304,6 +2304,30 @@ const VERIFICACOES = {
   // com o So retiro (a declaracao, as duas travas que deixam de exigir CEP local, a recusa do local-delivery e a retirada
   // livre) e a upsert com as duas chaves. O resto (atributos, ACL, hash do corpo, colunas, trigger, view) o DO de conferencia
   // da migration aborta o apply se divergir.
+  "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        { texto: "WHEN COALESCE(o.discount, 0) <= 0 THEN 0", vezes: 2 },
+        {
+          texto:
+            "ELSE oi.price * LEAST(1, GREATEST(0, COALESCE(o.discount, 0)) / NULLIF(",
+          vezes: 2,
+        },
+        {
+          texto: "SELECT SUM(desconto_item.quantity * desconto_item.price)",
+          vezes: 2,
+        },
+        { texto: "WHERE desconto_item.order_id = o.id", vezes: 2 },
+        {
+          texto:
+            "FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql": [
     {
       funcao: "create_marketplace_order_v23",
