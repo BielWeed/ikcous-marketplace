@@ -66,10 +66,26 @@ vi.mock("sonner", () => ({
 function encadear(resultado: { data?: any; error?: any }) {
   const chain = Promise.resolve(resultado) as Promise<typeof resultado> & {
     eq: () => typeof chain;
+    is: () => unknown;
     select: () => typeof chain;
     single: () => Promise<typeof resultado>;
   };
   chain.eq = () => chain;
+  // A fila offline grava com `.eq(id).eq(versao).is(deleted_at).select(id)` e
+  // exige a linha de volta; o caminho online segue com select().single().
+  chain.is = () => {
+    const daFila = Promise.resolve(resultado) as Promise<typeof resultado> & {
+      eq: () => typeof daFila;
+      select: () => Promise<typeof resultado>;
+    };
+    daFila.eq = () => daFila;
+    daFila.select = () =>
+      Promise.resolve({
+        ...resultado,
+        data: resultado.error ? null : [{ id: "linha" }],
+      });
+    return daFila;
+  };
   chain.select = () => chain;
   chain.single = () => Promise.resolve(resultado);
   return chain;
@@ -219,6 +235,7 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
           {
             id: "prod-1",
             updates: { estoqueMinimo: 7 },
+            baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
             timestamp: Date.now(),
           },
         ]),
@@ -235,6 +252,7 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
           {
             id: "prod-1",
             updates: { estoqueMinimo: 0 },
+            baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
             timestamp: Date.now(),
           },
         ]),
@@ -251,6 +269,7 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
           {
             id: "prod-1",
             updates: { estoqueMinimo: null },
+            baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
             timestamp: Date.now(),
           },
         ]),
@@ -267,6 +286,7 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
           {
             id: "prod-1",
             updates: { name: "Só o nome" },
+            baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
             timestamp: Date.now(),
           },
         ]),
@@ -286,6 +306,10 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       const fila = JSON.parse(localStorage.getItem(FILA) ?? "[]");
       expect(fila[0].updates.estoqueMinimo).toBe(3);
 
+      // O hook sem lista carregada não conhece a versão-base do produto; a
+      // fila real a traz da lista. Aqui o caminho testado é o do número.
+      fila[0].baseUpdatedAt = "2026-10-01T10:00:00.000000+00:00";
+      localStorage.setItem(FILA, JSON.stringify(fila));
       onLine.mockReturnValue(true);
       await act(async () => {
         window.dispatchEvent(new Event("online"));
