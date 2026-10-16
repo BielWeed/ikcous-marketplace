@@ -652,9 +652,6 @@ export const AdminPushView = memo(function AdminPushView({
 
   useEffect(() => {
     calculateReach();
-    return () => {
-      rodadaDoAlcanceRef.current++;
-    };
   }, [calculateReach]);
 
   // Achado 3 (menor) da revisão cruzada do PR 549 (recado 20260912-2320):

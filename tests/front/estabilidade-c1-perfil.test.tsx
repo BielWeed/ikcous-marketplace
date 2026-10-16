@@ -44,7 +44,7 @@ beforeEach(() => {
     getItem: (k: string) => valores.get(k) ?? null,
     setItem: (k: string, v: string) => void valores.set(k, v),
     removeItem: (k: string) => void valores.delete(k),
-    key: (i: number) => Array.from(valores.keys())[i] ?? null,
+    key: (i: number) => Array.from(valores.keys()).at(i) ?? null,
     get length() {
       return valores.size;
     },

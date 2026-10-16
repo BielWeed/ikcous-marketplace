@@ -967,7 +967,7 @@ Deno.test('buscarComTempo - corpo pendurado depois dos cabeçalhos também estou
         let erro: any
         try {
             const resposta = await buscarComTempo(buscar, 'https://me-falso.local', {}, 5)
-            await resposta[leitor]()
+            await (leitor === 'json' ? resposta.json() : resposta.text())
         } catch (e) {
             erro = e
         } finally {
