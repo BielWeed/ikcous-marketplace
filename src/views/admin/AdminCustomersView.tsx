@@ -31,6 +31,7 @@ import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
+  AlertCircle,
   ArrowUpDown,
   Calendar,
   HelpCircle,
@@ -122,7 +123,10 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     [onNavigate, saveScroll, resetRestored],
   );
 
-  const [loading, setLoading] = useState(() => !cachedCustomersData);
+  const [loading, setLoading] = useState(true);
+  // O cache não identifica a busca/página; confirme a consulta antes de exibi-lo.
+  const [chaveDosDados, setChaveDosDados] = useState<string | null>(null);
+  const [chaveComErro, setChaveComErro] = useState<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -162,6 +166,12 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   const fetchCustomers = useCallback(
     async (pageToFetch: number) => {
       const rodada = ++rodadaRef.current;
+      const chaveDaRodada = JSON.stringify([
+        searchTerm,
+        sortField,
+        sortDirection,
+        pageToFetch,
+      ]);
       try {
         setLoading(true);
 
@@ -197,10 +207,13 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           setCustomers(customersList);
           setTotalCustomers(totalCount);
           setGlobalStats(stats);
+          setChaveDosDados(chaveDaRodada);
+          setChaveComErro(null);
         }
       } catch (error) {
         console.error("Error fetching customers:", error);
         if (rodada === rodadaRef.current) {
+          setChaveComErro(chaveDaRodada);
           toast.error("Erro ao carregar clientes");
         }
       } finally {
@@ -371,8 +384,20 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     [globalStats, analyticsStats],
   );
 
-  const totalPages = Math.ceil(totalCustomers / PAGE_SIZE);
-  const paginatedCustomers = customers; // Already paginated from server
+  const chaveDaConsulta = JSON.stringify([
+    searchTerm,
+    sortField,
+    sortDirection,
+    page,
+  ]);
+  const erroDaListagem = !isTyping && chaveComErro === chaveDaConsulta;
+  const dadosDaConsultaAtual =
+    !isTyping && !erroDaListagem && chaveDosDados === chaveDaConsulta;
+  const totalExibido = dadosDaConsultaAtual ? totalCustomers : 0;
+  const totalPages = Math.ceil(totalExibido / PAGE_SIZE);
+  const paginatedCustomers = dadosDaConsultaAtual ? customers : [];
+  const carregandoListagem =
+    loading || (!dadosDaConsultaAtual && !erroDaListagem);
 
   // `sortField`/`sortDirection` já NASCEM como "total_spent"/"desc" (linhas
   // 111-112, pra bater com o chip "Maior total comprado" antes de qualquer
@@ -605,6 +630,25 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           </div>
 
           {/* Data List (Responsive Grid/Cards) */}
+          {erroDaListagem && (
+            <div
+              role="alert"
+              className="my-4 flex flex-wrap items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-300"
+            >
+              <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
+              <p className="min-w-0 flex-1 text-xs">
+                Não conseguimos carregar os clientes agora.
+              </p>
+              <button
+                type="button"
+                onClick={() => fetchCustomers(page)}
+                disabled={loading}
+                className="flex min-h-11 shrink-0 items-center rounded-xl border border-solid border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider transition-colors hover:bg-red-500/10 disabled:opacity-50"
+              >
+                Tentar de novo
+              </button>
+            </div>
+          )}
           <LocalErrorBoundary>
             <div className="group/table relative w-full p-2 sm:p-0">
               {loading && paginatedCustomers.length > 0 && (
@@ -614,13 +658,13 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               <div className="pointer-events-none absolute -left-24 -top-24 size-48 bg-admin-gold/5 blur-[100px]" />
 
               <div className="relative z-10 flex w-full flex-col">
-                {loading && paginatedCustomers.length === 0 ? (
+                {carregandoListagem && paginatedCustomers.length === 0 ? (
                   viewMode === "detailed" ? (
                     renderDetailedSkeletons()
                   ) : (
                     renderCompactSkeletons()
                   )
-                ) : paginatedCustomers.length === 0 ? (
+                ) : erroDaListagem ? null : paginatedCustomers.length === 0 ? (
                   <div className="py-24 text-center">
                     <div className="flex flex-col items-center justify-center text-zinc-600">
                       <div className="mb-6 flex size-20 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 shadow-inner">
@@ -748,7 +792,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           <PaginacaoAdmin
             pagina={page}
             totalPaginas={totalPages}
-            totalItens={totalCustomers}
+            totalItens={totalExibido}
             itensPorPagina={PAGE_SIZE}
             aoMudar={(nova) => {
               setPage(nova);
