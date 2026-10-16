@@ -122,7 +122,6 @@ export function AccountSettingsView() {
     if (!user) return;
     const contaDonaId = user.id;
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
-    if (!contaAindaEhDona()) return;
 
     const file = e.target.files?.[0];
     if (!file) return;
@@ -182,7 +181,6 @@ export function AccountSettingsView() {
     if (!user) return;
     const contaDonaId = user.id;
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
-    if (!contaAindaEhDona()) return;
 
     setIsUpdatingAvatar(true);
     haptic.light();
@@ -230,7 +228,6 @@ export function AccountSettingsView() {
     if (!user) return;
     const contaDonaId = user.id;
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
-    if (!contaAindaEhDona()) return;
 
     const file = e.target.files?.[0];
     if (!file) return;
@@ -288,7 +285,6 @@ export function AccountSettingsView() {
     if (!user) return;
     const contaDonaId = user.id;
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
-    if (!contaAindaEhDona()) return;
 
     setIsUpdatingCover(true);
     haptic.light();
@@ -450,7 +446,6 @@ export function AccountSettingsView() {
     if (!user) return;
     const contaDonaId = user.id;
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
-    if (!contaAindaEhDona()) return;
 
     // Camada 2 de defesa do CONTA-01: mesmo que o botão tivesse sido
     // clicado com a carga ainda não terminada (bug futuro na trava de UI
