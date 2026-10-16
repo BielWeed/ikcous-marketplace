@@ -44,8 +44,9 @@ import { supabase } from "@/lib/supabase";
  *     de volta para a lista pedido entregue há muito tempo. O pedido com o
  *     recebimento marcado não tem mais pagamento em branco e sai da lista;
  *     desfazer a marcação o devolve à lista, com a data renovada.
- *   - A janela é o prazo de devolução da loja (90 dias por padrão,
- *     `politica_devolucao.prazo_vicio_dias`), medido a partir de `updated_at`
+ *   - A janela é o MAIOR prazo de devolução da loja (defeito, arrependimento
+ *     e, se aceita troca, troca; 90 dias se a leitura falhar, ver
+ *     `inicioDaJanelaDoSino`), medido a partir de `updated_at`
  *     e não da entrega: um pedido mexido depois da entrega parece mais novo do
  *     que é, e o prazo da cliente (contado da entrega) pode acabar antes de o
  *     aviso sumir. É uma ajuda para a lojista, não a garantia do prazo da
@@ -78,8 +79,9 @@ export function inicioDaJanelaDeRecebimento(
 }
 
 /**
- * O começo da janela do sino, já com o prazo da loja: o prazo de devolução por defeito que a
- * loja configurou (`politica_devolucao.prazo_vicio_dias`, linha única). NUNCA
+ * O começo da janela do sino, já com o prazo da loja: o MAIOR
+ * prazo que a loja configurou em `politica_devolucao` (linha única): defeito
+ * (`prazo_vicio_dias`), arrependimento e, se aceita troca, `prazo_troca_dias`. NUNCA
  * lança e nunca devolve menos que o padrão por falha: erro, linha ausente,
  * número torto ou rede caída viram 90 dias — o aviso precisa SOBRAR, e ler a
  * configuração não é uma fonte de aviso (a falha dela não acende o "não
@@ -90,10 +92,22 @@ export async function inicioDaJanelaDoSino(): Promise<string> {
   try {
     const { data } = await supabase
       .from("politica_devolucao")
-      .select("prazo_vicio_dias")
+      .select(
+        "prazo_vicio_dias,prazo_troca_dias,prazo_arrependimento_dias,aceita_troca",
+      )
       .eq("id", 1)
       .maybeSingle();
-    dias = Number(data?.prazo_vicio_dias) || dias;
+    // O MAIOR prazo que o servidor ainda aceita: defeito, arrependimento e,
+    // se a loja aceita troca, o da troca (até 365, pode passar o de defeito).
+    const vicio = Number(data?.prazo_vicio_dias) || 0;
+    if (vicio > 0) {
+      const troca = data?.aceita_troca ? Number(data.prazo_troca_dias) || 0 : 0;
+      dias = Math.max(
+        vicio,
+        troca,
+        Number(data?.prazo_arrependimento_dias) || 0,
+      );
+    }
   } catch {
     // Sem configuração: o padrão (90) — o aviso sobra, nunca some.
   }

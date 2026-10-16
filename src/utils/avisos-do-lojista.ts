@@ -222,8 +222,9 @@ export interface EntradaDeAvisos {
    */
   pedidosDePrivacidadeAbertos?: number;
   /**
-   * Pedidos entregues, pagos na entrega, sem recebimento marcado, dos ultimos
-   * 30 dias. Opcional: ausente = a fonte nao entrou nesta rodada.
+   * Pedidos entregues, pagos na entrega, sem recebimento marcado, dentro do
+   * prazo de devolucao da loja (90 por padrao). Opcional: ausente = a fonte
+   * nao entrou nesta rodada.
    */
   recebimentosPorMarcar?: RecebimentoPorMarcar[];
 }
@@ -354,7 +355,8 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       destino: { view: "admin-orders", id: recebimento.id },
       // CONTA no cracha, ao contrario do estoque e do cancelamento: marcar o
       // recebimento e o ato que faz o aviso sumir (e o que destrava a cliente
-      // que quer devolver), e a janela de 30 dias limita o que fica parado.
+      // que quer devolver), e a janela do prazo de devolucao limita o que
+      // fica parado.
       contaNoCracha: true,
     });
   }
