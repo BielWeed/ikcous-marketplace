@@ -711,11 +711,18 @@ export const AdminProductsView = memo(function AdminProductsView({
         variants: variantes,
       };
 
-      await addProduct(duplicateData);
-      haptic.success();
-      toast.success("Produto Duplicado", {
-        description: "O produto foi duplicado com sucesso.",
-      });
+      const copia = await addProduct(duplicateData);
+      if (copia?.variantesNaoSalvas) {
+        // A cópia já existe e `addProduct` já avisou (com o motivo) que a grade
+        // não foi salva: anunciar sucesso a esconderia, e um segundo aviso aqui
+        // empilharia dois erros para a mesma falha.
+        haptic.error();
+      } else {
+        haptic.success();
+        toast.success("Produto Duplicado", {
+          description: "O produto foi duplicado com sucesso.",
+        });
+      }
       // Mesmo motivo de `confirmDelete`: sem `await` para não alongar a
       // janela entre o clique e o `finally` que fecha o diálogo.
       refreshFinancialStats();
