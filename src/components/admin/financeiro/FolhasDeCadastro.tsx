@@ -231,7 +231,8 @@ export function ContaFolha({
               id="fin-conta-saldo"
               value={form.saldoInicial}
               mask="currency"
-              inputMode="numeric"
+              permiteNegativo
+              inputMode="text"
               placeholder="0,00"
               onFlush={(saldoInicial) => atualizar({ saldoInicial })}
               className={`${CLASSE_CAMPO} tabular-nums`}

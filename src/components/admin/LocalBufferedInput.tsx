@@ -17,6 +17,8 @@ interface LocalBufferedInputProps
   readonly delay?: number;
   readonly validate?: (val: string) => string | null;
   readonly mask?: "phone" | "currency";
+  /** Só com `mask="currency"`: preserva o sinal na exibição e no onFlush. */
+  readonly permiteNegativo?: boolean;
   /**
    * Só com `mask="currency"`: o zero DIGITADO vira campo vazio. A máscara nunca
    * deixa o campo vazio sozinha (apagar o "0,05" com backspace dá "0,0", lido
@@ -37,31 +39,37 @@ const formatPhone = (val: string, anterior?: string) => {
   return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7, 11)}`;
 };
 
-const formatCurrency = (val: string) => {
+const formatCurrency = (val: string, permiteNegativo = false) => {
+  const sinal = permiteNegativo && val.trimStart().startsWith("-") ? "-" : "";
   const clean = val.replace(/\D/g, "");
-  if (clean.length === 0) return "";
+  if (clean.length === 0) return sinal;
   const num = Number.parseFloat(clean) / 100;
-  return num.toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return (
+    sinal +
+    num.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
 };
 
-const parseCurrencyToFloatString = (val: string) => {
+const parseCurrencyToFloatString = (val: string, permiteNegativo = false) => {
+  const sinal = permiteNegativo && val.trimStart().startsWith("-") ? "-" : "";
   const clean = val.replace(/\D/g, "");
-  if (clean.length === 0) return "";
+  if (clean.length === 0) return sinal;
   const num = Number.parseFloat(clean) / 100;
-  return num.toFixed(2);
+  return sinal + num.toFixed(2);
 };
 
 // O valor que chega pela prop `value` já está em reais (ex.: 100 ou "100.00"),
 // diferente do que o usuário digita, que é interpretado em centavos.
 // Converter para centavos antes de formatar, senão R$ 100,00 é exibido como R$ 1,00.
-const decimalToCurrencyDisplay = (val: string) => {
+const decimalToCurrencyDisplay = (val: string, permiteNegativo = false) => {
   if (val.trim() === "") return "";
+  if (permiteNegativo && val.trim() === "-") return "-";
   const floatVal = Number.parseFloat(val);
   if (Number.isNaN(floatVal)) return "";
-  return formatCurrency(Math.round(floatVal * 100).toString());
+  return formatCurrency(Math.round(floatVal * 100).toString(), permiteNegativo);
 };
 
 export const LocalBufferedInput = memo(function LocalBufferedInput({
@@ -72,6 +80,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   className,
   validate,
   mask,
+  permiteNegativo = false,
   zeroVazio = false,
   ...props
 }: LocalBufferedInputProps) {
@@ -82,11 +91,11 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         return formatPhone(str);
       }
       if (mask === "currency") {
-        return decimalToCurrencyDisplay(str);
+        return decimalToCurrencyDisplay(str, permiteNegativo);
       }
       return str;
     },
-    [mask],
+    [mask, permiteNegativo],
   );
 
   const [localVal, setLocalVal] = useState(() => formatValue(value));
@@ -132,8 +141,8 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
       val = formatPhone(val, localVal.toString());
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
-      val = formatCurrency(val);
-      rawVal = parseCurrencyToFloatString(val);
+      val = formatCurrency(val, permiteNegativo);
+      rawVal = parseCurrencyToFloatString(val, permiteNegativo);
       if (zeroVazio && Number.parseFloat(rawVal) === 0) {
         val = "";
         rawVal = "";
@@ -173,7 +182,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     if (mask === "phone") {
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
-      rawVal = parseCurrencyToFloatString(val);
+      rawVal = parseCurrencyToFloatString(val, permiteNegativo);
     }
     onFlushRef.current(rawVal);
     if (props.onBlur) {
