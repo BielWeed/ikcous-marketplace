@@ -95,6 +95,8 @@ export function AccountSettingsView() {
   };
 
   const handleSelectPredefinedAvatar = async (avatar: any) => {
+    const contaDonaId = contaAtualIdRef.current;
+    const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
     setIsUpdatingAvatar(true);
     haptic.light();
     const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
@@ -105,16 +107,18 @@ export function AccountSettingsView() {
         avatar.end,
       );
       const success = await updateProfile({ avatar_url: svgUrl });
+      if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Avatar atualizado com sucesso!");
         setIsAvatarModalOpen(false);
       }
     } catch (error) {
+      if (!contaAindaEhDona()) return;
       console.error("Error setting avatar:", error);
       toast.error("Erro ao salvar avatar.");
     } finally {
       desmarcar();
-      setIsUpdatingAvatar(false);
+      if (contaAindaEhDona()) setIsUpdatingAvatar(false);
     }
   };
 
@@ -203,6 +207,8 @@ export function AccountSettingsView() {
   };
 
   const handleSelectPredefinedCover = async (cover: any) => {
+    const contaDonaId = contaAtualIdRef.current;
+    const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
     setIsUpdatingCover(true);
     haptic.light();
     try {
@@ -212,15 +218,17 @@ export function AccountSettingsView() {
         cover.patternType,
       );
       const success = await updateProfile({ cover_url: svgUrl });
+      if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Capa de perfil atualizada!");
         setIsCoverModalOpen(false);
       }
     } catch (error) {
+      if (!contaAindaEhDona()) return;
       console.error("Error setting cover:", error);
       toast.error("Erro ao salvar capa.");
     } finally {
-      setIsUpdatingCover(false);
+      if (contaAindaEhDona()) setIsUpdatingCover(false);
     }
   };
 

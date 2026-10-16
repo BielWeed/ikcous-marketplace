@@ -183,7 +183,7 @@ describe.each(imagens)(
       if (autenticacao.user) expect(campo("full_name").disabled).toBe(false);
     }
 
-    async function abrirEditor() {
+    async function abrirEditor(comAba = true) {
       if (!document.querySelector("[role=dialog]")) {
         await act(async () => {
           const abrir =
@@ -197,7 +197,15 @@ describe.each(imagens)(
           abrir.click();
         });
       }
-      await act(async () => botao(imagem.aba).click());
+      if (comAba) await act(async () => botao(imagem.aba).click());
+    }
+
+    function primeiroPronto() {
+      return document.querySelector<HTMLButtonElement>(
+        imagem.nome === "foto"
+          ? "[role=dialog] .grid-cols-4 button"
+          : '[role=dialog] button[class*="aspect-[16/10]"]',
+      )!;
     }
 
     async function selecionarArquivo() {
@@ -325,6 +333,38 @@ describe.each(imagens)(
         expect(campo(imagem.inputId).disabled).toBe(false);
       },
     );
+
+    it.each([true, false])(
+      "ignora retorno do pronto escolhido por A (sucesso: %s)",
+      async (sucesso) => {
+        await montar();
+        await abrirEditor(false);
+        const pronto = adiar<boolean>();
+        updateProfile.mockReturnValueOnce(pronto.promessa);
+        await act(async () => primeiroPronto().click());
+        expect(updateProfile).toHaveBeenCalledTimes(1);
+        await trocarConta();
+        await act(async () => pronto.resolver(sucesso));
+        esperarContaBIntocada();
+        expect(campo(imagem.inputId).disabled).toBe(false);
+      },
+    );
+
+    it("ignora rejeição do pronto escolhido por A", async () => {
+      await montar();
+      await abrirEditor(false);
+      const pronto = adiar<boolean>();
+      updateProfile.mockReturnValueOnce(pronto.promessa);
+      await act(async () => primeiroPronto().click());
+      await trocarConta();
+      const erroNoConsole = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      await act(async () => pronto.rejeitar(new Error("falha de teste")));
+      esperarContaBIntocada();
+      expect(erroNoConsole).not.toHaveBeenCalled();
+      expect(campo(imagem.inputId).disabled).toBe(false);
+    });
 
     it("ignora erro de leitura da conta anterior", async () => {
       await montar();
