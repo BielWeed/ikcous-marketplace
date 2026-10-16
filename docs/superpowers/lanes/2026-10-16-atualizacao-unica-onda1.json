@@ -1,0 +1,44 @@
+{
+  "plano": "atualizacao-unica-onda1",
+  "frentes": [
+    {
+      "nome": "instalador",
+      "descricao": "contrato de estado da atualizacao, momento seguro, coordenacao entre abas, trava anti-repeticao; gate orquestra a instalacao sem botao de recusar; some cartao e faixa",
+      "posse": [
+        "src/lib/atualizacao/**",
+        "src/lib/motivo-de-recarga.ts",
+        "src/hooks/useUpdateCheck.ts",
+        "src/components/pwa/PWAUpdateGate.tsx",
+        "src/components/pwa/UpdateNotification.tsx",
+        "src/components/pwa/AvisoDeAtualizacaoDiscreto.tsx",
+        "tests/front/atualizacao/**",
+        "tests/front/update-notification-tem-saida-e-e-dialogo.test.tsx",
+        "tests/front/update-nao-interrompe-checkout.test.tsx",
+        "tests/front/cliente-ve-faixa-discreta-de-atualizacao.test.tsx",
+        "tests/front/aviso-atualizacao-mostra-versao-limpa.test.tsx",
+        "tests/front/aplicar-atualizacao-recarrega-sozinho.test.tsx",
+        "tests/front/realtime-update-sem-aviso-paralelo.test.tsx",
+        "tests/front/motivo-de-recarga-honesto.test.ts"
+      ]
+    },
+    {
+      "nome": "novidades",
+      "descricao": "notas por versao em linguagem de lojista leigo e historico local por aparelho",
+      "posse": [
+        "src/novidades/**",
+        "src/lib/novidades/**",
+        "tests/front/novidades/**"
+      ]
+    },
+    {
+      "nome": "portao-notas",
+      "descricao": "portao de publicacao exige nota de versao para a versao publicada",
+      "posse": [
+        "scripts/frota/publicar-release.mjs",
+        "tests/frota_publicar_release_test.ts",
+        "docs/runbooks/producao-unica-fonte.md"
+      ]
+    }
+  ],
+  "liberados": {}
+}
