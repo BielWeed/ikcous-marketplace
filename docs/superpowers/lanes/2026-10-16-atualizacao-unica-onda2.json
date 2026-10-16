@@ -1,0 +1,36 @@
+{
+  "plano": "atualizacao-unica-onda2",
+  "frentes": [
+    {
+      "nome": "central-lojista",
+      "descricao": "secao Novidades do app na central de Notificacoes do painel, com leitura e marcar como lida",
+      "posse": [
+        "src/views/admin/AdminNotificationsView.tsx",
+        "tests/front/novidades-na-central/**"
+      ]
+    },
+    {
+      "nome": "ilha",
+      "descricao": "ilha de atualizacao na barra superior do cliente e do painel; o boot anuncia a conclusao e registra as novidades",
+      "posse": [
+        "src/components/pwa/IlhaDeAtualizacao.tsx",
+        "src/utils/headerToast.ts",
+        "src/components/ui/custom/Header.tsx",
+        "src/components/ui/custom/BarraSuperiorCliente.tsx",
+        "src/components/layouts/AdminLayout.tsx",
+        "tests/front/ilha-de-atualizacao/**"
+      ]
+    },
+    {
+      "nome": "vetos",
+      "descricao": "liga o registro de operacoes sensiveis em upload de imagem, fila offline em envio e venda no balcao",
+      "posse": [
+        "src/views/admin/AdminBannersView.tsx",
+        "src/views/admin/AdminProductFormView.tsx",
+        "src/hooks/useOrders.ts",
+        "tests/front/vetos-de-atualizacao/**"
+      ]
+    }
+  ],
+  "liberados": { "src/App.tsx": "ilha" }
+}
