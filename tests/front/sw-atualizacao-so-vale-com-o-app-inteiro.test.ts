@@ -140,15 +140,19 @@ async function montar(
     ...(opcoes.cenario ?? {}),
   };
   const buscas: string[] = [];
-  const fetchFalso = vi.fn(async (entrada: string | Request) => {
-    const url = typeof entrada === "string" ? entrada : entrada.url;
-    const c = new URL(url, ORIGEM).pathname;
-    buscas.push(c);
-    if (!cenario.online) throw new TypeError("Failed to fetch");
-    const fabrica = cenario.rede.get(c);
-    if (!fabrica) return new Response("nao encontrado", { status: 404 });
-    return fabrica();
-  });
+  const sinais = new Map<string, AbortSignal | undefined>();
+  const fetchFalso = vi.fn(
+    async (entrada: string | Request, init?: RequestInit) => {
+      const url = typeof entrada === "string" ? entrada : entrada.url;
+      const c = new URL(url, ORIGEM).pathname;
+      buscas.push(c);
+      sinais.set(c, init?.signal ?? undefined);
+      if (!cenario.online) throw new TypeError("Failed to fetch");
+      const fabrica = cenario.rede.get(c);
+      if (!fabrica) return new Response("nao encontrado", { status: 404 });
+      return fabrica();
+    },
+  );
 
   vi.stubGlobal("__APP_VERSION__", VERSAO_NOVA);
   vi.stubGlobal("self", selfFalso);
@@ -182,7 +186,7 @@ async function montar(
     return (await respondWith.mock.calls[0][0]) as Response;
   }
 
-  return { armazem, cenario, buscas, rodar, navegar, selfFalso };
+  return { armazem, cenario, buscas, sinais, rodar, navegar, selfFalso };
 }
 
 /** Só os caches de versão do app (o activate também abre os dois fixos). */
@@ -316,7 +320,7 @@ describe("src/sw/sw.ts — activate não apaga o app antigo sem o novo inteiro",
   });
 
   it("cache novo despejado em parte e rede de volta: o activate baixa o que falta e então apaga o antigo", async () => {
-    const { rodar, armazem, buscas } = await montar({
+    const { rodar, armazem, buscas, sinais } = await montar({
       cenario: { rede: redeDoBuildNovo() },
       jaExistem: {
         ...VELHO_COMPLETO,
@@ -327,6 +331,9 @@ describe("src/sw/sw.ts — activate não apaga o app antigo sem o novo inteiro",
     await rodar("activate");
 
     expect(buscas).toContain("/assets/vendor-DEF.js");
+    // A rede do activate tem prazo: segura as requisições da página.
+    expect(sinais.get("/assets/vendor-DEF.js")).toBeInstanceOf(AbortSignal);
+    expect(sinais.get("/")).toBeInstanceOf(AbortSignal);
     expect(cachesDoApp(armazem)).toEqual([CACHE_NOVO]);
     expect(armazem.get(CACHE_NOVO)?.has("/assets/vendor-DEF.js")).toBe(true);
   });

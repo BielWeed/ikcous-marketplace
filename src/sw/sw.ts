@@ -96,6 +96,10 @@ declare const self: any;
 const precacheManifest = self.__WB_MANIFEST || [];
 console.log("[SW] Precache Manifest received:", precacheManifest.length);
 
+/** Prazo dos pedidos de rede feitos no `activate`: enquanto ele não termina, o
+ * navegador segura as requisições da página (a recarga incluída). */
+const PRAZO_DA_REDE_NO_SW_MS = 5000;
+
 const urlsDoPrecache = Array.from(
   new Set(precacheManifest.map((entry: any) => entry.url)),
 ) as string[];
@@ -213,7 +217,10 @@ async function guardarPaginaInicialComFicha(urls: string[]): Promise<void> {
   try {
     const cache = await caches.open(CACHE_NAME);
     if (await cache.match("/")) return;
-    const resposta = await fetch("/", { cache: "no-store" });
+    const resposta = await fetch("/", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(PRAZO_DA_REDE_NO_SW_MS),
+    });
     if (!resposta?.ok || resposta.redirected) return;
     const texto = await resposta.clone().text();
     if (!texto.includes(`id="${FICHA_DA_LOJA_ID}"`)) return;
@@ -278,7 +285,16 @@ async function repararPrecache(urls: string[]): Promise<void> {
   try {
     const cache = await caches.open(CACHE_NAME);
     const faltando = await arquivosFaltando(urls);
-    await Promise.all(faltando.map((url) => cache.add(url).catch(() => {})));
+    await Promise.all(
+      faltando.map((url) =>
+        fetch(url, { signal: AbortSignal.timeout(PRAZO_DA_REDE_NO_SW_MS) })
+          .then((resposta) => {
+            if (!resposta.ok) throw new TypeError(`bad-response ${url}`);
+            return cache.put(url, resposta);
+          })
+          .catch(() => {}),
+      ),
+    );
     for (const url of await arquivosQueVieramComoHtml(cache, faltando)) {
       await cache.delete(url);
     }
