@@ -23,6 +23,7 @@ import {
     conjuntoLigado,
     cotacaoDoCacheServe,
     lerCredenciais,
+    lerEntregaPropriaDaLoja,
     lerEstrategiaNacionalDaLoja,
     lerRevisao,
     metodosDaLoja,
@@ -30,6 +31,12 @@ import {
 } from './configuracao.ts'
 import { tratarAcao } from './acoes.ts'
 import { aplicarEstrategiaNacional, espelhoLegado, type EstrategiaNacional, subtotalDoCarrinho } from './estrategia-nacional.ts'
+import {
+    comRetiradaAnexada,
+    ENTREGA_PROPRIA_PADRAO,
+    type EntregaPropria,
+    opcaoDeEntregaLocal,
+} from './entrega-propria.ts'
 
 // RELEASE 1.5.7 (vários provedores): a régua comum mora em `regua.ts`, os
 // adaptadores das transportadoras em `provedores.ts`, o modo legado/multi, a
@@ -66,10 +73,20 @@ export {
     VERSAO_DA_COTACAO_SUPERFRETE,
     VERSAO_DA_INTEGRACAO_SUPERFRETE,
 } from './provedores.ts'
-export { assinaturaDaCotacao, calcularRevisaoConfig, chavesDeTransportadora, conjuntoLigado, cotacaoDoCacheServe, lerEstrategiaNacionalDaLoja, montarInsumos } from './configuracao.ts'
+export { assinaturaDaCotacao, calcularRevisaoConfig, chavesDeTransportadora, conjuntoLigado, cotacaoDoCacheServe, lerEntregaPropriaDaLoja, lerEstrategiaNacionalDaLoja, montarInsumos } from './configuracao.ts'
 export { testarCredencial, validarServicos } from './acoes.ts'
 export { aplicarEstrategiaNacional, espelhoLegado, estrategiaNacionalDaLinha, subtotalDoCarrinho } from './estrategia-nacional.ts'
 export type { EstrategiaNacional } from './estrategia-nacional.ts'
+export {
+    blocoDaEntregaPropriaNaRevisao,
+    comRetiradaAnexada,
+    ENTREGA_PROPRIA_PADRAO,
+    entregaPropriaDaLinha,
+    entregaPropriaDifereDoPadrao,
+    opcaoDeEntregaLocal,
+    prazoDaEntregaParaOApp,
+} from './entrega-propria.ts'
+export type { EntregaPropria } from './entrega-propria.ts'
 
 
 const corsHeaders = {
@@ -378,8 +395,8 @@ export function precoResolvidoSemCache(id: unknown): boolean {
 }
 
 /**
- * RETIRADA NA LOJA (release 1.5.3): a opção que a cliente da área local vê
- * ao lado da entrega local. Contrato: id `store-pickup` (o mesmo token da
+ * RETIRADA NA LOJA (release 1.5.3): opção da área local e, em "Só retiro",
+ * de qualquer CEP. Contrato: id `store-pickup` (o mesmo token da
  * chave que a loja liga em `enabled_shipping_methods`), preço 0, SEM prazo
  * inventado (`deliveryDays: 0` — a tela troca o prazo por "Aguarde a
  * confirmação da loja para retirar") e o endereço físico REAL da loja
@@ -407,7 +424,8 @@ export function opcaoDeRetirada(enderecoDaLoja: unknown) {
  * INTEIRO — a cotação de todo mundo cairia por causa de uma opção nova.
  * Aqui, erro do PostgREST ou exceção = "sem endereço" = sem retirada (a
  * entrega local e as transportadoras seguem iguais). Só é chamada quando a
- * loja habilitou a retirada e o destino é local.
+ * loja habilitou a retirada, o app a aceita e o destino é local ou a loja
+ * está em "Só retiro".
  */
 async function lerEnderecoDaLoja(supabaseClient: any): Promise<string | null> {
     try {
@@ -428,38 +446,43 @@ async function lerEnderecoDaLoja(supabaseClient: any): Promise<string | null> {
 }
 
 /**
- * As opções da cliente LOCAL: a entrega local de sempre e, DEPOIS dela, a
- * retirada na loja quando os três requisitos valem (chave habilitada +
- * endereço físico + destino local — este último garantido por quem chama).
- * A ordem importa pouco para a tela (a escolha da retirada é sempre da
- * cliente, nunca automática), mas a entrega local na frente mantém a
- * resposta de hoje como prefixo exato da nova.
+ * A retirada na loja, quando os três requisitos valem: o app a entende
+ * (`aceitaRetirada`), a loja ligou a chave `store-pickup` e há endereço
+ * físico. `null` = não há retirada a oferecer (e, sem os dois primeiros
+ * requisitos, o endereço nem é lido).
+ */
+async function retiradaDaLoja(supabaseClient: any, enabledMethods: unknown, aceitaRetirada: boolean) {
+    if (!aceitaRetirada || !Array.isArray(enabledMethods) || !enabledMethods.includes(ID_RETIRADA_NA_LOJA)) return null
+    return opcaoDeRetirada(await lerEnderecoDaLoja(supabaseClient))
+}
+
+/**
+ * As opções da cliente LOCAL: a entrega local de sempre (se a loja a oferece:
+ * "Só retiro" a desliga) e, DEPOIS dela, a retirada na loja quando os três
+ * requisitos valem (chave habilitada + endereço físico + destino local — este
+ * último garantido por quem chama). A ordem importa pouco para a tela (a
+ * escolha da retirada é sempre da cliente, nunca automática), mas a entrega
+ * local na frente mantém a resposta de hoje como prefixo exato da nova.
  *
  * `aceitaRetirada` é o SINAL do app que entende a retirada (1.5.3+): o PWA
  * atualiza por "prompt", então o app 1.5.2 segue no ar — e a auto-seleção
  * dele (mais barata; empate, menor prazo) escolheria a retirada R$ 0 sozinha.
  * Sem o sinal, a resposta é exatamente a de antes (e o endereço nem é lido).
+ *
+ * "Só retiro" + app sem o sinal = lista VAZIA: não há o que oferecer que esse
+ * app entenda, e a tela mostra "A calcular… combine com a loja" em vez de
+ * fechar pedido de Entrega Local que o banco recusaria.
  */
 async function opcoesDaClienteLocal(
     supabaseClient: any,
     enabledMethods: unknown,
     precoDaEntregaLocal: number,
     aceitaRetirada: boolean,
+    entrega: EntregaPropria,
+    contratoCliente: unknown,
 ) {
-    const opcoes: any[] = [
-        {
-            id: 'local-delivery',
-            name: 'Entrega Local',
-            price: precoDaEntregaLocal,
-            deliveryDays: 1,
-            provider: 'local'
-        }
-    ]
-    if (aceitaRetirada && Array.isArray(enabledMethods) && enabledMethods.includes(ID_RETIRADA_NA_LOJA)) {
-        const retirada = opcaoDeRetirada(await lerEnderecoDaLoja(supabaseClient))
-        if (retirada) opcoes.push(retirada)
-    }
-    return opcoes
+    const opcoes: any[] = entrega.ativa ? [opcaoDeEntregaLocal(precoDaEntregaLocal, entrega, contratoCliente)] : []
+    return comRetiradaAnexada(opcoes, await retiradaDaLoja(supabaseClient, enabledMethods, aceitaRetirada))
 }
 
 /**
@@ -485,6 +508,10 @@ async function opcoesDaClienteLocal(
  * A forma do corpo é a MESMA que o carrinho já consumia para "não há
  * opções" (`options: []` com `cotacaoIncompleta: false`): a tela mostra
  * nenhuma opção, nenhum preço falso, nenhum spinner eterno.
+ *
+ * `opcoes` (16/10/2026): em "Só retiro" a retirada vale para qualquer CEP, e
+ * sem transportadora ela é a ÚNICA opção — anexada aqui, nunca guardada em
+ * cache. Sem ela (todos os outros casos) a lista continua vazia.
  */
 async function respostaSemCotacaoDeFora(
     supabaseClient: any,
@@ -496,6 +523,7 @@ async function respostaSemCotacaoDeFora(
         motivo: string
     } | null,
     revisaoConfig: string | null = null,
+    opcoes: any[] = [],
 ): Promise<Response> {
     if (log) {
         const logEmVoo = Promise.resolve(
@@ -513,7 +541,7 @@ async function respostaSemCotacaoDeFora(
         await logEmVoo.catch(() => {})
     }
     return new Response(
-        JSON.stringify(revisaoConfig ? { options: [], cotacaoIncompleta: false, revisaoConfig } : { options: [], cotacaoIncompleta: false }),
+        JSON.stringify(revisaoConfig ? { options: opcoes, cotacaoIncompleta: false, revisaoConfig } : { options: opcoes, cotacaoIncompleta: false }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 }
@@ -925,17 +953,46 @@ async function cotarUmaVez(
     // teve sucesso — banco antigo mantém o hash de hoje, byte a byte.
     const leituraNacional = await lerEstrategiaNacionalDaLoja(supabaseClient)
     const estrategiaNacionalAtual: EstrategiaNacional = leituraNacional.ok ? leituraNacional.estrategia : espelhoLegado(storeConfig.free_shipping_min)
+    // ENTREGA PRÓPRIA (16/10, peça B): "Entrego" / "Entrego e retiro" / "Só
+    // retiro" e o prazo. Leitura SEPARADA: só coluna ausente confirmada
+    // permite o padrão legado (ligada, 1 dia), sem mudar `revisaoConfig`.
+    // Qualquer outra falha impede a cotação, sem inventar disponibilidade.
+    const leituraEntrega = await lerEntregaPropriaDaLoja(supabaseClient)
+    if (!leituraEntrega.ok && !leituraEntrega.colunaAusente) throw new Error('Falha ao obter configuração da entrega própria')
+    const entrega: EntregaPropria = leituraEntrega.ok ? leituraEntrega.entrega : ENTREGA_PROPRIA_PADRAO
     const lidas = await lerCredenciais(supabaseClient)
     const revisaoConfig = lidas.ok && revisaoLida.ok
-        ? await calcularRevisaoConfig(storeConfig, lidas.linhas, revisaoLida.revisao, leituraNacional.ok ? leituraNacional.estrategia : null)
+        ? await calcularRevisaoConfig(
+            storeConfig,
+            lidas.linhas,
+            revisaoLida.revisao,
+            leituraNacional.ok ? leituraNacional.estrategia : null,
+            leituraEntrega.ok ? leituraEntrega.entrega : null,
+        )
         : null
     const comRevisao = (conteudo: Record<string, unknown>) => (revisaoConfig ? { ...conteudo, revisaoConfig } : conteudo)
 
+    // "Só retiro": a retirada vale para QUALQUER CEP — aqui, nas respostas de
+    // FORA da cidade, anexada DEPOIS (nunca vai para `shipping_quotes_cache`,
+    // que guarda só o que a transportadora devolveu). Nos outros dois modos
+    // não há retirada fora da cidade (`null`, e o endereço nem é lido).
+    const retiradaDeFora = async () => (entrega.ativa ? null : await retiradaDaLoja(supabaseClient, enabledMethods, aceitaRetirada))
+    const semCotacaoDeFora = async (log: Parameters<typeof respostaSemCotacaoDeFora>[1]) =>
+        await respostaSemCotacaoDeFora(supabaseClient, log, revisaoConfig, comRetiradaAnexada([], await retiradaDeFora()))
+
     // Cobertura só local: CEP de fora não é atendido.
     if (shippingCoverage === 'local') {
-        if (!isLocal) return respostaJson({ error: 'Esta loja realiza apenas entregas locais na sua região.' }, 400)
+        if (!isLocal) {
+            if (entrega.ativa) return respostaJson({ error: 'Esta loja realiza apenas entregas locais na sua região.' }, 400)
+            // "Só retiro": a loja não entrega em lugar nenhum, então não há "só
+            // entregas locais" a recusar — quem está longe ainda pode retirar.
+            return respostaJson(comRevisao({
+                options: comRetiradaAnexada([], await retiradaDeFora()),
+                cotacaoIncompleta: false,
+            }))
+        }
         return respostaJson(comRevisao({
-            options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada),
+            options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada, entrega, pedido.contratoCliente),
             cotacaoIncompleta: false,
         }))
     }
@@ -955,7 +1012,7 @@ async function cotarUmaVez(
             'Failed to log local quote:',
         )
         return respostaJson(comRevisao({
-            options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada),
+            options: await opcoesDaClienteLocal(supabaseClient, enabledMethods, allFree ? 0 : localDeliveryFee, aceitaRetirada, entrega, pedido.contratoCliente),
             cotacaoIncompleta: false,
         }))
     }
@@ -968,25 +1025,28 @@ async function cotarUmaVez(
     if (estrategiaNacionalAtual.estrategia === 'por_produto' && itemComFreteGratisMarcado) {
         console.log('[calculate-shipping] Item com frete grátis no carrinho (estratégia nacional por_produto): frete zerado para o pedido inteiro.')
         return respostaJson(comRevisao({
-            options: [{ id: 'free-shipping-promo', name: 'Frete Grátis (Promoção)', price: 0, deliveryDays: 3, provider: 'free' }],
+            options: comRetiradaAnexada(
+                [{ id: 'free-shipping-promo', name: 'Frete Grátis (Promoção)', price: 0, deliveryDays: 3, provider: 'free' }],
+                await retiradaDeFora(),
+            ),
             cotacaoIncompleta: false,
         }))
     }
 
     // 4. Sem cotação de fora quando não há o que cotar (lista VAZIA honesta).
     if (itensDoCarrinho.length === 0 || !Array.isArray(cart)) {
-        return await respostaSemCotacaoDeFora(supabaseClient, null, revisaoConfig)
+        return await semCotacaoDeFora(null)
     }
     const provedorDoLog = storeConfig.shipping_provider || 'flat_fee'
     if (!lidas.ok) {
         console.warn('[calculate-shipping] Credenciais indisponíveis:', lidas.erro?.code ?? 'sem código')
-        return await respostaSemCotacaoDeFora(supabaseClient, {
+        return await semCotacaoDeFora({
             originCep,
             destinationCep: cleanCep,
             provider: provedorDoLog,
             cart,
             motivo: 'Não foi possível ler as credenciais das transportadoras agora. A cotação de fora da cidade não foi feita.',
-        }, revisaoConfig)
+        })
     }
     // Revisão ilegível: o caminho nacional falha FECHADO (R3-2) — sem saber a
     // revisão, a opção não pode ser carimbada nem conferida pela RPC.
@@ -1000,12 +1060,14 @@ async function cotarUmaVez(
             status: 'error',
             error_message: 'Não foi possível ler a revisão da configuração do frete; a cotação de fora da cidade não foi feita.',
         })
+        const retirada = await retiradaDeFora()
+        if (retirada) return respostaJson(comRevisao({ options: [retirada], cotacaoIncompleta: true }))
         return respostaJson({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }, 503)
     }
 
     const conjunto = conjuntoLigado(storeConfig, lidas.linhas)
     if (conjunto.pedidos.length === 0) {
-        return await respostaSemCotacaoDeFora(supabaseClient, {
+        return await semCotacaoDeFora({
             originCep,
             destinationCep: cleanCep,
             provider: provedorDoLog,
@@ -1013,14 +1075,14 @@ async function cotarUmaVez(
             motivo: conjunto.modo === 'multi'
                 ? 'Nenhuma transportadora ligada para entregas fora da cidade. Ligue ao menos uma em Ajustes > Transportadoras.'
                 : 'Loja sem transportadora conectada para entregas fora da cidade (o frete de taxa fixa foi descontinuado). Conecte Melhor Envio, Frenet ou SuperFrete para cotar o frete nacional.',
-        }, revisaoConfig)
+        })
     }
     const ligados = conjunto.modo === 'legado'
         ? conjunto.ligados.filter((p) => lidas.linhas.has(p))
         : conjunto.ligados
     if (ligados.length === 0) {
         const provider = conjunto.pedidos.join(', ')
-        return await respostaSemCotacaoDeFora(supabaseClient, {
+        return await semCotacaoDeFora({
             originCep,
             destinationCep: cleanCep,
             provider,
@@ -1028,7 +1090,7 @@ async function cotarUmaVez(
             motivo: conjunto.modo === 'multi'
                 ? 'As transportadoras ligadas estão sem chave de acesso. Salve a chave em Ajustes > Transportadoras.'
                 : `Sem credencial cadastrada para o provedor "${provider}". Conecte a transportadora para cotar entregas fora da cidade.`,
-        }, revisaoConfig)
+        })
     }
     const credenciaisDe = (p: string) => lidas.linhas.get(p)?.credentials ?? {}
     // Redigidos de todo texto de terceiro: o token de cada ligado e o e-mail
@@ -1085,7 +1147,12 @@ async function cotarUmaVez(
             }),
             'Failed to log cache hit:',
         )
-        return respostaJson({ options: cachedQuote.options, cotacaoIncompleta: false, cotacaoParcial: false, revisaoConfig })
+        return respostaJson({
+            options: comRetiradaAnexada(cachedQuote.options, await retiradaDeFora()),
+            cotacaoIncompleta: false,
+            cotacaoParcial: false,
+            revisaoConfig,
+        })
     }
 
     // 5. Os ligados em PARALELO, cada um isolado, sem retry (A2).
@@ -1156,6 +1223,8 @@ async function cotarUmaVez(
         if (responderam.length === 0 && falhas.some((r) => r.falha?.motivo === 'cep_invalido')) {
             return respostaJson({ error: 'CEP não encontrado. Confira o número e tente de novo.', codigo: 'cep_invalido' }, 400)
         }
+        const retirada = await retiradaDeFora()
+        if (retirada) return respostaJson(comRevisao({ options: [retirada], cotacaoIncompleta: true }))
         return respostaJson({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }, 503)
     }
 
@@ -1176,6 +1245,8 @@ async function cotarUmaVez(
             status: 'error',
             error_message: 'configuracao_mudou_durante_cotacao: a configuração do frete mudou duas vezes durante a cotação; nada foi gravado.',
         })
+        const retirada = await retiradaDeFora()
+        if (retirada) return respostaJson(comRevisao({ options: [retirada], cotacaoIncompleta: true }))
         return respostaJson({ error: 'Não foi possível registrar a cotação de frete. Tente calcular novamente.', cotacaoIncompleta: true }, 503)
     }
 
@@ -1192,7 +1263,9 @@ async function cotarUmaVez(
         shippingOptions = aplicarEstrategiaNacional(shippingOptions, estrategiaNacionalAtual, subtotal)
     }
 
-    // 7. Grava o cache — AGUARDANDO (a RPC do pedido exige esta linha).
+    // 7. Grava o cache — AGUARDANDO (a RPC do pedido exige esta linha). O que
+    // vai para o cache é `shippingOptions` (só transportadora); a retirada de
+    // "Só retiro" entra só na RESPOSTA (`opcoesDaResposta`), depois da gravação.
     let cotacaoIncompleta = false
     const erroDeGravacao = await salvarCotacaoNoCache(supabaseClient, {
         originCep,
@@ -1212,19 +1285,21 @@ async function cotarUmaVez(
             : (apiError ? `Cotação parcial: ${apiError}` : null),
     })
 
+    let opcoesDaResposta = comRetiradaAnexada(shippingOptions, await retiradaDeFora())
     if (erroDeGravacao) {
         // Sem a linha gravada, cai o que a RPC buscaria no cache; fica só o
-        // que ela resolve pela `store_config` (`precoResolvidoSemCache`).
-        const opcoesQueDispensamOCache = shippingOptions.filter((opt) => precoResolvidoSemCache(opt?.id))
+        // que ela resolve pela `store_config` (`precoResolvidoSemCache`) — a
+        // retirada de "Só retiro" é uma delas.
+        const opcoesQueDispensamOCache = opcoesDaResposta.filter((opt) => precoResolvidoSemCache(opt?.id))
         if (opcoesQueDispensamOCache.length === 0) {
             await logEmVoo
             return respostaJson({ error: 'Não foi possível registrar a cotação de frete. Tente calcular novamente.' }, 503)
         }
-        cotacaoIncompleta = opcoesQueDispensamOCache.length < shippingOptions.length
-        shippingOptions = opcoesQueDispensamOCache
+        cotacaoIncompleta = opcoesQueDispensamOCache.length < opcoesDaResposta.length
+        opcoesDaResposta = opcoesQueDispensamOCache
     }
 
-    return respostaJson({ options: shippingOptions, cotacaoIncompleta, cotacaoParcial, revisaoConfig })
+    return respostaJson({ options: opcoesDaResposta, cotacaoIncompleta, cotacaoParcial, revisaoConfig })
 }
 
 // `(req) => handler(req)`, e não `serve(handler)` direto: o `serve` do std
