@@ -1388,9 +1388,7 @@ export function OrderDetailsView({
         {/* Devolução/troca em andamento (ou a última) deste pedido: status,
             protocolo, o que a loja escreveu e a próxima ação do cliente. */}
         {podeUsarDevolucao &&
-          !devolucaoDoProduto.carregando &&
-          !devolucaoDoProduto.erro &&
-          devolucaoDoProduto.atual?.order_id === order.id && (
+          devolucaoDoProduto.atual?.order_id === orderId && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

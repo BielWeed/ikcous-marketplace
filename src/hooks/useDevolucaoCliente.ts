@@ -82,6 +82,9 @@ export function useDevolucaoCliente(
     useState<ElegibilidadeDevolucao | null>(null);
   const [devolucoes, setDevolucoes] = useState<ResumoDevolucao[]>([]);
   const [atual, setAtual] = useState<DevolucaoDetalhe | null>(null);
+  // Pedido a que os dados acima pertencem: no primeiro render depois da troca
+  // de `orderId` o estado ainda é do pedido anterior (a limpeza roda num efeito).
+  const [idDosDados, setIdDosDados] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(false);
   const ativoRef = useRef(true);
@@ -132,6 +135,7 @@ export function useDevolucaoCliente(
       setElegibilidade(lida);
       setDevolucoes(lista);
       setAtual(detalhe);
+      setIdDosDados(orderId);
       setErro(false);
     } catch {
       // Inclui o cliente sem `rpc` (dublê de teste antigo) e a rede caída:
@@ -149,6 +153,7 @@ export function useDevolucaoCliente(
     setAtual(null);
     setElegibilidade(null);
     setDevolucoes([]);
+    setIdDosDados(null);
     setErro(false);
     setCarregando(false);
     if (habilitado) void carregar();
@@ -303,10 +308,11 @@ export function useDevolucaoCliente(
     [carregar],
   );
 
+  const dadosSaoDesteId = idDosDados === orderId;
   return {
-    elegibilidade,
-    devolucoes,
-    atual,
+    elegibilidade: dadosSaoDesteId ? elegibilidade : null,
+    devolucoes: dadosSaoDesteId ? devolucoes : [],
+    atual: dadosSaoDesteId ? atual : null,
     carregando,
     erro,
     recarregar: carregar,

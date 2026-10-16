@@ -136,11 +136,15 @@ const pedidos = [pedidoA, { ...pedidoA, id: "pedido-b" }];
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
 let leitura: ReturnType<typeof useDevolucaoCliente>;
+// Pedido a que pertencia a devolução exposta em CADA render (inclusive o primeiro
+// depois da troca de pedido, antes de qualquer efeito de limpeza).
+let donosVistos: Array<string | null> = [];
 
 function Sonda({ id, habilitado }: { id: string; habilitado: boolean }) {
   const lida = useDevolucaoCliente(id, habilitado);
   useEffect(() => {
     leitura = lida;
+    donosVistos.push(lida.atual?.order_id ?? null);
   });
   return null;
 }
@@ -161,6 +165,7 @@ async function renderizarPedido(id: string) {
 }
 
 beforeEach(() => {
+  donosVistos = [];
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.clearAllMocks();
   fetchUserOrders.mockResolvedValue(pedidos);
@@ -186,6 +191,34 @@ afterEach(() => {
 });
 
 describe("cliente troca o pedido sem levar a devolução anterior", () => {
+  it("nenhum render do pedido B expõe a devolução de A, nem o primeiro", async () => {
+    await renderizarHook("pedido-a");
+    expect(donosVistos.at(-1)).toBe("pedido-a");
+    const b = pendente();
+    rpc.mockImplementation(() => b.promessa);
+    const antes = donosVistos.length;
+    await renderizarHook("pedido-b");
+    expect(donosVistos.length).toBeGreaterThan(antes);
+    expect(donosVistos.slice(antes)).not.toContain("pedido-a");
+  });
+
+  it("uma releitura que falha ou demora mantém a devolução do MESMO pedido na tela", async () => {
+    await renderizarHook("pedido-a");
+    const segunda = pendente();
+    rpc.mockImplementation(() => segunda.promessa);
+    await act(async () => {
+      void leitura.recarregar();
+    });
+    expect(leitura.carregando).toBe(true);
+    expect(leitura.atual?.order_id).toBe("pedido-a");
+    await act(async () =>
+      segunda.resolver({ data: null, error: { message: "rede" } }),
+    );
+    expect(leitura.erro).toBe(true);
+    expect(leitura.atual?.order_id).toBe("pedido-a");
+    expect(leitura.elegibilidade?.pode).toBe(true);
+  });
+
   it("limpa os dados antes da leitura de B e não recupera A se B falhar", async () => {
     await renderizarHook("pedido-a");
     expect(leitura.atual?.order_id).toBe("pedido-a");
