@@ -228,37 +228,50 @@ describe("pedidos vetam a atualização durante envio e fila offline", () => {
     expect(haOperacaoSensivel()).toBe(false);
   });
 
-  it.each(["fila", "envio"])(
-    "desmonte libera a marca de %s sem aguardar rede",
-    async (operacao) => {
-      const envio = adiar<{ data: null; error: null }>();
-      if (operacao === "fila")
-        localStorage.setItem(chave, JSON.stringify([item]));
-      await montar();
-      rpcMock.mockReturnValue(envio.promessa);
-      let resultado: Promise<unknown> | undefined;
-      try {
-        if (operacao === "fila") await reconectar();
-        else {
-          await act(async () => {
-            resultado = gancho
-              .createOrder(dados, { comPagamentoOnline: true })
-              .catch(() => {});
-          });
-        }
-        expect(haOperacaoSensivel()).toBe(true);
-        act(() => raiz.unmount());
-        expect(haOperacaoSensivel()).toBe(false);
-      } finally {
-        await act(async () => {
-          envio.resolver({ data: null, error: null });
-          await resultado;
-          await vi.advanceTimersByTimeAsync(0);
-        });
-      }
+  it("desmonte libera a marca da fila sem aguardar rede", async () => {
+    const envio = adiar<{ data: null; error: null }>();
+    localStorage.setItem(chave, JSON.stringify([item]));
+    await montar();
+    rpcMock.mockReturnValue(envio.promessa);
+    try {
+      await reconectar();
+      expect(haOperacaoSensivel()).toBe(true);
+      act(() => raiz.unmount());
       expect(haOperacaoSensivel()).toBe(false);
-    },
-  );
+    } finally {
+      await act(async () => {
+        envio.resolver({ data: null, error: null });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    }
+    expect(haOperacaoSensivel()).toBe(false);
+  });
+
+  it("envio de pedido em andamento mantém a marca mesmo após desmontar", async () => {
+    // A RPC já saiu: recarregar agora perderia a resposta do pedido. A marca
+    // só cai no finally do próprio envio, não no desmonte do componente.
+    const envio = adiar<{ data: string; error: null }>();
+    await montar();
+    rpcMock.mockReturnValue(envio.promessa);
+    let resultado: Promise<unknown> | undefined;
+    try {
+      await act(async () => {
+        resultado = gancho
+          .createOrder(dados, { comPagamentoOnline: true })
+          .catch(() => {});
+      });
+      expect(haOperacaoSensivel()).toBe(true);
+      act(() => raiz.unmount());
+      expect(haOperacaoSensivel()).toBe(true);
+    } finally {
+      await act(async () => {
+        envio.resolver({ data: "pedido-teste", error: null });
+        await resultado;
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    }
+    expect(haOperacaoSensivel()).toBe(false);
+  });
 
   it("desmontar antes do timer não deixa envio nem marca tardia", async () => {
     localStorage.setItem(chave, JSON.stringify([item]));
@@ -275,7 +288,7 @@ describe("pedidos vetam a atualização durante envio e fila offline", () => {
     expect(haOperacaoSensivel()).toBe(false);
   });
 
-  it("finally de envio desmontado não libera o envio da nova instância", async () => {
+  it("finally de envio desmontado não libera o envio da nova instância (cada envio tem a sua marca)", async () => {
     await montar();
     const antigo = adiar<{ data: string; error: null }>();
     const novo = adiar<{ data: string; error: null }>();
@@ -292,7 +305,7 @@ describe("pedidos vetam a atualização durante envio e fila offline", () => {
       });
       expect(haOperacaoSensivel()).toBe(true);
       act(() => raiz.render(null));
-      expect(haOperacaoSensivel()).toBe(false);
+      expect(haOperacaoSensivel()).toBe(true);
       await montar();
       await act(async () => {
         resultadoNovo = gancho.createOrder(dados, { comPagamentoOnline: true });

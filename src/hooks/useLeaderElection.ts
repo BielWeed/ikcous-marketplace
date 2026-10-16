@@ -6,9 +6,9 @@ const TAB_ID = Math.random().toString(36).slice(2, 8);
 
 // Shared BroadcastChannel singleton to prevent multiple instances and closure errors on HMR/re-renders
 const bc =
-  typeof window !== "undefined"
-    ? new BroadcastChannel("ikcous_leader_coordination")
-    : null;
+  typeof window === "undefined" || typeof BroadcastChannel === "undefined"
+    ? null
+    : new BroadcastChannel("ikcous_leader_coordination");
 
 // localStorage has no compare-and-swap, so mutual exclusion can't come from
 // "locking" the read-check-write in claimLeadership — the best a tab can do
@@ -90,8 +90,9 @@ export function computeClaimDelayMs(): number {
  * Leader expires after LEADER_TTL without heartbeat.
  */
 export function useLeaderElection() {
-  const [isLeader, setIsLeader] = useState(false);
-  const isLeaderRef = useRef(false);
+  // Sem coordenação entre abas, esta aba mantém a própria conexão.
+  const [isLeader, setIsLeader] = useState(bc === null);
+  const isLeaderRef = useRef(bc === null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const claimTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

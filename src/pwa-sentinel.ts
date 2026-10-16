@@ -1,3 +1,7 @@
+import {
+  momentoSeguroAgora,
+  recarregarSeSeguro,
+} from "@/lib/atualizacao/veto-de-recarga";
 import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 /**
  * PWA Sentinel — The Guardian
@@ -26,6 +30,8 @@ const PRAZO_ASSUMIR_SW_MS = 2500;
 export async function recuperarPulsoPerdido(
   registros: readonly ServiceWorkerRegistration[],
 ): Promise<void> {
+  // Não ativa nem desregistra o worker durante uma gravação sensível.
+  if (!momentoSeguroAgora()) return;
   if (!pedirRecargaSubordinada()) {
     console.warn(
       "[PWA Sentinel] Recuperação recente já engajada pela chave única; sentinel não intervém agora.",
@@ -40,6 +46,8 @@ export async function recuperarPulsoPerdido(
   if (assumiu) return;
 
   for (const registro of registros) {
+    // A consulta do waiting e cada desregistro podem ter atravessado uma RPC.
+    if (!momentoSeguroAgora()) return;
     try {
       await registro.unregister();
     } catch (e) {
@@ -51,8 +59,10 @@ export async function recuperarPulsoPerdido(
   );
   // Laudo #2 (P-1): motivo nominal — o boot não anuncia "Sistema
   // Atualizado" para uma recuperação de pulso.
-  gravaMotivoDeRecarga("recuperacao-sentinela");
-  window.location.reload();
+  recarregarSeSeguro(() => {
+    gravaMotivoDeRecarga("recuperacao-sentinela");
+    window.location.reload();
+  });
 }
 
 export const initSentinel = () => {

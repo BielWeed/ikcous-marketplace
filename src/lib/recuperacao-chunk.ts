@@ -38,7 +38,10 @@
  * fallback offline do sw.ts vira 503 "Loja em manutenção" — violação do
  * aceite 7), localStorage (a lista branca já protege o que importa).
  */
-import { recarregarSeSeguro } from "@/lib/atualizacao/veto-de-recarga";
+import {
+  momentoSeguroAgora,
+  recarregarSeSeguro,
+} from "@/lib/atualizacao/veto-de-recarga";
 import {
   type MotivoDeRecarga,
   gravaMotivoDeRecarga,
@@ -211,9 +214,8 @@ export function reportarErroChunk(
   }
 }
 
-/** A mesma chave para os OUTROS pedidores de recarga (sentinela): recusa
- * dentro da janela de uma recuperação já engajada (uma recuperação por vez)
- * e não estoura o contador de degraus do chunk — quem purga é só a escada. */
+/** A mesma chave e o mesmo teto para os OUTROS pedidores de recarga
+ * (sentinela): cada autorização consome uma tentativa, inclusive a primeira. */
 export function pedirRecargaSubordinada(agora: number = Date.now()): boolean {
   try {
     const estado = lerEstado();
@@ -227,7 +229,9 @@ export function pedirRecargaSubordinada(agora: number = Date.now()): boolean {
     ) {
       return false;
     }
-    gravarEstado({ ...vigente, lastAt: agora });
+    const count = vigente.count + 1;
+    if (count > MAX_ENGAJAMENTOS_POR_VERSAO) return false;
+    gravarEstado({ ...vigente, count, lastAt: agora });
     return true;
   } catch {
     return false;
@@ -267,9 +271,10 @@ export async function verificarRedeDeVerdade(
 // ─── Degraus da escada ───────────────────────────────────────────────────────
 
 /** Faz o service worker NOVO (waiting) assumir e recarrega no
- * controllerchange. Resolve `true` se assumiu (a recarga já disparou) e
- * `false` se não havia waiting ou o prazo estourou — sem desregistrar
- * NUNCA. Usado pelo ciclo do chunk e pelo sentinela (motivos distintos). */
+ * controllerchange. Resolve `true` se assumiu (recarga feita ou pendente
+ * pelo veto) e `false` se não havia waiting, o momento ficou ocupado ou o
+ * prazo estourou — sem desregistrar NUNCA. Usado pelo ciclo do chunk e
+ * pelo sentinela (motivos distintos). */
 export async function assumirServiceWorkerNovoERecarregar(opcoes: {
   motivo: MotivoDeRecarga;
   prazoMs: number;
@@ -284,7 +289,7 @@ export async function assumirServiceWorkerNovoERecarregar(opcoes: {
     return false;
   }
   const esperando = registro?.waiting;
-  if (!esperando) return false;
+  if (!esperando || !momentoSeguroAgora()) return false;
 
   return new Promise<boolean>((resolve) => {
     let prazo: ReturnType<typeof setTimeout> | null = null;
@@ -304,8 +309,12 @@ export async function assumirServiceWorkerNovoERecarregar(opcoes: {
       resolve(assumiu);
     };
     const aoAssumir = () => {
-      gravaMotivoDeRecarga(opcoes.motivo);
-      window.location.reload();
+      if (encerrado) return;
+      recarregarSeSeguro(() => {
+        gravaMotivoDeRecarga(opcoes.motivo);
+        window.location.reload();
+      });
+      // Mesmo vetada, a recarga já tem dono: o gate. Sem desregistro de reserva.
       encerrar(true);
     };
     prazo = setTimeout(() => encerrar(false), opcoes.prazoMs);
@@ -562,20 +571,27 @@ export async function executarRecuperacaoChunk(
     const assumiu = await recuperarPorCicloDoSW();
     if (assumiu) return "recarregou";
     // Degrau 1 na terra: sem SW para assumir, um reload seco, uma vez.
-    gravaMotivoDeRecarga("recuperacao-erro-modulo");
-    window.location.reload();
-    return "recarregou";
+    return recarregarSeSeguro(() => {
+      gravaMotivoDeRecarga("recuperacao-erro-modulo");
+      window.location.reload();
+    })
+      ? "recarregou"
+      : "recusado";
   }
 
   // Degrau 3, o ÚLTIMO: purge seletivo. Só com rede provada por conteúdo.
   if (!(await verificarRedeDeVerdade())) {
     return "sem-rede-verificada";
   }
+  if (!momentoSeguroAgora()) return "recusado";
   await derrubarServiceWorkers();
   await apagarCachesDoApp();
-  gravaMotivoDeRecarga("recuperacao-erro-modulo");
-  navegarPreservandoEndereco();
-  return "purgou";
+  return recarregarSeSeguro(() => {
+    gravaMotivoDeRecarga("recuperacao-erro-modulo");
+    navegarPreservandoEndereco();
+  })
+    ? "purgou"
+    : "recusado";
 }
 
 // ─── Os canais globais (main.tsx) ────────────────────────────────────────────

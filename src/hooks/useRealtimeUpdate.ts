@@ -32,9 +32,12 @@ export function useRealtimeUpdate(
     let setupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     // Shared BroadcastChannel for cross-tab realtime synchronization
-    const bc = new BroadcastChannel("ikcous_realtime_updates");
+    const bc =
+      typeof BroadcastChannel === "undefined"
+        ? null
+        : new BroadcastChannel("ikcous_realtime_updates");
 
-    if (isLeader) {
+    if (isLeader || !bc) {
       console.log(
         "[RealtimeUpdate] Current tab is LEADER. Deferring Supabase Realtime subscription...",
       );
@@ -75,7 +78,7 @@ export function useRealtimeUpdate(
 
             // Propagate update event to secondary tabs
             try {
-              bc.postMessage({ type: "deploy-ping", payload: data });
+              bc?.postMessage({ type: "deploy-ping", payload: data });
               console.log(
                 "[RealtimeUpdate-Leader] Propagated deploy signal to other tabs via BroadcastChannel.",
               );
@@ -167,7 +170,7 @@ export function useRealtimeUpdate(
       if (setupTimeoutId) {
         clearTimeout(setupTimeoutId);
       }
-      bc.close();
+      bc?.close();
       if (activeChannel) {
         const channelToCleanup = activeChannel;
         activeChannel = null;

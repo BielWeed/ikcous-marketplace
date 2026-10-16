@@ -3531,6 +3531,7 @@ export function useOrders(
    */
   const registrarPagamentoRecebido = useCallback(
     async (orderId: string, recebido: boolean) => {
+      const fim = marcarOperacaoSensivel("registrar-pagamento-manual");
       try {
         const { data, error } = await (supabase.rpc as any)(
           "registrar_pagamento_recebido",
@@ -3590,6 +3591,8 @@ export function useOrders(
           { description: err?.message },
         );
         throw err;
+      } finally {
+        fim();
       }
     },
     [],
@@ -3767,7 +3770,8 @@ export function useOrders(
         ? "create_marketplace_order_v24"
         : "create_marketplace_order_v23";
 
-      const fim = iniciarOperacaoSensivel("envio-de-pedido");
+      // Sair do checkout não cancela a RPC: só o finally libera a marca.
+      const fim = marcarOperacaoSensivel("envio-de-pedido");
       try {
         // 🛡️ SECURITY: Usando a RPC v22 Blindada (Zero-Trust)
         // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
@@ -3862,7 +3866,7 @@ export function useOrders(
         fim();
       }
     },
-    [avisarLojista, enviarComprovanteAoCliente, iniciarOperacaoSensivel],
+    [avisarLojista, enviarComprovanteAoCliente],
   );
 
   /**
