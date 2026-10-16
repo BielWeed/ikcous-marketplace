@@ -948,9 +948,8 @@ export function StoreProvider({
     // Stale-While-Revalidate: IDB data already loaded in mount effect.
     // This function always fetches fresh data from Supabase (background revalidation).
 
-    // Só a consulta MAIS RECENTE pode declarar falha: o efeito de montagem
-    // consulta de novo quando a sessão termina de carregar, e a falha de uma
-    // consulta velha não pode acender o aviso por cima de uma que já deu certo.
+    // Só a consulta MAIS RECENTE pode alterar o catálogo, o cache e os avisos:
+    // o efeito de montagem consulta de novo quando a sessão termina de carregar.
     const minhaConsulta = ++consultaDoCatalogoRef.current;
     try {
       let data: any[] | null = null;
@@ -994,12 +993,13 @@ export function StoreProvider({
         }
       }
 
+      if (minhaConsulta !== consultaDoCatalogoRef.current) return;
       if (error) throw error;
 
       // SÓ UMA RESPOSTA DE VERDADE SUBSTITUI O CATÁLOGO.
       // `data` nulo aqui não é vitrine vazia: é ausência de resposta (a
       // consulta de admin voltou sem dado e sem erro, e a pública nem chegou a
-      // rodar). Seguir daqui cairia no `else` lá embaixo, que troca o catálogo
+      // rodar). Seguir daqui trocaria o catálogo
       // — inclusive o que veio do cache offline e já está na tela — por lista
       // vazia. Lançar manda para o `catch`, que só registra: o cliente
       // continua vendo os produtos que já estavam lá.
@@ -1015,33 +1015,33 @@ export function StoreProvider({
       }
       setCatalogoErro(false);
 
-      if (data.length > 0) {
-        const mapped = (data as any[]).map((item: any) =>
-          mapProductFromDB(item),
-        );
+      const mapped = (data as any[]).map((item: any) => mapProductFromDB(item));
 
-        setProducts((prev) => {
-          if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;
-          // Persist to DataVault (non-blocking)
-          // Pelo singleton e com erro logado — mesma regra dos puts de config
-          // (revisão 20260825-1050): conexão fechada por upgrade de outra aba
-          // reabre no init(), e falha de escrita não pode ser silêncio.
-          DataVault.init()
-            .then(async (vault) => {
-              await vault.replaceAll("products", mapped);
-              await vault.setLastSync("products");
-            })
-            .catch((err) =>
-              console.warn(
-                "[StoreContext] produtos não gravados no cache offline:",
-                err,
-              ),
-            );
-          return mapped;
-        });
-      } else {
-        setProducts((prev) => (prev.length === 0 ? prev : []));
-      }
+      setProducts((prev) => {
+        if (minhaConsulta !== consultaDoCatalogoRef.current) return prev;
+        if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;
+        return mapped;
+      });
+      // Todo sucesso substitui o cache, inclusive vazio ou igual à tela:
+      // a gravação anterior pode ter sido descartada por uma consulta nova.
+      // Erros de consulta nunca chegam a esta gravação.
+      // Pelo singleton e com erro logado — mesma regra dos puts de config
+      // (revisão 20260825-1050): conexão fechada por upgrade de outra aba
+      // reabre no init(), e falha de escrita não pode ser silêncio.
+      DataVault.init()
+        .then(async (vault) => {
+          if (minhaConsulta !== consultaDoCatalogoRef.current) return;
+          await vault.replaceAll("products", mapped);
+          if (minhaConsulta === consultaDoCatalogoRef.current) {
+            await vault.setLastSync("products");
+          }
+        })
+        .catch((err) =>
+          console.warn(
+            "[StoreContext] produtos não gravados no cache offline:",
+            err,
+          ),
+        );
     } catch (err) {
       console.error("[StoreContext] Products fetch error:", err);
       if (minhaConsulta === consultaDoCatalogoRef.current) {
@@ -1064,7 +1064,9 @@ export function StoreProvider({
         }
       }
     } finally {
-      setLoadingProducts(false);
+      if (minhaConsulta === consultaDoCatalogoRef.current) {
+        setLoadingProducts(false);
+      }
     }
   }, [isAdmin, loading]);
 
