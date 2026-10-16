@@ -127,6 +127,7 @@ import {
   desfechoComEfeito,
   TETO_DO_PUSH_MS,
 } from "../_shared/efeitos-do-pagamento.ts";
+import { numeroDoPedido } from "../_shared/pedido.ts";
 // Os testes antigos importam estes dois DAQUI: a definição é uma só.
 export {
   assuntoDoAvisoDePagamentoAtrasado,
@@ -828,7 +829,7 @@ async function handler(
               chave: `valor_nao_conferido:${candidato.order_id}:${candidato.gateway_payment_id}`,
               aviso: {
                 title: "Pagamento precisa de conferência",
-                body: `#${candidato.order_id.slice(0, 8)} · valor não conferido; tentando novamente`,
+                body: `${numeroDoPedido(candidato.order_id)} · valor não conferido; tentando novamente`,
                 url: "/admin-orders",
               },
               rotulo: "reconciliar-pagamentos",

@@ -635,6 +635,8 @@ for (const rota of ["payment", "order"] as const) {
       assertEquals(registro.chamadasConfirmar.length, 0);
       assertEquals(alertas.length, 1);
       assertEquals(registro.chamadasAviso[0].args.p_chave, `valor_nao_conferido:${UUID_PEDIDO_1}:${id}`);
+      // O mesmo número que o painel mostra no cartão do pedido (6 últimos, maiúsculas).
+      assertEquals((alertas[0] as { body: string }).body.startsWith(`#${UUID_PEDIDO_1.slice(-6).toUpperCase()} · `), true);
     });
   }
 
