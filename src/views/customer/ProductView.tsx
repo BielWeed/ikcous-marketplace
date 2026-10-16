@@ -674,14 +674,10 @@ export const ProductView = React.memo(function ProductView({
         (v) => v.active && v.name === name && v.value === value,
       ),
   );
-  const grupoSemOpcao =
-    product.variants?.some(
-      (v) =>
-        !product.variants?.some(
-          (opcao) => opcao.name === v.name && opcao.active,
-        ),
-    ) ?? false;
-  const variacaoIndisponivel = escolhaIndisponivel || grupoSemOpcao;
+  // Grupo com TODAS as opções desligadas não trava a compra: o servidor, o
+  // carrinho e o card seguem vendendo pelo produto base. Só trava a opção
+  // ESCOLHIDA que deixou de existir.
+  const variacaoIndisponivel = escolhaIndisponivel;
   const isOutOfStock = currentStock <= 0 || variacaoIndisponivel;
   const discount = product.originalPrice
     ? Math.round(
@@ -1268,9 +1264,8 @@ export const ProductView = React.memo(function ProductView({
 
             {variacaoIndisponivel && (
               <p role="status" className="mb-3 text-sm text-zinc-600">
-                {grupoSemOpcao
-                  ? "Este produto está sem opções disponíveis no momento."
-                  : "Esta opção não está mais disponível. Escolha outra para continuar."}
+                Esta opção não está mais disponível. Escolha outra para
+                continuar.
               </p>
             )}
 

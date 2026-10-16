@@ -369,7 +369,7 @@ export function useReviews() {
         rodada === rodadaAdminRef.current &&
         geracao === geracaoAtualDoCache() &&
         usuarioAtualRef.current === user?.id;
-      if (!atual()) return { reviews: [], total: 0, averageRating: 0 };
+      if (!atual()) return;
       try {
         if (!filters?.silent) {
           setLoading(true);
@@ -429,7 +429,7 @@ export function useReviews() {
             merchantReply: item.merchant_reply,
           }));
 
-          if (!atual()) return { reviews: [], total: 0, averageRating: 0 };
+          if (!atual()) return;
           if (isAdmin) {
             setCachedReviewsData(formatted);
           }
@@ -559,7 +559,7 @@ export function useReviews() {
           merchantReply: item.merchant_reply,
         }));
 
-        if (!atual()) return { reviews: [], total: 0, averageRating: 0 };
+        if (!atual()) return;
         setAdminReviews(formatted);
         return {
           reviews: formatted,
@@ -569,7 +569,7 @@ export function useReviews() {
           globalRepliedCount,
         };
       } catch (error) {
-        if (!atual()) return { reviews: [], total: 0, averageRating: 0 };
+        if (!atual()) return;
         console.error("Error fetching all reviews:", error);
         toast.error("Erro ao carregar avaliações.");
         setAdminReviews([]);

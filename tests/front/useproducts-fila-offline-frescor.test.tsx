@@ -64,7 +64,10 @@ vi.mock("@/lib/supabase", () => ({
             }
             mock.payloads.push(payload);
             mock.version = "2026-10-16T08:00:00+00:00";
-            return { data: [{ id: "p1" }], error: null };
+            return {
+              data: [{ id: "p1", ultima_atualizacao: mock.version }],
+              error: null,
+            };
           },
         };
         return query;
@@ -227,6 +230,28 @@ describe("fila offline de produtos — frescor e medidas", () => {
           updates: { stock: 6, weightKg: 0.5, price: 35, widthCm: 12 },
         }),
       ]);
+    } finally {
+      await act(async () => root.unmount());
+    }
+  });
+
+  it("sem a versão do produto neste aparelho, a edição offline é recusada na hora", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    mock.products = [];
+    let api: Api | undefined;
+    const root = createRoot(document.createElement("div"));
+    const ready = (value: Api) => {
+      api = value;
+    };
+    try {
+      await act(async () => root.render(<Sonda ready={ready} />));
+      await act(async () => {
+        await api?.updateProduct("p1", { stock: 6 });
+      });
+      expect(localStorage.getItem(CHAVE)).toBeNull();
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("A alteração não foi guardada"),
+      );
     } finally {
       await act(async () => root.unmount());
     }

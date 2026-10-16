@@ -312,19 +312,16 @@ describe("ProductView — a quantidade acompanha o estoque da variação", () =>
     expect(adicionarAoCarrinho.mock.calls[0][1]).toBe("v-azul");
   });
 
-  it("todas as variações desativadas não permitem comprar o produto base", async () => {
+  it("todas as variações desativadas seguem vendendo pelo produto base", async () => {
+    // Regra do servidor, do carrinho e do card: produto cujas variações foram
+    // TODAS desativadas continua vendável pelo produto base.
     await montar(
       produtoCom([{ ...cor("v-verm", "Vermelho", 10), active: false }]),
     );
-    expect(hospedeiro.textContent).toContain(
-      "Este produto está sem opções disponíveis",
-    );
-    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
-    expect(
-      [...hospedeiro.querySelectorAll("button")].some((b) =>
-        b.textContent?.includes("Adicionar ao Carrinho"),
-      ),
-    ).toBe(false);
+    expect(hospedeiro.textContent).not.toContain("sem opções disponíveis");
+    await comprar();
+    expect(adicionarAoCarrinho).toHaveBeenCalledTimes(1);
+    expect(adicionarAoCarrinho.mock.calls[0][1]).toBeUndefined();
   });
 
   it("desmarcar funciona também com dois grupos", async () => {

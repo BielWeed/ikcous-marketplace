@@ -42,7 +42,14 @@ vi.mock("@/hooks/useAuth", () => ({
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    products: [],
+    // O produto está na lista: é daí que a edição offline tira a versão-base.
+    products: [
+      {
+        id: "prod-1",
+        name: "Produto 1",
+        updatedAt: "2026-10-01T10:00:00.000000+00:00",
+      },
+    ],
     loadingProducts: false,
     fetchProducts: mock.fetchProductsContext,
   }),
@@ -118,7 +125,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 type ApiUseProducts = ReturnType<typeof useProducts>;
 
 function Sonda({ onReady }: { onReady: (api: ApiUseProducts) => void }) {
-  const api = useProducts({ autoFetch: false });
+  const api = useProducts({ autoFetch: true });
   useEffect(() => {
     onReady(api);
   });
@@ -306,10 +313,6 @@ describe("useProducts — estoqueMinimo percorre o caminho inteiro do dado", () 
       const fila = JSON.parse(localStorage.getItem(FILA) ?? "[]");
       expect(fila[0].updates.estoqueMinimo).toBe(3);
 
-      // O hook sem lista carregada não conhece a versão-base do produto; a
-      // fila real a traz da lista. Aqui o caminho testado é o do número.
-      fila[0].baseUpdatedAt = "2026-10-01T10:00:00.000000+00:00";
-      localStorage.setItem(FILA, JSON.stringify(fila));
       onLine.mockReturnValue(true);
       await act(async () => {
         window.dispatchEvent(new Event("online"));

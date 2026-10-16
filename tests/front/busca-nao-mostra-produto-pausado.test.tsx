@@ -153,6 +153,16 @@ describe("SearchView — produto pausado não aparece nos resultados", () => {
     expect(host.textContent).toContain("Ué, nenhum resultado?");
   });
 
+  it("com o catálogo salvo no aparelho, falha em segundo plano não esconde a busca", async () => {
+    catalogo = [produto({ id: "vestido-ativo", category: "Vestidos" })];
+    catalogoErro = true;
+    const host = await renderizarBusca();
+    expect(host.textContent).not.toContain(
+      "Não conseguimos carregar a busca agora",
+    );
+    expect(idsNaTela(host)).toEqual(["vestido-ativo"]);
+  });
+
   it("durante a primeira carga não anuncia nenhum resultado", async () => {
     catalogo = [];
     loading = true;

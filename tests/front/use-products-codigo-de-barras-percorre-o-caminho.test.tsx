@@ -159,6 +159,10 @@ describe("useProducts — C5.1 codigoBarras percorre o caminho inteiro do dado",
         />,
       );
     });
+    // Montado offline (sem agendar o envio da fila), os testes abaixo gravam
+    // ONLINE: antes eles caíam no caminho online por acidente, porque o toast
+    // do caminho offline não existia no mock e lançava.
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
   }
 
   describe("(a) updateProduct — dbUpdates de vw_produtos_admin", () => {

@@ -127,6 +127,9 @@ export function _syncOfflineUpdatesParaTeste(userId: string): Promise<boolean> {
  * hoje o corrompe. Mesmo dentro do prazo, só grava se `ultima_atualizacao`
  * ainda é a versão-base guardada na primeira edição offline.
  */
+/** Versões que o servidor devolveu ao gravar a fila offline (id → versão). */
+const versoesAposSincronizar = new Map<string, string>();
+
 async function syncOfflineUpdates(userId: string): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
@@ -269,7 +272,7 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
           .eq("id", id)
           .eq("ultima_atualizacao", item.baseUpdatedAt)
           .is("deleted_at", null)
-          .select("id");
+          .select("id, ultima_atualizacao");
 
         if (error) throw error;
         if (!data?.length) {
@@ -280,6 +283,15 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
           continue;
         }
         syncedCount += 1;
+        // A versão nova vira a base da PRÓXIMA edição offline deste produto:
+        // sem isto, a lista (só a página 0 é recarregada) guardaria a versão
+        // velha e a segunda edição seria descartada como "alterada em outro
+        // lugar" por causa da própria sincronização.
+        const novaVersao = (data[0] as { ultima_atualizacao?: unknown })
+          .ultima_atualizacao;
+        if (typeof novaVersao === "string") {
+          versoesAposSincronizar.set(id, novaVersao);
+        }
       } catch (err) {
         console.error("[Offline Sync] Failed to sync product %s:", id, err);
         remainingQueue.push(item);
@@ -1023,6 +1035,19 @@ export function useProducts({ autoFetch = true } = {}) {
         timersPendentes.delete(timer);
         syncOfflineUpdates(userId).then((synced) => {
           if (synced) {
+            const versoes = new Map(versoesAposSincronizar);
+            versoesAposSincronizar.clear();
+            if (versoes.size > 0) {
+              const comVersao = (lista: Product[]) =>
+                lista.map((p) => {
+                  const nova = versoes.get(p.id);
+                  return nova ? { ...p, updatedAt: nova } : p;
+                });
+              if (cachedAdminProducts) {
+                cachedAdminProducts = comVersao(cachedAdminProducts);
+              }
+              setLocalProducts((prev) => comVersao(prev));
+            }
             refreshContext().catch(() => {});
             if (!autoFetch && isAdmin) {
               loadProducts(0, 10, { silent: true }).catch(() => {});
@@ -1261,6 +1286,27 @@ export function useProducts({ autoFetch = true } = {}) {
           console.error("[useProducts] Offline validation failed:", err);
           toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
           throw err;
+        }
+
+        // Sem a versão-base não há como provar, na volta da rede, que a edição
+        // não sobrescreve uma mais nova: recusa agora, em vez de aceitar e
+        // descartar depois.
+        let baseJaGuardada: unknown;
+        try {
+          const guardada = JSON.parse(
+            localStorage.getItem(chaveDaFila) || "[]",
+          ) as { id: string; baseUpdatedAt?: unknown }[];
+          baseJaGuardada = guardada.find(
+            (item) => item.id === id,
+          )?.baseUpdatedAt;
+        } catch {
+          baseJaGuardada = undefined;
+        }
+        if (typeof baseJaGuardada !== "string" && !oldProduct?.updatedAt) {
+          toast.error(
+            "Sem conexão e a versão atual deste produto não está neste aparelho. A alteração não foi guardada — conecte-se e tente de novo.",
+          );
+          return;
         }
 
         try {

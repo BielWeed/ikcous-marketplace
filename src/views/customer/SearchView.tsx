@@ -397,7 +397,7 @@ export const SearchView = React.memo(function SearchView({
           <p role="status" className="py-20 text-center text-sm text-zinc-500">
             Carregando busca…
           </p>
-        ) : catalogoErro ? (
+        ) : catalogoErro && allProducts.length === 0 ? (
           <div role="alert" className="py-20 text-center">
             <h2 className="text-xl font-black text-zinc-900">
               Não conseguimos carregar a busca agora

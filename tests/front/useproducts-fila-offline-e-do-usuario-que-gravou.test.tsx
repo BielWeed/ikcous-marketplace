@@ -41,7 +41,14 @@ vi.mock("@/hooks/useAuth", () => ({
 }));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    products: [],
+    // O produto está na lista: é daí que a edição offline tira a versão-base.
+    products: [
+      {
+        id: "prod-1",
+        name: "Produto 1",
+        updatedAt: "2026-10-01T10:00:00.000000+00:00",
+      },
+    ],
     loadingProducts: false,
     fetchProducts: vi.fn().mockResolvedValue(undefined),
   }),
@@ -141,7 +148,7 @@ async function montar() {
   const { useProducts } = await import("@/hooks/useProducts");
   let api: ReturnType<typeof useProducts> | undefined;
   function Sonda() {
-    const retorno = useProducts({ autoFetch: false });
+    const retorno = useProducts({ autoFetch: true });
     useEffect(() => {
       api = retorno;
     });
