@@ -109,6 +109,7 @@ export function useReviews() {
   });
   const [loading, setLoading] = useState(() => isAdmin && !cachedReviewsData);
   const latestProductIdRef = useRef<string | null>(null);
+  const rodadaAdminRef = useRef(0);
 
   const getReviewsByProduct = useCallback(
     async (productId: string) => {
@@ -336,6 +337,7 @@ export function useReviews() {
       pageSize = 20,
       filters?: { rating?: number | "all"; search?: string; silent?: boolean },
     ) => {
+      const rodada = ++rodadaAdminRef.current;
       try {
         if (!filters?.silent) {
           setLoading(true);
@@ -356,6 +358,7 @@ export function useReviews() {
             },
           );
 
+          if (rodada !== rodadaAdminRef.current) return;
           if (error) throw error;
 
           const rpcData = data as any;
@@ -523,6 +526,7 @@ export function useReviews() {
           merchantReply: item.merchant_reply,
         }));
 
+        if (rodada !== rodadaAdminRef.current) return;
         setAdminReviews(formatted);
         return {
           reviews: formatted,
@@ -532,11 +536,14 @@ export function useReviews() {
           globalRepliedCount,
         };
       } catch (error) {
+        if (rodada !== rodadaAdminRef.current) return;
         console.error("Error fetching all reviews:", error);
         toast.error("Erro ao carregar avaliações.");
+        setAdminReviews([]);
+        if (isAdmin) setCachedReviewsData([]);
         return { reviews: [], total: 0, averageRating: 0 };
       } finally {
-        setLoading(false);
+        if (rodada === rodadaAdminRef.current) setLoading(false);
       }
     },
     [isAdmin],
