@@ -720,7 +720,9 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
         supabase.auth.onAuthStateChange as unknown as ReturnType<typeof vi.fn>
       ).mock.calls[0][0];
       const sessaoB = { access_token: "token-b", user: { id: "conta-b" } };
-      getSession.mockImplementationOnce(async () => {
+      // Depois da troca o armazenamento passa a ter B de forma permanente:
+      // só a conta capturada ANTES do await impede gravar como B.
+      getSession.mockImplementation(async () => {
         aoMudar("SIGNED_IN", sessaoB);
         return { data: { session: sessaoB }, error: null };
       });
