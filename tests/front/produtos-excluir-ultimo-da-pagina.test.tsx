@@ -23,6 +23,8 @@ const produtoTeste = {
 
 let catalogo: Array<typeof produtoTeste> = [];
 let exclusaoPermitida = true;
+let exclusaoLenta = false;
+let concluirExclusao: (() => void) | null = null;
 
 vi.mock("@/hooks/useProducts", async () => {
   const { useState } = await import("react");
@@ -41,6 +43,17 @@ vi.mock("@/hooks/useProducts", async () => {
       );
       deleteProduct.mockImplementation(async (id: string) => {
         if (!exclusaoPermitida) return false;
+        if (exclusaoLenta) {
+          return new Promise<boolean>((resolve) => {
+            concluirExclusao = () => {
+              catalogo = catalogo.filter((p) => p.id !== id);
+              setProducts((anteriores) =>
+                anteriores.filter((p) => p.id !== id),
+              );
+              resolve(true);
+            };
+          });
+        }
         catalogo = catalogo.filter((p) => p.id !== id);
         setProducts((anteriores) => anteriores.filter((p) => p.id !== id));
         return true;
@@ -180,6 +193,8 @@ describe("Produtos — exclusão e paginação", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     exclusaoPermitida = true;
+    exclusaoLenta = false;
+    concluirExclusao = null;
     catalogo = Array.from({ length: 13 }, (_, indice) => ({
       ...produtoTeste,
       id: `prod-${indice + 1}`,
@@ -289,5 +304,30 @@ describe("Produtos — exclusão e paginação", () => {
     expect(armazem.get("admin_products_current_page")).toBe("1");
     expect(contador()).toContain("Exibindo 13 - 13 de 13");
     expect(hospedeiro.textContent).toContain("Produto 13");
+  });
+
+  it("exclusão lenta recarrega a página ATUAL, não a do clique de confirmar", async () => {
+    catalogo.push({ ...produtoTeste, id: "prod-14", name: "Produto 14" });
+    await montar();
+    exclusaoLenta = true;
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Excluir Produto")!.click();
+    });
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Confirmar Exclusão")!.click();
+    });
+    // Enquanto a exclusão não volta, a lojista vai para a página anterior.
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Anterior")!.click();
+    });
+    await aguardarBusca();
+    expect(armazem.get("admin_products_current_page")).toBe("0");
+    loadProducts.mockClear();
+    await act(async () => {
+      concluirExclusao!();
+    });
+    await aguardarBusca();
+    expect(loadProducts).toHaveBeenCalled();
+    for (const [pagina] of loadProducts.mock.calls) expect(pagina).toBe(0);
   });
 });

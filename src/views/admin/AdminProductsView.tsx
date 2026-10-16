@@ -337,6 +337,13 @@ export const AdminProductsView = memo(function AdminProductsView({
     return () => clearTimeout(timer);
   }, [currentPage, searchTerm, filterCategory, active, loadData]);
 
+  // A exclusão pode demorar: quando termina, a recarga usa a página e os
+  // filtros ATUAIS, não os do clique de confirmar.
+  const recarregarAtualRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    recarregarAtualRef.current = () => void loadData(currentPage);
+  }, [loadData, currentPage]);
+
   // Renomear ou apagar categoria mexe nos produtos (o banco troca o nome neles).
   // O filtro lembrado no aparelho (`admin_products_filter_category`) guarda o
   // NOME: se ele era a categoria que mudou, acompanha, senão a lista ficaria
@@ -595,7 +602,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       if (sucesso) {
         haptic.success();
         // A recarga atualiza o total e corrige a página se ela saiu do limite.
-        void loadData(currentPage);
+        recarregarAtualRef.current();
         // Achado da revisão do Achado 7: `AlertDialogAction` do Radix é
         // `Dialog.Close` e fecha o diálogo síncrono no clique, antes de
         // qualquer `await` — mas o `finally` abaixo (`setProductToDelete`)
@@ -622,8 +629,6 @@ export const AdminProductsView = memo(function AdminProductsView({
     productToDelete,
     isOffline,
     refreshFinancialStats,
-    loadData,
-    currentPage,
   ]);
 
   const handleDuplicate = useCallback(
