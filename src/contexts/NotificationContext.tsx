@@ -79,6 +79,7 @@ export function NotificationProvider({
   // busca pega um número de rodada; só a mais recente, do usuário atual,
   // escreve estado.
   const rodadaRef = useRef(0);
+  const consultasEmVooRef = useRef(0);
   const usuarioAtualIdRef = useRef<string | null>(user?.id ?? null);
   useEffect(() => {
     usuarioAtualIdRef.current = user?.id ?? null;
@@ -105,6 +106,7 @@ export function NotificationProvider({
       if (!force && now - lastFetchRef.current < 10000) return; // cache 10s
       lastFetchRef.current = now;
       const rodada = ++rodadaRef.current;
+      consultasEmVooRef.current++;
       const donoDaRodada = user.id;
       const ehVelha = () =>
         rodada !== rodadaRef.current ||
@@ -175,11 +177,23 @@ export function NotificationProvider({
         console.error("[Notifications] Fetch error:", err);
         setErro("Não conseguimos carregar suas notificações.");
       } finally {
+        consultasEmVooRef.current--;
         if (!ehVelha()) setLoading(false);
       }
     },
     [user],
   );
+
+  // Uma ação (ler, excluir) invalida a consulta que já estava no ar, que pode
+  // trazer o retrato de antes dela. Se havia consulta no ar, uma nova consulta
+  // reconcilia: sem ela, um aviso que só vinha na resposta descartada
+  // ficaria ausente até o próximo evento.
+  const invalidarConsultasEmVoo = useCallback(() => {
+    const havia = consultasEmVooRef.current > 0;
+    rodadaRef.current++;
+    setLoading(false);
+    if (havia) void fetchNotifications(true);
+  }, [fetchNotifications]);
 
   const markAsRead = useCallback(
     async (id: string) => {
@@ -189,6 +203,7 @@ export function NotificationProvider({
         const estadoLocal = lerEstadoLocalDaCampanha(user.id);
         estadoLocal.lidas.add(id);
         persistirEstadoLocalDaCampanha(user.id, estadoLocal);
+        invalidarConsultasEmVoo();
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
         );
@@ -202,6 +217,8 @@ export function NotificationProvider({
           .eq("id", id);
 
         if (error) throw error;
+        // A consulta anterior à leitura não pode repor o aviso não lido.
+        invalidarConsultasEmVoo();
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
         );
@@ -215,11 +232,17 @@ export function NotificationProvider({
         toast.error("Não conseguimos marcar como lida. Tente de novo.");
       }
     },
-    [user],
+    [user, invalidarConsultasEmVoo],
   );
 
   const markAllAsRead = useCallback(async () => {
     if (!user) return;
+    const idsNaoLidos = new Set(
+      notifications.filter((n) => !n.read).map((n) => n.id),
+    );
+    const idsDeCampanhaNaoLidos = Array.from(idsNaoLidos).filter((id) =>
+      campanhaIdsRef.current.has(id),
+    );
     try {
       const { error } = await supabase
         .from("notificacoes")
@@ -228,22 +251,22 @@ export function NotificationProvider({
         .eq("lida", false);
 
       if (error) throw error;
+      invalidarConsultasEmVoo();
 
       // O UPDATE acima só alcança as linhas da própria cliente. Os avisos de
       // campanha (usuario_id nulo) que ainda estavam não lidos ficam de fora
       // da policy — a leitura deles é registrada localmente, para o contador
       // e a lista concordarem com o que a tela acabou de afirmar.
-      const idsDeCampanhaNaoLidos = notifications
-        .filter((n) => !n.read && campanhaIdsRef.current.has(n.id))
-        .map((n) => n.id);
-
       if (idsDeCampanhaNaoLidos.length > 0) {
         const estadoLocal = lerEstadoLocalDaCampanha(user.id);
         for (const id of idsDeCampanhaNaoLidos) estadoLocal.lidas.add(id);
         persistirEstadoLocalDaCampanha(user.id, estadoLocal);
       }
 
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      // Avisos que chegaram durante o UPDATE continuam não lidos.
+      setNotifications((prev) =>
+        prev.map((n) => (idsNaoLidos.has(n.id) ? { ...n, read: true } : n)),
+      );
     } catch (err) {
       // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead.
       console.error("[Notifications] Mark all as read error:", err);
@@ -251,7 +274,7 @@ export function NotificationProvider({
         "Não conseguimos marcar os avisos como lidos. Tente de novo.",
       );
     }
-  }, [user, notifications]);
+  }, [user, notifications, invalidarConsultasEmVoo]);
 
   const deleteNotification = useCallback(
     async (id: string) => {
@@ -263,6 +286,7 @@ export function NotificationProvider({
         estadoLocal.ocultas.add(id);
         estadoLocal.lidas.delete(id);
         persistirEstadoLocalDaCampanha(user.id, estadoLocal);
+        invalidarConsultasEmVoo();
         setNotifications((prev) => prev.filter((n) => n.id !== id));
         return;
       }
@@ -274,6 +298,7 @@ export function NotificationProvider({
           .eq("id", id);
 
         if (error) throw error;
+        invalidarConsultasEmVoo();
         setNotifications((prev) => prev.filter((n) => n.id !== id));
       } catch (err) {
         // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead. Este é
@@ -283,7 +308,7 @@ export function NotificationProvider({
         toast.error("Não conseguimos apagar este aviso. Tente de novo.");
       }
     },
-    [user],
+    [user, invalidarConsultasEmVoo],
   );
 
   useEffect(() => {
