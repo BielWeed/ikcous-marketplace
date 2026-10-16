@@ -77,6 +77,12 @@ export function AccountSettingsView() {
     "presets",
   );
 
+  useEffect(() => {
+    // O envio antigo não pode prender os controles da conta que entrou.
+    setIsUpdatingAvatar(false);
+    setIsUpdatingCover(false);
+  }, [user?.id]);
+
   const defaultCover = useMemo(
     () => getPredefinedCoverSvg("#FF512F", "#DD2476", "waves"),
     [],
@@ -89,6 +95,8 @@ export function AccountSettingsView() {
   };
 
   const handleSelectPredefinedAvatar = async (avatar: any) => {
+    const contaDonaId = contaAtualIdRef.current;
+    const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
     setIsUpdatingAvatar(true);
     haptic.light();
     const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
@@ -99,20 +107,26 @@ export function AccountSettingsView() {
         avatar.end,
       );
       const success = await updateProfile({ avatar_url: svgUrl });
+      if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Avatar atualizado com sucesso!");
         setIsAvatarModalOpen(false);
       }
     } catch (error) {
+      if (!contaAindaEhDona()) return;
       console.error("Error setting avatar:", error);
       toast.error("Erro ao salvar avatar.");
     } finally {
       desmarcar();
-      setIsUpdatingAvatar(false);
+      if (contaAindaEhDona()) setIsUpdatingAvatar(false);
     }
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) return;
+    const contaDonaId = user.id;
+    const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -126,6 +140,7 @@ export function AccountSettingsView() {
     try {
       const reader = new FileReader();
       reader.onload = async (event) => {
+        if (!contaAindaEhDona()) return;
         const base64 = event.target?.result as string;
         if (!base64) {
           toast.error("Erro ao ler a imagem.");
@@ -136,22 +151,30 @@ export function AccountSettingsView() {
         const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
         try {
           const compressed = await compressImage(base64, 200, 200);
+          if (!contaAindaEhDona()) return;
           const success = await updateProfile({ avatar_url: compressed });
+          if (!contaAindaEhDona()) return;
           if (success) {
             toast.success("Foto de perfil atualizada!");
             setIsAvatarModalOpen(false);
           }
-          setIsUpdatingAvatar(false);
+        } catch (error) {
+          if (!contaAindaEhDona()) return;
+          console.error("Error uploading photo:", error);
+          toast.error("Erro ao processar foto.");
         } finally {
           desmarcar();
+          if (contaAindaEhDona()) setIsUpdatingAvatar(false);
         }
       };
       reader.onerror = () => {
+        if (!contaAindaEhDona()) return;
         toast.error("Erro ao ler o arquivo.");
         setIsUpdatingAvatar(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
+      if (!contaAindaEhDona()) return;
       console.error("Error uploading photo:", error);
       toast.error("Erro ao processar foto.");
       setIsUpdatingAvatar(false);
@@ -159,25 +182,33 @@ export function AccountSettingsView() {
   };
 
   const handleRemoveAvatar = async () => {
+    if (!user) return;
+    const contaDonaId = user.id;
+    const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
+
     setIsUpdatingAvatar(true);
     haptic.light();
     const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
     try {
       const success = await updateProfile({ avatar_url: "REMOVE" });
+      if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Foto de perfil removida.");
         setIsAvatarModalOpen(false);
       }
     } catch (error) {
+      if (!contaAindaEhDona()) return;
       console.error("Error removing avatar:", error);
       toast.error("Erro ao remover avatar.");
     } finally {
       desmarcar();
-      setIsUpdatingAvatar(false);
+      if (contaAindaEhDona()) setIsUpdatingAvatar(false);
     }
   };
 
   const handleSelectPredefinedCover = async (cover: any) => {
+    const contaDonaId = contaAtualIdRef.current;
+    const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
     setIsUpdatingCover(true);
     haptic.light();
     try {
@@ -187,19 +218,25 @@ export function AccountSettingsView() {
         cover.patternType,
       );
       const success = await updateProfile({ cover_url: svgUrl });
+      if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Capa de perfil atualizada!");
         setIsCoverModalOpen(false);
       }
     } catch (error) {
+      if (!contaAindaEhDona()) return;
       console.error("Error setting cover:", error);
       toast.error("Erro ao salvar capa.");
     } finally {
-      setIsUpdatingCover(false);
+      if (contaAindaEhDona()) setIsUpdatingCover(false);
     }
   };
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) return;
+    const contaDonaId = user.id;
+    const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -213,6 +250,7 @@ export function AccountSettingsView() {
     try {
       const reader = new FileReader();
       reader.onload = async (event) => {
+        if (!contaAindaEhDona()) return;
         const base64 = event.target?.result as string;
         if (!base64) {
           toast.error("Erro ao ler imagem.");
@@ -220,20 +258,31 @@ export function AccountSettingsView() {
           return;
         }
 
-        const compressed = await compressCoverImage(base64);
-        const success = await updateProfile({ cover_url: compressed });
-        if (success) {
-          toast.success("Capa de perfil personalizada atualizada!");
-          setIsCoverModalOpen(false);
+        try {
+          const compressed = await compressCoverImage(base64);
+          if (!contaAindaEhDona()) return;
+          const success = await updateProfile({ cover_url: compressed });
+          if (!contaAindaEhDona()) return;
+          if (success) {
+            toast.success("Capa de perfil personalizada atualizada!");
+            setIsCoverModalOpen(false);
+          }
+        } catch (error) {
+          if (!contaAindaEhDona()) return;
+          console.error("Error uploading cover:", error);
+          toast.error("Erro ao processar imagem.");
+        } finally {
+          if (contaAindaEhDona()) setIsUpdatingCover(false);
         }
-        setIsUpdatingCover(false);
       };
       reader.onerror = () => {
+        if (!contaAindaEhDona()) return;
         toast.error("Erro ao ler arquivo.");
         setIsUpdatingCover(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
+      if (!contaAindaEhDona()) return;
       console.error("Error uploading cover:", error);
       toast.error("Erro ao processar imagem.");
       setIsUpdatingCover(false);
@@ -241,19 +290,25 @@ export function AccountSettingsView() {
   };
 
   const handleRemoveCover = async () => {
+    if (!user) return;
+    const contaDonaId = user.id;
+    const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
+
     setIsUpdatingCover(true);
     haptic.light();
     try {
       const success = await updateProfile({ cover_url: "REMOVE" });
+      if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Capa de perfil removida.");
         setIsCoverModalOpen(false);
       }
     } catch (error) {
+      if (!contaAindaEhDona()) return;
       console.error("Error removing cover:", error);
       toast.error("Erro ao remover capa.");
     } finally {
-      setIsUpdatingCover(false);
+      if (contaAindaEhDona()) setIsUpdatingCover(false);
     }
   };
 
@@ -399,7 +454,6 @@ export function AccountSettingsView() {
     if (!user) return;
     const contaDonaId = user.id;
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
-    if (!contaAindaEhDona()) return;
 
     // Camada 2 de defesa do CONTA-01: mesmo que o botão tivesse sido
     // clicado com a carga ainda não terminada (bug futuro na trava de UI
