@@ -57,7 +57,7 @@ export function useDevolucaoDoPedidoCliente(
   // Qual pedido já teve uma leitura bem-sucedida (guarda o id, não um
   // booleano: trocar de pedido volta a "ainda não sei").
   const [lidoDoPedido, setLidoDoPedido] = useState<string | null>(null);
-  const [desistiu, setDesistiu] = useState(false);
+  const [desistiuDe, setDesistiuDe] = useState<string | null>(null);
   // A nova tentativa chama sempre a versão mais recente de `carregar` (o
   // `setTimeout` guardaria a do render em que foi agendado).
   const carregarRef = useRef<() => Promise<void>>(async () => {});
@@ -84,7 +84,7 @@ export function useDevolucaoDoPedidoCliente(
       if (lidoRef.current === orderId) return;
       falhasRef.current += 1;
       if (falhasRef.current >= TENTATIVAS_ATE_DESISTIR) {
-        setDesistiu(true);
+        setDesistiuDe(orderId);
         return;
       }
       novaTentativaRef.current = setTimeout(() => {
@@ -109,7 +109,7 @@ export function useDevolucaoDoPedidoCliente(
       lidoRef.current = orderId;
       falhasRef.current = 0;
       setLidoDoPedido(orderId);
-      setDesistiu(false);
+      setDesistiuDe(null);
     } catch {
       if (valeAinda()) aoFalhar();
     } finally {
@@ -124,7 +124,7 @@ export function useDevolucaoDoPedidoCliente(
   useEffect(() => {
     ativoRef.current = true;
     falhasRef.current = 0;
-    setDesistiu(false);
+    setDesistiuDe(null);
     if (habilitado) void carregar();
     return () => {
       ativoRef.current = false;
@@ -153,6 +153,6 @@ export function useDevolucaoDoPedidoCliente(
     carregando,
     erro: idDoErro === orderId && erro,
     lido,
-    desistiu: !lido && desistiu,
+    desistiu: !lido && desistiuDe === orderId,
   };
 }

@@ -464,3 +464,43 @@ describe("erro da devolução de dinheiro pertence ao pedido lido", () => {
     },
   );
 });
+
+describe("desistência da devolução de dinheiro pertence ao pedido lido", () => {
+  it("pedido A que desistiu não faz B aparecer como desistido em nenhum render", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    lerReembolsos.mockResolvedValue({
+      data: null,
+      error: { message: "rede" },
+    });
+    const leituras: Array<ReturnType<typeof useDevolucaoDoPedidoCliente>> = [];
+    function Sonda({ id }: { id: string }) {
+      const leitura = useDevolucaoDoPedidoCliente(id, true);
+      leituras.push(leitura);
+      return null;
+    }
+    await act(async () => raiz.render(<Sonda id="pedido-a" />));
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(leituras.at(-1)?.desistiu).toBe(true);
+    const leituraDeB = pendente();
+    lerReembolsos.mockReturnValue(leituraDeB.promessa);
+    const inicio = leituras.length;
+
+    await act(async () => raiz.render(<Sonda id="pedido-b" />));
+
+    expect(leituras.length).toBeGreaterThan(inicio);
+    expect(leituras.slice(inicio).every((leitura) => !leitura.desistiu)).toBe(
+      true,
+    );
+    expect(leituras.at(-1)?.carregando).toBe(true);
+
+    lerReembolsos.mockResolvedValue({
+      data: null,
+      error: { message: "rede" },
+    });
+    await act(async () =>
+      leituraDeB.resolver({ data: null, error: { message: "rede" } }),
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(leituras.at(-1)?.desistiu).toBe(true);
+  });
+});
