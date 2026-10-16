@@ -3010,7 +3010,11 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // cartão responde o 409 NÃO terminal "Muitas tentativas com cartão…" (na
   // lista de recuperáveis, acima), de UM ponto só (`respostaTetoDoCartao`),
   // chamado antes de cancelar um PIX vivo e na criação. 64 + 1 = 65.
-  assertEquals(achados, 65);
+  //
+  // 66, não mais 65: revisão do PR de pagamento (16/10/2026) — pedido de PIX com o
+  // cartão da vaga pago no MP e sem prova no banco responde o mesmo 409 NÃO
+  // terminal "em análise" do ramo (f) (na lista de recuperáveis, acima). 65 + 1 = 66.
+  assertEquals(achados, 66);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -3066,7 +3070,7 @@ Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cart�
   // identificador do `error:` (literal ou variável) -> status esperado,
   // para cada um dos pontos de retorno que TEM que levar a flag.
   const comFlagEsperada = new Map<string, number>([
-    ["Há um pagamento com cartão em análise para este pedido.", 409], // 1 e 2
+    ["Há um pagamento com cartão em análise para este pedido.", 409], // 1, 2 e 3 (vaga (a) com PIX pedido)
     ["r.erro", 502], // 3 — reconsulta da vaga (`consultarOrder`) falhou
     ["erroOriginal", 502], // 4 — criação ambígua (respostaCartaoAmbiguoNaCriacao)
     ["Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.", 409], // 5, 11 e 12 — N7, achado A (migration 80) e A3.2
@@ -3098,8 +3102,8 @@ Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cart�
 
   assertEquals(
     comOFlag,
-    13,
-    "o campo tem que aparecer em exatamente treze pontos de retorno (12 lugares; 'Há um pagamento...' aparece em 2) — ver a lista no comentário acima",
+    14,
+    "o campo tem que aparecer em exatamente catorze pontos de retorno (12 lugares; 'Há um pagamento...' aparece em 3: sentinela, vaga (f) e cartão já pago sem prova com PIX) — ver a lista no comentário acima",
   );
 });
 
@@ -4993,6 +4997,7 @@ Deno.test("handler cartão: HTTP 402 (recusado pelo banco) -> 200 'recusado' com
     statusPagamento: "recusado",
     motivoRecusa: "O banco emissor recusou o pagamento.",
     podeTentarDeNovo: true,
+    categoriaDaRecusa: "outra",
     expiraEm: "2099-01-01T00:00:00.000Z",
   });
   // Blindagem (02/10/2026): solta a PRÓPRIA reserva (casamento exato da vaga
@@ -5210,7 +5215,7 @@ Deno.test("handler cartão: tentativa 2 no pedido -> chave <pedido>:c2; OUTRO to
 
 // --- vaga ocupada: (a) a (f) --------------------------------------------------
 
-Deno.test("vaga (a): cartão JÁ PAGO na vaga + novo pedido de cartão -> 200 'pago', sem cobrança nova, sem liberar, sem UPDATE", async () => {
+Deno.test("vaga (a): cartão JÁ PAGO na vaga (sem prova de valor, banco 'aguardando') + novo pedido de cartão -> 200 'aguardando' (em análise, nunca 'pago'), sem cobrança nova, sem liberar, sem UPDATE", async () => {
   const { supabase, registro, chamadasRpc } = cenarioCartao({
     pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
   });
@@ -5225,9 +5230,12 @@ Deno.test("vaga (a): cartão JÁ PAGO na vaga + novo pedido de cartão -> 200 'p
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
+  // Resposta honesta (16/10/2026): o MP diz pago, mas esta order não traz o
+  // valor pago (sem prova) e o banco segue 'aguardando' — "pago" aqui era o
+  // defeito; o 'pago' legítimo (prova + RPC) está em "CONFIRMAÇÃO IMEDIATA (R-a)".
   assertEquals(corpo, {
     paymentId: ORDER_CARTAO_NA_VAGA,
-    statusPagamento: "pago",
+    statusPagamento: "aguardando",
     expiraEm: "2099-01-01T00:00:00.000Z",
   });
   assertEquals(mp.criacoes().length, 0);
@@ -5236,7 +5244,7 @@ Deno.test("vaga (a): cartão JÁ PAGO na vaga + novo pedido de cartão -> 200 'p
   assertEquals(registro.chamadasUpdate, 0);
 });
 
-Deno.test("vaga (a): PIX JÁ PAGO na vaga + pedido de CARTÃO -> 200 'pago' (resposta do PIX de sempre), sem cancelar nem cobrar", async () => {
+Deno.test("vaga (a): PIX JÁ PAGO na vaga (sem prova de valor, banco 'aguardando') + pedido de CARTÃO -> 200 'aguardando' (resposta do PIX de sempre, nunca 'pago'), sem cancelar nem cobrar", async () => {
   const { supabase, chamadasRpc } = cenarioCartao({
     pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
   });
@@ -5249,7 +5257,7 @@ Deno.test("vaga (a): PIX JÁ PAGO na vaga + pedido de CARTÃO -> 200 'pago' (res
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
-  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.statusPagamento, "aguardando");
   assertEquals(corpo.paymentId, ORDER_PIX_NA_VAGA);
   assertEquals(mp.cancelamentos().length, 0);
   assertEquals(mp.criacoes().length, 0);
@@ -5616,7 +5624,7 @@ for (
   });
 }
 
-Deno.test("vaga (f): cartão JÁ PAGO na vaga + pedido de PIX -> 200 'pago', nunca um PIX por cima", async () => {
+Deno.test("vaga (f): cartão JÁ PAGO na vaga (sem prova de valor, banco 'aguardando') + pedido de PIX -> 409 cartaoEmAnalise (nunca 'pago'), nunca um PIX por cima", async () => {
   const { supabase } = cenarioCartao({
     pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
   });
@@ -5629,7 +5637,10 @@ Deno.test("vaga (f): cartão JÁ PAGO na vaga + pedido de PIX -> 200 'pago', nun
     fetchImpl: mp.fn,
   });
 
-  assertEquals((await resposta.json()).statusPagamento, "pago");
+  const corpo = await resposta.json();
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.cartaoEmAnalise, true);
+  assertEquals(corpo.statusPagamento, undefined);
   assertEquals(mp.criacoes().length, 0);
 });
 
@@ -6864,14 +6875,16 @@ Deno.test("Q1 — cartão em análise (processing) + sentinela: PIX repetido NUN
   statusAtual = ["processed", "accredited"];
 
   // O cliente pede PIX de novo: a busca agora encontra a cobrança APROVADA
-  // -> grava o id real e ADOTA (ramo (a): 200 'pago'), SEM criar PIX nenhum.
+  // -> grava o id real e ADOTA (ramo (a): 200 'aguardando' — a order está paga
+  // no MP, mas sem prova de valor o banco não confirma e a resposta honesta
+  // não é 'pago', 16/10/2026), SEM criar PIX nenhum.
   const rPixFinal = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
     supabase: db,
     fetchImpl: fn,
   });
   const cPixFinal = await rPixFinal.json();
-  assertEquals(rPixFinal.status, 200);
-  assertEquals(cPixFinal.statusPagamento, "pago");
+  assertEquals(rPixFinal.status, 409);
+  assertEquals(cPixFinal.cartaoEmAnalise, true);
   assertEquals(db.linha.gateway_payment_id, idOrderCartao);
   assertEquals(chamadasDeCriacao.includes("bank_transfer"), false, "nenhum PIX foi criado — nunca duas cobranças vivas");
 });
@@ -7135,7 +7148,9 @@ for (
   const caso of [
     { nome: "desafio 3DS", order: () => orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA, url3ds: URL_DESAFIO }), status: "aguardando", desafio: URL_DESAFIO },
     { nome: "em análise", order: () => orderDeCartao("processing", "in_review", { id: ORDER_CARTAO_NA_VAGA }), status: "aguardando", desafio: undefined },
-    { nome: "aprovado", order: () => orderDeCartao("processed", "accredited", { id: ORDER_CARTAO_NA_VAGA }), status: "pago", desafio: undefined },
+    // Resposta honesta (16/10/2026): aprovado no MP, sem prova de valor e com o
+    // banco 'aguardando' -> 'aguardando' (em análise), nunca 'pago'.
+    { nome: "aprovado (sem prova de valor)", order: () => orderDeCartao("processed", "accredited", { id: ORDER_CARTAO_NA_VAGA }), status: "aguardando", desafio: undefined },
   ]
 ) {
   Deno.test(`S2: segunda aba + cartão ${caso.nome} na vaga + lojista SEM chave -> a MESMA cobrança pelo GET, ZERO POST, nada gravado`, async () => {
@@ -7740,7 +7755,9 @@ Deno.test("auditoria item 1 (blindagem 02/10): cartão ambíguo + outra aba pede
   assertEquals(mp.posts.length, postsAntes, "o retry NÃO chama o POST");
   assertEquals(cartoes(mp).length, 1);
   assertEquals(db.linha.gateway_payment_id, cartoes(mp)[0].id);
-  assertEquals(r2.corpo.statusPagamento, "pago");
+  // Resposta honesta (16/10/2026): o cartão capturado foi adotado, mas a order
+  // não traz prova de valor — o banco segue 'aguardando' e a resposta é 'aguardando'.
+  assertEquals(r2.corpo.statusPagamento, "aguardando");
 });
 
 for (
@@ -8429,7 +8446,11 @@ Deno.test("BLINDAGEM (guarda): cartão ambíguo -> PIX depois é bloqueado até 
   assertEquals(mp.posts.filter((p) => p.tipo === "bank_transfer").length, 0);
   assertEquals(pix.corpo.qrCode, undefined);
   assertEquals(db.linha.gateway_payment_id, cartoes(mp)[0].id);
-  assertEquals(pix.corpo.statusPagamento, "pago");
+  // Resposta honesta (16/10/2026): sem prova de valor, a order paga não vira
+  // 'pago'; no PIX, a tela recebe o 409 "em análise" (nunca "aguardando" sem QR).
+  assertEquals(pix.status, 409);
+  assertEquals(pix.corpo.cartaoEmAnalise, true);
+  assertEquals(pix.corpo.statusPagamento, undefined);
 });
 
 /**
@@ -9272,6 +9293,7 @@ for (
       statusPagamento: "recusado",
       motivoRecusa: caso.motivo,
       podeTentarDeNovo: true,
+      categoriaDaRecusa: "outra",
       expiraEm: "2099-01-01T00:00:00.000Z",
     });
     assertEquals(consultas.length, 1, "a verdade da order sai do GET, não da foto do 201");
@@ -9798,7 +9820,9 @@ Deno.test("C3 (H1d invertido): a 1ª chamada CRIOU e capturou a order A, a respo
   assertEquals(base.posts.length, 1);
   assertEquals(cartoes(base).length, 1, "exatamente 1 order capturada");
   assertEquals(db.linha.gateway_payment_id, base.orders[0].id, "a order A foi adotada");
-  assertEquals(r3.corpo.statusPagamento, "pago");
+  // Resposta honesta (16/10/2026): a order A foi adotada, mas sem prova de
+  // valor o banco segue 'aguardando' — a resposta não afirma 'pago'.
+  assertEquals(r3.corpo.statusPagamento, "aguardando");
 });
 
 Deno.test("C3: sentinela de chave ANTERIOR (tentativa já avançou) e busca inconclusiva -> ZERO POST, 'sem_registro', nunca 'aguardando' sem paymentId", async () => {
@@ -10065,7 +10089,10 @@ for (
 
 for (
   const caso of [
-    { nome: "APROVADO", order: ["processed", "accredited"], esperado: { verificacao: "pago" } },
+    // Resposta honesta (16/10/2026): aprovado no MP, mas a order desta fixture
+    // não traz prova de valor e o banco segue 'aguardando' -> 'em_analise',
+    // nunca 'pago' (o 'pago' legítimo: "CONFIRMAÇÃO IMEDIATA (1)").
+    { nome: "APROVADO sem prova de valor", order: ["processed", "accredited"], esperado: { verificacao: "em_analise" } },
     { nome: "em ANÁLISE", order: ["processing", "in_process"], esperado: { verificacao: "em_analise" } },
     {
       nome: "3DS VIVO",
@@ -10284,7 +10311,9 @@ Deno.test("C2 verificar: sentinela + a BUSCA FALHA -> 503 'indisponivel', nada m
 
 for (
   const caso of [
-    { nome: "APROVADA", order: ["processed", "accredited"], esperado: { verificacao: "pago" } },
+    // Resposta honesta (16/10/2026): a adoção continua, mas sem prova de valor
+    // e com o banco 'aguardando' a resposta é 'em_analise', nunca 'pago'.
+    { nome: "APROVADA sem prova de valor", order: ["processed", "accredited"], esperado: { verificacao: "em_analise" } },
     { nome: "em ANÁLISE", order: ["processing", "in_process"], esperado: { verificacao: "em_analise" } },
     {
       nome: "3DS VIVO",
@@ -10569,7 +10598,8 @@ for (const variante of BUSCA_PARCIAL) {
 // não do MP falso.
 for (
   const caso of [
-    { c0: ["processed", "accredited"] as [string, string], verificacao: "pago" },
+    // 16/10/2026: sem prova de valor e com o banco 'aguardando', 'em_analise'.
+    { c0: ["processed", "accredited"] as [string, string], verificacao: "em_analise" },
     { c0: ["processing", "in_process"] as [string, string], verificacao: "em_analise" },
   ]
 ) {
@@ -10879,7 +10909,7 @@ Deno.test("P7 controle (e'): [c0 processed:partially_refunded] SOZINHA -> INALTE
 
 // (f) CONTROLE — order PAGA é fato: continua adotada, com qualquer irmã.
 for (const irma of [VIVA_P7, ESTORNO_TOTAL_P7, PARCIAL_P7]) {
-  Deno.test(`P7 controle (f): [c0 processed:accredited, c1 ${irma.join(":")}] -> adota a PAGA, 'pago'`, async () => {
+  Deno.test(`P7 controle (f): [c0 processed:accredited, c1 ${irma.join(":")}] -> adota a PAGA, 'em_analise' (sem prova de valor o banco não confirma; nunca 'pago')`, async () => {
     Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
     const ID_PAGA = "ORDTST04C0PAGAP7000000000000";
     const { db, contado, escritas, mp } = cenarioSentinelaC2({
@@ -10891,7 +10921,7 @@ for (const irma of [VIVA_P7, ESTORNO_TOTAL_P7, PARCIAL_P7]) {
     const r = await verificar(contado, mp);
 
     assertEquals(r.status, 200, JSON.stringify(r.corpo));
-    assertEquals(r.corpo, { verificacao: "pago", paymentId: ID_PAGA, expiraEm: PRAZO_BASE });
+    assertEquals(r.corpo, { verificacao: "em_analise", paymentId: ID_PAGA, expiraEm: PRAZO_BASE });
     assertEquals(db.linha.gateway_payment_id, ID_PAGA);
     assertEquals(escritas.length, 1);
     assertEquals(db.chamadasRpc.length, 0);
@@ -10914,7 +10944,7 @@ Deno.test("P7 concorrência (g): dois 'verificar' SIMULTÂNEOS no estado do defe
   assertEquals(webhookAprovaIrmaP7(db), "adotou");
 });
 
-Deno.test("P7 concorrência (g): o webhook ADOTA a irmã aprovada ENTRE a busca e a decisão do 'verificar' -> nunca tenta gravar a estornada; responde pela vaga atual ('pago' da irmã)", async () => {
+Deno.test("P7 concorrência (g): o webhook ADOTA a irmã aprovada ENTRE a busca e a decisão do 'verificar' -> nunca tenta gravar a estornada; responde pela vaga atual (a irmã aprovada, 'em_analise': o banco ainda não confirmou)", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const { db, contado, escritas, mp } = cenarioSentinelaC2({ orders: buscaP7(PARCIAL_P7, VIVA_P7) });
   const fn = async (url: string, init?: RequestInit) => {
@@ -10932,7 +10962,7 @@ Deno.test("P7 concorrência (g): o webhook ADOTA a irmã aprovada ENTRE a busca 
 
   assertEquals(ESCRITAS_DA_ESTORNADA(escritas), 0, "tentou gravar a estornada");
   assertEquals(r.status, 200, JSON.stringify(r.corpo));
-  assertEquals(r.corpo, { verificacao: "pago", paymentId: ID_C1_IRMA_P7, expiraEm: PRAZO_BASE });
+  assertEquals(r.corpo, { verificacao: "em_analise", paymentId: ID_C1_IRMA_P7, expiraEm: PRAZO_BASE });
   assertEquals(db.linha.gateway_payment_id, ID_C1_IRMA_P7);
   assertEquals(db.chamadasRpc.length, 0);
   assertEquals(mp.posts, []);
@@ -11014,7 +11044,7 @@ for (const caso of DEFEITO_P7) {
 // POST; a resposta desta chamada é a inconclusiva (decidida sobre o sentinela
 // LIDO — não relê a vaga, só deixa de agir), e a chamada SEGUINTE já vê a
 // irmã adotada e paga.
-Deno.test("P7 R3 concorrência (cobrança): o webhook adota a irmã aprovada entre a busca e a decisão -> 0 POST, 0 RPC, nunca grava a estornada; a próxima chamada responde 'pago' pela irmã", async () => {
+Deno.test("P7 R3 concorrência (cobrança): o webhook adota a irmã aprovada entre a busca e a decisão -> 0 POST, 0 RPC, nunca grava a estornada; a próxima chamada responde pela irmã ('aguardando': aprovada no MP, o banco ainda não confirmou)", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const { db, contado, escritas, mp } = cenarioSentinelaC2({ orders: buscaP7(PARCIAL_P7, VIVA_P7) });
   const fn = async (url: string, init?: RequestInit) => {
@@ -11040,7 +11070,7 @@ Deno.test("P7 R3 concorrência (cobrança): o webhook adota a irmã aprovada ent
   assertEquals(mp.posts, []);
   assertEquals(db.chamadasRpc.length, 0);
   assertEquals(r2.status, 200, JSON.stringify(r2.corpo));
-  assertEquals(r2.corpo.statusPagamento, "pago");
+  assertEquals(r2.corpo.statusPagamento, "aguardando");
   assertEquals(r2.corpo.paymentId, ID_C1_IRMA_P7);
 });
 
@@ -12325,14 +12355,14 @@ for (
     { nome: "exceção", resposta: () => Promise.reject(new Error("rede caiu")) },
   ]
 ) {
-  Deno.test(`CONFIRMAÇÃO IMEDIATA (4): a RPC devolve ${caso.nome} -> ZERO efeito, resposta do contrato de antes ('pago' pela order, 200 — nunca 503), nenhuma cobrança`, async () => {
+  Deno.test(`CONFIRMAÇÃO IMEDIATA (4): a RPC devolve ${caso.nome} e o banco continua 'aguardando' -> ZERO efeito, resposta HONESTA ('em_analise', 200 — nunca 'pago', nunca 503), nenhuma cobrança`, async () => {
     const { db, contado } = bancoContandoEscritas(pedidoCI(), { antesDeConfirmar: caso.resposta });
     const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
     const ef = efeitosCI();
     const r = await verificarCI(contado, mp, ef.deps);
 
     assertEquals(r.status, 200, JSON.stringify(r.corpo));
-    assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+    assertEquals(r.corpo, { verificacao: "em_analise", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
     assertEquals(confirmacoesCI(db).length, 1);
     assertEquals(db.linha.payment_status, "aguardando");
     assertEquals(ef.pushes, []);
@@ -12436,12 +12466,12 @@ for (
   });
 }
 
-Deno.test("CONFIRMAÇÃO IMEDIATA (5b): valor pago AUSENTE -> a resposta é a de ANTES ('pago' pela order, nunca afirmado pelo banco), sem RPC", async () => {
+Deno.test("CONFIRMAÇÃO IMEDIATA (5b): valor pago AUSENTE -> sem prova e banco 'aguardando': 'em_analise' (nunca 'pago' só pela order), sem RPC", async () => {
   const { db, contado } = bancoContandoEscritas(pedidoCI());
   const o = semCampo(cartaoPagoCI(), "total_paid_amount");
   delete pagamentoDaOrderCI(o).paid_amount;
   const r = await verificarCI(contado, mpDaConsulta({ orders: [o] }), efeitosCI().deps);
-  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(r.corpo, { verificacao: "em_analise", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
   assertEquals(confirmacoesCI(db), []);
 });
 
@@ -12526,7 +12556,7 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (7b): o INVERSO — a busca COMPLETA e o GET s
   const mp = mpBuscaEGetCI(completa, getSemPago);
   const r = await verificarCI(contado, mp, efeitosCI().deps);
 
-  assertEquals(r.corpo.verificacao, "pago");
+  assertEquals(r.corpo.verificacao, "em_analise", "sem prova e banco 'aguardando': nunca 'pago'");
   assertEquals(db.linha.gateway_payment_id, VAGA_CI, "a adoção continua acontecendo");
   assertEquals(confirmacoesCI(db), []);
 });
@@ -12622,6 +12652,20 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-a): reconsulta de CARTÃO com cartão PAGO 
   assertEquals(mp.posts, []);
 });
 
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-a, PIX pedido): cartão PAGO na vaga COM prova e pedido de PIX -> 200 'pago' (nunca o 409 'em análise'), RPC 1x, ZERO POST", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+  const ef = efeitosCI();
+  const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, ef.deps);
+
+  // Par do teste "vaga (f)... 409": só quando o BANCO não confirma é que o PIX
+  // recebe o 409; com prova e RPC o caminho é o 'pago' de sempre.
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(mp.posts, []);
+});
+
 Deno.test("CONFIRMAÇÃO IMEDIATA (R-e): reconsulta de PIX com PIX PAGO na vaga e prova -> RPC 1x, efeitos 1x, a MESMA resposta com o QR", async () => {
   const { db, contado } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
   const mp = mpDaConsulta({ orders: [pixPagoCI()] });
@@ -12637,16 +12681,17 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-e): reconsulta de PIX com PIX PAGO na vaga 
   assertEquals(mp.posts, []);
 });
 
-Deno.test("CONFIRMAÇÃO IMEDIATA (R-convidado): reconsulta de PIX pago num pedido de CONVIDADO -> ZERO RPC (dono autenticado é condição), resposta de sempre", async () => {
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-convidado): reconsulta de PIX pago num pedido de CONVIDADO -> ZERO RPC (dono autenticado é condição); sem confirmar, a resposta é 'aguardando' (nunca 'pago' só pela order)", async () => {
   const { db, contado } = bancoContandoEscritas(pedidoCI({ user_id: null, metodo_online: "pix" }));
   const mp = mpDaConsulta({ orders: [pixPagoCI()] });
   const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, efeitosCI().deps);
   assertEquals(r.status, 200, JSON.stringify(r.corpo));
-  assertEquals(r.corpo.statusPagamento, "pago");
+  assertEquals(r.corpo.statusPagamento, "aguardando");
+  assertEquals(r.corpo.qrCode, "00020126580014br.gov.bcb.pix-exemplo-da-doc");
   assertEquals(confirmacoesCI(db), []);
 });
 
-Deno.test("CONFIRMAÇÃO IMEDIATA (R-sem-prova): reconsulta de cartão pago PARCIAL -> ZERO RPC, ZERO efeito, resposta de sempre", async () => {
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-sem-prova): reconsulta de cartão pago PARCIAL -> ZERO RPC, ZERO efeito, resposta honesta ('aguardando', nunca 'pago')", async () => {
   const { db, contado } = bancoContandoEscritas(pedidoCI());
   const ef = efeitosCI();
   const r = await reconsultarCI(
@@ -12655,12 +12700,12 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-sem-prova): reconsulta de cartão pago PARC
     corpoCartao(),
     ef.deps,
   );
-  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "aguardando", expiraEm: PRAZO_BASE });
   assertEquals(confirmacoesCI(db), []);
   assertEquals(ef.pushes.length, 0);
 });
 
-Deno.test("CONFIRMAÇÃO IMEDIATA (R-releitura): o pg_cron EXPIRA o pedido durante o GET da reconsulta -> a releitura não está 'aguardando': ZERO RPC (a confirmação fica para o webhook), resposta de sempre", async () => {
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-releitura): o pg_cron EXPIRA o pedido durante o GET da reconsulta -> a releitura não está 'aguardando': ZERO RPC (a confirmação fica para o webhook), resposta honesta ('aguardando': o banco não está pago)", async () => {
   const { db, contado } = bancoContandoEscritas(pedidoCI());
   const mp = mpDaConsulta({
     orders: [cartaoPagoCI()],
@@ -12671,7 +12716,7 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-releitura): o pg_cron EXPIRA o pedido duran
   });
   const ef = efeitosCI();
   const r = await reconsultarCI(contado, mp, corpoCartao(), ef.deps);
-  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "aguardando", expiraEm: PRAZO_BASE });
   assertEquals(confirmacoesCI(db), []);
   assertEquals(ef.pushes.length + ef.atrasados.length, 0);
 });
@@ -12713,9 +12758,11 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-vaga-trocada): a vaga é lida como A, o GET
   }
   const corpo = await r.json();
 
-  // A resposta é a de sempre: a order DA VAGA LIDA (A) está paga.
+  // A order DA VAGA LIDA (A) está paga no MP, mas nada a confirma (a prova
+  // usa a vaga RELIDA, que agora é B) e o banco segue 'aguardando': a resposta
+  // honesta é 'aguardando' (16/10/2026), nunca 'pago'.
   assertEquals(r.status, 200, JSON.stringify(corpo));
-  assertEquals(corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(corpo, { paymentId: VAGA_CI, statusPagamento: "aguardando", expiraEm: PRAZO_BASE });
   // Nada foi confirmado: a RPC nem foi chamada (com a vaga B no banco ela só
   // devolveria 'divergente' e a rota gritaria "dinheiro aprovado sem registro").
   assertEquals(confirmacoesCI(db), []);
@@ -12736,13 +12783,13 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-vaga-trocada): a vaga é lida como A, o GET
   assertEquals(mp.posts, []);
 });
 
-Deno.test("CONFIRMAÇÃO IMEDIATA (R-rpc-falha): reconsulta com a RPC lançando -> a MESMA resposta, nunca 503", async () => {
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-rpc-falha): reconsulta com a RPC lançando e o banco 'aguardando' -> 'aguardando' (nunca 'pago', nunca 503)", async () => {
   const { contado } = bancoContandoEscritas(pedidoCI(), {
     antesDeConfirmar: () => Promise.reject(new Error("banco caiu")),
   });
   const r = await reconsultarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), corpoCartao(), efeitosCI().deps);
   assertEquals(r.status, 200);
-  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "aguardando", expiraEm: PRAZO_BASE });
 });
 
 // ── (12) a criação confirma pela MESMA prova — do GET por id, nunca do POST ──
@@ -13731,4 +13778,342 @@ Deno.test("CONFIRMAÇÃO IMEDIATA parcelado 3x — CONTROLE: valor pago MENOR qu
   assertEquals(confirmacoesCI(db).length, 0);
   assertEquals(ef.pushes, []);
   assertEquals(r.status, 200);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESPOSTA HONESTA (16/10/2026) — a tela só lê "pago" quando o BANCO diz pago
+// (ou a prova confirmou AGORA). O par `processed:accredited` do MP, sozinho,
+// nunca é "pago" para o cliente: com a prova recusada (ex.: valor_divergente)
+// a function não confirma nada, e responder "pago" deixava o pedido expirar
+// com o dinheiro cobrado (a cliente via sucesso, o banco nunca confirmava).
+//
+// O estado honesto reaproveita o vocabulário que o front JÁ entende para "o
+// banco ainda não confirmou": `verificacao: "em_analise"` (com `paymentId`) no
+// `verificar`, e `statusPagamento: "aguardando"` na reconsulta (o mesmo valor
+// da branch (d) — cartão em análise).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Order PAGA no MP, mas por 90 contra o pedido de 100: a prova recusa. */
+function cartaoPagoPor90CI() {
+  const o = cartaoPagoCI({ total_amount: "90.00" });
+  pagamentoDaOrderCI(o).amount = "90.00";
+  return o;
+}
+function pixPagoPor90CI() {
+  const o = pixPagoCI({ total_amount: "90.00", total_paid_amount: "90.00" });
+  pagamentoDaOrderCI(o).amount = "90.00";
+  pagamentoDaOrderCI(o).paid_amount = "90.00";
+  return o;
+}
+
+async function comAvisosCapturados<T>(f: () => Promise<T>): Promise<{ resultado: T; avisos: unknown[][] }> {
+  const avisos: unknown[][] = [];
+  const original = { warn: console.warn, error: console.error };
+  console.warn = (...a: unknown[]) => avisos.push(a);
+  console.error = (...a: unknown[]) => avisos.push(a);
+  try {
+    return { resultado: await f(), avisos };
+  } finally {
+    console.warn = original.warn;
+    console.error = original.error;
+  }
+}
+
+Deno.test("HONESTA (V1): verificar com cartão pago por 90 contra o pedido de 100 -> 'em_analise' (NUNCA 'pago'), log valor_divergente, ZERO confirmação", async () => {
+  const { db, contado, escritas } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoPor90CI()] });
+  const ef = efeitosCI();
+  // Handler direto (e não `verificarCI`, que silencia o console por dentro): o
+  // log do motivo da prova recusada é parte do que se prova.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { resultado: resposta, avisos } = await comAvisosCapturados(() =>
+    handler(requisicao(PEDIDO_VERIFICAR, montarToken(DONO_LOGADO)), {
+      supabase: contado as never,
+      fetchImpl: mp.fn as typeof fetch,
+      alertarAdminCartaoOrfao: async () => {},
+      ...ef.deps,
+    })
+  );
+  const r = { status: resposta.status, corpo: await resposta.json() };
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "em_analise", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(JSON.stringify(avisos).includes("valor_divergente"), true, "o motivo da prova recusada tem de estar no log");
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+  assertEquals(escritas.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("HONESTA (V1b, idempotência): repetir o verificar com a prova recusada -> a MESMA resposta honesta, nada confirmado em nenhuma das duas", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoPor90CI()] });
+  const ef = efeitosCI();
+  const primeira = await verificarCI(contado, mp, ef.deps);
+  const segunda = await verificarCI(contado, mp, ef.deps);
+
+  assertEquals(primeira.corpo, { verificacao: "em_analise", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(segunda.corpo, primeira.corpo);
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(db.linha.payment_status, "aguardando");
+});
+
+Deno.test("HONESTA (V2, contraste): verificar com o MESMO cartão pago por 100 (prova passa) -> 'pago' pelo banco", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const r = await verificarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), efeitosCI().deps);
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(db.linha.payment_status, "pago");
+});
+
+Deno.test("HONESTA (V3, o webhook chega no meio): a RPC FALHA, mas o banco já está 'pago' na releitura -> 'pago' (o banco diz pago), com o paymentId da vaga", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI(), {
+    antesDeConfirmar: (linha) => {
+      linha.payment_status = "pago"; // o webhook confirmou enquanto esta RPC falhava
+      return { data: null, error: { code: "57014", message: "statement timeout" } };
+    },
+  });
+  const ef = efeitosCI();
+  const r = await verificarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), ef.deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(ef.pushes.length + ef.comprovantes.length, 0, "quem não recebeu a transição não dispara efeito");
+});
+
+Deno.test("HONESTA (V4): a releitura do banco FALHA depois da RPC que não confirmou -> 'em_analise' (nunca presume 'pago')", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI(), {
+    antesDeConfirmar: () => ({ data: "ignorado", error: null }),
+  });
+  // A releitura que decide a resposta honesta é a PRIMEIRA leitura da linha
+  // depois da RPC; as anteriores (entrada, pós-resolução, confirmação) passam.
+  let rpcJaChamada = false;
+  const comReleituraQuebrada = {
+    ...contado,
+    rpc: async (nome: string, a: Record<string, unknown>) => {
+      const r = await (contado.rpc as (n: string, a: Record<string, unknown>) => Promise<unknown>)(nome, a);
+      if (nome === "confirmar_pagamento") rpcJaChamada = true;
+      return r;
+    },
+    from(tabela: string) {
+      const original = contado.from(tabela) as Record<string, unknown>;
+      if (tabela !== "marketplace_orders" || !rpcJaChamada) return original;
+      return {
+        ...original,
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: { message: "banco fora" } }) }) }),
+      };
+    },
+  };
+  const r = await verificarCI(comReleituraQuebrada, mpDaConsulta({ orders: [cartaoPagoCI()] }), efeitosCI().deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "em_analise", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(db.linha.payment_status, "aguardando");
+});
+
+Deno.test("HONESTA (V5): reconsulta de CARTÃO com a order paga por 90 (prova recusada) -> 'aguardando' (o front lê 'em análise'), NUNCA 'pago', ZERO confirmação", async () => {
+  const { db, contado, escritas } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoPor90CI()] });
+  const ef = efeitosCI();
+  const r = await reconsultarCI(contado, mp, corpoCartao(), ef.deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "aguardando", expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+  assertEquals(escritas.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("HONESTA (V5b, idempotência): repetir a reconsulta com a prova recusada -> a mesma resposta honesta", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoPor90CI()] });
+  const a = await reconsultarCI(contado, mp, corpoCartao(), efeitosCI().deps);
+  const b = await reconsultarCI(contado, mp, corpoCartao(), efeitosCI().deps);
+  assertEquals(a.corpo, { paymentId: VAGA_CI, statusPagamento: "aguardando", expiraEm: PRAZO_BASE });
+  assertEquals(b.corpo, a.corpo);
+  assertEquals(confirmacoesCI(db), []);
+});
+
+Deno.test("HONESTA (V6): reconsulta de PIX com a order paga por 90 (prova recusada) -> 'aguardando' com o MESMO QR (nunca 'pago'), ZERO confirmação", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
+  const mp = mpDaConsulta({ orders: [pixPagoPor90CI()] });
+  const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, efeitosCI().deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.statusPagamento, "aguardando");
+  assertEquals(r.corpo.paymentId, VAGA_CI);
+  assertEquals(r.corpo.qrCode, "00020126580014br.gov.bcb.pix-exemplo-da-doc");
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(db.linha.payment_status, "aguardando");
+});
+
+Deno.test("HONESTA (V7, o webhook chega no meio): reconsulta de cartão cuja RPC falha mas o banco já está 'pago' -> 'pago'", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI(), {
+    antesDeConfirmar: (linha) => {
+      linha.payment_status = "pago";
+      return { data: null, error: { code: "57014", message: "statement timeout" } };
+    },
+  });
+  const r = await reconsultarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), corpoCartao(), efeitosCI().deps);
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).length, 1);
+});
+
+Deno.test("HONESTA (V8): reconsulta de cartão com a RPC devolvendo 'divergente'/'ignorado' e o banco 'aguardando' -> 'aguardando', nunca 'pago'", async () => {
+  for (const rotulo of ["divergente", "ignorado", "inexistente"]) {
+    const { db, contado } = bancoContandoEscritas(pedidoCI(), {
+      antesDeConfirmar: () => ({ data: rotulo, error: null }),
+    });
+    const r = await reconsultarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), corpoCartao(), efeitosCI().deps);
+    assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "aguardando", expiraEm: PRAZO_BASE }, rotulo);
+    assertEquals(db.linha.payment_status, "aguardando");
+  }
+});
+
+Deno.test("HONESTA (V9, guarda de regressão do front): o valor devolvido na reconsulta honesta está no vocabulário que o front lê", async () => {
+  // `classificarRespostaCartao` (PagamentoComCartao.tsx): 'aguardando' + paymentId
+  // + sem desafio3ds = "em-analise". `situacaoDaResposta` (VerificacaoDoPagamento.tsx):
+  // verificacao 'em_analise' + paymentId = "em_analise". Se alguém renomear um
+  // dos dois lados, este teste é o aviso.
+  const { contado } = bancoContandoEscritas(pedidoCI());
+  const verificar = await verificarCI(contado, mpDaConsulta({ orders: [cartaoPagoPor90CI()] }), efeitosCI().deps);
+  const reconsulta = await reconsultarCI(contado, mpDaConsulta({ orders: [cartaoPagoPor90CI()] }), corpoCartao(), efeitosCI().deps);
+  assertEquals(verificar.corpo.verificacao, "em_analise");
+  assertEquals(typeof verificar.corpo.paymentId, "string");
+  assertEquals(reconsulta.corpo.statusPagamento, "aguardando");
+  assertEquals(typeof reconsulta.corpo.paymentId, "string");
+  assertEquals(reconsulta.corpo.desafio3ds, undefined);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CATEGORIA DA RECUSA (16/10/2026) — `categoriaDaRecusa` ao lado de
+// `motivoRecusa`, conjunto fechado, nunca o código cru. Não muda o motivo nem
+// o `podeTentarDeNovo`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+for (
+  const caso of [
+    { detalhe: "cc_rejected_bad_filled_security_code", categoria: "dados_do_cartao" },
+    { detalhe: "bad_filled_card_data", categoria: "dados_do_cartao" },
+    { detalhe: "cc_rejected_insufficient_amount", categoria: "sem_limite" },
+    { detalhe: "insufficient_amount", categoria: "sem_limite" },
+    { detalhe: "amount_limit_exceeded", categoria: "sem_limite" },
+    { detalhe: "cc_rejected_call_for_authorize", categoria: "banco_pediu_autorizacao" },
+    { detalhe: "required_call_for_authorize", categoria: "banco_pediu_autorizacao" },
+    { detalhe: "cc_rejected_3ds_challenge", categoria: "banco_pediu_confirmacao" },
+    { detalhe: "3ds_challenge_expired", categoria: "banco_pediu_confirmacao" },
+    { detalhe: "high_risk", categoria: "outra" },
+    { detalhe: "cc_rejected_other_reason", categoria: "outra" },
+    { detalhe: "blacklist", categoria: "outra" },
+    { detalhe: "cc_rejected_duplicated_payment", categoria: "outra" },
+  ]
+) {
+  Deno.test(`CATEGORIA (criação 201 'failed'): ${caso.detalhe} -> ${caso.categoria}; o texto cru e a palavra antifraude NUNCA saem`, async () => {
+    const { supabase } = cenarioCartao();
+    const mp = fetchMP({
+      criar: { status: 201, corpo: orderDeCartao("failed", "failed", { detalhePagamento: caso.detalhe }) },
+    });
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn });
+    const texto = await resposta.text();
+    const corpo = JSON.parse(texto);
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.statusPagamento, "recusado");
+    assertEquals(corpo.categoriaDaRecusa, caso.categoria);
+    assertEquals(corpo.podeTentarDeNovo, true);
+    // O código cru do MP nunca vira campo nem texto — o que pode sair é a
+    // categoria e a frase curada (`motivoRecusa`, inalterada).
+    assertEquals(texto.includes(caso.detalhe), false, `o código cru saiu: ${texto}`);
+    assertEquals(/antifraude|fraud/i.test(texto), false, `a palavra antifraude saiu: ${texto}`);
+  });
+}
+
+Deno.test("CATEGORIA: o `motivoRecusa` e o `podeTentarDeNovo` NÃO mudam — 'cc_rejected_insufficient_amount' continua com a frase padrão (só a categoria é nova)", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({
+    criar: { status: 201, corpo: orderDeCartao("failed", "failed", { detalhePagamento: "cc_rejected_insufficient_amount" }) },
+  });
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn });
+  const corpo = await resposta.json();
+  assertEquals(corpo.motivoRecusa, "Pagamento recusado. Tente outro cartão ou pague com PIX.");
+  assertEquals(corpo.podeTentarDeNovo, true);
+  assertEquals(corpo.categoriaDaRecusa, "sem_limite");
+});
+
+Deno.test("CATEGORIA (criação 402): a order recusada vem no corpo do erro -> categoria pelo detalhe do pagamento", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({
+    criar: {
+      status: 402,
+      corpo: {
+        errors: [{ code: "failed", message: "The following transactions failed" }],
+        data: orderDeCartao("failed", "failed", { detalhePagamento: "cc_rejected_call_for_authorize" }),
+      },
+    },
+  });
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn });
+  const corpo = await resposta.json();
+  assertEquals(corpo.statusPagamento, "recusado");
+  assertEquals(corpo.categoriaDaRecusa, "banco_pediu_autorizacao");
+});
+
+Deno.test("CATEGORIA (criação 402 sem order em data): o sufixo de errors[].details decide; sem nada conhecido -> 'outra'", async () => {
+  const comDetails = cenarioCartao();
+  const mpA = fetchMP({
+    criar: { status: 402, corpo: { errors: [{ code: "failed", details: ["PAY01: cc_rejected_insufficient_amount"] }] } },
+  });
+  const a = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: comDetails.supabase,
+    fetchImpl: mpA.fn,
+  });
+  assertEquals((await a.json()).categoriaDaRecusa, "sem_limite");
+
+  const semNada = cenarioCartao();
+  const mpB = fetchMP({ criar: { status: 402, corpo: { errors: [{ code: "failed" }] } } });
+  const b = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: semNada.supabase,
+    fetchImpl: mpB.fn,
+  });
+  assertEquals((await b.json()).categoriaDaRecusa, "outra");
+});
+
+Deno.test("CATEGORIA (400 de dado do cartão): token inválido -> 'dados_do_cartao'", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({ criar: { status: 400, corpo: { errors: [{ code: "invalid_card_token" }] } } });
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn });
+  const corpo = await resposta.json();
+  assertEquals(corpo.motivoRecusa, "Confira os dados do cartão e tente de novo.");
+  assertEquals(corpo.categoriaDaRecusa, "dados_do_cartao");
+});
+
+Deno.test("CATEGORIA (A3.2, recusa depois do 201 'processing'): o detalhe do PAGAMENTO consultado decide a categoria", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, mp } = cartaoComEscritaDuranteOPost(async (banco, o) => {
+    o.status = "failed";
+    o.status_detail = "failed";
+    ((o.transactions as Record<string, unknown>).payments as Array<Record<string, unknown>>)[0].status_detail =
+      "cc_rejected_insufficient_amount";
+    await banco.rpc("liberar_cobranca_do_pedido", { p_order_id: UUID, p_gateway_payment_id: banco.linha.gateway_payment_id });
+  });
+  const r = await emSilencio(() => chamar(db, mp, corpoCartao(), []));
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.statusPagamento, "recusado");
+  assertEquals(r.corpo.categoriaDaRecusa, "sem_limite");
+  assertEquals(r.corpo.podeTentarDeNovo, true);
+});
+
+Deno.test("CATEGORIA: nenhuma resposta SEM motivoRecusa ganha o campo (aprovado, em análise, desafio, PIX)", async () => {
+  for (const [status, detalhe] of [["processed", "accredited"], ["processing", "in_process"]]) {
+    const { supabase } = cenarioCartao();
+    const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao(status, detalhe) } });
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn });
+    const corpo = await resposta.json();
+    assertEquals(corpo.categoriaDaRecusa, undefined, `${status}:${detalhe}`);
+    assertEquals(corpo.motivoRecusa, undefined);
+  }
 });

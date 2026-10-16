@@ -94,9 +94,9 @@ import {
   resolverSentinela,
   sentinelaDaChave,
   tipoDoPagamentoDaOrder,
-  TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
+import { conferirValorDoPagamento } from "../_shared/prova-de-pagamento.ts";
 import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
 import {
   consultarContestacao,
@@ -1846,55 +1846,47 @@ async function handler(
     }
   }
 
-  // CONFERÊNCIA DE VALOR (laudo 31/08, achado A3): o valor que o MP APROVOU
-  // tem que bater com o total do pedido. PIX é pago de valor parcial no
-  // mundo real; sem esta porta, um pagamento parcial entrava como pedido
-  // pago — e o mesmo buraco ficaria aberto na religação do cartão.
-  //
-  // A MESMA conferência existe na reconciliar-pagamentos (regra em um lugar
-  // só no _shared): sem ela lá, um divergente recusado aqui era confirmado
-  // depois pelo cron, por status, sem ninguém olhar o valor — a dobradiça
-  // do outro lado da porta (ressalva 1 da revisão do PR #366).
-  //
-  // Divergente: NÃO confirma, NÃO push, e devolve 200 com rótulo próprio —
-  // reenvio do MP não muda o valor pago, e manter o evento na fila só
-  // geraria tempestade de reenvio. O dinheiro que entrou sem virar pedido
-  // pago fica parado nos dois portões e cabe ao lojista resolver no painel
-  // do MP; o log aqui é error de propósito, no padrão dos
-  // 'divergente'/'inexistente' da RPC.
-  //
-  // Valor AUSENTE na resposta do MP (campo que não veio — nunca 0): avisa e
-  // segue, que é o comportamento de antes. Falha AQUI não pode bloquear
-  // pedido legítimo: quem decide o valor aprovado é o MP, e a ausência do
-  // campo é sinal de forma nova de resposta, não de fraude. Pedido
-  // inexistente (linhaDoPedido null) também não trava aqui — a RPC tem o
-  // rótulo 'inexistente' próprio para isso.
-  if (linhaDoPedido && typeof valorPagoMp === "number") {
-    const brutoTotal =
-      (linhaDoPedido as Record<string, unknown>).total ??
-      (linhaDoPedido as Record<string, unknown>).total_amount;
-    const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
-    if (!Number.isFinite(totalDoPedido)) {
-      // Total imprestável no banco é IMPOSSÍVEL no schema vivo (NOT NULL com
-      // CHECK >= 0) — se um dia acontecer, tem que fazer barulho e seguir
-      // pelo comportamento de antes, não pular a conferência em silêncio
-      // (ressalva 2 da revisão do PR #366).
-      console.warn(
-        "webhook-mercadopago: total do pedido imprestável — conferência de valor não rodou",
-        { orderId, rota, brutoTotal },
-      );
-    } else if (Math.abs(valorPagoMp - totalDoPedido) > TOLERANCIA_DE_VALOR) {
+  // A mesma regra base da prova imediata e do cron. Aprovação sem valor ou
+  // total válido nunca alcança adoção/RPC; o pedido segue elegível no cron.
+  // Divergência mantém o 200 de antes. Recusas/estornos mantêm seu fluxo:
+  // só uma divergência numérica que já era barrada aqui os interrompe.
+  const brutoTotal = (linhaDoPedido as Record<string, unknown> | null)?.total ??
+    (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
+  const conferencia = conferirValorDoPagamento(valorPagoMp, brutoTotal);
+  const aprovado = statusMapeado === "pago" || statusMapeado === "pago_apos_expirar";
+  if (!conferencia.provado && (aprovado || (linhaDoPedido && conferencia.motivo === "valor_divergente"))) {
+    if (conferencia.motivo === "valor_divergente") {
       console.error(
         "webhook-mercadopago: VALOR pago diverge do total do pedido — pedido NÃO confirmado; conferir no painel do MP",
-        { orderId, rota, valorPago: valorPagoMp, totalDoPedido, paymentId: idParaRpc },
+        { orderId, rota, valorPago: valorPagoMp, totalDoPedido: Number(brutoTotal), paymentId: idParaRpc },
       );
       return json({ ok: true, ignorado: "valor divergente" }, 200);
     }
-  } else if (linhaDoPedido && valorPagoMp === undefined) {
-    console.warn(
-      "webhook-mercadopago: valor aprovado não veio na resposta do MP — conferência de valor não rodou (comportamento anterior)",
-      { orderId, rota },
+    console.error(
+      "webhook-mercadopago: valor ausente/ilegível ou total do pedido inválido — pedido NÃO confirmado; aguardando reconsulta",
+      { orderId, rota, paymentId: idParaRpc, motivo: conferencia.motivo },
     );
+    // A rota clássica pode notificar um pagamento de dentro da order gravada.
+    // Nesse caso usa a vaga real, como o cron, para deduplicar entre as portas.
+    const idGravado = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
+    const idDoAviso = rota === "payment" && typeof idGravado === "string" &&
+        idGravado.length > 0 && !vagaEmVerificacao(idGravado)
+      ? idGravado
+      : idParaRpc;
+    await comTempoLimite(avisarAdminUmaVez({
+      supabase,
+      enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+      chave: `valor_nao_conferido:${orderId}:${idDoAviso}`,
+      aviso: {
+        title: "Pagamento precisa de conferência",
+        body: `${numeroDoPedido(orderId)} · valor não conferido; tentando novamente`,
+        url: "/admin-orders",
+      },
+    }), 5000);
+    return json({
+      ok: true,
+      ignorado: conferencia.motivo === "valor_ausente" ? "valor ausente ou ilegível" : "total do pedido inválido",
+    }, 200);
   }
 
   // Achado B2 (2ª revisão de risco, 26/09/2026) — ADOÇÃO: uma cobrança de

@@ -16,12 +16,30 @@
  * https://www.mercadopago.com.br/developers/en/reference/online-payments/checkout-api/get-order/get
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { provarPagamentoPelaConsulta } from "./prova-de-pagamento.ts";
+import { conferirValorDoPagamento, provarPagamentoPelaConsulta } from "./prova-de-pagamento.ts";
 import {
   orderCartaoAprovadaDaDoc,
   orderDoGetDaReferenciaDaDoc,
   orderPixPagaDaDoc,
 } from "./prova-de-pagamento_fixtures.ts";
+
+for (const valor of [undefined, null, NaN, Infinity, -Infinity, "149.90", 0, -1]) {
+  Deno.test(`conferência compartilhada: valor não normalizado ${String(valor)} recusa`, () => {
+    assertEquals(conferirValorDoPagamento(valor, 149.9), { provado: false, motivo: "valor_ausente" });
+  });
+}
+
+for (const total of [undefined, null, NaN, Infinity, -Infinity, "ilegível", "", true, {}, 0, -1]) {
+  Deno.test(`conferência compartilhada: total imprestável ${String(total)} recusa`, () => {
+    assertEquals(conferirValorDoPagamento(149.9, total), { provado: false, motivo: "total_do_pedido" });
+  });
+}
+
+Deno.test("conferência compartilhada: mantém total numérico em string e tolerância de 4/6 centavos", () => {
+  assertEquals(conferirValorDoPagamento(150, "150.00"), { provado: true, valor: 150, total: 150 });
+  assertEquals(conferirValorDoPagamento(149.96, 150), { provado: true, valor: 149.96, total: 150 });
+  assertEquals(conferirValorDoPagamento(149.94, 150), { provado: false, motivo: "valor_divergente" });
+});
 
 const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 const OUTRO_PEDIDO = "9e9e9e9e-1111-2222-3333-444455556666";

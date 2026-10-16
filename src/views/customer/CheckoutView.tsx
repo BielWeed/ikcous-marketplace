@@ -108,7 +108,7 @@ import {
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
-import { cn } from "@/lib/utils";
+import { arredondarParaCentavos, cn } from "@/lib/utils";
 import type {
   Address,
   CartItem,
@@ -141,6 +141,7 @@ import {
   type ComponentType,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -717,6 +718,15 @@ interface CheckoutViewProps {
   readonly retomadaDaRecarga?: boolean;
 }
 
+function assinaturaDosItensDoCarrinho(itens: readonly CartItem[]): string {
+  return itens
+    .map((item) =>
+      JSON.stringify([item.product.id, item.variantId || "", item.quantity]),
+    )
+    .sort()
+    .join("|");
+}
+
 /**
  * A tela é recriada a CADA troca de conta (`key` = quem está logado). No app
  * real o `App.tsx` já monta o checkout com `key` por conta; esta chave aqui é
@@ -756,6 +766,7 @@ export function CheckoutViewDaConta({
     cartTotal: ctxSubtotal,
     shippingFee: ctxShipping,
     clearCart: ctxClearCart,
+    removeFromCart,
     addToCart,
     selectedShippingOption,
     freteEscolhidoPelaCliente,
@@ -772,6 +783,17 @@ export function CheckoutViewDaConta({
   const irAoCarrinhoRelido = useIrAoCarrinhoRelido();
 
   const cart = propCart ?? ctxCart;
+  const carrinhoAtualRef = useRef(cart);
+  const montadoRef = useRef(true);
+  useLayoutEffect(() => {
+    carrinhoAtualRef.current = cart;
+  }, [cart]);
+  useLayoutEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+    };
+  }, []);
   const subtotal = propSubtotal ?? ctxSubtotal;
   const shipping = propShipping ?? ctxShipping;
   // Laudo 31/08 (nota 3 da revisão do PR #367): com frete indefinido o
@@ -2719,7 +2741,7 @@ export function CheckoutViewDaConta({
 
   // Values are now passed from props to ensure consistency
   const discount = appliedCoupon?.discount || 0;
-  const finalTotal = total - discount;
+  const finalTotal = arredondarParaCentavos(total - discount);
 
   // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
   // (src/lib/guarda-de-frete.ts); o motivo e a história dela estão no
@@ -3995,6 +4017,10 @@ export function CheckoutViewDaConta({
    */
   const enviarPedido = async (pedido: PedidoCongelado) => {
     const { orderData, ehOnline, cpfParaRpc } = pedido;
+    const itensEnviados = pedido.itens.map((item) => ({
+      ...item,
+      product: { ...item.product },
+    }));
     try {
       const order = await aguardarComPrazo(
         createOrder(orderData, { comPagamentoOnline: ehOnline }),
@@ -4004,6 +4030,8 @@ export function CheckoutViewDaConta({
             code: "PEDIDO_SEM_RESPOSTA",
           }),
       );
+      // A resposta pertence à tela que enviou, não a uma compra aberta depois.
+      if (!montadoRef.current) return;
       // O pedido entrou. A chave cumpriu seu papel: a PRÓXIMA compra — mesmo
       // com carrinho idêntico — tem de nascer com chave nova, não herdar a
       // resposta desta.
@@ -4030,13 +4058,34 @@ export function CheckoutViewDaConta({
       }
       setOrderId(order.id);
       setValorDoPedido(pedido.valor);
-      // Snapshot ANTES do onClearCart() da linha seguinte — depois dele
-      // `cart` (propCart ?? ctxCart) já está vazio. CHECKOUT-070 (#197)
-      // usa isto para devolver os itens se o pagamento online falhar.
-      itensDoPedidoParaRestaurarRef.current = pedido.itens;
+      // CHECKOUT-070 (#197): cancelar devolve só o que saiu do carrinho.
+      // Linha preservada por ter mudado não pode ser somada de novo depois.
+      itensDoPedidoParaRestaurarRef.current = [];
 
-      // 🤖 Automação Solo-Ninja: O disparo agora é 100% via Backend (Edge Function + Webhook)
-      onClearCart();
+      const carrinhoAtual = carrinhoAtualRef.current;
+      if (
+        assinaturaDosItensDoCarrinho(carrinhoAtual) ===
+        assinaturaDosItensDoCarrinho(itensEnviados)
+      ) {
+        onClearCart();
+        itensDoPedidoParaRestaurarRef.current = itensEnviados;
+      } else if (removeFromCart) {
+        // A compra mudou durante o envio: só sai a linha comprada que ainda
+        // está intacta. Quantidade ou variação alterada fica no carrinho.
+        for (const item of itensEnviados) {
+          if (
+            carrinhoAtual.some(
+              (atual) =>
+                atual.product.id === item.product.id &&
+                (atual.variantId || "") === (item.variantId || "") &&
+                atual.quantity === item.quantity,
+            )
+          ) {
+            removeFromCart(item.product.id, item.variantId);
+            itensDoPedidoParaRestaurarRef.current.push(item);
+          }
+        }
+      }
       // Achado 4 da revisão (17/08/2026): sem isto `isSummaryPanelOpen`
       // continuava `true` na tela seguinte (sucesso ou aguardando
       // pagamento) — o painel deixa de fazer sentido aqui, junto com o
@@ -4064,6 +4113,7 @@ export function CheckoutViewDaConta({
         colors: ["#000000", "#ffffff", "#10b981", "#fbbf24"],
       });
     } catch (error: any) {
+      if (!montadoRef.current) return;
       console.error("Error creating order:", error);
       // EMENDA R3-4 (CONTRATO-1.5.7.md §9): a config pode ter mudado numa
       // corrida rara ENTRE a checagem acima e o clique chegar ao banco — a
@@ -4137,7 +4187,7 @@ export function CheckoutViewDaConta({
       // nenhum, e a pessoa ficava parada no último clique com o dinheiro na mão.
       setRecusaDoUltimoClique(saida);
     } finally {
-      setIsSubmitting(false);
+      if (montadoRef.current) setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
     }
   };
@@ -4602,8 +4652,9 @@ export function CheckoutViewDaConta({
           Finalize o pagamento
         </h1>
         <p className="text-xs text-zinc-500">
-          Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
-          itens voltam para o estoque e o pedido é cancelado.
+          {metodoDoPedido === "cartao"
+            ? "Reservamos seus itens enquanto o pagamento é concluído. Se o banco não confirmar a tempo, o pedido é cancelado e os itens voltam para a loja."
+            : "Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os itens voltam para o estoque e o pedido é cancelado."}
         </p>
         {erroPagamento?.cartaoEmAnalise ? (
           // B3 da revisão de risco pré-publicação (26/09/2026, reforçado na

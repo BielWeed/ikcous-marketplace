@@ -67,7 +67,11 @@
  * O defeito que isto fecha: no ensaio TEST c35ce4dd a tela dizia "Pagamento
  * aprovado! Confirmando seu pedido..." e o banco só virava 'pago' ~2 min
  * depois, pela reconciliação. Sem prova, falha da RPC ou desfecho
- * inesperado: o contrato de antes, sem efeito e sem cobrança nova.
+ * inesperado: sem efeito e sem cobrança nova — e, desde 16/10/2026, a
+ * resposta NÃO diz "pago" só porque o MP diz pago: o `verificar` responde
+ * `em_analise` e a reconsulta `aguardando` (os valores que o front já lê como
+ * "o banco ainda não confirmou"), a menos que o BANCO já esteja pago (o
+ * webhook chegou antes). A CRIAÇÃO (acima) segue com o contrato próprio.
  *
  * CARTÃO (Fase 3.5, 26/09/2026 — spec `2026-09-26-cartao-online-design.md`)
  *
@@ -148,6 +152,11 @@ import {
   tokenDeCartaoValido,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
+import {
+  type CategoriaDaRecusa,
+  categoriaDaRecusaDaOrder,
+  categoriaDaRecusaDoErro,
+} from "../_shared/categoria-da-recusa.ts";
 import { lerDadosDoComprador } from "../_shared/dados-antifraude.ts";
 import { lerNomeNaFatura } from "../_shared/nome-na-fatura.ts";
 import { criarOrderDeCartao } from "../_shared/order-cartao-repeticao.ts";
@@ -1429,8 +1438,15 @@ async function verificarVagaDoPedido(args: {
   if (ordemAtual === null) return respostaIndisponivel();
   // Confirmação imediata (04/10/2026), cartão E PIX: a order da vaga RELIDA
   // veio do GET por id e diz paga — com PROVA, confirma pela RPC do webhook
-  // e responde pelo BANCO. Sem prova, ou RPC sem transição/ja_pago
-  // ('divergente', 'ignorado', erro): segue o contrato de antes, logo abaixo.
+  // e responde pelo BANCO.
+  //
+  // Resposta honesta (16/10/2026): "pago" SÓ sai daqui quando o BANCO diz pago
+  // — a RPC confirmou agora, ou a releitura abaixo já o vê pago (o webhook
+  // chegou antes). O par `processed:accredited` do MP, sozinho, não é "pago":
+  // sem prova (ex.: `valor_divergente`), RPC sem transição ('divergente',
+  // 'ignorado', erro) ou releitura que falha, o pedido segue 'aguardando' no
+  // banco e a resposta é "em análise" (mais abaixo) — antes era "pago", e o
+  // pedido expirava com o dinheiro cobrado e a cliente vendo sucesso.
   if (mapearStatusOrder(String(ordemAtual.status ?? ""), String(ordemAtual.status_detail ?? "")) === "pago") {
     const resultado = await confirmarNaHoraSeProvado({
       supabase,
@@ -1440,26 +1456,37 @@ async function verificarVagaDoPedido(args: {
       linha: atual,
       efeitos,
     });
-    if (resultado === "pago" || resultado === "pago_apos_expirar" || resultado === "ja_pago") {
-      let confirmada: Record<string, unknown> | null = null;
-      try {
-        const { data, error } = await supabase
-          .from("marketplace_orders")
-          .select("payment_status, status, expires_at, gateway_payment_id")
-          .eq("id", pedidoId)
-          .maybeSingle();
-        if (!error && data) confirmada = data as Record<string, unknown>;
-      } catch (_erro) {
-        // A RPC já confirmou: a releitura é só para responder pelo banco.
-      }
-      const corpoConfirmado = confirmada ? corpoDePagoConfirmado(confirmada) : null;
-      return json(corpoConfirmado ?? { verificacao: "pago", paymentId: vagaAtual, expiraEm }, 200);
+    const confirmouAgora = resultado === "pago" || resultado === "pago_apos_expirar" || resultado === "ja_pago";
+    let confirmada: Record<string, unknown> | null = null;
+    try {
+      const { data, error } = await supabase
+        .from("marketplace_orders")
+        .select("payment_status, status, expires_at, gateway_payment_id")
+        .eq("id", pedidoId)
+        .maybeSingle();
+      if (!error && data) confirmada = data as Record<string, unknown>;
+    } catch (_erro) {
+      // A releitura só serve para responder pelo banco: sem ela, a resposta
+      // abaixo nunca presume "pago" por conta própria.
     }
+    const corpoConfirmado = confirmada ? corpoDePagoConfirmado(confirmada) : null;
+    // `confirmouAgora` sem releitura legível: a RPC é quem confirmou, o `pago`
+    // é verdade (mesmo desfecho de antes). Sem confirmar agora, SÓ o banco
+    // pago (`corpoConfirmado`) vale — nunca a order.
+    if (confirmouAgora) return json(corpoConfirmado ?? { verificacao: "pago", paymentId: vagaAtual, expiraEm }, 200);
+    if (corpoConfirmado !== null) return json(corpoConfirmado, 200);
   }
   if (!orderEhDeCartao(ordemAtual)) return json({ verificacao: "pix", paymentId: vagaAtual, expiraEm }, 200);
   if (orderMortaPeloPar(ordemAtual)) return json({ verificacao: "recusado", paymentId: null, expiraEm }, 200);
   const statusAtual = mapearStatusOrder(String(ordemAtual.status ?? ""), String(ordemAtual.status_detail ?? ""));
-  if (statusAtual === "pago") return json({ verificacao: "pago", paymentId: vagaAtual, expiraEm }, 200);
+  if (statusAtual === "pago") {
+    // Só chega aqui sem o banco pago (o bloco acima já respondeu "pago" nos
+    // outros casos): a order existe e o banco ainda não confirmou — "em
+    // análise" é o estado que o front já entende para isso
+    // (`situacaoDaResposta`, VerificacaoDoPagamento.tsx; exige `paymentId`).
+    // Não se inventa um valor novo de `verificacao`.
+    return json({ verificacao: "em_analise", paymentId: vagaAtual, expiraEm }, 200);
+  }
   const urlDoDesafio = statusAtual === "aguardando" ? extrairDesafio3ds(ordemAtual) : null;
   if (urlDoDesafio) {
     return json({ verificacao: "desafio3ds", paymentId: vagaAtual, desafio3ds: { url: urlDoDesafio }, expiraEm }, 200);
@@ -2344,26 +2371,49 @@ async function handler(
     // (a vaga e o total VIGENTES, não os da leitura do início) e confirma com
     // PROVA (`confirmarNaHoraSeProvado`). Só pedido com DONO autenticado
     // (`donoConfere` já casou o `sub` com `user_id`): o de convidado fica com
-    // o webhook. Falha de leitura/RPC: nada — a resposta é a de sempre.
-    const confirmarNaReconsulta = async (ordem: Record<string, unknown>): Promise<void> => {
-      if (pedido.user_id === null || pedido.user_id === undefined) return;
+    // o webhook.
+    //
+    // Resposta honesta (16/10/2026): devolve se o BANCO diz pago — a RPC
+    // confirmou agora ('pago'/'pago_apos_expirar'/'ja_pago') ou a linha relida
+    // já está paga (o webhook chegou antes). Quem chama só responde
+    // `statusPagamento: "pago"` com `true`; o par `processed:accredited` do
+    // MP, sozinho, vira "aguardando" (ver os ramos (a) e (e), abaixo). Falha
+    // de leitura/RPC: `false` — nunca se presume "pago" sem o banco dizer.
+    const confirmarNaReconsulta = async (ordem: Record<string, unknown>): Promise<boolean> => {
+      let resultado: string | null = null;
       try {
-        const { data: linhaAtual, error: erroLinha } = await supabase
-          .from("marketplace_orders")
-          .select("payment_status, status, expires_at, gateway_payment_id, total")
-          .eq("id", pedido.id)
-          .maybeSingle();
-        if (erroLinha || !linhaAtual) return;
-        await confirmarNaHoraSeProvado({
-          supabase,
-          pedidoId: String(pedido.id),
-          idConsultado: idGatewayReconsulta,
-          order: ordem,
-          linha: linhaAtual as Record<string, unknown>,
-          efeitos,
-        });
+        if (pedido.user_id !== null && pedido.user_id !== undefined) {
+          const { data: linhaAtual, error: erroLinha } = await supabase
+            .from("marketplace_orders")
+            .select("payment_status, status, expires_at, gateway_payment_id, total")
+            .eq("id", pedido.id)
+            .maybeSingle();
+          if (!erroLinha && linhaAtual) {
+            resultado = await confirmarNaHoraSeProvado({
+              supabase,
+              pedidoId: String(pedido.id),
+              idConsultado: idGatewayReconsulta,
+              order: ordem,
+              linha: linhaAtual as Record<string, unknown>,
+              efeitos,
+            });
+          }
+        }
       } catch (_erro) {
         console.error("criar-pagamento: confirmação imediata na reconsulta falhou", { orderId: pedido.id });
+      }
+      if (resultado === "pago" || resultado === "pago_apos_expirar" || resultado === "ja_pago") return true;
+      // Sem confirmação AGORA (sem prova, convidado, RPC sem transição ou com
+      // falha): o webhook pode ter confirmado no meio — o banco decide.
+      try {
+        const { data, error } = await supabase
+          .from("marketplace_orders")
+          .select("payment_status, status, expires_at, gateway_payment_id")
+          .eq("id", pedido.id)
+          .maybeSingle();
+        return !error && data ? corpoDePagoConfirmado(data as Record<string, unknown>) !== null : false;
+      } catch (_erro) {
+        return false;
       }
     };
 
@@ -2376,12 +2426,33 @@ async function handler(
         const paymentIdNaVaga = String(orderNaVaga.id ?? idGatewayReconsulta);
         // (a) Já pago: nada a cobrar de novo — a tela segue. Com PROVA, esta
         // consulta confirma na hora (`confirmarNaReconsulta`, acima); sem ela,
-        // quem grava 'pago' é o webhook/reconciliação. A resposta é a MESMA
-        // nos dois casos.
+        // quem grava 'pago' é o webhook/reconciliação.
+        //
+        // Resposta honesta (16/10/2026): "pago" só quando o BANCO diz pago
+        // (`confirmarNaReconsulta` devolve `true`). Com a order paga no MP mas
+        // sem prova (ex.: `valor_divergente`) e o pedido ainda 'aguardando',
+        // a resposta é `aguardando` COM `paymentId` e SEM desafio — o que o
+        // front (`classificarRespostaCartao`) já lê como "em análise", o
+        // mesmo valor da branch (d) abaixo; antes era "pago" e o pedido
+        // expirava com o dinheiro cobrado.
         if (statusNaVaga === "pago") {
-          await confirmarNaReconsulta(orderNaVaga);
+          const bancoPago = await confirmarNaReconsulta(orderNaVaga);
+          // Pedido de PIX, cartão pago no MP e o banco ainda sem prova: `aguardando`
+          // sem QR faria a tela do PIX mostrar "não foi possível gerar o QR". O mesmo
+          // 409 do ramo (f) leva à caixa âmbar "em análise", que não deixa pagar de
+          // novo nem cancelar.
+          if (!bancoPago && metodo === "pix") {
+            return json(
+              { error: "Há um pagamento com cartão em análise para este pedido.", cartaoEmAnalise: true },
+              409,
+            );
+          }
           return json(
-            { paymentId: paymentIdNaVaga, statusPagamento: "pago", expiraEm: pedido.expires_at },
+            {
+              paymentId: paymentIdNaVaga,
+              statusPagamento: bancoPago ? "pago" : "aguardando",
+              expiraEm: pedido.expires_at,
+            },
             200,
           );
         }
@@ -2566,8 +2637,12 @@ async function handler(
     } else {
       // (e) Pedido de PIX com PIX na vaga — ou (a) PIX já pago, para
       // qualquer forma pedida: o comportamento de sempre, o MESMO QR. Pago
-      // com PROVA confirma na hora (`confirmarNaReconsulta`); a resposta não muda.
-      if (statusNaVaga === "pago") await confirmarNaReconsulta(orderNaVaga);
+      // com PROVA confirma na hora (`confirmarNaReconsulta`).
+      //
+      // Resposta honesta (16/10/2026): igual ao ramo (a) — "pago" só quando o
+      // banco diz pago; sem prova (ex.: `valor_divergente`) o pedido segue
+      // 'aguardando' e a resposta é `aguardando`, com o QR de sempre.
+      const pagoNoBanco = statusNaVaga === "pago" ? await confirmarNaReconsulta(orderNaVaga) : false;
       const extraido = extrairQrCode(orderNaVaga);
       return json(
         {
@@ -2582,7 +2657,7 @@ async function handler(
           // padrão — igual a hoje — o que NÃO bate em nenhum valor do
           // conjunto fechado, e o front trata como terminal: é o desfecho
           // certo para um status que o MP inventou depois desta migração.
-          statusPagamento: statusNaVaga ?? statusCruNaVaga,
+          statusPagamento: statusNaVaga === "pago" && !pagoNoBanco ? "aguardando" : (statusNaVaga ?? statusCruNaVaga),
           // O prazo sai da LINHA DO BANCO, igual ao ramo de criação.
           expiraEm: pedido.expires_at,
           // AUSÊNCIA (order legível, sem QR ainda) não é ERRO — extrairQrCode
@@ -3049,7 +3124,12 @@ async function handler(
     // cobrança quando a c0 aprovar depois (achado R7-V). Sem soltar, o
     // sentinela intacto continua bloqueando até a busca (Ponto 1/B1)
     // resolver de verdade — a resposta ao cliente é a MESMA recusa.
-    const respostaRecusaDoCartao = async (motivo: string, ordemCriada: boolean) => {
+    //
+    // `categoria` (16/10/2026): conjunto FECHADO, aditivo — ver
+    // `_shared/categoria-da-recusa.ts`. Mora ao lado do motivo, e só aqui (o
+    // outro ponto que carrega `motivoRecusa` é a recusa da corrida A3.2,
+    // mais abaixo); nunca leva o código cru do MP.
+    const respostaRecusaDoCartao = async (motivo: string, ordemCriada: boolean, categoria: CategoriaDaRecusa) => {
       if (vagaEsperadaNaGravacao === null || sentinelaDestaChamada || ordemCriada) {
         await liberarCobranca(supabase, pedido.id, vagaEsperadaNaGravacao);
       }
@@ -3059,6 +3139,7 @@ async function handler(
           statusPagamento: "recusado",
           motivoRecusa: motivo,
           podeTentarDeNovo: true,
+          categoriaDaRecusa: categoria,
           expiraEm: pedido.expires_at,
         },
         200,
@@ -3410,7 +3491,13 @@ async function handler(
       // rodada de risco): a Orders API só devolve 402 depois de CRIAR a
       // order (é ela que vem no corpo do erro), então soltar aqui é seguro
       // mesmo sobre um sentinela.
-      if (r.status === 402) return await respostaRecusaDoCartao(motivoDaRecusaDoErro(r.corpoDoErro), true);
+      if (r.status === 402) {
+        return await respostaRecusaDoCartao(
+          motivoDaRecusaDoErro(r.corpoDoErro),
+          true,
+          categoriaDaRecusaDoErro(r.corpoDoErro),
+        );
+      }
       // 400 (Achado A4, revisão de risco 26/09/2026): NEM todo 400 da Orders
       // API é sobre o dado do cartão — a doc de erros também lista causas
       // como `total_amount` que não bate com a soma dos pagamentos, ou o
@@ -3434,7 +3521,7 @@ async function handler(
         // (`vagaEsperadaNaGravacao !== null`) — ver o comentário grande de
         // `respostaRecusaDoCartao`, acima.
         if (erro400EhDeDadoDoCartao(r.corpoDoErro)) {
-          return await respostaRecusaDoCartao(MOTIVO_RECUSA_DADOS_DO_CARTAO, false);
+          return await respostaRecusaDoCartao(MOTIVO_RECUSA_DADOS_DO_CARTAO, false, "dados_do_cartao");
         }
         // Achado R3 (2ª revisão de risco, 26/09/2026): um 400 que NÃO é
         // sobre o cartão ainda CONSOME a chave de idempotência no MP (a doc
@@ -3503,7 +3590,7 @@ async function handler(
     // ocupada por uma cobrança morta. `ordemCriada: true` (achado #3, 8ª
     // rodada de risco): `r.ok` já confirmou 201 — a order EXISTE, com id.
     if (statusCartao === "recusado" || statusCartao === "expirado") {
-      return await respostaRecusaDoCartao(motivoDaRecusa(orderCartao), true);
+      return await respostaRecusaDoCartao(motivoDaRecusa(orderCartao), true, categoriaDaRecusaDaOrder(orderCartao));
     }
 
     // Aprovado na hora, em análise ou esperando o desafio 3DS: a vaga é
@@ -4053,6 +4140,7 @@ async function handler(
               statusPagamento: "recusado",
               motivoRecusa: motivoDaRecusa(ordemConsultada),
               podeTentarDeNovo: true,
+              categoriaDaRecusa: categoriaDaRecusaDaOrder(ordemConsultada),
               expiraEm: pedido.expires_at,
             },
             200,

@@ -507,14 +507,12 @@ describe("C6/P1 — recusa depois do 3DS: a vaga solta tem de virar recusa visí
       },
       ORDER,
     );
-    expect(hospedeiro.textContent).toContain("Pagamento em análise pelo banco");
+    expect(hospedeiro.textContent).toContain("Seu banco está analisando");
 
     soltarAVaga();
     await verificacaoPeriodica();
 
-    expect(hospedeiro.textContent).not.toContain(
-      "Pagamento em análise pelo banco",
-    );
+    expect(hospedeiro.textContent).not.toContain("Seu banco está analisando");
     esperarRecusaVisivel();
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
@@ -715,11 +713,24 @@ describe("C6/P1 — recusa depois do 3DS: a vaga solta tem de virar recusa visí
     expect(criarPagamento).toHaveBeenCalledTimes(postsAteAqui);
   }
 
-  it("REMONTAGEM por 'Tentar de novo' (falha local depois da recusa): o 3DS vivo novo NÃO vira 'não foi concluído'", async () => {
+  it("REMONTAGEM por 'Tentar de novo' (erro que SOBE ao pai depois da recusa): o 3DS vivo novo NÃO vira 'não foi concluído'", async () => {
     await primeiraTentativaRecusada();
-    // Outro cartão com falha LOCAL (sem token): nenhum POST, caixa vermelha.
-    await submeterNoBrick({ token: "" });
-    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    // Outro cartão cujo desafio vem de um endereço que NÃO é do Mercado Pago:
+    // a tela não abre o iframe e o erro (`semCobranca`) sobe ao pai, que troca
+    // a tela pela caixa vermelha com 'Tentar de novo' — a remontagem do
+    // componente que este teste protege. (Até o redesenho de 16/10/2026 o
+    // gatilho era a falha LOCAL, token vazio; ela agora é um painel da própria
+    // tela, que NÃO remonta nada e não chega mais ao pai.)
+    await enviarCartao(
+      {
+        paymentId: "ORD01JC6P1FORADOMP",
+        statusPagamento: "aguardando",
+        expiraEm: PRAZO_FUTURO,
+        desafio3ds: { url: "https://golpe.io/desafio" },
+      },
+      "ORD01JC6P1FORADOMP",
+    );
+    expect(criarPagamento).toHaveBeenCalledTimes(2);
     const tentar = botaoExato("Tentar de novo");
     expect(tentar, "caixa vermelha com 'Tentar de novo'").toBeDefined();
     await act(async () => {
@@ -727,7 +738,7 @@ describe("C6/P1 — recusa depois do 3DS: a vaga solta tem de virar recusa visí
     });
     await esvaziar();
 
-    await novoDesafioVivoEDepoisASuaRecusa(2);
+    await novoDesafioVivoEDepoisASuaRecusa(3);
   });
 
   it("REMONTAGEM pela forma desligada (o crédito sai, o débito fica): o 3DS vivo novo NÃO vira 'não foi concluído'", async () => {

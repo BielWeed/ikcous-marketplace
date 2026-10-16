@@ -19,7 +19,6 @@ import {
 } from "vitest";
 
 import {
-  MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE,
   PagamentoComCartao,
   classificarRespostaCartao,
   desafioConcluido,
@@ -476,7 +475,7 @@ describe("enviarPagamentoComCartao — o onSubmit sem o Brick", () => {
     );
   });
 
-  it("dado inválido do Brick não chega à edge, e o erro carrega sinal 'semCobranca' (validação é local)", async () => {
+  it("dado inválido do Brick não chega à edge e vira 'dados-invalidos' — sem erro para o pai (validação é local)", async () => {
     const criar = vi.fn();
     const r = await enviarPagamentoComCartao({
       orderId: "ped-1",
@@ -485,11 +484,14 @@ describe("enviarPagamentoComCartao — o onSubmit sem o Brick", () => {
       config: SO_CREDITO,
       criarPagamento: criar,
     });
-    expect(r.tipo).toBe("erro");
+    // Redesenho de 16/10/2026: era `erro` + `semCobranca` (o pai trocava a
+    // tela inteira); agora a tela mostra a frase sem desmontar o Brick. A
+    // garantia de B1 (rodada 2) continua: nenhum POST chegou à edge.
+    expect(r).toEqual({
+      tipo: "dados-invalidos",
+      mensagem: "Não foi possível ler os dados do cartão. Tente de novo.",
+    });
     expect(criar).not.toHaveBeenCalled();
-    // B1, rodada 2 da revisão de risco pré-publicação: nenhum POST chegou à
-    // edge — seguro oferecer "Pagar com PIX" na caixa de erro.
-    expect(r.tipo === "erro" && r.sinal).toBe("semCobranca");
   });
 
   // B1, rodada 2 da revisão de risco pré-publicação (26/09/2026): um 502
@@ -911,25 +913,30 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     await enviarCartao(create);
 
     expect(hospedeiro.textContent).toContain(
-      "Pagamento em análise pelo banco. Você será avisado quando for aprovado.",
+      "Seu banco está analisando. Não pague de novo. Avisamos aqui e por notificação",
     );
   });
 
-  it("recusado: mostra o motivo; 'Tentar outro cartão' remonta o Brick do zero", async () => {
+  it("recusado: mostra a frase da CATEGORIA; o Brick segue montado e 'Tentar outro cartão' o refaz do zero", async () => {
     const { create, unmounts } = instalarSdkFalso();
     criarPagamento.mockResolvedValue({
       paymentId: "pay-1",
       statusPagamento: "recusado",
       expiraEm: "x",
-      motivoRecusa: "Saldo insuficiente. Tente outro cartão ou pague com PIX.",
+      motivoRecusa: "Saldo ou limite insuficiente neste cartão.",
       podeTentarDeNovo: true,
     });
     const { onErro } = await renderCartao();
     await enviarCartao(create);
 
     expect(onErro).not.toHaveBeenCalled();
-    expect(hospedeiro.textContent).toContain("Saldo insuficiente.");
-    expect(unmounts[0]).toHaveBeenCalledTimes(1);
+    // Decisão D4 (16/10/2026): o texto do servidor NÃO vai à tela — a frase da
+    // categoria vai — e o Brick NÃO desmonta (a pessoa não redigita nada).
+    expect(hospedeiro.textContent).toContain(
+      "O cartão não tem limite para este valor",
+    );
+    expect(hospedeiro.textContent).not.toContain("Saldo ou limite");
+    expect(unmounts[0]).not.toHaveBeenCalled();
 
     const tentar = [...hospedeiro.querySelectorAll("button")].find(
       (b) => b.textContent === "Tentar outro cartão",
@@ -942,7 +949,11 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     });
 
     expect(create).toHaveBeenCalledTimes(2);
-    expect(hospedeiro.textContent).not.toContain("Saldo insuficiente.");
+    // Refeito por ESCOLHA da pessoa: o primeiro Brick sai e o aviso some.
+    expect(unmounts[0]).toHaveBeenCalledTimes(1);
+    expect(hospedeiro.textContent).not.toContain(
+      "O cartão não tem limite para este valor",
+    );
     // Continua sem PIX nenhum: só a primeira tentativa de cartão chamou a edge.
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
@@ -1140,7 +1151,7 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
   // bloqueando o iframe, `create()` que rejeita) nunca chega a enviar um
   // cartão — o sinal "semCobranca" tem que chegar ao `onErro` do
   // CheckoutView para o botão "Pagar com PIX" aparecer na caixa de erro.
-  it("falha de montagem do Brick: onErro recebe 'Não foi possível carregar o pagamento.' com sinal 'semCobranca'", async () => {
+  it("falha de montagem do Brick: painel 'Não foi possível carregar o formulário do cartão' na própria tela — o pai (onErro) não é chamado", async () => {
     const create = vi
       .fn()
       .mockRejectedValue(new Error("Invalid public key format provided"));
@@ -1151,11 +1162,19 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { onErro } = await renderCartao();
 
-    expect(onErro).toHaveBeenCalledWith(
-      "Não foi possível carregar o pagamento.",
-      "recuperavel",
-      "semCobranca",
+    // Redesenho de 16/10/2026: antes subia ao pai (`onErro` + `semCobranca`),
+    // que trocava a tela por uma caixa de erro. Nenhum POST de cartão existiu
+    // (B1, rodada 2): a tela oferece "Tentar de novo" e "Pagar com PIX".
+    expect(onErro).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain(
+      "Não foi possível carregar o formulário do cartão",
     );
+    expect(criarPagamento).not.toHaveBeenCalled();
+    const botoes = [...hospedeiro.querySelectorAll("button")].map(
+      (b) => b.textContent,
+    );
+    expect(botoes).toContain("Tentar de novo");
+    expect(botoes).toContain("Pagar com PIX");
   });
 
   // B2 da revisão de risco pré-publicação (26/09/2026): o desafio 3DS ficava
@@ -1268,13 +1287,10 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     expect(onTrocarParaPix).toHaveBeenCalledWith(true);
   });
 
-  // B2, cenário 2: cartão em análise sem desafio (`processing`) — o banco
-  // pode demorar, e a tela ficava presa em "Você será avisado quando for
-  // aprovado" até a reserva de 30 min morrer. Depois de alguns minutos,
-  // "Pagar com PIX" aparece como saída — seguro porque a edge responde 409
-  // enquanto o cartão ainda está em análise (achado B3, tratado no
-  // CheckoutView).
-  describe("em análise: 'Pagar com PIX' só depois de alguns minutos", () => {
+  // B2, cenário 2 (26/09/2026) abria "Pagar com PIX" depois de 3 minutos em
+  // análise. Decisão D4 (16/10/2026): NUNCA — o servidor responde 409 enquanto
+  // o cartão segue `processing`, então o botão só levava a uma recusa.
+  describe("em análise: nunca 'Pagar com PIX'", () => {
     beforeEach(() => {
       vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     });
@@ -1283,7 +1299,7 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
       vi.useRealTimers();
     });
 
-    it("não aparece de imediato, e aparece depois do teto de minutos em análise", async () => {
+    it("não aparece de imediato e continua sem aparecer depois de 3 minutos", async () => {
       const { create } = instalarSdkFalso();
       criarPagamento.mockResolvedValue({
         paymentId: "pay-1",
@@ -1293,32 +1309,25 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
       const { onTrocarParaPix } = await renderCartao();
       await enviarCartao(create);
 
-      expect(hospedeiro.textContent).toContain(
-        "Pagamento em análise pelo banco. Você será avisado quando for aprovado.",
-      );
-      expect(
+      const textoDaAnalise =
+        "Seu banco está analisando. Não pague de novo. Avisamos aqui e por notificação";
+      expect(hospedeiro.textContent).toContain(textoDaAnalise);
+      const pix = () =>
         [...hospedeiro.querySelectorAll("button")].find(
           (b) => b.textContent === "Pagar com PIX",
-        ),
-      ).toBeUndefined();
-
-      await act(async () => {
-        vi.advanceTimersByTime(
-          MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE * 60_000 + 10_000,
         );
-      });
+      expect(pix()).toBeUndefined();
 
-      const pix = [...hospedeiro.querySelectorAll("button")].find(
-        (b) => b.textContent === "Pagar com PIX",
-      );
-      expect(pix).toBeDefined();
-
-      // Achado 2, rodada 4 da revisão de risco pré-publicação: em análise
-      // pelo emissor/antifraude, o cartão AINDA pode ser aprovado.
       await act(async () => {
-        pix!.click();
+        vi.advanceTimersByTime(3 * 60_000 + 10_000);
       });
-      expect(onTrocarParaPix).toHaveBeenCalledWith(true);
+      expect(pix()).toBeUndefined();
+      await act(async () => {
+        vi.advanceTimersByTime(20 * 60_000);
+      });
+      expect(pix()).toBeUndefined();
+      expect(hospedeiro.textContent).toContain(textoDaAnalise);
+      expect(onTrocarParaPix).not.toHaveBeenCalled();
     });
   });
 });
