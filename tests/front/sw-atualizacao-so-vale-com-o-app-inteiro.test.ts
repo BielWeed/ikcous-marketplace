@@ -238,6 +238,19 @@ describe("src/sw/sw.ts — install só vale com o precache inteiro", () => {
     expect(armazem.get(CACHE_VELHO)?.size).toBe(2);
   });
 
+  it("JS ausente do deploy que o catch-all respondeu como HTML 200 derruba o install", async () => {
+    const rede = redeDoBuildNovo();
+    rede.set("/assets/vendor-DEF.js", () => html(ficha("catch-all")));
+    const { rodar, armazem } = await montar({
+      cenario: { rede },
+      jaExistem: VELHO_COMPLETO,
+    });
+
+    await expect(rodar("install")).rejects.toThrow(/vendor-DEF/);
+
+    expect(cachesDoApp(armazem)).toEqual([CACHE_VELHO]);
+  });
+
   it("falha passageira em UM arquivo é curada arquivo a arquivo e o install completa", async () => {
     const rede = redeDoBuildNovo();
     let tentativas = 0;
@@ -347,6 +360,26 @@ describe("src/sw/sw.ts — atualizou e ficou sem rede", () => {
 
     const resposta = await navegar("/pedido/123");
     expect(resposta.status).toBe(200);
+    expect(await resposta.text()).toContain('id="ikcous-loja"');
+  });
+
+  it("porteiro fora do ar só no install: o activate tenta de novo antes de apagar as páginas antigas", async () => {
+    const m = await montar({
+      cenario: {
+        rede: redeDoBuildNovo(() => new Response("fora", { status: 503 })),
+      },
+      jaExistem: VELHO_COMPLETO,
+    });
+    await m.rodar("install");
+    expect(m.armazem.get(CACHE_NOVO)?.has("/")).toBe(false);
+
+    // O porteiro volta antes da ativação.
+    m.cenario.rede.set("/", () => html(ficha("novo")));
+    await m.rodar("activate");
+    m.cenario.online = false;
+
+    expect(m.armazem.get(CACHE_NOVO)?.has("/")).toBe(true);
+    const resposta = await m.navegar("/pedido/123");
     expect(await resposta.text()).toContain('id="ikcous-loja"');
   });
 

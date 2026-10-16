@@ -74,6 +74,12 @@ export async function normalizeBannersOrder(
   }
 }
 
+/** Conexão do cofre fechada (saída cancelada, outra aba)? Dublês de teste não
+ * implementam `isClosed` e contam como abertos. */
+function cofreFechado(vault: DataVault): boolean {
+  return typeof vault.isClosed === "function" && vault.isClosed();
+}
+
 export function useBanners(adminMode = false) {
   const { isAdmin } = useAuth();
   const vaultRef = useRef<DataVault | null>(null);
@@ -83,6 +89,19 @@ export function useBanners(adminMode = false) {
 
   // Persist to DataVault (non-blocking helper)
   const persistToVault = useCallback((items: Banner[]) => {
+    // Cofre fechado (saída da página cancelada, outra aba subiu a versão):
+    // a conexão que o mount guardou está morta — reabre antes de gravar.
+    if (vaultRef.current && cofreFechado(vaultRef.current)) {
+      DataVault.init()
+        .then((vault) => {
+          vaultRef.current = vault;
+          return vault.replaceAll("banners", items).then(() => {
+            vault.setLastSync("banners");
+          });
+        })
+        .catch(() => {});
+      return;
+    }
     vaultRef.current
       ?.replaceAll("banners", items)
       .then(() => {
@@ -647,6 +666,9 @@ export function useBanners(adminMode = false) {
         // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
         // REJEITA em vez de mascarar a falha como "vazio de verdade".
         try {
+          if (cofreFechado(vaultRef.current)) {
+            vaultRef.current = await DataVault.init();
+          }
           const fresh = await vaultRef.current.getAllOrThrow<Banner>("banners");
           setBanners(fresh);
         } catch (err) {

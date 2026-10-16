@@ -131,23 +131,24 @@ async function precachearOAppInteiro(urls: string[]): Promise<void> {
   );
   const jaExistia = (await caches.keys()).includes(CACHE_NAME);
   const cache = await caches.open(CACHE_NAME);
+  let faltaram: string[] = [];
   try {
     await cache.addAll(urls);
-    return;
   } catch (err) {
     console.warn(
       "[SW] Precache em lote falhou; tentando arquivo a arquivo:",
       err,
     );
+    await Promise.all(
+      urls.map((url) =>
+        cache.add(url).catch(() => {
+          faltaram.push(url);
+        }),
+      ),
+    );
   }
-  const faltaram: string[] = [];
-  await Promise.all(
-    urls.map((url) =>
-      cache.add(url).catch(() => {
-        faltaram.push(url);
-      }),
-    ),
-  );
+  if (faltaram.length === 0)
+    faltaram = await arquivosQueVieramComoHtml(cache, urls);
   if (faltaram.length === 0) return;
   // Cache que ESTE install criou e ficou pela metade não pode ficar visível
   // para o `caches.match` do service worker antigo.
@@ -157,6 +158,30 @@ async function precachearOAppInteiro(urls: string[]): Promise<void> {
   throw new Error(
     `[SW] Precache incompleto: faltaram ${faltaram.length} de ${urls.length} arquivos (${faltaram.slice(0, 3).join(", ")}). O app anterior continua valendo.`,
   );
+}
+
+/**
+ * Arquivo que não é página mas chegou como HTML: o catch-all do `vercel.json`
+ * responde 200 com o `index.html` a qualquer caminho que não existe, e o
+ * `cache.add` aceita esse 200. Sem esta conferência, um `/assets/x.js`
+ * ausente do deploy passaria como baixado e, offline, o navegador receberia
+ * HTML no lugar do JavaScript (o app não inicia).
+ */
+async function arquivosQueVieramComoHtml(
+  cache: Cache,
+  urls: string[],
+): Promise<string[]> {
+  const ruins: string[] = [];
+  await Promise.all(
+    urls
+      .filter((url) => !/\.html?$/i.test(caminhoDoPrecache(url)))
+      .map(async (url) => {
+        const guardado = await cache.match(url);
+        const tipo = guardado?.headers?.get("content-type") ?? "";
+        if (tipo.includes("text/html")) ruins.push(url);
+      }),
+  );
+  return ruins;
 }
 
 /** O HTML só usa arquivos de `/assets/` que o precache também baixou? */
@@ -186,6 +211,8 @@ function htmlUsaSoArquivosDoPrecache(html: string, urls: string[]): boolean {
  */
 async function guardarPaginaInicialComFicha(urls: string[]): Promise<void> {
   try {
+    const cache = await caches.open(CACHE_NAME);
+    if (await cache.match("/")) return;
     const resposta = await fetch("/", { cache: "no-store" });
     if (!resposta?.ok || resposta.redirected) return;
     const texto = await resposta.clone().text();
@@ -196,7 +223,6 @@ async function guardarPaginaInicialComFicha(urls: string[]): Promise<void> {
       );
       return;
     }
-    const cache = await caches.open(CACHE_NAME);
     await cache.put("/", resposta);
   } catch (e) {
     console.warn("[SW] Falha ao guardar a página inicial com ficha:", e);
@@ -258,6 +284,12 @@ async function purgarCachesAntigos(): Promise<void> {
     );
     return;
   }
+  // O install pode não ter conseguido guardar a página inicial com ficha
+  // (porteiro fora do ar naquele instante): tenta de novo agora, antes de
+  // jogar fora as páginas com ficha do cache anterior. Se ainda assim não
+  // der, a versão nova vale mesmo assim — o HTML antigo, servido primeiro por
+  // `caches.match`, deixaria o app preso na versão velha.
+  await guardarPaginaInicialComFicha(urlsDoPrecache);
   const cacheNames = await caches.keys();
   const cachesToDelete = cacheNames.filter(
     (name) =>
