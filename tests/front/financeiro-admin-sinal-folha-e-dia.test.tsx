@@ -407,6 +407,45 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
   });
 
+  it("sucesso do cadastro antigo não destrava o novo lançamento ainda em envio", async () => {
+    const cadastro = pendente();
+    const lancamento = pendente();
+    await montarPainel();
+    const aba = [
+      ...hospedeiro.querySelectorAll<HTMLElement>('[role="tab"]'),
+    ].find((el) => el.textContent?.startsWith("Contas e categorias"))!;
+    await act(async () => {
+      aba.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+      );
+    });
+    await esperar();
+    await clicar(botaoEm(hospedeiro, "Nova conta"));
+    await digitar("fin-conta-nome", "Conta A");
+    rpcFalso.mockImplementation((nome: string) => {
+      if (nome === "fin_conta_salvar") return cadastro.promessa;
+      if (nome === "fin_lancamento_salvar") return lancamento.promessa;
+      return Promise.resolve({ data: [], error: null });
+    });
+    await clicar(botaoEm(folha(), "Salvar"));
+    await clicar(botaoEm(folha(), "Cancelar"));
+    await abrirLancamentoValido();
+    await digitar("fin-lanc-descricao", "Lançamento B");
+    await clicar(botaoEm(folha(), "Salvar lançamento"));
+    const nova = folha();
+    await act(async () => cadastro.resolver({ data: null, error: null }));
+    await esperar();
+    expect(folha()).toBe(nova);
+    expect(botaoEm(nova, "Cancelar").disabled).toBe(true);
+    expect(campo("fin-lanc-descricao").value).toBe("Lançamento B");
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    await act(async () =>
+      lancamento.resolver({ data: { ids: ["b"] }, error: null }),
+    );
+    await esperar();
+    expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
+  });
+
   it("libera o cancelamento depois de uma falha de gravação", async () => {
     await montarPainel();
     await abrirLancamentoValido();

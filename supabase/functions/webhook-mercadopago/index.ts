@@ -119,6 +119,7 @@ import {
   aplicarEfeitosDoPagamentoConfirmado,
   type DepsDosEfeitos,
   desfechoComEfeito,
+  reenviarAvisoPendenteDoPagamentoAtrasado,
 } from "../_shared/efeitos-do-pagamento.ts";
 // Os testes e o contrato antigo importam estes dois DAQUI: a definição é uma só.
 export {
@@ -2176,7 +2177,8 @@ async function handler(
   // transição sob o `FOR UPDATE` da RPC. `ja_pago`/`ja_estornado`/`ignorado`
   // são reenvio do MP (ou o outro caminho) encontrando um estado que já foi
   // tratado — 200, sem efeito, é o que impede o reenvio de virar spam para o
-  // lojista. `divergente`/`inexistente` NÃO são esse caso benigno: significam
+  // lojista. Exceção única: `ja_pago` de pedido `pago_apos_expirar` cujo aviso
+  // de e-mail ficou pendente reenvia só esse aviso (reserva atômica). `divergente`/`inexistente` NÃO são esse caso benigno: significam
   // que a confirmação (já aprovada pelo MP) não bate com o pedido, e por isso
   // são logados como erro no bloco abaixo, não silenciados. Falha de push ou
   // de e-mail nunca sobe (o módulo engole e loga): o pedido já está pago.
@@ -2187,6 +2189,18 @@ async function handler(
       resultado,
       enviarPush: deps.enviarPush,
       enviarComprovante: deps.enviarComprovante,
+      enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
+    });
+  } else if (resultado === "ja_pago") {
+    // EST-EDGE-DIN-3 (16/10/2026): 'ja_pago' continua sem push e sem
+    // comprovante (a transição já os disparou), MAS o aviso de pagamento
+    // atrasado pode não ter saído (SMTP fora do ar: a reserva do e-mail foi
+    // devolvida e o pedido, com `paid_at`, sai da vista do cron). Só então —
+    // pedido em 'pago_apos_expirar' com a reserva livre — a reentrega repete
+    // esse único efeito. Idempotente pela reserva; nunca lança.
+    await reenviarAvisoPendenteDoPagamentoAtrasado({
+      supabase,
+      orderId,
       enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
     });
   } else if (resultado === "divergente" || resultado === "inexistente") {

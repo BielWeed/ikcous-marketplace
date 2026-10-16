@@ -716,6 +716,8 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const isOffline = useOnlineStatus();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [edicaoPendenteAposSalvar, setEdicaoPendenteAposSalvar] =
+    useState(false);
   const isSavedRef = useRef(false);
   // Espelho em ref de isSubmitting: os caminhos de fechamento (Escape,
   // botão voltar) capturam handleOpenChange em closure antiga — lendo o
@@ -768,6 +770,12 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [formData, setFormData] = useState<Partial<Banner>>(() =>
     defaultBannerFor("home_top", 0),
   );
+  const formularioAtual = useRef({ formData, bannerMode });
+  // Inclui a digitação que ainda aguarda o debounce do LocalBufferedInput.
+  const revisaoDaDigitacao = useRef(0);
+  useEffect(() => {
+    formularioAtual.current = { formData, bannerMode };
+  }, [formData, bannerMode]);
 
   // Sync destinationMode based on link or productId
   useEffect(() => {
@@ -1357,8 +1365,18 @@ export const AdminBannersView = memo(function AdminBannersView({
       ...defaultBannerFor(defaultPosition, defaultOrder),
     };
 
-    onSetDirty(isBannerFormDirty(formData, initial));
-  }, [isDialogOpen, formData, editingBanner, banners, selectedTab, onSetDirty]);
+    onSetDirty(
+      edicaoPendenteAposSalvar || isBannerFormDirty(formData, initial),
+    );
+  }, [
+    isDialogOpen,
+    formData,
+    editingBanner,
+    banners,
+    selectedTab,
+    onSetDirty,
+    edicaoPendenteAposSalvar,
+  ]);
 
   // State to manage draft recovery
   const [draftToRecover, setDraftToRecover] = useState<{
@@ -1451,6 +1469,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     setSelectedCouponCode(initialCoupon);
 
     isSavedRef.current = false;
+    setEdicaoPendenteAposSalvar(false);
     setActiveStep(1);
     if (banner?.id) {
       setEditingBanner(banner);
@@ -1732,6 +1751,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       return;
     }
     if (isSubmitting) return;
+    const revisaoEnviada = revisaoDaDigitacao.current;
     setIsSubmitting(true);
     isSubmittingRef.current = true;
     const fim = marcarOperacaoSensivel("upload-de-banner");
@@ -1808,9 +1828,30 @@ export const AdminBannersView = memo(function AdminBannersView({
       if (editingBanner) {
         await updateBanner(editingBanner.id, dataToSubmit);
       } else {
-        await addBanner(dataToSubmit as Required<Omit<Banner, "id">>);
+        const criado = await addBanner(
+          dataToSubmit as Required<Omit<Banner, "id">>,
+        );
+        // Se houve nova edição, o próximo salvar atualiza o banner criado.
+        // A imagem enviada já está publicada e não é mais um upload órfão.
+        if (criado?.id) {
+          setEditingBanner({ ...dataToSubmit, id: criado.id } as Banner);
+        }
+      }
+      const mudouDuranteEnvio =
+        JSON.stringify(formularioAtual.current.formData) !==
+          JSON.stringify(formData) ||
+        formularioAtual.current.bannerMode !== bannerMode ||
+        revisaoDaDigitacao.current !== revisaoEnviada;
+      if (mudouDuranteEnvio) {
+        setEdicaoPendenteAposSalvar(true);
+        if (editingBanner) {
+          setEditingBanner({ ...editingBanner, ...dataToSubmit });
+        }
+        onSetDirty?.(true);
+        return;
       }
       isSavedRef.current = true;
+      setEdicaoPendenteAposSalvar(false);
       if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
       setIsDialogOpen(false);
     } catch (error) {
@@ -2372,7 +2413,12 @@ export const AdminBannersView = memo(function AdminBannersView({
 
       {/* Formulário de Cadastro / Edição (Renderizado Inline como Página) */}
       {isDialogOpen && (
-        <div className="relative z-10 mx-auto w-full max-w-2xl space-y-4 overflow-x-hidden px-4 pb-6 pt-0 text-white sm:px-6 sm:pb-8 sm:pt-0 lg:px-8 lg:pb-10 lg:pt-0">
+        <div
+          onInputCapture={() => {
+            revisaoDaDigitacao.current += 1;
+          }}
+          className="relative z-10 mx-auto w-full max-w-2xl space-y-4 overflow-x-hidden px-4 pb-6 pt-0 text-white sm:px-6 sm:pb-8 sm:pt-0 lg:px-8 lg:pb-10 lg:pt-0"
+        >
           <div className="pointer-events-none absolute -right-40 -top-40 size-80 rounded-full bg-admin-gold/5 blur-[120px]" />
           <div className="pointer-events-none absolute bottom-0 -left-40 size-80 rounded-full bg-[#FFBF00]/5 blur-[120px]" />
 

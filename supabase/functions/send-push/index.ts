@@ -126,11 +126,9 @@ export async function paginarTudo(
  * tamanho da fatia), mas para de abrir fatia nova assim que
  * `agora() - inicio` passar de `orcamentoMs`.
  *
- * Isso é o que falta pra um broadcast grande nunca estourar o teto de
- * execução da function sem avisar: a checagem acontece ANTES de cada fatia,
- * nunca no meio de uma já em voo, e o que não deu tempo de tentar volta
- * contado em `naoTentados` — nunca escondido dentro de um `enviados` que não
- * é verdade (a PUSH-010 já existe por causa de contagem que mentia).
+ * O prazo também limita a espera da fatia em voo: envio pendurado conta
+ * como falha temporária, e inscrições de fatias que não chegaram a abrir
+ * voltam contadas em `naoTentados`.
  *
  * `agora` é injetado para o teste controlar o relógio sem `setTimeout` real.
  */
@@ -142,13 +140,19 @@ export async function enviarComOrcamentoDeTempo({
   rotulo = "push",
   tamanhoDoLote = TAMANHO_DO_LOTE_DE_ENVIO,
   orcamentoMs = ORCAMENTO_DE_TEMPO_MS,
+  tempoLimitePorEnvioMs = 10_000,
   agora = () => Date.now(),
 }: any): Promise<{ itens: any[]; naoTentados: number }> {
   const inicio = agora();
+  const prazoFinalMs = Date.now() + orcamentoMs;
   const itens: any[] = [];
   let i = 0;
   for (; i < inscricoes.length; i += tamanhoDoLote) {
-    if (agora() - inicio >= orcamentoMs) break;
+    const restanteMs = Math.min(
+      orcamentoMs - (agora() - inicio),
+      prazoFinalMs - Date.now(),
+    );
+    if (restanteMs <= 0) break;
     const lote = inscricoes.slice(i, i + tamanhoDoLote);
     const itensDoLote = await enviarParaInscritos({
       servidor,
@@ -157,6 +161,8 @@ export async function enviarComOrcamentoDeTempo({
       aoDetectarMorta,
       rotulo,
       tamanhoDoLote: lote.length,
+      tempoLimitePorEnvioMs,
+      prazoFinalMs: Math.min(prazoFinalMs, Date.now() + restanteMs),
     });
     itens.push(...itensDoLote);
   }

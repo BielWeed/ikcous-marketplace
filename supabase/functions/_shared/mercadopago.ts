@@ -54,9 +54,33 @@ export async function fetchComTempo(
   tempoMs: number = TEMPO_LIMITE_MS,
 ): Promise<Response> {
   const controle = new AbortController();
-  const despertar = setTimeout(() => controle.abort(), tempoMs);
+  let despertar: ReturnType<typeof setTimeout> | undefined;
+  // O prazo vira uma promessa que REJEITA com o erro tipado do aborto, para
+  // vencer a corrida mesmo contra um corpo que não obedece ao sinal.
+  const prazo = new Promise<never>((_resolve, rejeitar) => {
+    despertar = setTimeout(() => {
+      controle.abort();
+      rejeitar(new DOMException("Tempo de espera do Mercado Pago esgotado.", "AbortError"));
+    }, tempoMs);
+  });
   try {
-    return await buscar(url, { ...init, signal: controle.signal });
+    return await Promise.race([prazo, (async () => {
+      const resposta = await buscar(url, { ...init, signal: controle.signal });
+      // EST-EDGE-DIN-1 (16/10/2026): o prazo cobre TAMBÉM o corpo. Antes o
+      // timer era desarmado assim que os cabeçalhos chegavam, e um 200 que
+      // nunca entregava o corpo deixava `json()` pendurado para sempre
+      // (reconciliação e webhook travados). Lê o corpo aqui, dentro do prazo,
+      // e devolve uma Response equivalente já com o corpo em memória — o
+      // mesmo desenho do `buscarComTempo` do melhor-envio-etiqueta. Corpo
+      // que não chega vira o MESMO AbortError da chamada sem resposta, que
+      // cada chamador já trata como falha de rede (`status: 0`).
+      const corpo = await resposta.arrayBuffer();
+      return new Response(resposta.body === null ? null : corpo, {
+        status: resposta.status,
+        statusText: resposta.statusText,
+        headers: resposta.headers,
+      });
+    })()]);
   } finally {
     // Sem o clear, cada chamada deixaria um timer pendurado no event loop
     // até estourar — em webhook/reconciliação de lote, dezenas de timers
