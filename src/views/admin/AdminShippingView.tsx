@@ -486,9 +486,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   // compra (origin_cep vazio). Vale também para a loja que JÁ está nesse modo:
   // o salvar fica travado enquanto o modo resultante for "Só retiro".
   const soRetiroSemCep =
-    !!config &&
-    formData.modo === "so_retiro" &&
-    !cepCompleto(config.originCep);
+    !!config && formData.modo === "so_retiro" && !cepCompleto(config.originCep);
 
   // ── Dirty check NACIONAL (T4, herdado) ─────────────────────────────────
   const isFormDirtyNacional = useMemo(() => {
