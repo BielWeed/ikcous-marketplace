@@ -72,7 +72,12 @@ module.exports = [
     // re-minificava e comprimia UMA vez, criando folga que não existe na
     // entrega real.
     path: cliente.map((arquivo) => `${output}/${arquivo}`),
-    limit: "550 kB",
+    // PROPOSTA 16/10/2026 (aguarda o dono): 550 -> 552 kB. Medido no CI: a base
+    // chegou a 549,96 kB (folga de 40 B) e o mesmo código mede 549,96 a 550,24
+    // conforme o build — os hashes dos chunks entram no pacote de entrada e não
+    // comprimem. Com folga menor que esse ruído, o portão vira loteria: um PR só
+    // do painel reprovou "Build e tamanho" por 239 B no teto do cliente.
+    limit: "552 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
