@@ -31,6 +31,15 @@ function configDe(tabela: string) {
 
 function criarDubleVault() {
   return {
+    async mutate<T>(
+      store: string,
+      _id: string,
+      update: (current: T | undefined) => T | undefined,
+    ) {
+      const registro = update(undefined);
+      if (registro !== undefined) await this.put(store, registro);
+      return registro;
+    },
     put: vi.fn(async (_store: string, _registro: any) => undefined),
     deleteById: vi.fn(async (_store: string, _id: string) => undefined),
     setLastSync: vi.fn(async () => undefined),

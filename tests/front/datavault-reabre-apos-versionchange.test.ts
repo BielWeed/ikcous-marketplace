@@ -77,6 +77,15 @@ vi.mock("@/lib/supabase", () => ({
 
 function dubleDeCofreSadio() {
   return {
+    async mutate<T>(
+      store: string,
+      _id: string,
+      update: (current: T | undefined) => T | undefined,
+    ) {
+      const registro = update(undefined);
+      if (registro !== undefined) await this.put(store, registro);
+      return registro;
+    },
     isClosed: () => false,
     getById: vi.fn(async () => undefined),
     put: vi.fn(),

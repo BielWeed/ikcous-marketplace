@@ -389,6 +389,40 @@ export class DataVault {
   }
 
   /**
+   * Leitura e alteração síncrona na mesma transação: evita que outra aba
+   * grave entre o get e o put. Retornar undefined não grava nada.
+   */
+  async mutate<T>(
+    store: StoreName,
+    id: string,
+    update: (current: T | undefined) => T | undefined,
+  ): Promise<T | undefined> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(store, "readwrite");
+      const objectStore = tx.objectStore(store);
+      const request = objectStore.get(id);
+      let updated: T | undefined;
+
+      request.onsuccess = () => {
+        try {
+          updated = update(request.result as T | undefined);
+          if (updated !== undefined) objectStore.put(updated);
+        } catch (err) {
+          tx.abort();
+          reject(err);
+        }
+      };
+      tx.oncomplete = () => resolve(updated);
+      tx.onerror = () =>
+        reject(tx.error ?? new Error(`mutate('${store}') failed`));
+      tx.onabort = () =>
+        reject(
+          tx.error ?? new Error(`Transaction aborted for mutate('${store}')`),
+        );
+    });
+  }
+
+  /**
    * Delete a record by its primary key.
    */
   async deleteById(store: StoreName, id: string): Promise<void> {

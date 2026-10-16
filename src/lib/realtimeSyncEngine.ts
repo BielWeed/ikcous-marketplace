@@ -216,6 +216,8 @@ export const TABLE_CONFIGS: TableConfig[] = [
 let _channel: RealtimeChannel | null = null;
 let _bcListener: ((event: MessageEvent) => void) | null = null;
 let _isCatchingUp = false;
+// Só vale para a consulta em andamento: a próxima rodada reconfere ausências.
+let _produtosTocados: Set<string> | null = null;
 // realtimeSyncEngine-317: janela mínima entre rodadas de catchUp disparadas
 // pelos gatilhos de reconexão/visibilidade (ver `rodadaPorGatilho` em
 // `start`). Rodadas por outros caminhos (inscrição no canal, chamada direta)
@@ -545,6 +547,16 @@ export const RealtimeSyncEngine = {
     raw: any,
     old: any,
   ): Promise<void> {
+    // Marca na chegada, antes de qualquer await: o resumo em voo pode ser
+    // anterior a este evento e não pode tratá-lo como prova de exclusão.
+    const produtoTocado =
+      config.store === "products"
+        ? (raw?.id ?? old?.id)
+        : config.store === "product_variants"
+          ? (raw?.product_id ?? old?.product_id)
+          : undefined;
+    if (produtoTocado) _produtosTocados?.add(produtoTocado);
+
     // dataVault-129: toda borda assíncrona re-resolve o cofre — o handle
     // capturado em start() pode ter sido fechado por um versionchange de
     // outra aba; gravar nele seria InvalidStateError com aviso à tela como
@@ -595,45 +607,53 @@ export const RealtimeSyncEngine = {
               config.store === "products" &&
               !Array.isArray((raw as any)?.product_variants)
             ) {
-              const produtoExistente = await vault.getById<Product>(
+              await vault.mutate<Product>(
                 "products",
                 mapped.id,
+                (produtoExistente) => {
+                  if (produtoExistente?.variants?.length) {
+                    mapped.variants = produtoExistente.variants;
+                    mapped.stock = produtoExistente.variants.reduce(
+                      (acc, v) =>
+                        acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
+                      0,
+                    );
+                  }
+                  return mapped;
+                },
               );
-              if (produtoExistente?.variants?.length) {
-                mapped.variants = produtoExistente.variants;
-                mapped.stock = mapped.variants.reduce(
-                  (acc: number, v: any) =>
-                    acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
-                  0,
-                );
-              }
+            } else {
+              await vault.put(config.store, mapped);
             }
-
-            await vault.put(config.store, mapped);
             await vault.setLastSync(config.store);
 
             // Special handling for product_variants updates to update the parent product in 'products' store
             if (config.store === "product_variants") {
               const variant = mapped;
-              const product = await vault.getById<Product>(
+              // A transação única também protege contra o replay de outra
+              // aba; uma fila apenas neste motor ainda perderia alterações.
+              const product = await vault.mutate<Product>(
                 "products",
                 variant.productId,
+                (product) => {
+                  if (!product) return undefined;
+                  const variants = product.variants || [];
+                  const idx = variants.findIndex((v) => v.id === variant.id);
+                  if (idx >= 0) {
+                    variants[idx] = variant;
+                  } else {
+                    variants.push(variant);
+                  }
+                  product.variants = variants;
+                  product.stock = variants.reduce(
+                    (acc, v) =>
+                      acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
+                    0,
+                  );
+                  return product;
+                },
               );
               if (product) {
-                const variants = product.variants || [];
-                const idx = variants.findIndex((v: any) => v.id === variant.id);
-                if (idx >= 0) {
-                  variants[idx] = variant;
-                } else {
-                  variants.push(variant);
-                }
-                product.variants = variants;
-                product.stock = variants.reduce(
-                  (acc: number, v: any) =>
-                    acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
-                  0,
-                );
-                await vault.put("products", product);
                 await vault.setLastSync("products");
 
                 // Trigger synthetic 'products' update event to notify UI
@@ -677,21 +697,24 @@ export const RealtimeSyncEngine = {
 
             // Special handling for deleting a variant
             if (config.store === "product_variants" && productId) {
-              const product = await vault.getById<Product>(
+              const product = await vault.mutate<Product>(
                 "products",
                 productId,
+                (product) => {
+                  if (!product) return undefined;
+                  const variants = (product.variants || []).filter(
+                    (v) => v.id !== deleteId,
+                  );
+                  product.variants = variants;
+                  product.stock = variants.reduce(
+                    (acc, v) =>
+                      acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
+                    0,
+                  );
+                  return product;
+                },
               );
               if (product) {
-                const variants = (product.variants || []).filter(
-                  (v: any) => v.id !== deleteId,
-                );
-                product.variants = variants;
-                product.stock = variants.reduce(
-                  (acc: number, v: any) =>
-                    acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
-                  0,
-                );
-                await vault.put("products", product);
                 await vault.setLastSync("products");
 
                 // Trigger synthetic 'products' update event to notify UI
@@ -752,12 +775,12 @@ export const RealtimeSyncEngine = {
   async catchUp(vault: DataVault, isAdmin: boolean): Promise<void> {
     if (_isCatchingUp) return;
     _isCatchingUp = true;
-    // dataVault-129: mesma regra da borda de escrita — a rodada inteira
-    // (leituras e reconciliação) passa a rodar sobre o cofre VIVO.
-    vault = await cofreVivo(vault);
-    console.log("[RealtimeSyncEngine] 🔄 Running catchUp/reconciliation...");
+    _produtosTocados = new Set();
 
     try {
+      // A reabertura também fica sob finally para não prender a rodada se falhar.
+      vault = await cofreVivo(vault);
+      console.log("[RealtimeSyncEngine] 🔄 Running catchUp/reconciliation...");
       const tableSourceConfig = isAdmin ? "store_config" : "v_store_config";
       const productSource = isAdmin ? "produtos" : "vw_produtos_public";
 
@@ -952,9 +975,11 @@ export const RealtimeSyncEngine = {
 
         // Find deleted/inactive items: in local but not on server
         const deletedIds = localProducts
-          .filter((p) => !serverIds.has(p.id))
+          .filter((p) => !serverIds.has(p.id) && !_produtosTocados?.has(p.id))
           .map((p) => p.id);
         for (const id of deletedIds) {
+          // Outro evento pode chegar enquanto as exclusões anteriores aguardam IDB.
+          if (_produtosTocados.has(id)) continue;
           await vault.deleteById("products", id);
           // Delete variants for deleted product
           const productVariants = await vault.getByIndex<any>(
@@ -1152,6 +1177,7 @@ export const RealtimeSyncEngine = {
           new Error("Unknown error during catch-up (null/undefined rejection)"),
       );
     } finally {
+      _produtosTocados = null;
       _isCatchingUp = false;
     }
   },
