@@ -18,8 +18,14 @@ estourar a cota do plano.
 No `vercel.json` (`ignoreCommand`) e, com o MESMO texto, no painel › **Custom**:
 
 ```
-if [ "$VERCEL_GIT_COMMIT_REF" = "claude/oi-uunug6" ] || [ "$VERCEL_GIT_COMMIT_REF" = "claude/app-major-upgrade-wmc8x2" ] || [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then exit 0; fi; git diff --quiet HEAD^ HEAD -- . ':(exclude)docs' ':(exclude)*.md' >/dev/null 2>&1 && exit 0; exit 1
+case "$VERCEL_GIT_COMMIT_REF" in claude/oi-uunug6|claude/app-major-upgrade-wmc8x2|main) exit 0;; esac; git diff --quiet HEAD^ HEAD -- . ':(exclude)docs' ':(exclude)*.md' >/dev/null 2>&1 && exit 0; exit 1
 ```
+
+**Limite da Vercel: o comando tem de ter NO MÁXIMO 256 caracteres.** Em 16/10/2026 a versão com três `if`/`||` chegou a
+280 e a publicação do dono parou em `projectSettings.commandForIgnoringBuildStep should NOT be longer than 256
+characters` (a CLI envia o `ignoreCommand` do `vercel.json` como configuração do projeto). A forma com `case` faz
+exatamente o mesmo (medido: mesmas saídas para `claude/oi-uunug6`, a branch principal, `main`, outra branch, `develop`
+e ref vazio) e tem 203. O teste `vercel-so-constroi-o-que-vai-ao-ar` reprova se passar de 256.
 
 A Vercel interpreta a saída assim: **0 = pular o build**, **1 = construir**. **Qualquer outro código de saída
 NÃO é "construir": o deploy termina em `Error`** (ver "Incidente de 10/10/2026", abaixo).
