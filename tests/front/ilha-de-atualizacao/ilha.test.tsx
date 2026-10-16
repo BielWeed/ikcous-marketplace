@@ -57,7 +57,7 @@ describe("ilha da atualização", () => {
   it("o painel informa que vai instalar ao terminar, sem oferecer botão", () => {
     definirEstadoDaAtualizacao({ fase: "aguardando" });
     act(() => raiz.render(<IlhaDeAtualizacao variante="painel" />));
-    expect(host.textContent).toBe("Atualização pronta — instala ao terminar");
+    expect(host.textContent).toBe("Atualização pronta");
     expect(host.querySelector("button")).toBeNull();
   });
 

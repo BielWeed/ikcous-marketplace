@@ -14,6 +14,7 @@ export interface Novidade extends NotaDaVersao {
 
 // O prefixo preserva as notas quando o app limpa os dados de uma versão antiga.
 const CHAVE = "notificacoes-novidades-do-app-v1";
+const CHAVE_ULTIMA_VISTA = "notificacoes-ultima-versao-vista-do-app-v1";
 const LIMITE = 20;
 const VAZIAS: Novidade[] = [];
 const ouvintes = new Set<() => void>();
@@ -153,6 +154,20 @@ export function registrarNovidadesDaAtualizacao({
   // Não ressuscita versões já descartadas pelo teto ao repetir uma faixa.
   if (gravadas > 0) salvar(entradas);
   return gravadas;
+}
+
+/** A versão vista sobrevive ao fechamento do app e à purga da atualização. */
+export function registrarNovidadesAoIniciar(versaoAtual: string): void {
+  const para = nucleoSemver(versaoAtual);
+  if (!para || typeof window === "undefined") return;
+  try {
+    const de = nucleoSemver(window.localStorage.getItem(CHAVE_ULTIMA_VISTA));
+    // Primeiro acesso (ou origem ilegível) só estabelece a referência.
+    if (de && de !== para) registrarNovidadesDaAtualizacao({ de, para });
+    window.localStorage.setItem(CHAVE_ULTIMA_VISTA, para);
+  } catch {
+    // Armazenamento indisponível nunca impede o boot.
+  }
 }
 
 export function listarNovidades(): Novidade[] {

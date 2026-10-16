@@ -55,6 +55,11 @@ describe("boot após a atualização", () => {
   });
 
   it("troca provada anuncia na ilha e registra as notas sem sufixo de build", () => {
+    // Versão vista no aparelho antes desta: sem ela o boot só estabelece a referência.
+    localStorage.setItem(
+      "notificacoes-ultima-versao-vista-do-app-v1",
+      "1.5.30",
+    );
     gravaOrigemDeAtualizacao("1.5.30-sha.origem");
     gravaMotivoDeRecarga("atualizacao-aplicada");
     expect(aoIniciarAposAtualizacao("1.5.31-sha.destino")).toBeNull();
@@ -65,6 +70,11 @@ describe("boot após a atualização", () => {
   });
 
   it("a evidência basta mesmo se o motivo de recarga não foi gravado", () => {
+    // Versão vista no aparelho antes desta: sem ela o boot só estabelece a referência.
+    localStorage.setItem(
+      "notificacoes-ultima-versao-vista-do-app-v1",
+      "1.5.30",
+    );
     gravaOrigemDeAtualizacao("1.5.30-sha.origem");
     expect(aoIniciarAposAtualizacao("1.5.31-sha.destino")).toBeNull();
     expect(obterEstadoDaAtualizacao().fase).toBe("concluida");
@@ -94,6 +104,11 @@ describe("boot após a atualização", () => {
   });
 
   it("a segunda leitura do boot não anuncia outra vez nem duplica notas", () => {
+    // Versão vista no aparelho antes desta: sem ela o boot só estabelece a referência.
+    localStorage.setItem(
+      "notificacoes-ultima-versao-vista-do-app-v1",
+      "1.5.30",
+    );
     gravaOrigemDeAtualizacao("1.5.30-sha.origem");
     aoIniciarAposAtualizacao("1.5.31-sha.destino");
     definirEstadoDaAtualizacao({ fase: "nenhuma" });

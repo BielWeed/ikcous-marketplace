@@ -1202,10 +1202,13 @@ export function AdminLayout({
               </div>
             )}
           </div>
-          {/* Linha própria: título, Voltar e sino preservam seus espaços
-              mesmo em 375px. Vazia, a região não ocupa altura. */}
-          <div className="flex min-w-0 justify-center">
-            <IlhaDeAtualizacao variante="painel" className="my-1.5" />
+          {/* Sobreposta abaixo dos controles: não desloca a venda em curso.
+              O z local fica abaixo das folhas; só a pílula recebe ponteiro. */}
+          <div className="pointer-events-none absolute inset-x-0 top-full z-[100] flex min-w-0 justify-center">
+            <IlhaDeAtualizacao
+              variante="painel"
+              className="pointer-events-auto mt-1"
+            />
           </div>
         </header>
 

@@ -9,9 +9,8 @@ import {
   descreveMotivoDeRecarga,
   limpaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
-import { registrarNovidadesDaAtualizacao } from "@/lib/novidades/armazenamento-local";
+import { registrarNovidadesAoIniciar } from "@/lib/novidades/armazenamento-local";
 import { cn } from "@/lib/utils";
-import { nucleoSemver } from "@/lib/versao-do-servidor";
 import { motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Clock3, LoaderCircle } from "lucide-react";
 import { useEffect } from "react";
@@ -53,7 +52,7 @@ export function IlhaDeAtualizacao({
   if (fase === "instalando") texto = "Atualizando o app…";
   if (fase === "concluida") texto = "Pronto! App atualizado";
   if (fase === "aguardando" && variante === "painel") {
-    texto = "Atualização pronta — instala ao terminar";
+    texto = "Atualização pronta";
   }
   const Icone =
     fase === "instalando"
@@ -84,20 +83,28 @@ export function IlhaDeAtualizacao({
           }
           className={cn(
             "inline-flex min-h-9 min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-full border border-zinc-700 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)]",
+            variante === "painel" && "min-h-6 gap-1 px-2 py-0.5 shadow-sm",
             className,
           )}
         >
           <Icone
             aria-hidden="true"
             className={cn(
-              "size-5 shrink-0",
+              "shrink-0",
+              variante === "painel" ? "size-3.5" : "size-5",
               fase === "concluida" ? "text-emerald-300" : "text-zinc-200",
               fase === "instalando" &&
                 !reduzMovimento &&
                 "animate-spin motion-reduce:animate-none",
             )}
           />
-          <span className="min-w-0 whitespace-normal text-[11px] font-bold leading-tight tracking-tight sm:text-xs">
+          <span
+            className={cn(
+              "min-w-0 whitespace-normal text-[11px] font-bold leading-tight tracking-tight sm:text-xs",
+              variante === "painel" &&
+                "whitespace-nowrap text-[10px] sm:text-[10px]",
+            )}
+          >
             {texto}
           </span>
         </motion.span>
@@ -111,20 +118,17 @@ export function IlhaDeAtualizacao({
 export function aoIniciarAposAtualizacao(
   versaoAtual: string,
 ): RecargaDescrita | null {
+  registrarNovidadesAoIniciar(versaoAtual);
   let bruto: string | null = null;
   try {
     bruto = localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA);
   } catch {
     // A evidência da aba ainda pode existir com localStorage indisponível.
   }
-  const { trocouDeBuild, de } = consumirOrigemDaAtualizacao(versaoAtual);
+  const { trocouDeBuild } = consumirOrigemDaAtualizacao(versaoAtual);
   limpaMotivoDeRecarga();
   if (trocouDeBuild) {
     anunciarAtualizacaoConcluida({ duracaoMs: PRAZO_DE_RESERVA_DO_BOOT_MS });
-    const para = nucleoSemver(versaoAtual);
-    if (para) {
-      registrarNovidadesDaAtualizacao({ de: nucleoSemver(de), para });
-    }
     return null;
   }
 
