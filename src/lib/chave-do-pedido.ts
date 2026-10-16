@@ -122,12 +122,14 @@ export function criarGerenciadorDeChave(
   armazenamento: ArmazenamentoSimples,
   gerarChave: () => string = gerarUuidDaCompra,
 ): GerenciadorDeChaveDaCompra {
-  let impressaoCorrente: string | null = null;
+  let registroCorrente: RegistroDaChave | null = null;
+  let podeLerArmazenamento = true;
 
   function lerRegistro(): RegistroDaChave | null {
-    const cru = armazenamento.getItem(CHAVE_DE_ARMAZENAMENTO);
-    if (!cru) return null;
+    if (!podeLerArmazenamento) return null;
     try {
+      const cru = armazenamento.getItem(CHAVE_DE_ARMAZENAMENTO);
+      if (!cru) return null;
       const registro = JSON.parse(cru) as RegistroDaChave;
       if (
         typeof registro?.impressao !== "string" ||
@@ -146,29 +148,38 @@ export function criarGerenciadorDeChave(
       // A impressão corrente da instância manda: dentro da mesma página, o
       // que o gerente acabou de decidir não é reaberto com o storage (duas
       // impressões alternando no mesmo storage trocaria de chave no ar).
-      if (impressaoCorrente === impressao) {
-        const registro = lerRegistro();
-        if (registro?.impressao === impressao) return registro.chave;
+      if (registroCorrente?.impressao === impressao) {
+        return registroCorrente.chave;
       }
 
       const registro = lerRegistro();
       if (registro?.impressao === impressao) {
-        impressaoCorrente = impressao;
+        registroCorrente = registro;
         return registro.chave;
       }
 
       const chave = gerarChave();
-      armazenamento.setItem(
-        CHAVE_DE_ARMAZENAMENTO,
-        JSON.stringify({ impressao, chave } satisfies RegistroDaChave),
-      );
-      impressaoCorrente = impressao;
+      registroCorrente = { impressao, chave };
+      try {
+        armazenamento.setItem(
+          CHAVE_DE_ARMAZENAMENTO,
+          JSON.stringify(registroCorrente),
+        );
+        podeLerArmazenamento = true;
+      } catch {
+        // Sem storage, a instância ainda repete a chave nas retentativas.
+      }
       return chave;
     },
 
     esquecer(): void {
-      armazenamento.removeItem(CHAVE_DE_ARMAZENAMENTO);
-      impressaoCorrente = null;
+      registroCorrente = null;
+      try {
+        armazenamento.removeItem(CHAVE_DE_ARMAZENAMENTO);
+      } catch {
+        // O pedido já nasceu. Não lançar nem reler a chave que ficou para trás.
+        podeLerArmazenamento = false;
+      }
     },
   };
 }

@@ -13,6 +13,14 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 export const formatCurrency = (value: number) =>
   currencyFormatter.format(value);
 
+/** Como numeric(10,2): metade para longe do zero, tolerando ruído binário. */
+export function arredondarParaCentavos(valor: number): number {
+  const centavos = Math.abs(valor) * 100;
+  const tolerancia = Number.EPSILON * Math.max(1, centavos) * 2;
+  const arredondado = Math.round(centavos + tolerancia);
+  return arredondado === 0 ? 0 : (Math.sign(valor) * arredondado) / 100;
+}
+
 export const getAvatarGradient = (name: string, defaultName = "Usuario") => {
   const colors = [
     "from-amber-500 to-orange-600",

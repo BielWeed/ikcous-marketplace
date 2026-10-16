@@ -11,7 +11,7 @@ import {
   tiposDeCartaoAceitos,
 } from "@/lib/config-do-cartao";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
-import { formatCurrency } from "@/lib/utils";
+import { arredondarParaCentavos, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type {
@@ -718,7 +718,7 @@ export function montarBrickDeCartao({
 
       const criado = await mp.bricks().create("cardPayment", containerId, {
         initialization: {
-          amount: valor,
+          amount: arredondarParaCentavos(valor),
           // Com o e-mail da conta preenchido, o Brick esconde o campo — o
           // cliente logado não digita de novo o que a loja já sabe.
           ...(email ? { payer: { email } } : {}),
@@ -1363,7 +1363,7 @@ export function PagamentoComCartao({
         </h2>
         {valorConhecido && (
           <p className="text-3xl font-black tabular-nums text-zinc-900">
-            {formatCurrency(valor)}
+            {formatCurrency(arredondarParaCentavos(valor))}
           </p>
         )}
         {orderId && (
