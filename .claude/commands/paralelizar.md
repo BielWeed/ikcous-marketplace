@@ -191,6 +191,12 @@ uma por vaga que abrir. Por canal:
   `sandbox: workspace-write` + `approvals: ask` no topo do prompt, e o caminho ABSOLUTO de uma worktree **aninhada
   na desta sessão** (`git worktree add -b <branch> .claude/worktrees/<nome> HEAD`, com `node_modules` ligado por
   junction se a frente precisa de teste, que o Codex não roda: você roda). Hook barra escrita em worktree irmã.
+  **Você, o orquestrador, faz o que o Codex não consegue (ele não grava no `.git`):** antes de despachar, dentro
+  dessa worktree, `node scripts/paralelo/frente.mjs entrar docs/superpowers/lanes/<arquivo>.json <frente>`
+  (o manifesto já está no HEAD de onde ela nasceu); quando o Codex voltar, na mesma worktree rode
+  `frente.mjs conferir` (tem de passar) e `frente.mjs commitar -m "<tipo>(<escopo válido>): …"`. Sem o commit a
+  branch fica no SHA de base e `integrar` enxerga zero arquivos mudados, pulando o trabalho dele em silêncio. Na
+  Fase 5 a frente do Codex entra no mapa `frente=<branch>` como as outras.
 - **Sessão do desktop:** `mcp__ccd_session__start_session` com `use_worktree: true`, `context: "fresh"`,
   `initiation: "user_asked"` (o dono invocou `/paralelizar`, que é o pedido de trabalho paralelo em palavras dele),
   `source_branch: <sua branch de integração>` (o manifesto tem que estar commitado nela, senão a sessão nasce sem
