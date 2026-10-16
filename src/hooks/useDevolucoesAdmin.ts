@@ -339,6 +339,7 @@ export function useDevolucaoAdmin(
   const emVooRef = useRef(false);
   const idRef = useRef(id);
   const aoMudarRef = useRef(aoMudar);
+  const rodadaRef = useRef(0);
 
   useEffect(() => {
     idRef.current = id;
@@ -346,13 +347,15 @@ export function useDevolucaoAdmin(
   }, [id, aoMudar]);
 
   const carregar = useCallback(async () => {
-    if (!id) return;
+    if (!id || idRef.current !== id) return;
+    const rodada = ++rodadaRef.current;
+    const valeAinda = () => idRef.current === id && rodada === rodadaRef.current;
     setCarregando(true);
     try {
       const { data, error } = await supabase.rpc("devolucao_detalhe", {
         p_id: id,
       });
-      if (idRef.current !== id) return;
+      if (!valeAinda()) return;
       const lida = error ? null : lerDevolucaoDetalhe(data);
       if (!lida) {
         setErro(true);
@@ -361,11 +364,11 @@ export function useDevolucaoAdmin(
       setDetalhe(lida);
       setErro(false);
       const assinadas = await assinarFotos(lida.fotos);
-      if (idRef.current === id) setFotos(assinadas);
+      if (valeAinda()) setFotos(assinadas);
     } catch {
-      if (idRef.current === id) setErro(true);
+      if (valeAinda()) setErro(true);
     } finally {
-      if (idRef.current === id) setCarregando(false);
+      if (valeAinda()) setCarregando(false);
     }
   }, [id]);
 
@@ -373,7 +376,11 @@ export function useDevolucaoAdmin(
     setDetalhe(null);
     setFotos(new Map());
     setErro(false);
+    setCarregando(false);
     if (id) void carregar();
+    return () => {
+      rodadaRef.current += 1;
+    };
   }, [id, carregar]);
 
   /** Envelope comum: trava, RPC, aviso, releitura. */

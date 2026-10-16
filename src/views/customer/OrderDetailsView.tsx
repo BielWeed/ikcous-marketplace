@@ -1387,22 +1387,25 @@ export function OrderDetailsView({
 
         {/* Devolução/troca em andamento (ou a última) deste pedido: status,
             protocolo, o que a loja escreveu e a próxima ação do cliente. */}
-        {podeUsarDevolucao && devolucaoDoProduto.atual && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-          >
-            <DevolucaoDoPedidoCard
-              atual={devolucaoDoProduto.atual}
-              anteriores={devolucaoDoProduto.devolucoes.slice(1)}
-              enderecoDaLoja={config.storeAddress ?? null}
-              horarioDaLoja={config.businessHours ?? null}
-              onCancelar={devolucaoDoProduto.cancelar}
-              onInformarEnvio={devolucaoDoProduto.informarEnvio}
-            />
-          </motion.div>
-        )}
+        {podeUsarDevolucao &&
+          !devolucaoDoProduto.carregando &&
+          !devolucaoDoProduto.erro &&
+          devolucaoDoProduto.atual?.order_id === order.id && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08 }}
+            >
+              <DevolucaoDoPedidoCard
+                atual={devolucaoDoProduto.atual}
+                anteriores={devolucaoDoProduto.devolucoes.slice(1)}
+                enderecoDaLoja={config.storeAddress ?? null}
+                horarioDaLoja={config.businessHours ?? null}
+                onCancelar={devolucaoDoProduto.cancelar}
+                onInformarEnvio={devolucaoDoProduto.informarEnvio}
+              />
+            </motion.div>
+          )}
 
         {/* Cartão "Itens do pedido" */}
         <motion.div
