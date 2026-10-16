@@ -923,6 +923,10 @@ export const AdminPushView = memo(function AdminPushView({
       // cima de zero entrega. Ver PUSH-010 (#80).
       const entregues = Number(envio?.enviados ?? 0);
       const falharam = Number(envio?.falharam ?? 0);
+      const naoTentados =
+        Number.isInteger(envio?.naoTentados) && envio.naoTentados >= 0
+          ? envio.naoTentados
+          : 0;
       // Sem contagem válida, o resultado continua desconhecido.
       const envioConfirmado =
         !pushError && Number.isInteger(envio?.enviados) && envio.enviados >= 0;
@@ -952,13 +956,23 @@ export const AdminPushView = memo(function AdminPushView({
         });
       } else if (entregues === 0) {
         toast.error(`Nenhum dos ${finalRecipientCount} dispositivos recebeu`, {
-          description:
-            detalheDaFalha ?? "A função não informou o motivo da falha.",
+          description: `${detalheDaFalha ?? "A função não informou o motivo da falha."} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
         });
-      } else if (falharam > 0) {
-        toast.warning(`Entregue em ${entregues} de ${entregues + falharam}`, {
-          description: detalheDaFalha,
-        });
+      } else if (falharam > 0 || naoTentados > 0) {
+        toast.warning(
+          `Entregue em ${entregues} de ${entregues + falharam + naoTentados}`,
+          {
+            description:
+              naoTentados > 0
+                ? [
+                    detalheDaFalha,
+                    `${naoTentados} ${naoTentados === 1 ? "pessoa não recebeu" : "pessoas não receberam"} porque o envio demorou demais. Se reenviar esta campanha, quem já recebeu pode receber a mensagem repetida.`,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
+                : detalheDaFalha,
+          },
+        );
       } else {
         toast.success(`Notificação entregue em ${entregues} dispositivo(s)`);
       }
