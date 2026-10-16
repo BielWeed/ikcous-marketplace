@@ -426,6 +426,19 @@ async function adotarCartaoCapturadoDoSentinela(args: {
 }
 
 /**
+ * Orçamento de tempo do laço de CONSULTA ao MP, por ciclo (EST-EDGE-DIN-2,
+ * 16/10/2026). A RPC entrega até 100 cobranças e o laço consulta uma por vez,
+ * cada uma com até 15 s de teto: todas expirando seria 1.500 s, muito acima
+ * do limite de execução da Edge Function (150 s no plano gratuito, 400 s no
+ * pago). O processo morria no meio, SEM carimbar o rodízio nem chegar aos
+ * reembolsos, e o ciclo seguinte repetia as mesmas cobranças. Passados ~100 s
+ * do início, o laço para de abrir consultas NOVAS — a consulta em curso
+ * termina — e o handler segue para o carimbo, os avisos e os reembolsos, com
+ * folga para o que vem depois.
+ */
+export const ORCAMENTO_DO_CICLO_MS = 100_000;
+
+/**
  * Mesma costura `handler(req, deps = {})` da Task 4
  * (`webhook-mercadopago/index.ts`): em produção o `serve()` lá embaixo chama
  * `handler(req)` com um único argumento; os testes injetam `supabase` e
@@ -447,6 +460,11 @@ async function handler(
     // Teto de espera do passo do aviso de cancelamento (opção da chamada, como
     // `tetoDoPushMs`): o teste o encurta; em produção vale `TETO_DO_PASSO_MS`.
     tetoDosCancelamentosMs?: number;
+    // Relógio e orçamento do laço de consulta (EST-EDGE-DIN-2): o teste os
+    // injeta para não esperar 100 s; em produção valem `Date.now` e
+    // `ORCAMENTO_DO_CICLO_MS`.
+    agora?: () => number;
+    orcamentoDoCicloMs?: number;
   } = {},
 ): Promise<Response> {
   // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
@@ -471,6 +489,12 @@ async function handler(
     console.warn("reconciliar-pagamentos: segredo inválido");
     return json({ error: "Não autorizado." }, 401);
   }
+
+  // EST-EDGE-DIN-2: o relógio do ciclo corre desde aqui — resolver credencial
+  // e buscar a fila também gastam o limite de execução da função.
+  const agora = deps.agora ?? Date.now;
+  const orcamentoDoCicloMs = deps.orcamentoDoCicloMs ?? ORCAMENTO_DO_CICLO_MS;
+  const inicioDoCiclo = agora();
 
   const supabase =
     deps.supabase ??
@@ -529,7 +553,25 @@ async function handler(
   // exatamente para pegar o que já falhou uma vez (o webhook não confirmou),
   // então um segundo candidato não pode perder a vez porque o primeiro deu
   // erro de rede.
-  for (const candidatoDaFila of candidatos ?? []) {
+  // EST-EDGE-DIN-2: quantas cobranças da fila ficaram sem consulta por falta
+  // de tempo. Elas NÃO entram em `verificados` nem em `visitados`: sem a
+  // visita carimbada, a fila (`visitado_em ASC NULLS FIRST`) as devolve na
+  // frente no ciclo seguinte — é o rodízio que garante que ninguém fica de
+  // fora para sempre. A invariante confirmados + ignorados + falhas ===
+  // verificados continua valendo (ver o fim da função).
+  let adiadosPorTempo = 0;
+  const filaDoCiclo = candidatos ?? [];
+  for (const [posicaoNaFila, candidatoDaFila] of filaDoCiclo.entries()) {
+    // Ao menos UMA cobrança por ciclo, mesmo com o orçamento já gasto antes
+    // do laço (RPC ou cofre lentos): sem isso um ciclo que sempre estourasse
+    // antes de começar nunca carimbaria nada e repetiria a mesma fila.
+    if (posicaoNaFila > 0 && agora() - inicioDoCiclo >= orcamentoDoCicloMs) {
+      adiadosPorTempo = filaDoCiclo.length - posicaoNaFila;
+      console.warn(
+        `reconciliar-pagamentos: orçamento de tempo do ciclo esgotado (${orcamentoDoCicloMs} ms) — ${adiadosPorTempo} de ${filaDoCiclo.length} cobranças ficam para o próximo ciclo`,
+      );
+      break;
+    }
     // `let`, não `const`: um SENTINELA resolvido para uma cobrança de cartão
     // CAPTURADA troca `gateway_payment_id` pelo id real antes do resto do
     // laço (ver `adotarCartaoCapturadoDoSentinela`, abaixo).
@@ -1355,7 +1397,9 @@ async function handler(
   // a recusa de cartão cuja vaga foi liberada (ignorados — `cobrancasLiberadas`
   // é só o subconjunto que a RPC de fato soltou, fora da soma).
   // Sem essa invariante o corpo não é auditável sem abrir o log: um
-  // candidato "sumiria" do total.
+  // candidato "sumiria" do total. `adiadosPorTempo` (EST-EDGE-DIN-2) é o que
+  // o laço NEM ABRIU por falta de orçamento: fora de `verificados`, e
+  // verificados + adiadosPorTempo === o tamanho da fila entregue pela RPC.
   return json(
     {
       ok: true,
@@ -1364,6 +1408,7 @@ async function handler(
       ignorados,
       falhas,
       cobrancasLiberadas,
+      adiadosPorTempo,
       estornos: {
         vistos: refundsVistos,
         concluidos: refundsConcluidos,
