@@ -20,10 +20,13 @@ export type CategoriaDaRecusa =
  * ela viaja em `motivoRecusa`. A categoria sai da frase, por igualdade EXATA
  * — a única informação que existe do lado de cá.
  *
- * Falha para o lado seguro: frase que não está aqui (o servidor mudou o texto,
- * ou é um motivo sem categoria própria — banco emissor, cartão desabilitado,
- * parcelamento, segurança, 3DS) cai em "geral", que diz só o que é verdade
- * para todas: o pagamento não foi concluído e nada foi cobrado. O teste
+ * Frase que não está aqui (o servidor mudou o texto, ou é um motivo sem
+ * categoria própria — banco emissor, cartão desabilitado, parcelamento,
+ * segurança, 3DS) cai em "geral". ATENÇÃO: "geral" afirma que nada foi
+ * cobrado; isso só é verdade porque hoje o servidor SÓ devolve `recusado`
+ * depois de soltar a vaga (recusa definitiva). Ao adotar `categoriaDaRecusa`
+ * no front, essa frase deve depender de prova de recusa definitiva, não de a
+ * frase ser desconhecida. O teste
  * `cartao-redesenho-mensagens.test.ts` lê o arquivo do servidor e reprova se
  * uma destas frases sumir de lá.
  */

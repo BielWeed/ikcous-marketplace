@@ -86,6 +86,9 @@ export function PainelDoCartao({
     <div
       role="group"
       aria-labelledby={idTitulo}
+      // Painel com foco no título já é lido pelo foco; a região viva do pai
+      // leria de novo a inserção (anúncio duplicado no leitor de tela).
+      aria-live={focarNoTitulo ? "off" : undefined}
       className={cn("space-y-3 rounded-xl border p-4", caixa)}
     >
       <div className="flex items-start gap-3">
