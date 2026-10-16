@@ -72,6 +72,8 @@ const NOMES = [
   // So o upsert e um dos 42 da 99 (a CADEIA 99 -> 39 -> 44: o `hashVigente` da 44 e o `hashDesta` da 39); v23 e v24 entram
   // porque o rollback desfaz as tres de uma vez e a conferencia "devolveu o corpo anterior" vale para cada uma.
   "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
+  // A 246 sucede fin_lancamento_salvar da 99; rollback preserva a tabela privada.
+  "20261246000000_o_lancamento_repetido_nao_duplica.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

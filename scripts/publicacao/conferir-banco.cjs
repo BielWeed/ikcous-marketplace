@@ -2215,6 +2215,16 @@ const ROL_DA_47B = [
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
  * 72..83 e as antigas (1a/2a/6a/7a…) ficam de fora de propósito. */
+// Lote 49: 20261246000000, catalogo apenas; os dois lados tem o mesmo rol fechado.
+const ROL_DA_49A = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_lancamento_salvar: corpo conhecido (md5)",
+  "fin_lancamento_salvar: atributos e dependencias de sempre",
+  "fin_lancamento_salvar: EXECUTE de authenticated e service_role, PUBLIC e anon sem",
+  "fin_lancamento_tentativas: forma conhecida",
+  "fin_lancamento_tentativas: so servidor, RLS e nenhuma politica",
+];
+const ROL_DA_49B = [...ROL_DA_49A];
 const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
@@ -2288,6 +2298,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "46b-antes-desfazer-recebimento-base-vigente": ROL_DA_46B,
   "47a-conferir-a-loja-escolhe-como-entrega-aplicado": ROL_DA_47A,
   "47b-antes-a-loja-escolhe-como-entrega-base-vigente": ROL_DA_47B,
+  "49a-conferir-lancamento-idempotente-aplicado": ROL_DA_49A,
+  "49b-antes-lancamento-idempotente-base-vigente": ROL_DA_49B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2902,6 +2914,8 @@ module.exports = {
   ROL_DA_46B,
   ROL_DA_47A,
   ROL_DA_47B,
+  ROL_DA_49A,
+  ROL_DA_49B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

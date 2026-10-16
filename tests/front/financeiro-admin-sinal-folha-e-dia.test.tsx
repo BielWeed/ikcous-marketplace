@@ -478,7 +478,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     expect(botaoEm(atual, "Cancelar").disabled).toBe(false);
     expect(botaoEm(atual, "Salvar lançamento").disabled).toBe(false);
     expect(atual.textContent).toContain(
-      "A internet demorou demais. Confira o lançamento antes de tentar de novo — ele pode ter sido salvo.",
+      "A internet demorou demais. O lançamento pode ter sido salvo; se salvar de novo sem mudar os campos, não duplica.",
     );
     expect(campo("fin-lanc-descricao").value).toBe("Lançamento A");
     await act(async () => {

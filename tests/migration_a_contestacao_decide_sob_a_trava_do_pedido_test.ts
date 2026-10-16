@@ -499,6 +499,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261244000000: a loja escolhe como entrega na cidade e em quantos dias (v23, v24 e upsert_store_config; matriz das duas compras, trigger, rollbacks nos dois degraus e mutantes; e o portao 47a/47b).
     "tests/banco/a-loja-escolhe-como-entrega-viva.cjs",
     "tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs",
+    // 20261246000000: o lancamento repetido nao duplica (chave de tentativa em fin_lancamento_salvar; corrida real, atomicidade, mutantes e o portao 49a/49b).
+    "tests/banco/lancamento-idempotente-viva.cjs",
     // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",

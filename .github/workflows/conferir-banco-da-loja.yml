@@ -189,6 +189,8 @@ on:
           - 46b-antes-desfazer-recebimento-base-vigente
           - 47a-conferir-a-loja-escolhe-como-entrega-aplicado
           - 47b-antes-a-loja-escolhe-como-entrega-base-vigente
+          - 49a-conferir-lancamento-idempotente-aplicado
+          - 49b-antes-lancamento-idempotente-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

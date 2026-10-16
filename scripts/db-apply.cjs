@@ -2370,6 +2370,31 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // Uma tentativa cria o conjunto de parcelas uma única vez (20261246).
+  "20261246000000_o_lancamento_repetido_nao_duplica.sql": [
+    {
+      funcao: "fin_lancamento_salvar",
+      esperado: [
+        {
+          texto:
+            "INSERT INTO public.fin_lancamento_tentativas (chave, conteudo_hash, ids)",
+          vezes: 1,
+        },
+        { texto: "ON CONFLICT (chave) DO NOTHING;", vezes: 1 },
+        {
+          texto: "IF v_hash_gravado IS DISTINCT FROM v_conteudo_hash THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "UPDATE public.fin_lancamento_tentativas SET ids = v_ids WHERE chave = v_chave;",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

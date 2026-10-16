@@ -1208,6 +1208,10 @@ async function main() {
         "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
         "public.upsert_store_config(jsonb)",
       ],
+      [
+        "20261246000000_o_lancamento_repetido_nao_duplica.sql",
+        "public.fin_lancamento_salvar(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

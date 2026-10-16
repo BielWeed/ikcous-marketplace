@@ -46,7 +46,7 @@
  *             função (o aceito é por função; esse caso só roda na árvore inteira).
  *             No estado da 99 rodam o estranho e o AUSENTE; nos mistos, o estranho, o
  *             AUSENTE e a sobrecarga.
- *             Controle: uma das outras 54 (save_store_identity) com corpo estranho
+ *             Controle: uma das outras 53 (save_store_identity) com corpo estranho
  *             reprova só ela (nada mais foi afrouxado).
  *  MUTANTES   o texto da consulta com o hash da sucessora trocado, os aceitos
  *             removidos (sem o OR e com o CTE vazio), o aceito de qualquer função
@@ -88,7 +88,7 @@ const {
 const {
   desfazerEntregaNaCidadeNaTransacao,
 } = require("./a-loja-escolhe-como-entrega-posterior.cjs");
-// Esta prova mede as sucessoras ATÉ a 20261241 (as dez de antes). A 20261242000000 (o custo do dia: sucessora de
+// Esta prova mede as dez sucessoras originais e a 20261246 (fin_lancamento_salvar). A 20261242000000 (o custo do dia: sucessora de
 // get_admin_analytics_v2 e a primeira de fin_dre) tem a PROVA PRÓPRIA do que a 8e faz com ela em
 // tests/banco/custo-do-dia-portao-viva.cjs (item 8); aqui `noEstado` devolve o clone ao estado anterior a ela.
 // A 20261244000000 (a loja escolhe como entrega na cidade: a SEGUNDA sucessora de upsert_store_config, a cadeia 99 -> 39 -> 44)
@@ -139,9 +139,10 @@ const CLIENTES = topo("get_admin_customers_paged");
 const CRMC = topo("crm_clientes");
 const VENDA = topo("registrar_venda_presencial");
 const UPSERT = topo("upsert_store_config");
+const LANCAMENTO = topo("fin_lancamento_salvar");
 assert.ok(
-  SUCESSORAS_DA_99.length === 10 &&
-    CADEIAS.size === 7 &&
+  SUCESSORAS_DA_99.length === 11 &&
+    CADEIAS.size === 8 &&
     CADEIAS.get("painel_inicio").length === 2 &&
     PAINEL_12.hashDesta === PAINEL.hashVigente &&
     CADEIAS.get("get_admin_analytics_v2").length === 2 &&
@@ -151,10 +152,20 @@ assert.ok(
     CADEIAS.get("get_admin_customers_paged").length === 1 &&
     CADEIAS.get("crm_clientes").length === 1 &&
     CADEIAS.get("registrar_venda_presencial").length === 1 &&
-    CADEIAS.get("upsert_store_config").length === 1,
-  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 + 20261234 (get_admin_analytics_v2), a 20261227 + 20261232 (crm_visao), a 20261230 (get_admin_customers_paged), a 20261231 (crm_clientes), a 20261235 (registrar_venda_presencial) e a 20261239 (upsert_store_config): reveja a 8e e esta prova",
+    CADEIAS.get("upsert_store_config").length === 1 &&
+    CADEIAS.get("fin_lancamento_salvar").length === 1,
+  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 + 20261234 (get_admin_analytics_v2), a 20261227 + 20261232 (crm_visao), a 20261230 (get_admin_customers_paged), a 20261231 (crm_clientes), a 20261235 (registrar_venda_presencial) , a 20261239 (upsert_store_config) e a 20261246 (fin_lancamento_salvar): reveja a 8e e esta prova",
 );
-const FUNCOES = [PAINEL, ANALYTICS, CRM, CLIENTES, CRMC, VENDA, UPSERT];
+const FUNCOES = [
+  PAINEL,
+  ANALYTICS,
+  CRM,
+  CLIENTES,
+  CRMC,
+  VENDA,
+  UPSERT,
+  LANCAMENTO,
+];
 /** O corpo da 99 da função (o `esperado` da 8e), o `hashVigente` do primeiro elo da cadeia. */
 const h99 = (s) => CADEIAS.get(fnDe(s))[0].hashVigente;
 /** Todo corpo que a 8e aceita para a função: o da 99 e o de cada elo da cadeia. */
@@ -170,7 +181,8 @@ const OUTRA = new Map([
   [CLIENTES, CRMC],
   [CRMC, VENDA],
   [VENDA, UPSERT],
-  [UPSERT, PAINEL],
+  [UPSERT, LANCAMENTO],
+  [LANCAMENTO, PAINEL],
 ]);
 
 const REF = "gnjsrucsmjkajijrakzr";
@@ -272,7 +284,7 @@ const ESTADO_99 = async (c) => {
   assert.deepEqual(
     desfeitas,
     SUCESSORAS_DA_99.map((s) => s.nome).reverse(),
-    "as dez sucessoras tinham de estar no ar e sair",
+    "as onze sucessoras tinham de estar no ar e sair",
   );
   await exigirHashes(c, "estado 99", hashesCom([]));
 };
@@ -337,9 +349,10 @@ const SO_30 = SO(CLIENTES, "só 30");
 const SO_31 = SO(CRMC, "só 31");
 const SO_35 = SO(VENDA, "só 35");
 const SO_39 = SO(UPSERT, "só 39");
+const SO_46 = SO(LANCAMENTO, "só 46");
 const ESTADOS = [
   ["árvore inteira (12, 28, 14, 34, 27, 32, 30, 31, 35 e 39 no ar)", ARVORE],
-  ["estado da 20261199 (as dez sucessoras desfeitas)", ESTADO_99],
+  ["estado da 20261199 (as onze sucessoras desfeitas)", ESTADO_99],
   ["painel parado na 20261212 (a 20261228 desfeita)", PAINEL_NA_12],
   ["analytics parado na 20261214 (a 20261234 desfeita)", ANALYTICS_NA_14],
   ["crm parado na 20261227 (a 20261232 desfeita)", CRM_NA_27],
@@ -349,6 +362,7 @@ const ESTADOS = [
   ["misto: só a 20261231 (as outras desfeitas)", SO_31],
   ["misto: só a 20261235 (as outras desfeitas)", SO_35],
   ["misto: só a 20261239 (as outras desfeitas)", SO_39],
+  ["misto: só a 20261246 (as outras desfeitas)", SO_46],
 ];
 
 /** CREATE OR REPLACE com o texto de pg_get_functiondef e o corpo transformado
@@ -637,9 +651,9 @@ async function provar() {
     );
   }
   for (const rows of respostas.slice(1))
-    assert.deepEqual(rows, respostas[0], "os onze estados respondem igual");
+    assert.deepEqual(rows, respostas[0], "os estados respondem igual");
   ok(
-    "os onze estados (árvore, 99, painel na 12, analytics na 14, crm na 27, só 14+34, só 27+32, só 30, só 31, só 35, só 39) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
+    "os doze estados (árvore, 99, painel na 12, analytics na 14, crm na 27, só 14+34, só 27+32, só 30, só 31, só 35, só 39, só 46) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
   );
 
   // ------------------------------------------------------------- NEGATIVOS
@@ -793,7 +807,7 @@ async function provar() {
   ok(
     "negativo — nos estados MISTOS (painel na 12, analytics na 14, crm na 27, só 14+34, só 27+32, só 30, só 31, só 35, só 39) a função ausente, estranha ou sobrecarregada reprova SÓ a linha dela",
   );
-  // Controle: as outras 54 seguem exatas (agora a upsert_store_config TEM sucessora; o controle e a save_store_identity).
+  // Controle: as outras 53 seguem exatas (agora a upsert_store_config TEM sucessora; o controle e a save_store_identity).
   {
     const { rows } = await noEstado(async (c) => {
       await ARVORE(c);
@@ -809,7 +823,7 @@ async function provar() {
     ]);
   }
   ok(
-    "controle — uma das outras 54 (save_store_identity) com corpo estranho reprova só ela: nada além das sete funções com sucessora foi afrouxado",
+    "controle — uma das outras 53 (save_store_identity) com corpo estranho reprova só ela: nada além das oito funções com sucessora foi afrouxado",
   );
 
   // ------------------------------------------------------------- MUTANTES
@@ -840,7 +854,7 @@ async function provar() {
     ARVORE,
   );
   await mutantePositivo(
-    "aceitos removidos (CTE sucessoras sem as dez)",
+    "aceitos removidos (CTE sucessoras sem as onze)",
     SUCESSORAS_DA_99.map((s) => [
       `('${fnDe(s)}', '${s.hashDesta}', '${s.nome.slice(0, 14)}')`,
       `('nenhuma_${s.nome.slice(0, 14)}', '${zero}', '${s.nome.slice(0, 14)}')`,
