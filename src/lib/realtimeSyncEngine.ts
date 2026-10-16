@@ -218,6 +218,11 @@ let _bcListener: ((event: MessageEvent) => void) | null = null;
 let _isCatchingUp = false;
 // Só vale para a consulta em andamento: a próxima rodada reconfere ausências.
 let _produtosTocados: Set<string> | null = null;
+// Produtos cujo detalhe da rodada foi descartado porque o realtime os tocou no
+// meio da busca. O evento ao vivo iguala o horário do cache ao do servidor, então
+// a comparação de horários da próxima rodada NÃO os buscaria de novo: este
+// conjunto força a busca até um detalhe ser de fato gravado.
+const _produtosParaReconciliar = new Set<string>();
 // realtimeSyncEngine-317: janela mínima entre rodadas de catchUp disparadas
 // pelos gatilhos de reconexão/visibilidade (ver `rodadaPorGatilho` em
 // `start`). Rodadas por outros caminhos (inscrição no canal, chamada direta)
@@ -1050,6 +1055,17 @@ export const RealtimeSyncEngine = {
           }
         }
 
+        // Produtos descartados na rodada anterior voltam à fila, mesmo que o
+        // horário do cache já alcance o do servidor.
+        const jaNaFila = new Set(outOfDateIds);
+        for (const id of _produtosParaReconciliar) {
+          if (!serverIds.has(id)) {
+            _produtosParaReconciliar.delete(id);
+          } else if (!jaNaFila.has(id)) {
+            outOfDateIds.push(id);
+          }
+        }
+
         if (outOfDateIds.length > 0) {
           // Espelha o filtro que `productsQuery` já aplica na consulta de
           // RESUMO, no começo deste mesmo método. Entre as duas idas à rede
@@ -1132,29 +1148,55 @@ export const RealtimeSyncEngine = {
               (c) => c.table === "product_variants",
             );
 
-            const mappedProducts = rawProducts.map((p: any) =>
+            // O realtime pode ter gravado um valor mais novo durante a busca.
+            // Esses produtos e suas variações não são gravados agora e voltam
+            // à fila da próxima rodada (`_produtosParaReconciliar`).
+            const livre = (id: string) => {
+              if (!_produtosTocados?.has(id)) return true;
+              _produtosParaReconciliar.add(id);
+              return false;
+            };
+            const produtosParaGravar = rawProducts.filter((p: any) =>
+              livre(p.id),
+            );
+            const mappedProducts = produtosParaGravar.map((p: any) =>
               mapProductFromDB(p),
             );
 
             await vault.putMany("products", mappedProducts);
             await vault.setLastSync("products");
+            for (const p of produtosParaGravar) {
+              if (_produtosTocados?.has(p.id)) {
+                _produtosParaReconciliar.add(p.id);
+              } else {
+                _produtosParaReconciliar.delete(p.id);
+              }
+            }
 
-            const allVariants = rawProducts.flatMap(
-              (p: any) => p.product_variants || [],
-            );
+            // Reavalia depois do await: um evento pode ter chegado enquanto o
+            // cofre gravava os produtos.
+            const allVariants = produtosParaGravar
+              .flatMap((p: any) => p.product_variants || [])
+              .filter((v: any) => livre(v.product_id));
             if (allVariants.length > 0 && variantRecord) {
-              const mappedVariants = allVariants.map((v) =>
+              const mappedVariants = allVariants.map((v: any) =>
                 variantRecord.mapRecord ? variantRecord.mapRecord(v) : v,
               );
               await vault.putMany("product_variants", mappedVariants);
               await vault.setLastSync("product_variants");
             }
 
-            // Broadcast bulk update to other tabs
+            // Broadcast bulk update to other tabs: só o que não foi tocado.
+            const produtosParaAvisar = produtosParaGravar.filter((p: any) =>
+              livre(p.id),
+            );
+            const variantesParaAvisar = allVariants.filter((v: any) =>
+              livre(v.product_id),
+            );
             bc?.postMessage({
               type: "db_change_bulk_products",
-              products: rawProducts,
-              variants: allVariants,
+              products: produtosParaAvisar,
+              variants: variantesParaAvisar,
             });
 
             // Trigger sync events
