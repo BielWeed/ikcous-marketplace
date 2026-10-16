@@ -39,8 +39,10 @@ Medido pela CLI da Vercel (só leitura): cada merge nessa branch gerou um deploy
 build), mesmo com `claude/**: false` em `git.deploymentEnabled` (96 deploys de Preview em 24 h, perto do limite
 diário do plano, que a release precisa). Esses previews não servem a nada: a produção sai só pela CLI do dono
 (`vercel --prod --skip-domain` e `vercel promote`) e os testes de navegador rodam no CI. A branch entrou na
-primeira parte do comando (e como chave exata em `deploymentEnabled`). Para voltar a ver preview dela, tire as
-duas linhas.
+primeira parte do comando e a chave exata dela em `deploymentEnabled` passou de `true` para `false` (era um
+`true` de 15/10 que vencia o `claude/**: false`: a Vercel faz deploy se QUALQUER regra que casa for `true`, e o
+`ignoreCommand` sozinho só cancela o build depois de o deploy ser criado). Para voltar a ver preview dela, desfaça
+as duas coisas; o teste `tests/front/vercel-so-constroi-o-que-vai-ao-ar.test.ts` guarda a regra.
 
 ### Por que a `main`
 
