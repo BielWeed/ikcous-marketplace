@@ -1123,7 +1123,7 @@ describe("Concluir não perde o nome digitado", () => {
       expect(campoDeNome()?.readOnly).toBe(false);
     });
 
-    it("pausa de mais de 200 ms: a 2ª gravação ainda corre quando a 1ª confirma, e a folha NÃO fecha", async () => {
+    it("pausa de mais de 200 ms: a 2ª gravação só sai depois que a 1ª confirma, e a folha NÃO fecha", async () => {
       const resolvers = gravacoesControlaveis();
       const nome = await abrirKitsEDigitar("Presentes");
       await concluirComoNoNavegador(nome);
@@ -1131,7 +1131,9 @@ describe("Concluir não perde o nome digitado", () => {
       // propósito, para provar a barreira de depois do await)
       await digitar(nome, "Presentes de Natal");
       await pausa(250);
-      expect(updateConfig).toHaveBeenCalledTimes(2);
+      // A trava das gravações (mesma coluna): enquanto a 1ª não confirma, o
+      // snapshot diferente NÃO sai em paralelo.
+      expect(updateConfig).toHaveBeenCalledTimes(1);
 
       await act(async () => {
         resolvers[0](true);
@@ -1139,13 +1141,12 @@ describe("Concluir não perde o nome digitado", () => {
       expect(painel()).not.toBeNull();
       expect(campoDeNome()?.value).toBe("Presentes de Natal");
 
-      // a 2ª confirma: o toque seguinte só fecha, sem gravar de novo
+      // o toque seguinte grava o texto novo, depois da 1ª confirmada
+      await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+      expect(updateConfig).toHaveBeenCalledTimes(2);
       await act(async () => {
         resolvers[1](true);
       });
-      expect(painel()).not.toBeNull();
-      await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
-      expect(updateConfig).toHaveBeenCalledTimes(2);
       expect(ultimaGravacao()).toEqual({
         homeSections: [
           secaoLancamentos,
@@ -1158,14 +1159,18 @@ describe("Concluir não perde o nome digitado", () => {
 
     it("se a 2ª gravação falha, a folha segue aberta com o texto novo e avisa; o toque seguinte tenta de novo", async () => {
       const resolvers = gravacoesControlaveis();
+      updateConfig.mockResolvedValueOnce(true);
       const nome = await abrirKitsEDigitar("Presentes");
       await concluirComoNoNavegador(nome);
       await digitar(nome, "Presentes de Natal");
       await pausa(250);
+      expect(updateConfig).toHaveBeenCalledTimes(1);
 
       await act(async () => {
         resolvers[0](true);
       });
+      // a 2ª (texto novo) sai depois da 1ª e falha
+      await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
       await act(async () => {
         resolvers[1](false);
       });
@@ -1173,7 +1178,7 @@ describe("Concluir não perde o nome digitado", () => {
       expect(campoDeNome()?.value).toBe("Presentes de Natal");
       expect(painel()?.querySelector('[role="alert"]')).not.toBeNull();
 
-      // (o 1º toque pode só consumir o resultado da falha; o seguinte regrava)
+      // o toque seguinte regrava o texto novo e fecha
       for (let toques = 0; toques < 2 && painel(); toques++) {
         await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
       }
