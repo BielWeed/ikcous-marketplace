@@ -103,6 +103,16 @@ export function chaveDoCacheDeFrete(cepSoDigitos: string): string {
   return `ikcous_shipping_cache_v2_${cepSoDigitos}`;
 }
 
+/** O cache de frete é só um atalho: disco cheio (QuotaExceededError) ou
+ * armazenamento bloqueado não pode derrubar a cotação já calculada. */
+function gravarNoCache(chave: string, valor: string): void {
+  try {
+    localStorage.setItem(chave, valor);
+  } catch (e) {
+    console.warn("[ShippingCalculator] Cache de frete não gravado:", e);
+  }
+}
+
 interface EnvelopeDeCacheDeFrete {
   /**
    * `contextoDaLojaParaFrete` (src/contexts/ContextoDoFreteDaLoja.ts) da loja
@@ -519,7 +529,7 @@ export function ShippingCalculator({
               aplicarEscolhaContra(opcoesEmCache);
               onCepValidated?.(cepFormatado);
               setLoading(false);
-              localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
+              gravarNoCache("ikcous_last_shipping_cep", cepFormatado);
               return;
             }
             // Revisão não confere (ou não deu para confirmar): o cache NÃO
@@ -596,8 +606,8 @@ export function ShippingCalculator({
         revisaoConfig:
           typeof data.revisaoConfig === "string" ? data.revisaoConfig : null,
       };
-      localStorage.setItem(cacheKey, JSON.stringify(envelope));
-      localStorage.setItem("ikcous_last_shipping_cep", cepFormatado);
+      gravarNoCache(cacheKey, JSON.stringify(envelope));
+      gravarNoCache("ikcous_last_shipping_cep", cepFormatado);
 
       // Auto-select: MENOR PREÇO, não o primeiro da lista (laudo 31/08,
       // menor E). Escolha da CLIENTE com o mesmo id na resposta nova = a

@@ -96,21 +96,159 @@ declare const self: any;
 const precacheManifest = self.__WB_MANIFEST || [];
 console.log("[SW] Precache Manifest received:", precacheManifest.length);
 
-sw.addEventListener("install", (event: any) => {
-  // Cache precacheManifest files
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      const urls = Array.from(
-        new Set(precacheManifest.map((entry: any) => entry.url)),
-      ) as string[];
-      console.log(
-        "[SW] Caching precache manifest URLs (deduplicated):",
-        urls.length,
+/** Prazo dos pedidos de rede feitos no `activate`: enquanto ele não termina, o
+ * navegador segura as requisições da página (a recarga incluída). */
+const PRAZO_DA_REDE_NO_SW_MS = 5000;
+
+/** `AbortSignal.timeout` só existe a partir do iOS 16 / Safari 16. */
+function sinalComPrazo(ms: number): AbortSignal {
+  if (typeof AbortSignal.timeout === "function") return AbortSignal.timeout(ms);
+  const controle = new AbortController();
+  setTimeout(() => controle.abort(), ms);
+  return controle.signal;
+}
+
+const urlsDoPrecache = Array.from(
+  new Set(precacheManifest.map((entry: any) => entry.url)),
+) as string[];
+
+/** O caminho (sem host nem busca) com que o Cache Storage guarda um arquivo
+ * do precache — a comparação entre "o que devia estar" e "o que está". */
+function caminhoDoPrecache(url: string): string {
+  return new URL(url, sw.location.origin).pathname;
+}
+
+/**
+ * O app novo só vale se chegou INTEIRO (revisão da 1.5.33, 16/10/2026).
+ *
+ * Antes, a falha do `addAll` era engolida: o `install` terminava "com
+ * sucesso" com o cache novo pela metade, e o `activate` apagava o cache da
+ * versão anterior — o app que funcionava offline passava a faltar arquivo.
+ * Agora o `install` FALHA se faltar qualquer arquivo: o service worker novo
+ * é descartado, o antigo e o cache dele seguem valendo, e o navegador tenta
+ * de novo na próxima verificação de atualização (a cada 3 minutos com o app
+ * aberto).
+ *
+ * `addAll` é tudo-ou-nada, então uma falha PASSAGEIRA em um só arquivo
+ * derrubaria o lote: antes de desistir, cada arquivo ganha uma segunda
+ * chance sozinho. Medido em 16/10/2026 contra a produção da 1.5.33: os 140
+ * arquivos do precache respondem 200 sem redirecionamento — um erro
+ * persistente aqui é build quebrado de verdade, e ficar na versão anterior
+ * é o certo.
+ */
+async function precachearOAppInteiro(urls: string[]): Promise<void> {
+  console.log(
+    "[SW] Caching precache manifest URLs (deduplicated):",
+    urls.length,
+  );
+  const jaExistia = (await caches.keys()).includes(CACHE_NAME);
+  const cache = await caches.open(CACHE_NAME);
+  let faltaram: string[] = [];
+  try {
+    await cache.addAll(urls);
+  } catch (err) {
+    console.warn(
+      "[SW] Precache em lote falhou; tentando arquivo a arquivo:",
+      err,
+    );
+    await Promise.all(
+      urls.map((url) =>
+        cache.add(url).catch(() => {
+          faltaram.push(url);
+        }),
+      ),
+    );
+  }
+  if (faltaram.length === 0)
+    faltaram = await arquivosQueVieramComoHtml(cache, urls);
+  if (faltaram.length === 0) return;
+  // Cache que ESTE install criou e ficou pela metade não pode ficar visível
+  // para o `caches.match` do service worker antigo.
+  if (!jaExistia) {
+    await caches.delete(CACHE_NAME).catch(() => false);
+  }
+  throw new Error(
+    `[SW] Precache incompleto: faltaram ${faltaram.length} de ${urls.length} arquivos (${faltaram.slice(0, 3).join(", ")}). O app anterior continua valendo.`,
+  );
+}
+
+/**
+ * Arquivo que não é página mas chegou como HTML: o catch-all do `vercel.json`
+ * responde 200 com o `index.html` a qualquer caminho que não existe, e o
+ * `cache.add` aceita esse 200. Sem esta conferência, um `/assets/x.js`
+ * ausente do deploy passaria como baixado e, offline, o navegador receberia
+ * HTML no lugar do JavaScript (o app não inicia).
+ */
+async function arquivosQueVieramComoHtml(
+  cache: Cache,
+  urls: string[],
+): Promise<string[]> {
+  const ruins: string[] = [];
+  await Promise.all(
+    urls
+      .filter((url) => !/\.html?$/i.test(caminhoDoPrecache(url)))
+      .map(async (url) => {
+        const guardado = await cache.match(url);
+        const tipo = guardado?.headers?.get("content-type") ?? "";
+        if (tipo.includes("text/html")) ruins.push(url);
+      }),
+  );
+  return ruins;
+}
+
+/** O HTML só usa arquivos de `/assets/` que o precache também baixou? */
+function htmlUsaSoArquivosDoPrecache(html: string, urls: string[]): boolean {
+  const noPrecache = new Set(urls.map(caminhoDoPrecache));
+  for (const m of html.matchAll(/(?:src|href)="(\/assets\/[^"?#]+)/g)) {
+    if (!noPrecache.has(m[1])) return false;
+  }
+  return true;
+}
+
+/**
+ * A página inicial COM a ficha da loja, no cache novo (revisão da 1.5.33).
+ *
+ * O precache só traz o `/index.html` CRU (sem ficha), que o fallback de
+ * navegação recusa. As páginas com ficha viviam no cache da versão anterior —
+ * e o `activate` o apaga. Sem isto, abrir o app SEM rede logo depois de
+ * atualizar caía em "Sem conexão" até a primeira visita online. Busca a
+ * página inicial no próprio `install` (o porteiro injeta a ficha em
+ * qualquer documento) e a guarda em `/`, que é a segunda opção do fallback.
+ *
+ * Só guarda se a resposta for uma página de verdade (200, sem redirecionamento,
+ * com a ficha) e se usar só os arquivos que o precache acabou de baixar —
+ * HTML de um deploy mais novo, com arquivos que este cache não tem, ficaria
+ * quebrado offline. Nunca rejeita: em qualquer dúvida não guarda nada, como
+ * sempre foi.
+ */
+async function guardarPaginaInicialComFicha(urls: string[]): Promise<void> {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    if (await cache.match("/")) return;
+    const resposta = await fetch("/", {
+      cache: "no-store",
+      signal: sinalComPrazo(PRAZO_DA_REDE_NO_SW_MS),
+    });
+    if (!resposta?.ok || resposta.redirected) return;
+    const texto = await resposta.clone().text();
+    if (!texto.includes(`id="${FICHA_DA_LOJA_ID}"`)) return;
+    if (!htmlUsaSoArquivosDoPrecache(texto, urls)) {
+      console.warn(
+        "[SW] Página inicial usa arquivos fora do precache; não guardada.",
       );
-      return cache
-        .addAll(urls)
-        .catch((err) => console.warn("[SW] Precache failed:", err));
-    }),
+      return;
+    }
+    await cache.put("/", resposta);
+  } catch (e) {
+    console.warn("[SW] Falha ao guardar a página inicial com ficha:", e);
+  }
+}
+
+sw.addEventListener("install", (event: any) => {
+  event.waitUntil(
+    precachearOAppInteiro(urlsDoPrecache).then(() =>
+      guardarPaginaInicialComFicha(urlsDoPrecache),
+    ),
   );
   console.log(
     "[SW] Installing new version. Waiting for user/client activation signal...",
@@ -133,28 +271,90 @@ sw.addEventListener("install", (event: any) => {
   );
 });
 
+/** Quais arquivos do precache NÃO estão no cache desta versão? Em dúvida
+ * (cache ilegível), todos. */
+async function arquivosFaltando(urls: string[]): Promise<string[]> {
+  if (urls.length === 0) return [];
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const guardados = new Set(
+      (await cache.keys()).map((req: Request) => new URL(req.url).pathname),
+    );
+    return urls.filter((url) => !guardados.has(caminhoDoPrecache(url)));
+  } catch {
+    return urls;
+  }
+}
+
+/** O cache desta versão foi despejado em parte (entre o `install` e o
+ * `activate`)? Baixa de novo só o que falta; arquivo que volta como HTML é
+ * descartado de novo. Nunca rejeita. */
+async function repararPrecache(urls: string[]): Promise<void> {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const faltando = await arquivosFaltando(urls);
+    await Promise.all(
+      faltando.map((url) =>
+        fetch(url, { signal: sinalComPrazo(PRAZO_DA_REDE_NO_SW_MS) })
+          .then((resposta) => {
+            if (!resposta.ok) throw new TypeError(`bad-response ${url}`);
+            return cache.put(url, resposta);
+          })
+          .catch(() => {}),
+      ),
+    );
+    for (const url of await arquivosQueVieramComoHtml(cache, faltando)) {
+      await cache.delete(url);
+    }
+  } catch (e) {
+    console.warn("[SW] Falha ao refazer o precache despejado:", e);
+  }
+}
+
+/**
+ * Deleta os caches de versões anteriores — SÓ se o desta versão está inteiro.
+ * O `install` já falha quando o download não completa, mas o navegador pode
+ * despejar o cache entre o `install` e o `activate` (o service worker novo
+ * pode esperar dias). Com o cache novo incompleto, o antigo é a única cópia
+ * do app que funciona offline e fica onde está.
+ */
+async function purgarCachesAntigos(): Promise<void> {
+  if ((await arquivosFaltando(urlsDoPrecache)).length > 0) {
+    await repararPrecache(urlsDoPrecache);
+    if ((await arquivosFaltando(urlsDoPrecache)).length > 0) {
+      console.warn(
+        "[SW] Cache desta versão incompleto; caches antigos mantidos.",
+      );
+      return;
+    }
+  }
+  // O install pode não ter conseguido guardar a página inicial com ficha
+  // (porteiro fora do ar naquele instante): tenta de novo agora, antes de
+  // jogar fora as páginas com ficha do cache anterior. Se ainda assim não
+  // der, a versão nova vale mesmo assim — o HTML antigo, servido primeiro por
+  // `caches.match`, deixaria o app preso na versão velha.
+  await guardarPaginaInicialComFicha(urlsDoPrecache);
+  const cacheNames = await caches.keys();
+  const cachesToDelete = cacheNames.filter(
+    (name) =>
+      name !== CACHE_NAME &&
+      name !== IMAGE_CACHE_NAME &&
+      name !== IDENTIDADE_CACHE_NAME,
+  );
+  await Promise.all(
+    cachesToDelete.map((name) => {
+      console.log(`[SW] Purging old cache: ${name}`);
+      return caches.delete(name);
+    }),
+  );
+}
+
 sw.addEventListener("activate", (event: any) => {
   event.waitUntil(
     Promise.all([
       // Assume o controle imediatamente
       sw.clients.claim(),
-      // CACHE PURGE: Deleta caches antigos
-      caches
-        .keys()
-        .then((cacheNames) => {
-          const cachesToDelete = cacheNames.filter(
-            (name) =>
-              name !== CACHE_NAME &&
-              name !== IMAGE_CACHE_NAME &&
-              name !== IDENTIDADE_CACHE_NAME,
-          );
-          return Promise.all(
-            cachesToDelete.map((name) => {
-              console.log(`[SW] Purging old cache: ${name}`);
-              return caches.delete(name);
-            }),
-          );
-        }),
+      purgarCachesAntigos(),
       purgarArquivosPrivadosDaGaveta(),
     ]),
   );

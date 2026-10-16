@@ -21,6 +21,7 @@ import {
   FRASE_ANULAR_SO_NO_MESMO_DIA,
   podeAnularVendaDoBalcao,
 } from "@/lib/anulacao-do-balcao";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
 import {
@@ -1355,6 +1356,20 @@ export const OrderDetail = memo(function OrderDetail({
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState(order.notes || "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+
+  // A anotação e o código de rastreio digitados só existem neste estado local
+  // até a lojista salvar: recarregar o app (atualização obrigatória, ao ir para
+  // segundo plano) apagaria o texto. Enquanto houver texto diferente do salvo,
+  // ou gravação em curso, a atualização espera.
+  const escritaPendente =
+    (isEditingNotes && notesValue !== localNotes) ||
+    isSavingNotes ||
+    (isEditingTracking && trackingValue !== localTrackingCode) ||
+    isSavingTracking;
+  useEffect(() => {
+    if (!escritaPendente) return;
+    return marcarOperacaoSensivel("anotacao-do-pedido");
+  }, [escritaPendente]);
 
   const [skus, setSkus] = useState<Record<string, string>>({});
   const [variacoes, setVariacoes] = useState<Record<string, string>>({});
