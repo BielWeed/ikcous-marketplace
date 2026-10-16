@@ -1727,6 +1727,24 @@ export function CheckoutViewDaConta({
       ? falhaDaRetomada.estado
       : null;
   const [tentativaDaRetomada, setTentativaDaRetomada] = useState(0);
+  // Janela da PRIMEIRA leitura do pedido retomado (16/10/2026). A leitura leva
+  // até `TEMPO_LIMITE_DA_LEITURA_DA_RETOMADA_MS`, e enquanto ela está em voo
+  // NENHUM dos estados de retomada abaixo está ligado — a tela era o
+  // formulário de pedido NOVO com o carrinho cheio, e um toque em "Finalizar"
+  // criava um SEGUNDO pedido (estoque reservado de novo, cobrança duplicável).
+  // UM estado explícito diz quando a janela fecha: o pedido cuja primeira
+  // leitura já teve QUALQUER desfecho (resposta, falha, estouro do tempo,
+  // pedido descartado). O pedido vem junto (mesmo desenho de
+  // `falhaDaRetomada`): outro `retomarPedidoId` na mesma instância reabre a
+  // janela só para ele. Nunca volta a `false` para o mesmo pedido — o "Tentar
+  // de novo" já tem a tela dele (`retomadaFalhouNaLeitura`).
+  const [
+    pedidoComPrimeiraLeituraConcluida,
+    setPedidoComPrimeiraLeituraConcluida,
+  ] = useState<string | null>(null);
+  const leituraDaRetomadaPendente =
+    retomarPedidoId !== undefined &&
+    pedidoComPrimeiraLeituraConcluida !== retomarPedidoId;
   // ── Frente 10 (missão de pagamentos, 29/09/2026): RETOMADA ──────────────
   // O cliente que sai do checkout antes de pagar voltava pelo card do pedido
   // (OrderDetailsView → "Retomar pagamento") e caía num checkout de CARRINHO
@@ -1753,6 +1771,10 @@ export function CheckoutViewDaConta({
     // a resposta que chega depois do aviso não liga cobrança por baixo da
     // mensagem (o cliente decide no "Tentar de novo").
     let respondeu = false;
+    // Toda saída da primeira leitura (e só ela) fecha a janela em que a tela
+    // não sabe ainda o que o pedido é (`leituraDaRetomadaPendente`).
+    const fecharAJanela = () =>
+      setPedidoComPrimeiraLeituraConcluida(pedidoRetomado);
     const relogio = setTimeout(
       () => falhar(),
       TEMPO_LIMITE_DA_LEITURA_DA_RETOMADA_MS,
@@ -1762,6 +1784,7 @@ export function CheckoutViewDaConta({
       respondeu = true;
       clearTimeout(relogio);
       setFalhaDaRetomada({ pedido: pedidoRetomado, estado: "falhou" });
+      fecharAJanela();
     };
     // P1 da revisão da PR #711 (29/09/2026): NADA liga antes da leitura do
     // método REAL do pedido. `metodoDoPedido` nasce "pix"; se
@@ -1790,6 +1813,7 @@ export function CheckoutViewDaConta({
           clearTimeout(relogio);
           setFalhaDaRetomada(null);
           setRetomadaDescartada(pedidoRetomado);
+          fecharAJanela();
         };
         if (retomadaDaRecarga && !error && !data) {
           descartarCalado();
@@ -1831,12 +1855,14 @@ export function CheckoutViewDaConta({
               userId: dono,
               valor: Number((data as { total: unknown }).total ?? 0),
             });
+            fecharAJanela();
             return;
           }
         }
         respondeu = true;
         clearTimeout(relogio);
         setFalhaDaRetomada(null);
+        fecharAJanela();
         // SENTINELA (P1 + ordem do dono, 29/09/2026): vaga
         // "verificando:..." é um CARTÃO ambíguo aguardando reconciliação
         // no servidor (metodo_online costuma vir null nesse estado, mas o
@@ -3423,6 +3449,7 @@ export function CheckoutViewDaConta({
   // exatamente isso que acabou de acontecer aqui. Com um nome só, a próxima
   // exigência entra num lugar, não em dois.
   const botaoFinalizarDesabilitado =
+    leituraDaRetomadaPendente ||
     !isValid ||
     isSubmitting ||
     semFreteSelecionado ||
@@ -3585,6 +3612,11 @@ export function CheckoutViewDaConta({
   };
 
   const handleSubmitEvent = async () => {
+    // Pedido retomado com a primeira leitura em voo: o pedido JÁ existe, e
+    // este envio criaria um segundo. Antes da trava de envio de propósito —
+    // nada foi tomado, não há o que soltar. A tela de carregamento já tira o
+    // botão do alcance; isto cobre quem chama o handler por outro caminho.
+    if (leituraDaRetomadaPendente) return;
     /*
       TRAVA SINCRONA, ANTES DE QUALQUER `await` (CHECKOUT-030, #27).
 
@@ -4349,13 +4381,20 @@ export function CheckoutViewDaConta({
     );
   }
 
-  if (retomadaFalhouNaLeitura !== null && retomarPedidoId) {
+  // A leitura do pedido ainda em voo (primeira vez) e o "Tentar de novo"
+  // relendo compartilham a tela "Abrindo o pedido…": nenhuma das duas sabe
+  // ainda o que o pedido é, e o formulário de pedido NOVO não pode aparecer
+  // por baixo (`leituraDaRetomadaPendente`, acima).
+  if (
+    (retomadaFalhouNaLeitura !== null || leituraDaRetomadaPendente) &&
+    retomarPedidoId
+  ) {
     return (
       <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Retomar o pagamento do pedido
         </h1>
-        {retomadaFalhouNaLeitura === "relendo" ? (
+        {retomadaFalhouNaLeitura !== "falhou" ? (
           <p
             role="status"
             aria-live="polite"
