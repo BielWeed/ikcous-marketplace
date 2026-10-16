@@ -524,6 +524,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       const { data, error } = await supabase.rpc("get_my_complete_profile");
+      // A resposta pertence à conta que iniciou a leitura, mesmo chegando após a troca.
+      if (activeUserIdRef.current !== currentUser.id) return;
       if (!error && data) {
         const profileData = Array.isArray(data) ? data[0] : data;
         setProfile((prev: any) => {
@@ -1218,6 +1220,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     } else {
+      activeUserIdRef.current = null;
       setSession(null);
       setUser(null);
       setAdminStatus("not-admin");
