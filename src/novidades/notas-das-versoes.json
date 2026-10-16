@@ -1,4 +1,19 @@
 {
+  "1.5.32": {
+    "titulo": "Atualizações automáticas e mais segurança no dia a dia",
+    "novidades": [
+      "O app agora se atualiza sozinho, sem botão e sem janelas confusas: um aviso discreto aparece no alto da tela quando está atualizando e quando termina.",
+      "As novidades de cada versão chegam aqui nas Notificações, escritas de forma simples."
+    ],
+    "correcoes": [
+      "A atualização nunca interrompe uma venda ou um pagamento em andamento: ela espera você terminar.",
+      "Cupons e vitrines não se atrapalham mais quando você salva várias vezes seguidas.",
+      "Buscas e formulários do painel não mostram mais resultado antigo por cima do atual."
+    ],
+    "melhorias": [
+      "O aviso de atualização no painel ficou menor e não empurra a tela do caixa."
+    ]
+  },
   "1.5.31": {
     "titulo": "Entrega na sua cidade e pedidos mais seguros",
     "novidades": [
