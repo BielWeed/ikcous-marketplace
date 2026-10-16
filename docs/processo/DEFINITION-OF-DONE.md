@@ -104,7 +104,10 @@ front estão testados: eles têm zero cobertura. Este item vira forte de verdade
 
 **4. Preview da Vercel** — é o preview **do PR**, antes de pedir revisão. Desde 15/10/2026 o
 `vercel.json` (`git.deploymentEnabled`) **não gera mais preview automático** para as branches
-de PR (`claude/*`, `feat/*`, `fix/*`, `chore/*`, `docs/*`, `refactor/*`, `dependabot/*`): o plano
+de PR: todo prefixo de branch de trabalho (`claude/`, `codex/`, `feat/`, `fix/`, `chore/`, `docs/`,
+`refactor/`, `dependabot/`, `infra/`, `ci/` e os demais listados lá) está desligado, e só a branch
+principal, `production`, `main`, `develop`, `release/*` e `hotfix/*` constroem. A lista completa
+é o `vercel.json`; branch com prefixo novo que não esteja lá volta a gerar preview. O plano
 gratuito da Vercel aceita 100 deploys a cada 24 h e as prévias automáticas comeram as vagas do
 candidato da release 1.5.29. Quando a mudança for visual ou depender do ambiente, gere o preview
 sob demanda (`npx vercel deploy` numa cópia limpa do PR, que gasta 1 vaga); sem mudança visual,
