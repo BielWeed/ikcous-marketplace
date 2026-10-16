@@ -256,17 +256,34 @@ sw.addEventListener("install", (event: any) => {
   );
 });
 
-/** O cache desta versão tem todos os arquivos do precache? */
-async function precacheEstaInteiro(urls: string[]): Promise<boolean> {
-  if (urls.length === 0) return true;
+/** Quais arquivos do precache NÃO estão no cache desta versão? Em dúvida
+ * (cache ilegível), todos. */
+async function arquivosFaltando(urls: string[]): Promise<string[]> {
+  if (urls.length === 0) return [];
   try {
     const cache = await caches.open(CACHE_NAME);
     const guardados = new Set(
       (await cache.keys()).map((req: Request) => new URL(req.url).pathname),
     );
-    return urls.every((url) => guardados.has(caminhoDoPrecache(url)));
+    return urls.filter((url) => !guardados.has(caminhoDoPrecache(url)));
   } catch {
-    return false;
+    return urls;
+  }
+}
+
+/** O cache desta versão foi despejado em parte (entre o `install` e o
+ * `activate`)? Baixa de novo só o que falta; arquivo que volta como HTML é
+ * descartado de novo. Nunca rejeita. */
+async function repararPrecache(urls: string[]): Promise<void> {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const faltando = await arquivosFaltando(urls);
+    await Promise.all(faltando.map((url) => cache.add(url).catch(() => {})));
+    for (const url of await arquivosQueVieramComoHtml(cache, faltando)) {
+      await cache.delete(url);
+    }
+  } catch (e) {
+    console.warn("[SW] Falha ao refazer o precache despejado:", e);
   }
 }
 
@@ -278,11 +295,14 @@ async function precacheEstaInteiro(urls: string[]): Promise<boolean> {
  * do app que funciona offline e fica onde está.
  */
 async function purgarCachesAntigos(): Promise<void> {
-  if (!(await precacheEstaInteiro(urlsDoPrecache))) {
-    console.warn(
-      "[SW] Cache desta versão incompleto; caches antigos mantidos.",
-    );
-    return;
+  if ((await arquivosFaltando(urlsDoPrecache)).length > 0) {
+    await repararPrecache(urlsDoPrecache);
+    if ((await arquivosFaltando(urlsDoPrecache)).length > 0) {
+      console.warn(
+        "[SW] Cache desta versão incompleto; caches antigos mantidos.",
+      );
+      return;
+    }
   }
   // O install pode não ter conseguido guardar a página inicial com ficha
   // (porteiro fora do ar naquele instante): tenta de novo agora, antes de

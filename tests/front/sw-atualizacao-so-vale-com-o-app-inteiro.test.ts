@@ -315,6 +315,22 @@ describe("src/sw/sw.ts — activate não apaga o app antigo sem o novo inteiro",
     expect(armazem.has(CACHE_NOVO)).toBe(true);
   });
 
+  it("cache novo despejado em parte e rede de volta: o activate baixa o que falta e então apaga o antigo", async () => {
+    const { rodar, armazem, buscas } = await montar({
+      cenario: { rede: redeDoBuildNovo() },
+      jaExistem: {
+        ...VELHO_COMPLETO,
+        [CACHE_NOVO]: { "/index.html": html("so um arquivo") },
+      },
+    });
+
+    await rodar("activate");
+
+    expect(buscas).toContain("/assets/vendor-DEF.js");
+    expect(cachesDoApp(armazem)).toEqual([CACHE_NOVO]);
+    expect(armazem.get(CACHE_NOVO)?.has("/assets/vendor-DEF.js")).toBe(true);
+  });
+
   it("controle: cache novo inteiro apaga o antigo, como sempre", async () => {
     const novo: Record<string, Response> = {};
     for (const { url } of MANIFESTO) novo[`/${url}`] = new Response(url);
