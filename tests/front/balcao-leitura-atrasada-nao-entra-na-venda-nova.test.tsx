@@ -46,6 +46,8 @@ vi.mock("@/components/admin/pdv/LeitorDeCodigo", () => ({
     ) : null,
 }));
 
+import { toast } from "sonner";
+
 import { AdminPdvView } from "@/views/admin/AdminPdvView";
 
 function produto(codigo: string, nome: string) {
@@ -244,18 +246,19 @@ describe("Balcão — com a venda sendo gravada o cupom fica travado na tela", (
     ) as HTMLInputElement;
     expect(desconto.disabled).toBe(true);
 
-    // Voltar ao cupom não é permitido sem cancelar; o leitor segue na tela.
-    const chamadasAntes = rpcMock.mock.calls.filter(
+    // Voltando ao cupom (o envio segue pendente), o leitor reaparece: um
+    // código bipado agora avisa em vez de sumir, e nenhuma busca sai.
+    await clicar("Voltar ao cupom");
+    const buscasAntes = rpcMock.mock.calls.filter(
       ([nome]) => nome === "buscar_por_codigo_barras",
     ).length;
-    const bipar = botao(hospedeiro, "bipar");
-    if (bipar) {
-      await clicar("bipar");
-      expect(
-        rpcMock.mock.calls.filter(
-          ([nome]) => nome === "buscar_por_codigo_barras",
-        ).length,
-      ).toBe(chamadasAntes);
-    }
+    await clicar("bipar");
+    expect(toast.error).toHaveBeenCalledWith(
+      "Aguarde: a venda está sendo registrada.",
+    );
+    expect(
+      rpcMock.mock.calls.filter(([nome]) => nome === "buscar_por_codigo_barras")
+        .length,
+    ).toBe(buscasAntes);
   });
 });
