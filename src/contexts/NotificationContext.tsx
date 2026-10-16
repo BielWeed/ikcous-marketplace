@@ -189,6 +189,8 @@ export function NotificationProvider({
         const estadoLocal = lerEstadoLocalDaCampanha(user.id);
         estadoLocal.lidas.add(id);
         persistirEstadoLocalDaCampanha(user.id, estadoLocal);
+        rodadaRef.current++;
+        setLoading(false);
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
         );
@@ -202,6 +204,9 @@ export function NotificationProvider({
           .eq("id", id);
 
         if (error) throw error;
+        // A consulta anterior à leitura não pode repor o aviso não lido.
+        rodadaRef.current++;
+        setLoading(false);
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
         );
@@ -220,6 +225,12 @@ export function NotificationProvider({
 
   const markAllAsRead = useCallback(async () => {
     if (!user) return;
+    const idsNaoLidos = new Set(
+      notifications.filter((n) => !n.read).map((n) => n.id),
+    );
+    const idsDeCampanhaNaoLidos = Array.from(idsNaoLidos).filter((id) =>
+      campanhaIdsRef.current.has(id),
+    );
     try {
       const { error } = await supabase
         .from("notificacoes")
@@ -228,22 +239,23 @@ export function NotificationProvider({
         .eq("lida", false);
 
       if (error) throw error;
+      rodadaRef.current++;
+      setLoading(false);
 
       // O UPDATE acima só alcança as linhas da própria cliente. Os avisos de
       // campanha (usuario_id nulo) que ainda estavam não lidos ficam de fora
       // da policy — a leitura deles é registrada localmente, para o contador
       // e a lista concordarem com o que a tela acabou de afirmar.
-      const idsDeCampanhaNaoLidos = notifications
-        .filter((n) => !n.read && campanhaIdsRef.current.has(n.id))
-        .map((n) => n.id);
-
       if (idsDeCampanhaNaoLidos.length > 0) {
         const estadoLocal = lerEstadoLocalDaCampanha(user.id);
         for (const id of idsDeCampanhaNaoLidos) estadoLocal.lidas.add(id);
         persistirEstadoLocalDaCampanha(user.id, estadoLocal);
       }
 
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      // Avisos que chegaram durante o UPDATE continuam não lidos.
+      setNotifications((prev) =>
+        prev.map((n) => (idsNaoLidos.has(n.id) ? { ...n, read: true } : n)),
+      );
     } catch (err) {
       // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead.
       console.error("[Notifications] Mark all as read error:", err);
@@ -263,6 +275,8 @@ export function NotificationProvider({
         estadoLocal.ocultas.add(id);
         estadoLocal.lidas.delete(id);
         persistirEstadoLocalDaCampanha(user.id, estadoLocal);
+        rodadaRef.current++;
+        setLoading(false);
         setNotifications((prev) => prev.filter((n) => n.id !== id));
         return;
       }
@@ -274,6 +288,8 @@ export function NotificationProvider({
           .eq("id", id);
 
         if (error) throw error;
+        rodadaRef.current++;
+        setLoading(false);
         setNotifications((prev) => prev.filter((n) => n.id !== id));
       } catch (err) {
         // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead. Este é

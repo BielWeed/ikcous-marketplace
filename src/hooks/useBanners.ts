@@ -153,7 +153,8 @@ export function useBanners(adminMode = false) {
         vaultRef.current = vault;
         if (!globalBannersCache) {
           const cached = await vault.getAll<Banner>("banners");
-          if (cached.length > 0 && !cancelled) {
+          // A rede pode ter confirmado uma lista vazia durante a leitura.
+          if (cached.length > 0 && !cancelled && !globalBannersCache) {
             globalBannersCache = cached;
             preloadTopBanner(cached);
             setBanners(cached);
