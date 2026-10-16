@@ -6,7 +6,11 @@ import {
   esvaziarAvaliacoesEmMemoria,
 } from "@/lib/cache-de-avaliacoes";
 import { cpfValido } from "@/lib/cpf";
-import { gravarCpfDaConta, mensagemFalhaCpf } from "@/lib/cpf-da-conta";
+import {
+  gravarCpfDaConta,
+  gravarPerfilDaConta,
+  mensagemFalhaCpf,
+} from "@/lib/cpf-da-conta";
 import {
   lerPendente,
   retomarCpfPendente,
@@ -96,12 +100,15 @@ interface AuthContextType {
   updatePassword: (newPassword: string) => Promise<boolean>;
   logout: () => Promise<void>;
   fetchProfile: (passedUser?: User | null) => Promise<void>;
-  updateProfile: (updates: {
-    full_name?: string | null;
-    whatsapp?: string | null;
-    avatar_url?: string | null;
-    cover_url?: string | null;
-  }) => Promise<boolean>;
+  updateProfile: (
+    updates: {
+      full_name?: string | null;
+      whatsapp?: string | null;
+      avatar_url?: string | null;
+      cover_url?: string | null;
+    },
+    contaEsperada?: string,
+  ) => Promise<boolean>;
   isPasswordRecovery: boolean;
   setIsPasswordRecovery: (value: boolean) => void;
   /** O link de "esqueci a senha" voltou com erro (vencido ou já usado). */
@@ -1418,35 +1425,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const updateProfile = useCallback(
-    async (updates: {
-      full_name?: string | null;
-      whatsapp?: string | null;
-      avatar_url?: string | null;
-      cover_url?: string | null;
-    }): Promise<boolean> => {
+    async (
+      updates: {
+        full_name?: string | null;
+        whatsapp?: string | null;
+        avatar_url?: string | null;
+        cover_url?: string | null;
+      },
+      contaDoClique?: string,
+    ): Promise<boolean> => {
+      // Quem inicia trabalho assíncrono antes de salvar (ler/comprimir imagem)
+      // passa a conta do instante do clique; sem ela, vale a conta atual.
+      const contaEsperada = contaDoClique ?? activeUserIdRef.current ?? "";
       try {
-        const { error } = await supabase.rpc("update_my_profile_secure", {
-          p_full_name:
-            updates.full_name !== undefined ? updates.full_name : null,
-          p_whatsapp: updates.whatsapp !== undefined ? updates.whatsapp : null,
-          p_avatar_url:
-            updates.avatar_url !== undefined ? updates.avatar_url : null,
-          p_cover_url:
-            updates.cover_url !== undefined ? updates.cover_url : null,
-        } as any);
-        if (error) throw error;
+        const resultado = await gravarPerfilDaConta(
+          {
+            p_full_name: updates.full_name ?? null,
+            p_whatsapp: updates.whatsapp ?? null,
+            p_avatar_url: updates.avatar_url ?? null,
+            p_cover_url: updates.cover_url ?? null,
+          },
+          contaEsperada,
+        );
+        if (!resultado.ok) throw resultado;
         await fetchProfile();
         return true;
       } catch (err: any) {
         // `update_my_profile_secure` não tem nenhum `RAISE EXCEPTION` (ver
         // supabase/migrations/20260806000000_baseline_do_schema_vivo.sql,
         // função `update_my_profile_secure`) — o único `WHERE id = auth.uid()`
-        // não gera erro nem quando não afeta linha nenhuma. Todo erro que
-        // chega aqui é de causa não distinguível (rede, restrição do banco),
-        // então a mensagem é sempre a mesma, sem depender de `err.message`
-        // como reserva — reserva com o texto cru é vazamento também.
+        // não gera erro nem quando não afeta linha nenhuma. Erros da RPC
+        // (rede, restrição do banco) mantêm a mensagem genérica, sem usar
+        // `err.message`. A troca de conta reconhecida antes do envio tem
+        // seu próprio aviso fixo.
         console.error("[Auth] Error updating profile:", err);
-        toast.error("Não foi possível atualizar seu perfil. Tente novamente.");
+        toast.error(
+          err?.motivo === "conta_trocada"
+            ? mensagemFalhaCpf("conta_trocada")
+            : "Não foi possível atualizar seu perfil. Tente novamente.",
+        );
         return false;
       }
     },

@@ -97,8 +97,32 @@ export async function lerCpfDaConta(): Promise<ResultadoLeituraCpf> {
  * só dígitos antes de mandar — o mesmo contrato que `set_my_cpf` já impõe
  * no servidor.
  */
-export async function gravarCpfDaConta(
+export function gravarCpfDaConta(
   cpf: string,
+  contaEsperada: string,
+): Promise<ResultadoGravacaoCpf> {
+  return gravarNaConta(
+    "set_my_cpf",
+    { p_cpf: somenteDigitosDoCpf(cpf) },
+    contaEsperada,
+  );
+}
+
+export function gravarPerfilDaConta(
+  args: {
+    p_full_name?: string | null;
+    p_whatsapp?: string | null;
+    p_avatar_url?: string | null;
+    p_cover_url?: string | null;
+  },
+  contaEsperada: string,
+): Promise<ResultadoGravacaoCpf> {
+  return gravarNaConta("update_my_profile_secure", args, contaEsperada);
+}
+
+async function gravarNaConta(
+  nome: "set_my_cpf" | "update_my_profile_secure",
+  args: Parameters<typeof gravarPerfilDaConta>[0] | { p_cpf: string },
   contaEsperada: string,
 ): Promise<ResultadoGravacaoCpf> {
   try {
@@ -113,7 +137,8 @@ export async function gravarCpfDaConta(
     // conta conferida e o token fixado neste pedido vêm do MESMO retrato,
     // sem await entre a comparação e a montagem do envio autenticado.
     const { error } = await supabase
-      .rpc("set_my_cpf", { p_cpf: somenteDigitosDoCpf(cpf) })
+      // Os tipos gerados omitem o null aceito pelo COALESCE do perfil.
+      .rpc(nome, args as any)
       .setHeader("Authorization", `Bearer ${session.access_token}`);
     if (error) {
       return {

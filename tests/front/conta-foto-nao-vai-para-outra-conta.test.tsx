@@ -445,9 +445,10 @@ describe.each(imagens)(
       } else {
         expect(compressCoverImage).toHaveBeenCalledExactlyOnceWith(BASE64);
       }
-      expect(updateProfile).toHaveBeenCalledExactlyOnceWith({
-        [imagem.campo]: COMPRIMIDA,
-      });
+      expect(updateProfile).toHaveBeenCalledExactlyOnceWith(
+        { [imagem.campo]: COMPRIMIDA },
+        CONTA_A.id,
+      );
       expect(toast.success).toHaveBeenCalledExactlyOnceWith(imagem.sucesso);
       expect(toast.error).not.toHaveBeenCalled();
       expect(document.querySelector("[role=dialog]")).toBeNull();

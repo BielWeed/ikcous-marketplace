@@ -35,7 +35,7 @@ vi.mock("@/lib/supabase", () => ({
     auth: { getSession },
     rpc: (...args: unknown[]) => {
       const resposta = rpc(...args);
-      return args[0] === "set_my_cpf"
+      return args[0] === "set_my_cpf" || args[0] === "update_my_profile_secure"
         ? pedidoCpfComCabecalho(resposta)
         : resposta;
     },
@@ -215,6 +215,10 @@ describe("Conta — CPF pertence à conta que começou a salvar", () => {
 
   it("tela ainda mostra A mas o SDK já tem B: avisa sem gravar nem descartar a edição", async () => {
     await montar();
+    // O perfil ainda pertence a A; a troca só aparece na leitura do CPF.
+    getSession.mockResolvedValueOnce({
+      data: { session: { access_token: "token-a", user: CONTA_A } },
+    });
     getSession.mockResolvedValueOnce({
       data: { session: { access_token: "token-b", user: CONTA_B } },
     });
@@ -233,6 +237,38 @@ describe("Conta — CPF pertence à conta que começou a salvar", () => {
     expect(fetchProfile).not.toHaveBeenCalled();
     expect(campo("cpf").value).toBe("123.456.789-09");
   });
+
+  it.each(["conta_trocada", "sem_sessao"])(
+    "recusa o próprio perfil antes do RPC (%s), preserva a edição e não continua no CPF",
+    async (motivo) => {
+      await montar();
+      getSession.mockResolvedValueOnce({
+        data: {
+          session:
+            motivo === "sem_sessao"
+              ? null
+              : { access_token: "token-b", user: CONTA_B },
+        },
+      });
+      rpc.mockClear();
+      digitar("full_name", "Nome novo de A");
+      digitar("cpf", "12345678909");
+      await salvar();
+
+      expect(rpc).not.toHaveBeenCalled();
+      expect(cpfDaConta.gravarCpfDaConta).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+        motivo === "conta_trocada"
+          ? cpfDaConta.mensagemFalhaCpf("conta_trocada")
+          : "Erro ao atualizar perfil",
+      );
+      expect(toast.success).not.toHaveBeenCalled();
+      expect(fetchProfile).not.toHaveBeenCalled();
+      expect(campo("full_name").value).toBe("Nome novo de A");
+      expect(campo("cpf").value).toBe("123.456.789-09");
+      expect(botaoSalvar().disabled).toBe(false);
+    },
+  );
 
   it("conta_trocada fica silenciosa se a tela também já mudou para B", async () => {
     await montar();
