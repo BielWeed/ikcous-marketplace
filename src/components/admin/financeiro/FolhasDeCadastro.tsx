@@ -199,6 +199,7 @@ export function ContaFolha({
         <Campo id="fin-conta-nome" rotulo="Nome" erro={erros.nome}>
           <LocalBufferedInput
             id="fin-conta-nome"
+            disabled={enviando}
             value={form.nome}
             maxLength={60}
             placeholder="Ex.: Banco do Brasil"
@@ -210,7 +211,7 @@ export function ContaFolha({
           <select
             id="fin-conta-tipo"
             value={form.tipo}
-            disabled={sistema}
+            disabled={sistema || enviando}
             onChange={(e) => atualizar({ tipo: e.target.value as TipoDeConta })}
             className={CLASSE_CAMPO}
           >
@@ -229,6 +230,7 @@ export function ContaFolha({
           >
             <LocalBufferedInput
               id="fin-conta-saldo"
+              disabled={enviando}
               value={form.saldoInicial}
               mask="currency"
               permiteNegativo
@@ -245,6 +247,7 @@ export function ContaFolha({
           >
             <input
               id="fin-conta-data"
+              disabled={enviando}
               type="date"
               value={form.saldoInicialEm}
               onChange={(e) => atualizar({ saldoInicialEm: e.target.value })}
@@ -262,7 +265,7 @@ export function ContaFolha({
           rotulo="Conta ativa"
           detalhe="Desativada, some das escolhas de novos lançamentos."
           ligado={form.ativa}
-          desabilitado={sistema}
+          desabilitado={sistema || enviando}
           aoMudar={(ativa) => atualizar({ ativa })}
         />
       </div>
@@ -359,6 +362,7 @@ export function CategoriaFolha({
         <Campo id="fin-categoria-nome" rotulo="Nome" erro={erros.nome}>
           <LocalBufferedInput
             id="fin-categoria-nome"
+            disabled={enviando}
             value={form.nome}
             maxLength={60}
             placeholder="Ex.: Energia elétrica"
@@ -373,8 +377,16 @@ export function CategoriaFolha({
             valor={form.natureza}
             aoMudar={mudarNatureza}
             opcoes={[
-              { valor: "despesa", rotulo: "Despesa", desabilitada: sistema },
-              { valor: "receita", rotulo: "Receita", desabilitada: sistema },
+              {
+                valor: "despesa",
+                rotulo: "Despesa",
+                desabilitada: sistema || enviando,
+              },
+              {
+                valor: "receita",
+                rotulo: "Receita",
+                desabilitada: sistema || enviando,
+              },
             ]}
           />
         </div>
@@ -396,6 +408,7 @@ export function CategoriaFolha({
               >
                 <input
                   type="radio"
+                  disabled={enviando}
                   name="fin-categoria-grupo"
                   value={grupo}
                   checked={escolhido}
@@ -422,7 +435,7 @@ export function CategoriaFolha({
           rotulo="Categoria ativa"
           detalhe="Desativada, some das escolhas de novos lançamentos."
           ligado={form.ativa}
-          desabilitado={sistema}
+          desabilitado={sistema || enviando}
           aoMudar={(ativa) => atualizar({ ativa })}
         />
       </div>
