@@ -120,6 +120,8 @@ on:
       - "scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql"
       - "scripts/publicacao/consultas/45b-antes-custo-do-dia-base-vigente.sql"
       - "scripts/publicacao/consultas/45m-medir-itens-sem-custo-do-dia.sql"
+      - "scripts/publicacao/consultas/46a-conferir-desfazer-recebimento-aplicado.sql"
+      - "scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -209,6 +211,8 @@ on:
       - "scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql"
       - "scripts/publicacao/consultas/45b-antes-custo-do-dia-base-vigente.sql"
       - "scripts/publicacao/consultas/45m-medir-itens-sem-custo-do-dia.sql"
+      - "scripts/publicacao/consultas/46a-conferir-desfazer-recebimento-aplicado.sql"
+      - "scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -852,6 +856,19 @@ jobs:
       - name: Prova viva do portao da venda repetida do balcao (consultas 36a e 36b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/venda-balcao-mesma-chave-portao-viva.cjs
+      # Desfazer o recebimento recusa pedido com devolucao (migration 20261243, dinheiro; 15/10/2026): registrar_pagamento_recebido(id, false)
+      # recusa, com a frase exata, o pedido que tem devolucao viva (qualquer status fora recusada/cancelada/reprovada, o criterio da anulacao
+      # do balcao) e nada muda; devolucao morta libera; "Recebi" e o desfazer que ja e no-op seguem iguais; a devolucao REAL
+      # (solicitar_devolucao) recusa e o Financeiro mantem a venda; a CORRIDA com duas conexoes reais nos dois sentidos (a devolucao que chega
+      # primeiro / o desfazer que chega primeiro: nunca devolucao viva com pagamento desfeito); CONTROLE com o corpo antigo (a venda some do
+      # Financeiro), rollback com o mesmo md5, pre-voo que recusa sem escrever, mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do desfazer recebimento que recusa devolucao viva (migration 20261243)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/desfazer-recebimento-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 46a (DEPOIS, 6 linhas) e 46b (ANTES, 6 linhas). Nao ha medicao 46m: o lote nao le nem reescreve dado. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao do desfazer recebimento (consultas 46a e 46b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/desfazer-recebimento-portao-viva.cjs
       # A lojista renomeia e apaga categoria sem deixar produto orfao (migration 20261237, 14/10/2026; permissao + regra de
       # devolucao). A categoria do produto e' guardada pelo NOME: renomear_categoria troca o nome nos QUATRO lugares (a linha, os
       # produtos, os links de banner nos dois formatos e a lista "sem troca" da politica de devolucao) numa transacao so e conta

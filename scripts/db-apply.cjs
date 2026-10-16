@@ -2274,6 +2274,31 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // Desfazer o recebimento recusa pedido com devolução viva (15/10/2026; DINHEIRO). Sem esta entrada a migration saía
+  // PULADA. Os marcadores contam no corpo VIVO (pg_get_functiondef, comentários incluídos), exatos: a frase da recusa e o
+  // critério da devolução viva (tudo que não é recusada, cancelada nem reprovada), mais as três recusas que vêm antes
+  // (as duas travas de admin e o NULL) intactas. O resto (atributos, ACL, hash do corpo) o DO de conferência da migration
+  // aborta o apply se divergir.
+  "20261243000000_desfazer_recebimento_recusa_com_devolucao.sql": [
+    {
+      funcao: "registrar_pagamento_recebido",
+      esperado: [
+        {
+          texto:
+            "RAISE EXCEPTION 'Este pedido tem devolução em andamento ou concluída. O recebimento só pode ser desfeito se a devolução for recusada, cancelada ou reprovada na inspeção; devolução concluída não permite desfazer.';",
+          vezes: 1,
+        },
+        {
+          texto: "AND d.status NOT IN ('recusada', 'cancelada', 'reprovada')",
+          vezes: 1,
+        },
+        { texto: "SELECT 1 FROM public.devolucoes d", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        { texto: "IF p_recebido IS NULL THEN", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,

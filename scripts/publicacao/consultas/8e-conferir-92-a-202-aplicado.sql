@@ -22,7 +22,7 @@
 -- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
 -- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
 -- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
--- apply da sucessora. Hoje são doze funções (doze migrations), cada uma POR SI (função independente:
+-- apply da sucessora. Hoje são treze funções (treze migrations), cada uma POR SI (função independente:
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora);
@@ -40,6 +40,8 @@
 --     `autorizar_post_do_estorno` → 20261241000000 (o reembolso em dúvida prende o saldo). Estes quatro
 --     NÃO são corpos da 99 (são da 98, da 97 e da 96): o `final` de cada um é o da última de 92..202
 --     que o define, e a cadeia parte dele.
+--   * `registrar_pagamento_recebido` → 20261243000000 (desfazer o recebimento recusa pedido com devolução).
+--     Também NÃO é corpo da 99 (é da 97): o `final` é o da 97 e a cadeia parte dele.
 -- CADEIA (decidido em 14/10/2026, quando `painel_inicio` ganhou a SEGUNDA sucessora, e repetida quando
 -- `get_admin_analytics_v2` e `crm_visao` ganharam a delas, a 20261234000000 e a 20261232000000): o CTE
 -- `sucessoras` guarda TODOS os corpos intermediários e o final de cada função (várias linhas por
@@ -146,7 +148,8 @@ WITH corpos AS (
     ('admin_devolucao_concluir', 'ebb901efff59a53082836a13e053cd1a', '20261241000000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
-    ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000')), colunas(tabela, coluna) AS (VALUES
+    ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000'),
+    ('registrar_pagamento_recebido', '88270bb1e228c90be73acca03a3cee4e', '20261243000000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
     ('order_refunds', 'mp_chargeback_valor_do_caso'),

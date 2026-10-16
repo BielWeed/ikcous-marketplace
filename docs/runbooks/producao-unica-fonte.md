@@ -1819,6 +1819,42 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       - **Provas:** `tests/banco/custo-do-dia-viva.cjs` (comportamento) e `tests/banco/custo-do-dia-portao-viva.cjs`
         (as consultas), num Postgres 17 efemero; nao provam o Postgres da Supabase nem o corpo vivo de cada loja.
 
+  46. **Lote de UMA migration, de apply normal: `20261243000000` (desfazer o recebimento recusa pedido com devolucao
+      viva; DINHEIRO; ordem do dono de 15/10/2026).** Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas
+      lojas assinantes (IKCOUS e Savy). ADITIVA e SO DE FUNCAO: nenhuma tabela, coluna ou linha e criada, lida ou
+      reescrita; um corpo trocado por `CREATE OR REPLACE` (`registrar_pagamento_recebido(uuid, boolean)`; assinatura,
+      dono, ACL e atributos preservados):
+      - **O que muda:** o botao "Desfazer recebimento" do pedido de entrega (e a venda do balcao) passa a RECUSAR, com a
+        frase "Este pedido tem devolucao em andamento ou concluida. O recebimento so pode ser desfeito se a devolucao for recusada, cancelada ou reprovada na inspecao; devolucao concluida nao permite desfazer.", quando
+        o pedido tem uma devolucao viva (qualquer uma que NAO seja recusada, cancelada nem reprovada: o criterio da
+        anulacao do balcao e de `solicitar_devolucao`). Antes, o desfazer apagava o pagamento e a data, a venda sumia
+        do Financeiro e a devolucao aberta ficava sem pagamento para devolver.
+      - **O que NAO muda no apply:** nenhum dado existente e lido nem reescrito. Um pedido que JA foi desfeito com
+        devolucao aberta, pelo defeito antigo, fica como esta: a lojista marca "Recebi" de novo e depois resolve a
+        devolucao. O "Recebi", o desfazer que ja era no-op e a devolucao morta seguem como eram.
+      - **Sem corrida:** a checagem vem DEPOIS da trava do pedido (`FOR UPDATE`) que a funcao ja tomava, e
+        `solicitar_devolucao` trava o MESMO pedido antes de inserir. Nao e preciso aplicar fora do pico.
+      - Duas consultas, so leitura, so catalogo, de ROL FECHADO (6 e 6 linhas, so valem com `rol=ok`):
+        - **`46a-conferir-desfazer-recebimento-aplicado`** (a consulta do lote) prova DEPOIS do apply o corpo (md5), os
+          atributos, o `EXECUTE` por papel (authenticated e service_role sim; PUBLIC e anon nao), a frase e o criterio
+          da recusa no corpo e a checagem depois da trava do pedido.
+        - **`46b-antes-desfazer-recebimento-base-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: o corpo vigente
+          da `20261197000000` (md5), os atributos, o `EXECUTE` de hoje, `is_admin()` e `is_admin_atual()` de pe e as
+          14 colunas que o corpo le ou grava. Rode a `46b` em CADA loja ANTES do apply.
+        - Nao ha medicao `46m`: o lote nao le nem reescreve dado.
+      - **Caminho, uma loja por vez (IKCOUS, depois Savy):** `46a` (sai NEGATIVA) -> `46b` MAIS NOVA e POSITIVA ->
+        UM comando `aplicar-migrations.yml` com a migration -> o ensaio pede a `46a` DE NOVO, que tem de sair
+        POSITIVA. A `8e` segue POSITIVA depois do apply (o corpo novo entra como sucessor conhecido dela).
+      - **ORDEM: o banco de CADA loja ANTES do front desta mudanca** (o front nao muda neste lote).
+      - **Desfazer:** `rollback-manual-20261243000000_desfazer_recebimento_recusa_com_devolucao.sql` devolve o corpo da
+        `20261197000000` byte a byte e nao apaga dado. Os rollbacks da `20261197000000` e da `20261195000000` RECUSAM
+        enquanto esta migration estiver no ar: desfazer ESTA primeiro.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `46a` e a
+        `46b` DE NOVO.
+      - **Provas:** `tests/banco/desfazer-recebimento-viva.cjs` (comportamento, com a corrida real nos dois sentidos) e
+        `tests/banco/desfazer-recebimento-portao-viva.cjs` (as consultas), num Postgres 17 efemero; nao provam o
+        Postgres da Supabase nem o corpo vivo de cada loja.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

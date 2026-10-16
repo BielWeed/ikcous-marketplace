@@ -81,6 +81,9 @@ const {
 } = require("./efemero.cjs");
 const { SUCESSORAS_DA_99 } = require("./sucessoras-da-99.cjs");
 const { REEMBOLSO_EM_DUVIDA } = require("./reembolso-em-duvida-posterior.cjs");
+const {
+  DESFAZER_RECEBIMENTO,
+} = require("./desfazer-recebimento-posterior.cjs");
 
 const U_CLIENTE = "71111111-1111-1111-1111-111111111111";
 const U_OUTRO = "71111111-1111-1111-1111-111111111112";
@@ -1757,6 +1760,13 @@ const POSTERIORES_A_97 = [
     nome: "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql",
     noAr: `SELECT to_regclass('public.pedidos_de_privacidade') IS NOT NULL AS sim`,
   },
+  // 20261243000000: desfazer o recebimento recusa pedido com devolucao. Redefine o corpo de
+  // registrar_pagamento_recebido que a 97 deixa (e que a 95 e a 97 conferem por hash): com ela no ar
+  // os rollbacks da 95 e da 97 recusam (B1_BASELINE_DIVERGENT: "corpo vivo de ...
+  // registrar_pagamento_recebido ... nao e o que a 20261197000000 deixou"). So' mexe nessa funcao e
+  // nao depende de nenhuma outra da lista; tem de sair ANTES da 97. No FIM da lista de proposito.
+  // Definicao unica em tests/banco/desfazer-recebimento-posterior.cjs.
+  DESFAZER_RECEBIMENTO,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {

@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 33a, 33b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b, 43a, 43b, 45a, 45b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b, 19a, 19b, 20a, 20b, 21a, 21b, 22a, 22b, 23a, 23b, 24a, 24b, 25a, 25b, 26a, 26b, 27a, 27b, 30a, 30b, 31a, 31b, 28a, 28b, 29a, 29b, 32a, 32b, 33a, 33b, 34a, 34b, 35a, 35b, 36a, 36b, 37a, 37b, 38a, 38b, 39a, 39b, 40a, 40b, 41a, 41b, 43a, 43b, 45a, 45b, 46a, 46b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -2150,6 +2150,33 @@ const ROL_DA_45B = [
   "as duas funcoes: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, linguagem, volatilidade e retorno)",
   "as 12 colunas que os corpos novos leem existem (itens do pedido, produtos e itens da devolucao)",
 ];
+/** O rol da 46a (a prova de objetos da migration 20261243000000, desfazer o recebimento recusa pedido com devolucao viva: SO o
+ * corpo de registrar_pagamento_recebido(uuid, boolean)): as 6 linhas que
+ * scripts/publicacao/consultas/46a-conferir-desfazer-recebimento-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer estado
+ * do banco (objeto ausente vira `AUSENTE` na propria linha): o controle, o corpo NOVO (md5), os atributos de sempre, o EXECUTE de
+ * cada papel (authenticated e service_role sim; PUBLIC e anon nao), a frase da recusa com o criterio da devolucao viva no corpo e a
+ * checagem depois da trava do pedido (FOR UPDATE) e antes do UPDATE que desfaz.
+ * tests/banco/desfazer-recebimento-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_46A = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_pagamento_recebido: corpo e o da 20261243000000, com a recusa da devolucao viva (md5)",
+  "registrar_pagamento_recebido: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb, dois argumentos)",
+  "registrar_pagamento_recebido: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
+  "registrar_pagamento_recebido: a frase da recusa e o criterio da devolucao viva (NOT IN recusada, cancelada, reprovada) estao no corpo",
+  "registrar_pagamento_recebido: a checagem vem depois da trava do pedido (FOR UPDATE) e antes do UPDATE que desfaz",
+];
+/** O rol da 46b (a consulta de AUSENCIA do lote do desfazer o recebimento; `ausenciaConfirmadaPor`): as 6 linhas que
+ * scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql devolve - a base de antes: o corpo vigente da
+ * 20261197000000 (md5) sem a recusa, os atributos de sempre, o EXECUTE como hoje, is_admin() e is_admin_atual() de pe e as 14 colunas
+ * que o corpo le ou grava. Uma loja que ja tem a migration reprova aqui de proposito. */
+const ROL_DA_46B = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_pagamento_recebido: corpo e o vigente da 20261197000000, sem a recusa da devolucao viva (md5)",
+  "registrar_pagamento_recebido: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb, dois argumentos)",
+  "registrar_pagamento_recebido: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
+  "is_admin() e is_admin_atual() existem (o corpo as chama)",
+  "as 14 colunas que o corpo le ou grava existem (pedidos, historico de pagamento e devolucoes)",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -2223,6 +2250,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "43b-antes-reembolso-em-duvida-base-vigente": ROL_DA_43B,
   "45a-conferir-custo-do-dia-aplicado": ROL_DA_45A,
   "45b-antes-custo-do-dia-base-vigente": ROL_DA_45B,
+  "46a-conferir-desfazer-recebimento-aplicado": ROL_DA_46A,
+  "46b-antes-desfazer-recebimento-base-vigente": ROL_DA_46B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2833,6 +2862,8 @@ module.exports = {
   ROL_DA_43B,
   ROL_DA_45A,
   ROL_DA_45B,
+  ROL_DA_46A,
+  ROL_DA_46B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

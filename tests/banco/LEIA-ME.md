@@ -680,6 +680,23 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 - **as provas que DESFAZEM corpos redefinidos pela `20261242000000`** (`get_admin_analytics_v2` e `fin_dre`: `lucro-so-com-custo`,
   `inventario-so-com-custo`, `estoque-do-painel`, `portao-8e`) a devolvem ao estado anterior ANTES, na transação, por
   `devolverAoEstadoAnteriorAoCustoDoDia` (em `sucessoras-da-99.cjs`), sem apagar a tabela lateral.
+- **desfazer o recebimento recusa pedido com devolução (`desfazer-recebimento-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration `20261243000000` (`registrar_pagamento_recebido`: o "Desfazer recebimento" do painel). Com devolução viva
+  (solicitada, aprovada, em_transito, recebida ou concluida; o critério da anulação do balcão) o servidor recusa com a
+  frase exata e NADA muda (pedido, histórico do pagamento, Financeiro); recusada, cancelada e reprovada liberam; "Recebi"
+  e o desfazer que já é no-op seguem iguais; a devolução REAL (`solicitar_devolucao`) recusa e a venda continua no
+  Financeiro; a ordem das recusas é a de antes (quem não é da loja não aprende que há devolução). **Duas conexões reais,
+  nos dois sentidos**: a devolução que chega primeiro (o desfazer espera a trava do pedido e recusa) e o desfazer que
+  chega primeiro (a devolução espera e vê o pagamento vazio). CONTROLE com o corpo antigo (a venda some do Financeiro),
+  rollback com o md5 da 20261197000000, pré-voo que recusa sem escrever e nove mutantes. **Não prova** a IKCOUS nem a Savy.
+- **portão do desfazer o recebimento (`desfazer-recebimento-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as consultas
+  `46a-conferir-desfazer-recebimento-aplicado` (DEPOIS, 6 linhas) e `46b-antes-desfazer-recebimento-base-vigente` (ANTES,
+  6 linhas) do lote `20261243000000` (só o corpo de `registrar_pagamento_recebido`; não há medição 46m). Rol exato nos dois
+  estados, 13 negativos da 46a e 9 da 46b, seis mutantes do texto das consultas, e a `8e` POSITIVA com o corpo novo no ar e
+  desfeito. **Não prova** a IKCOUS nem a Savy.
+- **as provas que DESFAZEM corpos redefinidos pela `20261243000000`** (`pagamentos-rpc` e `admin-atual`: o rollback da 95 e da
+  97 e a reaplicação da 97 partem do corpo de `registrar_pagamento_recebido` que a 97 deixa) a desfazem ANTES, na transação,
+  por `desfazer-recebimento-posterior.cjs` (só se no ar): o pré-voo de cada rollback mais velho a recusa.
 - **as provas que DESFAZEM corpos redefinidos pela `20261241000000`** (`pagamentos-rpc`, `admin-atual`,
   `contestacao`, `cancelar-pedido`, `ordem-das-travas-composta`, `reembolso-da-devolucao` e `reemissao-do-reembolso`,
   com os portões delas) a desfazem ANTES, na transação, por

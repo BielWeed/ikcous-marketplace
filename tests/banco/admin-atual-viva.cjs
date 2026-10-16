@@ -56,6 +56,10 @@ const { desfazerSucessorasDa99 } = require("./sucessoras-da-99.cjs");
 const {
   desfazerReembolsoEmDuvidaNaTransacao,
 } = require("./reembolso-em-duvida-posterior.cjs");
+const {
+  DESFAZER_RECEBIMENTO,
+  desfazerDesfazerRecebimentoNaTransacao,
+} = require("./desfazer-recebimento-posterior.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(
@@ -230,6 +234,9 @@ async function desfazer98NaTransacao(cliente) {
   );
   // A 20261241000000 redefine o saldo que a 98 criou: com ela no ar o rollback da 98 recusa. Sai antes.
   await desfazerReembolsoEmDuvidaNaTransacao(cliente);
+  // A 20261243000000 redefine registrar_pagamento_recebido (o corpo da 97): os passos que reaplicam a 97 por cima de si
+  // mesma ou a desfazem partem do corpo dela, e o pre-voo da 97 recusa o corpo desta. Sai antes.
+  await desfazerDesfazerRecebimentoNaTransacao(cliente);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_ROLLBACK_98 é constante do próprio teste (path.join de literais).
   await cliente.query(fs.readFileSync(CAMINHO_ROLLBACK_98, "utf8"));
   assert.equal(
@@ -332,6 +339,13 @@ const POSTERIORES_A_97 = [
     nome: "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql",
     noAr: `SELECT to_regclass('public.pedidos_de_privacidade') IS NOT NULL AS sim`,
   },
+  // 20261243000000: desfazer o recebimento recusa pedido com devolucao. Redefine o corpo de
+  // registrar_pagamento_recebido que a 97 deixa (e que a 95 e a 97 conferem por hash): com ela no ar
+  // os rollbacks da 95 e da 97 recusam (B1_BASELINE_DIVERGENT: "corpo vivo de ...
+  // registrar_pagamento_recebido ... nao e o que a 20261197000000 deixou"). So' mexe nessa funcao e
+  // nao depende de nenhuma outra da lista; tem de sair ANTES da 97. No FIM da lista de proposito.
+  // Definicao unica em tests/banco/desfazer-recebimento-posterior.cjs.
+  DESFAZER_RECEBIMENTO,
 ];
 
 async function desfazerPosterioresNaTransacao(cliente) {
@@ -1495,6 +1509,9 @@ PROVAS.push({
       const nome = POSTERIORES_A_97[i].nome;
       // A 20261241000000 (a mais nova de todas) sai antes de qualquer uma desta pilha (só se no ar).
       await desfazerReembolsoEmDuvidaNaTransacao(cliente);
+      // A 20261243000000 (redefine o corpo de registrar_pagamento_recebido que a 97 confere por hash) também sai antes
+      // (só se no ar): sem isso a recusa por hash dela vem ANTES da recusa por dependentes que esta prova mede.
+      await desfazerDesfazerRecebimentoNaTransacao(cliente);
       // Índice 2 = a 99: as sucessoras dela (tests/banco/sucessoras-da-99.cjs)
       // saem antes, senão o rollback da 99 recusa.
       if (i === 2) await desfazerSucessorasDa99(cliente);
