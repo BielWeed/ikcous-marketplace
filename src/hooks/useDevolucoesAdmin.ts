@@ -349,7 +349,8 @@ export function useDevolucaoAdmin(
   const carregar = useCallback(async () => {
     if (!id || idRef.current !== id) return;
     const rodada = ++rodadaRef.current;
-    const valeAinda = () => idRef.current === id && rodada === rodadaRef.current;
+    const valeAinda = () =>
+      idRef.current === id && rodada === rodadaRef.current;
     setCarregando(true);
     try {
       const { data, error } = await supabase.rpc("devolucao_detalhe", {
