@@ -2177,6 +2177,40 @@ const ROL_DA_46B = [
   "is_admin() e is_admin_atual() existem (o corpo as chama)",
   "as 14 colunas que o corpo le ou grava existem (pedidos, historico de pagamento e devolucoes)",
 ];
+/** O rol da 47a (a prova de objetos da migration 20261244000000, a loja escolhe como entrega na cidade e em quantos dias: os
+ * corpos de create_marketplace_order_v23, create_marketplace_order_v24 e upsert_store_config, as duas colunas novas de store_config
+ * com a CHECK do prazo, a trigger do So retiro e a view de 47 colunas): as 9 linhas que
+ * scripts/publicacao/consultas/47a-conferir-a-loja-escolhe-como-entrega-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer
+ * estado do banco (objeto ausente vira `AUSENTE` na propria linha): o controle, os tres corpos (md5), os atributos e o EXECUTE das
+ * tres funcoes, as colunas e a CHECK, a trigger com a funcao dela e a view.
+ * tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
+const ROL_DA_47A = [
+  "controle: funcoes de public visiveis a este papel",
+  "as tres funcoes: EXECUTE como sempre (PUBLIC nunca; authenticated e service_role sim; anon sim nas duas compras e nao na upsert)",
+  "as tres funcoes: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno)",
+  "create_marketplace_order_v23: corpo e o da 20261244000000, com o So retiro e a retirada livre (md5)",
+  "create_marketplace_order_v24: corpo e o da 20261244000000, com o So retiro e a retirada livre (md5)",
+  "store_config: local_delivery_enabled boolean NOT NULL DEFAULT true, local_delivery_days integer NOT NULL DEFAULT 1 e a CHECK do prazo de 0 a 30",
+  "store_config_so_retirada_exige_retirada: trigger ligada (BEFORE INSERT OR UPDATE por linha), corpo da migration (md5) e a funcao dela sem EXECUTE para ninguem",
+  "upsert_store_config: corpo e o da 20261244000000, que grava as duas chaves novas (md5)",
+  "v_store_config: as 47 colunas na ordem (as 45 de antes + local_delivery_enabled e local_delivery_days no fim), legivel por anon, authenticated e service_role",
+];
+/** O rol da 47b (a consulta de AUSENCIA do lote da entrega na cidade; `ausenciaConfirmadaPor`): as 9 linhas que
+ * scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql devolve - a base de antes: os tres corpos
+ * vigentes (md5 da 20261229000000, da 20261236000000 e da 20261239000000), os atributos e o EXECUTE de sempre, as colunas, a CHECK,
+ * a trigger e a funcao dela ainda ausentes, a view de 45 colunas e o que os corpos novos leem de pe. Uma loja que ja tem a
+ * migration reprova aqui de proposito, nas linhas dos corpos, das colunas e da view. */
+const ROL_DA_47B = [
+  "controle: funcoes de public visiveis a este papel",
+  "as duas colunas novas, a CHECK do prazo, a trigger do So retiro e a funcao dela ainda nao existem",
+  "as tres funcoes: EXECUTE como sempre (PUBLIC nunca; authenticated e service_role sim; anon sim nas duas compras e nao na upsert)",
+  "as tres funcoes: uma assinatura so cada e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno)",
+  "create_marketplace_order_v23: corpo e o vigente da 20261229000000, sem o So retiro (md5)",
+  "create_marketplace_order_v24: corpo e o vigente da 20261236000000, sem o So retiro (md5)",
+  "store_config.enabled_shipping_methods, store_config.store_address e store_config.origin_cep existem (os corpos novos as leem) e is_local_cep(text, text, text) tambem",
+  "upsert_store_config: corpo e o vigente da 20261239000000, sem as duas chaves novas (md5)",
+  "v_store_config: as 45 colunas de hoje, na ordem (md5 da lista), sem as duas novas",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -2252,6 +2286,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "45b-antes-custo-do-dia-base-vigente": ROL_DA_45B,
   "46a-conferir-desfazer-recebimento-aplicado": ROL_DA_46A,
   "46b-antes-desfazer-recebimento-base-vigente": ROL_DA_46B,
+  "47a-conferir-a-loja-escolhe-como-entrega-aplicado": ROL_DA_47A,
+  "47b-antes-a-loja-escolhe-como-entrega-base-vigente": ROL_DA_47B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2864,6 +2900,8 @@ module.exports = {
   ROL_DA_45B,
   ROL_DA_46A,
   ROL_DA_46B,
+  ROL_DA_47A,
+  ROL_DA_47B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

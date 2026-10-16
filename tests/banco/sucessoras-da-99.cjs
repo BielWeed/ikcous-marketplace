@@ -68,11 +68,16 @@ const NOMES = [
   // gatilho e os dois corpos caem juntos ou não caem): get_admin_analytics_v2 sucede o corpo da 34 (a CADEIA
   // 99 → 14 → 34 → 42) e fin_dre sucede o corpo da 99 (99 → 42). Uma entrada por função, o mesmo rollback.
   "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql",
+  // Como a loja entrega na cidade dela (15/10/2026): TRES funcoes numa migration so (v23, v24 e upsert_store_config).
+  // So o upsert e um dos 42 da 99 (a CADEIA 99 -> 39 -> 44: o `hashVigente` da 44 e o `hashDesta` da 39); v23 e v24 entram
+  // porque o rollback desfaz as tres de uma vez e a conferencia "devolveu o corpo anterior" vale para cada uma.
+  "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
 const PARES_POR_MIGRATION = new Map([
   ["20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql", 2],
+  ["20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql", 3],
 ]);
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

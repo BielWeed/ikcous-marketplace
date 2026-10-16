@@ -1194,6 +1194,20 @@ async function main() {
         "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
+      // A 20261244 (a loja escolhe como entrega na cidade): UMA migration, tres funcoes de fora destas tres (as duas portas de
+      // compra e a upsert_store_config, que ela SUCEDE a 39); a 17a nao as le.
+      [
+        "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
+        "public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
+      [
+        "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
+        "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
+      [
+        "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
+        "public.upsert_store_config(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

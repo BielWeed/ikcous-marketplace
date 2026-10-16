@@ -51,6 +51,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+const {
+  desfazerEntregaNaCidadeNaTransacao,
+} = require("./a-loja-escolhe-como-entrega-posterior.cjs");
 
 const MIGRATIONS = path.resolve(
   __dirname,
@@ -1417,6 +1420,10 @@ async function main() {
     // SUCESSORA: a 20261236000000 redefine a v24 em cima do corpo da 20261229. Esta prova mede a 20261229
     // isolada, entao desfaz a sucessora (pelo rollback-manual dela, que so reescreve o corpo e aceita os dois
     // corpos) no clone descartavel antes da primeira prova.
+    // SUCESSORA: a 20261244000000 (a loja escolhe como entrega na cidade) redefine a v23 e a v24 em cima do corpo
+    // desta migration. Esta prova mede a migration dela ISOLADA, entao desfaz a sucessora (pelo rollback-manual dela, que
+    // so reescreve corpos, apaga a trigger e refaz a view) no clone descartavel antes da primeira prova.
+    await desfazerEntregaNaCidadeNaTransacao(C);
     await C.query(ROLLBACK_DA_SUCESSORA);
     for (const { nome, corpo } of PROVAS) {
       try {

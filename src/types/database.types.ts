@@ -2326,6 +2326,8 @@ export type Database = {
           home_sections: Json | null;
           id: number;
           local_cep_range: string | null;
+          local_delivery_days: number;
+          local_delivery_enabled: boolean;
           local_delivery_fee: number;
           logo_url: string | null;
           manutencao: boolean;
@@ -2372,6 +2374,8 @@ export type Database = {
           home_sections?: Json | null;
           id: number;
           local_cep_range?: string | null;
+          local_delivery_days?: number;
+          local_delivery_enabled?: boolean;
           local_delivery_fee?: number;
           logo_url?: string | null;
           manutencao?: boolean;
@@ -2418,6 +2422,8 @@ export type Database = {
           home_sections?: Json | null;
           id?: number;
           local_cep_range?: string | null;
+          local_delivery_days?: number;
+          local_delivery_enabled?: boolean;
           local_delivery_fee?: number;
           logo_url?: string | null;
           manutencao?: boolean;
@@ -2584,6 +2590,8 @@ export type Database = {
           home_sections: Json | null;
           id: number | null;
           local_cep_range: string | null;
+          local_delivery_days: number | null;
+          local_delivery_enabled: boolean | null;
           local_delivery_fee: number | null;
           logo_url: string | null;
           manutencao: boolean | null;
@@ -2630,6 +2638,8 @@ export type Database = {
           home_sections?: Json | null;
           id?: number | null;
           local_cep_range?: string | null;
+          local_delivery_days?: number | null;
+          local_delivery_enabled?: boolean | null;
           local_delivery_fee?: number | null;
           logo_url?: string | null;
           manutencao?: boolean | null;
@@ -2671,6 +2681,8 @@ export type Database = {
           home_sections?: Json | null;
           id?: number | null;
           local_cep_range?: string | null;
+          local_delivery_days?: number | null;
+          local_delivery_enabled?: boolean | null;
           local_delivery_fee?: number | null;
           logo_url?: string | null;
           manutencao?: boolean | null;

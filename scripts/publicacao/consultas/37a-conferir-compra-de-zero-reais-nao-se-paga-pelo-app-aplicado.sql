@@ -70,7 +70,12 @@ WITH alvo(assinatura) AS (
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo e o da 20261236000000, com a recusa do total zero pelo app (md5)',
          '6002fc8db6c1d402bc704f018a0c2621',
-         COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
+         -- 2 hashes aceitos: o corpo da 20261236000000 OU o da SUCESSORA dele, a 20261244000000 (a loja escolhe como
+         -- entrega na cidade: o mesmo corpo mais o So retiro, com a recusa do total zero intacta). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN f.m IN ('6002fc8db6c1d402bc704f018a0c2621', '85c37af4baa2f5ce1375bdd9e943c746')
+                               THEN '6002fc8db6c1d402bc704f018a0c2621'
+                               ELSE f.m END
+                     FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: o corpo recusa o pedido pelo app cujo total do servidor e zero',
          'sim',

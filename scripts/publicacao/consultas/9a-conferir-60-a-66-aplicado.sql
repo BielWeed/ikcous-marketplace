@@ -51,8 +51,10 @@
 --     redefinidas na 20261199 e o corpo vivo prova a 99 (registrar_venda_presencial
 --     ainda ganhou a trava pela chave de idempotência na 20261235000000: o corpo
 --     vivo dela prova a 235; e upsert_store_config foi redefinida de novo na
---     20261239 — a loja declara razão social, CNPJ/CPF e e-mail de atendimento —,
---     cujo corpo o vivo prova agora); a evidência de 62..64 é a ACL e o overload acima.
+--     20261239 — a loja declara razão social, CNPJ/CPF e e-mail de atendimento — e de novo
+--     na 20261244 — a loja escolhe como entrega na cidade e em quantos dias: as chaves
+--     local_delivery_enabled e local_delivery_days —, cujo corpo o vivo prova agora); a
+--     evidência de 62..64 é a ACL e o overload acima.
 --     tests/ci_conferir_banco_test.ts recalcula cada md5 a
 --     partir dos arquivos desta árvore: uma migration futura que redefina uma delas
 --     QUEBRA o CI e obriga a atualizar esta consulta no mesmo PR.
@@ -114,7 +116,7 @@ WITH corpos AS (
     ('get_product_recommendations', '3de5b27cc17c31301249861b7921a6fe'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
     ('registrar_venda_presencial', '996caf02505ac16a8bded73bcf8900aa'),
-    ('upsert_store_config', 'b562669936df1cda31d4bdd4d075bff3')
+    ('upsert_store_config', '391e8e1064400df5aea579f3472b203c')
 ), acls(fn, esperado) AS (VALUES
     ('buscar_por_codigo_barras', 'anon=false authenticated=true service_role=true public=nao'),
     ('get_admin_orders_cancelados_recentes', 'anon=false authenticated=true service_role=true public=nao'),

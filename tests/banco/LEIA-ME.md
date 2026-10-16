@@ -694,6 +694,17 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   6 linhas) do lote `20261243000000` (só o corpo de `registrar_pagamento_recebido`; não há medição 46m). Rol exato nos dois
   estados, 13 negativos da 46a e 9 da 46b, seis mutantes do texto das consultas, e a `8e` POSITIVA com o corpo novo no ar e
   desfeito. **Não prova** a IKCOUS nem a Savy.
+- **a loja escolhe como entrega na cidade (`a-loja-escolhe-como-entrega-viva.cjs`, via `rodar-isolado.cjs`)**: a migration `20261244000000` (as duas
+  colunas `local_delivery_enabled`/`local_delivery_days`, a trigger do "Só retiro", a view de 47 colunas e o corpo de `create_marketplace_order_v23`,
+  `_v24` e `upsert_store_config`). A matriz das duas portas de compra x convidado/logado x CEP local/fora x os três modos, a equivalência com o
+  padrão (loja que nunca mexeu = comportamento de antes), a trigger (inclusive endereço só com espaços), as duas chaves da upsert, o pré-voo que
+  recusa sem escrever, os dois rollbacks e mutantes. **Não prova** a IKCOUS nem a Savy.
+- **portão da entrega na cidade (`a-loja-escolhe-como-entrega-portao-viva.cjs`)**: as consultas `47a-conferir-a-loja-escolhe-como-entrega-aplicado`
+  (DEPOIS, 9 linhas) e `47b-antes-a-loja-escolhe-como-entrega-base-vigente` (ANTES, 9 linhas) do lote `20261244000000`; rol exato nos estados
+  DEPOIS, ANTES (rollback comum) e ANTES (comum + destrutivo), 25 negativos da 47a e 15 da 47b, sete mutantes do texto, e as antecessoras 8e, 9a, 31a, 37a
+  e 40a aceitando o corpo novo como sucessor. **Não prova** a IKCOUS nem a Savy.
+- **as provas que DESFAZEM corpos redefinidos pela `20261244000000`** (`endereco-no-pedido`, `a-compra-que-da-zero-reais...`, `loja-declara-quem-e` e
+  `portao-8e-aceita-sucessoras`, mais a cadeia das sucessoras da 99) a desfazem ANTES por `a-loja-escolhe-como-entrega-posterior.cjs`.
 - **as provas que DESFAZEM corpos redefinidos pela `20261243000000`** (`pagamentos-rpc` e `admin-atual`: o rollback da 95 e da
   97 e a reaplicação da 97 partem do corpo de `registrar_pagamento_recebido` que a 97 deixa) a desfazem ANTES, na transação,
   por `desfazer-recebimento-posterior.cjs` (só se no ar): o pré-voo de cada rollback mais velho a recusa.

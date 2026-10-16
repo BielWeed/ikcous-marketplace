@@ -187,6 +187,8 @@ on:
           - 45m-medir-itens-sem-custo-do-dia
           - 46a-conferir-desfazer-recebimento-aplicado
           - 46b-antes-desfazer-recebimento-base-vigente
+          - 47a-conferir-a-loja-escolhe-como-entrega-aplicado
+          - 47b-antes-a-loja-escolhe-como-entrega-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

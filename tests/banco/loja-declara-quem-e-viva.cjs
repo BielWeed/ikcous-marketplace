@@ -46,6 +46,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+const {
+  desfazerEntregaNaCidadeNaTransacao,
+} = require("./a-loja-escolhe-como-entrega-posterior.cjs");
 
 const MIGRATIONS = path.resolve(
   __dirname,
@@ -938,6 +941,10 @@ async function main() {
   const url = lerDatabaseUrlEfemera();
   C = new Client({ connectionString: url });
   await C.connect();
+  // SUCESSORA: a 20261244000000 (a loja escolhe como entrega na cidade) redefine o upsert_store_config em cima do corpo
+  // desta migration. Esta prova mede a migration dela ISOLADA, entao desfaz a sucessora (pelo rollback-manual dela, que
+  // so reescreve corpos, apaga a trigger e refaz a view) no clone descartavel antes da primeira prova.
+  await desfazerEntregaNaCidadeNaTransacao(C);
   const falhas = [];
   try {
     for (const { nome, corpo } of PROVAS) {

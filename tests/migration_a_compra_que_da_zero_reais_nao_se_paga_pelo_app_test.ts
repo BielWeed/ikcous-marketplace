@@ -307,10 +307,14 @@ Deno.test("as consultas 37a/37b e a 31a citam os md5 REAIS dos corpos e o marcad
   assert.ok(c37a.includes(CONDICAO.replace(/'/g, "''")));
   assert.ok(c37a.includes(identificador));
   assert.ok(c37b.includes(identificador));
-  // a 31a aceita o corpo novo como sucessor da v24 (e só dela) e responde com o da 20261229000000
+  // a 31a aceita o corpo novo como sucessor da v24 (e a 20261244000000, depois dele, como a segunda) e responde com o da 20261229000000
   const c31a = lerArquivo(
     "scripts/publicacao/consultas/31a-conferir-endereco-da-compra-fica-no-pedido.sql",
   );
-  assert.ok(c31a.includes(`f.m IN ('${HASH_VIGENTE}', '${novo}')`));
+  assert.ok(
+    c31a.includes(
+      `f.m IN ('${HASH_VIGENTE}', '${novo}', '85c37af4baa2f5ce1375bdd9e943c746')`,
+    ),
+  );
   assert.equal(c31a.split(novo).length - 1, 1);
 });

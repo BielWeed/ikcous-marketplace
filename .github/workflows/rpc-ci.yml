@@ -122,6 +122,8 @@ on:
       - "scripts/publicacao/consultas/45m-medir-itens-sem-custo-do-dia.sql"
       - "scripts/publicacao/consultas/46a-conferir-desfazer-recebimento-aplicado.sql"
       - "scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql"
+      - "scripts/publicacao/consultas/47a-conferir-a-loja-escolhe-como-entrega-aplicado.sql"
+      - "scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -213,6 +215,8 @@ on:
       - "scripts/publicacao/consultas/45m-medir-itens-sem-custo-do-dia.sql"
       - "scripts/publicacao/consultas/46a-conferir-desfazer-recebimento-aplicado.sql"
       - "scripts/publicacao/consultas/46b-antes-desfazer-recebimento-base-vigente.sql"
+      - "scripts/publicacao/consultas/47a-conferir-a-loja-escolhe-como-entrega-aplicado.sql"
+      - "scripts/publicacao/consultas/47b-antes-a-loja-escolhe-como-entrega-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -869,6 +873,18 @@ jobs:
       - name: Prova viva do portao do desfazer recebimento (consultas 46a e 46b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/desfazer-recebimento-portao-viva.cjs
+      # A loja escolhe como entrega na cidade dela e em quantos dias (migration 20261244, 15/10/2026; DINHEIRO e DADO DE CLIENTE:
+      # as duas portas de compra v23/v24 e a upsert_store_config trocam de corpo). A matriz das duas compras x convidado/logado x
+      # CEP local/fora x tres modos, a equivalencia com o padrao, a trigger do So retiro, as duas chaves da upsert, o pre-voo, o
+      # rollback nos dois degraus e os mutantes. BLOQUEANTE. CLONE proprio.
+      - name: Prova viva da entrega na cidade (migration 20261244)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-escolhe-como-entrega-viva.cjs
+      # E o PORTAO da release desse lote: as consultas 47a (DEPOIS, 9 linhas) e 47b (ANTES, 9 linhas). Nao ha medicao 47m: o lote
+      # so acrescenta colunas com default (nao le nem reescreve dado). BLOQUEANTE. CLONE proprio.
+      - name: Prova viva do portao da entrega na cidade (consultas 47a e 47b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs
       # A lojista renomeia e apaga categoria sem deixar produto orfao (migration 20261237, 14/10/2026; permissao + regra de
       # devolucao). A categoria do produto e' guardada pelo NOME: renomear_categoria troca o nome nos QUATRO lugares (a linha, os
       # produtos, os links de banner nos dois formatos e a lista "sem troca" da politica de devolucao) numa transacao so e conta

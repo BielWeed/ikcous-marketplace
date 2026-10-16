@@ -319,7 +319,11 @@ Deno.test("o cabecalho avisa a ORDEM (so depois da 20261227000000, que espera o 
   );
   assert.ok(sucessoras.includes(NOME));
   // a ordem das sucessoras no modulo e' a de aplicacao (a de nome de arquivo)
-  const nomes = [...sucessoras.matchAll(/"(2026\d{10}_[a-z0-9_]+\.sql)"/g)].map(
+  const bloco = sucessoras.slice(
+    sucessoras.indexOf("const NOMES = ["),
+    sucessoras.indexOf("];", sucessoras.indexOf("const NOMES = [")),
+  );
+  const nomes = [...bloco.matchAll(/"(2026\d{10}_[a-z0-9_]+\.sql)"/g)].map(
     (m) => m[1],
   );
   assert.deepEqual([...nomes].sort(), nomes, "NOMES em ordem de aplicacao");
