@@ -7,6 +7,7 @@ import { useStore } from "@/contexts/StoreContext";
 // única promessa segura de anunciar é a LOCAL — mas com o QUALIFICADOR "na
 // cidade" sempre que ela não empatar com a nacional (`!promessas.iguais`),
 // para nunca prometer grátis nacional que a loja não dá.
+import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 // FRETE V2 (frente B, 03/09): o que a Home anuncia passa a ser derivado do
 // PRESET escolhido pelo lojista — fonte única em presets-de-frete-gratis.ts.
@@ -97,7 +98,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
   const minShipping = config.freeShippingMin;
   const totalCartValue = cartTotal || 0;
   const remaining = Math.max(0, minShipping - totalCartValue);
-  const isGoalReached = totalCartValue >= minShipping;
+  const isGoalReached = atingiuOMinimo(totalCartValue, minShipping);
 
   const progressPercent = Math.min((totalCartValue / minShipping) * 100, 100);
 

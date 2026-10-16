@@ -109,6 +109,12 @@ export function useReviews() {
     return isAdmin && cachedReviewsData ? cachedReviewsData : [];
   });
   const [loading, setLoading] = useState(() => isAdmin && !cachedReviewsData);
+  const [erroDaListagemAdmin, setErroDaListagemAdmin] = useState<string | null>(
+    null,
+  );
+  const [erroDaListagemProduto, setErroDaListagemProduto] = useState<
+    string | null
+  >(null);
   const latestProductIdRef = useRef<string | null>(null);
   const rodadaAdminRef = useRef(0);
   const consultaDoProdutoRef = useRef(0);
@@ -122,6 +128,8 @@ export function useReviews() {
     latestProductIdRef.current = null;
     setReviews([]);
     setAdminReviews([]);
+    setErroDaListagemAdmin(null);
+    setErroDaListagemProduto(null);
     setLoading(false);
     setDonoDasAvaliacoes(user?.id);
   }, [user?.id]);
@@ -131,6 +139,7 @@ export function useReviews() {
       if (usuarioAtualRef.current !== user?.id) return;
       latestProductIdRef.current = productId;
       const consulta = ++consultaDoProdutoRef.current;
+      setErroDaListagemProduto(null);
       // Geração do cache ao COMEÇAR: se uma limpeza (Sair, troca de conta)
       // acontecer enquanto a resposta viaja, ela não pode regravar a lista.
       const geracao = geracaoAtualDoCache();
@@ -207,11 +216,13 @@ export function useReviews() {
 
         if (latestProductIdRef.current === productId) {
           setReviews(formattedReviews);
+          setErroDaListagemProduto(null);
         }
         updateReviewsCacheSeMesmaGeracao(productId, formattedReviews, geracao);
       } catch (error: any) {
         if (!atual()) return;
         console.error("Error fetching reviews:", error);
+        setErroDaListagemProduto("Não foi possível carregar as avaliações.");
         toast.error("Erro ao carregar avaliações.");
       } finally {
         if (atual() && latestProductIdRef.current === productId) {
@@ -434,6 +445,7 @@ export function useReviews() {
             setCachedReviewsData(formatted);
           }
           setAdminReviews(formatted);
+          setErroDaListagemAdmin(null);
           return {
             reviews: formatted,
             total: totalCount,
@@ -561,6 +573,7 @@ export function useReviews() {
 
         if (!atual()) return;
         setAdminReviews(formatted);
+        setErroDaListagemAdmin(null);
         return {
           reviews: formatted,
           total: count || 0,
@@ -572,9 +585,12 @@ export function useReviews() {
         if (!atual()) return;
         console.error("Error fetching all reviews:", error);
         toast.error("Erro ao carregar avaliações.");
+        // Contrato da B2: a lista e o cache da leitura anterior saem, para a
+        // falha não parecer o resultado de outro filtro/busca.
         setAdminReviews([]);
         if (isAdmin) setCachedReviewsData([]);
-        return { reviews: [], total: 0, averageRating: 0 };
+        setErroDaListagemAdmin("Não foi possível carregar as avaliações.");
+        return;
       } finally {
         if (atual()) setLoading(false);
       }
@@ -792,6 +808,8 @@ export function useReviews() {
     reviews: donoDasAvaliacoes === user?.id ? reviews : [],
     adminReviews: donoDasAvaliacoes === user?.id && isAdmin ? adminReviews : [],
     loading,
+    erroDaListagemAdmin,
+    erroDaListagemProduto,
     getReviewsByProduct,
     addReview,
     markHelpful,

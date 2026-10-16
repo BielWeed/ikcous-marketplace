@@ -3,6 +3,7 @@
 // valor) nem fecha envio por transportadora (que exige pagamento antecipado);
 // só fecha pagando na retirada ou na entrega. O formulário do cupom AVISA a
 // lojista — nunca proíbe o cupom.
+import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
 import type { Coupon } from "@/types";
 
 /**
@@ -25,7 +26,7 @@ export function cupomPodeCobrirACompraInteira(
   if (!(valor > 0)) return false;
   if (cupom.type === "percentage") return valor >= 100;
   const minimo = Number(cupom.minPurchase ?? 0);
-  if (minimo > 0 && valor >= minimo) return true;
+  if (minimo > 0 && atingiuOMinimo(valor, minimo)) return true;
   return valor >= VALOR_FIXO_QUE_PODE_COBRIR_UM_PEDIDO;
 }
 

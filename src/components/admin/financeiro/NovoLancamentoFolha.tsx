@@ -228,9 +228,13 @@ export function NovoLancamentoFolha({
           valor={form.tipo}
           aoMudar={mudarTipo}
           opcoes={[
-            { valor: "saida", rotulo: "Despesa" },
-            { valor: "entrada", rotulo: "Receita" },
-            { valor: "transferencia", rotulo: "Transferência" },
+            { valor: "saida", rotulo: "Despesa", desabilitada: enviando },
+            { valor: "entrada", rotulo: "Receita", desabilitada: enviando },
+            {
+              valor: "transferencia",
+              rotulo: "Transferência",
+              desabilitada: enviando,
+            },
           ]}
         />
 
@@ -241,6 +245,7 @@ export function NovoLancamentoFolha({
         >
           <LocalBufferedInput
             id="fin-lanc-valor"
+            disabled={enviando}
             value={form.valor}
             mask="currency"
             inputMode="numeric"
@@ -259,6 +264,7 @@ export function NovoLancamentoFolha({
         >
           <LocalBufferedInput
             id="fin-lanc-descricao"
+            disabled={enviando}
             value={form.descricao}
             maxLength={200}
             placeholder={
@@ -283,6 +289,7 @@ export function NovoLancamentoFolha({
           >
             <select
               id="fin-lanc-categoria"
+              disabled={enviando}
               value={form.categoriaId}
               aria-invalid={erros.categoriaId ? true : undefined}
               onChange={(e) => atualizar({ categoriaId: e.target.value })}
@@ -306,6 +313,7 @@ export function NovoLancamentoFolha({
           >
             <select
               id="fin-lanc-conta"
+              disabled={enviando}
               value={form.contaId}
               aria-invalid={erros.contaId ? true : undefined}
               onChange={(e) => atualizar({ contaId: e.target.value })}
@@ -327,6 +335,7 @@ export function NovoLancamentoFolha({
             >
               <select
                 id="fin-lanc-conta-destino"
+                disabled={enviando}
                 value={form.contaDestinoId}
                 aria-invalid={erros.contaDestinoId ? true : undefined}
                 onChange={(e) => atualizar({ contaDestinoId: e.target.value })}
@@ -355,8 +364,16 @@ export function NovoLancamentoFolha({
               )
             }
             opcoes={[
-              { valor: "realizado", rotulo: rotuloSituacao.feito },
-              { valor: "previsto", rotulo: rotuloSituacao.pendente },
+              {
+                valor: "realizado",
+                rotulo: rotuloSituacao.feito,
+                desabilitada: enviando,
+              },
+              {
+                valor: "previsto",
+                rotulo: rotuloSituacao.pendente,
+                desabilitada: enviando,
+              },
             ]}
           />
         )}
@@ -370,6 +387,7 @@ export function NovoLancamentoFolha({
             >
               <input
                 id="fin-lanc-vencimento"
+                disabled={enviando}
                 type="date"
                 value={form.dataVencimento}
                 onChange={(e) => atualizar({ dataVencimento: e.target.value })}
@@ -386,6 +404,7 @@ export function NovoLancamentoFolha({
             >
               <input
                 id="fin-lanc-realizacao"
+                disabled={enviando}
                 type="date"
                 value={form.dataRealizacao}
                 max={hoje}
@@ -401,6 +420,7 @@ export function NovoLancamentoFolha({
           >
             <input
               id="fin-lanc-competencia"
+              disabled={enviando}
               type="date"
               value={form.dataCompetencia}
               onChange={(e) => atualizar({ dataCompetencia: e.target.value })}
@@ -427,6 +447,7 @@ export function NovoLancamentoFolha({
           >
             <select
               id="fin-lanc-parcelas"
+              disabled={enviando}
               value={form.parcelas}
               onChange={(e) => atualizar({ parcelas: e.target.value })}
               className={CLASSE_CAMPO}
@@ -444,6 +465,7 @@ export function NovoLancamentoFolha({
           <Campo id="fin-lanc-forma" rotulo="Forma de pagamento (opcional)">
             <select
               id="fin-lanc-forma"
+              disabled={enviando}
               value={form.formaPagamento}
               onChange={(e) => atualizar({ formaPagamento: e.target.value })}
               className={CLASSE_CAMPO}
@@ -465,6 +487,7 @@ export function NovoLancamentoFolha({
         >
           <LocalBufferedTextarea
             id="fin-lanc-observacao"
+            disabled={enviando}
             value={form.observacao}
             maxLength={500}
             rows={2}
