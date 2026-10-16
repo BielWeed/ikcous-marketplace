@@ -68,9 +68,39 @@ function cenario(
     enviar?: (mensagem: any, remetente: any) => Promise<unknown>;
     verificar?: (remetente: any) => Promise<unknown>;
     tempoDoEnvioMs?: number;
+    antesDeAtualizarRegistro?: () => void;
   } = {},
 ) {
   const banco = bancoFalso(opcoes.banco);
+  const fromOriginal = banco.from.bind(banco);
+  banco.from = (tabela: string) => ({
+    ...fromOriginal(tabela),
+    update: (linha: { value: string }) => {
+      const filtros = new Map<string, string>();
+      const consulta = {
+        eq: (coluna: string, valor: string) => {
+          filtros.set(coluna, valor);
+          return consulta;
+        },
+        select: () => consulta,
+        maybeSingle: async () => {
+          opcoes.antesDeAtualizarRegistro?.();
+          const chave = filtros.get("key");
+          const atual = banco.estado.valores.get(chave);
+          if (atual === undefined || atual !== filtros.get("value")) {
+            return { data: null, error: null };
+          }
+          if (banco.estado.escritas.length >= banco.estado.escritasPermitidas) {
+            return { data: null, error: { message: "app_settings fora do ar" } };
+          }
+          banco.estado.escritas.push({ acao: "update", key: chave, value: linha.value });
+          banco.estado.valores.set(chave, linha.value);
+          return { data: { key: chave }, error: null };
+        },
+      };
+      return consulta;
+    },
+  });
   const relogio = { agora: T0 };
   const enviados: Array<{ mensagem: any; remetente: any }> = [];
   const verificados: any[] = [];
@@ -626,7 +656,7 @@ Deno.test("A5 testar — segundo teste em menos de 1 minuto: 429 e o envio NÃO 
   assertEquals(c.enviados.length, 1);
 });
 
-Deno.test("A6 testar — a credencial foi TROCADA enquanto o teste rodava: 409, e o resultado velho NÃO é gravado por cima do registro novo", async () => {
+Deno.test("A6 testar — a credencial foi TROCADA enquanto o teste rodava: devolve o resultado sem gravar por cima do registro novo", async () => {
   const antigo = await registroCifrado();
   const novo = await registroCifrado("zzzzyyyyxxxxwwww", CHAVE_CIFRA_TESTE, "nova@gmail.com");
   const c = cenario({
@@ -637,9 +667,43 @@ Deno.test("A6 testar — a credencial foi TROCADA enquanto o teste rodava: 409, 
     },
   });
   const r = await chamar(c, { acao: "testar" });
-  assertEquals(r.status, 409);
+  assertEquals(r.status, 200);
+  assertEquals(r.json.ok, true);
   assertEquals(registroDoBanco(c), novo);
 });
+
+Deno.test("A6 testar — sem concorrência, atualiza só ultimo_teste e preserva os demais campos do JSON original", async () => {
+  const original = { ...await registroCifrado(), descricao: "campo preservado" };
+  const c = cenario({ banco: { registroCru: JSON.stringify(original, null, 2) } });
+  const r = await chamar(c, { acao: "testar" });
+  assertEquals(r.status, 200);
+  assertEquals(registroDoBanco(c), {
+    ...original, ultimo_teste: { ok: true, em: r.json.em, motivo: null },
+  });
+  assertEquals(c.banco.estado.escritas.filter((e) => e.key === CHAVE_SETTINGS_EMAIL).map((e) => e.acao), ["update"]);
+});
+
+for (const concorrencia of ["trocar", "remover"]) {
+  Deno.test(`A6 testar — ${concorrencia} entre a leitura final e a escrita: o CAS não sobrescreve nem recria o cadastro`, async () => {
+    const antigo = await registroCifrado();
+    const novo = { ...antigo, iv: "iv-novo-de-teste", senha_cifrada: "cifra-nova-de-teste" };
+    const c = cenario({
+      banco: { registro: antigo },
+      antesDeAtualizarRegistro: () => {
+        if (concorrencia === "trocar") {
+          c.banco.estado.valores.set(CHAVE_SETTINGS_EMAIL, JSON.stringify(novo));
+        } else {
+          c.banco.estado.valores.delete(CHAVE_SETTINGS_EMAIL);
+        }
+      },
+    });
+    const r = await chamar(c, { acao: "testar" });
+    assertEquals(r.status, 200);
+    assertEquals(r.json.ok, true);
+    assertEquals(registroDoBanco(c), concorrencia === "trocar" ? novo : null);
+    assertEquals(c.banco.estado.escritas.some((e) => e.key === CHAVE_SETTINGS_EMAIL), false);
+  });
+}
 
 Deno.test("A5 testar — o envio que PENDURA é cortado no tempo limite e vira 'sem_conexao' (a função não fica presa)", async () => {
   const c = cenario({

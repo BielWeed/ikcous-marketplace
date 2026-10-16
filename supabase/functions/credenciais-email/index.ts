@@ -57,6 +57,7 @@ import {
   classificarFalhaDeEnvio,
   comTempoLimite,
   gravarRegistroEmail,
+  gravarResultadoDoTesteEmail,
   gravarSaudeDoEnvio,
   lerRegistroEmail,
   lerSaudeDoEnvio,
@@ -364,25 +365,13 @@ export async function handler(
           : classificarFalhaDeEnvio(erro);
       }
 
-      // A credencial pode ter sido trocada (outra aba salvou) durante o envio:
-      // o resultado deste teste fala da senha ANTIGA e não pode ficar por cima.
-      let fresco: RegistroEmail | null;
-      try {
-        fresco = await lerRegistroEmail(supabase);
-      } catch {
-        fresco = null;
-      }
-      if (!fresco || fresco.iv !== registro.iv) {
-        return json(
-          { erro: "O Gmail ou a senha foram trocados enquanto o teste rodava. Mande o teste de novo." },
-          409,
-        );
-      }
       const em = new Date(agora()).toISOString();
-      await gravarRegistroEmail(supabase, {
-        ...fresco,
-        ultimo_teste: { ok: motivo === null, em, motivo },
+      const gravou = await gravarResultadoDoTesteEmail(supabase, registro, {
+        ok: motivo === null, em, motivo,
       });
+      if (!gravou) {
+        console.log("[credenciais-email] cadastro alterado; resultado não persistido");
+      }
       return json(
         motivo === null
           ? { ok: true, motivo: null, em, mensagem: MENSAGEM_DO_TESTE_OK }

@@ -506,10 +506,21 @@ export async function enviarComprovantePedido(args: {
     return { ok: false, motivo: "ja_enviado" };
   }
 
-  const { data: itens } = await supabase
+  const { data: itens, error: erroItens } = await supabase
     .from("marketplace_order_items")
     .select("product_name, quantity, price, variant_id")
     .eq("order_id", orderId);
+
+  if (erroItens) {
+    // Sem os produtos, o comprovante não está pronto para enviar.
+    await supabase
+      .rpc("liberar_email_de_confirmacao", { p_order_id: orderId })
+      .then(undefined, (erro: unknown) => {
+        console.error("comprovante: liberar reserva falhou", erro);
+      });
+    console.error("comprovante: leitura dos itens falhou");
+    return { ok: false, motivo: "envio_falhou" };
+  }
 
   // Tamanho/cor de cada item (uma consulta em lote; nunca derruba o envio —
   // ver `variacoesDosItens`). Item sem variacao encontrada segue com o nome
