@@ -1,8 +1,14 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { useStore } from "@/contexts/StoreContext";
+import { haOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { marcarRecargaPendente } from "@/lib/atualizacao/recarga-pendente";
+import { redeVerificadaParaPurga } from "@/lib/atualizacao/rede-para-purga";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
-import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
-import { gravaOrigemDeAtualizacao } from "@/lib/motivo-de-recarga";
+import {
+  gravaMotivoDeRecarga,
+  gravaOrigemDeAtualizacao,
+  gravaVersaoEsperadaDaAtualizacao,
+} from "@/lib/motivo-de-recarga";
 import {
   PRAZO_APLICACAO_UPDATE_MS,
   apagarCachesDoApp,
@@ -14,7 +20,7 @@ import {
   partesDoNucleoSemver,
   versaoLegivelDeResposta,
 } from "@/lib/versao-do-servidor";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 declare const __APP_VERSION__: string;
@@ -63,8 +69,19 @@ const readPurgeGuard = (): { required: string; count: number } => {
 
 export function useUpdateCheck() {
   const { config } = useStore();
-  const [isMandatory, setIsMandatory] = useState(false);
+  // A versão mínima exigida que este aparelho ainda NÃO tem, JÁ com a rede
+  // provada (null = nada obrigatório pendente). É daqui que sai `isMandatory`
+  // e o `updateAvailable` da versão obrigatória: quem decide QUANDO instalar é
+  // o PWAUpdateGate (ponto de parada, abas, trava) — este hook não purga mais
+  // sozinho no boot.
+  const [obrigatoria, setObrigatoria] = useState<string | null>(null);
   const [newVersion, setNewVersion] = useState<string | null>(null);
+  // Última leitura BEM-SUCEDIDA de /version.json feita por este hook: é a
+  // prova de rede da purga (e, por ser estado, reavalia a regra ao mudar).
+  const [leituraDeVersaoEm, setLeituraDeVersaoEm] = useState<number | null>(
+    null,
+  );
+  const buscandoParaPurgaRef = useRef(false);
 
   // ==============================
   // CORE: Vite PWA Native Events
@@ -72,7 +89,7 @@ export function useUpdateCheck() {
   const [registration, setRegistration] =
     useState<ServiceWorkerRegistration | null>(null);
 
-  const fetchServerVersion = useCallback(async () => {
+  const lerVersaoDoServidor = useCallback(async () => {
     if (import.meta.env.DEV) return SAFE_APP_VERSION;
     try {
       // SEM carimbo de tempo: cada URL diferente virava uma entrada nova no
@@ -96,11 +113,30 @@ export function useUpdateCheck() {
     return null;
   }, []);
 
-  const {
-    offlineReady: [offlineReady, setOfflineReady],
-    needRefresh: [needRefresh, _setNeedRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
+  // A leitura que o resto do hook usa: a de cima + o registro da PROVA DE REDE
+  // da purga obrigatória (uma leitura de conteúdo bem-sucedida). Em dev não há
+  // leitura de verdade (devolve a versão local), então não prova nada.
+  const fetchServerVersion = useCallback(async () => {
+    const lida = await lerVersaoDoServidor();
+    if (lida !== null && !import.meta.env.DEV) {
+      setLeituraDeVersaoEm(Date.now());
+    }
+    return lida;
+  }, [lerVersaoDoServidor]);
+
+  // As opções ficam numa VARIÁVEL (e não num literal direto na chamada) de
+  // propósito: `onNeedReload` existe no vite-plugin-pwa 2.0.0 (o do
+  // package-lock e do CI), mas o `node_modules` de quem ainda não reinstalou
+  // pode ter a 1.x, cujos tipos não conhecem a propriedade — e literal direto
+  // faz o tsc local recusar "propriedade em excesso". Variável não passa pela
+  // checagem de excesso e o 2.0.0 recebe a opção normalmente.
+  //
+  // `onNeedReload` SUBSTITUI o reload automático que o plugin faz em TODAS as
+  // abas quando o service worker novo assume (ouvinte `controlling`, sem
+  // consultar ninguém). Aqui a aba só ANOTA o pedido; o PWAUpdateGate recarrega
+  // no próximo ponto de parada seguro (nunca no meio de pagamento, venda,
+  // formulário sujo ou operação sensível). É o veto local de cada aba.
+  const opcoesDoRegistro = {
     onRegisteredSW(swUrl: string, r: ServiceWorkerRegistration | undefined) {
       console.log(`[PWA] Service Worker registered: ${swUrl}`);
       if (r) {
@@ -110,7 +146,14 @@ export function useUpdateCheck() {
     onRegisterError(error: any) {
       console.error("[PWA] Service Worker registration error:", error);
     },
-  });
+    onNeedReload: marcarRecargaPendente,
+  };
+
+  const {
+    offlineReady: [offlineReady, setOfflineReady],
+    needRefresh: [needRefresh, _setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW(opcoesDoRegistro);
 
   useEffect(() => {
     if (!registration) return;
@@ -150,84 +193,133 @@ export function useUpdateCheck() {
   }, [registration, fetchServerVersion, SAFE_APP_VERSION]);
 
   // ==============================
-  // CORE: Nuclear Purge (mandatory)
+  // CORE: purga de VERSÃO OBRIGATÓRIA (minAppVersion)
   // ==============================
   // Issue #92: este é o purge de VERSÃO OBRIGATÓRIA (minAppVersion) — o
   // ÚNICO caminho que apaga IndexedDB de propósito, agora com o delete
   // AGUARDADO (prazo + onblocked). O disparado por ERRO DE CHUNK não passa
   // mais por aqui: é a escada de @/lib/recuperacao-chunk, que preserva o
   // IndexedDB e nunca roda sem rede verificada.
-  const performNuclearPurge = useCallback(async (immediate = false) => {
+  //
+  // ATUALIZAÇÃO ÚNICA (16/10/2026): esta função NÃO é mais chamada sozinha no
+  // boot. Quem a aciona é o PWAUpdateGate, no ponto de parada, com as abas
+  // livres e a trava liberada — via `performNuclearPurge` (o export abaixo,
+  // que é o apply normal e escolhe a purga quando há versão obrigatória
+  // pendente). As proteções de pagamento/venda valem aqui também: nenhuma
+  // versão, nem a mínima obrigatória, corta pagamento ou venda no meio.
+  const purgaDeVersaoObrigatoria = useCallback(async (requerida: string) => {
+    // Defesa em profundidade: o Gate já vetou, mas aqui é o ponto de não
+    // retorno (apaga SW, caches e IndexedDB), e o mundo pode ter mudado.
+    // Lançar faz o instalador soltar a fase e reavaliar no próximo ponto.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      throw new Error("[Update] Purge obrigatório adiado: sem rede.");
+    }
+    if (haOperacaoSensivel()) {
+      throw new Error("[Update] Purge obrigatório adiado: operação sensível.");
+    }
+
+    // A trava existente (máx. 2) é gasta AQUI, no instante da purga real, e
+    // CONFIRMADA lendo de volta: sem como contar, não purga (lado seguro).
+    const guard = readPurgeGuard();
+    const tentativas = guard.required === requerida ? guard.count : 0;
+    if (tentativas >= MAX_MANDATORY_PURGES) {
+      throw new Error(
+        `[Update] Purge obrigatório já tentado ${tentativas}x para ${requerida}.`,
+      );
+    }
+    try {
+      localStorage.setItem(
+        MANDATORY_PURGE_GUARD_KEY,
+        JSON.stringify({ required: requerida, count: tentativas + 1 }),
+      );
+      // Log para o próximo boot saber o que aconteceu.
+      localStorage.setItem(
+        "pwa_update_log",
+        `Version Mismatch: ${SAFE_APP_VERSION} -> ${requerida}`,
+      );
+    } catch {
+      throw new Error("[Update] Purge obrigatório adiado: storage não grava.");
+    }
+    const confirmada = readPurgeGuard();
+    if (
+      confirmada.required !== requerida ||
+      confirmada.count !== tentativas + 1
+    ) {
+      throw new Error(
+        "[Update] Purge obrigatório adiado: trava não confirmou.",
+      );
+    }
+
     console.warn("[Update] 🔴 NUCLEAR_PURGE_START: Initiating full cleanup...");
 
-    const doPurge = async () => {
-      // 1. Service Worker cleanup
-      if ("serviceWorker" in navigator) {
-        try {
-          const regs = await navigator.serviceWorker.getRegistrations();
-          for (const r of regs) {
-            await r.unregister();
-          }
-        } catch (e) {
-          console.error("[Purge] SW error:", e);
-        }
-      }
-
-      // 2. Cache storage cleanup — SELETIVO via módulo único: só os caches
-      // `app-cache-*` morrem. `ikcous-identidade` e `supabase-images-cache`
-      // sobrevivem (o activate do SW preserva num update normal; sem a
-      // ficha, o fallback offline devolveria 503 "Loja em manutenção" para
-      // a base instalada).
-      await apagarCachesDoApp();
-
-      // 2.5 IndexedDB cleanup (DataVault deletion) — AGUARDADO (aceite 5):
-      // fire-and-forget corria com a navegação; await literal travaria com
-      // conexão aberta. O módulo faz os dois com prazo + onblocked laudado.
-      await apagarIndexedDBAguardando();
-
-      // 3. Selective localStorage purge
-      // Keep auth tokens, user data, brand specific keys and PENDING writes
-      // — mesma lista branca de GlobalErrorBoundary.tsx
-      // (@/lib/localStoragePurgeWhitelist): a Nuclear Purge dispara SOZINHA
-      // no boot (checkMandatoryUpdate), então uma lista desatualizada aqui
-      // apaga fila de escrita offline sem ninguém decidir nada — ver o
-      // comentário do arquivo compartilhado.
+    // 1. Service Worker cleanup
+    if ("serviceWorker" in navigator) {
       try {
-        for (const key of Object.keys(localStorage)) {
-          if (!chaveSobreviveAPurga(key)) {
-            localStorage.removeItem(key);
-          }
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) {
+          await r.unregister();
         }
       } catch (e) {
-        console.error("[Purge] LocalStorage error:", e);
+        console.error("[Purge] SW error:", e);
       }
-
-      // 4. Set reload reason for next boot
-      // Peça 22/09: a origem do build permite o boot PROVAR que a recarga
-      // trouxe outro build antes de anunciar "Sistema Atualizado" — no
-      // purge que não curou (a guarda anti-loop), o boot mostra o neutro.
-      gravaOrigemDeAtualizacao(SAFE_APP_VERSION);
-      gravaMotivoDeRecarga("atualizacao-aplicada");
-
-      // 5. Navegação honesta (aceite 6): location.replace não empilha
-      // histórico; pathname+search preservados (?source=pwa da base
-      // instalada sobrevive). A query de força da era antiga morreu sem
-      // consumidor nenhum; recarregar de verdade vem do SW desregistrado,
-      // não de parâmetro de URL que ninguém lê.
-      navegarPreservandoEndereco();
-    };
-
-    if (immediate) {
-      await doPurge();
-    } else {
-      // Give UI time to show "Updating..." state
-      setTimeout(doPurge, 1500);
     }
+
+    // 2. Cache storage cleanup — SELETIVO via módulo único: só os caches
+    // `app-cache-*` morrem. `ikcous-identidade` e `supabase-images-cache`
+    // sobrevivem (o activate do SW preserva num update normal; sem a
+    // ficha, o fallback offline devolveria 503 "Loja em manutenção" para
+    // a base instalada).
+    await apagarCachesDoApp();
+
+    // 2.5 IndexedDB cleanup (DataVault deletion) — AGUARDADO (aceite 5):
+    // fire-and-forget corria com a navegação; await literal travaria com
+    // conexão aberta. O módulo faz os dois com prazo + onblocked laudado.
+    await apagarIndexedDBAguardando();
+
+    // 3. Selective localStorage purge
+    // Keep auth tokens, user data, brand specific keys and PENDING writes
+    // — mesma lista branca de GlobalErrorBoundary.tsx
+    // (@/lib/localStoragePurgeWhitelist): esta purga apaga sem ninguém decidir
+    // nada na hora, então uma lista desatualizada aqui apaga fila de escrita
+    // offline — ver o comentário do arquivo compartilhado. As chaves `pwa_*`
+    // (inclusive as travas) sobrevivem de propósito.
+    try {
+      for (const key of Object.keys(localStorage)) {
+        if (!chaveSobreviveAPurga(key)) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      console.error("[Purge] LocalStorage error:", e);
+    }
+
+    // 4. Set reload reason for next boot
+    // Peça 22/09: a origem do build permite o boot PROVAR que a recarga
+    // trouxe outro build antes de anunciar "Sistema Atualizado" — no
+    // purge que não curou (a guarda anti-loop), o boot mostra o neutro. A
+    // versão ESPERADA é a mínima exigida: chegar abaixo dela também é neutro.
+    gravaOrigemDeAtualizacao(SAFE_APP_VERSION);
+    gravaVersaoEsperadaDaAtualizacao(requerida);
+    gravaMotivoDeRecarga("atualizacao-aplicada");
+
+    // 5. Navegação honesta (aceite 6): location.replace não empilha
+    // histórico; pathname+search preservados (?source=pwa da base
+    // instalada sobrevive). A query de força da era antiga morreu sem
+    // consumidor nenhum; recarregar de verdade vem do SW desregistrado,
+    // não de parâmetro de URL que ninguém lê.
+    navegarPreservandoEndereco();
   }, []);
 
-  // Helper to trigger the update process
+  // Helper to trigger the update process. É o que o Gate chama (export
+  // `performNuclearPurge`, nome mantido porque dezenas de testes mockam este
+  // módulo): com versão obrigatória pendente, faz a purga; do contrário, o
+  // apply normal do service worker.
   const handleUpdate = useCallback(
     async (_immediate?: boolean) => {
+      if (obrigatoria) {
+        await purgaDeVersaoObrigatoria(obrigatoria);
+        return;
+      }
       console.log("[Update] Triggering SW update and reload...");
       // A mecânica do apply mora no módulo único desde a peça de 14/09:
       // controllerchange recarrega UMA vez, e o prazo de segurança garante o
@@ -239,12 +331,17 @@ export function useUpdateCheck() {
         prazoMs: PRAZO_APLICACAO_UPDATE_MS,
       });
     },
-    [updateServiceWorker],
+    [updateServiceWorker, obrigatoria, purgaDeVersaoObrigatoria],
   );
 
   // ==============================
   // CORE: Mandatory Version Check (DB)
   // ==============================
+  // Só DETECTA e marca `obrigatoria` — não purga. A purga é decisão do Gate
+  // (ponto de parada, abas, trava) e só depois de a rede estar provada: a
+  // leitura bem-sucedida de /version.json feita por este hook + navigator
+  // online. Sem a prova, dispara uma leitura e aguarda (o resultado muda
+  // `leituraDeVersaoEm` e esta função é reavaliada).
   const checkMandatoryUpdate = useCallback(() => {
     const isDev = import.meta.env.DEV;
     if (isDev) return false;
@@ -267,6 +364,24 @@ export function useUpdateCheck() {
         console.error(
           `[Update] Purge obrigatório já tentado ${attempts}x para a versão ${config.minAppVersion} e o app continua em ${SAFE_APP_VERSION}. Abortando para não travar o cliente em loop.`,
         );
+        setObrigatoria(null);
+        return false;
+      }
+
+      const redeProvada = redeVerificadaParaPurga({
+        ultimaLeituraBemSucedidaEm: leituraDeVersaoEm,
+        agora: Date.now(),
+        online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
+      });
+      if (!redeProvada) {
+        // Aguarda: uma leitura agora (uma de cada vez); se der certo, o
+        // estado de leitura muda e esta checagem roda de novo.
+        if (!buscandoParaPurgaRef.current) {
+          buscandoParaPurgaRef.current = true;
+          void fetchServerVersion().finally(() => {
+            buscandoParaPurgaRef.current = false;
+          });
+        }
         return false;
       }
 
@@ -274,31 +389,21 @@ export function useUpdateCheck() {
       console.log(
         `[Update] Local: ${SAFE_APP_VERSION} | Required: ${config.minAppVersion}`,
       );
-      setIsMandatory(true);
-
-      // Grava log para o próximo boot saber o que aconteceu
-      localStorage.setItem(
-        "pwa_update_log",
-        `Version Mismatch: ${SAFE_APP_VERSION} -> ${config.minAppVersion}`,
-      );
-      localStorage.setItem(
-        MANDATORY_PURGE_GUARD_KEY,
-        JSON.stringify({
-          required: config.minAppVersion,
-          count: attempts + 1,
-        }),
-      );
-
-      performNuclearPurge(true);
+      setObrigatoria(config.minAppVersion);
       return true;
     }
 
     // Versão local em dia: zerar a trava para não bloquear um update futuro legítimo.
-    if (config.minAppVersion && readPurgeGuard().count > 0) {
-      localStorage.removeItem(MANDATORY_PURGE_GUARD_KEY);
+    setObrigatoria(null);
+    try {
+      if (config.minAppVersion && readPurgeGuard().count > 0) {
+        localStorage.removeItem(MANDATORY_PURGE_GUARD_KEY);
+      }
+    } catch {
+      // Storage indisponível: a trava fica como está (nunca derruba o boot).
     }
     return false;
-  }, [config.minAppVersion, performNuclearPurge]);
+  }, [config.minAppVersion, fetchServerVersion, leituraDeVersaoEm]);
 
   useEffect(() => {
     checkMandatoryUpdate();
@@ -350,8 +455,11 @@ export function useUpdateCheck() {
   // chaves, sem purge nuclear sem rede verificada.
 
   return {
-    isMandatory,
-    updateAvailable: needRefresh,
+    // Versão mínima exigida pendente (rede já provada): o Gate trata o ponto
+    // de parada como já satisfeito, mas os vetos de pagamento/venda valem.
+    isMandatory: obrigatoria !== null,
+    // Há o que instalar: SW novo esperando OU versão obrigatória pendente.
+    updateAvailable: needRefresh || obrigatoria !== null,
     newVersion,
     checkUpdate: useCallback(
       async (realtimeVersion?: string) => {
@@ -387,6 +495,11 @@ export function useUpdateCheck() {
         checkMandatoryUpdate,
       ],
     ),
+    // NOME HISTÓRICO, MANTIDO DE PROPÓSITO (dezenas de testes mockam este
+    // módulo por ele): isto NÃO é a purga nuclear. É o APPLY da atualização —
+    // o apply normal do service worker (aplicarAtualizacaoPendenteERecarregar)
+    // ou, só quando há versão obrigatória pendente, a purga de versão
+    // obrigatória. Quem o chama é o PWAUpdateGate, no ponto de parada.
     performNuclearPurge: handleUpdate,
   };
 }

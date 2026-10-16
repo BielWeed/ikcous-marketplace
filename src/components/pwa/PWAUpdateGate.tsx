@@ -1,86 +1,32 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeUpdate } from "@/hooks/useRealtimeUpdate";
 import { useUpdateCheck } from "@/hooks/useUpdateCheck";
+import { useInstaladorNoPontoDeParada } from "@/lib/atualizacao/instalador";
+import {
+  recarregarAposAssumir,
+  useRecargaPendente,
+} from "@/lib/atualizacao/recarga-pendente";
+import { gravaVersaoEsperadaDaAtualizacao } from "@/lib/motivo-de-recarga";
+import { nucleoSemver } from "@/lib/versao-do-servidor";
 import type { View } from "@/types";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback } from "react";
 
-import { AvisoDeAtualizacaoDiscreto } from "./AvisoDeAtualizacaoDiscreto";
-import { UpdateNotification } from "./UpdateNotification";
+declare const __APP_VERSION__: string;
+const VERSAO_DO_APP =
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "0.0.0-dev";
 
-// UpdateNotification-138: o modal era sem saída porque `needRefresh` (o
-// `updateAvailable` abaixo) NUNCA volta a false sozinho (useUpdateCheck.ts
-// descarta o setter) — uma vez true, ficava true para sempre. "Depois"
-// precisa de um sinal PRÓPRIO, independente do hook, para segurar o aviso.
+// ATUALIZAÇÃO ÚNICA E OBRIGATÓRIA (16/10/2026). Este componente não desenha
+// mais nada: não há cartão, faixa, "Depois" nem soneca. Ele ORQUESTRA — quando
+// o app descobre uma versão nova, o estado vira "aguardando" e a instalação só
+// acontece num ponto de parada (a tela mudou ou o app foi para segundo plano),
+// com nada sensível em andamento nesta aba, com as outras abas livres e com a
+// trava de 2 tentativas liberada. Quem MOSTRA "instalando"/"instalou" é a ilha
+// (Onda 2), lendo `useEstadoDaAtualizacao`.
 //
-// Guardado em storage (não só em estado do componente) porque o lojista
-// pode trocar de tela sem desmontar o gate (ele vive acima da troca de
-// view), mas TAMBÉM porque um F5 no meio da hora não pode reabrir o modal
-// na cara dele — senão o "Depois" vira teatro.
-const CHAVE_SNOOZE = "pwa_update_snooze_until";
-const UMA_HORA_MS = 60 * 60 * 1000;
-
-// Lê o soneca de QUALQUER um dos dois storages (o mais no futuro vence) —
-// modo privado/anônimo pode bloquear um dos dois, e a instrução pede os
-// dois com try/catch em vez de escolher um só.
-function lerSnoozeArmazenado(): number {
-  let doLocal = 0;
-  let daSessao = 0;
-  try {
-    doLocal = Number(localStorage.getItem(CHAVE_SNOOZE)) || 0;
-  } catch {
-    // Storage indisponível (modo privado, política do navegador): sem
-    // soneca lembrado, o aviso segue o comportamento de hoje.
-  }
-  try {
-    daSessao = Number(sessionStorage.getItem(CHAVE_SNOOZE)) || 0;
-  } catch {
-    // idem
-  }
-  return Math.max(doLocal, daSessao);
-}
-
-function gravarSnoozeArmazenado(ate: number): void {
-  try {
-    localStorage.setItem(CHAVE_SNOOZE, String(ate));
-  } catch {
-    // Sem persistir entre reloads não é o fim do mundo: o estado em
-    // memória (abaixo) já esconde o aviso nesta sessão de componente.
-  }
-  try {
-    sessionStorage.setItem(CHAVE_SNOOZE, String(ate));
-  } catch {
-    // idem
-  }
-}
-
-// O aviso de atualização nunca interrompe o fechamento de um pedido (decisão
-// do dono, 03/09): nessas telas ele fica armado e aparece na próxima tela
-// segura. O pagamento é etapa do checkout — não existe view separada.
-// - order-success: o pedido só está fechado quando o cliente VÊ a confirmação
-//   (e a casa já a trata como não-perturbe: App esconde banner/nav ali) —
-//   sem ela, todo update que chegasse no checkout estouraria exatamente na
-//   confirmação (achado 1 do laudo Claude de 04/09).
-// - auth/login: caminho real do convidado no meio do pagamento — escolher
-//   pagar online sem conta leva a "auth" (CheckoutView.tsx:2252,2786) e sair
-//   do checkout apaga o formulário digitado (só o CEP persiste).
-const TELAS_DE_COMPRA: ReadonlySet<View> = new Set([
-  "cart",
-  "checkout",
-  "address-form",
-  "order-success",
-  "auth",
-  "login",
-]);
-
-// A faixa da cliente também não nasce na página do produto: a barra de comprar
-// fica colada em cima da navegação, exatamente onde a faixa mora. Fica armada
-// e aparece na próxima tela segura (o mesmo motivo do convite de push). Favoritos
-// entra pelo mesmo motivo: o botão "Descobrir Mais" mora no mesmo lugar.
-const TELAS_SEM_FAIXA_DA_CLIENTE: ReadonlySet<View> = new Set([
-  "product-detail",
-  "favorites",
-]);
-
+// Todas as regras de "quando" moram em @/lib/atualizacao (testáveis sem o
+// módulo virtual do PWA). A lista das telas de compra que nunca são
+// interrompidas — antes aqui — é `TELAS_DE_COMPRA` em momento-seguro.ts.
+//
 // Viveu dentro do App.tsx até 04/09/2026; ganhou arquivo próprio para a
 // regra do "não interromper a compra" ser testável sem montar o App inteiro.
 // memo (laudo Claude, ressalva do re-render): montado dentro do AppContent,
@@ -91,16 +37,23 @@ export const PWAUpdateManager = memo(function PWAUpdateManager({
   adminDirty,
 }: {
   readonly currentView: View;
-  /** UpdateNotification-138: o MESMO sinal de formulário sujo que o App já
-   * mantém (isAdminDirty, App.tsx). Com trabalho não salvo em tela, o aviso
-   * fica ARMADO (needRefresh não muda) e aparece assim que o trabalho
-   * termina — não cobre o formulário no meio da edição. Opcional: quem não
-   * passar (dublês de teste antigos) tem o comportamento de sempre. */
+  /** O MESMO sinal de formulário sujo que o App já mantém (isAdminDirty,
+   * App.tsx): PDV com cupom montado, produto em edição. Com trabalho não salvo
+   * em tela, NADA é instalado. Opcional: quem não passar (dublês de teste
+   * antigos) tem "sem trabalho sujo". */
   readonly adminDirty?: boolean;
 }) {
   const { user } = useAuth();
-  const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } =
-    useUpdateCheck();
+  const {
+    checkUpdate,
+    updateAvailable,
+    newVersion,
+    isMandatory,
+    performNuclearPurge,
+  } = useUpdateCheck();
+  // O service worker novo JÁ assumiu (onNeedReload do plugin): só falta
+  // recarregar esta aba — com o mesmo veto de momento seguro.
+  const recargaPendente = useRecargaPendente();
 
   const handleUpdate = useCallback(
     (newVer?: string) => {
@@ -114,74 +67,45 @@ export const PWAUpdateManager = memo(function PWAUpdateManager({
 
   useRealtimeUpdate(handleUpdate, user?.id);
 
-  // O instante-limite mora em storage (lido só na primeira montagem, sem
-  // Date.now no corpo da função — regra de pureza do render); `emSoneca` é
-  // que decide o `show`, e SÓ é escrito de dentro de efeito/callback.
-  const [sonecaAte, setSonecaAte] = useState<number>(() =>
-    lerSnoozeArmazenado(),
-  );
-  const [emSoneca, setEmSoneca] = useState(false);
+  // O que a ilha mostra: o núcleo semver legível da versão nova. Sem versão
+  // legível, ou com o MESMO núcleo da instalada (build novo da mesma release),
+  // não há versão a mostrar — nunca um fragmento de hash nem a seta "1.5.0 →
+  // 1.5.0".
+  const nucleoNovo = nucleoSemver(newVersion);
+  const versaoNova =
+    nucleoNovo && nucleoNovo !== nucleoSemver(VERSAO_DO_APP)
+      ? nucleoNovo
+      : null;
 
-  // Calcula "ainda vale?" e rearma sozinho quando o prazo vence — sem isto,
-  // um lojista parado na MESMA view por 1h só veria o aviso voltar no
-  // próximo evento (troca de tela, ping do realtime), e "Depois" pareceria
-  // "nunca mais".
-  useEffect(() => {
-    if (sonecaAte <= 0) {
-      setEmSoneca(false);
+  // A chave da trava de tentativas: a versão-alvo completa quando o servidor a
+  // disse; do contrário, "a que veio da versão instalada".
+  const alvo = newVersion ?? `desconhecida-de-${VERSAO_DO_APP}`;
+
+  const instalar = useCallback(() => {
+    if (recargaPendente) {
+      recarregarAposAssumir(VERSAO_DO_APP);
       return;
     }
-    const restanteMs = sonecaAte - Date.now();
-    if (restanteMs <= 0) {
-      setEmSoneca(false);
-      setSonecaAte(0);
-      return;
-    }
-    setEmSoneca(true);
-    const temporizador = setTimeout(() => {
-      setEmSoneca(false);
-      setSonecaAte(0);
-    }, restanteMs);
-    return () => clearTimeout(temporizador);
-  }, [sonecaAte]);
+    // A tentativa carrega a versão que espera encontrar; o boot só anuncia
+    // sucesso se o que chegou for compatível com ela.
+    gravaVersaoEsperadaDaAtualizacao(nucleoNovo);
+    // O apply: o do service worker, ou a purga de versão obrigatória quando
+    // há uma pendente (o nome do export é histórico — ver useUpdateCheck).
+    return performNuclearPurge(true);
+  }, [recargaPendente, nucleoNovo, performNuclearPurge]);
 
-  const handleSnooze = useCallback(() => {
-    const ate = Date.now() + UMA_HORA_MS;
-    gravarSnoozeArmazenado(ate);
-    setSonecaAte(ate);
-  }, []);
+  useInstaladorNoPontoDeParada({
+    ativo: updateAvailable || recargaPendente,
+    modo: recargaPendente ? "so-recarregar" : "instalar",
+    alvo,
+    versaoNova,
+    view: currentView,
+    adminDirty: adminDirty ?? false,
+    instalar,
+    // Versão mínima obrigatória: no boot o ponto de parada já está satisfeito
+    // (as proteções de pagamento/venda continuam valendo).
+    pontoDeParadaInicial: isMandatory === true,
+  });
 
-  // Quem é o painel: o mesmo critério que o App usa para tudo do lojista
-  // (`currentView.startsWith("admin")`, inclusive a tela de login dele).
-  const ehPainel = currentView.startsWith("admin");
-  const podeAvisar =
-    updateAvailable &&
-    !TELAS_DE_COMPRA.has(currentView) &&
-    !emSoneca &&
-    !adminDirty;
-
-  const aoAtualizar = () => performNuclearPurge(true);
-
-  // Painel do lojista: o cartão de sempre. Cliente: só uma faixa de uma linha.
-  // Os dois ficam montados e só um recebe `show`, para a saída animada do
-  // cartão não ser cortada quando o lojista troca de tela.
-  return (
-    <>
-      <UpdateNotification
-        show={podeAvisar && ehPainel}
-        onUpdate={aoAtualizar}
-        onSnooze={handleSnooze}
-        newVersion={newVersion}
-      />
-      <AvisoDeAtualizacaoDiscreto
-        show={
-          podeAvisar &&
-          !ehPainel &&
-          !TELAS_SEM_FAIXA_DA_CLIENTE.has(currentView)
-        }
-        onUpdate={aoAtualizar}
-        onSnooze={handleSnooze}
-      />
-    </>
-  );
+  return null;
 });
