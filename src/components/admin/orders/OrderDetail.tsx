@@ -1524,13 +1524,18 @@ export const OrderDetail = memo(function OrderDetail({
   useEffect(() => {
     setLocalTrackingCode(order.trackingCode || "");
     setTrackingValue(order.trackingCode || "");
+  }, [order.id, order.trackingCode]);
+
+  useEffect(() => {
     setLocalNotes(order.notes || "");
     setNotesValue(order.notes || "");
-  }, [order.id, order.trackingCode, order.notes]);
+  }, [order.id, order.notes]);
 
   useEffect(() => {
     setIsEditingTracking(false);
     setIsSavingTracking(false);
+    setIsEditingNotes(false);
+    setIsSavingNotes(false);
   }, [order.id]);
 
   const itemsSerialized = JSON.stringify(
@@ -1716,22 +1721,26 @@ export const OrderDetail = memo(function OrderDetail({
   };
 
   const handleSaveNotes = async () => {
+    const pedidoId = order.id;
     try {
       setIsSavingNotes(true);
       const { error } = await supabase
         .from("marketplace_orders")
         .update({ notes: notesValue.trim() || null })
-        .eq("id", order.id);
+        .eq("id", pedidoId);
 
+      // A resposta só pode alterar a ficha do pedido que foi salvo.
+      if (orderIdAtualRef.current !== pedidoId) return;
       if (error) throw error;
       setLocalNotes(notesValue.trim());
       setIsEditingNotes(false);
       toast.success("Notas operacionais salvas!");
     } catch (err) {
+      if (orderIdAtualRef.current !== pedidoId) return;
       console.error("Error saving notes:", err);
       toast.error("Erro ao salvar notas operacionais.");
     } finally {
-      setIsSavingNotes(false);
+      if (orderIdAtualRef.current === pedidoId) setIsSavingNotes(false);
     }
   };
 
