@@ -249,6 +249,33 @@ export function FavoritesProvider({
     }
   }, [user]);
 
+  // Fila serializada de gravações por produto de cada conta: toque do usuário
+  // E drenagem da fila pendente passam por ela, para uma gravação em voo nunca
+  // terminar depois de outra do mesmo produto e desfazê-la.
+  const gravacoesPorProdutoRef = useRef(new Map<string, Promise<unknown>>());
+  const enfileirarGravacao = useCallback(
+    async <T,>(chave: string, gravar: () => PromiseLike<T>) => {
+      const filas = gravacoesPorProdutoRef.current;
+      // Cada produto de cada conta segue a ordem dos toques, inclusive após uma falha.
+      const gravacao = (filas.get(chave) ?? Promise.resolve())
+        .catch(() => {})
+        .then(gravar);
+      filas.set(chave, gravacao);
+      try {
+        const resultado = await gravacao;
+        return { resultado, ultima: filas.get(chave) === gravacao };
+      } finally {
+        if (filas.get(chave) === gravacao) filas.delete(chave);
+      }
+    },
+    [],
+  );
+  // Quantas remoções JÁ CONCLUÍDAS (com sucesso) cada produto de cada conta
+  // teve. A drenagem anota o número ao entrar na fila e, quando chega a vez
+  // dela, desiste do upsert se o número mudou: uma remoção terminou no meio
+  // tempo e repor o favorito desfaria o que a pessoa pediu.
+  const remocoesConcluidasRef = useRef(new Map<string, number>());
+
   // Tenta gravar `candidatos` no servidor para `userId`, grava o que
   // falhar na fila PENDENTE daquele usuário (nunca no balde anônimo) e
   // atualiza o estado em memória. Usada tanto no login (mesclando o balde
@@ -283,12 +310,25 @@ export function FavoritesProvider({
       // upsert precisa ser lido individualmente.
       const resultados = await Promise.all(
         candidatos.map(async (p) => {
-          const { error } = await supabase
-            .from("favorites")
-            .upsert(
-              { user_id: userId, product_id: p.id },
-              { onConflict: "user_id,product_id", ignoreDuplicates: true },
-            );
+          const chave = `${userId}:${p.id}`;
+          const remocoesAntes = remocoesConcluidasRef.current.get(chave) ?? 0;
+          const {
+            resultado: { error },
+          } = await enfileirarGravacao(chave, async () => {
+            // Uma remoção terminou depois de esta drenagem entrar na fila: o
+            // favorito não é mais desejado e já saiu da fila pendente.
+            if (
+              (remocoesConcluidasRef.current.get(chave) ?? 0) !== remocoesAntes
+            ) {
+              return { error: null };
+            }
+            return await supabase
+              .from("favorites")
+              .upsert(
+                { user_id: userId, product_id: p.id },
+                { onConflict: "user_id,product_id", ignoreDuplicates: true },
+              );
+          });
           return { produto: p, error };
         }),
       );
@@ -326,7 +366,7 @@ export function FavoritesProvider({
         sincronizados: resultados.length - naoSincronizados.length,
       };
     },
-    [],
+    [enfileirarGravacao],
   );
 
   // 1. Sync Logic: When User logs in, merge Local -> DB
@@ -647,25 +687,6 @@ export function FavoritesProvider({
   }, [user, allProducts, dbFavoriteIds, localFavoriteIds]);
 
   // 3. Actions
-  const gravacoesPorProdutoRef = useRef(new Map<string, Promise<unknown>>());
-  const enfileirarGravacao = useCallback(
-    async <T,>(chave: string, gravar: () => PromiseLike<T>) => {
-      const filas = gravacoesPorProdutoRef.current;
-      // Cada produto de cada conta segue a ordem dos toques, inclusive após uma falha.
-      const gravacao = (filas.get(chave) ?? Promise.resolve())
-        .catch(() => {})
-        .then(gravar);
-      filas.set(chave, gravacao);
-      try {
-        const resultado = await gravacao;
-        return { resultado, ultima: filas.get(chave) === gravacao };
-      } finally {
-        if (filas.get(chave) === gravacao) filas.delete(chave);
-      }
-    },
-    [],
-  );
-
   const addToFavorites = useCallback(
     async (product: Product) => {
       if (user) {
@@ -682,14 +703,19 @@ export function FavoritesProvider({
         const {
           resultado: { error },
           ultima,
-        } = await enfileirarGravacao(`${user.id}:${product.id}`, () =>
-          supabase
+        } = await enfileirarGravacao(`${user.id}:${product.id}`, async () => {
+          const resposta = await supabase
             .from("favorites")
             .upsert(
               { user_id: user.id, product_id: product.id },
               { onConflict: "user_id,product_id", ignoreDuplicates: true },
-            ),
-        );
+            );
+          // A fila em DISCO é da conta que gravou: limpa mesmo que a pessoa
+          // já tenha trocado de conta (senão a retentativa dela, no próximo
+          // login, regravaria o que já está no servidor).
+          if (!resposta.error) retirarDaFilaPendentes(user.id, [product.id]);
+          return resposta;
+        });
         if (usuarioAtualIdRef.current !== user.id) return;
 
         if (error) {
@@ -737,13 +763,25 @@ export function FavoritesProvider({
         const {
           resultado: { error },
           ultima,
-        } = await enfileirarGravacao(`${user.id}:${productId}`, () =>
-          supabase
+        } = await enfileirarGravacao(`${user.id}:${productId}`, async () => {
+          const resposta = await supabase
             .from("favorites")
             .delete()
             .eq("user_id", user.id)
-            .eq("product_id", productId),
-        );
+            .eq("product_id", productId);
+          if (!resposta.error) {
+            // Dentro da fila, antes de a próxima gravação do produto começar
+            // (a drenagem confere este contador) e mesmo que a pessoa já
+            // tenha trocado de conta: a fila em disco é da conta que removeu.
+            const chave = `${user.id}:${productId}`;
+            remocoesConcluidasRef.current.set(
+              chave,
+              (remocoesConcluidasRef.current.get(chave) ?? 0) + 1,
+            );
+            retirarDaFilaPendentes(user.id, [productId]);
+          }
+          return resposta;
+        });
         // O rollback de quem saiu não pode alterar os favoritos da conta atual.
         if (usuarioAtualIdRef.current !== user.id) return;
 

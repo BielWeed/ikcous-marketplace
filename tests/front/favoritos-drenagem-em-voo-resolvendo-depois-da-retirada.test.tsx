@@ -260,34 +260,32 @@ describe("FavoritesContext — a corrida: retirada concorrente sobrevive a uma d
     expect(chamadasUpsert.filter((c) => c.product_id === "p1")).toHaveLength(2);
     expect(resolverRetentativaPresa).not.toBeNull();
 
-    // 3. ENQUANTO ela está presa, um toque manual (3ª chamada) sincroniza
-    // p1 com sucesso — e RETIRA p1 da fila.
+    // 3. ENQUANTO ela está presa, um toque manual tenta sincronizar p1. As
+    // gravações de p1 são SERIALIZADAS (fila por produto — a drenagem também
+    // passa por ela): o toque espera a retentativa terminar, então por ora o
+    // servidor ainda não tem p1 e a fila em disco ainda a guarda.
     const ctxAntes = ultimoContexto as { toggleFavorite: (p: Product) => void };
     await act(async () => {
       ctxAntes.toggleFavorite(produto("p1"));
     });
     await flush();
 
-    expect(dbRows.has("userA|p1")).toBe(true);
-    expect(
-      JSON.parse(storageFake.getItem(pendingKeyDe("userA")) ?? "[]"),
-    ).toEqual([]);
-    let ctx = ultimoContexto as { pendingCount: number };
-    expect(ctx.pendingCount).toBe(0);
+    expect(chamadasUpsert.filter((c) => c.product_id === "p1")).toHaveLength(2);
+    expect(dbRows.has("userA|p1")).toBe(false);
 
     // 4. AGORA a retentativa presa finalmente resolve — e com ERRO (ainda
-    // sem rede, do ponto de vista DELA). O que decide o teste: a fila não
-    // pode voltar a ter p1 por causa dessa resolução tardia.
+    // sem rede, do ponto de vista DELA). O que decide o teste: o erro tardio
+    // dela não pode deixar a fila errada — o toque manual, que roda em
+    // seguida, sincroniza p1 e RETIRA p1 da fila, e é esse resultado que vale.
     resolverRetentativaPresa?.();
     await flush();
 
+    expect(chamadasUpsert.filter((c) => c.product_id === "p1")).toHaveLength(3);
+    expect(dbRows.has("userA|p1")).toBe(true);
     expect(
       JSON.parse(storageFake.getItem(pendingKeyDe("userA")) ?? "[]"),
     ).toEqual([]);
-    ctx = ultimoContexto as { pendingCount: number };
+    const ctx = ultimoContexto as { pendingCount: number };
     expect(ctx.pendingCount).toBe(0);
-    // E o favorito continua confirmado — a resolução tardia não desfez o
-    // que o toque manual já tinha feito.
-    expect(dbRows.has("userA|p1")).toBe(true);
   });
 });
