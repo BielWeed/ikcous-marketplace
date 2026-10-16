@@ -209,9 +209,9 @@ export function LazyImage({
           fetchPriority={priority ? "high" : "auto"}
           onLoad={() => setIsLoaded(true)}
           onError={() => {
-            // Primeira falha com transformação ligada: tenta a URL original
+            // Primeira falha com transformação em uso: tenta a URL original
             // antes de desistir.
-            if (podeRedimensionar) {
+            if (atributos.src !== src || atributos.srcSet) {
               setTransformacaoFalhou(true);
               return;
             }
