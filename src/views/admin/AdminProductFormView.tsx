@@ -1412,7 +1412,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const stock = Number(formData.stock);
     if (
       formData.stock &&
-      (!/^\d+$/.test(formData.stock) || !Number.isSafeInteger(stock) || stock < 0)
+      (!/^\d+$/.test(formData.stock) ||
+        !Number.isSafeInteger(stock) ||
+        stock < 0)
     ) {
       setStockError("O estoque deve ser maior ou igual a zero.");
     } else {
