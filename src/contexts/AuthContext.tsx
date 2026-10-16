@@ -100,12 +100,15 @@ interface AuthContextType {
   updatePassword: (newPassword: string) => Promise<boolean>;
   logout: () => Promise<void>;
   fetchProfile: (passedUser?: User | null) => Promise<void>;
-  updateProfile: (updates: {
-    full_name?: string | null;
-    whatsapp?: string | null;
-    avatar_url?: string | null;
-    cover_url?: string | null;
-  }) => Promise<boolean>;
+  updateProfile: (
+    updates: {
+      full_name?: string | null;
+      whatsapp?: string | null;
+      avatar_url?: string | null;
+      cover_url?: string | null;
+    },
+    contaEsperada?: string,
+  ) => Promise<boolean>;
   isPasswordRecovery: boolean;
   setIsPasswordRecovery: (value: boolean) => void;
   /** O link de "esqueci a senha" voltou com erro (vencido ou já usado). */
@@ -1422,13 +1425,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const updateProfile = useCallback(
-    async (updates: {
-      full_name?: string | null;
-      whatsapp?: string | null;
-      avatar_url?: string | null;
-      cover_url?: string | null;
-    }): Promise<boolean> => {
-      const contaEsperada = activeUserIdRef.current ?? "";
+    async (
+      updates: {
+        full_name?: string | null;
+        whatsapp?: string | null;
+        avatar_url?: string | null;
+        cover_url?: string | null;
+      },
+      contaDoClique?: string,
+    ): Promise<boolean> => {
+      // Quem inicia trabalho assíncrono antes de salvar (ler/comprimir imagem)
+      // passa a conta do instante do clique; sem ela, vale a conta atual.
+      const contaEsperada = contaDoClique ?? activeUserIdRef.current ?? "";
       try {
         const resultado = await gravarPerfilDaConta(
           {

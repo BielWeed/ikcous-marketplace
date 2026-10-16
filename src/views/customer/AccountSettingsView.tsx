@@ -153,7 +153,10 @@ export function AccountSettingsView() {
         try {
           const compressed = await compressImage(base64, 200, 200);
           if (!contaAindaEhDona()) return;
-          const success = await updateProfile({ avatar_url: compressed });
+          const success = await updateProfile(
+            { avatar_url: compressed },
+            contaDonaId,
+          );
           if (!contaAindaEhDona()) return;
           if (success) {
             toast.success("Foto de perfil atualizada!");
@@ -262,7 +265,10 @@ export function AccountSettingsView() {
         try {
           const compressed = await compressCoverImage(base64);
           if (!contaAindaEhDona()) return;
-          const success = await updateProfile({ cover_url: compressed });
+          const success = await updateProfile(
+            { cover_url: compressed },
+            contaDonaId,
+          );
           if (!contaAindaEhDona()) return;
           if (success) {
             toast.success("Capa de perfil personalizada atualizada!");

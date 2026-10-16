@@ -104,12 +104,15 @@ interface Snapshot {
   logout: () => Promise<void>;
   resendConfirmationEmail: (email: string) => Promise<boolean>;
   updatePassword: (newPassword: string) => Promise<boolean>;
-  updateProfile: (updates: {
-    full_name?: string | null;
-    whatsapp?: string | null;
-    avatar_url?: string | null;
-    cover_url?: string | null;
-  }) => Promise<boolean>;
+  updateProfile: (
+    updates: {
+      full_name?: string | null;
+      whatsapp?: string | null;
+      avatar_url?: string | null;
+      cover_url?: string | null;
+    },
+    contaEsperada?: string,
+  ) => Promise<boolean>;
 }
 
 function Sonda({
@@ -726,6 +729,41 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
       let resultado: boolean | undefined;
       await act(async () => {
         resultado = await updateProfile({ avatar_url: "avatar-de-a" });
+      });
+
+      expect(resultado).toBe(false);
+      expect(
+        rpc.mock.calls.filter(([nome]) => nome === "update_my_profile_secure"),
+      ).toEqual([]);
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+        "A conta mudou durante a operação: nada foi salvo. Confira a conta e tente de novo.",
+      );
+    });
+
+    it("conta do clique: se B já entrou antes da chamada (depois de comprimir a imagem), nada é salvo", async () => {
+      const { supabase, toast, updateProfile } = await montar(true);
+      const rpc = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
+      const aoMudar = (
+        supabase.auth.onAuthStateChange as unknown as ReturnType<typeof vi.fn>
+      ).mock.calls[0][0];
+      const sessaoB = { access_token: "token-b", user: { id: "conta-b" } };
+      (
+        supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+      ).mockImplementation(async () => ({
+        data: { session: sessaoB },
+        error: null,
+      }));
+      await act(async () => {
+        aoMudar("SIGNED_IN", sessaoB);
+      });
+      rpc.mockClear();
+
+      let resultado: boolean | undefined;
+      await act(async () => {
+        resultado = await updateProfile(
+          { avatar_url: "avatar-de-a" },
+          "conta-a",
+        );
       });
 
       expect(resultado).toBe(false);

@@ -164,6 +164,7 @@ export function ProfileView({
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const contaDonaId = user?.id;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -187,7 +188,10 @@ export function ProfileView({
         const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
         try {
           const compressed = await compressImage(base64, 200, 200);
-          const success = await updateProfile({ avatar_url: compressed });
+          const success = await updateProfile(
+            { avatar_url: compressed },
+            contaDonaId,
+          );
           if (success) {
             toast.success("Foto de perfil atualizada!");
             setIsAvatarModalOpen(false);
@@ -251,6 +255,7 @@ export function ProfileView({
   };
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const contaDonaId = user?.id;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -272,7 +277,10 @@ export function ProfileView({
         }
 
         const compressed = await compressCoverImage(base64);
-        const success = await updateProfile({ cover_url: compressed });
+        const success = await updateProfile(
+          { cover_url: compressed },
+          contaDonaId,
+        );
         if (success) {
           toast.success("Capa de perfil personalizada atualizada!");
           setIsCoverModalOpen(false);
