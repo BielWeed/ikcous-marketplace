@@ -422,6 +422,37 @@ export type DesfechoComprovante =
     };
 
 /**
+ * Devolve a reserva do envio (`liberar_email_de_confirmacao`). O cliente do
+ * Supabase NAO rejeita a promessa em falha: resolve com `{ error }`, e uma
+ * reserva que nao volta faz toda chamada seguinte devolver `ja_enviado` sem
+ * e-mail nenhum. Por isso o resultado e lido, a falha vai ao log e ha UMA nova
+ * tentativa — segura porque a RPC e um UPDATE idempotente (poe NULL). Nunca
+ * lanca: quem chama ja esta devolvendo `envio_falhou`.
+ */
+async function devolverReserva(
+  supabase: ReturnType<typeof createClient>,
+  orderId: string,
+): Promise<void> {
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    try {
+      const { error } = await supabase.rpc("liberar_email_de_confirmacao", {
+        p_order_id: orderId,
+      });
+      if (!error) return;
+      console.error(
+        `comprovante: liberar reserva falhou (tentativa ${tentativa} de 2):`,
+        error.message ?? error,
+      );
+    } catch (erro) {
+      console.error(
+        `comprovante: liberar reserva falhou (tentativa ${tentativa} de 2):`,
+        erro,
+      );
+    }
+  }
+}
+
+/**
  * Manda ao cliente o comprovante de UM pedido. Não valida a FORMA de
  * `orderId` — quem chama já validou (o corpo HTTP em `send-order-
  * confirmation/index.ts`, o `external_reference` autenticado pelo MP em
@@ -513,11 +544,7 @@ export async function enviarComprovantePedido(args: {
 
   if (erroItens) {
     // Sem os produtos, o comprovante não está pronto para enviar.
-    await supabase
-      .rpc("liberar_email_de_confirmacao", { p_order_id: orderId })
-      .then(undefined, (erro: unknown) => {
-        console.error("comprovante: liberar reserva falhou", erro);
-      });
+    await devolverReserva(supabase, orderId);
     console.error("comprovante: leitura dos itens falhou");
     return { ok: false, motivo: "envio_falhou" };
   }
@@ -577,11 +604,7 @@ export async function enviarComprovantePedido(args: {
   } catch (e) {
     // Devolve a reserva: o SMTP RECUSOU a mensagem, entao ninguem recebeu
     // nada e uma tentativa posterior tem de ser possivel.
-    await supabase
-      .rpc("liberar_email_de_confirmacao", { p_order_id: orderId })
-      .then(undefined, (erro: unknown) => {
-        console.error("comprovante: liberar reserva falhou", erro);
-      });
+    await devolverReserva(supabase, orderId);
     console.error(
       `comprovante: envio falhou para ${mascarar(destinatario)}: ${e?.message}`,
     );

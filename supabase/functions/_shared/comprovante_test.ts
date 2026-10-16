@@ -861,6 +861,129 @@ Deno.test("envio de e-mail falha -> libera a reserva (RPC 'liberar_email_de_conf
   );
 });
 
+// --- liberar a reserva: o cliente do Supabase NAO rejeita em falha ----------------
+// `rpc()` resolve com `{ error }` (nao lanca). Ignorar esse resultado deixava a
+// reserva presa: toda chamada seguinte devolvia `ja_enviado` sem e-mail enviado.
+
+/** Supabase falso com a reserva de verdade e a liberacao programavel por chamada. */
+function clienteComLiberacao(
+  respostasDaLiberacao: Array<
+    { error: unknown } | "rejeita"
+  >,
+  opcoes: { erroLeituraItens?: unknown } = {},
+) {
+  const chamadas: Chamada[] = [];
+  const base = clienteFalso({
+    pedido: { id: UUID_PEDIDO, customer_data: { email: "cliente@exemplo.com" } },
+    erroLeituraItens: opcoes.erroLeituraItens,
+    itens: [{ product_name: "Produto", quantity: 1, price: 10 }],
+    storeConfig: { store_name: "Loja Teste" },
+    chamadas,
+  });
+  const estado = { reservado: false, liberacoes: 0 };
+  const supabase = {
+    ...base,
+    rpc: async (nome: string, args: Record<string, unknown>) => {
+      chamadas.push({ tipo: "rpc", nome, args });
+      if (nome === "reivindicar_email_de_confirmacao") {
+        const ganhou = !estado.reservado;
+        estado.reservado = true;
+        return { data: ganhou, error: null };
+      }
+      if (nome === "liberar_email_de_confirmacao") {
+        const resposta = respostasDaLiberacao[estado.liberacoes] ?? { error: null };
+        estado.liberacoes++;
+        if (resposta === "rejeita") throw new Error("fake: rede caiu");
+        if (!resposta.error) estado.reservado = false;
+        return { data: null, error: resposta.error };
+      }
+      return { data: null, error: null };
+    },
+  };
+  return { supabase, estado, chamadas };
+}
+
+const enviarCom = (
+  supabase: unknown,
+  enviarEmail: () => Promise<void>,
+) =>
+  enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE, enviarEmail },
+  });
+const FALHA_DE_REDE = { message: "connection reset" };
+
+Deno.test("liberar a reserva devolve { error } (leitura dos itens falhou) -> tenta UMA vez mais, e a reserva volta", async () => {
+  const { supabase, estado } = clienteComLiberacao(
+    [{ error: FALHA_DE_REDE }],
+    { erroLeituraItens: { message: "boom" } },
+  );
+  const enviar = async () => {};
+
+  assertEquals(await enviarCom(supabase, enviar), { ok: false, motivo: "envio_falhou" });
+  assertEquals(estado.liberacoes, 2);
+  assertEquals(estado.reservado, false, "reserva presa = proximas chamadas dariam ja_enviado sem e-mail");
+});
+
+Deno.test("liberar a reserva devolve { error } (SMTP recusou) -> tenta UMA vez mais, e a proxima chamada ainda pode enviar", async () => {
+  const { supabase, estado } = clienteComLiberacao([{ error: FALHA_DE_REDE }]);
+  let envios = 0;
+  const recusa = async () => { throw new Error("SMTP: recusado"); };
+  const aceita = async () => { envios++; };
+
+  assertEquals(await enviarCom(supabase, recusa), { ok: false, motivo: "envio_falhou" });
+  assertEquals(estado.liberacoes, 2);
+  assertEquals(estado.reservado, false);
+  assertEquals(await enviarCom(supabase, aceita), { ok: true });
+  assertEquals(envios, 1);
+});
+
+Deno.test("liberar a reserva falha nas DUAS tentativas -> para por ali (sem laco), registra e devolve envio_falhou", async () => {
+  const { supabase, estado } = clienteComLiberacao([
+    { error: FALHA_DE_REDE },
+    { error: FALHA_DE_REDE },
+    { error: FALHA_DE_REDE },
+  ]);
+  const recusa = async () => { throw new Error("SMTP: recusado"); };
+  const registros: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => { registros.push(args); };
+  try {
+    assertEquals(await enviarCom(supabase, recusa), { ok: false, motivo: "envio_falhou" });
+  } finally {
+    console.error = original;
+  }
+  assertEquals(estado.liberacoes, 2, "uma nova tentativa, nao um laco");
+  assertEquals(
+    registros.some((r) => String(r[0]).includes("liberar reserva falhou")),
+    true,
+    "a reserva presa precisa aparecer no log",
+  );
+});
+
+Deno.test("liberar a reserva LANCA excecao -> nao derruba o desfecho e tambem tenta uma vez mais", async () => {
+  const { supabase, estado } = clienteComLiberacao(["rejeita"]);
+  const recusa = async () => { throw new Error("SMTP: recusado"); };
+  const original = console.error;
+  console.error = () => {};
+  try {
+    assertEquals(await enviarCom(supabase, recusa), { ok: false, motivo: "envio_falhou" });
+  } finally {
+    console.error = original;
+  }
+  assertEquals(estado.liberacoes, 2);
+  assertEquals(estado.reservado, false);
+});
+
+Deno.test("liberar a reserva funciona de primeira -> UMA chamada so (a nova tentativa nao e' automatica)", async () => {
+  const { supabase, estado } = clienteComLiberacao([{ error: null }]);
+  const recusa = async () => { throw new Error("SMTP: recusado"); };
+  assertEquals(await enviarCom(supabase, recusa), { ok: false, motivo: "envio_falhou" });
+  assertEquals(estado.liberacoes, 1);
+  assertEquals(estado.reservado, false);
+});
+
 // 26/09/2026 — cartão pelo app: o comprovante diz a forma que o cliente usou
 // de fato (metodo_online), não "PIX pelo site" para todo pedido online.
 Deno.test("cartão de crédito pelo app -> o comprovante diz cartão, nunca PIX", async () => {
