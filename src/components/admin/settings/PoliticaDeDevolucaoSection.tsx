@@ -383,7 +383,11 @@ export function PoliticaDeDevolucaoSection({
   ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   return (
-    <div className="space-y-4" data-testid="politica-devolucao">
+    <fieldset
+      disabled={salvando}
+      className="min-w-0 space-y-4"
+      data-testid="politica-devolucao"
+    >
       <p className="text-[11px] leading-relaxed text-zinc-400">
         É isto que o cliente lê e o que o app aplica ao pedido de devolução. Os
         prazos contam da entrega; os mínimos da lei não podem ser reduzidos.
@@ -633,7 +637,7 @@ export function PoliticaDeDevolucaoSection({
         )}
         {sujo ? "Salvar política" : "Política salva"}
       </button>
-    </div>
+    </fieldset>
   );
 }
 
