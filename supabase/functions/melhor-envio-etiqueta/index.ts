@@ -2896,6 +2896,21 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, motivoDoProvedor(detalhe))
                 return await finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
             }
+            // Como na reversa, HTTP 200 pode trazer recusa na entrada do envio.
+            // Só status === false é recusa; corpo ausente/ilegível segue como antes.
+            const textoGenerate = await generateResponse.text().catch(() => '')
+            let dadosGenerate: unknown = null
+            try {
+                dadosGenerate = JSON.parse(textoGenerate)
+            } catch {
+                dadosGenerate = null
+            }
+            const entradaGenerate: any = new Map(Object.entries(dadosGenerate && typeof dadosGenerate === 'object' ? dadosGenerate : {})).get(labelId)
+            if (entradaGenerate && typeof entradaGenerate === 'object' && entradaGenerate.status === false) {
+                const motivo = motivoDoProvedor(JSON.stringify({ message: entradaGenerate.message ?? '' }))
+                console.error('[melhor-envio-etiqueta] generate recusado na entrada do envio:', motivo)
+                return await finalizarComErro(`O Melhor Envio recusou a geração da etiqueta: ${motivo}`, 'generate')
+            }
 
             // 9. Link de impressão (fallo suave: sem link, a etiqueta existe e o
             //    lojista reimprime pelo ME — não é motivo para falhar tudo).

@@ -2511,6 +2511,122 @@ Deno.test("handler - generate HTTP (4xx) com campo irmão de `errors`: o log usa
     })
 })
 
+Deno.test("handler - generate 200 com status false: resgata a etiqueta paga, mantém o vínculo e não imprime nem consulta rastreio", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const base = buscarMeFalso()
+        const chamadas: string[] = []
+        const buscar = (async (input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            chamadas.push(new URL(url).pathname)
+            if (url.endsWith('/api/v2/me/shipment/generate')) {
+                return new Response(JSON.stringify({ [LABEL_ID]: { status: false, message: 'Envio bloqueado para geração.' } }))
+            }
+            return base.buscar(input, init)
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            const corpo = await res.json()
+            assertEquals(res.status, 502)
+            assertEquals(corpo.success, undefined)
+            assertEquals(corpo.resgate, true)
+            assertEquals(corpo.label_id, LABEL_ID)
+            assertEquals(corpo.error.includes('PAGA no Melhor Envio'), true)
+            assertEquals(corpo.error.includes('gere e imprima'), true)
+            assertEquals(corpo.error.includes('Envio bloqueado'), false)
+        })
+        assertEquals(base.registro.checkouts, 1)
+        assertEquals(base.registro.remocoes, 0)
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, LABEL_ID)
+        assertEquals(supa.registro.liberacoes.length, 0)
+        assertEquals(supa.registro.completacoes.length, 0)
+        assertEquals(chamadas.includes('/api/v2/me/shipment/generate'), true)
+        assertEquals(chamadas.includes('/api/v2/me/shipment/print'), false)
+        assertEquals(chamadas.includes('/api/v2/me/shipment/tracking'), false)
+        assertEquals(supa.registro.eventos.length, 1)
+        const evento = supa.registro.eventos[0]
+        assertEquals(evento.event_type, 'erro')
+        assertEquals(evento.payload.etapa, 'generate')
+        assertEquals(evento.payload.label_id, LABEL_ID)
+        assertEquals(evento.error_message.includes('Envio bloqueado para geração.'), true)
+        assertEquals(linhas.some((linha) => linha.includes('Envio bloqueado para geração.')), true)
+    })
+})
+
+Deno.test("handler - generate 200 recusado: motivo limitado e sem CPF, e-mail, telefone ou campos irmãos no evento e no log", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const base = buscarMeFalso()
+        const mensagem = `Contato pessoa@teste.local, (34) 99999-0000, CPF 529.982.247-25. ${'x'.repeat(400)} FIM-NAO-DEVE-APARECER`
+        const buscar = (async (input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me/shipment/generate')) {
+                return new Response(JSON.stringify({
+                    [LABEL_ID]: { status: false, message: mensagem, to: { name: 'Nome que não pode vazar', address: 'Rua que não pode vazar' } },
+                    outro_envio: { status: false, message: 'Mensagem de outro envio' },
+                }))
+            }
+            return base.buscar(input, init)
+        }) as any
+        const linhas = await comConsoleErrorCapturado(async () => {
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            assertEquals(res.status, 502)
+            const corpo = await res.json()
+            assertEquals(corpo.error.includes('Contato'), false)
+        })
+        const evento = supa.registro.eventos[0]
+        assertEquals(evento.event_type, 'erro')
+        assertEquals(evento.payload.etapa, 'generate')
+        const linha = linhas.find((linha) => linha.includes('generate recusado')) ?? ''
+        for (const texto of [evento.error_message, linha]) {
+            assertEquals(texto.includes('Contato [email], [telefone], CPF [cpf].'), true)
+            for (const proibido of ['pessoa@teste.local', '99999-0000', '529.982.247-25', 'Nome que não pode vazar', 'Rua que não pode vazar', 'Mensagem de outro envio', 'FIM-NAO-DEVE-APARECER']) {
+                assertEquals(texto.includes(proibido), false)
+            }
+        }
+        const motivo = evento.error_message.replace('O Melhor Envio recusou a geração da etiqueta: ', '')
+        assertEquals(motivo.length, 300)
+    })
+})
+
+for (const [caso, texto] of [
+    ['status true', JSON.stringify({ [LABEL_ID]: { status: true } })],
+    ['corpo vazio', ''],
+    ['não JSON', '<html>gateway</html>'],
+    ['array', JSON.stringify([{ status: false, message: 'Sem id' }])],
+    ['outro id recusado', JSON.stringify({ outro_envio: { status: false, message: 'Outro envio' } })],
+    ['status ausente', JSON.stringify({ [LABEL_ID]: { message: 'Sem status' } })],
+    ['status string false', JSON.stringify({ [LABEL_ID]: { status: 'false' } })],
+    ['status null', JSON.stringify({ [LABEL_ID]: { status: null } })],
+    ['entrada null', JSON.stringify({ [LABEL_ID]: null })],
+    ['JSON null', 'null'],
+]) {
+    Deno.test(`handler - generate 200 com ${caso}: segue para impressão e rastreio sem recusar por dúvida`, async () => {
+        await comEnvAdmin(async () => {
+            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const base = buscarMeFalso()
+            const chamadas: string[] = []
+            const buscar = (async (input: any, init?: any) => {
+                const url = String(input instanceof Request ? input.url : input)
+                chamadas.push(new URL(url).pathname)
+                if (url.endsWith('/api/v2/me/shipment/generate')) return new Response(texto)
+                return base.buscar(input, init)
+            }) as any
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            const corpo = await res.json()
+            assertEquals(res.status, 200)
+            assertEquals(corpo.success, true)
+            assertEquals(corpo.label_url, 'https://imprimir.teste/etiqueta')
+            assertEquals(corpo.tracking_code, 'ME123456789BR')
+            assertEquals(chamadas.includes('/api/v2/me/shipment/print'), true)
+            assertEquals(chamadas.includes('/api/v2/me/shipment/tracking'), true)
+            assertEquals(supa.registro.pedidoAtual.shipping_label_id, LABEL_ID)
+            assertEquals(supa.registro.liberacoes.length, 0)
+            assertEquals(supa.registro.eventos.map((evento) => evento.event_type), ['etiqueta_gerada'])
+        })
+    })
+}
+
 Deno.test("handler - print HTTP (4xx, falha suave) com campo irmão de `errors`: o log usa motivoDoProvedor — nunca o corpo cru", async () => {
     await comEnvAdmin(async () => {
         const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
