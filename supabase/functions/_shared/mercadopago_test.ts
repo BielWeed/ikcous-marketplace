@@ -24,6 +24,7 @@ import {
   extrairDataExpiracaoOrder,
   extrairDesafio3ds,
   extrairQrCode,
+  fetchComTempo,
   formatarExpiracao,
   idEhClassico,
   limiteInferiorDoSentinela,
@@ -1614,6 +1615,141 @@ Deno.test("P-4 - o timer do timeout é LIMPO depois da resposta (sem leak)", asy
     // Se o timer não fosse limpo, cada chamada deixaria 60s pendurados no
     // event loop — o deno test esperaria cada um antes de encerrar.
     assertEquals(foiLimpo, true);
+  } finally {
+    globalThis.clearTimeout = clearTimeoutReal;
+  }
+});
+
+// Achado EST-EDGE-DIN-1 (16/10/2026): o prazo cobria só os CABEÇALHOS. Uma
+// resposta 200 que abre e nunca entrega o corpo desarmava o temporizador e
+// deixava `json()` pendurado para sempre (reconciliação e webhook travados).
+// O dublê abaixo abre o 200 com um corpo que NÃO entrega e NÃO obedece ao
+// sinal (o pior caso: nem o abort do fetch real salva); a `guarda` quebra o
+// corpo com um erro DIFERENTE depois de 300 ms para a versão defeituosa falhar
+// sem pendurar a suíte — e o `.name` do erro mostra quem ganhou.
+function respostaComCorpoPendurado(guardas: Array<ReturnType<typeof setTimeout>>) {
+  const capturado: { sinal?: AbortSignal } = {};
+  const buscar = (_url: string, init?: RequestInit) => {
+    capturado.sinal = init?.signal ?? undefined;
+    return Promise.resolve(
+      new Response(
+        new ReadableStream({
+          start(controle) {
+            guardas.push(setTimeout(() => {
+              try {
+                controle.error(new Error("Corpo ficou sem limite de tempo"));
+              } catch (_e) { /* já encerrado */ }
+            }, 300));
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+  };
+  return { buscar: buscar as unknown as typeof fetch, capturado };
+}
+
+Deno.test("EST-EDGE-DIN-1 - fetchComTempo: corpo que nunca chega depois do 200 estoura o prazo (json e text) com AbortError e sinal abortado", async () => {
+  for (const leitor of ["json", "text"] as const) {
+    const guardas: Array<ReturnType<typeof setTimeout>> = [];
+    const { buscar, capturado } = respostaComCorpoPendurado(guardas);
+    let erro: unknown;
+    try {
+      const resposta = await fetchComTempo(buscar, "https://mp-falso.local", {}, 10);
+      await (leitor === "json" ? resposta.json() : resposta.text());
+    } catch (e) {
+      erro = e;
+    } finally {
+      guardas.forEach(clearTimeout);
+    }
+    assertEquals((erro as { name?: string } | undefined)?.name, "AbortError");
+    assertEquals(capturado.sinal?.aborted, true);
+  }
+});
+
+Deno.test("EST-EDGE-DIN-1 - consultarOrder com 200 sem corpo devolve ok:false status 0 (tempo esgotado), não 'corpo ilegível'", async () => {
+  const guardas: Array<ReturnType<typeof setTimeout>> = [];
+  const { buscar } = respostaComCorpoPendurado(guardas);
+  const inicio = Date.now();
+  const r = await consultarOrder({
+    token: "t",
+    orderId: "ORD01KZZ4D94WC79335A68CZ5NZ7X",
+    fetchImpl: buscar,
+    tempoLimiteMs: 20,
+  });
+  guardas.forEach(clearTimeout);
+  assertEquals(r.ok, false);
+  // status 0 = a mesma falha de rede/timeout da chamada sem resposta; sem o
+  // conserto o corpo quebrava pela guarda e saía status 200 "corpo ilegível".
+  assertEquals(r.ok ? null : r.status, 0);
+  assertEquals(Date.now() - inicio < 250, true);
+});
+
+Deno.test("EST-EDGE-DIN-1 - consultarPagamento com 200 sem corpo devolve ok:false status 0 (tempo esgotado)", async () => {
+  const guardas: Array<ReturnType<typeof setTimeout>> = [];
+  const { buscar } = respostaComCorpoPendurado(guardas);
+  const r = await consultarPagamento({
+    token: "t",
+    paymentId: "123456789",
+    fetchImpl: buscar,
+    tempoLimiteMs: 20,
+  });
+  guardas.forEach(clearTimeout);
+  assertEquals(r.ok, false);
+  assertEquals(r.ok ? null : r.status, 0);
+});
+
+Deno.test("EST-EDGE-DIN-1 - buscarOrdersDoPedido com 200 sem corpo devolve ok:false dentro do prazo", async () => {
+  const guardas: Array<ReturnType<typeof setTimeout>> = [];
+  const { buscar } = respostaComCorpoPendurado(guardas);
+  const inicio = Date.now();
+  const r = await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+    desde: new Date().toISOString(),
+    fetchImpl: buscar,
+    tempoLimiteMs: 20,
+  });
+  guardas.forEach(clearTimeout);
+  assertEquals(r.ok, false);
+  assertEquals(Date.now() - inicio < 250, true);
+});
+
+Deno.test("EST-EDGE-DIN-1 - fetchComTempo: corpo entregue a tempo preserva status, cabeçalhos e JSON; 204 sem corpo continua válido", async () => {
+  const completo = await fetchComTempo(
+    (() => Promise.resolve(new Response('{"ok":true}', { status: 201, headers: { "X-Teste": "preservado" } }))) as unknown as typeof fetch,
+    "https://mp-falso.local",
+  );
+  assertEquals(completo.status, 201);
+  assertEquals(completo.headers.get("X-Teste"), "preservado");
+  assertEquals(await completo.json(), { ok: true });
+
+  const semCorpo = await fetchComTempo(
+    (() => Promise.resolve(new Response(null, { status: 204 }))) as unknown as typeof fetch,
+    "https://mp-falso.local",
+  );
+  assertEquals(semCorpo.status, 204);
+  assertEquals(await semCorpo.text(), "");
+});
+
+Deno.test("EST-EDGE-DIN-1 - fetchComTempo: o timer é limpo também quando o corpo já veio (sem leak)", async () => {
+  const clearTimeoutReal = globalThis.clearTimeout;
+  let limpezas = 0;
+  (globalThis as unknown as Record<string, unknown>).clearTimeout = (
+    id: Parameters<typeof clearTimeoutReal>[0],
+  ) => {
+    limpezas++;
+    return clearTimeoutReal(id);
+  };
+  try {
+    const r = await fetchComTempo(
+      (() => Promise.resolve(new Response('{"id":1}'))) as unknown as typeof fetch,
+      "https://mp-falso.local",
+      {},
+      60000,
+    );
+    assertEquals(await r.json(), { id: 1 });
+    assertEquals(limpezas >= 1, true);
   } finally {
     globalThis.clearTimeout = clearTimeoutReal;
   }
