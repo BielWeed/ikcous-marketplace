@@ -620,6 +620,36 @@ function clienteFalso(opts: {
             };
           },
           update(valores: Record<string, unknown>) {
+            // UPDATE condicional da identidade tardia: espelha os filtros e
+            // o RETURNING do PostgREST, sem passar por concluir_estorno.
+            if (Object.keys(valores).length === 1 && "mp_refund_id" in valores) {
+              const filtros: Array<(r: Record<string, unknown>) => boolean> = [];
+              let id = "";
+              const cadeia = {
+                eq(coluna: string, valor: unknown) {
+                  if (coluna === "id") id = String(valor);
+                  filtros.push((r) => Reflect.get(r, coluna) === valor);
+                  return cadeia;
+                },
+                is(coluna: string, valor: null) {
+                  filtros.push((r) => (Reflect.get(r, coluna) ?? null) === valor);
+                  return cadeia;
+                },
+                select(_colunas: string) { return cadeia; },
+                async maybeSingle() {
+                  opts.registro?.updatesOrderRefunds?.push({ id, valores, statusFiltro: ["identidade_tardia"] });
+                  if (opts.erroOrderRefundsUpdate) return { data: null, error: opts.erroOrderRefundsUpdate };
+                  const linha = filaOrderRefunds.find((r) => filtros.every((f) => f(r)));
+                  if (!linha) return { data: null, error: null };
+                  if (opts.indicesUnicosDoLedger && filaOrderRefunds.some((r) =>
+                    r !== linha && r.order_id === linha.order_id && r.mp_refund_id === valores.mp_refund_id
+                  )) return { data: null, error: { code: "23505" } };
+                  Object.assign(linha, valores);
+                  return { data: { id: linha.id }, error: null };
+                },
+              };
+              return cadeia;
+            }
             return {
               eq(_coluna: string, id: string) {
                 return {
@@ -4678,6 +4708,162 @@ Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada
   assertEquals(registro.insertsOrderRefunds.length, 0);
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
   assertEquals((registro as any).valorEstornadoAcumulado, valorApos1a);
+});
+
+// W5a–W5h: o fallback clássico (E27/E39) já contou o dinheiro antes de
+// refunds[] materializar a identidade. Exercita o handler REAL entre entregas.
+function cenarioDeIdentidadeTardia(opts: {
+  linhas?: Array<Record<string, unknown>>;
+  estornado?: number;
+  erroUpdate?: unknown;
+  aposLer?: (fila: Array<Record<string, unknown>>) => void;
+} = {}) {
+  const registro = registroDoLedger();
+  const pedido = { ...pedidoPago(), gateway_payment_id: "999", valor_estornado: opts.estornado ?? 0 };
+  const linha = (id: string, amount = 30, status = "concluido") => ({
+    id, order_id: UUID_PEDIDO, amount, status, solicitado_por: "lojista",
+    mp_refund_id: null, mp_chargeback_id: null, tentativas: 1,
+    mp_status: "approved", concluido_em: status === "concluido" ? "2026-10-01T00:00:00.000Z" : null,
+    created_at: "2026-10-01T00:00:00.000Z",
+  });
+  const supabase = clienteFalso({
+    pedido, registro, concluirSomaNoPedido: true, indicesUnicosDoLedger: true,
+    orderRefundsRows: opts.linhas ?? [linha("legado-30", 30, "em_processamento")],
+    erroOrderRefundsUpdate: opts.erroUpdate, aposLerOrderRefunds: opts.aposLer,
+  });
+  const logs: unknown[][] = [];
+  const entregar = (acumulado: unknown, refunds?: unknown[]) => semLogs(async () => {
+    console.error = (...args: unknown[]) => { logs.push(args); };
+    return await handler(await requisicaoAssinada("999", { corpoExtra: { type: "payment" } }), {
+      supabase,
+      fetchImpl: fetchConsulta(200, {
+        id: 999, external_reference: UUID_PEDIDO, status: "approved",
+        status_detail: "partially_refunded", transaction_amount: 100,
+        transaction_amount_refunded: acumulado, ...(refunds === undefined ? {} : { refunds }),
+      }),
+      enviarPushContado: async () => 1,
+    });
+  });
+  return { registro, pedido, linha, logs, entregar };
+}
+
+const refundTardio = (id = "refund-30", amount = 30) => ({ id, amount, status: "approved" });
+
+Deno.test("W5a - acumulado 30 sem refunds[] conclui sem ID; entrega seguinte adota o ID e mantém 30; replay mantém uma linha", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  assertEquals((await c.entregar(30)).status, 200);
+  const fila = (c.registro as any).filaOrderRefunds;
+  assertEquals(fila[0].status, "concluido");
+  assertEquals(fila[0].mp_refund_id, null);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 30, "o mesmo dinheiro não pode virar 60");
+  assertEquals(fila[0].mp_refund_id, "refund-30");
+  assertEquals(c.registro.updatesOrderRefunds.map((r) => r.valores), [{ mp_refund_id: "refund-30" }]);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 0);
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals(fila.length, 1);
+  assertEquals(c.registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(c.registro.updatesOrderRefunds.length, 1);
+});
+
+Deno.test("W5b - externo de outro valor continua externo; replay não soma de novo e divergência deixa sinal", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  assertEquals((await c.entregar(50, [refundTardio("externo-20", 20)])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 50);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado"));
+  await c.entregar(50, [refundTardio("externo-20", 20)]);
+  assertEquals(c.pedido.valor_estornado, 50);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+});
+
+Deno.test("W5c - externo sem candidato continua registrado normalmente", async () => {
+  const c = cenarioDeIdentidadeTardia({ linhas: [] });
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+});
+
+Deno.test("W5d - dois candidatos de 30: não adota, registra como antes e sinaliza ambiguidade; replay não duplica", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  const c = cenarioDeIdentidadeTardia({ linhas: [base.linha("antigo-a"), base.linha("antigo-b")], estornado: 60 });
+  assertEquals((await c.entregar(60, [refundTardio()])).status, 200);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+  assertEquals(c.pedido.valor_estornado, 90, "conserva a regra anterior nos ambíguos, para conferência manual");
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado" &&
+    (l[1] as any)?.motivo === "multiplos_candidatos"));
+  await c.entregar(60, [refundTardio()]);
+  assertEquals(c.pedido.valor_estornado, 90);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+});
+
+Deno.test("W5e - externo novo do MESMO valor: acumulado 60 não permite adotar a linha antiga de 30", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  assertEquals((await c.entregar(60, [refundTardio("externo-novo-30")])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 60);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+});
+
+Deno.test("W5f - ID tardio e externo de 20 no mesmo GET: adota só os 30 antigos e registra só os 20 novos", async () => {
+  for (const refunds of [[refundTardio(), refundTardio("externo-20", 20)], [refundTardio("externo-20", 20), refundTardio()]]) {
+    const c = cenarioDeIdentidadeTardia();
+    await c.entregar(30);
+    assertEquals((await c.entregar(50, refunds)).status, 200);
+    assertEquals(c.pedido.valor_estornado, 50);
+    assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_mp_refund_id), ["externo-20"]);
+    assertEquals(linhasDoRefund(c.registro, "refund-30")[0].id, "legado-30");
+    assertEquals(c.logs.length, 0, "adoção coerente e externo legítimo não exigem reconciliação manual");
+  }
+});
+
+Deno.test("W5g - falha ao adotar ID devolve 500 sem registrar externo; não confirma dinheiro em duplicidade", async () => {
+  const c = cenarioDeIdentidadeTardia({ erroUpdate: { message: "falha de escrita (dublê)" } });
+  await c.entregar(30);
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 500);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 0);
+});
+
+Deno.test("W5h - adoção concorrente após a leitura: UPDATE sem linha devolve 500; reentrega lê o ID e não soma", async () => {
+  let disputar = false;
+  const c = cenarioDeIdentidadeTardia({ aposLer: (fila) => {
+    if (disputar) { fila[0].mp_refund_id = "refund-30"; disputar = false; }
+  } });
+  await c.entregar(30);
+  disputar = true;
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 500);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 0);
+  assertEquals(c.pedido.valor_estornado, 30);
+  assertEquals((await c.entregar(30, [refundTardio()])).status, 200);
+  assertEquals(c.pedido.valor_estornado, 30);
+});
+
+Deno.test("W5i - uma linha mas dois refunds de mesmo valor: identidade ambígua, não escolhe pela ordem", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  assertEquals((await c.entregar(60, [refundTardio("r-a"), refundTardio("r-b")])).status, 200);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(c.registro.chamadasExternoDoMp.length, 2);
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado"));
+});
+
+Deno.test("W5j - acumulado ilegível: não adota por coincidência de valor, sinaliza e conserva a RPC externa", async () => {
+  for (const acumulado of [undefined, null, "", " ", "ilegível"]) {
+    const c = cenarioDeIdentidadeTardia();
+    await c.entregar(30);
+    assertEquals((await c.entregar(acumulado, [refundTardio()])).status, 200);
+    assertEquals(c.registro.updatesOrderRefunds.length, 0);
+    assertEquals(c.registro.chamadasExternoDoMp.length, 1);
+    assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado"));
+  }
 });
 
 Deno.test("W6 - linha 'sistema' concluida com concluido_em NULO (crash entre INSERT e RPC) -> o passo chama concluir_estorno para ela ANTES de tudo", async () => {

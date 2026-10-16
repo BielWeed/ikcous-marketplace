@@ -719,6 +719,54 @@ async function registrarDesfechoDoEstorno(args: {
   // avisado uma vez. O APP não é liberado aqui: quando o saldo acaba, o
   // executor dele não manda POST — recusa a linha nova e SEGURA a incerta
   // (`linhaPodeJaTerChegadoAoMp`, _shared/estorno.ts) até o MP dar veredito.
+  // O legado Payments pode concluir pelo acumulado SEM refunds[] (E27/E39).
+  // Quando o ID aparece depois, o dinheiro JÁ está somado: adotar só a
+  // identidade evita criar uma segunda linha externa para o mesmo estorno.
+  // Casamento: mesmo pedido/pagamento, linha do app efetivamente concluída,
+  // sem refund/contestação, valor igual em centavos e correspondência ÚNICA
+  // nos dois lados. Não escolhemos pela ordem da lista em caso de empate.
+  const semIdentidade = ehPayments && String(corpo.id ?? "") === pedido.gateway_payment_id
+    ? linhasBanco.filter((l) => l.status === "concluido" && l.mp_refund_id === null &&
+      l.mp_chargeback_id == null && l.solicitado_por !== "sistema" &&
+      typeof l.concluido_em === "string" && l.concluido_em !== "" &&
+      (l.mp_status === "approved" || l.mp_status === "refunded"))
+    : [];
+  const centavos = (valor: unknown) => Math.round(Number(valor) * 100);
+  const livresPorId = new Map<string, Record<string, unknown>>();
+  let valoresLivresLegiveis = true;
+  for (const r of refundsConcluidos) {
+    const id = typeof r.id === "string" || typeof r.id === "number" ? String(r.id) : "";
+    if (!id || reivindicados.has(id)) continue;
+    if (!Number.isFinite(Number(r.amount)) || Number(r.amount) <= 0 ||
+      (livresPorId.has(id) && centavos(livresPorId.get(id)?.amount) !== centavos(r.amount))) {
+      valoresLivresLegiveis = false;
+    }
+    livresPorId.set(id, r);
+  }
+  const adocoes = new Map<string, Record<string, unknown>>();
+  for (const [id, r] of livresPorId) {
+    const candidatas = semIdentidade.filter((l) => centavos(l.amount) === centavos(r.amount));
+    const refundsDoValor = Array.from(livresPorId.values()).filter((outro) =>
+      centavos(outro.amount) === centavos(r.amount)
+    );
+    if (candidatas.length === 1 && refundsDoValor.length === 1) adocoes.set(id, candidatas[0]);
+  }
+  // Valor igual sozinho não prova identidade: pode ser OUTRO estorno de 30.
+  // O acumulado do MP precisa fechar com o já contado + os IDs livres,
+  // descontando SOMENTE as adoções propostas. Calculado antes de qualquer
+  // escrita, também funciona quando chegam ID tardio e externo no mesmo GET.
+  const acumulado = corpo.transaction_amount_refunded;
+  const acumuladoLegivel = typeof acumulado === "number" ||
+    (typeof acumulado === "string" && acumulado.trim() !== "");
+  const esperado = centavos(pedido.valor_estornado) +
+    Array.from(livresPorId.values()).reduce((s, r) => s + centavos(r.amount), 0) -
+    Array.from(adocoes.values()).reduce((s, l) => s + centavos(l.amount), 0);
+  const acumuladoConfere = acumuladoLegivel && valoresLivresLegiveis &&
+    Number.isFinite(Number(acumulado)) && centavos(acumulado) === esperado;
+  const semProvaDeIdentidade = semIdentidade.filter((l) =>
+    !acumuladoConfere || !Array.from(adocoes.values()).includes(l)
+  );
+
   for (const refund of refundsConcluidos) {
     const refundId = typeof refund.id === "string" || typeof refund.id === "number"
       ? String(refund.id)
@@ -742,6 +790,44 @@ async function registrarDesfechoDoEstorno(args: {
       continue;
     }
     const valorRefund = Number(valorRefundBruto.toFixed(2));
+
+    const candidata = adocoes.get(refundId);
+    if (candidata && acumuladoConfere) {
+      // Compare-and-set: nunca sobrescrever o ID de outra entrega. Erro ou
+      // zero linhas mantém o evento na fila do MP; NÃO cai na RPC externa
+      // sobre um retrato velho. O índice único (pedido, refund) protege a
+      // identidade em entregas concorrentes. Não altera valor nem conclusão.
+      const { data: adotada, error: erroAdocao } = await supabase
+        .from("order_refunds")
+        .update({ mp_refund_id: refundId })
+        .eq("id", candidata.id)
+        .eq("order_id", orderId)
+        .eq("status", "concluido")
+        .eq("amount", candidata.amount)
+        .eq("concluido_em", candidata.concluido_em)
+        .is("mp_refund_id", null)
+        .is("mp_chargeback_id", null)
+        .select("id")
+        .maybeSingle();
+      if (erroAdocao) throw erroAdocao;
+      if (!adotada) throw new Error("webhook-mercadopago: identidade do estorno mudou durante a adoção — o MP reenvia");
+      candidata.mp_refund_id = refundId;
+      reivindicados.add(refundId);
+      continue;
+    }
+    if (semProvaDeIdentidade.length > 0) {
+      const candidatas = semProvaDeIdentidade.filter((l) => l.mp_refund_id === null &&
+        centavos(l.amount) === centavos(valorRefund)
+      );
+      // Sem prova única, conserva o registro externo existente. Não corrige
+      // automaticamente o saldo antigo: deixa sinal para conferência manual.
+      console.error("webhook-mercadopago: estorno sem ID exige conferência", {
+        evento: "estorno_sem_id_nao_adotado", orderId, refundId, valorRefund,
+        motivo: candidatas.length > 1 ? "multiplos_candidatos"
+          : candidatas.length === 0 ? "valor_divergente" : "identidade_ou_acumulado_ambiguo",
+        candidatos: candidatas.map((l) => l.id),
+      });
+    }
 
     const { data, error } = await supabase.rpc("registrar_estorno_externo_do_mp", {
       p_order_id: orderId,
