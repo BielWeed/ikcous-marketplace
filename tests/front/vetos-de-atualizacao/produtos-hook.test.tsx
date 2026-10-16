@@ -31,7 +31,19 @@ vi.mock("@/lib/supabase", () => ({
         getPublicUrl: () => ({ data: { publicUrl: "copia.jpg" } }),
       }),
     },
-    from: () => ({ update: () => ({ eq: rede.update }) }),
+    from: () => ({
+      update: () => ({
+        // Fila: .eq(id).eq(versao).is(deleted_at).select(id).
+        eq: () => {
+          const encadeado = {
+            eq: () => encadeado,
+            is: () => encadeado,
+            select: rede.update,
+          };
+          return encadeado;
+        },
+      }),
+    }),
     rpc: () => ({
       abortSignal: async () => ({
         data: {
@@ -94,7 +106,7 @@ describe("produtos vetam atualização nas imagens e na fila offline", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
-    rede.update.mockResolvedValue({ error: null });
+    rede.update.mockResolvedValue({ data: [{ id: "x" }], error: null });
     rede.refresh.mockResolvedValue(undefined);
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -203,11 +215,12 @@ describe("produtos vetam atualização nas imagens e na fila offline", () => {
           {
             id: "produto-1",
             updates: { stock: 2 },
+            baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
             timestamp: Date.now(),
           },
         ]),
       );
-      const envio = adiar<{ error: null }>();
+      const envio = adiar<{ data: [{ id: "x" }]; error: null }>();
       rede.update.mockReturnValue(envio.promessa);
       const resultado = _syncOfflineUpdatesParaTeste("lojista-1");
       await Promise.resolve();
@@ -220,7 +233,7 @@ describe("produtos vetam atualização nas imagens e na fila offline", () => {
         ]);
       } finally {
         if (erro) envio.rejeitar(new Error("falha simulada"));
-        else envio.resolver({ error: null });
+        else envio.resolver({ data: [{ id: "x" }], error: null });
         await resultado;
       }
       expect(haOperacaoSensivel()).toBe(false);
@@ -233,12 +246,22 @@ describe("produtos vetam atualização nas imagens e na fila offline", () => {
     localStorage.setItem(
       chave,
       JSON.stringify([
-        { id: "produto-1", updates: { stock: 2 }, timestamp: Date.now() },
-        { id: "produto-2", updates: { stock: 3 }, timestamp: Date.now() },
+        {
+          id: "produto-1",
+          updates: { stock: 2 },
+          baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+          timestamp: Date.now(),
+        },
+        {
+          id: "produto-2",
+          updates: { stock: 3 },
+          baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+          timestamp: Date.now(),
+        },
       ]),
     );
-    const primeiro = adiar<{ error: null }>();
-    const segundo = adiar<{ error: null }>();
+    const primeiro = adiar<{ data: [{ id: "x" }]; error: null }>();
+    const segundo = adiar<{ data: [{ id: "x" }]; error: null }>();
     rede.update
       .mockReturnValueOnce(primeiro.promessa)
       .mockReturnValueOnce(segundo.promessa);
@@ -249,14 +272,14 @@ describe("produtos vetam atualização nas imagens e na fila offline", () => {
     const resultado = _syncOfflineUpdatesParaTeste("lojista-1");
     try {
       await act(async () => {
-        primeiro.resolver({ error: null });
+        primeiro.resolver({ data: [{ id: "x" }], error: null });
       });
       expect(rede.update).toHaveBeenCalledTimes(2);
       expect(haOperacaoSensivel()).toBe(true);
       expect(estados).toEqual([true]);
     } finally {
-      primeiro.resolver({ error: null });
-      segundo.resolver({ error: null });
+      primeiro.resolver({ data: [{ id: "x" }], error: null });
+      segundo.resolver({ data: [{ id: "x" }], error: null });
       await resultado;
       desassinar();
     }

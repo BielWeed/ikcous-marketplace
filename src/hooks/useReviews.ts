@@ -10,7 +10,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import type { Review } from "@/types";
 import { cachedReviewsData, setCachedReviewsData } from "@/utils/admin_cache";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export interface AdminReview extends Review {
@@ -110,13 +110,34 @@ export function useReviews() {
   });
   const [loading, setLoading] = useState(() => isAdmin && !cachedReviewsData);
   const latestProductIdRef = useRef<string | null>(null);
+  const rodadaAdminRef = useRef(0);
+  const consultaDoProdutoRef = useRef(0);
+  const usuarioAtualRef = useRef(user?.id);
+  const [donoDasAvaliacoes, setDonoDasAvaliacoes] = useState(user?.id);
+
+  useEffect(() => {
+    if (usuarioAtualRef.current === user?.id) return;
+    usuarioAtualRef.current = user?.id;
+    consultaDoProdutoRef.current++;
+    latestProductIdRef.current = null;
+    setReviews([]);
+    setAdminReviews([]);
+    setLoading(false);
+    setDonoDasAvaliacoes(user?.id);
+  }, [user?.id]);
 
   const getReviewsByProduct = useCallback(
     async (productId: string) => {
+      if (usuarioAtualRef.current !== user?.id) return;
       latestProductIdRef.current = productId;
+      const consulta = ++consultaDoProdutoRef.current;
       // Geração do cache ao COMEÇAR: se uma limpeza (Sair, troca de conta)
       // acontecer enquanto a resposta viaja, ela não pode regravar a lista.
       const geracao = geracaoAtualDoCache();
+      const atual = () =>
+        consulta === consultaDoProdutoRef.current &&
+        geracao === geracaoAtualDoCache() &&
+        usuarioAtualRef.current === user?.id;
 
       // 1. SWR Cache Sync
       const cached = getReviewsCache(productId);
@@ -151,6 +172,7 @@ export function useReviews() {
               .eq("product_id", productId)
               .order("created_at", { ascending: false });
 
+        if (!atual()) return;
         if (error) throw error;
 
         const formattedReviews: Review[] = data.map((item: any) =>
@@ -188,10 +210,11 @@ export function useReviews() {
         }
         updateReviewsCacheSeMesmaGeracao(productId, formattedReviews, geracao);
       } catch (error: any) {
+        if (!atual()) return;
         console.error("Error fetching reviews:", error);
         toast.error("Erro ao carregar avaliações.");
       } finally {
-        if (latestProductIdRef.current === productId) {
+        if (atual() && latestProductIdRef.current === productId) {
           setLoading(false);
         }
       }
@@ -340,6 +363,13 @@ export function useReviews() {
       pageSize = 20,
       filters?: { rating?: number | "all"; search?: string; silent?: boolean },
     ) => {
+      const rodada = ++rodadaAdminRef.current;
+      const geracao = geracaoAtualDoCache();
+      const atual = () =>
+        rodada === rodadaAdminRef.current &&
+        geracao === geracaoAtualDoCache() &&
+        usuarioAtualRef.current === user?.id;
+      if (!atual()) return;
       try {
         if (!filters?.silent) {
           setLoading(true);
@@ -360,6 +390,7 @@ export function useReviews() {
             },
           );
 
+          if (rodada !== rodadaAdminRef.current) return;
           if (error) throw error;
 
           const rpcData = data as any;
@@ -398,6 +429,7 @@ export function useReviews() {
             merchantReply: item.merchant_reply,
           }));
 
+          if (!atual()) return;
           if (isAdmin) {
             setCachedReviewsData(formatted);
           }
@@ -527,6 +559,7 @@ export function useReviews() {
           merchantReply: item.merchant_reply,
         }));
 
+        if (!atual()) return;
         setAdminReviews(formatted);
         return {
           reviews: formatted,
@@ -536,14 +569,17 @@ export function useReviews() {
           globalRepliedCount,
         };
       } catch (error) {
+        if (!atual()) return;
         console.error("Error fetching all reviews:", error);
         toast.error("Erro ao carregar avaliações.");
+        setAdminReviews([]);
+        if (isAdmin) setCachedReviewsData([]);
         return { reviews: [], total: 0, averageRating: 0 };
       } finally {
-        setLoading(false);
+        if (atual()) setLoading(false);
       }
     },
-    [isAdmin],
+    [isAdmin, user?.id],
   );
 
   const deleteReview = useCallback(
@@ -753,8 +789,8 @@ export function useReviews() {
   );
 
   return {
-    reviews,
-    adminReviews,
+    reviews: donoDasAvaliacoes === user?.id ? reviews : [],
+    adminReviews: donoDasAvaliacoes === user?.id && isAdmin ? adminReviews : [],
     loading,
     getReviewsByProduct,
     addReview,

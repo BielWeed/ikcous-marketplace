@@ -41,7 +41,14 @@ vi.mock("@/hooks/useAuth", () => ({
 }));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    products: [],
+    // O produto está na lista: é daí que a edição offline tira a versão-base.
+    products: [
+      {
+        id: "prod-1",
+        name: "Produto 1",
+        updatedAt: "2026-10-01T10:00:00.000000+00:00",
+      },
+    ],
     loadingProducts: false,
     fetchProducts: vi.fn().mockResolvedValue(undefined),
   }),
@@ -67,7 +74,18 @@ vi.mock("@/lib/supabase", () => ({
         eq: (_coluna: string, id: string) => {
           mock.atualizados.push({ id, payload });
           mock.aoAtualizar?.();
-          return Promise.resolve({ error: mock.erroNoUpdate });
+          // O envio compara a versao-base e exige o id de volta
+          // (.eq(id).eq(versao).is(deleted_at).select(id)).
+          const encadeado = {
+            eq: () => encadeado,
+            is: () => encadeado,
+            select: () =>
+              Promise.resolve({
+                data: mock.erroNoUpdate ? null : [{ id }],
+                error: mock.erroNoUpdate,
+              }),
+          };
+          return encadeado;
         },
       }),
     }),
@@ -94,7 +112,12 @@ let raiz: Root;
 let onLine: ReturnType<typeof vi.spyOn>;
 
 function itemDe(id: string, updates: object, idadeMs = HORA) {
-  return { id, updates, timestamp: Date.now() - idadeMs };
+  return {
+    id,
+    updates,
+    baseUpdatedAt: "2026-10-01T10:00:00.000000+00:00",
+    timestamp: Date.now() - idadeMs,
+  };
 }
 
 function filaDe(uid: string): any[] | null {
@@ -125,7 +148,7 @@ async function montar() {
   const { useProducts } = await import("@/hooks/useProducts");
   let api: ReturnType<typeof useProducts> | undefined;
   function Sonda() {
-    const retorno = useProducts({ autoFetch: false });
+    const retorno = useProducts({ autoFetch: true });
     useEffect(() => {
       api = retorno;
     });

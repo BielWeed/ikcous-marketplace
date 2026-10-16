@@ -59,6 +59,7 @@ export function ClienteDaVenda({
     readonly LinhaDeClienteEncontrado[]
   >([]);
   const [buscando, setBuscando] = useState(false);
+  const [erroDeBusca, setErroDeBusca] = useState(false);
 
   // Cliente avulso é montado de DOIS campos que chegam por flushes
   // separados do `LocalBufferedInput` — o estado local combina os dois
@@ -74,13 +75,15 @@ export function ClienteDaVenda({
   const rodadaRef = useRef(0);
 
   async function aoDigitarBusca(valor: string): Promise<void> {
+    const rodada = ++rodadaRef.current;
     setTermoDeBusca(valor);
+    setErroDeBusca(false);
+    setResultados([]);
     const termoLimpo = valor.trim();
     if (termoLimpo.length < 2) {
-      setResultados([]);
+      setBuscando(false);
       return;
     }
-    const rodada = ++rodadaRef.current;
     setBuscando(true);
     try {
       const linhas = await buscarClientes(termoLimpo);
@@ -90,6 +93,7 @@ export function ClienteDaVenda({
       if (rodada !== rodadaRef.current) return;
       console.error("Erro ao buscar cliente no balcão:", erro);
       setResultados([]);
+      setErroDeBusca(true);
     } finally {
       if (rodada === rodadaRef.current) setBuscando(false);
     }
@@ -222,6 +226,11 @@ export function ClienteDaVenda({
             className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
           />
           {buscando && <p className="text-xs text-zinc-500">Buscando…</p>}
+          {erroDeBusca && (
+            <p role="alert" className="text-xs text-red-300">
+              Não foi possível buscar. Tente de novo.
+            </p>
+          )}
           {resultados.length > 0 && (
             <ul className="flex flex-col gap-1.5">
               {resultados.map((linha) => (

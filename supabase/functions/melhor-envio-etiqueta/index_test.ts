@@ -64,6 +64,7 @@ const {
     extrairEnderecoDoPedido,
     extrairServiceIdDaOpcao,
     handler,
+    buscarComTempo,
     montarProdutosEVolumes,
     montarRemetente,
     normalizarCheckout,
@@ -403,9 +404,11 @@ Deno.test("remetente - falta documento ou CEP válido: null (falha antes de gast
 // ── normalizarCheckout ─────────────────────────────────────────────────────
 
 Deno.test("checkout - status paid fecha a compra", () => {
-  const r = normalizarCheckout({ purchase: { id: "pur-1", status: "paid" } })
-  assertEquals(r.pago, true)
-  assertEquals(r.purchaseId, "pur-1")
+  for (const status of ['paid', ' PAID ']) {
+    const r = normalizarCheckout({ purchase: { id: "pur-1", status } })
+    assertEquals(r.pago, true)
+    assertEquals(r.purchaseId, "pur-1")
+  }
 })
 
 Deno.test("checkout - 200 sem pagamento não engana: status pendente vira erro amigável", () => {
@@ -571,8 +574,11 @@ const CONTA_ME_FELIZ = {
  * (reivindicação gravada? liberação com os dois filtros? evento de qual
  * etapa?).
  */
-function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any; enderecoConta?: any } = {}) {
+function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[]; linhasCpfAtualizadas?: any[]; itens?: any[]; produtosDb?: any[]; credentials?: any; enderecoConta?: any; erroRastreio?: boolean; erroReleituraPedido?: boolean } = {}) {
+    const pedidoAtual = configuracao.pedido ? { ...configuracao.pedido } : null
+    let leiturasPedido = 0
     const registro = {
+        pedidoAtual,
         reivindicacoes: [] as Array<{ valores: any; filtros: any[] }>,
         liberacoes: [] as Array<{ valores: any; filtros: any[] }>,
         completacoes: [] as Array<{ valores: any; filtros: any[] }>,
@@ -612,10 +618,19 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
         }
         // marketplace_orders
         if (no.acao === 'update') {
+            const bate = pedidoAtual && no.filtros.every((f: any) => {
+                if (f.metodo === 'eq' || f.metodo === 'is') return pedidoAtual[f.coluna] === f.valor
+                if (f.metodo === 'in') return f.valores.includes(pedidoAtual[f.coluna])
+                return true
+            })
+            if ('tracking_code' in (no.valores || {}) && configuracao.erroRastreio) {
+                return Promise.resolve({ data: null, error: { code: 'XX000', message: 'Falha simulada ao gravar rastreio' } })
+            }
             const soltaVinculo = 'shipping_label_id' in (no.valores || {}) && no.valores.shipping_label_id === null
-            const tomaVinculo = 'shipping_label_id' in (no.valores || {}) && no.valores.shipping_label_id !== null
+            const tomaVinculo = 'shipping_label_id' in (no.valores || {}) && no.valores.shipping_label_id !== null && !('shipping_label_url' in no.valores)
             if (soltaVinculo) {
                 registro.liberacoes.push({ valores: no.valores, filtros: [...no.filtros] })
+                if (bate) Object.assign(pedidoAtual, no.valores)
                 return Promise.resolve({ data: null, error: null })
             }
             if (tomaVinculo) {
@@ -623,6 +638,7 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
                 // Quem vence a corrida recebe 1 linha; o teste que arma
                 // `linhasReivindicadas: []` simula o perdedor.
                 const linhas = configuracao.linhasReivindicadas ?? [{ id: configuracao.pedido?.id ?? 'pedido-1' }]
+                if (bate && linhas.length) Object.assign(pedidoAtual, no.valores)
                 return Promise.resolve({ data: linhas, error: null })
             }
             const atualizaCpf = 'customer_data' in (no.valores || {})
@@ -634,9 +650,14 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
                 return Promise.resolve({ data: linhas, error: null })
             }
             registro.completacoes.push({ valores: no.valores, filtros: [...no.filtros] })
+            if (bate) Object.assign(pedidoAtual, no.valores)
             return Promise.resolve({ data: null, error: null })
         }
-        return Promise.resolve({ data: configuracao.pedido ?? null, error: null })
+        leiturasPedido++
+        if (leiturasPedido > 1 && configuracao.erroReleituraPedido) {
+            return Promise.resolve({ data: null, error: { code: 'XX000', message: 'Falha simulada ao reler pedido' } })
+        }
+        return Promise.resolve({ data: pedidoAtual ? { ...pedidoAtual } : null, error: null })
     }
     const cliente = {
         from(tabela: string) {
@@ -811,6 +832,174 @@ function requisicaoGerar(action = "gerar_etiqueta", extra: Record<string, unknow
     body: JSON.stringify({ action, orderId: "pedido-1", ...extra }),
   })
 }
+
+Deno.test('handler - pedido cancelado ou pagamento desfeito durante o carrinho: não gasta saldo e limpa o item não pago', async () => {
+    await comEnvAdmin(async () => {
+        for (const mudanca of [{ status: 'cancelled' }, { payment_status: 'estornado' }]) {
+            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const me = buscarMeFalso()
+            const buscar = async (input: any, init?: any) => {
+                const resposta = await me.buscar(input, init)
+                if (String(input).endsWith('/api/v2/me/cart')) Object.assign(supa.registro.pedidoAtual, mudanca)
+                return resposta
+            }
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            const corpo = await res.json()
+            assertEquals(res.status, 409)
+            assertEquals(typeof corpo.error, 'string')
+            assertEquals(corpo.success, undefined)
+            assertEquals(me.registro.checkouts, 0)
+            assertEquals(me.registro.remocoes, 1)
+            assertEquals(supa.registro.pedidoAtual.shipping_label_id, null)
+            assertEquals(supa.registro.eventos.some((e) => e.payload?.etapa === 'validacao_pedido'), true)
+        }
+    })
+})
+
+Deno.test('handler - falha na releitura antes de pagar: não compra a etiqueta e limpa o carrinho', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ, erroReleituraPedido: true })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 409)
+        assertEquals(typeof (await res.json()).error, 'string')
+        assertEquals(me.registro.checkouts, 0)
+        assertEquals(me.registro.remocoes, 1)
+        assertEquals(supa.registro.pedidoAtual.shipping_label_id, null)
+    })
+})
+
+Deno.test('handler - emissão preserva rastreio salvo por outra aba durante as chamadas do Melhor Envio', async () => {
+    await comEnvAdmin(async () => {
+        for (const tracking of [null, 'ME123456789BR']) {
+            for (const anterior of [null, 'MANUAL-ANTIGO']) {
+                const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, tracking_code: anterior } })
+                const me = buscarMeFalso()
+                const buscar = async (input: any, init?: any) => {
+                    const resposta = await me.buscar(input, init)
+                    if (String(input).endsWith('/api/v2/me/shipment/tracking')) {
+                        supa.registro.pedidoAtual.tracking_code = 'MANUAL-NOVO'
+                        return new Response(JSON.stringify({ [LABEL_ID]: { tracking, status: 'generated' } }))
+                    }
+                    return resposta
+                }
+                const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+                assertEquals(res.status, 200)
+                assertEquals((await res.json()).success, true)
+                assertEquals(supa.registro.pedidoAtual.tracking_code, 'MANUAL-NOVO')
+                assertEquals(supa.registro.pedidoAtual.shipping_label_url, 'https://imprimir.teste/etiqueta')
+            }
+        }
+    })
+})
+
+Deno.test('handler - emissão grava o rastreio do Melhor Envio quando o pedido continua sem código', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(supa.registro.pedidoAtual.tracking_code, 'ME123456789BR')
+    })
+})
+
+Deno.test('handler - consulta não anuncia rastreio atualizado quando o UPDATE falha', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: { ...PEDIDO_FELIZ, shipping_label_id: LABEL_ID }, erroRastreio: true })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar('consultar_rastreio'), { supabase: supa.cliente, buscar: me.buscar }))
+        const corpo = await res.json()
+        assertEquals(res.status, 500)
+        assertEquals(typeof corpo.error, 'string')
+        assertEquals(corpo.success, undefined)
+        assertEquals(supa.registro.pedidoAtual.tracking_code, null)
+        assertEquals(supa.registro.eventos.some((e) => e.event_type === 'rastreio_consultado'), false)
+    })
+})
+
+Deno.test('handler - checkout 200 sem confirmação reconhecível mantém vínculo e impede uma segunda compra', async () => {
+    await comEnvAdmin(async () => {
+        for (const dados of [{}, { message: 'ok' }, { purchase: { status: 'paid' } }, { purchase: { id: 'pur-1', status: 'desconhecido' } }]) {
+            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const me = buscarMeFalso()
+            const buscar = async (input: any, init?: any) => {
+                const resposta = await me.buscar(input, init)
+                return String(input).endsWith('/api/v2/me/shipment/checkout')
+                    ? new Response(JSON.stringify(dados))
+                    : resposta
+            }
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            const corpo = await res.json()
+            assertEquals(res.status, 502)
+            assertEquals(corpo.resgate, true)
+            assertEquals(corpo.label_id, LABEL_ID)
+            assertEquals(String(corpo.error).includes('INDETERMINADO'), true)
+            assertEquals(me.registro.remocoes, 0)
+            assertEquals(me.registro.geracoes, 0)
+            assertEquals(supa.registro.liberacoes.length, 0)
+            assertEquals(supa.registro.pedidoAtual.shipping_label_id, LABEL_ID)
+            assertEquals(supa.registro.eventos.some((e) => e.payload?.etapa === 'checkout_indeterminado'), true)
+            const repetida = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            assertEquals((await repetida.json()).already, true)
+            assertEquals(me.registro.checkouts, 1)
+        }
+    })
+})
+
+Deno.test('buscarComTempo - corpo pendurado depois dos cabeçalhos também estoura o prazo de json e text', async () => {
+    for (const leitor of ['json', 'text']) {
+        let sinal: AbortSignal | undefined
+        let guarda: ReturnType<typeof setTimeout> | undefined
+        const buscar = async (_input: any, init: any) => {
+            sinal = init.signal
+            return new Response(new ReadableStream({
+                start(controle) {
+                    const abortar = () => controle.error(new DOMException('Tempo esgotado', 'AbortError'))
+                    sinal.addEventListener('abort', abortar, { once: true })
+                    // A guarda faz a versão defeituosa falhar sem pendurar a suíte.
+                    guarda = setTimeout(() => {
+                        sinal.removeEventListener('abort', abortar)
+                        controle.error(new Error('Corpo ficou sem limite de tempo'))
+                    }, 200)
+                },
+            }))
+        }
+        let erro: any
+        try {
+            const resposta = await buscarComTempo(buscar, 'https://me-falso.local', {}, 5)
+            await (leitor === 'json' ? resposta.json() : resposta.text())
+        } catch (e) {
+            erro = e
+        } finally {
+            clearTimeout(guarda)
+        }
+        assertEquals(erro?.name, 'AbortError')
+        assertEquals(sinal?.aborted, true)
+    }
+})
+
+Deno.test('buscarComTempo - corpo concluído preserva status, cabeçalhos e JSON', async () => {
+    const buscar = async () => new Response('{"ok":true}', { status: 201, headers: { 'X-Teste': 'preservado' } })
+    const resposta = await buscarComTempo(buscar, 'https://me-falso.local')
+    assertEquals(resposta.status, 201)
+    assertEquals(resposta.headers.get('X-Teste'), 'preservado')
+    assertEquals(await resposta.json(), { ok: true })
+})
+
+Deno.test('produtos e volumes - zero e medidas inválidas usam os padrões positivos da cotação campo a campo', () => {
+    for (const valor of [0, '0', null, undefined, -1, 'inválido', Infinity, true]) {
+        const { volumes } = montarProdutosEVolumes(
+            [{ product_id: 'p1', quantity: 2, price: 10 }],
+            [{ id: 'p1', peso_kg: valor, largura_cm: valor, altura_cm: valor, comprimento_cm: valor }],
+        )
+        assertEquals(volumes, [{ weight: 0.6, width: 15, height: 15, length: 15 }])
+    }
+    const { volumes } = montarProdutosEVolumes(
+        [{ product_id: 'p1', quantity: 2, price: 10 }],
+        [{ id: 'p1', peso_kg: '0.4', largura_cm: 10, altura_cm: 0, comprimento_cm: 14 }],
+    )
+    assertEquals(volumes, [{ weight: 0.8, width: 10, height: 15, length: 14 }])
+})
 
 Deno.test("handler - checkout recusado (200 com status pending): item sai do carrinho E reivindicação LIBERADA (o pedido volta a poder etiquetar)", async () => {
     // O ME RESPONDEU que não pagou — não há ambiguidade: é exatamente o caso

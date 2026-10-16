@@ -1526,7 +1526,12 @@ export const OrderDetail = memo(function OrderDetail({
     setTrackingValue(order.trackingCode || "");
     setLocalNotes(order.notes || "");
     setNotesValue(order.notes || "");
-  }, [order.trackingCode, order.notes]);
+  }, [order.id, order.trackingCode, order.notes]);
+
+  useEffect(() => {
+    setIsEditingTracking(false);
+    setIsSavingTracking(false);
+  }, [order.id]);
 
   const itemsSerialized = JSON.stringify(
     order.items.map((item) => ({
@@ -1687,22 +1692,26 @@ export const OrderDetail = memo(function OrderDetail({
   };
 
   const handleSaveTracking = async () => {
+    const pedidoId = order.id;
     try {
       setIsSavingTracking(true);
       const { error } = await supabase
         .from("marketplace_orders")
         .update({ tracking_code: trackingValue.trim() || null })
-        .eq("id", order.id);
+        .eq("id", pedidoId);
 
+      // A ficha pode ter trocado de pedido enquanto o envio estava em voo.
+      if (orderIdAtualRef.current !== pedidoId) return;
       if (error) throw error;
       setLocalTrackingCode(trackingValue.trim());
       setIsEditingTracking(false);
       toast.success("Código de rastreamento salvo!");
     } catch (err) {
+      if (orderIdAtualRef.current !== pedidoId) return;
       console.error("Error saving tracking code:", err);
       toast.error("Erro ao salvar código de rastreamento.");
     } finally {
-      setIsSavingTracking(false);
+      if (orderIdAtualRef.current === pedidoId) setIsSavingTracking(false);
     }
   };
 

@@ -304,7 +304,8 @@ describe("formulário de cupom — Quem pode usar", () => {
     await digitar("#coupon-clientes-busca", "ca", 400);
     await clicar(botao("Caio Novo"));
     await clicar(botao("Salvar Cupom"));
-    expect(definirClientesDoCupom).toHaveBeenCalledWith("cupom-2", [
+    // A edição leva a lista junto: o hook só confirma depois das duas gravações.
+    expect(updateCoupon).toHaveBeenCalledWith("cupom-2", expect.any(Object), [
       "u-bia",
       "u-caio",
       "u-duda",

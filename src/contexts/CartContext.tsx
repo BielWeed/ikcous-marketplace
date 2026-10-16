@@ -120,6 +120,10 @@ const CartStateContext = createContext<CartState | undefined>(undefined);
 const CartActionsContext = createContext<CartActions | undefined>(undefined);
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+// Reenvio automático após a gravação do carrinho falhar com o navegador online.
+const MAX_REENVIOS_APOS_FALHA = 5;
+const ESPERA_BASE_REENVIO_MS = 2_000;
+const ESPERA_MAX_REENVIO_MS = 30_000;
 const CART_STORAGE_KEY = "marketplace_cart_v1";
 const CART_TOMBSTONES_KEY = "marketplace_cart_tombstones_v1";
 
@@ -499,15 +503,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             catalogo ? aplicarCatalogoAoCarrinho(itens, catalogo) : itens;
 
           setCart((prev) => {
+            const tombstones = loadTombstones();
             const prevHash = JSON.stringify(prev);
             const reconHash = JSON.stringify(reconstructedCart);
-            if (prevHash === reconHash) {
+            if (prevHash === reconHash && tombstones.size === 0) {
               // Skip updating state if the lists match exactly to prevent cycles
               return comOCatalogo(prev);
             }
 
             // If local cart is empty AND no tombstones exist, adopt remote
-            const tombstones = loadTombstones();
             if (prev.length === 0 && tombstones.size === 0) {
               console.log(
                 "[CartContext] ✅ Remote cart adopted (local was empty, no tombstones).",
@@ -525,6 +529,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             // Add local items first (these carry local timestamps)
             prev.forEach((item) => {
               const key = `${item.product.id}-${item.variantId || ""}`;
+              // A exclusão de outra aba também vale para a cópia que ficou aqui.
+              const tombstone = tombstones.get(key);
+              if (
+                tombstone &&
+                tombstone.deletedAt > (item.lastModifiedAt || 0)
+              ) {
+                return;
+              }
               mergedMap.set(key, {
                 ...item,
                 lastModifiedAt: item.lastModifiedAt || 0,
@@ -685,6 +697,46 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setReenvio((n) => n + 1);
   }, []);
 
+  // Falha da gravação com o navegador ainda online: o evento `online` que
+  // chegou durante a gravação em voo foi ignorado e não vem outro, então a
+  // própria falha reagenda — com espera crescente e teto, para um servidor
+  // fora do ar não virar laço. Sucesso, evento online e desmonte zeram/cancelam.
+  const falhasSeguidas = useRef(0);
+  const timerDoReenvio = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelarReenvioAgendado = useCallback(() => {
+    if (timerDoReenvio.current === null) return;
+    clearTimeout(timerDoReenvio.current);
+    timerDoReenvio.current = null;
+  }, []);
+  const agendarReenvioAposFalha = useCallback(() => {
+    falhasSeguidas.current += 1;
+    if (falhasSeguidas.current > MAX_REENVIOS_APOS_FALHA) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    cancelarReenvioAgendado();
+    const espera = Math.min(
+      ESPERA_BASE_REENVIO_MS * 2 ** (falhasSeguidas.current - 1),
+      ESPERA_MAX_REENVIO_MS,
+    );
+    timerDoReenvio.current = setTimeout(() => {
+      timerDoReenvio.current = null;
+      if (!syncPending.current) pedirReenvioSeDevido();
+    }, espera);
+  }, [cancelarReenvioAgendado, pedirReenvioSeDevido]);
+
+  useEffect(() => {
+    const aoVoltarOnline = () => {
+      // Conexão nova: recomeça a contagem de falhas.
+      falhasSeguidas.current = 0;
+      cancelarReenvioAgendado();
+      if (!syncPending.current) pedirReenvioSeDevido();
+    };
+    window.addEventListener("online", aoVoltarOnline);
+    return () => {
+      window.removeEventListener("online", aoVoltarOnline);
+      cancelarReenvioAgendado();
+    };
+  }, [pedirReenvioSeDevido, cancelarReenvioAgendado]);
+
   // Sync back to Supabase (Atomic-ish Strategy)
   const syncToDB = useCallback(
     async (currentCart: CartItem[], immediate = false) => {
@@ -751,15 +803,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
         if (syncError) throw syncError;
         lastSyncedCart.current = cartHash;
+        falhasSeguidas.current = 0;
         syncPending.current = false;
         pedirReenvioSeDevido();
       } catch (err) {
         console.error("[CartContext] ❌ DB Sync Failed:", err);
         syncPending.current = false;
-        pedirReenvioSeDevido();
+        // Offline, o evento online retoma a gravação que falhou; online, o
+        // reagendamento limitado abaixo cobre o evento que já passou.
+        reenvioDevido.current = true;
+        agendarReenvioAposFalha();
       }
     },
-    [user, authLoading, pedirReenvioSeDevido],
+    [user, authLoading, pedirReenvioSeDevido, agendarReenvioAposFalha],
   );
 
   useEffect(() => {

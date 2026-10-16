@@ -17,6 +17,7 @@ import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import type { Product, ProductVariant } from "@/types";
+import type { Database } from "@/types/database.types";
 import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
 import { TruthGate } from "@/utils/truth_gate";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -123,8 +124,12 @@ export function _syncOfflineUpdatesParaTeste(userId: string): Promise<boolean> {
  * saiu sai da fila dele, o resto fica, e nada é gravado em chave de outro
  * usuário. Item com mais de 72 h não é enviado: produto grava valor ABSOLUTO
  * (`estoque`, `preco_venda`), e o estoque de 30 dias atrás por cima do de
- * hoje o corrompe.
+ * hoje o corrompe. Mesmo dentro do prazo, só grava se `ultima_atualizacao`
+ * ainda é a versão-base guardada na primeira edição offline.
  */
+/** Versões que o servidor devolveu ao gravar a fila offline (id → versão). */
+const versoesAposSincronizar = new Map<string, string>();
+
 async function syncOfflineUpdates(userId: string): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
@@ -160,6 +165,7 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
 
     const remainingQueue: any[] = [];
     const discarded: string[] = [];
+    let conflitos = 0;
     let syncedCount = 0;
     let interrompida = false;
     let naoTentados: any[] = [];
@@ -199,7 +205,22 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
       }
 
       try {
-        const dbUpdates: any = {};
+        const nomeDoProduto = item.productName || updates.name || id;
+        // Item legado sem base não prova frescor. Nunca adota a versão de
+        // agora: isso autorizaria uma edição antiga a sobrescrever a nova.
+        if (
+          typeof item.baseUpdatedAt !== "string" ||
+          !Number.isFinite(Date.parse(item.baseUpdatedAt))
+        ) {
+          conflitos += 1;
+          toast.warning(
+            `A edição offline do produto ${nomeDoProduto} não foi aplicada: não foi possível confirmar a versão original. Confira o produto e edite novamente.`,
+          );
+          continue;
+        }
+
+        const dbUpdates: Database["public"]["Tables"]["produtos"]["Update"] =
+          {};
         if (updates.name !== undefined) dbUpdates.nome = updates.name;
         if (updates.description !== undefined)
           dbUpdates.descricao = updates.description;
@@ -233,14 +254,44 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
         if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
         if (updates.codigoBarras !== undefined)
           dbUpdates.codigo_barras = updates.codigoBarras || null;
+        if (updates.weightKg !== undefined)
+          dbUpdates.peso_kg = updates.weightKg;
+        if (updates.widthCm !== undefined)
+          dbUpdates.largura_cm = updates.widthCm;
+        if (updates.heightCm !== undefined)
+          dbUpdates.altura_cm = updates.heightCm;
+        if (updates.lengthCm !== undefined)
+          dbUpdates.comprimento_cm = updates.lengthCm;
 
-        const { error } = await supabase
+        // Compara e grava na mesma operação: uma leitura antes do UPDATE
+        // deixaria outra aba alterar o produto no intervalo. Não converte a
+        // data para ISO/Date: isso perderia os microssegundos do Postgres.
+        const { data, error } = await supabase
           .from("produtos")
           .update(dbUpdates)
-          .eq("id", id);
+          .eq("id", id)
+          .eq("ultima_atualizacao", item.baseUpdatedAt)
+          .is("deleted_at", null)
+          .select("id, ultima_atualizacao");
 
         if (error) throw error;
+        if (!data?.length) {
+          conflitos += 1;
+          toast.warning(
+            `O produto ${nomeDoProduto} foi alterado em outro lugar; sua edição offline não foi aplicada.`,
+          );
+          continue;
+        }
         syncedCount += 1;
+        // A versão nova vira a base da PRÓXIMA edição offline deste produto:
+        // sem isto, a lista (só a página 0 é recarregada) guardaria a versão
+        // velha e a segunda edição seria descartada como "alterada em outro
+        // lugar" por causa da própria sincronização.
+        const novaVersao = (data[0] as { ultima_atualizacao?: unknown })
+          .ultima_atualizacao;
+        if (typeof novaVersao === "string") {
+          versoesAposSincronizar.set(id, novaVersao);
+        }
       } catch (err) {
         console.error("[Offline Sync] Failed to sync product %s:", id, err);
         remainingQueue.push(item);
@@ -299,7 +350,7 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
         localStorage.removeItem(chaveDaFila);
       }
       if (syncedCount > 0) clearAnalyticsCache();
-      if (discarded.length > 0) {
+      if (discarded.length > 0 || conflitos > 0) {
         toast.dismiss(toastId);
       } else {
         toast.success(
@@ -984,6 +1035,19 @@ export function useProducts({ autoFetch = true } = {}) {
         timersPendentes.delete(timer);
         syncOfflineUpdates(userId).then((synced) => {
           if (synced) {
+            const versoes = new Map(versoesAposSincronizar);
+            versoesAposSincronizar.clear();
+            if (versoes.size > 0) {
+              const comVersao = (lista: Product[]) =>
+                lista.map((p) => {
+                  const nova = versoes.get(p.id);
+                  return nova ? { ...p, updatedAt: nova } : p;
+                });
+              if (cachedAdminProducts) {
+                cachedAdminProducts = comVersao(cachedAdminProducts);
+              }
+              setLocalProducts((prev) => comVersao(prev));
+            }
             refreshContext().catch(() => {});
             if (!autoFetch && isAdmin) {
               loadProducts(0, 10, { silent: true }).catch(() => {});
@@ -1224,6 +1288,27 @@ export function useProducts({ autoFetch = true } = {}) {
           throw err;
         }
 
+        // Sem a versão-base não há como provar, na volta da rede, que a edição
+        // não sobrescreve uma mais nova: recusa agora, em vez de aceitar e
+        // descartar depois.
+        let baseJaGuardada: unknown;
+        try {
+          const guardada = JSON.parse(
+            localStorage.getItem(chaveDaFila) || "[]",
+          ) as { id: string; baseUpdatedAt?: unknown }[];
+          baseJaGuardada = guardada.find(
+            (item) => item.id === id,
+          )?.baseUpdatedAt;
+        } catch {
+          baseJaGuardada = undefined;
+        }
+        if (typeof baseJaGuardada !== "string" && !oldProduct?.updatedAt) {
+          toast.error(
+            "Sem conexão e a versão atual deste produto não está neste aparelho. A alteração não foi guardada — conecte-se e tente de novo.",
+          );
+          return;
+        }
+
         try {
           if (optimisticProduct) {
             cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
@@ -1248,6 +1333,14 @@ export function useProducts({ autoFetch = true } = {}) {
           cleanQueue.push({
             id,
             updates: mergedUpdates,
+            // Reeditar funde os patches, mas mantém a base da PRIMEIRA
+            // edição. Item legado continua sem base, por segurança.
+            baseUpdatedAt: existingItem
+              ? existingItem.baseUpdatedAt
+              : oldProduct?.updatedAt,
+            productName: existingItem
+              ? existingItem.productName
+              : oldProduct?.name || updates.name || id,
             timestamp: Date.now(),
           });
           localStorage.setItem(chaveDaFila, JSON.stringify(cleanQueue));

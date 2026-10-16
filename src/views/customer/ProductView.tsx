@@ -558,7 +558,9 @@ export const ProductView = React.memo(function ProductView({
   // Calculate current price and stock
   const selectedVariantObjects = Object.entries(selectedVariants)
     .map(([name, value]) =>
-      product.variants?.find((v) => v.name === name && v.value === value),
+      product.variants?.find(
+        (v) => v.active && v.name === name && v.value === value,
+      ),
     )
     .filter(Boolean);
 
@@ -576,7 +578,9 @@ export const ProductView = React.memo(function ProductView({
   const variantesDaEscolha = (escolha: Record<string, string>) =>
     Object.entries(escolha)
       .map(([name, value]) =>
-        product.variants?.find((v) => v.name === name && v.value === value),
+        product.variants?.find(
+          (v) => v.active && v.name === name && v.value === value,
+        ),
       )
       .filter(Boolean) as ProductVariant[];
   const estoqueDaEscolha = (escolha: Record<string, string>): number => {
@@ -611,6 +615,16 @@ export const ProductView = React.memo(function ProductView({
   // azul (2) fica com 2 e é avisada, em vez de a tela mostrar 5 e o carrinho
   // cortar depois. Se a variação tem foto, a galeria anda até ela.
   const escolherVariante = (grupo: string, valor: string) => {
+    if (
+      !product.variants?.some(
+        (v) =>
+          v.active &&
+          v.name === grupo &&
+          v.value === valor &&
+          v.stockIncrement > 0,
+      )
+    )
+      return;
     const proxima = { ...selectedVariants, [grupo]: valor };
     setSelectedVariants(proxima);
     const fotoDaVariante = product.variants?.find(
@@ -654,7 +668,17 @@ export const ProductView = React.memo(function ProductView({
   }, [currentStock]);
 
   const isLowStock = currentStock <= 3 && currentStock > 0;
-  const isOutOfStock = currentStock === 0;
+  const escolhaIndisponivel = Object.entries(selectedVariants).some(
+    ([name, value]) =>
+      !product.variants?.some(
+        (v) => v.active && v.name === name && v.value === value,
+      ),
+  );
+  // Grupo com TODAS as opções desligadas não trava a compra: o servidor, o
+  // carrinho e o card seguem vendendo pelo produto base. Só trava a opção
+  // ESCOLHIDA que deixou de existir.
+  const variacaoIndisponivel = escolhaIndisponivel;
+  const isOutOfStock = currentStock <= 0 || variacaoIndisponivel;
   const discount = product.originalPrice
     ? Math.round(
         ((product.originalPrice - currentPrice) / product.originalPrice) * 100,
@@ -679,7 +703,7 @@ export const ProductView = React.memo(function ProductView({
   );
 
   const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
-    if (cartStatus !== "idle") return;
+    if (cartStatus !== "idle" || isOutOfStock) return;
 
     const missingVariations = Object.keys(variantGroups).filter(
       (groupName) => !selectedVariants[groupName],
@@ -1238,6 +1262,13 @@ export const ProductView = React.memo(function ProductView({
               </div>
             )}
 
+            {variacaoIndisponivel && (
+              <p role="status" className="mb-3 text-sm text-zinc-600">
+                Esta opção não está mais disponível. Escolha outra para
+                continuar.
+              </p>
+            )}
+
             {/* Purchase Console (All in a single row) */}
             <div
               className={cn(
@@ -1308,7 +1339,11 @@ export const ProductView = React.memo(function ProductView({
                 )}
               >
                 {isOutOfStock ? (
-                  "Esgotado"
+                  variacaoIndisponivel ? (
+                    "Indisponível"
+                  ) : (
+                    "Esgotado"
+                  )
                 ) : cartStatus === "loading" ? (
                   <>
                     <span
@@ -1864,7 +1899,11 @@ export const ProductView = React.memo(function ProductView({
                   )}
                 >
                   {isOutOfStock ? (
-                    "Esgotado"
+                    variacaoIndisponivel ? (
+                      "Indisponível"
+                    ) : (
+                      "Esgotado"
+                    )
                   ) : cartStatus === "loading" ? (
                     <>
                       <span

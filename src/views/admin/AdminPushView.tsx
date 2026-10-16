@@ -408,6 +408,7 @@ export const AdminPushView = memo(function AdminPushView({
   // segmento seguinte. `null` é "ainda não medi este segmento, ou não
   // consegui".
   const [predictedReach, setPredictedReach] = useState<ContagemMedida>(null);
+  const rodadaDoAlcanceRef = useRef(0);
   const [history, setHistory] = useState<any[] | null>(null);
   const [targetUserName, setTargetUserName] = useState<string | null>(null);
   const [destType, setDestType] = useState<string>("home");
@@ -612,6 +613,7 @@ export const AdminPushView = memo(function AdminPushView({
   }, [fetchSubscribers, fetchHistory, fetchSegmentCounts]);
 
   const calculateReach = useCallback(async () => {
+    const rodada = ++rodadaDoAlcanceRef.current;
     if (segment === "all") {
       // `predictedReach` só é lido quando `segment !== "all"` (ver
       // `effectiveReach`/`reachExibido`), então este valor nunca aparece na
@@ -635,12 +637,14 @@ export const AdminPushView = memo(function AdminPushView({
           p_segment: segment,
         },
       );
+      if (rodada !== rodadaDoAlcanceRef.current) return;
       if (!error && data !== null && data !== undefined) {
         setPredictedReach(Number(data));
       } else {
         setPredictedReach(null);
       }
     } catch (err) {
+      if (rodada !== rodadaDoAlcanceRef.current) return;
       console.error("Error calculating reach:", err);
       setPredictedReach(null);
     }

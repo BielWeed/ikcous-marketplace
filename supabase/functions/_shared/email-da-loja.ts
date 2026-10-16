@@ -345,6 +345,40 @@ export async function gravarRegistroEmail(
   await gravarValor(supabaseServiceRole, CHAVE_SETTINGS_EMAIL, registro);
 }
 
+/** Grava só o resultado no JSON, se a credencial testada ainda for a mesma. */
+export async function gravarResultadoDoTesteEmail(
+  supabaseServiceRole: any,
+  registro: RegistroEmail,
+  resultado: UltimoTesteEmail,
+): Promise<boolean> {
+  const original = await lerValor(supabaseServiceRole, CHAVE_SETTINGS_EMAIL);
+  if (original === null) return false;
+  let atual: any;
+  try {
+    atual = JSON.parse(original);
+  } catch {
+    return false;
+  }
+  if (
+    atual?.iv !== registro.iv ||
+    atual?.senha_cifrada !== registro.senha_cifrada ||
+    atual?.usuario !== registro.usuario ||
+    (typeof atual?.atualizado_em === "string" ? atual.atualizado_em : "") !== registro.atualizado_em
+  ) return false;
+
+  // value é TEXT: preserva os demais campos do JSON. O CAS fecha a janela
+  // entre esta leitura e a escrita, e UPDATE nunca recria cadastro removido.
+  const { data, error } = await supabaseServiceRole
+    .from("app_settings")
+    .update({ value: JSON.stringify({ ...atual, ultimo_teste: resultado }) })
+    .eq("key", CHAVE_SETTINGS_EMAIL)
+    .eq("value", original)
+    .select("key")
+    .maybeSingle();
+  if (error) throw new Error("storage_escrita");
+  return data != null;
+}
+
 export async function removerRegistroEmail(
   supabaseServiceRole: any,
 ): Promise<void> {

@@ -60,6 +60,7 @@ const outroPedido: Order = {
 };
 
 let lista: Order[] = [pedidoAguardando];
+let ordersLoadError: string | null = null;
 
 // Estáveis de propósito — ver o cabeçalho.
 const fetchUserOrders = vi.fn();
@@ -68,6 +69,7 @@ const updateOrderStatus = vi.fn();
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
     orders: lista,
+    ordersLoadError,
     fetchUserOrders,
     updateOrderStatus,
   }),
@@ -102,6 +104,7 @@ describe("OrderDetailsView — a tela acompanha o pedido quando ele muda na list
 
   beforeEach(() => {
     lista = [pedidoAguardando];
+    ordersLoadError = null;
     fetchUserOrders.mockReset();
     fetchUserOrders.mockResolvedValue([pedidoAguardando]);
     updateOrderStatus.mockReset();
@@ -142,6 +145,29 @@ describe("OrderDetailsView — a tela acompanha o pedido quando ele muda na list
       await Promise.resolve();
     });
   }
+
+  it("rede falhou sem cache: mostra erro e permite tentar de novo até uma consulta vazia de verdade", async () => {
+    lista = [];
+    ordersLoadError = "Falha ao carregar";
+    fetchUserOrders.mockResolvedValue([]);
+    await renderizar();
+    expect(hospedeiro.textContent).toContain("Não conseguimos carregar agora");
+    expect(hospedeiro.textContent).not.toContain("Pedido não encontrado");
+    fetchUserOrders.mockImplementation(async () => {
+      ordersLoadError = null;
+      return [];
+    });
+    const tentar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Tentar de novo",
+    );
+    expect(tentar).toBeTruthy();
+    await act(async () => {
+      tentar!.click();
+    });
+    expect(fetchUserOrders).toHaveBeenCalledTimes(2);
+    await renderizar();
+    expect(hospedeiro.textContent).toContain("Pedido não encontrado");
+  });
 
   /** O tempo real troca a lista: o componente relê `orders` no próximo render. */
   async function emitirLista(nova: Order[]): Promise<void> {
