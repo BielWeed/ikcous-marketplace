@@ -208,6 +208,33 @@ describe("registrarPagamentoRecebido — limpa o cache do useAnalytics, senao a 
 
     expect(clearAnalyticsCache).not.toHaveBeenCalled();
   });
+
+  it("o aviso de erro fala do que a lojista tentou: registrar no 'Recebi', desfazer no 'Desfazer' (com a frase do servidor embaixo)", async () => {
+    const { toast } = await import("sonner");
+    const erro = new Error(
+      "Este pedido tem devolução em andamento ou concluída.",
+    );
+    rpc.mockResolvedValue({ data: null, error: erro });
+    const { registrarPagamentoRecebido } = await montarSondaAdmin(raiz);
+
+    await act(async () => {
+      await expect(
+        registrarPagamentoRecebido("pedido-1", false),
+      ).rejects.toThrow();
+      await expect(
+        registrarPagamentoRecebido("pedido-1", true),
+      ).rejects.toThrow();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Não foi possível desfazer o recebimento.",
+      { description: erro.message },
+    );
+    expect(toast.error).toHaveBeenCalledWith(
+      "Não foi possível registrar o pagamento recebido.",
+      { description: erro.message },
+    );
+  });
 });
 
 // ---------------------------------------------------------------------
