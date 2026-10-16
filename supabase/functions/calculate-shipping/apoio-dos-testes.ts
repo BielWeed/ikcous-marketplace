@@ -159,6 +159,7 @@ export function bancoFalso(opts: {
     enderecoDaLoja?: string | null
     falhas?: {
         credenciais?: "erro" | "excecao"
+        revisao?: boolean
         espelho?: boolean
         apagarCache?: boolean
         gravarCredencial?: boolean
@@ -252,6 +253,9 @@ export function bancoFalso(opts: {
                     return { error: null }
                 }
                 registro.colunasDeCredencial.push(colunas)
+                if (falhas.revisao && filtros.some(([tipo, coluna, valor]) => tipo === "eq" && coluna === "provider" && valor === "_revisao")) {
+                    return { data: null, error: { message: "revisão indisponível", code: "XX000" } }
+                }
                 if (falhas.credenciais === "excecao") throw new Error("conexão perdida ao buscar credenciais")
                 if (falhas.credenciais === "erro") return { data: null, error: { message: "erro simulado", code: "XX000" } }
                 let linhas = credenciais

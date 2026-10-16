@@ -395,8 +395,8 @@ export function precoResolvidoSemCache(id: unknown): boolean {
 }
 
 /**
- * RETIRADA NA LOJA (release 1.5.3): a opção que a cliente da área local vê
- * ao lado da entrega local. Contrato: id `store-pickup` (o mesmo token da
+ * RETIRADA NA LOJA (release 1.5.3): opção da área local e, em "Só retiro",
+ * de qualquer CEP. Contrato: id `store-pickup` (o mesmo token da
  * chave que a loja liga em `enabled_shipping_methods`), preço 0, SEM prazo
  * inventado (`deliveryDays: 0` — a tela troca o prazo por "Aguarde a
  * confirmação da loja para retirar") e o endereço físico REAL da loja
@@ -424,7 +424,8 @@ export function opcaoDeRetirada(enderecoDaLoja: unknown) {
  * INTEIRO — a cotação de todo mundo cairia por causa de uma opção nova.
  * Aqui, erro do PostgREST ou exceção = "sem endereço" = sem retirada (a
  * entrega local e as transportadoras seguem iguais). Só é chamada quando a
- * loja habilitou a retirada e o destino é local.
+ * loja habilitou a retirada, o app a aceita e o destino é local ou a loja
+ * está em "Só retiro".
  */
 async function lerEnderecoDaLoja(supabaseClient: any): Promise<string | null> {
     try {
@@ -1058,6 +1059,8 @@ async function cotarUmaVez(
             status: 'error',
             error_message: 'Não foi possível ler a revisão da configuração do frete; a cotação de fora da cidade não foi feita.',
         })
+        const retirada = await retiradaDeFora()
+        if (retirada) return respostaJson(comRevisao({ options: [retirada], cotacaoIncompleta: true }))
         return respostaJson({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }, 503)
     }
 
@@ -1219,6 +1222,8 @@ async function cotarUmaVez(
         if (responderam.length === 0 && falhas.some((r) => r.falha?.motivo === 'cep_invalido')) {
             return respostaJson({ error: 'CEP não encontrado. Confira o número e tente de novo.', codigo: 'cep_invalido' }, 400)
         }
+        const retirada = await retiradaDeFora()
+        if (retirada) return respostaJson(comRevisao({ options: [retirada], cotacaoIncompleta: true }))
         return respostaJson({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }, 503)
     }
 
@@ -1239,6 +1244,8 @@ async function cotarUmaVez(
             status: 'error',
             error_message: 'configuracao_mudou_durante_cotacao: a configuração do frete mudou duas vezes durante a cotação; nada foi gravado.',
         })
+        const retirada = await retiradaDeFora()
+        if (retirada) return respostaJson(comRevisao({ options: [retirada], cotacaoIncompleta: true }))
         return respostaJson({ error: 'Não foi possível registrar a cotação de frete. Tente calcular novamente.', cotacaoIncompleta: true }, 503)
     }
 

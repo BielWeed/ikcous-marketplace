@@ -21,6 +21,7 @@ import {
     LINHA_SF,
     linhaLigados,
     PRODUTO_P1,
+    RESPOSTA_SF_OFICIAL,
     rodar,
 } from "./apoio-dos-testes.ts"
 import * as edge from "./index.ts"
@@ -426,14 +427,93 @@ Deno.test("cache: falha ao gravar o cache em só retiro -> a retirada (que não 
     assertEquals(retiroEEntrego.resposta.status, 503)
 })
 
-Deno.test("só retiro: transportadora fora do ar (nenhuma opção) continua 503 — falha fechada, como hoje", async () => {
-    const { resposta } = await cota({
-        modo: "so_retiro",
-        cep: CEP_FORA,
-        rotas: { sf: () => json({ message: "fora do ar" }, 500) },
+const FALHAS_NACIONAIS = [
+    {
+        nome: "transportadora sem nenhuma opção",
+        falhas: {},
+        rotas: () => ({ sf: () => json({ message: "fora do ar" }, 500) }),
+        chamadasSf: 1,
+        erro: { error: "Não foi possível calcular o frete agora. Tente novamente em instantes." },
+    },
+    {
+        nome: "revisão das credenciais ilegível",
+        falhas: { revisao: true },
+        rotas: () => ({}),
+        chamadasSf: 0,
+        erro: { error: "Não foi possível calcular o frete agora. Tente novamente em instantes." },
+    },
+    {
+        nome: "configuração mudou duas vezes",
+        falhas: {},
+        rotas: (banco: ReturnType<typeof bancoFalso>) => {
+            let revisao = 0
+            return {
+                sf: () => {
+                    banco.credenciais.find((l) => l.provider === "_revisao").credentials.revisao = `rev-${++revisao}`
+                    return json(RESPOSTA_SF_OFICIAL)
+                },
+            }
+        },
+        chamadasSf: 2,
+        erro: { error: "Não foi possível registrar a cotação de frete. Tente calcular novamente.", cotacaoIncompleta: true },
+    },
+]
+
+for (const falha of FALHAS_NACIONAIS) {
+    const cotarComFalha = async (modo: Modo, extra: Parameters<typeof cota>[0] = {}) => {
+        const configDoModo = Object.entries(DOS_MODOS).find(([chave]) => chave === modo)![1]
+        const banco = bancoFalso({
+            config: { ...configDoModo, ...extra.config },
+            enderecoDaLoja: extra.endereco === undefined ? ENDERECO : extra.endereco,
+            credenciais: [LINHA_SF, { provider: "_revisao", credentials: { revisao: "rev-0" }, updated_at: "t" }],
+            falhas: falha.falhas,
+        })
+        const resultado = await cota({ ...extra, banco, cep: CEP_FORA, rotas: falha.rotas(banco) })
+        assertEquals(resultado.chamadas.filter((c) => c.url.includes(SF)).length, falha.chamadasSf)
+        assertEquals(resultado.registro.upsertsCache, [], "a falha não grava cotação nem retirada no cache")
+        assertEquals(resultado.registro.logs.at(-1)?.status, "error", "o motivo continua no histórico")
+        return resultado
+    }
+
+    Deno.test(`só retiro: ${falha.nome} fora da cidade preserva só a retirada, incompleta`, async () => {
+        const { resposta, corpo } = await cotarComFalha("so_retiro")
+        assertEquals(resposta.status, 200)
+        assertEquals(corpo.options, [{
+            id: "store-pickup",
+            name: "Retirar na loja",
+            price: 0,
+            deliveryDays: 0,
+            provider: "pickup",
+            pickupAddress: ENDERECO,
+        }])
+        assertEquals(corpo.cotacaoIncompleta, true)
     })
-    assertEquals(resposta.status, 503)
-})
+
+    for (const modo of ["entrego", "entrego_e_retiro"] as const) {
+        Deno.test(`${modo}: ${falha.nome} fora da cidade mantém o 503 e o corpo de antes`, async () => {
+            const { resposta, texto, registro } = await cotarComFalha(modo)
+            assertEquals(resposta.status, 503)
+            assertEquals(texto, JSON.stringify(falha.erro))
+            assertEquals(registro.leiturasDeEndereco, 0)
+        })
+    }
+
+    Deno.test(`só retiro: ${falha.nome} sem cada requisito da retirada mantém o 503 de antes`, async () => {
+        for (const extra of [
+            { aceitaRetirada: "omitir" },
+            { aceitaRetirada: false },
+            { aceitaRetirada: "true" },
+            { config: { enabled_shipping_methods: ["sedex", "pac"] } },
+            { endereco: null },
+            { endereco: "" },
+            { endereco: "   " },
+        ]) {
+            const { resposta, texto } = await cotarComFalha("so_retiro", extra)
+            assertEquals(resposta.status, 503, JSON.stringify(extra))
+            assertEquals(texto, JSON.stringify(falha.erro))
+        }
+    })
+}
 
 // ── A revisão (o hash que invalida o cache do celular) ──────────────────────
 //
