@@ -78,6 +78,7 @@ import type {
 import { haptic } from "@/utils/haptic";
 import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import {
+  AlertCircle,
   CheckCircle2,
   Clock,
   Download,
@@ -295,6 +296,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     totalOrders,
     isLoaded,
     loading,
+    erroDaListagem,
     // Defaults: vários testes existentes (fora do escopo desta tarefa)
     // mocam `useOrders` com um retorno menor, anterior a estes campos —
     // sem o default, `pedidosCancelados.filter(...)` explode com
@@ -2010,6 +2012,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           id="admin-pedidos-lista"
           className="relative border-t border-white/5 pt-6"
         >
+          {erroDaListagem ? (
+            <div
+              role="alert"
+              className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-300"
+            >
+              <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
+              <p className="min-w-0 flex-1 text-xs">{erroDaListagem}</p>
+              <button
+                type="button"
+                onClick={() => loadAllData(currentPage, false)}
+                disabled={loading}
+                className="flex min-h-11 shrink-0 items-center rounded-xl border border-solid border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider transition-colors hover:bg-red-500/10 disabled:opacity-50"
+              >
+                Tentar de novo
+              </button>
+            </div>
+          ) : null}
           <LocalErrorBoundary>
             <div
               className={cn(
@@ -2034,7 +2053,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     ))}
                   </div>
                 )
-              ) : paginatedOrders.length === 0 ? (
+              ) : paginatedOrders.length === 0 && !erroDaListagem ? (
                 <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 px-6 py-12 text-center">
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent" />
                   <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">

@@ -143,6 +143,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     () => cachedCouponsData || [],
   );
   const [loading, setLoading] = useState(() => autoFetch && !cachedCouponsData); // Skip initial loader if cache is available
+  const [erroDaListagem, setErroDaListagem] = useState<string | null>(null);
   const rodadaRef = useRef(0);
 
   const fetchCoupons = useCallback(async () => {
@@ -174,10 +175,14 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
 
       setCachedCouponsData(formattedCoupons);
       setCoupons(formattedCoupons);
+      setErroDaListagem(null);
     } catch (error: any) {
       if (rodada !== rodadaRef.current) return;
       console.error("Error fetching coupons:", error);
       if (error.code !== "PGRST116") {
+        setErroDaListagem(
+          "Não conseguimos carregar os cupons agora. Seus cupons não sumiram.",
+        );
         toast.error("Não foi possível carregar os cupons.");
       }
     } finally {
@@ -474,6 +479,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   return {
     coupons,
     loading,
+    erroDaListagem,
     validateCoupon,
     refreshCoupons: fetchCoupons,
     addCoupon,

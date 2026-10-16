@@ -24,6 +24,7 @@ import type { View } from "@/types";
 import { type RotuloDeCupom, rotuloDoCupom } from "@/utils/status-do-cupom";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
+  AlertCircle,
   Calendar,
   Check,
   ChevronDown,
@@ -84,8 +85,14 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   onNavigate,
   active = true,
 }: AdminCouponsViewProps) {
-  const { coupons, loading, updateCoupon, deleteCoupon, refreshCoupons } =
-    useCoupons(true);
+  const {
+    coupons,
+    loading,
+    erroDaListagem,
+    updateCoupon,
+    deleteCoupon,
+    refreshCoupons,
+  } = useCoupons(true);
   const isOffline = useOnlineStatus();
   const { config, isLoaded: configLoaded, updateConfig } = useStore();
 
@@ -439,6 +446,24 @@ export const AdminCouponsView = memo(function AdminCouponsView({
           </div>
         )}
 
+        {erroDaListagem ? (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-300"
+          >
+            <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
+            <p className="min-w-0 flex-1 text-xs">{erroDaListagem}</p>
+            <button
+              type="button"
+              onClick={() => refreshCoupons()}
+              disabled={loading}
+              className="flex min-h-11 shrink-0 items-center rounded-xl border border-solid border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider transition-colors hover:bg-red-500/10 disabled:opacity-50"
+            >
+              Tentar de novo
+            </button>
+          </div>
+        ) : null}
+
         <AnimatePresence mode="wait">
           {loading && coupons.length === 0 ? (
             <motion.div
@@ -450,7 +475,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             >
               {renderSkeleton()}
             </motion.div>
-          ) : coupons.length === 0 ? (
+          ) : coupons.length === 0 && !erroDaListagem ? (
             <motion.div
               key="empty"
               initial={{ opacity: 0, scale: 0.95 }}

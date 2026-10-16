@@ -1732,6 +1732,8 @@ export function useOrders(
   // falha pendente. Só uma resposta ok limpa; o aborto (troca de conta, busca
   // nova por cima) não prova nada sobre o servidor e não mexe aqui.
   const [ordersLoadError, setOrdersLoadError] = useState<string | null>(null);
+  // Falha do painel, independente dos pedidos do cliente.
+  const [erroDaListagem, setErroDaListagem] = useState<string | null>(null);
   const [totalOrders, setTotalOrders] = useState(() => {
     return isAdmin ? cachedAdminTotalOrders : 0;
   });
@@ -1997,6 +1999,7 @@ export function useOrders(
 
           cachedAdminOrders = mappedOrders;
           cachedAdminTotalOrders = totalCount;
+          setErroDaListagem(null);
 
           return { orders: mappedOrders, total: totalCount };
         }
@@ -2010,10 +2013,10 @@ export function useOrders(
           return { orders: [], total: 0 };
         }
         console.error("Error loading orders:", err);
-        // Mesma disciplina da fetchUserOrders (:920): recarga silenciosa (o
-        // ramo admin da recarga de reconexão força silent=true) não fala com
-        // a pessoa — some o AVISO, não some a falha (o console.error acima
-        // segue e o erro continua sendo devolvido).
+        setErroDaListagem(
+          "Não conseguimos carregar os pedidos agora. Seus pedidos não sumiram.",
+        );
+        // Recarga silenciosa evita só o toast; a falha permanece na tela.
         if (!silent) toast.error("Erro ao carregar pedidos");
         return { orders: [], total: 0 };
       } finally {
@@ -4352,6 +4355,7 @@ export function useOrders(
     // Falha pendente do carregamento dos pedidos do cliente (ver o estado,
     // acima). Campo ACRESCENTADO: nenhum dos existentes mudou de forma.
     ordersLoadError,
+    erroDaListagem,
     totalOrders,
     // Estado da conexão realtime (auditoria de 26/08/2026) — ver o
     // docstring de `EstadoConexaoRealtime`, acima. Quatro valores possíveis:
