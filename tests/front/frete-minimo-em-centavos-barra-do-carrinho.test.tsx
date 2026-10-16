@@ -13,6 +13,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Importar a CartView arrasta `@/lib/supabase` — mesmo mock dos testes irmãos.
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+// A CartView lê os endereços da cliente; sem este mock o hook real chama
+// `supabase.from` (inexistente acima), cai no catch e polui o console.
+vi.mock("@/hooks/useAddresses", () => ({
+  useAddresses: () => ({
+    addresses: [],
+    fetchAddresses: async () => {},
+    loading: false,
+  }),
+}));
 
 import { estadoDaBarraDeFrete } from "@/views/customer/CartView";
 
