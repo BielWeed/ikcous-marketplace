@@ -211,7 +211,8 @@ export function useQuestions() {
               .select("id, question_id, answer, created_at")
               .in("question_id", questionIds)
               .abortSignal(signal);
-            if (!answersError && answersData) {
+            if (answersError) throw answersError;
+            if (answersData) {
               for (const ans of answersData as any[]) {
                 const lista = answersByQuestion.get(ans.question_id) || [];
                 lista.push(ans);
