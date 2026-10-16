@@ -96,7 +96,17 @@ export const SearchView = React.memo(function SearchView({
   onQueryChange,
   onAddToCart,
 }: SearchViewProps) {
-  const { config } = useStore();
+  const { config, catalogoErro, loadingProducts, fetchProducts } = useStore();
+  const [tentandoBusca, setTentandoBusca] = useState(false);
+  const tentarBusca = async () => {
+    if (tentandoBusca) return;
+    setTentandoBusca(true);
+    try {
+      await fetchProducts();
+    } finally {
+      setTentandoBusca(false);
+    }
+  };
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
   // preset da LOJA (ProductCard-520), derivado do MESMO config que já
   // alimentava `showRating` — mesmo padrão do ProductView.
@@ -383,7 +393,28 @@ export const SearchView = React.memo(function SearchView({
 
       {/* Content Area */}
       <div className="mx-auto max-w-7xl px-4 py-8">
-        {filteredProducts.length > 0 ? (
+        {loadingProducts || tentandoBusca ? (
+          <p role="status" className="py-20 text-center text-sm text-zinc-500">
+            Carregando busca…
+          </p>
+        ) : catalogoErro ? (
+          <div role="alert" className="py-20 text-center">
+            <h2 className="text-xl font-black text-zinc-900">
+              Não conseguimos carregar a busca agora
+            </h2>
+            <p className="mt-2 text-sm text-zinc-500">
+              Verifique sua conexão e tente de novo.
+            </p>
+            <Button
+              onClick={() => {
+                void tentarBusca();
+              }}
+              className="mt-6"
+            >
+              Tentar de novo
+            </Button>
+          </div>
+        ) : filteredProducts.length > 0 ? (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">

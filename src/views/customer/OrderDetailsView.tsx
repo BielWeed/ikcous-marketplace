@@ -403,8 +403,13 @@ export function OrderDetailsView({
   onNavigate,
   onRetomarPagamento,
 }: OrderDetailsViewProps) {
-  const { orders, fetchUserOrders, updateOrderStatus, reenviarComprovante } =
-    useOrders(true, false);
+  const {
+    orders,
+    ordersLoadError,
+    fetchUserOrders,
+    updateOrderStatus,
+    reenviarComprovante,
+  } = useOrders(true, false);
   const { config } = useStore();
   const { user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
@@ -589,6 +594,7 @@ export function OrderDetailsView({
   }, [orders]);
 
   const loadOrder = useCallback(async () => {
+    setLoading(true);
     // 1. Pinta com o que já está em memória (vem do cache do localStorage),
     //    para a tela não ficar branca enquanto a rede responde.
     //
@@ -869,12 +875,25 @@ export function OrderDetailsView({
           <XCircle className="size-10 text-zinc-300" />
         </div>
         <h2 className="mb-2 text-xl font-black tracking-tighter text-zinc-900">
-          Pedido não encontrado
+          {ordersLoadError
+            ? "Não conseguimos carregar agora"
+            : "Pedido não encontrado"}
         </h2>
         <p className="mb-8 text-sm font-medium leading-relaxed text-zinc-500">
-          Não conseguimos localizar as informações deste pedido em nosso
-          sistema.
+          {ordersLoadError
+            ? "Verifique sua conexão e tente de novo."
+            : "Não conseguimos localizar as informações deste pedido em nosso sistema."}
         </p>
+        {ordersLoadError && (
+          <button
+            onClick={() => {
+              void loadOrder();
+            }}
+            className="mb-3 h-12 rounded-2xl bg-zinc-900 px-8 text-sm font-bold text-white transition-all active:scale-95"
+          >
+            Tentar de novo
+          </button>
+        )}
         <button
           onClick={onBack}
           className="h-12 rounded-2xl bg-zinc-900 px-8 text-sm font-bold text-white transition-all active:scale-95"

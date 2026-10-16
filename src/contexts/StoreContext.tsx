@@ -948,9 +948,9 @@ export function StoreProvider({
     // Stale-While-Revalidate: IDB data already loaded in mount effect.
     // This function always fetches fresh data from Supabase (background revalidation).
 
-    // Só a consulta MAIS RECENTE pode declarar falha: o efeito de montagem
-    // consulta de novo quando a sessão termina de carregar, e a falha de uma
-    // consulta velha não pode acender o aviso por cima de uma que já deu certo.
+    // Só a consulta MAIS RECENTE pode substituir o catálogo ou declarar falha.
+    // O efeito de montagem consulta de novo quando a sessão termina de carregar:
+    // resposta velha não pode desfazer o catálogo nem o aviso mais recente.
     const minhaConsulta = ++consultaDoCatalogoRef.current;
     try {
       let data: any[] | null = null;
@@ -994,6 +994,7 @@ export function StoreProvider({
         }
       }
 
+      if (minhaConsulta !== consultaDoCatalogoRef.current) return;
       if (error) throw error;
 
       // SÓ UMA RESPOSTA DE VERDADE SUBSTITUI O CATÁLOGO.
@@ -1021,6 +1022,7 @@ export function StoreProvider({
         );
 
         setProducts((prev) => {
+          if (minhaConsulta !== consultaDoCatalogoRef.current) return prev;
           if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;
           // Persist to DataVault (non-blocking)
           // Pelo singleton e com erro logado — mesma regra dos puts de config
@@ -1028,6 +1030,7 @@ export function StoreProvider({
           // reabre no init(), e falha de escrita não pode ser silêncio.
           DataVault.init()
             .then(async (vault) => {
+              if (minhaConsulta !== consultaDoCatalogoRef.current) return;
               await vault.replaceAll("products", mapped);
               await vault.setLastSync("products");
             })
@@ -1040,7 +1043,11 @@ export function StoreProvider({
           return mapped;
         });
       } else {
-        setProducts((prev) => (prev.length === 0 ? prev : []));
+        setProducts((prev) =>
+          minhaConsulta !== consultaDoCatalogoRef.current || prev.length === 0
+            ? prev
+            : [],
+        );
       }
     } catch (err) {
       console.error("[StoreContext] Products fetch error:", err);
@@ -1064,7 +1071,9 @@ export function StoreProvider({
         }
       }
     } finally {
-      setLoadingProducts(false);
+      if (minhaConsulta === consultaDoCatalogoRef.current) {
+        setLoadingProducts(false);
+      }
     }
   }, [isAdmin, loading]);
 

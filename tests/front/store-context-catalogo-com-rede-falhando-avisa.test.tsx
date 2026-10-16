@@ -285,6 +285,37 @@ describe("StoreContext — rede falhando na consulta do catálogo", () => {
     expect(rede.consultas.length).toBe(3);
   });
 
+  it.each([false, true])(
+    "sucesso antigo (vazio: %s) não substitui o catálogo mais recente",
+    async (vazio) => {
+      rede.resposta = { data: [], error: null };
+      await montar();
+      let responder: (valor: unknown) => void = () => {};
+      rede.proxima = new Promise((resolve) => {
+        responder = resolve;
+      });
+      const antiga = retrato.atual?.fetchProducts();
+      rede.resposta = {
+        data: [{ ...produtoDoBanco("p1"), preco_venda: 30, estoque: 9 }],
+        error: null,
+      };
+      await act(async () => {
+        await retrato.atual?.fetchProducts();
+      });
+      await act(async () => {
+        responder({
+          data: vazio ? [] : [produtoDoBanco("p1")],
+          error: null,
+        });
+        await antiga;
+      });
+      expect(retrato.atual?.products).toMatchObject([
+        { id: "p1", price: 30, stock: 9 },
+      ]);
+      expect(retrato.atual?.catalogoErro).toBe(false);
+    },
+  );
+
   it("cliente com cópia salva no aparelho: a vitrine segue igual (sem tentativas extras)", async () => {
     rede.copiaSalva = [{ id: "velho", name: "Produto salvo" }];
     await montar();

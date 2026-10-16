@@ -56,6 +56,9 @@ const { sessao, toast, supabase, resolvidores } = vi.hoisted(() => {
     eq(): Cadeia {
       return this;
     }
+    order(): Cadeia {
+      return this;
+    }
     single(): Cadeia {
       return this;
     }
@@ -122,6 +125,7 @@ type Op = "add" | "update" | "delete";
 
 interface ContratoHook {
   addresses: Address[];
+  fetchAddresses: () => Promise<void>;
   addAddress: (
     endereco: Omit<Address, "id" | "user_id">,
   ) => Promise<Address | null>;
@@ -260,6 +264,54 @@ describe("useAddresses — mutação em voo não atravessa troca de conta", () =
       expect(JSON.stringify(espelho.hook!.addresses)).not.toContain("end-b1");
     },
   );
+
+  it("consulta atrasada não desfaz uma edição nem regrava a versão antiga no disco", async () => {
+    await renderizar();
+    const busca = espelho.hook!.fetchAddresses();
+    const resolverBusca = resolvidores.shift()!;
+    const { promessa } = await iniciar("update");
+    await resolverEmVoo("update");
+    await promessa;
+    await act(async () => {
+      resolverBusca({ data: [END_A], error: null });
+      await busca;
+    });
+    const esperado = [{ ...END_A, street: "Rua Editada" }];
+    expect(espelho.hook!.addresses).toEqual(esperado);
+    expect(JSON.parse(armazem.get("ikcous_addresses_cache_conta-a")!)).toEqual(
+      esperado,
+    );
+  });
+
+  it("só a última consulta substitui a lista", async () => {
+    await renderizar();
+    const antiga = espelho.hook!.fetchAddresses();
+    const resolverAntiga = resolvidores.shift()!;
+    const nova = espelho.hook!.fetchAddresses();
+    await act(async () => {
+      resolvidores.shift()!({
+        data: [{ ...END_A, street: "Rua Nova" }],
+        error: null,
+      });
+      await nova;
+    });
+    await act(async () => {
+      resolverAntiga({ data: [END_A], error: null });
+      await antiga;
+    });
+    expect(espelho.hook!.addresses[0].street).toBe("Rua Nova");
+  });
+
+  it("resposta sem dados preserva a lista e avisa da falha", async () => {
+    await renderizar();
+    const busca = espelho.hook!.fetchAddresses();
+    await act(async () => {
+      resolvidores.shift()!({ data: null, error: null });
+      await busca;
+    });
+    expect(espelho.hook!.addresses).toEqual([END_A]);
+    expect(toast.error).toHaveBeenCalled();
+  });
 
   // Resultado esperado como DADO da parametrização — sem acesso computado
   // (security/detect-object-injection).

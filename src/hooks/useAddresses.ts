@@ -58,9 +58,13 @@ export function useAddresses() {
   // outras telas com o MESMO valor.
   const estadoRef = useRef(estado);
   const [identidade] = useState(() => Symbol("useAddresses"));
+  const consultaRef = useRef(0);
 
   const gravarLista = useCallback(
     (dono: string, itens: Address[]) => {
+      // Uma gravação confirmada invalida buscas iniciadas antes dela.
+      consultaRef.current++;
+      setLoading(false);
       const novo = { dono, itens };
       estadoRef.current = novo;
       setEstado(novo);
@@ -82,6 +86,8 @@ export function useAddresses() {
       if (origem === identidade) return;
       // Lista de OUTRA conta nunca entra (troca de conta em voo).
       if (dono !== usuarioAtualRef.current) return;
+      consultaRef.current++;
+      setLoading(false);
       const novo = { dono, itens };
       estadoRef.current = novo;
       setEstado(novo);
@@ -97,6 +103,8 @@ export function useAddresses() {
 
   useEffect(() => {
     usuarioAtualRef.current = user?.id;
+    consultaRef.current++;
+    setLoading(false);
   }, [user?.id]);
 
   // Troca de conta: recarrega o cache DA CONTA CORRENTE.
@@ -110,6 +118,9 @@ export function useAddresses() {
   const fetchAddresses = useCallback(async () => {
     if (!user) return;
     const idDaBusca = user.id;
+    const consulta = ++consultaRef.current;
+    const atual = () =>
+      usuarioAtualRef.current === idDaBusca && consulta === consultaRef.current;
     const cacheKey = `ikcous_addresses_cache_${idDaBusca}`;
     let hasCache = false;
     try {
@@ -132,10 +143,10 @@ export function useAddresses() {
         .order("is_default", { ascending: false })
         .order("created_at", { ascending: false });
 
+      if (!atual()) return;
       if (error) throw error;
-      // Resposta da conta anterior não grava nada.
-      if (usuarioAtualRef.current !== idDaBusca) return;
-      const mapped = (data || []).map((a) => ({
+      if (!data) throw new Error("consulta de endereços voltou sem dados");
+      const mapped = data.map((a) => ({
         id: a.id,
         user_id: a.user_id,
         name: a.name,
@@ -152,11 +163,11 @@ export function useAddresses() {
       }));
       gravarLista(idDaBusca, mapped);
     } catch (error) {
-      if (usuarioAtualRef.current !== idDaBusca) return;
+      if (!atual()) return;
       console.error("Error fetching addresses:", error);
       toast.error("Erro ao carregar endereços");
     } finally {
-      if (usuarioAtualRef.current === idDaBusca) {
+      if (atual()) {
         setLoading(false);
       }
     }
