@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
+import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
 import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
@@ -176,7 +177,8 @@ export function estadoDaBarraDeFrete(args: {
   precoDaOpcaoEscolhida: number | null;
 }): EstadoDaBarraDeFrete {
   const temMetaPorValor = args.estrategiaDoCanal === "acima_de_valor";
-  const metaBatida = temMetaPorValor && args.subtotal >= args.minimoDoCanal;
+  const metaBatida =
+    temMetaPorValor && atingiuOMinimo(args.subtotal, args.minimoDoCanal);
 
   // CASO A: retirada com meta de valor em jogo e ainda não batida — o preço
   // 0 da retirada não conta.
@@ -564,7 +566,7 @@ export function CartView({
     // "por_produto") continua no atalho: a promessa ali é real.
     const ehRetiradaEscolhida = ehRetiradaNaLoja(selectedShippingOption?.id);
     const retiradaComMetaNaoBatida =
-      ehRetiradaEscolhida && isRuleActive && subtotal < meta;
+      ehRetiradaEscolhida && isRuleActive && !atingiuOMinimo(subtotal, meta);
 
     if (freteGratis && !retiradaComMetaNaoBatida) {
       return {
