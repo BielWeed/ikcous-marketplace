@@ -2215,6 +2215,20 @@ const ROL_DA_47B = [
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
  * 72..83 e as antigas (1a/2a/6a/7a…) ficam de fora de propósito. */
+// 48a/48b: só analytics, quatro linhas fixas; o corpo muda de 42 para 45, atributos e ACL iguais.
+const ROL_DA_48A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: corpo e o da 20261245000000, com o desconto proporcional (md5)",
+  "get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)",
+  "get_admin_analytics_v2: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
+];
+const ROL_DA_48B = ROL_DA_48A.map((item) =>
+  item.replace(
+    "20261245000000, com o desconto proporcional",
+    "20261242000000, antes do desconto proporcional",
+  ),
+);
+
 const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
@@ -2288,6 +2302,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "46b-antes-desfazer-recebimento-base-vigente": ROL_DA_46B,
   "47a-conferir-a-loja-escolhe-como-entrega-aplicado": ROL_DA_47A,
   "47b-antes-a-loja-escolhe-como-entrega-base-vigente": ROL_DA_47B,
+  "48a-conferir-lucro-com-desconto-aplicado": ROL_DA_48A,
+  "48b-antes-lucro-com-desconto-base-vigente": ROL_DA_48B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2902,6 +2918,8 @@ module.exports = {
   ROL_DA_46B,
   ROL_DA_47A,
   ROL_DA_47B,
+  ROL_DA_48A,
+  ROL_DA_48B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

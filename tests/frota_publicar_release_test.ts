@@ -156,6 +156,8 @@ const B46 = "46b-antes-desfazer-recebimento-base-vigente";
 // O lote da migration 20261244000000 (a loja escolhe como entrega na cidade e em quantos dias: v23, v24 e upsert_store_config trocam de corpo, duas colunas novas em store_config, a trigger do So retiro e a view de 47 colunas): consulta do lote (DEPOIS: os tres corpos, atributos, ACL, colunas e CHECK, trigger, view) e a do ANTES (os tres corpos vigentes, as colunas e a trigger ausentes, a view de 45 colunas).
 const A47 = "47a-conferir-a-loja-escolhe-como-entrega-aplicado";
 const B47 = "47b-antes-a-loja-escolhe-como-entrega-base-vigente";
+const A48 = "48a-conferir-lucro-com-desconto-aplicado";
+const B48 = "48b-antes-lucro-com-desconto-base-vigente";
 // O lote da migration 20261233000000 (o sino do pedido de retirada fala de retirada: notifica_cliente_de_mudanca_de_status): consulta do lote (DEPOIS: o corpo novo, o texto da retirada e o da entrega, atributos, gatilho ligado, ACL de hoje) e a do ANTES (o corpo vigente da 20261026000000).
 const A34 = "34a-conferir-sino-da-retirada-aplicado";
 const B34 = "34b-antes-sino-da-retirada-corpo-vigente";
@@ -2523,6 +2525,8 @@ const {
   ROL_DA_46B,
   ROL_DA_47A,
   ROL_DA_47B,
+  ROL_DA_48A,
+  ROL_DA_48B,
   ROL_DA_10B,
   ROL_FECHADO_POR_CONSULTA,
 } = requireCjs("../scripts/publicacao/conferir-banco.cjs");
@@ -2667,6 +2671,8 @@ Deno.test("rol fechado: UMA fonte — o contrato por consulta do conferir-banco.
   assertEquals(ROL_FECHADO_POR_CONSULTA[B46], ROL_DA_46B);
   assertEquals(ROL_FECHADO_POR_CONSULTA[A47], ROL_DA_47A);
   assertEquals(ROL_FECHADO_POR_CONSULTA[B47], ROL_DA_47B);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A48], ROL_DA_48A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B48], ROL_DA_48B);
   assert(
     CONSULTAS_DE_ROL_FECHADO.has(A10) && CONSULTAS_DE_ROL_FECHADO.has(B10),
   );
@@ -2742,6 +2748,8 @@ for (const [consulta, rol, projeto, ref] of [
   [B46, ROL_DA_46B, "savy", SAVY],
   [A47, ROL_DA_47A, "ikcous-publicada", CAF],
   [B47, ROL_DA_47B, "savy", SAVY],
+  [A48, ROL_DA_48A, "ikcous-publicada", CAF],
+  [B48, ROL_DA_48B, "savy", SAVY],
 ] as Array<[string, string[], string, string]>) {
   Deno.test(`veredictoDaConsulta ${consulta}: resposta que NÃO é o rol exato NUNCA vira veredito positivo (rol=invalido) e o portão a trata como SEM_EVIDENCIA`, async () => {
     for (const [nome, monta] of RESPOSTAS_QUE_NAO_SAO_O_ROL) {
@@ -3013,6 +3021,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     A45,
     A46,
     A47,
+    A48,
   ]);
 });
 

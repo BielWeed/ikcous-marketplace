@@ -536,6 +536,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "46b-antes-desfazer-recebimento-base-vigente",
   "47a-conferir-a-loja-escolhe-como-entrega-aplicado",
   "47b-antes-a-loja-escolhe-como-entrega-base-vigente",
+  "48a-conferir-lucro-com-desconto-aplicado",
+  "48b-antes-lucro-com-desconto-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
