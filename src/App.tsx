@@ -7,17 +7,12 @@ import React, {
 } from "react";
 
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
+import { aoIniciarAposAtualizacao } from "@/components/pwa/IlhaDeAtualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
 import {
   destinoPosLogin,
   painelSemContaPedeEntrada,
 } from "@/lib/destinoPosLogin";
-import {
-  CHAVE_MOTIVO_DE_RECARGA,
-  atualizacaoTrocouDeBuild,
-  descreveMotivoDeRecarga,
-  limpaMotivoDeRecarga,
-} from "@/lib/motivo-de-recarga";
 import {
   PRAZO_DA_SESSAO_NA_RECARGA_MS,
   esquecerPedidoPendenteDoCheckout,
@@ -1581,20 +1576,11 @@ const AppContent = () => {
   // ==============================
   // PWA Reload Reason Consumption — laudo #2 (P-1): o motivo descreve o que
   // REALMENTE aconteceu (update, recuperação de erro, crash, sentinela);
-  // "Sistema Atualizado" só aparece quando houve atualização de verdade.
-  // Peça 22/09: e "de verdade" é PROVADO — a origem gravada na partida do
-  // apply tem de diferir do build deste boot. Apply pendurado, recarga de
-  // segurança ou purge que não curou: toast neutro, nunca sucesso inventado.
+  // A ilha só anuncia conclusão com troca de build provada. As novidades
+  // ficam no aparelho para leitura no painel; recuperações mantêm seu aviso.
   // ==============================
   useEffect(() => {
-    const bruto = localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA);
-    // Lê e limpa a evidência em TODO boot (com motivo de atualização ou sem)
-    // para a chave não órfã; a decisão de sucesso usa o resultado abaixo.
-    const trocouDeBuild = atualizacaoTrocouDeBuild(VERSAO_DO_APP);
-    const motivo =
-      bruto === "atualizacao-aplicada" && !trocouDeBuild
-        ? descreveMotivoDeRecarga("atualizacao-nao-confirmada")
-        : descreveMotivoDeRecarga(bruto);
+    const motivo = aoIniciarAposAtualizacao(VERSAO_DO_APP);
     if (motivo) {
       console.log(`[PWA] Consuming reload reason: ${motivo.titulo}`);
       import("sonner").then(({ toast }) => {
@@ -1603,7 +1589,6 @@ const AppContent = () => {
           duration: 5000,
         });
       });
-      limpaMotivoDeRecarga();
     }
   }, []);
 

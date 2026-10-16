@@ -2,6 +2,7 @@ import {
   type EstadoDeOperacao,
   EstadoDeOperacaoProvider,
 } from "@/components/admin/PontoDeOperacao";
+import { IlhaDeAtualizacao } from "@/components/pwa/IlhaDeAtualizacao";
 import { Button } from "@/components/ui/button";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
@@ -1033,11 +1034,12 @@ export function AdminLayout({
           </div>
         )}
 
-        {/* Compact Header - Mobile Only. Fundo SÓLIDO e sem blur: é `sticky` e
+        {/* Navegação compacta no celular; ilha também no desktop.
+            Fundo SÓLIDO e sem blur: é `sticky` e
             a lista rola por baixo dele (mesmo caso da barra inferior); com
             95% + blur o texto de baixo ainda se lia atrás dos títulos. */}
         <header
-          className="sticky top-0 z-50 flex-shrink-0 border-b border-white/5 bg-zinc-950 px-3.5 py-0 shadow-md lg:hidden"
+          className="sticky top-0 z-50 flex-shrink-0 border-b border-white/5 bg-zinc-950 px-3.5 py-0 shadow-md lg:border-0 lg:shadow-none"
           style={
             {
               viewTransitionName: isViewTransitionSupported
@@ -1046,7 +1048,7 @@ export function AdminLayout({
             } as React.CSSProperties
           }
         >
-          <div className="mx-auto max-w-7xl">
+          <div className="mx-auto max-w-7xl lg:hidden">
             {/* Row 1: Top Navigation Bar */}
             <div className="flex h-11 items-center justify-between gap-2">
               {/* Left: Profile or Back Button */}
@@ -1199,6 +1201,11 @@ export function AdminLayout({
                 </div>
               </div>
             )}
+          </div>
+          {/* Linha própria: título, Voltar e sino preservam seus espaços
+              mesmo em 375px. Vazia, a região não ocupa altura. */}
+          <div className="flex min-w-0 justify-center">
+            <IlhaDeAtualizacao variante="painel" className="my-1.5" />
           </div>
         </header>
 
