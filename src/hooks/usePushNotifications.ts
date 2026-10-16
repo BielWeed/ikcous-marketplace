@@ -213,6 +213,7 @@ export function usePushNotifications() {
   // por um instante também para o aparelho que ESTÁ inscrito.
   const [sondado, setSondado] = useState(false);
   const userId = user?.id ?? null;
+  const geracaoDaInscricao = useRef(0);
   // A inscrição que ESTA instância criou, e para qual conta — a verificação de
   // dono abaixo não a re-julga (só vale enquanto a conta for a mesma).
   const inscricaoCriadaAqui = useRef<{
@@ -221,6 +222,8 @@ export function usePushNotifications() {
   } | null>(null);
 
   useEffect(() => {
+    geracaoDaInscricao.current += 1;
+    inscricaoCriadaAqui.current = null;
     // Desmontou no meio da sonda (StrictMode remonta, rota troca): as
     // promessas de `ready`/`getSubscription` continuam vivas e os
     // `setState` delas cairiam num componente que já não existe.
@@ -278,6 +281,7 @@ export function usePushNotifications() {
     checkSupport();
     return () => {
       desmontado = true;
+      geracaoDaInscricao.current += 1;
     };
     // `userId` na lista: quem entra ou sai da conta muda o que o navegador
     // tem (o Sair desinscreve o aparelho), então a sonda lê o navegador de
@@ -314,6 +318,7 @@ export function usePushNotifications() {
     const verificar = async () => {
       const dono = await dequemEAInscricao(subscription.endpoint, userId);
       if (cancelado || dono !== "outra-conta") return;
+      geracaoDaInscricao.current += 1;
       try {
         await subscription.unsubscribe();
       } catch (erro) {
@@ -332,6 +337,7 @@ export function usePushNotifications() {
 
   const subscribe = useCallback(async () => {
     if (!isSupported) return;
+    const geracaoDaAtivacao = geracaoDaInscricao.current;
 
     try {
       // `isSupported` é fotografia do INSTANTE da montagem; o toque pode
@@ -383,6 +389,7 @@ export function usePushNotifications() {
       }
 
       const result = await Notification.requestPermission();
+      if (geracaoDaInscricao.current !== geracaoDaAtivacao) return;
       setPermission(result);
 
       if (result === "denied") {
@@ -482,6 +489,9 @@ export function usePushNotifications() {
         { onConflict: "endpoint" },
       );
 
+      // Sair e voltar à mesma conta também invalida a resposta antiga.
+      if (geracaoDaInscricao.current !== geracaoDaAtivacao) return;
+
       if (error) {
         // O navegador JÁ criou a inscrição — o que falhou foi salvar no
         // banco (RLS, coluna, o que for). Sem desfazer, o navegador fica
@@ -515,6 +525,7 @@ export function usePushNotifications() {
         // vez de ficar invisível para sempre — vale mais que os dois
         // riscos acima, sem pagar o preço de destruir uma inscrição alheia.
         if (!inscricaoJaExistiaAntesDestaChamada) {
+          geracaoDaInscricao.current += 1;
           try {
             await newSubscription.unsubscribe();
           } catch (unsubscribeError) {
@@ -549,6 +560,7 @@ export function usePushNotifications() {
   }, [isSupported, user]);
 
   const unsubscribe = useCallback(async () => {
+    geracaoDaInscricao.current += 1;
     if (!subscription) return;
 
     try {

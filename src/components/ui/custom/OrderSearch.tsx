@@ -151,11 +151,15 @@ export function OrderSearch({
       );
       if (foundOrders && foundOrders.length > 0) {
         toast.success(`${foundOrders.length} pedido(s) encontrado(s)!`);
-        // Store in session cache
-        sessionStorage.setItem(
-          "guest_tracked_orders",
-          JSON.stringify(foundOrders),
-        );
+        // O cache é opcional: o código já foi validado no servidor.
+        try {
+          sessionStorage.setItem(
+            "guest_tracked_orders",
+            JSON.stringify(foundOrders),
+          );
+        } catch {
+          console.warn("Não foi possível guardar os pedidos nesta sessão.");
+        }
         if (onOrdersFound) {
           onOrdersFound(foundOrders);
         }
