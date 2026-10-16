@@ -135,6 +135,7 @@ describe.each(imagens)(
       autenticacao.user = CONTA_A;
       autenticacao.profile = PERFIL_A;
       leitores = [];
+      // biome-ignore lint/complexity/useArrowFunction: o vitest 4 só aceita function ou class num dublê chamado com new.
       vi.spyOn(globalThis, "FileReader").mockImplementation(function () {
         const leitor: Leitor = {
           onload: null,
