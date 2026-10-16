@@ -38,6 +38,7 @@ vi.mock("@/lib/supabase", () => ({
       const builder: any = {};
       builder.select = () => builder;
       builder.eq = () => builder;
+      builder.in = async () => ({ data: [], error: null });
       builder.order = () =>
         new Promise((resolve) => {
           h.soltarLeitura = (linhas) => resolve({ data: linhas, error: null });
@@ -223,7 +224,7 @@ describe("resposta atrasada não regrava o cache depois da limpeza do Sair", () 
     expect(getReviewsCache(PRODUTO)).toBeNull();
   });
 
-  it("voto 'útil' recusado pelo banco, com limpeza no meio: a reversão não regrava o cache", async () => {
+  it("voto 'útil' recusado pelo banco, com limpeza no meio: a resposta não regrava o cache", async () => {
     const { getReviewsByProduct, markHelpful } = await montar();
 
     // Lista carregada normalmente (e guardada) enquanto a pessoa está logada.
@@ -255,7 +256,7 @@ describe("resposta atrasada não regrava o cache depois da limpeza do Sair", () 
     expect(getReviewsCache(PRODUTO)).toBeNull();
   });
 
-  it("controle: voto recusado SEM limpeza ainda reverte o cache guardado", async () => {
+  it("controle: voto recusado SEM limpeza mantém o contador confirmado no cache", async () => {
     const { getReviewsByProduct, markHelpful } = await montar();
 
     let leitura!: Promise<void>;
@@ -271,8 +272,8 @@ describe("resposta atrasada não regrava o cache depois da limpeza do Sair", () 
     await act(async () => {
       voto = markHelpful("rev-pendente");
     });
-    // Voto otimista já gravado: helpful 0 → 1.
-    expect(getReviewsCache(PRODUTO)?.[0]?.helpful).toBe(1);
+    // Voto em voo não persiste um incremento ainda não confirmado.
+    expect(getReviewsCache(PRODUTO)?.[0]?.helpful).toBe(0);
 
     await act(async () => {
       h.soltarVoto?.({ error: { message: "recusado" } });
