@@ -100,6 +100,14 @@ console.log("[SW] Precache Manifest received:", precacheManifest.length);
  * navegador segura as requisições da página (a recarga incluída). */
 const PRAZO_DA_REDE_NO_SW_MS = 5000;
 
+/** `AbortSignal.timeout` só existe a partir do iOS 16 / Safari 16. */
+function sinalComPrazo(ms: number): AbortSignal {
+  if (typeof AbortSignal.timeout === "function") return AbortSignal.timeout(ms);
+  const controle = new AbortController();
+  setTimeout(() => controle.abort(), ms);
+  return controle.signal;
+}
+
 const urlsDoPrecache = Array.from(
   new Set(precacheManifest.map((entry: any) => entry.url)),
 ) as string[];
@@ -219,7 +227,7 @@ async function guardarPaginaInicialComFicha(urls: string[]): Promise<void> {
     if (await cache.match("/")) return;
     const resposta = await fetch("/", {
       cache: "no-store",
-      signal: AbortSignal.timeout(PRAZO_DA_REDE_NO_SW_MS),
+      signal: sinalComPrazo(PRAZO_DA_REDE_NO_SW_MS),
     });
     if (!resposta?.ok || resposta.redirected) return;
     const texto = await resposta.clone().text();
@@ -287,7 +295,7 @@ async function repararPrecache(urls: string[]): Promise<void> {
     const faltando = await arquivosFaltando(urls);
     await Promise.all(
       faltando.map((url) =>
-        fetch(url, { signal: AbortSignal.timeout(PRAZO_DA_REDE_NO_SW_MS) })
+        fetch(url, { signal: sinalComPrazo(PRAZO_DA_REDE_NO_SW_MS) })
           .then((resposta) => {
             if (!resposta.ok) throw new TypeError(`bad-response ${url}`);
             return cache.put(url, resposta);

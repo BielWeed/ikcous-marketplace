@@ -338,6 +338,28 @@ describe("src/sw/sw.ts — activate não apaga o app antigo sem o novo inteiro",
     expect(armazem.get(CACHE_NOVO)?.has("/assets/vendor-DEF.js")).toBe(true);
   });
 
+  it("sem AbortSignal.timeout (iOS 15) o prazo continua valendo por alternativa", async () => {
+    const original = AbortSignal.timeout;
+    (AbortSignal as { timeout?: unknown }).timeout = undefined;
+    try {
+      const { rodar, sinais, armazem } = await montar({
+        cenario: { rede: redeDoBuildNovo() },
+        jaExistem: {
+          ...VELHO_COMPLETO,
+          [CACHE_NOVO]: { "/index.html": html("so um arquivo") },
+        },
+      });
+
+      await rodar("activate");
+
+      expect(sinais.get("/")).toBeInstanceOf(AbortSignal);
+      expect(sinais.get("/assets/vendor-DEF.js")).toBeInstanceOf(AbortSignal);
+      expect(cachesDoApp(armazem)).toEqual([CACHE_NOVO]);
+    } finally {
+      AbortSignal.timeout = original;
+    }
+  });
+
   it("controle: cache novo inteiro apaga o antigo, como sempre", async () => {
     const novo: Record<string, Response> = {};
     for (const { url } of MANIFESTO) novo[`/${url}`] = new Response(url);
