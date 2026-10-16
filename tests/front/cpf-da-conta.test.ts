@@ -8,10 +8,26 @@
 // segurança do dono, 23/09/2026: erro de conversão do Postgres pode ecoar
 // o VALOR recebido).
 import { describe, expect, it, vi } from "vitest";
+import { pedidoCpfComCabecalho } from "./helpers/pedido-cpf-com-cabecalho";
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock("@/lib/supabase", () => ({
-  supabase: { rpc },
+  supabase: {
+    auth: {
+      getSession: () =>
+        Promise.resolve({
+          data: {
+            session: { access_token: "token-a", user: { id: "conta-a" } },
+          },
+        }),
+    },
+    rpc: (...args: unknown[]) => {
+      const resposta = rpc(...args);
+      return args[0] === "set_my_cpf"
+        ? pedidoCpfComCabecalho(resposta)
+        : resposta;
+    },
+  },
 }));
 
 const CPF_TESTE = "52998224725";
@@ -100,7 +116,7 @@ describe("gravarCpfDaConta", () => {
     rpc.mockResolvedValueOnce({ data: null, error: null });
     const { gravarCpfDaConta } = await import("@/lib/cpf-da-conta");
 
-    const resultado = await gravarCpfDaConta("529.982.247-25");
+    const resultado = await gravarCpfDaConta("529.982.247-25", "conta-a");
 
     expect(rpc).toHaveBeenCalledWith("set_my_cpf", { p_cpf: CPF_TESTE });
     expect(resultado).toEqual({ ok: true });
@@ -111,7 +127,7 @@ describe("gravarCpfDaConta", () => {
     rpc.mockResolvedValueOnce({ data: null, error: null });
     const { gravarCpfDaConta } = await import("@/lib/cpf-da-conta");
 
-    await gravarCpfDaConta("");
+    await gravarCpfDaConta("", "conta-a");
 
     expect(rpc).toHaveBeenCalledWith("set_my_cpf", { p_cpf: "" });
   });
@@ -124,7 +140,7 @@ describe("gravarCpfDaConta", () => {
     });
     const { gravarCpfDaConta } = await import("@/lib/cpf-da-conta");
 
-    const resultado = await gravarCpfDaConta("11111111111");
+    const resultado = await gravarCpfDaConta("11111111111", "conta-a");
 
     expect(resultado).toEqual({ ok: false, motivo: "cpf_invalido" });
   });
@@ -143,7 +159,7 @@ describe("gravarCpfDaConta", () => {
     const espioes = espiarConsole();
     const { gravarCpfDaConta } = await import("@/lib/cpf-da-conta");
 
-    const resultado = await gravarCpfDaConta(CPF_TESTE);
+    const resultado = await gravarCpfDaConta(CPF_TESTE, "conta-a");
 
     expect(resultado).toEqual({ ok: false, motivo: "falha" });
     expect(JSON.stringify(resultado)).not.toContain(CPF_TESTE);
@@ -159,7 +175,7 @@ describe("gravarCpfDaConta", () => {
     const espioes = espiarConsole();
     const { gravarCpfDaConta } = await import("@/lib/cpf-da-conta");
 
-    const resultado = await gravarCpfDaConta(CPF_TESTE);
+    const resultado = await gravarCpfDaConta(CPF_TESTE, "conta-a");
 
     expect(resultado).toEqual({ ok: false, motivo: "falha" });
     expect(JSON.stringify(resultado)).not.toContain(CPF_TESTE);
@@ -169,9 +185,12 @@ describe("gravarCpfDaConta", () => {
 });
 
 describe("mensagemFalhaCpf", () => {
-  it("nunca inclui texto do servidor — só as três mensagens fixas por motivo", async () => {
+  it("nunca inclui texto do servidor — só as mensagens fixas por motivo", async () => {
     const { mensagemFalhaCpf } = await import("@/lib/cpf-da-conta");
 
+    expect(mensagemFalhaCpf("conta_trocada")).toBe(
+      "A conta mudou durante a operação: nada foi salvo. Confira a conta e tente de novo.",
+    );
     expect(mensagemFalhaCpf("cpf_invalido")).toBe(
       "CPF inválido. Confira os números e tente de novo.",
     );

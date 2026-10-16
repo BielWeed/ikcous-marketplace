@@ -8,6 +8,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pedidoCpfComCabecalho } from "./helpers/pedido-cpf-com-cabecalho";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -227,14 +228,21 @@ describe("Cadastro — CPF opcional (o CPF mora na conta)", () => {
     ).mockResolvedValue({
       data: {
         user: { id: "user-1", email: "cliente@example.com" },
-        session: { user: { id: "user-1" } },
+        session: { access_token: "token-user-1", user: { id: "user-1" } },
       },
       error: null,
     });
-    (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: null,
+    (
+      supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      data: {
+        session: { access_token: "token-user-1", user: { id: "user-1" } },
+      },
       error: null,
     });
+    (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () => pedidoCpfComCabecalho(Promise.resolve({ data: null, error: null })),
+    );
 
     await preencherCadastroBasico();
     await act(async () => {
@@ -250,6 +258,40 @@ describe("Cadastro — CPF opcional (o CPF mora na conta)", () => {
     expect(supabase.rpc).toHaveBeenCalledWith("set_my_cpf", {
       p_cpf: CPF_DIGITOS,
     });
+    expect(armazem.getItem(CHAVE_PENDENTE)).toBeNull();
+  });
+
+  it("cadastro imediato de A com SDK já em B: não grava e exibe a mensagem fixa", async () => {
+    const { supabase } = await montarNoCadastro();
+    const { toast } = await import("sonner");
+    const { mensagemFalhaCpf } = await import("@/lib/cpf-da-conta");
+    (
+      supabase.auth.signUp as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      data: {
+        user: { id: "user-1", email: "cliente@example.com" },
+        session: { access_token: "token-user-1", user: { id: "user-1" } },
+      },
+      error: null,
+    });
+    (
+      supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      data: { session: { access_token: "token-b", user: { id: "user-b" } } },
+    });
+    await preencherCadastroBasico();
+    await act(async () => digitar("cpf", "123.456.789-09"));
+    await act(async () => {
+      botao("FINALIZAR REGISTRO")!.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(supabase.rpc).not.toHaveBeenCalledWith(
+      "set_my_cpf",
+      expect.anything(),
+    );
+    expect(toast.error).toHaveBeenCalledWith(mensagemFalhaCpf("conta_trocada"));
     expect(armazem.getItem(CHAVE_PENDENTE)).toBeNull();
   });
 

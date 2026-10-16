@@ -36,9 +36,8 @@ it.each([true, false])(
             createdAt: "2026-10-01T12:00:00Z",
           }}
           onHelpful={async () => {
-            setHelpful((n) => n + 1);
             const valeu = await enviar();
-            if (!valeu) setHelpful((n) => n - 1);
+            if (valeu) setHelpful(1); // Valor confirmado pela releitura.
             return valeu;
           }}
         />
@@ -56,7 +55,7 @@ it.each([true, false])(
       botao.click();
     });
     expect(enviar).toHaveBeenCalledTimes(1);
-    expect(botao.textContent).toContain("Útil (1)");
+    expect(botao.textContent).toContain("Útil (0)");
     expect(botao.disabled).toBe(true);
     await act(async () => {
       concluir(sucesso);

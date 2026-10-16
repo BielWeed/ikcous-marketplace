@@ -10,6 +10,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pedidoCpfComCabecalho } from "./helpers/pedido-cpf-com-cabecalho";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -80,7 +81,7 @@ function gravarPendente(armazem: ReturnType<typeof criarLocalStorageFake>) {
 }
 
 function sessaoFake(userId: string, email: string) {
-  return { user: { id: userId, email } } as any;
+  return { access_token: `token-${userId}`, user: { id: userId, email } };
 }
 
 /** `supabase.rpc` também é chamado por `fetchProfile`/`checkAdmin` no
@@ -130,10 +131,9 @@ describe("Retomada do CPF pendente — nova aba, sem estado em memória", () => 
     // Default para as chamadas que NÃO são o foco do teste (`fetchProfile`
     // via `get_my_complete_profile`, `checkAdmin` via `is_admin`) — cada
     // teste sobrescreve `set_my_cpf` por cima quando precisa.
-    (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: null,
-      error: null,
-    });
+    (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () => pedidoCpfComCabecalho(Promise.resolve({ data: null, error: null })),
+    );
 
     await act(async () => {
       raiz.render(
@@ -146,6 +146,12 @@ describe("Retomada do CPF pendente — nova aba, sem estado em memória", () => 
       await esperarMicrotarefas();
     });
 
+    (
+      supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      data: { session: sessaoFake(USER_ID, EMAIL) },
+      error: null,
+    });
     return { supabase };
   }
 
@@ -178,10 +184,9 @@ describe("Retomada do CPF pendente — nova aba, sem estado em memória", () => 
   it("SIGNED_IN do mesmo usuário: uma chamada set_my_cpf, e o pendente some", async () => {
     gravarPendente(armazem);
     const { supabase } = await montarProvider();
-    (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: null,
-      error: null,
-    });
+    (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () => pedidoCpfComCabecalho(Promise.resolve({ data: null, error: null })),
+    );
 
     await act(async () => {
       callbackDoListener!("SIGNED_IN", sessaoFake(USER_ID, EMAIL));
@@ -203,9 +208,11 @@ describe("Retomada do CPF pendente — nova aba, sem estado em memória", () => 
     const { supabase } = await montarProvider();
     let resolverRpc!: (v: unknown) => void;
     (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockReturnValue(
-      new Promise((resolve) => {
-        resolverRpc = resolve;
-      }),
+      pedidoCpfComCabecalho(
+        new Promise((resolve) => {
+          resolverRpc = resolve;
+        }),
+      ),
     );
 
     await act(async () => {
