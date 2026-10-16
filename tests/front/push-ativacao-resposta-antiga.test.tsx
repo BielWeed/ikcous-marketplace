@@ -276,6 +276,24 @@ describe("usePushNotifications — ativação de uma geração antiga", () => {
     },
   );
 
+  it("sair da tela durante a ativação não desfaz a inscrição: ela termina e grava", async () => {
+    const envio = pendente<{ error: null }>();
+    upsert.mockReturnValue(envio.promessa);
+    await montar();
+    const { ativacao } = await iniciarAtivacao();
+
+    // O componente some (troca de tela) com o upsert ainda em voo.
+    await act(async () => raiz.render(<span>outra tela</span>));
+    await act(async () => {
+      envio.resolver({ error: null });
+      await ativacao;
+    });
+
+    expect(inscricao.unsubscribe).not.toHaveBeenCalled();
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(inscricaoNoNavegador).toBe(inscricao);
+  });
+
   it("a geração atual grava a inscrição nova e mantém o navegador inscrito", async () => {
     upsert.mockResolvedValue({ error: null });
     await montar();

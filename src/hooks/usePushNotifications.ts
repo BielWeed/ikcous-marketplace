@@ -214,6 +214,18 @@ export function usePushNotifications() {
   const [sondado, setSondado] = useState(false);
   const userId = user?.id ?? null;
   const geracaoDaInscricao = useRef(0);
+  // Só a SAÍDA DA TELA (desmontagem) não invalida uma ativação em andamento:
+  // ela segue, grava e deixa o aparelho inscrito (outra instância pode estar
+  // adotando a mesma inscrição). Trocar/sair de conta, sim, invalida.
+  // Declarado ANTES do efeito da sonda: na desmontagem as limpezas rodam na
+  // ordem de declaração, então este flag já está ligado quando a outra roda.
+  const desmontandoRef = useRef(false);
+  useEffect(() => {
+    desmontandoRef.current = false;
+    return () => {
+      desmontandoRef.current = true;
+    };
+  }, []);
   // A inscrição que ESTA instância criou, e para qual conta — a verificação de
   // dono abaixo não a re-julga (só vale enquanto a conta for a mesma).
   const inscricaoCriadaAqui = useRef<{
@@ -281,7 +293,7 @@ export function usePushNotifications() {
     checkSupport();
     return () => {
       desmontado = true;
-      geracaoDaInscricao.current += 1;
+      if (!desmontandoRef.current) geracaoDaInscricao.current += 1;
     };
     // `userId` na lista: quem entra ou sai da conta muda o que o navegador
     // tem (o Sair desinscreve o aparelho), então a sonda lê o navegador de
