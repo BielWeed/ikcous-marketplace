@@ -496,6 +496,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261243000000: desfazer o recebimento recusa pedido com devolucao viva (registrar_pagamento_recebido; comportamento com 2 conexoes, corrida nos dois sentidos, rollback e mutantes; o portao da release desta migration ainda nao existe).
     "tests/banco/desfazer-recebimento-viva.cjs",
     "tests/banco/desfazer-recebimento-portao-viva.cjs",
+    // 20261244000000: a loja escolhe como entrega na cidade e em quantos dias (v23, v24 e upsert_store_config; matriz das duas compras, trigger, rollbacks nos dois degraus e mutantes; e o portao 47a/47b).
+    "tests/banco/a-loja-escolhe-como-entrega-viva.cjs",
+    "tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs",
     // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",

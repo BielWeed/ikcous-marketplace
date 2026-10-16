@@ -48,6 +48,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera, falhar } = require("./efemero.cjs");
+const {
+  desfazerEntregaNaCidadeNaTransacao,
+} = require("./a-loja-escolhe-como-entrega-posterior.cjs");
 
 const MIGRATIONS = path.resolve(
   __dirname,
@@ -1143,6 +1146,10 @@ prova(
 async function main() {
   C = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await C.connect();
+  // SUCESSORA: a 20261244000000 (a loja escolhe como entrega na cidade) redefine a v24 em cima do corpo
+  // desta migration. Esta prova mede a migration dela ISOLADA, entao desfaz a sucessora (pelo rollback-manual dela, que
+  // so reescreve corpos, apaga a trigger e refaz a view) no clone descartavel antes da primeira prova.
+  await desfazerEntregaNaCidadeNaTransacao(C);
   let ok = 0;
   const falhas = [];
   // No modo mutante de arquivo roda SO a prova de comportamento (ver MUTADO).

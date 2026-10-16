@@ -85,11 +85,19 @@ const {
   desfazerSucessorasDa99,
   devolverAoEstadoAnteriorAoCustoDoDia,
 } = require("./sucessoras-da-99.cjs");
+const {
+  desfazerEntregaNaCidadeNaTransacao,
+} = require("./a-loja-escolhe-como-entrega-posterior.cjs");
 // Esta prova mede as sucessoras ATÉ a 20261241 (as dez de antes). A 20261242000000 (o custo do dia: sucessora de
 // get_admin_analytics_v2 e a primeira de fin_dre) tem a PROVA PRÓPRIA do que a 8e faz com ela em
 // tests/banco/custo-do-dia-portao-viva.cjs (item 8); aqui `noEstado` devolve o clone ao estado anterior a ela.
+// A 20261244000000 (a loja escolhe como entrega na cidade: a SEGUNDA sucessora de upsert_store_config, a cadeia 99 -> 39 -> 44)
+// tem a PROVA PRÓPRIA em tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs (a 8e POSITIVA com ela no ar e desfeita);
+// aqui `noEstado` também a desfaz antes de montar o estado (o módulo "posterior" dela, a mesma régua da 20261242).
 const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
-  (s) => s.nome !== NOME_CUSTO_DO_DIA,
+  (s) =>
+    s.nome !== NOME_CUSTO_DO_DIA &&
+    s.nome !== "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -230,6 +238,7 @@ async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
     await devolverAoEstadoAnteriorAoCustoDoDia(C);
+    await desfazerEntregaNaCidadeNaTransacao(C);
     const montado = montar ? await montar(C) : undefined;
     await C.query(`SET LOCAL ROLE ${RO}`);
     await C.query("SET LOCAL transaction_read_only = on");

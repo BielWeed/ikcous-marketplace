@@ -2131,7 +2131,8 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
       // são da 99 (autorizar_post_do_estorno da 96; solicitar_estorno e admin_devolucao_concluir da 97;
       // pedido__saldo_a_estornar da 98).
       // 15/10/2026: a 20261243000000 (desfazer o recebimento recusa pedido com devolução) sucede o corpo da 97
-      // de registrar_pagamento_recebido.
+      // de registrar_pagamento_recebido; a 20261244000000 (a loja escolhe como entrega na cidade) sucede o da
+      // 20261239000000 de upsert_store_config (a SEGUNDA sucessora dela: a cadeia 99 → 39 → 44).
       assertEquals([...sucessoras8e].sort(porFn), [
         {
           fn: "admin_devolucao_concluir",
@@ -2219,6 +2220,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "upsert_store_config",
           h: "b562669936df1cda31d4bdd4d075bff3",
           versao: "20261239000000",
+        },
+        // 15/10/2026: a loja escolhe como entrega na cidade (as chaves local_delivery_enabled e local_delivery_days).
+        {
+          fn: "upsert_store_config",
+          h: "391e8e1064400df5aea579f3472b203c",
+          versao: "20261244000000",
         },
       ]);
       for (const s of sucessoras8e)
@@ -3536,7 +3543,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para as três que nenhuma migration posterior redefine; duas são da 20261199, registrar_venda_presencial é da 20261235 e upsert_store_config é da 20261239 (a identidade legal da loja)",
+    "quem é o dono do corpo: 60..66 só para as três que nenhuma migration posterior redefine; duas são da 20261199, registrar_venda_presencial é da 20261235 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261161000000",
@@ -3545,7 +3552,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
         get_product_recommendations: "20261160000000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261235000000",
-        upsert_store_config: "20261239000000",
+        upsert_store_config: "20261244000000",
       });
     },
   );
@@ -12109,6 +12116,7 @@ const NOME_31A = "31a-conferir-endereco-da-compra-fica-no-pedido";
 const NOME_31B = "31b-antes-endereco-da-compra-so-no-ponteiro";
 const MIGRACAO_229 = `${MIGRATIONS_DIR}/20261229000000_o_endereco_da_compra_fica_no_pedido.sql`;
 const MIGRACAO_236 = `${MIGRATIONS_DIR}/20261236000000_a_compra_que_da_zero_reais_nao_se_paga_pelo_app.sql`;
+const MIGRACAO_244 = `${MIGRATIONS_DIR}/20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql`;
 
 for (const [nome, linhasDoRol] of [
   [NOME_31A, 9],
@@ -12265,7 +12273,7 @@ Deno.test("31a/31b — o md5 da 31a e' o do corpo NOVO de cada funcao no arquivo
   assert(/aclexplode/.test(sa));
 });
 
-Deno.test("31a/31b — a 31a aceita, so em create_marketplace_order_v24, o corpo SUCESSOR da 20261236000000 (a compra de zero reais nao se paga pelo app) ao lado do da 20261229000000; a v23 segue exata e a 31b nao cita o sucessor", async () => {
+Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra de zero reais nao se paga pelo app) na v24 e o da 20261244000000 (a loja escolhe como entrega na cidade) na v23 e na v24, ao lado do da 20261229000000; a 31b nao cita nenhum sucessor", async () => {
   const { createHash } = require("node:crypto");
   const md5 = (s: string) =>
     createHash("md5").update(s.replace(/\r/g, "")).digest("hex");
@@ -12276,26 +12284,53 @@ Deno.test("31a/31b — a 31a aceita, so em create_marketplace_order_v24, o corpo
   };
   const m229 = await Deno.readTextFile(MIGRACAO_229);
   const m236 = await Deno.readTextFile(MIGRACAO_236);
+  const m244 = await Deno.readTextFile(MIGRACAO_244);
   const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_31A}.sql`);
   const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_31B}.sql`);
   const v24da229 = md5(corpoDe(m229, "create_marketplace_order_v24"));
   const v24da236 = md5(corpoDe(m236, "create_marketplace_order_v24"));
+  const v24da244 = md5(corpoDe(m244, "create_marketplace_order_v24"));
+  const v23da229 = md5(corpoDe(m229, "create_marketplace_order_v23"));
+  const v23da244 = md5(corpoDe(m244, "create_marketplace_order_v23"));
   assert(v24da229 !== v24da236, "os dois corpos da v24 sao o mesmo");
+  assert(v24da236 !== v24da244, "os corpos da v24 da 236 e da 244 sao o mesmo");
+  assert(v23da229 !== v23da244, "os corpos da v23 da 229 e da 244 sao o mesmo");
   const sa = sqlSemComentarios(a);
-  // a v24 aceita os DOIS hashes e responde sempre com o da 20261229000000 (o rol e os rotulos nao mudam)
+  // a v24 aceita os TRES hashes e responde sempre com o da 20261229000000 (o rol e os rotulos nao mudam)
   assertStringIncludes(
     sa,
-    `f.m IN ('${v24da229}', '${v24da236}')`,
-    "31a: a v24 aceita o corpo da 20261229000000 OU o da 20261236000000",
+    `f.m IN ('${v24da229}', '${v24da236}', '${v24da244}')`,
+    "31a: a v24 aceita o corpo da 20261229000000, o da 20261236000000 OU o da 20261244000000",
   );
   assertStringIncludes(sa, `THEN '${v24da229}'`);
-  // o sucessor so vale para a v24: o corpo da v23 segue exato e nenhum hash da 236 entra na linha da v23
+  // a v23 aceita os DOIS (o da 229 e o da 244) e responde sempre com o da 20261229000000
+  assertStringIncludes(
+    sa,
+    `f.m IN ('${v23da229}', '${v23da244}')`,
+    "31a: a v23 aceita o corpo da 20261229000000 OU o da 20261244000000",
+  );
+  assertStringIncludes(sa, `THEN '${v23da229}'`);
+  // o hash da 236 so entra na linha da v24 (uma vez); os da 244, uma vez em cada linha
   assertEquals(
     sa.split(v24da236).length - 1,
     1,
     "31a: o hash da 20261236000000 aparece uma vez so (a linha da v24)",
   );
+  assertEquals(
+    sa.split(v24da244).length - 1,
+    1,
+    "31a: o hash da v24 da 244 aparece uma vez so",
+  );
+  assertEquals(
+    sa.split(v23da244).length - 1,
+    1,
+    "31a: o hash da v23 da 244 aparece uma vez so",
+  );
   assert(!b.includes(v24da236), "31b nao cita o corpo da 20261236000000");
+  assert(
+    !b.includes(v24da244) && !b.includes(v23da244),
+    "31b nao cita o corpo da 20261244000000",
+  );
   // a v23 nao e' tocada pela 20261236000000
   assert(
     !m236.includes(

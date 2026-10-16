@@ -1855,6 +1855,48 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `tests/banco/desfazer-recebimento-portao-viva.cjs` (as consultas), num Postgres 17 efemero; nao provam o
         Postgres da Supabase nem o corpo vivo de cada loja.
 
+  47. **Lote de UMA migration, de apply normal: `20261244000000` (a loja escolhe como entrega na cidade e em quantos
+      dias; DINHEIRO e DADO DE CLIENTE; decisao do dono de 15/10/2026).** Sem `backfillLedger` e sem `nuncaAplicar`;
+      valem as duas lojas assinantes (IKCOUS e Savy). ADITIVA: duas colunas novas com default constante, uma trava, tres
+      corpos trocados por `CREATE OR REPLACE` (assinaturas, dono, ACL e atributos preservados) e a view com duas colunas
+      no fim; nenhum dado existente e lido nem reescrito:
+      - **O que muda:** a lojista passa a escolher "Entrego", "Entrego e retiro" ou "So retiro" e o prazo (em dias) da
+        entrega propria. Em "So retiro" a entrega propria fica desligada: a retirada na loja vale para QUALQUER CEP e a
+        opcao `local-delivery` e recusada pelas duas portas de compra (`create_marketplace_order_v23` e `_v24`) com a
+        frase de sempre ("Opcao de entrega invalida..."). Nenhuma opcao de entrega muda de id nem de nome. Uma trigger
+        (`store_config_so_retirada_exige_retirada`) recusa gravar "So retiro" sem a retirada ligada ou sem endereco.
+      - **O que NAO muda no apply:** toda loja existente nasce com `local_delivery_enabled = true` e
+        `local_delivery_days = 1` (o comportamento de hoje): nenhum pedido, preco ou frete muda ate a lojista escolher.
+      - **Aplicar FORA DO HORARIO DE PICO:** a migration usa `SET LOCAL lock_timeout = '5s'` (desiste em vez de enfileirar
+        a vitrine atras do `ALTER TABLE`); se recusar por tempo, rode de novo mais tarde.
+      - Duas consultas, so leitura, so catalogo, de ROL FECHADO (9 e 9 linhas, so valem com `rol=ok`):
+        - **`47a-conferir-a-loja-escolhe-como-entrega-aplicado`** (a consulta do lote) prova DEPOIS do apply os tres
+          corpos (md5), os atributos e o `EXECUTE` por papel, as duas colunas e a CHECK do prazo, a trigger com a funcao
+          dela e a view de 47 colunas.
+        - **`47b-antes-a-loja-escolhe-como-entrega-base-vigente`** (`ausenciaConfirmadaPor`) prova o ANTES: os tres
+          corpos vigentes (`20261229000000`, `20261236000000` e `20261239000000`), as colunas, a CHECK, a trigger e a
+          funcao dela ainda ausentes e a view de 45 colunas. Rode a `47b` em CADA loja ANTES do apply.
+        - Nao ha medicao `47m`: o lote nao le nem reescreve dado.
+      - **Caminho, uma loja por vez (IKCOUS, depois Savy):** `47a` (sai NEGATIVA) -> `47b` MAIS NOVA e POSITIVA ->
+        UM comando `aplicar-migrations.yml` com a migration -> o ensaio pede a `47a` DE NOVO, que tem de sair
+        POSITIVA. A `8e`, a `9a`, a `31a`, a `37a` e a `40a` seguem POSITIVAS depois do apply (o corpo novo entra como
+        sucessor conhecido delas).
+      - **ORDEM: o banco de CADA loja ANTES da edge `calculate-shipping` e do front desta frente** (o front novo le as
+        duas colunas; a edge le de forma tolerante).
+      - **Desfazer:** em dois degraus. `rollback-manual-20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql`
+        devolve os tres corpos byte a byte, apaga a trigger e refaz a view de 45 colunas, mas DEIXA as colunas; ele
+        RECUSA se alguma loja estiver em "So retiro" (devolva-a a "Entrego" ou "Entrego e retiro" de proposito).
+        `rollback-manual-destrutivo-20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql` apaga as colunas, so depois
+        do primeiro, e RECUSA se alguma loja tiver "So retiro" ou prazo diferente de 1. Os rollbacks da
+        `20261229000000`, da `20261236000000` e da `20261239000000` RECUSAM enquanto esta migration estiver no ar:
+        desfazer ESTA primeiro.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia: rodar a `8e`, a `47a` e a
+        `47b` DE NOVO.
+      - **Provas:** `tests/banco/a-loja-escolhe-como-entrega-viva.cjs` (comportamento: matriz das duas portas de compra x
+        convidado/logado x CEP local/fora x tres modos, trigger, upsert, pre-voo, rollbacks e mutantes) e
+        `tests/banco/a-loja-escolhe-como-entrega-portao-viva.cjs` (as consultas), num Postgres 17 efemero; nao provam o
+        Postgres da Supabase nem o corpo vivo de cada loja.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

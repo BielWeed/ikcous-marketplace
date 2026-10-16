@@ -145,7 +145,12 @@ WITH alvo(assinatura) AS (
   UNION ALL
   SELECT 'upsert_store_config: corpo e o da 20261239000000, com razao social, documento e e-mail (md5)',
          'b562669936df1cda31d4bdd4d075bff3',
-         COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
+         -- 2 hashes aceitos: o corpo da 20261239000000 OU o da SUCESSORA dele, a 20261244000000 (a loja escolhe como
+         -- entrega na cidade: o mesmo corpo mais as duas chaves da entrega propria). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN f.m IN ('b562669936df1cda31d4bdd4d075bff3', '391e8e1064400df5aea579f3472b203c')
+                               THEN 'b562669936df1cda31d4bdd4d075bff3'
+                               ELSE f.m END
+                     FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'upsert_store_config: o corpo so grava razao social, documento e e-mail quando a chave vem no payload',
          'sim',
@@ -169,7 +174,12 @@ WITH alvo(assinatura) AS (
   UNION ALL
   SELECT 'v_store_config: as 45 colunas, as tres novas no fim',
          'id,free_shipping_min,shipping_fee,whatsapp_number,share_text,business_hours,enable_reviews,enable_coupons,primary_color,theme_mode,logo_url,real_time_sales_alerts,push_marketing_enabled,min_app_version,origin_cep,shipping_provider,enabled_shipping_methods,shipping_coverage,local_delivery_fee,local_cep_range,created_at,updated_at,store_name,store_city,store_state,home_sections,secondary_color,accent_color,branding_assets,dominio_publico,mp_public_key,vapid_public_key,pagamento_online,manutencao,store_address,store_description,national_shipping_strategy,national_shipping_min,national_discount_type,national_discount_value,national_benefit_scope,formas_pagamento_entrega,store_legal_name,store_legal_document,store_support_email',
-         COALESCE((SELECT v.colunas FROM vista v), 'AUSENTE')
+         -- 2 listas aceitas: as 45 desta migration OU essas mesmas 45 + as 2 da SUCESSORA (a 20261244000000, a loja escolhe
+         -- como entrega na cidade: local_delivery_enabled e local_delivery_days, no fim). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN v.colunas = 'id,free_shipping_min,shipping_fee,whatsapp_number,share_text,business_hours,enable_reviews,enable_coupons,primary_color,theme_mode,logo_url,real_time_sales_alerts,push_marketing_enabled,min_app_version,origin_cep,shipping_provider,enabled_shipping_methods,shipping_coverage,local_delivery_fee,local_cep_range,created_at,updated_at,store_name,store_city,store_state,home_sections,secondary_color,accent_color,branding_assets,dominio_publico,mp_public_key,vapid_public_key,pagamento_online,manutencao,store_address,store_description,national_shipping_strategy,national_shipping_min,national_discount_type,national_discount_value,national_benefit_scope,formas_pagamento_entrega,store_legal_name,store_legal_document,store_support_email' || ',local_delivery_enabled,local_delivery_days'
+                               THEN 'id,free_shipping_min,shipping_fee,whatsapp_number,share_text,business_hours,enable_reviews,enable_coupons,primary_color,theme_mode,logo_url,real_time_sales_alerts,push_marketing_enabled,min_app_version,origin_cep,shipping_provider,enabled_shipping_methods,shipping_coverage,local_delivery_fee,local_cep_range,created_at,updated_at,store_name,store_city,store_state,home_sections,secondary_color,accent_color,branding_assets,dominio_publico,mp_public_key,vapid_public_key,pagamento_online,manutencao,store_address,store_description,national_shipping_strategy,national_shipping_min,national_discount_type,national_discount_value,national_benefit_scope,formas_pagamento_entrega,store_legal_name,store_legal_document,store_support_email'
+                               ELSE v.colunas END
+                     FROM vista v), 'AUSENTE')
   UNION ALL
   SELECT 'v_store_config: opcoes de sempre (security_invoker=on)',
          'security_invoker=on',

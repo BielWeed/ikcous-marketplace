@@ -46,6 +46,9 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { Client } = require("pg");
 const { falhar, lerDatabaseUrlEfemera } = require("./efemero.cjs");
+const {
+  desfazerEntregaNaCidadeNaTransacao,
+} = require("./a-loja-escolhe-como-entrega-posterior.cjs");
 
 const REPO = path.resolve(__dirname, "..", "..");
 process.chdir(REPO);
@@ -601,6 +604,10 @@ async function main() {
   );
   C = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await C.connect();
+  // SUCESSORA: a 20261244000000 (a loja escolhe como entrega na cidade) redefine a v24 em cima do corpo
+  // desta migration. Esta prova mede a migration dela ISOLADA, entao desfaz a sucessora (pelo rollback-manual dela, que
+  // so reescreve corpos, apaga a trigger e refaz a view) no clone descartavel antes da primeira prova.
+  await desfazerEntregaNaCidadeNaTransacao(C);
   await C.query(`CREATE ROLE ${RO} NOLOGIN BYPASSRLS`);
   try {
     await C.query(`GRANT pg_read_all_data TO ${RO}`);

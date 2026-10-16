@@ -2299,6 +2299,77 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // A loja escolhe como entrega na cidade dela (15/10/2026; DINHEIRO e DADO DE CLIENTE). Sem esta entrada a migration saia
+  // PULADA. Os marcadores contam no corpo VIVO (pg_get_functiondef, comentarios incluidos), exatos: as duas portas de compra
+  // com o So retiro (a declaracao, as duas travas que deixam de exigir CEP local, a recusa do local-delivery e a retirada
+  // livre) e a upsert com as duas chaves. O resto (atributos, ACL, hash do corpo, colunas, trigger, view) o DO de conferencia
+  // da migration aborta o apply se divergir.
+  "20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto:
+            "v_so_retirada := (COALESCE(v_store_config.local_delivery_enabled, true) = false);",
+          vezes: 1,
+        },
+        {
+          texto:
+            "v_retirada_livre := (v_so_retirada AND p_shipping_option_id IS NOT DISTINCT FROM 'store-pickup');",
+          vezes: 1,
+        },
+        {
+          texto: "IF NOT v_retirada_livre AND NOT public.is_local_cep(",
+          vezes: 2,
+        },
+        { texto: "USING DETAIL = 'entrega_propria_desligada';", vezes: 1 },
+        {
+          texto: "OR (NOT v_retirada_livre AND COALESCE(public.is_local_cep(",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "v_so_retirada := (COALESCE(v_store_config.local_delivery_enabled, true) = false);",
+          vezes: 1,
+        },
+        {
+          texto:
+            "v_retirada_livre := (v_so_retirada AND p_shipping_option_id IS NOT DISTINCT FROM 'store-pickup');",
+          vezes: 1,
+        },
+        {
+          texto: "IF NOT v_retirada_livre AND NOT public.is_local_cep(",
+          vezes: 2,
+        },
+        { texto: "USING DETAIL = 'entrega_propria_desligada';", vezes: 1 },
+        {
+          texto: "OR (NOT v_retirada_livre AND COALESCE(public.is_local_cep(",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "upsert_store_config",
+      esperado: [
+        {
+          texto:
+            "COALESCE((config_json->>'local_delivery_enabled')::boolean, true)",
+          vezes: 1,
+        },
+        {
+          texto: "COALESCE((config_json->>'local_delivery_days')::integer, 1)",
+          vezes: 1,
+        },
+        { texto: "CASE WHEN config_json ? 'local_delivery_enabled'", vezes: 1 },
+        { texto: "CASE WHEN config_json ? 'local_delivery_days'", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,
