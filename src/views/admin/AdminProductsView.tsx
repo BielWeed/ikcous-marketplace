@@ -711,11 +711,21 @@ export const AdminProductsView = memo(function AdminProductsView({
         variants: variantes,
       };
 
-      await addProduct(duplicateData);
-      haptic.success();
-      toast.success("Produto Duplicado", {
-        description: "O produto foi duplicado com sucesso.",
-      });
+      const copia = await addProduct(duplicateData);
+      if (copia?.variantesNaoSalvas) {
+        // A cópia já existe: anunciar sucesso esconderia a falta da grade,
+        // e repetir a duplicação criaria outro produto sem resolver esta cópia.
+        haptic.error();
+        toast.error("Cópia criada sem tamanhos", {
+          description: `A cópia foi criada, mas as variações (tamanhos) não foram salvas. Abra "${duplicateData.name}" e refaça a grade de tamanhos dessa cópia.`,
+          duration: 10000,
+        });
+      } else {
+        haptic.success();
+        toast.success("Produto Duplicado", {
+          description: "O produto foi duplicado com sucesso.",
+        });
+      }
       // Mesmo motivo de `confirmDelete`: sem `await` para não alongar a
       // janela entre o clique e o `finally` que fecha o diálogo.
       refreshFinancialStats();
