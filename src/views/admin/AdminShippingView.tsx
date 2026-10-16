@@ -592,21 +592,26 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
-    setIsSaving(true);
-    haptic.medium();
-
     if (retiradaSemEndereco) {
+      // Antes do `setIsSaving`: recusar não pode deixar a tela em "Salvando…".
       toast.error("Cadastre o endereço da loja em Minha loja", {
-        description: "Sem endereço, a cliente não sabe onde retirar.",
+        description: "Sem endereço, o cliente não sabe onde retirar.",
       });
       return;
     }
+
+    setIsSaving(true);
+    haptic.medium();
 
     const retiradaMudou =
       (formData.modo !== "entrego") !==
       retiradaLigadaNaLista(config?.enabledShippingMethods);
     // O alcance "só perto da loja" é uma cópia do CEP: se Minha loja o mudou
-    // desde que o formulário abriu, o Salvar leva o alcance junto.
+    // desde que o formulário abriu, o Salvar leva o alcance junto. Limite
+    // conhecido: um alcance escrito de propósito IGUAL aos 5 primeiros números
+    // do CEP antigo (ex.: "38500") é indistinguível do automático e também
+    // acompanha o CEP novo.
+    const alcanceAntes = formData.localCepRange;
     const alcance =
       alcanceAoMudarOCepDaLoja(
         cepDoFormularioRef.current,
@@ -664,10 +669,15 @@ export const AdminShippingView = memo(function AdminShippingView({
       // "esquecido" de uma estratégia anterior deixaria `isFormDirty`
       // nacional preso em `true` para sempre.
       setFormDataNacional(nacionalAjustado);
-      if (alcance !== formData.localCepRange) {
+      if (alcance !== alcanceAntes) {
         // O alcance foi regravado: o formulário o acompanha, senão ficaria
-        // "diferente do salvo" para sempre.
-        setFormData((prev) => ({ ...prev, localCepRange: alcance }));
+        // "diferente do salvo" para sempre — mas só se o campo ainda é o de
+        // antes do Salvar (os campos seguem editáveis enquanto salva).
+        setFormData((prev) =>
+          prev.localCepRange === alcanceAntes
+            ? { ...prev, localCepRange: alcance }
+            : prev,
+        );
       }
       setFalhaAoSalvar(false);
       // As regras salvaram; um token de transportadora ainda não salvo

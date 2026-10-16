@@ -338,7 +338,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     await renderizarFrete();
     expect(chaveDaRetirada().getAttribute("aria-checked")).toBe("true");
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
-      "não aparece para a cliente",
+      "não aparece para o cliente",
     );
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
       "Minha loja",
@@ -603,6 +603,171 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
       x.textContent?.includes("Escrever faixa de CEP"),
     );
     expect(resumo?.className).toContain("before:content-");
+  });
+
+  const alertas = () => [...hospedeiro.querySelectorAll('[role="alert"]')];
+
+  it("Só retiro sem endereço: UM aviso só, colado nos cartões, e a dica não repete a falta", async () => {
+    estadoDaLoja.atual = { originCep: "38500-000", storeAddress: null };
+    await renderizarFrete(vi.fn());
+    await clicar(chaveDaRetirada("Só retiro"));
+    expect(alertas()).toHaveLength(1);
+    const grupo = hospedeiro.querySelector(
+      '[role="radiogroup"][aria-label="Como você entrega na sua cidade"]',
+    );
+    expect(grupo?.parentElement?.contains(alertas()[0])).toBe(true);
+    expect(hospedeiro.textContent).not.toContain("Para oferecer a retirada");
+  });
+
+  it("Só retiro salvo e loja sem endereço: diz que ninguém consegue comprar, num aviso só", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: null,
+      localDeliveryEnabled: false,
+      enabledShippingMethods: ["store-pickup"],
+    };
+    await renderizarFrete(vi.fn());
+    expect(alertas()).toHaveLength(1);
+    expect(alertas()[0].textContent).toContain("ninguém consegue comprar");
+    expect(alertas()[0].textContent).toContain("volte a entregar");
+  });
+
+  it("retirada salva sem endereço e clique em Só retiro: nunca dois avisos juntos", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: null,
+      enabledShippingMethods: ["pac", "store-pickup"],
+    };
+    await renderizarFrete(vi.fn());
+    await clicar(chaveDaRetirada("Só retiro"));
+    expect(alertas()).toHaveLength(1);
+  });
+
+  it("os textos da tela falam sempre 'o cliente' (nunca 'a cliente')", async () => {
+    estadoDaLoja.atual = { originCep: "38500-000", storeAddress: null };
+    await renderizarFrete(vi.fn());
+    await clicar(chaveDaRetirada("Só retiro"));
+    expect(hospedeiro.textContent).not.toMatch(
+      /\ba cliente\b|\bda cliente\b|\bpara a cliente\b/i,
+    );
+  });
+
+  it("valor e prazo: a pílula inteira é um rótulo do campo, com 44 px de toque", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete();
+    for (const id of ["local-delivery-fee", "local-delivery-days"]) {
+      const rotulo = hospedeiro.querySelector(`label[for="${id}"]`);
+      expect(rotulo?.querySelector(`#${id}`)).not.toBeNull();
+      expect(rotulo?.className).toContain("min-h-11");
+    }
+  });
+
+  it("contraste: dica e unidades em zinc-400 (não zinc-500) e seta do CEP no tom do texto", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete();
+    const dica = [...hospedeiro.querySelectorAll("p")].find((p) =>
+      p.textContent?.startsWith("Ligada: quem é de fora"),
+    );
+    expect(dica?.className).toContain("text-zinc-400");
+    const unidade = [...hospedeiro.querySelectorAll("label span")].find(
+      (x) => x.textContent === "R$",
+    );
+    expect(unidade?.className).toContain("text-zinc-400");
+    const resumo = [...hospedeiro.querySelectorAll("summary")].find((x) =>
+      x.textContent?.includes("Escrever faixa de CEP"),
+    );
+    expect(resumo?.className).toContain("before:text-zinc-300");
+  });
+
+  it("'Só entregar na cidade' some em Só retiro e volta em Entrego", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete();
+    const chave = () =>
+      hospedeiro.querySelector(
+        'button[role="switch"][aria-label="Só entregar na cidade"]',
+      );
+    expect(chave()).not.toBeNull();
+    await clicar(chaveDaRetirada("Só retiro"));
+    expect(chave()).toBeNull();
+    await clicar(chaveDaRetirada("Entrego"));
+    expect(chave()).not.toBeNull();
+  });
+
+  it("alcance escrito de propósito é enviado exatamente como está", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete();
+    digitar("#local-cep-range", "38500-000, 38509-999");
+    await clicar(botaoSalvar());
+    expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ localCepRange: "38500-000, 38509-999" }),
+    );
+  });
+
+  it("o que a lojista digita no alcance enquanto salva não é apagado", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      localCepRange: "38500",
+      storeAddress: ENDERECO_FICTICIO,
+      enabledShippingMethods: ["pac"],
+    };
+    await renderizarFrete();
+    await clicar(chaveDaRetirada("Entrego e retiro"));
+    estadoDaLoja.atual = {
+      ...estadoDaLoja.atual,
+      originCep: "38400-100",
+      localCepRange: "38400",
+    };
+    await renderizarFrete();
+    let terminar: (ok: boolean) => void = () => {};
+    updateConfig.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((r) => {
+          terminar = r;
+        }),
+    );
+    await clicar(botaoSalvar());
+    digitar("#local-cep-range", "38400-000, 38499-999");
+    await act(async () => {
+      terminar(true);
+    });
+    await drenar();
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#local-cep-range")?.value,
+    ).toBe("38400-000, 38499-999");
+  });
+
+  it("sem endereço, recusar o salvamento não deixa a tela presa em 'Salvando…'", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete();
+    await clicar(chaveDaRetirada("Só retiro"));
+    estadoDaLoja.atual = { originCep: "38500-000" };
+    await renderizarFrete();
+    const botao = botaoSalvar() as HTMLButtonElement;
+    // O botão está desabilitado: chama direto o clique que o React guarda.
+    const chave = Object.keys(botao).find((k) =>
+      k.startsWith("__reactProps"),
+    ) as string;
+    await act(async () => {
+      (Reflect.get(botao, chave) as { onClick: () => void }).onClick();
+    });
+    await drenar();
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(botaoSalvar()?.textContent?.trim()).not.toBe("Salvando…");
   });
 
   // RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md): os dois testes "Transportadoras: ..."

@@ -1,4 +1,5 @@
 import type { StatusDaFaixaFrete } from "@/components/admin/shipping/FreteResumoFaixa";
+import { lerEnderecoConferido } from "@/lib/endereco-da-loja";
 import {
   type ConfigDeFreteNacional,
   resumoDaEstrategiaNacional,
@@ -66,9 +67,12 @@ export function statusDaEntrega({
   const localFee = Number(config?.localDeliveryFee ?? 10);
 
   // "Só retiro": a loja não entrega nem manda por transportadora; a cliente
-  // retira e quem é de fora também. Só falta o endereço para ela saber onde.
+  // retira e quem é de fora também. Só falta o endereço para saber onde. O
+  // critério é o MESMO do passo "entrega" da loja pronta: endereço conferido
+  // (formato novo, com o CEP da loja), não qualquer texto.
   const soRetiro = modoDaEntregaNaCidade(config) === "so_retiro";
-  const temEndereco = (config?.storeAddress ?? "").trim() !== "";
+  const temEndereco =
+    lerEnderecoConferido(config?.storeAddress, config?.originCep) !== null;
 
   const local: StatusDaFaixaFrete = !config?.originCep
     ? {
@@ -82,8 +86,8 @@ export function statusDaEntrega({
           rotulo: "Na sua cidade",
           valor: "Só retiro",
           detalhe: temEndereco
-            ? "a cliente retira na loja"
-            : "falta cadastrar o endereço da loja em Minha loja",
+            ? "o cliente retira na loja"
+            : "falta confirmar o endereço da loja em Minha loja",
           tom: temEndereco ? "positivo" : "atencao",
         }
       : {
@@ -144,8 +148,16 @@ export function statusDaEntrega({
               tom: "atencao",
             };
 
-  const gratis: StatusDaFaixaFrete =
-    presetSalvo === "acima_de_valor"
+  // "Só retiro" vale sobre qualquer regra de grátis: não há entrega para dar
+  // desconto, e a retirada nunca tem custo.
+  const gratis: StatusDaFaixaFrete = soRetiro
+    ? {
+        rotulo: "Frete grátis local",
+        valor: "Retirada grátis",
+        detalhe: "a retirada na loja não tem custo",
+        tom: "positivo",
+      }
+    : presetSalvo === "acima_de_valor"
       ? {
           rotulo: "Frete grátis local",
           valor: `Acima de R$ ${reais(minSalvo)}`,
@@ -168,19 +180,12 @@ export function statusDaEntrega({
                 "produtos marcados saem sem custo na entrega da cidade e na retirada",
               tom: "positivo",
             }
-          : soRetiro
-            ? {
-                rotulo: "Frete grátis local",
-                valor: "Retirada grátis",
-                detalhe: "a retirada na loja não tem custo",
-                tom: "positivo",
-              }
-            : {
-                rotulo: "Frete grátis local",
-                valor: "Desligado",
-                detalhe: "nenhuma regra de grátis ativa",
-                tom: "neutro",
-              };
+          : {
+              rotulo: "Frete grátis local",
+              valor: "Desligado",
+              detalhe: "nenhuma regra de grátis ativa",
+              tom: "neutro",
+            };
 
   return [local, nacional, gratis] as const;
 }

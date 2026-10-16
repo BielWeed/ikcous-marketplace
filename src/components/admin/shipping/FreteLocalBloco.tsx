@@ -230,6 +230,19 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   const temEndereco = (enderecoDaLoja ?? "").trim() !== "";
   const onde =
     cidade && uf ? `${cidade}/${uf}` : cidade ? cidade : "sua cidade";
+  // UM aviso só sobre o endereço (nunca dois empilhados, nem repetido na dica):
+  // o estado salvo/escolhido sem endereço ganha o texto do que isso causa; o
+  // clique recusado só explica por que a escolha não valeu.
+  const avisoDoEndereco: string | null =
+    temEndereco || !onModo
+      ? null
+      : soRetiro
+        ? "Sem endereço cadastrado, ninguém consegue comprar: cadastre o endereço em Minha loja ou volte a entregar."
+        : modo !== "entrego"
+          ? "A retirada está ligada, mas a loja está sem endereço: a opção não aparece para o cliente até você cadastrar o endereço em Minha loja."
+          : semEnderecoAoEscolher
+            ? "Para escolher a retirada, cadastre o endereço da loja em Minha loja. O cliente precisa saber onde buscar."
+            : null;
   const entraNoTeste =
     prefixo !== null && cepDeTeste.replace(/\D/g, "").length === 8
       ? cepEhLocal(cepDaLoja ?? "", cepDeTeste, faixa)
@@ -331,6 +344,16 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               />
             ))}
           </div>
+          {avisoDoEndereco && (
+            // Colado nos cartões: no celular um aviso lá embaixo ficava fora
+            // da tela e parecia que o toque não tinha feito nada.
+            <p
+              role="alert"
+              className="mt-3 text-[12.5px] leading-snug text-amber-300"
+            >
+              {avisoDoEndereco}
+            </p>
+          )}
         </div>
       )}
 
@@ -357,8 +380,11 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
         >
           {/* Mesma mecânica da tela anterior (o campo vazio lê 0 = grátis na
             cidade) — mudou a casca, não o comportamento. */}
-          <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2">
-            <span className="text-xs font-semibold text-zinc-500">R$</span>
+          <label
+            htmlFor="local-delivery-fee"
+            className="flex min-h-11 cursor-text items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2"
+          >
+            <span className="text-xs font-semibold text-zinc-400">R$</span>
             <input
               id="local-delivery-fee"
               type="number"
@@ -373,9 +399,12 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               disabled={desabilitado}
               className="w-20 bg-transparent text-right text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none"
             />
-          </div>
+          </label>
           {onDias && (
-            <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2">
+            <label
+              htmlFor="local-delivery-days"
+              className="flex min-h-11 cursor-text items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2"
+            >
               <input
                 id="local-delivery-days"
                 type="text"
@@ -387,10 +416,10 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 disabled={desabilitado}
                 className="w-10 bg-transparent text-right text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50"
               />
-              <span className="text-xs font-semibold text-zinc-500">
+              <span className="text-xs font-semibold text-zinc-400">
                 {dias === "1" ? "dia" : "dias"}
               </span>
-            </div>
+            </label>
           )}
         </Linha>
       )}
@@ -499,7 +528,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           <details ref={detalhesRef} className="group mt-2">
             <summary
               onClick={() => setMexeuNoPainel(true)}
-              className="flex min-h-11 cursor-pointer list-none items-center text-[13px] font-semibold text-zinc-300 before:mr-2 before:inline-block before:text-zinc-500 before:transition-transform before:content-['▸'] group-open:before:rotate-90 [&::-webkit-details-marker]:hidden"
+              className="flex min-h-11 cursor-pointer list-none items-center text-[13px] font-semibold text-zinc-300 before:mr-2 before:inline-block before:text-base before:text-zinc-300 before:transition-transform before:content-['▸'] group-open:before:rotate-90 [&::-webkit-details-marker]:hidden"
             >
               Escrever faixa de CEP
             </summary>
@@ -517,45 +546,26 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       )}
 
       {onModo && (
-        <>
-          <Linha
-            nome="Endereço da retirada"
-            dica={
-              temEndereco
-                ? `${soRetiro ? "Todo cliente" : "Quem é da mesma área da entrega local"} pode buscar o pedido de graça em: ${(enderecoDaLoja ?? "").trim()}`
-                : "Para oferecer a retirada, cadastre o endereço da loja em Minha loja — a cliente precisa saber onde buscar o pedido."
-            }
-          >
-            {!temEndereco && onNavigate && (
-              <button
-                type="button"
-                onClick={() => onNavigate("admin-about-store")}
-                className="flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
-              >
-                Cadastrar endereço em Minha loja
-              </button>
-            )}
-          </Linha>
-          {semEnderecoAoEscolher && !temEndereco && (
-            <p
-              role="alert"
-              className="mt-2 text-[12.5px] leading-snug text-amber-300"
+        <Linha
+          nome="Endereço da retirada"
+          dica={
+            temEndereco
+              ? `${soRetiro ? "Todo cliente" : "Quem é da mesma área da entrega local"} pode buscar o pedido de graça em: ${(enderecoDaLoja ?? "").trim()}`
+              : avisoDoEndereco
+                ? undefined
+                : "Para oferecer a retirada, cadastre o endereço da loja em Minha loja — o cliente precisa saber onde buscar o pedido."
+          }
+        >
+          {!temEndereco && onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate("admin-about-store")}
+              className="flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
             >
-              Para escolher a retirada, cadastre o endereço da loja em Minha
-              loja. A cliente precisa saber onde buscar.
-            </p>
+              Cadastrar endereço em Minha loja
+            </button>
           )}
-          {modo !== "entrego" && !temEndereco && (
-            <p
-              role="alert"
-              className="mt-2 text-[12.5px] leading-snug text-amber-300"
-            >
-              A retirada está ligada, mas a loja está sem endereço: a opção não
-              aparece para a cliente até você cadastrar o endereço em Minha
-              loja.
-            </p>
-          )}
-        </>
+        </Linha>
       )}
     </section>
   );

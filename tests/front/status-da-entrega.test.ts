@@ -3,6 +3,7 @@
 // cidade" e "Frete grátis local". Era um `useMemo` dentro de
 // AdminShippingView; extraída para que a tela e quem mais precisar contem a
 // mesma história (regra escrita em dois lugares diverge).
+import { montarEnderecoDaLoja } from "@/lib/endereco-da-loja";
 import { statusDaEntrega } from "@/lib/status-da-entrega";
 import { describe, expect, it } from "vitest";
 
@@ -215,14 +216,26 @@ describe("statusDaEntrega — Frete grátis local", () => {
 });
 
 describe("status da entrega em Só retiro", () => {
+  const conferido = montarEnderecoDaLoja({
+    cep: "01310100",
+    rua: "Avenida Paulista",
+    numero: "1578",
+    complemento: "",
+    bairro: "Bela Vista",
+    cidade: "São Paulo",
+    uf: "SP",
+  });
+  const soRetiro = (parcial: Partial<Config> = {}) =>
+    config({
+      localDeliveryEnabled: false,
+      enabledShippingMethods: ["store-pickup"],
+      ...parcial,
+    });
+
   it("não promete entrega ou transportadora e informa retirada para quem é de fora", () => {
     const [local, nacional, gratis] = statusDaEntrega(
       entrada({
-        config: config({
-          localDeliveryEnabled: false,
-          enabledShippingMethods: ["store-pickup"],
-          storeAddress: "Rua de Teste, 10",
-        }),
+        config: soRetiro({ ...conferido }),
         nomesLigados: ["Melhor Envio"],
       }),
     );
@@ -232,23 +245,37 @@ describe("status da entrega em Só retiro", () => {
     expect(gratis.valor).toBe("Retirada grátis");
   });
   it("sem endereço, avisa a pendência", () => {
-    const [local] = statusDaEntrega(
-      entrada({
-        config: config({
-          localDeliveryEnabled: false,
-          enabledShippingMethods: ["store-pickup"],
-        }),
-      }),
-    );
+    const [local] = statusDaEntrega(entrada({ config: soRetiro() }));
     expect(local.tom).toBe("atencao");
     expect(local.detalhe).toContain("endereço");
+  });
+  it("texto de endereço sem conferência (outro formato ou outro CEP) também é pendência", () => {
+    const [livre] = statusDaEntrega(
+      entrada({ config: soRetiro({ storeAddress: "Rua de Teste, 10" }) }),
+    );
+    expect(livre.tom).toBe("atencao");
+    const [outroCep] = statusDaEntrega(
+      entrada({
+        config: soRetiro({ ...conferido, originCep: "38500-000" }),
+      }),
+    );
+    expect(outroCep.tom).toBe("atencao");
+  });
+  it("a faixa de grátis fala só de retirada, com precedência sobre as outras regras", () => {
+    for (const freeShippingMin of [0, 100, -1, -2]) {
+      const [, , gratis] = statusDaEntrega(
+        entrada({ config: soRetiro({ ...conferido, freeShippingMin }) }),
+      );
+      expect(gratis.valor).toBe("Retirada grátis");
+      expect(`${gratis.valor} ${gratis.detalhe}`).not.toMatch(
+        /Acima de|entrega na cidade/,
+      );
+    }
   });
   it("padrões explícitos preservam todos os resumos antigos", () => {
     expect(
       statusDaEntrega(
-        entrada({
-          config: config({ localDeliveryEnabled: true }),
-        }),
+        entrada({ config: config({ localDeliveryEnabled: true }) }),
       ),
     ).toEqual(statusDaEntrega(entrada()));
   });
