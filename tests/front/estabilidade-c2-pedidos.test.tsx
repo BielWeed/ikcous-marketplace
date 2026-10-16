@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { act } from "react";
 import { act, useEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const rpc = vi.fn();
