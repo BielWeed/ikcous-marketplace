@@ -5,78 +5,56 @@
 // Fica na aba (sessionStorage): sobrevive a recarregar a página e some ao fechar
 // a aba. Guarda só um resumo (hash) do conteúdo, nunca descrição nem valor, e
 // vence em 10 minutos para um segundo lançamento igual de propósito não ser
-// tomado por repetição.
+// tomado por repetição. Sem armazenamento disponível (bloqueio, aba privada) a
+// proteção entre aberturas simplesmente não existe; a da mesma abertura segue.
 const VALIDADE_MS = 10 * 60_000;
-const CHAVE_DO_ARMAZEM = "fin-lancamento-tentativas-em-aberto";
+const ARMAZEM = "fin-lancamento-tentativas-em-aberto";
 
 type Registro = { chave: string; em: number };
 
-const emMemoria = new Map<string, Registro>();
-
 // FNV-1a de 32 bits: resumo curto e estável, não é segredo nem prova de nada.
-function resumoDoConteudo(conteudo: string): string {
+function resumo(conteudo: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < conteudo.length; i++) {
-    h ^= conteudo.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
+    h = Math.imul(h ^ conteudo.charCodeAt(i), 0x01000193);
   }
-  return `${(h >>> 0).toString(16)}:${conteudo.length}`;
+  return `${h >>> 0}:${conteudo.length}`;
 }
 
 function ler(): Map<string, Registro> {
   try {
-    const bruto = globalThis.sessionStorage?.getItem(CHAVE_DO_ARMAZEM);
-    if (bruto) {
-      const lido = JSON.parse(bruto);
-      if (lido && typeof lido === "object") {
-        return new Map(Object.entries(lido as Record<string, Registro>));
-      }
-    }
+    const bruto = sessionStorage.getItem(ARMAZEM);
+    return new Map(Object.entries(bruto ? JSON.parse(bruto) : {}));
   } catch {
-    // Sem armazenamento (aba privada, bloqueio): vale só a memória do módulo.
+    return new Map();
   }
-  return new Map(emMemoria);
 }
 
 function gravar(todos: Map<string, Registro>): void {
-  emMemoria.clear();
-  for (const [k, v] of todos) emMemoria.set(k, v);
   try {
-    globalThis.sessionStorage?.setItem(
-      CHAVE_DO_ARMAZEM,
-      JSON.stringify(Object.fromEntries(todos)),
-    );
+    sessionStorage.setItem(ARMAZEM, JSON.stringify(Object.fromEntries(todos)));
   } catch {
-    // Idem: a memória do módulo já foi atualizada acima.
+    // Sem armazenamento: segue sem a proteção entre aberturas.
   }
 }
 
 export function chaveEmAbertoDoConteudo(conteudo: string): string | null {
-  const resumo = resumoDoConteudo(conteudo);
-  const todos = ler();
-  const achada = todos.get(resumo);
-  if (!achada) return null;
-  if (
-    typeof achada.chave !== "string" ||
-    typeof achada.em !== "number" ||
-    Date.now() - achada.em > VALIDADE_MS
-  ) {
-    todos.delete(resumo);
-    gravar(todos);
-    return null;
-  }
-  return achada.chave;
+  const achada = ler().get(resumo(conteudo));
+  return typeof achada?.chave === "string" &&
+    Date.now() - achada.em <= VALIDADE_MS
+    ? achada.chave
+    : null;
 }
 
 export function guardarChaveEmAberto(conteudo: string, chave: string): void {
   const todos = ler();
-  todos.set(resumoDoConteudo(conteudo), { chave, em: Date.now() });
+  todos.set(resumo(conteudo), { chave, em: Date.now() });
   gravar(todos);
 }
 
 export function esquecerChaveEmAberto(conteudo: string): void {
   const todos = ler();
-  todos.delete(resumoDoConteudo(conteudo));
+  todos.delete(resumo(conteudo));
   gravar(todos);
 }
 

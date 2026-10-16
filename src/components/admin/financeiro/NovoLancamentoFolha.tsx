@@ -5,6 +5,7 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { salvarLancamento } from "@/hooks/useFinanceiro";
+import { gerarUuidDaCompra } from "@/lib/chave-do-pedido";
 import {
   FORMAS_DO_LANCAMENTO,
   type FormularioDoLancamento,
@@ -42,20 +43,6 @@ import {
 } from "./tentativasEmAberto";
 
 const ID_FORM = "fin-novo-lancamento";
-
-/** Em HTTP local, randomUUID pode faltar; getRandomValues ainda gera UUID v4. */
-function gerarChaveDaTentativa(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
 
 const PARCELAS = Array.from({ length: MAXIMO_DE_PARCELAS }, (_, i) => i + 1);
 
@@ -105,7 +92,7 @@ export function NovoLancamentoFolha({
   );
   const [form, setForm] = useState<FormularioDoLancamento>(formInicial);
   const formRef = useRef(formInicial);
-  const [chaveInicial] = useState(gerarChaveDaTentativa);
+  const [chaveInicial] = useState(gerarUuidDaCompra);
   const chaveDaTentativa = useRef(chaveInicial);
   // "Sujo" = diferente do que abriu (desfazer à mão limpa o aviso). Tocar e
   // sair de um campo sem mudar nada não conta.
@@ -140,7 +127,7 @@ export function NovoLancamentoFolha({
     // Blur/debounce sem mudança não cria outra tentativa. A ref muda no evento,
     // antes de um submit no mesmo tique; nenhum efeito/updater regenera a chave.
     if (JSON.stringify(proximo) !== JSON.stringify(formRef.current)) {
-      chaveDaTentativa.current = gerarChaveDaTentativa();
+      chaveDaTentativa.current = gerarUuidDaCompra();
       formRef.current = proximo;
       setForm(proximo);
     }

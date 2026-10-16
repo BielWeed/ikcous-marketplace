@@ -52,14 +52,30 @@ describe("tentativas em aberto do lançamento", () => {
     expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
   });
 
-  it("sem sessionStorage funciona só pela memória do módulo", async () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("bloqueado");
-    });
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("bloqueado");
-    });
+  it("sem sessionStorage não quebra: só perde a proteção entre aberturas", async () => {
+    const bloqueado = {
+      getItem: () => {
+        throw new Error("bloqueado");
+      },
+      setItem: () => {
+        throw new Error("bloqueado");
+      },
+    };
+    vi.stubGlobal("sessionStorage", bloqueado);
     const m = await import(MODULO);
+    expect(() => m.guardarChaveEmAberto(CONTEUDO, "chave-1")).not.toThrow();
+    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
+    expect(() => m.esquecerChaveEmAberto(CONTEUDO)).not.toThrow();
+    vi.unstubAllGlobals();
+  });
+
+  it("registro com formato errado no armazenamento é ignorado", async () => {
+    sessionStorage.setItem(
+      "fin-lancamento-tentativas-em-aberto",
+      JSON.stringify({ qualquer: 42, outro: null }),
+    );
+    const m = await import(MODULO);
+    expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBeNull();
     m.guardarChaveEmAberto(CONTEUDO, "chave-1");
     expect(m.chaveEmAbertoDoConteudo(CONTEUDO)).toBe("chave-1");
   });
