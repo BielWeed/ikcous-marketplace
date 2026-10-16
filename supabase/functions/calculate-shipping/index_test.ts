@@ -582,6 +582,15 @@ function clienteFalso(opts: {
     const resolver = () => {
       switch (tabela) {
         case "store_config":
+          // Banco anterior à migration: select de coluna inexistente é erro,
+          // nunca uma linha sem os campos pedidos.
+          if (String(colunas).includes("local_delivery_enabled") &&
+              !("local_delivery_enabled" in config) && !("local_delivery_days" in config)) {
+            return Promise.resolve({
+              data: null,
+              error: { code: "42703", message: "column store_config.local_delivery_enabled does not exist" },
+            });
+          }
           if (String(colunas).includes("store_address")) {
             registro.leiturasDeEndereco = (registro.leiturasDeEndereco ?? 0) + 1;
             if (opts.falhaAoLerEndereco === "excecao") {

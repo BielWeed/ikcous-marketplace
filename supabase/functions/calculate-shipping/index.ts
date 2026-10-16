@@ -954,10 +954,11 @@ async function cotarUmaVez(
     const leituraNacional = await lerEstrategiaNacionalDaLoja(supabaseClient)
     const estrategiaNacionalAtual: EstrategiaNacional = leituraNacional.ok ? leituraNacional.estrategia : espelhoLegado(storeConfig.free_shipping_min)
     // ENTREGA PRÓPRIA (16/10, peça B): "Entrego" / "Entrego e retiro" / "Só
-    // retiro" e o prazo. Mesma regra: leitura SEPARADA e tolerante; falhou
-    // (banco antes da migration, erro, valor fora do CHECK) → comportamento de
-    // hoje (ligada, 1 dia) e NADA no hash de `revisaoConfig`.
+    // retiro" e o prazo. Leitura SEPARADA: só coluna ausente confirmada
+    // permite o padrão legado (ligada, 1 dia), sem mudar `revisaoConfig`.
+    // Qualquer outra falha impede a cotação, sem inventar disponibilidade.
     const leituraEntrega = await lerEntregaPropriaDaLoja(supabaseClient)
+    if (!leituraEntrega.ok && !leituraEntrega.colunaAusente) throw new Error('Falha ao obter configuração da entrega própria')
     const entrega: EntregaPropria = leituraEntrega.ok ? leituraEntrega.entrega : ENTREGA_PROPRIA_PADRAO
     const lidas = await lerCredenciais(supabaseClient)
     const revisaoConfig = lidas.ok && revisaoLida.ok

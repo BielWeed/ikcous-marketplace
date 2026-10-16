@@ -58,23 +58,28 @@ export const COLUNAS_DA_ENTREGA_PROPRIA = 'local_delivery_enabled, local_deliver
 
 /**
  * Leitura tolerante das 2 colunas da entrega própria: `{ok:true, entrega}`
- * quando a linha bate com o CHECK da migration; `{ok:false}` em erro do
- * PostgREST (banco sem as colunas — `42703`), exceção, ou linha com forma
- * inesperada. Quem chama cai no comportamento de hoje (entrega ligada, 1
- * dia) e NÃO põe nada na `revisaoConfig`.
+ * quando a linha bate com o CHECK da migration; `{ok:false, colunaAusente:true}`
+ * só com `42703` ou `PGRST204` (banco sem as colunas). Só nesse caso quem
+ * cota usa o padrão legado, sem mudar a `revisaoConfig`. Qualquer outra
+ * falha devolve `colunaAusente:false` e impede a cotação.
  */
-export async function lerEntregaPropriaDaLoja(supabase: any): Promise<{ ok: true; entrega: EntregaPropria } | { ok: false }> {
+export async function lerEntregaPropriaDaLoja(supabase: any): Promise<{ ok: true; entrega: EntregaPropria } | { ok: false; colunaAusente: boolean }> {
     try {
         const { data, error } = await supabase
             .from('store_config')
             .select(COLUNAS_DA_ENTREGA_PROPRIA)
             .eq('id', 1)
             .maybeSingle()
-        if (error || !data) return { ok: false }
+        if (error) {
+            console.error('Error fetching local delivery config:', error.code ?? 'sem_codigo')
+            return { ok: false, colunaAusente: error.code === '42703' || error.code === 'PGRST204' }
+        }
+        if (!data) return { ok: false, colunaAusente: false }
         const entrega = entregaPropriaDaLinha(data)
-        return entrega ? { ok: true, entrega } : { ok: false }
-    } catch {
-        return { ok: false }
+        return entrega ? { ok: true, entrega } : { ok: false, colunaAusente: false }
+    } catch (error) {
+        console.error('Error fetching local delivery config:', error?.code ?? 'sem_codigo')
+        return { ok: false, colunaAusente: false }
     }
 }
 

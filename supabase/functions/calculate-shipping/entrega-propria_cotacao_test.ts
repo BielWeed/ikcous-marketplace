@@ -6,8 +6,8 @@
 // A lojista escolhe "Entrego" / "Entrego e retiro" / "Só retiro" e o prazo da
 // entrega própria. As duas colunas novas de `store_config`
 // (`local_delivery_enabled`, `local_delivery_days`) são lidas à parte e com
-// tolerância; sem elas (banco antes da migration, erro, valor fora do CHECK) a
-// resposta é a de hoje: entrega ligada, 1 dia.
+// tolerância apenas para coluna ausente confirmada (banco antes da migration):
+// entrega ligada, 1 dia. As demais falhas impedem a cotação.
 //
 // Regra-mãe: "Só retiro" desliga a Entrega Local e a retirada vale para
 // QUALQUER CEP. Nos outros dois modos a retirada continua só para a cidade.
@@ -62,7 +62,7 @@ async function cota(opts: {
     aceitaRetirada?: unknown
     contratoCliente?: unknown
     endereco?: string | null
-    falhas?: Record<string, boolean>
+    falhas?: Record<string, unknown>
     cart?: unknown
     produtos?: any[]
     banco?: ReturnType<typeof bancoFalso>
@@ -229,7 +229,7 @@ Deno.test("prazo: só o 0 é reescrito para o app antigo — 2 dias seguem 2 sem
     assertEquals(corpo.options[0].deliveryDays, 2)
 })
 
-// ── Leitura tolerante: tudo que não é a linha esperada vira "como hoje" ─────
+// ── Leitura tolerante só para coluna ausente confirmada ─────────────────────
 
 Deno.test("tolerância: erro do PostgREST (42703) na leitura das colunas novas -> entrega ligada, 1 dia, 200", async () => {
     const { resposta, corpo } = await cota({
@@ -243,26 +243,48 @@ Deno.test("tolerância: erro do PostgREST (42703) na leitura das colunas novas -
     assertEquals(corpo.options[0].deliveryDays, 1)
 })
 
-Deno.test("tolerância: EXCEÇÃO (rede caiu) ao ler as colunas novas -> como hoje, 200, e a ação pública também responde", async () => {
-    const banco = bancoFalso({ config: { ...DOS_MODOS.so_retiro, local_delivery_days: 4 }, enderecoDaLoja: ENDERECO })
-    const fromOriginal = banco.cliente.from
-    banco.cliente.from = (tabela: string) => {
-        const t = fromOriginal(tabela)
-        if (tabela !== "store_config") return t
-        return {
-            ...t,
-            select: (c?: string) => {
-                if (c?.includes("local_delivery_enabled")) throw new Error("conexão perdida")
-                return t.select(c)
-            },
-        }
-    }
-    const { resposta, corpo } = await cota({ banco })
+Deno.test("falha fechada: EXCEÇÃO ao ler a entrega nunca oferece local-delivery em Só retiro", async () => {
+    const banco = bancoFalso({
+        config: { ...DOS_MODOS.so_retiro, local_delivery_days: 4 },
+        enderecoDaLoja: ENDERECO,
+        falhas: { excecaoNaEntrega: true },
+    })
+    const { resposta, corpo, saida } = await cota({ banco })
+    assertEquals(resposta.status, 500)
+    assertEquals(corpo, { error: "Não foi possível calcular o frete agora. Tente novamente." })
+    assertEquals(saida.includes("detalhe privado da consulta"), false)
+    const acao = await rodar({ action: "revisao_config_frete" }, { admin: false, banco })
+    assertEquals(acao.resposta.status, 200)
+})
+
+Deno.test("tolerância: PGRST204 confirma coluna ausente e mantém entrega ligada, 1 dia", async () => {
+    const { resposta, corpo } = await cota({ modo: "so_retiro", falhas: { erroDaEntrega: "PGRST204" } })
     assertEquals(resposta.status, 200)
     assertEquals(ids(corpo), ["local-delivery", "store-pickup"])
     assertEquals(corpo.options[0].deliveryDays, 1)
-    const acao = await rodar({ action: "revisao_config_frete" }, { admin: false, banco })
-    assertEquals(acao.resposta.status, 200)
+})
+
+Deno.test("falha fechada: erro passageiro em Só retiro ou prazo próprio não fabrica disponibilidade nem grava cotação", async () => {
+    for (const modo of ["so_retiro", "entrego_e_retiro"] as Modo[]) {
+        for (const cep of [CEP_LOCAL, CEP_FORA]) {
+            const { resposta, corpo, chamadas, registro, saida } = await cota({
+                modo, cep, config: { local_delivery_days: 5 }, falhas: { erroDaEntrega: "XX000" },
+            })
+            assertEquals(resposta.status, 500)
+            assertEquals(corpo, { error: "Não foi possível calcular o frete agora. Tente novamente." })
+            assertEquals(chamadas.length, 0)
+            assertEquals(registro.upsertsCache.length, 0)
+            assertEquals(registro.logs.length, 0)
+            assertEquals(saida.includes("detalhe privado da consulta"), false)
+            assert(saida.includes("XX000"))
+        }
+    }
+})
+
+Deno.test("falha fechada: linha da entrega ausente não vira o padrão legado", async () => {
+    const { resposta, corpo } = await cota({ modo: "so_retiro", falhas: { semLinhaDaEntrega: true } })
+    assertEquals(resposta.status, 500)
+    assertEquals(corpo, { error: "Não foi possível calcular o frete agora. Tente novamente." })
 })
 
 Deno.test("tolerância: a coluna nova NUNCA entra no select principal (a cotação inteira depende dele)", async () => {
@@ -274,7 +296,7 @@ Deno.test("tolerância: a coluna nova NUNCA entra no select principal (a cotaç�
     assert(doProvedor(corpo).length > 0)
 })
 
-Deno.test("tolerância: valor fora do que o CHECK da migration garante -> a linha INTEIRA é ignorada (como hoje)", async () => {
+Deno.test("falha fechada: valor fora do CHECK ou linha incompleta impede a cotação", async () => {
     const invalidos: Array<Record<string, unknown>> = [
         { local_delivery_enabled: false, local_delivery_days: 31 },
         { local_delivery_enabled: false, local_delivery_days: -1 },
@@ -287,9 +309,9 @@ Deno.test("tolerância: valor fora do que o CHECK da migration garante -> a linh
         { local_delivery_days: 4 },
     ]
     for (const extra of invalidos) {
-        const { corpo } = await cota({ config: { enabled_shipping_methods: ["sedex", "pac"], ...extra } })
-        assertEquals(ids(corpo), ["local-delivery"], JSON.stringify(extra))
-        assertEquals(corpo.options[0].deliveryDays, 1, JSON.stringify(extra))
+        const { resposta, corpo } = await cota({ config: { enabled_shipping_methods: ["sedex", "pac"], ...extra } })
+        assertEquals(resposta.status, 500, JSON.stringify(extra))
+        assertEquals(corpo, { error: "Não foi possível calcular o frete agora. Tente novamente." }, JSON.stringify(extra))
     }
 })
 
@@ -568,13 +590,11 @@ Deno.test("revisão: a resposta da cotação usa o hash de antes com os padrões
     assert(typeof semColunas === "string" && semColunas.length === 64)
     // Colunas no padrão = mesmo hash de banco sem as colunas.
     assertEquals(await revisaoDe({ local_delivery_enabled: true, local_delivery_days: 1 }), semColunas)
-    // Leitura falhou (mesmo com a loja em só retiro gravada): comportamento de hoje, hash de hoje.
+    // Coluna ausente confirmada: comportamento de hoje, hash de hoje.
     assertEquals(
         await revisaoDe({ local_delivery_enabled: false, local_delivery_days: 4 }, { colunasDaEntrega: true }),
         semColunas,
     )
-    // Valor inválido: leitura rejeitada = hash de hoje.
-    assertEquals(await revisaoDe({ local_delivery_enabled: false, local_delivery_days: 99 }), semColunas)
     // Muda quando a lojista muda...
     const soRetiro = await revisaoDe({ local_delivery_enabled: false, local_delivery_days: 1 })
     const doisDias = await revisaoDe({ local_delivery_enabled: true, local_delivery_days: 2 })

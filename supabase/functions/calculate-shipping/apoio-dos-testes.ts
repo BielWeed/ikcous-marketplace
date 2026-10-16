@@ -179,6 +179,9 @@ export function bancoFalso(opts: {
          * nunca entrou na lista que a cotação inteira depende.
          */
         colunasDaEntrega?: boolean
+        erroDaEntrega?: string
+        excecaoNaEntrega?: boolean
+        semLinhaDaEntrega?: boolean
     }
 } = {}) {
     const config = { ...CONFIG_BASE, ...(opts.config ?? {}) }
@@ -214,6 +217,16 @@ export function bancoFalso(opts: {
                     return {
                         data: null,
                         error: { message: "column store_config.local_delivery_enabled does not exist", code: "42703" },
+                    }
+                }
+                if (colunas.includes("local_delivery_enabled")) {
+                    if (falhas.excecaoNaEntrega) throw new Error("conexão perdida: detalhe privado da consulta")
+                    if (falhas.erroDaEntrega) return { data: null, error: { code: falhas.erroDaEntrega, message: "detalhe privado da consulta" } }
+                    if (falhas.semLinhaDaEntrega) return { data: null, error: null }
+                    // Banco anterior à migration: o PostgREST recusa o select,
+                    // não devolve uma linha sem as colunas pedidas.
+                    if (!("local_delivery_enabled" in config) && !("local_delivery_days" in config)) {
+                        return { data: null, error: { code: "42703", message: "column store_config.local_delivery_enabled does not exist" } }
                     }
                 }
                 if (colunas.includes("store_address")) {

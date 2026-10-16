@@ -3,6 +3,8 @@
 // bloco do hash, o prazo para o app e a retirada anexada. A cotação de ponta a
 // ponta mora em `entrega-propria_cotacao_test.ts`.
 import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts"
+import { lerEntregaPropriaDaLoja } from "./configuracao.ts"
+import { bancoFalso, capturarConsole } from "./apoio-dos-testes.ts"
 import {
     blocoDaEntregaPropriaNaRevisao,
     comRetiradaAnexada,
@@ -15,6 +17,31 @@ import {
 
 Deno.test("padrão = o comportamento de hoje: entrega ligada, 1 dia", () => {
     assertEquals(ENTREGA_PROPRIA_PADRAO, { ativa: true, dias: 1 })
+})
+
+Deno.test("leitura da entrega: sucesso preserva o modo e o prazo da loja", async () => {
+    const banco = bancoFalso({ config: { local_delivery_enabled: false, local_delivery_days: 4 } })
+    assertEquals(await lerEntregaPropriaDaLoja(banco.cliente), { ok: true, entrega: { ativa: false, dias: 4 } })
+})
+
+Deno.test("leitura da entrega: só 42703 e PGRST204 confirmam coluna ausente", async () => {
+    for (const code of ["42703", "PGRST204", "XX000", "PGRST116", "42501"]) {
+        const banco = bancoFalso({ falhas: { erroDaEntrega: code } })
+        const { resultado } = await capturarConsole(() => lerEntregaPropriaDaLoja(banco.cliente))
+        assertEquals(resultado, { ok: false, colunaAusente: code === "42703" || code === "PGRST204" }, code)
+    }
+})
+
+Deno.test("leitura da entrega: exceção, linha ausente e forma inesperada não confirmam coluna ausente", async () => {
+    for (const opts of [
+        { falhas: { excecaoNaEntrega: true } },
+        { falhas: { semLinhaDaEntrega: true } },
+        { config: { local_delivery_enabled: false } },
+        { config: { local_delivery_enabled: false, local_delivery_days: 31 } },
+    ]) {
+        const { resultado } = await capturarConsole(() => lerEntregaPropriaDaLoja(bancoFalso(opts).cliente))
+        assertEquals(resultado, { ok: false, colunaAusente: false })
+    }
 })
 
 Deno.test("entregaPropriaDaLinha: linha válida (incluindo os limites 0 e 30 do CHECK)", () => {
