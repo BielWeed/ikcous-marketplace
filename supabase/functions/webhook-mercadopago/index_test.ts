@@ -628,11 +628,11 @@ function clienteFalso(opts: {
               const cadeia = {
                 eq(coluna: string, valor: unknown) {
                   if (coluna === "id") id = String(valor);
-                  filtros.push((r) => r[coluna] === valor);
+                  filtros.push((r) => Reflect.get(r, coluna) === valor);
                   return cadeia;
                 },
                 is(coluna: string, valor: null) {
-                  filtros.push((r) => (r[coluna] ?? null) === valor);
+                  filtros.push((r) => (Reflect.get(r, coluna) ?? null) === valor);
                   return cadeia;
                 },
                 select(_colunas: string) { return cadeia; },
