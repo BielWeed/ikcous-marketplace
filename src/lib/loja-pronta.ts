@@ -107,10 +107,22 @@ function itensDoAlcance(faixa: string | null | undefined): string[] {
 const soNumeros = (texto: string): string => texto.replace(/\D/g, "");
 
 /**
- * O alcance é EXATAMENTE os 5 primeiros números do CEP da loja? Gravar isso dá
- * a mesma regra do alcance vazio nas três cópias do servidor (`is_local_cep`,
- * edge e `cepEhLocal`) — por isso "Só perto da loja" pode gravar o número em
- * vez de um campo novo. Alcance vazio NÃO conta: o lojista ainda não confirmou.
+ * O texto do alcance está PREENCHIDO mas não tem nenhum número? ("abc", ",,,").
+ * Para o servidor isso NÃO é alcance vazio: com texto não vazio e sem nenhum
+ * item numérico, ninguém é local (banco, edge e `cepEhLocal` concordam).
+ */
+export function alcanceSemNumeros(faixa: string | null | undefined): boolean {
+  return (faixa ?? "").trim() !== "" && itensDoAlcance(faixa).length === 0;
+}
+
+/**
+ * O alcance é EXATAMENTE os 5 primeiros números do CEP da loja? NESSE instante
+ * gravar isso dá a mesma regra do alcance vazio nas três cópias do servidor
+ * (`is_local_cep`, edge e `cepEhLocal`) — por isso "Só perto da loja" pode
+ * gravar o número em vez de um campo novo. Mas o número é uma CÓPIA: se o CEP
+ * da loja mudar depois, a equivalência acaba — `alcanceAoMudarOCepDaLoja`
+ * regrava no mesmo salvamento do endereço. Alcance vazio NÃO conta: a lojista
+ * ainda não confirmou.
  */
 export function alcanceEhSoPertoDaLoja(
   cepDaLoja: string | null | undefined,
@@ -144,12 +156,32 @@ export function incluirRegiaoNoAlcance(
   const daLoja = prefixoDoCepDaLoja(cepDaLoja);
   if (regiao.length < 5 || daLoja === null) return faixa;
   let itens = itensDoAlcance(faixa);
-  if (itens.length === 0) itens = [daLoja];
+  // Vazio de verdade = "a região da loja": ela entra junto. Texto SEM números
+  // não é vazio para o servidor (ninguém é local): não se abre a região da
+  // loja de carona, entra só a região que a lojista pediu.
+  if (itens.length === 0 && !alcanceSemNumeros(faixa)) itens = [daLoja];
   if (itens.some((item) => soNumeros(item) === regiao)) return faixa;
   if (itens.length === 2 && itens.every((i) => soNumeros(i).length === 8)) {
     itens = [`${soNumeros(itens[0])}-${soNumeros(itens[1])}`];
   }
   return [...itens, regiao].join(", ");
+}
+
+/**
+ * O CEP da loja mudou (Minha loja): o alcance acompanha? Só quando era
+ * EXATAMENTE os 5 primeiros números do CEP ANTIGO ("só perto da loja") e os 5
+ * do CEP novo são outros — devolve o alcance novo para o MESMO salvamento do
+ * endereço gravar. Qualquer outro alcance (vazio, lista, faixa, texto) é da
+ * lojista e nunca é tocado: devolve `null`.
+ */
+export function alcanceAoMudarOCepDaLoja(
+  cepAntigo: string | null | undefined,
+  cepNovo: string | null | undefined,
+  faixa: string | null | undefined,
+): string | null {
+  if (!alcanceEhSoPertoDaLoja(cepAntigo, faixa)) return null;
+  const novo = prefixoDoCepDaLoja(cepNovo);
+  return novo !== null && novo !== prefixoDoCepDaLoja(cepAntigo) ? novo : null;
 }
 
 /**
@@ -161,6 +193,8 @@ export function resumoDoAlcance(
   faixa: string | null | undefined,
 ): string {
   const itens = itensDoAlcance(faixa);
+  if (alcanceSemNumeros(faixa))
+    return "nenhum CEP: o que está escrito não tem números";
   if (itens.length === 0) {
     const prefixo = prefixoDoCepDaLoja(cepDaLoja);
     return prefixo ? `CEPs que começam com ${prefixo}` : "CEPs perto da loja";

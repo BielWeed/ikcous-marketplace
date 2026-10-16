@@ -4,6 +4,10 @@ import {
   Linha,
   PontoEstado,
 } from "@/components/admin/shipping/primitivas-direcao-d";
+import {
+  transportadoraFicaSemPagamento,
+  transportadoraVendeForaDaCidade,
+} from "@/lib/aviso-transportadora-sem-pagamento";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   alcanceEhSoPertoDaLoja,
@@ -15,12 +19,22 @@ import {
 } from "@/lib/loja-pronta";
 import { reais } from "@/lib/status-da-entrega";
 import type { View } from "@/types";
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 /** A dica do texto livre: os dois formatos que o servidor lê e o que "vazio" quer dizer. */
 function dicaDoTexto(cepDaLoja: string | null | undefined): string {
   return `Escreva dois CEPs separados por vírgula (o primeiro e o último) e vale tudo o que está entre eles; ou os 5 primeiros números de cada região, separados por vírgula. ${dicaDaFaixaVazia(cepDaLoja)}. CEP que não entra recebe o frete nacional.`;
 }
+
+/** O que acontece com o cliente de outro bairro, conforme a regra pronta. */
+const FRASE_DE_FORA = new Map<string, string>([
+  ["sim", "compra com transportadora, se tiver conta."],
+  ["nao", "não consegue comprar."],
+  [
+    "sem-pagamento",
+    "não consegue comprar: a transportadora só vale com o pagamento pelo app ligado.",
+  ],
+]);
 
 /** Uma das respostas grandes de "Até onde você entrega?": título e EFEITO. */
 function OpcaoDeAlcance({
@@ -80,9 +94,11 @@ function OpcaoDeAlcance({
  * ATÉ ONDE VOCÊ ENTREGA (16/10/2026): no lugar do campo de texto "Alcance
  * por CEP", duas respostas com o EFEITO escrito embaixo. "Só perto da loja"
  * grava os 5 primeiros números do CEP da loja no MESMO campo do formulário
- * (o Salvar do topo grava; nenhum fluxo novo): é exatamente a regra do alcance
- * VAZIO nas três cópias do servidor, só que agora dita pela lojista — o cartão
- * "Sua loja está pronta?" fecha o passo. "Em mais lugares" abre o teste de CEP
+ * (o Salvar do topo grava; nenhum fluxo novo): no instante da gravação é a
+ * mesma regra do alcance VAZIO nas três cópias do servidor, só que agora dita
+ * pela lojista — o cartão "Sua loja está pronta?" fecha o passo. O número é
+ * uma CÓPIA: se o CEP da loja mudar, Minha loja o regrava no mesmo Salvar do
+ * endereço (`alcanceAoMudarOCepDaLoja`). "Em mais lugares" abre o teste de CEP
  * ("entra / fica de fora") e o botão que acrescenta a região. O texto livre
  * continua, recolhido, para quem já o usa. Nenhum formato novo: só o que
  * `cepEhLocal`/`is_local_cep`/edge já leem.
@@ -115,7 +131,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   enderecoDaLoja,
   onNavigate,
   mostrarCabecalho = true,
-  transportadoraLigada,
+  nomesLigados,
+  pagamentoPeloAppLigado,
 }: {
   readonly valor: number;
   readonly onValor: (valor: number) => void;
@@ -143,9 +160,13 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
    * estado (tela de Frete unificada, 23/09/2026) — evita cabeçalho em
    * dobro. Default `true` preserva o uso isolado (e os testes). */
   readonly mostrarCabecalho?: boolean;
-  /** Há transportadora ligada para quem é de outro bairro? `null`/ausente =
-   * não se sabe (a leitura falhou): a tela não afirma nada. */
-  readonly transportadoraLigada?: boolean | null;
+  /** Nomes das transportadoras com cotação REAL ligada (a mesma régua da
+   * faixa-resumo). `null`/ausente = a leitura ainda não chegou ou falhou: a
+   * tela não afirma nada sobre o cliente de outro bairro. */
+  readonly nomesLigados?: readonly string[] | null;
+  /** Pagamento pelo app ligado (a transportadora só vende com ele). `null`/
+   * ausente = não se sabe: a tela não promete a compra. */
+  readonly pagamentoPeloAppLigado?: boolean | null;
 }) {
   const [semEnderecoAoLigar, setSemEnderecoAoLigar] = useState(false);
   const prefixo = prefixoDoCepDaLoja(cepDaLoja);
@@ -159,6 +180,17 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   const faixaPropria = faixaEscrita && !soPerto;
   const maisLugares = cliqueEmMais || faixaPropria;
   const [cepDeTeste, setCepDeTeste] = useState("");
+  const campoDeTesteRef = useRef<HTMLInputElement>(null);
+  // O painel do texto livre NÃO é controlado pelo que ela digita: o valor
+  // ("38400" = só perto da loja) mudava `faixaPropria` no meio da digitação e o
+  // painel fechava com o campo em foco. Ele só abre sozinho para quem já tem
+  // alcance escrito e ainda não mexeu nele; depois disso, só ela abre e fecha.
+  const detalhesRef = useRef<HTMLDetailsElement>(null);
+  const [mexeuNoPainel, setMexeuNoPainel] = useState(false);
+  useEffect(() => {
+    if (faixaPropria && !mexeuNoPainel && detalhesRef.current)
+      detalhesRef.current.open = true;
+  }, [faixaPropria, mexeuNoPainel]);
   const temEndereco = (enderecoDaLoja ?? "").trim() !== "";
   const onde =
     cidade && uf ? `${cidade}/${uf}` : cidade ? cidade : "sua cidade";
@@ -166,12 +198,27 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
     prefixo !== null && cepDeTeste.replace(/\D/g, "").length === 8
       ? cepEhLocal(cepDaLoja ?? "", cepDeTeste, faixa)
       : null;
-  // Outro bairro compra? Só com transportadora E fora do "só entregar na
-  // cidade"; `null` = não se sabe, a frase some em vez de chutar.
-  const comprarDeFora =
-    transportadoraLigada == null
+  // Outro bairro compra? A MESMA regra do aviso fixo da tela: a transportadora
+  // precisa vender fora (ligada, fora do "só entregar na cidade") E o
+  // pagamento pelo app estar ligado — o checkout recusa transportadora sem
+  // ele. Sem saber (leitura em andamento ou falha), a frase some.
+  const vendeFora =
+    nomesLigados == null
       ? null
-      : transportadoraLigada && coverage === "national";
+      : transportadoraVendeForaDaCidade({ cobertura: coverage, nomesLigados });
+  const comprarDeFora =
+    vendeFora === null
+      ? null
+      : !vendeFora
+        ? "nao"
+        : pagamentoPeloAppLigado == null
+          ? null
+          : transportadoraFicaSemPagamento({
+                transportadoraVende: true,
+                pagamentoPeloAppLigado,
+              })
+            ? "sem-pagamento"
+            : "sim";
   const campoDaFaixa = (
     <input
       id="local-cep-range"
@@ -279,11 +326,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               efeito={`CEPs que começam com ${prefixo}, normalmente um pedaço do seu bairro.${
                 comprarDeFora === null
                   ? ""
-                  : ` Cliente de outro bairro: ${
-                      comprarDeFora
-                        ? "compra com transportadora, se tiver conta."
-                        : "não consegue comprar."
-                    }`
+                  : ` Cliente de outro bairro: ${FRASE_DE_FORA.get(comprarDeFora)}`
               }${
                 faixaPropria
                   ? " Troca o que está escrito em “Escrever faixa de CEP”."
@@ -317,7 +360,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 type="text"
                 inputMode="numeric"
                 autoComplete="off"
-                maxLength={9}
+                ref={campoDeTesteRef}
                 value={cepDeTeste}
                 onChange={(e) => {
                   const d = e.target.value.replace(/\D/g, "").slice(0, 8);
@@ -344,11 +387,13 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 <button
                   type="button"
                   disabled={desabilitado}
-                  onClick={() =>
+                  onClick={() => {
                     onFaixa(
                       incluirRegiaoNoAlcance(faixa, cepDaLoja, cepDeTeste),
-                    )
-                  }
+                    );
+                    // O botão some (a região entrou): o foco volta ao campo.
+                    campoDeTesteRef.current?.focus();
+                  }}
                   className="mt-2 flex min-h-11 items-center rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-200 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:opacity-50"
                 >
                   Incluir a região deste CEP
@@ -357,8 +402,11 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             </div>
           )}
 
-          <details className="mt-2" open={faixaPropria}>
-            <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-zinc-300">
+          <details ref={detalhesRef} className="mt-2">
+            <summary
+              onClick={() => setMexeuNoPainel(true)}
+              className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-zinc-300"
+            >
               Escrever faixa de CEP
             </summary>
             <Linha nome="CEPs da entrega" dica={dicaDoTexto(cepDaLoja)}>

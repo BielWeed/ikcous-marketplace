@@ -3,7 +3,7 @@ import {
   type ConfigDeFreteNacional,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
-import { resumoDoAlcance } from "@/lib/loja-pronta";
+import { alcanceSemNumeros, resumoDoAlcance } from "@/lib/loja-pronta";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import type { StoreConfig } from "@/types";
 
@@ -79,7 +79,8 @@ export function statusDaEntrega({
         // do CEP da loja (um pedaço de bairro), e "em Uberlândia/MG" prometia
         // a cidade inteira.
         detalhe: `Entrega própria em ${resumoDoAlcance(config.originCep, config.localCepRange)}`,
-        tom: "positivo",
+        // Texto escrito sem número nenhum: o servidor não entrega para ninguém.
+        tom: alcanceSemNumeros(config.localCepRange) ? "atencao" : "positivo",
       };
 
   const resumoNacional =

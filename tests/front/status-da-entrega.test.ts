@@ -87,6 +87,21 @@ describe("statusDaEntrega — Na sua cidade", () => {
     }
   });
 
+  it("alcance escrito sem número nenhum: diz que nenhum CEP entra e pede atenção (não 'positivo')", () => {
+    const [local] = statusDaEntrega(
+      entrada({ config: config({ localCepRange: "abc" }) }),
+    );
+    expect(local.detalhe).toBe(
+      "Entrega própria em nenhum CEP: o que está escrito não tem números",
+    );
+    expect(local.tom).toBe("atencao");
+    // Vazio de verdade (ou só espaços) segue sendo a região da loja, positivo.
+    const [vazio] = statusDaEntrega(
+      entrada({ config: config({ localCepRange: "  " }) }),
+    );
+    expect(vazio.tom).toBe("positivo");
+  });
+
   it("diz a abrangência real do alcance escrito: um prefixo, ou 'os CEPs que você escolheu'", () => {
     const detalhe = (localCepRange: string | undefined) =>
       statusDaEntrega(entrada({ config: config({ localCepRange }) }))[0]

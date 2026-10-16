@@ -202,34 +202,68 @@ describe("FreteLocalBloco: até onde você entrega", () => {
   });
 
   describe("o efeito para o cliente de outro bairro", () => {
-    it("com transportadora ligada e fora do 'só entregar na cidade': compra com transportadora, se tiver conta", () => {
-      montar("", { transportadoraLigada: true, coverage: "national" });
-      expect(opcao("Só perto da loja")?.textContent).toContain(
+    const efeito = () => opcao("Só perto da loja")?.textContent ?? "";
+
+    it("transportadora vende fora e o pagamento pelo app está ligado: compra com transportadora, se tiver conta", () => {
+      montar("", {
+        nomesLigados: ["Melhor Envio"],
+        pagamentoPeloAppLigado: true,
+        coverage: "national",
+      });
+      expect(efeito()).toContain(
         "Cliente de outro bairro: compra com transportadora, se tiver conta.",
       );
     });
 
-    it("sem transportadora: 'não consegue comprar'", () => {
-      montar("", { transportadoraLigada: false, coverage: "national" });
-      expect(opcao("Só perto da loja")?.textContent).toContain(
+    it("transportadora ligada mas SEM pagamento pelo app: não promete a compra (o checkout recusa)", () => {
+      montar("", {
+        nomesLigados: ["Melhor Envio"],
+        pagamentoPeloAppLigado: false,
+        coverage: "national",
+      });
+      expect(efeito()).toContain(
+        "Cliente de outro bairro: não consegue comprar",
+      );
+      expect(efeito()).toContain("pagamento pelo app");
+      expect(efeito()).not.toContain("compra com transportadora");
+    });
+
+    it("sem transportadora ligada: 'não consegue comprar'", () => {
+      montar("", {
+        nomesLigados: [],
+        pagamentoPeloAppLigado: true,
+        coverage: "national",
+      });
+      expect(efeito()).toContain(
         "Cliente de outro bairro: não consegue comprar.",
       );
     });
 
-    it("'só entregar na cidade' ligado: não consegue comprar, mesmo com transportadora", () => {
-      montar("", { transportadoraLigada: true, coverage: "local" });
-      const efeito = opcao("Só perto da loja")?.textContent ?? "";
-      expect(efeito).toContain("não consegue comprar");
-      expect(efeito).not.toContain("compra com transportadora");
+    it("'só entregar na cidade' ligado: não consegue comprar, mesmo com transportadora e pagamento", () => {
+      montar("", {
+        nomesLigados: ["Melhor Envio"],
+        pagamentoPeloAppLigado: true,
+        coverage: "local",
+      });
+      expect(efeito()).toContain("não consegue comprar");
+      expect(efeito()).not.toContain("compra com transportadora");
     });
 
-    it("leitura das transportadoras falhou (null) ou ausente: a tela não afirma nada", () => {
-      for (const transportadoraLigada of [null, undefined]) {
-        montar("", { transportadoraLigada });
-        const efeito = opcao("Só perto da loja")?.textContent ?? "";
-        expect(efeito).not.toContain("Cliente de outro bairro");
-        expect(efeito).toContain("normalmente um pedaço do seu bairro.");
+    it("leitura das transportadoras falhou, ainda carregando (null) ou ausente: a tela não afirma nada", () => {
+      for (const nomesLigados of [null, undefined]) {
+        montar("", { nomesLigados, pagamentoPeloAppLigado: true });
+        expect(efeito()).not.toContain("Cliente de outro bairro");
+        expect(efeito()).toContain("normalmente um pedaço do seu bairro.");
       }
+    });
+
+    it("transportadora vende mas não se sabe do pagamento: também não afirma", () => {
+      montar("", {
+        nomesLigados: ["Melhor Envio"],
+        pagamentoPeloAppLigado: null,
+        coverage: "national",
+      });
+      expect(efeito()).not.toContain("Cliente de outro bairro");
     });
   });
 
@@ -301,6 +335,39 @@ describe("FreteLocalBloco: até onde você entrega", () => {
       expect(texto()).toContain("Entra na sua entrega");
     });
 
+    it("o campo do teste aceita CEP colado com máscara (sem maxLength cortando)", () => {
+      montar("");
+      clicar(opcao("Em mais lugares"));
+      expect(campoDeTeste()?.hasAttribute("maxlength")).toBe(false);
+      digitar(campoDeTeste(), "38.500-123");
+      expect(campoDeTeste()?.value).toBe("38500-123");
+      expect(texto()).toContain("Fica de fora da sua entrega");
+    });
+
+    it("depois de 'Incluir a região' o foco volta ao campo do teste (o botão some) e o 'Hoje' muda", () => {
+      montar("");
+      expect(texto()).toContain("Hoje: CEPs que começam com 38400.");
+      abrirMaisLugaresEDigitar("38500-123");
+      clicar(botao("Incluir a região deste CEP"));
+      expect(document.activeElement).toBe(campoDeTeste());
+      expect(texto()).toContain("Hoje: CEPs que você escolheu.");
+      expect(texto()).not.toContain("Hoje: CEPs que começam com 38400.");
+    });
+
+    it("texto escrito sem números: o 'Hoje' diz que não há CEP, e incluir não abre a região da loja", () => {
+      montar("abc");
+      expect(texto()).toContain(
+        "Hoje: nenhum CEP: o que está escrito não tem números.",
+      );
+      digitar(campoDeTeste(), "38400-100");
+      expect(texto()).toContain("Fica de fora da sua entrega");
+      digitar(campoDeTeste(), "38500-123");
+      clicar(botao("Incluir a região deste CEP"));
+      expect(gravados).toEqual(["38500"]);
+      digitar(campoDeTeste(), "38400-100");
+      expect(texto()).toContain("Fica de fora da sua entrega");
+    });
+
     it("incluir não duplica: duas regiões, cada uma uma vez", () => {
       montar("38400");
       abrirMaisLugaresEDigitar("38500-123");
@@ -351,6 +418,61 @@ describe("FreteLocalBloco: até onde você entrega", () => {
         "Escrever faixa de CEP",
       );
       expect(detalhes?.querySelector("#local-cep-range")).not.toBeNull();
+    });
+
+    // O painel era controlado pelo valor digitado: ao chegar em "38400" (os 5
+    // números da loja) ele FECHAVA no meio da digitação e a lojista perdia o
+    // foco do campo.
+    it("digitar a faixa completa, letra por letra, com o painel aberto: ele NÃO fecha em nenhum passo", () => {
+      montar("");
+      const detalhes = hospedeiro.querySelector(
+        "details",
+      ) as HTMLDetailsElement;
+      clicar(detalhes.querySelector("summary") as HTMLElement);
+      act(() => {
+        detalhes.open = true;
+      });
+      const campo = () =>
+        hospedeiro.querySelector<HTMLInputElement>("#local-cep-range");
+      let digitado = "";
+      for (const letra of "38400-000, 38415-999") {
+        digitado += letra;
+        digitar(campo(), digitado);
+        expect(detalhes.open, JSON.stringify(digitado)).toBe(true);
+      }
+      expect(campo()?.value).toBe("38400-000, 38415-999");
+    });
+
+    it("apagar tudo para redigitar também não fecha o painel", () => {
+      montar("38500-000, 38509-999");
+      const detalhes = hospedeiro.querySelector(
+        "details",
+      ) as HTMLDetailsElement;
+      expect(detalhes.open).toBe(true);
+      digitar(hospedeiro.querySelector("#local-cep-range"), "");
+      expect(detalhes.open).toBe(true);
+      digitar(hospedeiro.querySelector("#local-cep-range"), "38400");
+      expect(detalhes.open).toBe(true);
+    });
+
+    it("quem fechou o painel de propósito não o vê reabrir quando o texto muda por outro caminho", () => {
+      montar("38500-000, 38509-999");
+      const detalhes = hospedeiro.querySelector(
+        "details",
+      ) as HTMLDetailsElement;
+      expect(detalhes.open).toBe(true);
+      // A lojista fecha (clique no resumo = ação dela).
+      clicar(detalhes.querySelector("summary") as HTMLElement);
+      act(() => {
+        detalhes.open = false;
+      });
+      clicar(opcao("Só perto da loja"));
+      expect(detalhes.open).toBe(false);
+      // O texto volta a ser "próprio" (inclui uma região): segue fechado.
+      abrirMaisLugaresEDigitar("38500-123");
+      clicar(botao("Incluir a região deste CEP"));
+      expect(gravados.at(-1)).toBe("38400, 38500");
+      expect(detalhes.open).toBe(false);
     });
 
     it("digitar no campo grava o texto como sempre", () => {

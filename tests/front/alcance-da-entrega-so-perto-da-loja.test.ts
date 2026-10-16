@@ -17,7 +17,9 @@ import { describe, expect, it } from "vitest";
 
 import { cepEhLocal } from "@/lib/cep-local";
 import {
+  alcanceAoMudarOCepDaLoja,
   alcanceEhSoPertoDaLoja,
+  alcanceSemNumeros,
   incluirRegiaoNoAlcance,
   prefixoDoCepDaLoja,
   resumoDoAlcance,
@@ -25,6 +27,10 @@ import {
 
 const CEP_DA_LOJA = "38400-100";
 const PREFIXO = "38400";
+
+// Escritas SEM nenhum número: o servidor (banco, edge e `cepEhLocal`) recusa
+// todo mundo — alcance não vazio sem token numérico = nada é local.
+const SEM_NUMEROS = ["abc", ",,,", " , ; ", "só texto"];
 
 // Bateria: mesma região, região vizinha, com e sem hífen, CEP geral (000),
 // incompleto, inválido, vazio e com lixo.
@@ -243,5 +249,137 @@ describe("resumoDoAlcance (o que a faixa-resumo promete)", () => {
   it("sem CEP completo e sem alcance: não inventa região", () => {
     expect(resumoDoAlcance("", "")).toBe("CEPs perto da loja");
     expect(resumoDoAlcance("384", "")).toBe("CEPs perto da loja");
+  });
+});
+
+describe("texto escrito SEM números não é o mesmo que alcance vazio", () => {
+  it("o servidor recusa todo mundo (é isso que a tela não pode contradizer)", () => {
+    for (const faixa of SEM_NUMEROS) {
+      for (const destino of DESTINOS) {
+        expect(cepEhLocal(CEP_DA_LOJA, destino, faixa), faixa).toBe(false);
+      }
+    }
+    // Já o alcance vazio de verdade entrega na região da loja.
+    expect(cepEhLocal(CEP_DA_LOJA, "38400-100", "   ")).toBe(true);
+  });
+
+  it("alcanceSemNumeros: só o texto preenchido e sem número", () => {
+    for (const faixa of SEM_NUMEROS)
+      expect(alcanceSemNumeros(faixa)).toBe(true);
+    for (const faixa of [
+      "",
+      "   ",
+      null,
+      undefined,
+      "38400",
+      "só texto, 38500",
+    ])
+      expect(alcanceSemNumeros(faixa), String(faixa)).toBe(false);
+  });
+
+  it("o resumo diz que o texto não tem números; vazio de verdade e espaços seguem sendo a região da loja", () => {
+    for (const faixa of SEM_NUMEROS) {
+      expect(resumoDoAlcance(CEP_DA_LOJA, faixa), faixa).toBe(
+        "nenhum CEP: o que está escrito não tem números",
+      );
+    }
+    for (const faixa of ["", "   "]) {
+      expect(resumoDoAlcance(CEP_DA_LOJA, faixa)).toBe(
+        "CEPs que começam com 38400",
+      );
+    }
+    // Texto com ALGUM número é lido pelo servidor, só os números contam.
+    expect(resumoDoAlcance(CEP_DA_LOJA, "só texto, 38500")).toBe(
+      "CEPs que começam com 38500",
+    );
+  });
+
+  it("'só perto da loja' continua falso para texto sem números", () => {
+    for (const faixa of SEM_NUMEROS)
+      expect(alcanceEhSoPertoDaLoja(CEP_DA_LOJA, faixa), faixa).toBe(false);
+  });
+
+  it("incluir NÃO abre a região da loja que o servidor hoje recusa: entra só a região pedida", () => {
+    for (const faixa of SEM_NUMEROS) {
+      const novo = incluirRegiaoNoAlcance(faixa, CEP_DA_LOJA, "38500-123");
+      expect(novo, faixa).toBe("38500");
+      expect(cepEhLocal(CEP_DA_LOJA, "38500-777", novo)).toBe(true);
+      // A região da loja continua FORA, como o servidor a tratava antes.
+      expect(cepEhLocal(CEP_DA_LOJA, "38400-100", novo), faixa).toBe(false);
+    }
+  });
+
+  it("espaços e vazio de verdade: a loja entra junto (comportamento de antes)", () => {
+    expect(incluirRegiaoNoAlcance("", CEP_DA_LOJA, "38500-123")).toBe(
+      "38400, 38500",
+    );
+    expect(incluirRegiaoNoAlcance("   ", CEP_DA_LOJA, "38500-123")).toBe(
+      "38400, 38500",
+    );
+  });
+
+  it("texto com alguns números: só os números contam, e a loja NÃO entra de carona", () => {
+    const novo = incluirRegiaoNoAlcance(
+      "só texto, 38500",
+      CEP_DA_LOJA,
+      "38600-001",
+    );
+    expect(novo).toBe("38500, 38600");
+    expect(cepEhLocal(CEP_DA_LOJA, "38400-100", novo)).toBe(false);
+    expect(cepEhLocal(CEP_DA_LOJA, "38500-123", novo)).toBe(true);
+  });
+});
+
+describe("alcanceAoMudarOCepDaLoja: o CEP da loja muda e o alcance acompanha", () => {
+  it("alcance era exatamente os 5 números do CEP antigo: vira os 5 do novo", () => {
+    expect(alcanceAoMudarOCepDaLoja("38400-100", "01310-100", "38400")).toBe(
+      "01310",
+    );
+    expect(alcanceAoMudarOCepDaLoja("38400100", "38410-200", " 38400 ")).toBe(
+      "38410",
+    );
+  });
+
+  it("o alcance novo dá a mesma regra do alcance vazio para o CEP novo (a razão de regravar)", () => {
+    const novo = alcanceAoMudarOCepDaLoja("38400-100", "38410-200", "38400");
+    expect(novo).toBe("38410");
+    for (const destino of [
+      "38410-200",
+      "38410-999",
+      "38400-100",
+      "38500-000",
+    ]) {
+      expect(cepEhLocal("38410-200", destino, novo as string), destino).toBe(
+        cepEhLocal("38410-200", destino, ""),
+      );
+    }
+    // E sem regravar, o próprio CEP novo ficaria de fora (o defeito).
+    expect(cepEhLocal("38410-200", "38410-200", "38400")).toBe(false);
+  });
+
+  it("não mexe quando o alcance NÃO era só perto da loja", () => {
+    for (const faixa of [
+      "",
+      "   ",
+      "38500",
+      "38400, 38500",
+      "38400-000, 38409-999",
+      "abc",
+    ]) {
+      expect(
+        alcanceAoMudarOCepDaLoja("38400-100", "01310-100", faixa),
+        JSON.stringify(faixa),
+      ).toBeNull();
+    }
+  });
+
+  it("não mexe quando os 5 primeiros números do CEP não mudaram, ou o novo CEP não é completo", () => {
+    expect(
+      alcanceAoMudarOCepDaLoja("38400-100", "38400-999", "38400"),
+    ).toBeNull();
+    expect(alcanceAoMudarOCepDaLoja("38400-100", "3841", "38400")).toBeNull();
+    expect(alcanceAoMudarOCepDaLoja("38400-100", "", "38400")).toBeNull();
+    expect(alcanceAoMudarOCepDaLoja("", "01310-100", "38400")).toBeNull();
+    expect(alcanceAoMudarOCepDaLoja(null, "01310-100", "38400")).toBeNull();
   });
 });
