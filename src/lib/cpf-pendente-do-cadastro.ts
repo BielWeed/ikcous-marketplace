@@ -180,10 +180,16 @@ export async function retomarCpfPendente(sessao: {
 
   emVooPara = pendente.userId;
   try {
-    const resultado = await gravarCpfDaConta(pendente.cpf);
+    const resultado = await gravarCpfDaConta(pendente.cpf, pendente.userId);
     if (resultado.ok) {
       removerPendente();
       return "gravado";
+    }
+    if (resultado.motivo === "conta_trocada") {
+      // A sessão do evento ainda era a do cadastro, mas outra aba entrou
+      // em outra conta antes do envio: mesma limpeza da divergência acima.
+      removerPendente();
+      return "outra_conta";
     }
     // Falha genuína (rede, servidor fora): MANTÉM o pendente até o TTL
     // vencer — a próxima retomada (próximo login, próxima aba) tenta de

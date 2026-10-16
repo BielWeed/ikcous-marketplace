@@ -401,16 +401,19 @@ function* walk(url) {
   }
 }
 
-Deno.test("o front: so markHelpful chama a RPC, barra o visitante antes e, se o banco recusar, reverte o contador e avisa (nao quebra a tela); nenhuma edge function a chama", () => {
+Deno.test("o front: so markHelpful chama a RPC, barra o visitante antes e, se o banco recusar, avisa sem inventar voto (nao quebra a tela); o contador volta do servidor; nenhuma edge function a chama", () => {
   const src = Deno.readTextFileSync(
     new URL("src/hooks/useReviews.ts", DIR),
   ).replace(/\r\n/g, "\n");
   assert.equal(src.split("increment_helpful").length - 1, 1, "um chamador");
   const i = src.indexOf("const markHelpful");
-  const trecho = src.slice(i, src.indexOf("increment_helpful", i) + 1400);
+  const trecho = src.slice(i, src.indexOf("[user],", i));
   assert.ok(trecho.includes("if (!user) {"));
-  assert.ok(trecho.includes("// Revert on error"));
-  assert.ok(trecho.includes("helpful: review.helpful - 1"));
+  assert.ok(trecho.includes("if (error) throw error;"));
+  // Sem incremento otimista: o contador confirmado vem do servidor.
+  assert.ok(!trecho.includes("helpful: review.helpful + 1"));
+  assert.ok(!trecho.includes("helpful: review.helpful - 1"));
+  assert.ok(trecho.includes('.select("helpful")'));
   assert.ok(trecho.includes('toast.error("Erro ao marcar como útil.")'));
   for (const raiz of ["src/", "supabase/functions/"]) {
     for (const f of walk(new URL(raiz, DIR))) {

@@ -277,6 +277,7 @@ export const ProductView = React.memo(function ProductView({
     erroDaListagemProduto,
     getReviewsByProduct,
     markHelpful,
+    votosUteis,
     subscribeToReviews,
   } = useReviews();
   const { trackRecommendationClick, fetchRecommendations } = useProducts({
@@ -1702,6 +1703,7 @@ export const ProductView = React.memo(function ProductView({
                           <ReviewCard
                             key={review.id}
                             review={review}
+                            jaVotou={votosUteis?.has(review.id)}
                             onHelpful={markHelpful}
                             onNavigate={onNavigate}
                           />

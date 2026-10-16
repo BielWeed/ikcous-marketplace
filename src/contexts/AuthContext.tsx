@@ -6,7 +6,7 @@ import {
   esvaziarAvaliacoesEmMemoria,
 } from "@/lib/cache-de-avaliacoes";
 import { cpfValido } from "@/lib/cpf";
-import { gravarCpfDaConta } from "@/lib/cpf-da-conta";
+import { gravarCpfDaConta, mensagemFalhaCpf } from "@/lib/cpf-da-conta";
 import {
   lerPendente,
   retomarCpfPendente,
@@ -1066,14 +1066,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // aqui; `cpfValido` de novo é defesa em profundidade, não a régua
       // principal).
       if (cpf && cpfValido(cpf)) {
-        if (data.session) {
+        if (data.session && data.user) {
           // Sessão IMEDIATA (confirmação por e-mail desligada, ou conta
           // já confirmada por outro caminho) — grava na hora, mesma RPC
           // que o perfil e o checkout usam.
-          const resultado = await gravarCpfDaConta(cpf);
+          const resultado = await gravarCpfDaConta(cpf, data.user.id);
           if (!resultado.ok) {
             toast.error(
-              "Cadastro concluído, mas não foi possível salvar o CPF agora. Você pode informá-lo depois em Minha conta > Informações pessoais.",
+              resultado.motivo === "conta_trocada"
+                ? mensagemFalhaCpf(resultado.motivo)
+                : "Cadastro concluído, mas não foi possível salvar o CPF agora. Você pode informá-lo depois em Minha conta > Informações pessoais.",
             );
           }
         } else if (data.user) {
