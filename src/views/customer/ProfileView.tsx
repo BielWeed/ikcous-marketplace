@@ -111,6 +111,7 @@ export function ProfileView({
     fetchAddresses,
     deleteAddress,
     loading: addressesLoading,
+    erroAoCarregar,
   } = useAddresses();
   const { orders, fetchUserOrders } = useOrders(true, false);
   const { config } = useStore();
@@ -510,7 +511,7 @@ export function ProfileView({
           <div
             className={`transition-all duration-300 ${!isAddressesExpanded ? "p-3.5" : "p-6"}`}
           >
-            {addressesLoading ? (
+            {addressesLoading && addresses.length === 0 ? (
               <div className="animate-pulse space-y-4">
                 <div className="flex h-28 flex-col justify-between rounded-3xl border border-transparent bg-zinc-50/50 p-6">
                   <div className="flex items-center gap-3">
@@ -528,15 +529,35 @@ export function ProfileView({
               </div>
             ) : (
               <>
-                <AddressList
-                  addresses={addresses}
-                  compact={!isAddressesExpanded}
-                  showMaps
-                  onEdit={(addr) => {
-                    onNavigate("address-form", addr.id);
-                  }}
-                  onDelete={deleteAddress}
-                />
+                {erroAoCarregar && (
+                  <div
+                    role="alert"
+                    className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800"
+                  >
+                    <p className="flex-1 text-sm">
+                      Não conseguimos carregar seus endereços agora.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void fetchAddresses()}
+                      disabled={addressesLoading}
+                      className="min-h-11 rounded-xl border border-red-200 px-3 text-xs font-bold hover:bg-red-100 disabled:opacity-50"
+                    >
+                      Tentar de novo
+                    </button>
+                  </div>
+                )}
+                {(addresses.length > 0 || !erroAoCarregar) && (
+                  <AddressList
+                    addresses={addresses}
+                    compact={!isAddressesExpanded}
+                    showMaps
+                    onEdit={(addr) => {
+                      onNavigate("address-form", addr.id);
+                    }}
+                    onDelete={deleteAddress}
+                  />
+                )}
                 {addresses.length > 0 && (
                   <button
                     onClick={() => {
