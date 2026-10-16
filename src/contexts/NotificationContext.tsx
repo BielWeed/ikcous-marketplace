@@ -82,7 +82,15 @@ export function NotificationProvider({
   const consultasEmVooRef = useRef(0);
   const usuarioAtualIdRef = useRef<string | null>(user?.id ?? null);
   useEffect(() => {
-    usuarioAtualIdRef.current = user?.id ?? null;
+    const usuarioId = user?.id ?? null;
+    if (usuarioAtualIdRef.current !== usuarioId) {
+      // Troca direta de conta também encerra os dados da sessão anterior,
+      // antes de buscar os avisos da nova conta (mesmo se a consulta falhar).
+      setNotifications([]);
+      campanhaIdsRef.current = new Set();
+      setErro(null);
+    }
+    usuarioAtualIdRef.current = usuarioId;
   }, [user]);
 
   const fetchNotifications = useCallback(
@@ -237,6 +245,7 @@ export function NotificationProvider({
 
   const markAllAsRead = useCallback(async () => {
     if (!user) return;
+    const donoDaOperacao = user.id;
     const idsNaoLidos = new Set(
       notifications.filter((n) => !n.read).map((n) => n.id),
     );
@@ -247,9 +256,10 @@ export function NotificationProvider({
       const { error } = await supabase
         .from("notificacoes")
         .update({ lida: true })
-        .eq("usuario_id", user.id)
+        .eq("usuario_id", donoDaOperacao)
         .eq("lida", false);
 
+      if (usuarioAtualIdRef.current !== donoDaOperacao) return;
       if (error) throw error;
       invalidarConsultasEmVoo();
 
