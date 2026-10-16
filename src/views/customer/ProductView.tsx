@@ -274,6 +274,7 @@ export const ProductView = React.memo(function ProductView({
   const {
     reviews,
     loading: loadingReviews,
+    erroDaListagemProduto,
     getReviewsByProduct,
     markHelpful,
     subscribeToReviews,
@@ -1591,6 +1592,20 @@ export const ProductView = React.memo(function ProductView({
                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                         Carregando Avaliações...
                       </span>
+                    </div>
+                  ) : erroDaListagemProduto ? (
+                    <div
+                      role="alert"
+                      className="rounded-3xl border border-red-200 bg-red-50 p-6 text-center text-sm text-red-800"
+                    >
+                      <p>{erroDaListagemProduto}</p>
+                      <button
+                        type="button"
+                        onClick={() => getReviewsByProduct(product.id)}
+                        className="mt-3 min-h-11 rounded-xl border border-red-200 px-4 font-bold"
+                      >
+                        Tentar de novo
+                      </button>
                     </div>
                   ) : reviews.length === 0 ? (
                     <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">

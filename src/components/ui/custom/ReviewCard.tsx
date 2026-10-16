@@ -3,7 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import type { Review, View } from "@/types";
 import { Check, ThumbsUp } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { StarRating } from "./StarRating";
 
 interface ReviewCardProps {
@@ -20,16 +20,26 @@ interface ReviewCardProps {
 
 export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
   const [hasMarkedHelpful, setHasMarkedHelpful] = useState(false);
+  const votoEmVooRef = useRef(false);
+  const [votoEmVoo, setVotoEmVoo] = useState(false);
 
   // Trava o botão só quando o voto VALEU (o hook marcaHelpful devolve
   // `false` quando o RPC falha e reverte o contador). Antes, a trava era
   // local e definitiva: um erro de rede deixava o botão morto e o voto
   // que o banco nunca gravou travado para sempre.
   const handleHelpful = async () => {
-    if (hasMarkedHelpful || !onHelpful) return;
-    const valeu = await onHelpful(review.id);
-    if (valeu !== false) setHasMarkedHelpful(true);
+    if (hasMarkedHelpful || votoEmVooRef.current || !onHelpful) return;
+    votoEmVooRef.current = true;
+    setVotoEmVoo(true);
+    try {
+      const valeu = await onHelpful(review.id);
+      if (valeu !== false) setHasMarkedHelpful(true);
+    } finally {
+      votoEmVooRef.current = false;
+      setVotoEmVoo(false);
+    }
   };
+  // Ao remontar, a RPC void não distingue voto novo de voto já registrado.
 
   const handleUserClick = () => {
     if (onNavigate && review.userId) {
@@ -165,7 +175,7 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
       <div className="flex flex-col gap-3">
         <button
           onClick={handleHelpful}
-          disabled={hasMarkedHelpful}
+          disabled={hasMarkedHelpful || votoEmVoo}
           className={`flex w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
             hasMarkedHelpful
               ? "border-primary bg-primary text-primary-foreground shadow-sm"
