@@ -1025,12 +1025,12 @@ async function handler(
       // e conclui linha `sistema`.
       .neq("solicitado_por", "sistema")
       .lt("updated_at", doisMinutosAtras)
-      // D4 (ANTES-DE-CRESCER 6, laudo rodada 2 do PR #440): tentativas ASC
-      // ANTES de created_at ASC — sem isso, uma linha TRAVADA (regime "só
-      // consulta" do D2, tentativas=5) ocupa a vaga do LIMIT em todo ciclo,
-      // e uma linha NOVA pode nunca ser vista a partir de 20 pendentes (a
-      // indisponibilidade do MP produz isso sozinha).
+      // D4: tentativas ASC primeiro — uma linha NOVA nunca espera atrás das
+      // travadas. Entre linhas com o mesmo número de tentativas (as travadas
+      // no teto de 5), a última visita gira a fila: a janela de 2 min sozinha
+      // não basta, porque no cron de 10 min as mesmas 20 voltariam elegíveis.
       .order("tentativas", { ascending: true })
+      .order("updated_at", { ascending: true })
       .order("created_at", { ascending: true })
       .limit(20);
     if (erroRefunds) throw erroRefunds;
@@ -1084,15 +1084,15 @@ async function handler(
       // POST, mesmo depois de alguém devolver o cofre ao lugar: uma
       // indisponibilidade de configuração teria consumido, sozinha, o
       // orçamento de tentativas de uma devolução de dinheiro. Pular contando
-      // falha deixa a linha intacta para o próximo ciclo.
-      if (!mpToken) {
-        refundsFalhos++;
-        continue;
-      }
+      // falha preserva status e tentativas para o próximo ciclo.
       // Cada linha no seu próprio try: a reconciliação de estornos existe
       // para pegar o que já falhou uma vez — um item não pode custar a vez
       // do seguinte (mesma defesa do laço de pagamentos acima).
       try {
+        if (!mpToken) {
+          refundsFalhos++;
+          continue;
+        }
         // I-B (laudo do PR #438 rodada 2): releitura FRESCA do pedido,
         // DENTRO do laço, por item — NUNCA um SELECT único antes do laço.
         // Duas linhas do mesmo pedido no mesmo lote com um snapshot só
@@ -1347,6 +1347,22 @@ async function handler(
           erro,
         );
         refundsFalhos++;
+      } finally {
+        // Carimba também saídas antecipadas e falhas antes do executor.
+        // Só metadado de visita; não altera status, tentativa nem dinheiro.
+        // Falha não fatal: o resultado do processamento continua valendo.
+        try {
+          const { error: erroVisita } = await supabase
+            .from("order_refunds")
+            .update({ updated_at: new Date().toISOString() })
+            .eq("id", refund.id)
+            .in("status", ["solicitado", "em_processamento"]);
+          if (erroVisita) {
+            console.error("reconciliar-pagamentos: falha ao carimbar visita da devolução", refund.id, erroVisita);
+          }
+        } catch (erro) {
+          console.error("reconciliar-pagamentos: falha ao carimbar visita da devolução", refund.id, erro);
+        }
       }
     }
   } catch (erro) {
