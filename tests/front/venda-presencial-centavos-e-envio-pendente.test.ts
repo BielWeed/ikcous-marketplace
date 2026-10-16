@@ -71,6 +71,18 @@ describe("balcão — com o envio pendente o cupom não muda", () => {
     } as const,
     { tipo: "desconto_alterado", valor: 5, motivo: "x" } as const,
     { tipo: "cliente_definido", cliente: { tipo: "sem_cliente" } } as const,
+    { tipo: "pagamento_escolhido", pagamento: "cash" as never } as const,
+    {
+      tipo: "codigo_resolvido",
+      codigo: "789",
+      resposta: { encontrado: false } as never,
+      em: 1,
+    } as const,
+    {
+      tipo: "variacao_escolhida",
+      opcao: { variant_id: "v1", estoque: 3 } as never,
+      em: 1,
+    } as const,
   ])("ignora $tipo", (acao) => {
     expect(reducerDaVenda(enviando, acao)).toBe(enviando);
   });

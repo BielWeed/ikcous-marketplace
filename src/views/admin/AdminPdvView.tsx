@@ -222,6 +222,11 @@ export function AdminPdvView({
   }, [estado.chaveDeIdempotencia]);
 
   async function aoLerCodigo(leitura: Leitura): Promise<void> {
+    if (estado.enviando) {
+      // O cupom já foi copiado para o envio: a peça lida agora não entraria.
+      toast.error("Aguarde: a venda está sendo registrada.");
+      return;
+    }
     const chaveDaLeitura = chaveDaVendaRef.current;
     try {
       const resposta = await buscarPorCodigo(leitura.codigo);

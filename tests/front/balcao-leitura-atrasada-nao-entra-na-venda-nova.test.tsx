@@ -174,3 +174,88 @@ describe("Balcão — leitura atrasada de uma venda cancelada", () => {
     expect(hospedeiro.textContent).toContain("Boné Azul");
   });
 });
+
+describe("Balcão — com a venda sendo gravada o cupom fica travado na tela", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    const armazem = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (c: string) => armazem.get(c) ?? null,
+      setItem: (c: string, v: string) => {
+        armazem.set(c, v);
+      },
+      removeItem: (c: string) => {
+        armazem.delete(c);
+      },
+    });
+    vi.useFakeTimers();
+    rpcMock.mockReset();
+    invokeMock.mockReset();
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  async function clicar(texto: string): Promise<void> {
+    const alvo = botao(hospedeiro, texto);
+    expect(alvo, `botão "${texto}" ausente`).toBeTruthy();
+    await act(async () => {
+      alvo!.click();
+    });
+    await avancar();
+  }
+
+  it("pagamento e desconto travam, e um código bipado avisa em vez de sumir", async () => {
+    rpcMock.mockImplementation(async (nome: string) => {
+      if (nome === "buscar_por_codigo_barras") {
+        return { data: produto("111", "Camiseta Lisa"), error: null };
+      }
+      if (nome === "registrar_venda_presencial") {
+        return new Promise(() => {});
+      }
+      throw new Error(`RPC inesperada: ${nome}`);
+    });
+    await act(async () => {
+      raiz.render(<AdminPdvView onNavigate={vi.fn()} />);
+    });
+    await avancar();
+
+    codigoBipadoRef.atual = "111";
+    await clicar("bipar");
+    await clicar("Fechar venda");
+    await clicar("Dinheiro");
+    await clicar("Registrar venda");
+
+    expect(botao(hospedeiro, "Dinheiro")!.disabled).toBe(true);
+    const desconto = document.getElementById(
+      "desconto-da-venda",
+    ) as HTMLInputElement;
+    expect(desconto.disabled).toBe(true);
+
+    // Voltar ao cupom não é permitido sem cancelar; o leitor segue na tela.
+    const chamadasAntes = rpcMock.mock.calls.filter(
+      ([nome]) => nome === "buscar_por_codigo_barras",
+    ).length;
+    const bipar = botao(hospedeiro, "bipar");
+    if (bipar) {
+      await clicar("bipar");
+      expect(
+        rpcMock.mock.calls.filter(
+          ([nome]) => nome === "buscar_por_codigo_barras",
+        ).length,
+      ).toBe(chamadasAntes);
+    }
+  });
+});

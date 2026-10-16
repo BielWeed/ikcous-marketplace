@@ -523,6 +523,7 @@ export function CupomDaVenda({
                     <button
                       type="button"
                       aria-label={`Diminuir quantidade de ${item.nome}`}
+                      disabled={estado.enviando}
                       onClick={() =>
                         despachar({
                           tipo: "quantidade_alterada",
@@ -540,7 +541,9 @@ export function CupomDaVenda({
                     <button
                       type="button"
                       aria-label={`Aumentar quantidade de ${item.nome}`}
-                      disabled={item.quantidade >= item.estoque}
+                      disabled={
+                        estado.enviando || item.quantidade >= item.estoque
+                      }
                       onClick={() =>
                         despachar({
                           tipo: "quantidade_alterada",
@@ -560,6 +563,7 @@ export function CupomDaVenda({
                     <button
                       type="button"
                       aria-label={`Remover ${item.nome} do cupom`}
+                      disabled={estado.enviando}
                       onClick={() =>
                         despachar({ tipo: "item_removido", chave: item.chave })
                       }

@@ -195,6 +195,7 @@ export function FechamentoDaVenda({
           <button
             key={valor}
             type="button"
+            disabled={estado.enviando}
             onClick={() =>
               despachar({ tipo: "pagamento_escolhido", pagamento: valor })
             }
@@ -252,6 +253,7 @@ export function FechamentoDaVenda({
         </label>
         <LocalBufferedInput
           id="desconto-da-venda"
+          disabled={estado.enviando}
           value={descontoStr}
           mask="currency"
           onFlush={(valor) => {
@@ -270,6 +272,7 @@ export function FechamentoDaVenda({
             </label>
             <LocalBufferedInput
               id="motivo-do-desconto"
+              disabled={estado.enviando}
               value={motivoStr}
               onFlush={(valor) => {
                 setMotivoStr(valor);
