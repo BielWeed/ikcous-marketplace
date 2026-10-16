@@ -2222,10 +2222,12 @@ const ROL_DA_48A = [
   "get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)",
   "get_admin_analytics_v2: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
 ];
-const ROL_DA_48B = ROL_DA_48A.map((item) => item.replace(
-  "20261245000000, com o desconto proporcional",
-  "20261242000000, antes do desconto proporcional",
-));
+const ROL_DA_48B = ROL_DA_48A.map((item) =>
+  item.replace(
+    "20261245000000, com o desconto proporcional",
+    "20261242000000, antes do desconto proporcional",
+  ),
+);
 
 const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,

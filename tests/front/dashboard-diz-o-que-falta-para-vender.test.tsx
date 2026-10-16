@@ -600,9 +600,9 @@ describe("equivalência: o limiar do front é o MESMO literal gravado na migrati
     ).toEqual([]);
   });
 
-  it("a definição VIVA é a de maior carimbo — hoje, 20261242000000", () => {
+  it("a definição VIVA é a de maior carimbo — hoje, 20261245000000", () => {
     expect(CAMINHO_DA_VIVA).toContain(
-      "20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql",
+      "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql",
     );
   });
 

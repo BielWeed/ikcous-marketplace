@@ -2309,10 +2309,21 @@ const VERIFICACOES = {
       funcao: "get_admin_analytics_v2",
       esperado: [
         { texto: "WHEN COALESCE(o.discount, 0) <= 0 THEN 0", vezes: 2 },
-        { texto: "ELSE oi.price * LEAST(1, GREATEST(0, COALESCE(o.discount, 0)) / NULLIF(", vezes: 2 },
-        { texto: "SELECT SUM(desconto_item.quantity * desconto_item.price)", vezes: 2 },
+        {
+          texto:
+            "ELSE oi.price * LEAST(1, GREATEST(0, COALESCE(o.discount, 0)) / NULLIF(",
+          vezes: 2,
+        },
+        {
+          texto: "SELECT SUM(desconto_item.quantity * desconto_item.price)",
+          vezes: 2,
+        },
         { texto: "WHERE desconto_item.order_id = o.id", vezes: 2 },
-        { texto: "FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit", vezes: 1 },
+        {
+          texto:
+            "FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit",
+          vezes: 1,
+        },
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
       ],
     },

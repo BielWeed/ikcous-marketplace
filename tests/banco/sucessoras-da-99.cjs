@@ -176,7 +176,9 @@ const NOME_CUSTO_DO_DIA =
  * estiver no ar (idempotente). Devolve true se desfez.
  */
 async function devolverAoEstadoAnteriorAoCustoDoDia(c) {
-  await require("./lucro-com-desconto-posterior.cjs").desfazerLucroComDescontoNaTransacao(c);
+  await require("./lucro-com-desconto-posterior.cjs").desfazerLucroComDescontoNaTransacao(
+    c,
+  );
   const alvo = SUCESSORAS_DA_99.find((s) => s.nome === NOME_CUSTO_DO_DIA);
   assert.ok(alvo, "a migration do custo do dia sumiu da lista de sucessoras");
   if ((await hashVivo(c, alvo.assinatura)) !== alvo.hashDesta) return false;

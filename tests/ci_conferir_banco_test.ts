@@ -7782,16 +7782,20 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .digest("hex"),
   };
   // A 45 sucede a 42: deriva os hashes LF/CRLF do corpo real, como os elos anteriores.
-  const texto45 = (await Deno.readTextFile(
-    `${MIGRATIONS_DIR}/20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql`,
-  )).replace(/\r\n/g, "\n");
+  const texto45 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql`,
+    )
+  ).replace(/\r\n/g, "\n");
   const ini45 = texto45.indexOf(cabecalhoDepois17("get_admin_analytics_v2"));
   assert(ini45 >= 0);
   const abre45 = texto45.indexOf("AS $$", ini45) + 5;
   const corpo45 = texto45.slice(abre45, texto45.indexOf("$$;", abre45));
   const shaSucessora45 = {
     lf: criarHash("sha256").update(corpo45).digest("hex"),
-    crlf: criarHash("sha256").update(corpo45.replace(/\n/g, "\r\n")).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo45.replace(/\n/g, "\r\n"))
+      .digest("hex"),
   };
   for (const [nome, sql, lado, outro, rotulo] of [
     [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
@@ -14097,15 +14101,26 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
       const funcao = (sql: string) => {
-        const i = sql.indexOf("CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(");
+        const i = sql.indexOf(
+          "CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(",
+        );
         const fim = sql.indexOf("$$;", i);
         assert(i >= 0 && fim > i, "não achei a função inteira do analytics");
         return sql.slice(i, fim + 3);
       };
-      const atual = funcao((await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`)).replace(/\r/g, ""));
-      const anterior = funcao((await Deno.readTextFile(
-        `${MIGRATIONS_DIR}/20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql`,
-      )).replace(/\r/g, ""));
+      const atual = funcao(
+        (await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`)).replace(
+          /\r/g,
+          "",
+        ),
+      );
+      const anterior = funcao(
+        (
+          await Deno.readTextFile(
+            `${MIGRATIONS_DIR}/20261242000000_o_lucro_usa_o_custo_do_dia_da_venda.sql`,
+          )
+        ).replace(/\r/g, ""),
+      );
       const comRateio = `oi.quantity * (oi.price - COALESCE(oic.custo, p.custo) - CASE
                     WHEN COALESCE(o.discount, 0) <= 0 THEN 0
                     ELSE oi.price * LEAST(1, GREATEST(0, COALESCE(o.discount, 0)) / NULLIF(
@@ -14113,8 +14128,15 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
                            FROM public.marketplace_order_items desconto_item
                           WHERE desconto_item.order_id = o.id), 0))
                 END)`;
-      assertEquals(atual.split(comRateio).length - 1, 2, "o rateio exato deve ocorrer no diário e no ranking");
-      const semRateio = atual.replaceAll(comRateio, "oi.quantity * (oi.price - COALESCE(oic.custo, p.custo))");
+      assertEquals(
+        atual.split(comRateio).length - 1,
+        2,
+        "o rateio exato deve ocorrer no diário e no ranking",
+      );
+      const semRateio = atual.replaceAll(
+        comRateio,
+        "oi.quantity * (oi.price - COALESCE(oic.custo, p.custo))",
+      );
       assertEquals(
         semRateio,
         anterior,

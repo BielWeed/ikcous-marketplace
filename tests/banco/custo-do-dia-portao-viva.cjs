@@ -212,7 +212,9 @@ async function exigirReprovadas(consulta, rotulo, rows, esperadas) {
 
 // --- as montagens -----------------------------------------------------------
 const DEPOIS = async (c) => {
-  await require("./lucro-com-desconto-posterior.cjs").desfazerLucroComDescontoNaTransacao(c);
+  await require("./lucro-com-desconto-posterior.cjs").desfazerLucroComDescontoNaTransacao(
+    c,
+  );
   // O clone sai das migrations aplicadas do zero: a 20261242 está no ar.
   const r = await c.query(
     "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure($1)",
