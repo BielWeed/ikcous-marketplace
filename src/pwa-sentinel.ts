@@ -63,7 +63,12 @@ export const initSentinel = () => {
   );
 
   let lastHeartbeat = Date.now();
-  const channel = new BroadcastChannel("sw-heartbeat");
+  // Safari antigo (iOS <= 15.3) não tem BroadcastChannel: sem ele o canal
+  // some, mas o pulso segue pela resposta direta do service worker.
+  const channel =
+    typeof BroadcastChannel === "undefined"
+      ? null
+      : new BroadcastChannel("sw-heartbeat");
 
   const handleHeartbeatAck = (data: any) => {
     if (data === "HEARTBEAT_ACK") {
@@ -71,9 +76,10 @@ export const initSentinel = () => {
     }
   };
 
-  channel.onmessage = (event) => {
-    handleHeartbeatAck(event.data);
-  };
+  if (channel)
+    channel.onmessage = (event) => {
+      handleHeartbeatAck(event.data);
+    };
 
   // Standard Direct Service Worker message communication listener
   navigator.serviceWorker.addEventListener("message", (event) => {
