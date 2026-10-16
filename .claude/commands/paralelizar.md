@@ -65,7 +65,7 @@ O modo `/paralelizar` **obedece o `/gpt`**; ele não o contorna nem o dobra. Os 
 
 - **Fatia no Codex** por lote (conta por TAREFA despachada): `normal` 40–50%, `alto` 50–75%, `ultra` 90–100%.
   Escreva a conta no relatório final: "Equipe: X Claude / Y GPT".
-- **Só `codex:sol`** (gpt-6.1-sol; tarefa simples = `effort: low`). Cabeçalho do prompt: `sandbox: workspace-write`
+- **Só `codex:sol`** (gpt-6.1-sol; raciocínio: **`low` é proibido**; sem a linha `effort:` roda em `high` (preferido); `medium` só para tarefa simples e fácil; `xhigh`/`max`/`ultra` para o difícil). Cabeçalho do prompt: `sandbox: workspace-write`
   (escrita só em worktree **aninhada na da sessão**) ou `read-only` (leitura, pesquisa, revisão) e `approvals: ask`.
   **Nunca** `yolo`, `full-access` nem "Allow always".
 - **Escolha para o Codex o que ele faz bem:** volume, arquivos disjuntos, leitura, segunda opinião adversarial.
