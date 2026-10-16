@@ -254,7 +254,11 @@ describe("Avisar clientes — destinatários não tentados", () => {
     expect(ajustarLog).toHaveBeenCalledWith({ recipient_count: 2 });
   }
 
-  function conferirRegistro(status: "success" | "partial", falharam: number) {
+  function conferirRegistro(
+    status: "success" | "partial",
+    falharam: number,
+    naoTentados = 0,
+  ) {
     expect(recordAction).toHaveBeenCalledTimes(1);
     expect(recordAction).toHaveBeenCalledWith(
       "PUSH_DISPATCH",
@@ -263,6 +267,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
         status,
         entregues: 2,
         falharam,
+        ...(naoTentados > 0 ? { naoTentados } : {}),
         falhas: [],
         timestamp: expect.any(String),
       },
@@ -273,12 +278,12 @@ describe("Avisar clientes — destinatários não tentados", () => {
     {
       naoTentados: 3,
       total: 5,
-      aviso: "3 pessoas não receberam porque o envio demorou demais",
+      aviso: "3 dispositivos não receberam porque o envio demorou demais",
     },
     {
       naoTentados: 1,
       total: 3,
-      aviso: "1 pessoa não recebeu porque o envio demorou demais",
+      aviso: "1 dispositivo não recebeu porque o envio demorou demais",
     },
   ])(
     "avisa sobre $naoTentados não alcançados e risco de repetição, mas limpa a campanha",
@@ -303,7 +308,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
       expect(toast.success).not.toHaveBeenCalled();
       expect(toast.error).not.toHaveBeenCalled();
       conferirCampanhaLimpa();
-      conferirRegistro("success", 0);
+      conferirRegistro("partial", 0, naoTentados);
     },
   );
 
@@ -365,7 +370,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
     });
     expect(toast.warning).toHaveBeenCalledWith("Entregue em 2 de 6", {
       description: expect.stringContaining(
-        "3 pessoas não receberam porque o envio demorou demais",
+        "3 dispositivos não receberam porque o envio demorou demais",
       ),
     });
     expect(toast.warning).toHaveBeenCalledWith("Entregue em 2 de 6", {
@@ -384,6 +389,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
         status: "partial",
         entregues: 2,
         falharam: 1,
+        naoTentados: 3,
         falhas: [{ quantidade: 1, motivo: "Serviço indisponível" }],
         timestamp: expect.any(String),
       },
@@ -404,6 +410,34 @@ describe("Avisar clientes — destinatários não tentados", () => {
       {
         description: expect.stringMatching(/reenviar.*aviso dentro do app/i),
       },
+    );
+  });
+
+  it("zero entregas com não tentados diz quantos dispositivos nem foram tentados", async () => {
+    invokeSendPush.mockResolvedValue({
+      data: { enviados: 0, falharam: 1, naoTentados: 4, falhas: [] },
+      error: null,
+    });
+    await prepararCampanha();
+    await enviar();
+
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalledWith(
+      "Nenhum dos 1 dispositivos recebeu",
+      {
+        description: expect.stringContaining(
+          "4 dispositivos nem chegaram a ser tentados porque o envio demorou demais",
+        ),
+      },
+    );
+    expect(recordAction).toHaveBeenCalledWith(
+      "PUSH_DISPATCH",
+      expect.anything(),
+      expect.objectContaining({
+        status: "error",
+        entregues: 0,
+        naoTentados: 4,
+      }),
     );
   });
 });

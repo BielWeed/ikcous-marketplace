@@ -956,7 +956,7 @@ export const AdminPushView = memo(function AdminPushView({
         });
       } else if (entregues === 0) {
         toast.error(`Nenhum dos ${finalRecipientCount} dispositivos recebeu`, {
-          description: `${detalheDaFalha ?? "A função não informou o motivo da falha."} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
+          description: `${detalheDaFalha ?? "A função não informou o motivo da falha."}${naoTentados > 0 ? ` ${naoTentados} ${naoTentados === 1 ? "dispositivo nem chegou a ser tentado" : "dispositivos nem chegaram a ser tentados"} porque o envio demorou demais.` : ""} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
         });
       } else if (falharam > 0 || naoTentados > 0) {
         toast.warning(
@@ -966,7 +966,7 @@ export const AdminPushView = memo(function AdminPushView({
               naoTentados > 0
                 ? [
                     detalheDaFalha,
-                    `${naoTentados} ${naoTentados === 1 ? "pessoa não recebeu" : "pessoas não receberam"} porque o envio demorou demais. Se reenviar esta campanha, quem já recebeu pode receber a mensagem repetida.`,
+                    `${naoTentados} ${naoTentados === 1 ? "dispositivo não recebeu" : "dispositivos não receberam"} porque o envio demorou demais. Se reenviar esta campanha, quem já recebeu pode receber a mensagem repetida.`,
                   ]
                     .filter(Boolean)
                     .join(" ")
@@ -1012,11 +1012,12 @@ export const AdminPushView = memo(function AdminPushView({
             ? "error"
             : entregues === 0
               ? "error"
-              : falharam > 0
+              : falharam > 0 || naoTentados > 0
                 ? "partial"
                 : "success",
           entregues,
           falharam,
+          ...(naoTentados > 0 ? { naoTentados } : {}),
           falhas: envio?.falhas ?? null,
           timestamp: new Date().toISOString(),
         },
