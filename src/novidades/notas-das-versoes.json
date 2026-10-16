@@ -1,4 +1,12 @@
 {
+  "1.5.33": {
+    "titulo": "Pequeno ajuste nas atualizações",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Um ajuste interno para conferirmos que o aviso de atualização aparece do jeito certo."
+    ]
+  },
   "1.5.32": {
     "titulo": "Atualizações automáticas e mais segurança no dia a dia",
     "novidades": [
