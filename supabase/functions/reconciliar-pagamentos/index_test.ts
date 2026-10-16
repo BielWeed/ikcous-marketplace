@@ -319,12 +319,10 @@ function clienteFalso(opts: {
                     return comExclusoes([...exclusoes, { coluna, valor }]);
                   },
                   lt(_colunaData: string, valorLimite: string) {
-                    // D4 (ANTES-DE-CRESCER 6): a producao encadeia DOIS
-                    // `.order()` (tentativas ASC, created_at ASC) antes do
-                    // `.limit()` — o mock acumula os criterios recursivamente
-                    // (cada `.order()` devolve um objeto com `.order()` E
-                    // `.limit()`) e SIMULA a ordenacao de verdade, para que
-                    // R10 prove a fila sem reimplementar o handler.
+                    // O dublê acumula todos os critérios de `.order()` antes
+                    // de `.limit()` e simula a ordenação de verdade: cada
+                    // `.order()` devolve `.order()` e `.limit()`. Assim R10
+                    // e RODIZIO provam a fila sem reimplementar o handler.
                     const comCriterios = (
                       criterios: Array<{ coluna: string; ascendente: boolean }>,
                     ) => ({
@@ -2253,6 +2251,118 @@ Deno.test("R10 - fila ordena por tentativas ASC antes de created_at ASC: linha t
   assertEquals(corpo.estornos.concluidos, 1, "a nova concluiu o estorno normalmente");
 });
 
+// Rodízio com estado: a ordem e o LIMIT vêm da query real; o dublê só
+// persiste os UPDATEs. Dez minutos entre ciclos tornam todas as linhas
+// elegíveis de novo, portanto a janela sozinha não resolve a inanição.
+for (const falha of ["leitura", "consulta"] as const) {
+  Deno.test(`RODIZIO - 25 linhas no teto, 20 falham na ${falha}: a segunda rodada visita a 21ª em diante`, async () => {
+    const DataReal = Date;
+    let agora = DataReal.now();
+    globalThis.Date = class extends DataReal {
+      constructor(...args: unknown[]) {
+        super(...(args.length ? args : [agora]));
+      }
+      static now() { return agora; }
+    };
+    try {
+      const linhas = Array.from({ length: 25 }, (_, i) => ({
+        id: `rodizio-${i}`,
+        order_id: `pedido-rodizio-${i}`,
+        amount: 10,
+        status: "em_processamento",
+        tentativas: 5,
+        mp_refund_id: null,
+        solicitado_por: "lojista",
+        created_at: new Date(agora - (50 - i) * 60_000).toISOString(),
+        updated_at: new Date(agora - (50 - i) * 60_000).toISOString(),
+      }));
+      const visitas: string[] = [];
+      const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasConcluirEstorno: [], atualizacoesOrderRefunds: [] };
+      const supabase = clienteFalso({
+        registro,
+        refundsPendentes: linhas,
+        resolverPedidoFresco: (id) => {
+          visitas.push(id);
+          const indice = linhas.findIndex((r) => r.order_id === id);
+          if (falha === "leitura" && indice < 20) throw new Error("leitura indisponível");
+          return pedidoFrescoPara({ id, gateway_payment_id: String(123456789 + indice) });
+        },
+        atualizarOrderRefunds: (id, valores, statusFiltro) => {
+          const linha = linhas.find((r) => r.id === id);
+          if (!linha || !statusFiltro.includes(linha.status)) return { data: [], error: null };
+          Object.assign(linha, valores);
+          return { data: [{ id }], error: null };
+        },
+      });
+      const chamadasMp: string[] = [];
+      const fetchImpl = async (url: string, init?: RequestInit) => {
+        chamadasMp.push(init?.method ?? "GET");
+        const indice = Number(String(url).split("/").pop()) - 123456789;
+        return new Response(JSON.stringify(indice < 20 ? {} : {
+          id: 123456789 + indice, status: "approved", transaction_amount_refunded: 10,
+        }), { status: indice < 20 ? 500 : 200 });
+      };
+
+      const primeira = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+      assertEquals((await primeira.json()).estornos.vistos, 20);
+      assertEquals(visitas, linhas.slice(0, 20).map((r) => r.order_id));
+      agora += 10 * 60_000;
+      const segunda = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+      const resumo = (await segunda.json()).estornos;
+      assertEquals(resumo.vistos, 20, "o lote continua limitado a 20");
+      assertEquals(visitas.slice(20, 25), linhas.slice(20).map((r) => r.order_id), "as cinco nunca visitadas passam à frente");
+      assertEquals(resumo.concluidos, 5);
+      assertEquals(linhas.every((r) => r.tentativas === 5), true, "visita não gasta tentativa nem aumenta o teto");
+      assertEquals(chamadasMp.every((metodo) => metodo === "GET"), true, "no teto não há POST");
+    } finally {
+      globalThis.Date = DataReal;
+    }
+  });
+}
+
+Deno.test("RODIZIO - linha dentro dos dois minutos não recebe visita nem carimbo", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, atualizacoesOrderRefunds: [] };
+  let leituras = 0;
+  const supabase = clienteFalso({
+    registro,
+    refundsPendentes: [{
+      id: "recente", order_id: "pedido-recente", amount: 10,
+      status: "em_processamento", tentativas: 5, mp_refund_id: null,
+      updated_at: new Date(Date.now() - 30_000).toISOString(),
+    }],
+    resolverPedidoFresco: () => { leituras++; return null; },
+  });
+  const mp = fetchDubleReconciliacao([]);
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  assertEquals((await resposta.json()).estornos, { vistos: 0, concluidos: 0, adiados: 0, falhos: 0 });
+  assertEquals(leituras, 0);
+  assertEquals(registro.atualizacoesOrderRefunds, []);
+  assertEquals(mp.chamadas, []);
+});
+
+Deno.test("RODIZIO - caminho feliz mantém POST, chave e conclusão, carimbando só a visita", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasConcluirEstorno: [], atualizacoesOrderRefunds: [] };
+  const pedido = pedidoFrescoPara({ total: 10 });
+  const supabase = clienteFalso({
+    registro,
+    refundsPendentes: [{
+      id: "feliz", order_id: pedido.id, amount: 10, status: "solicitado",
+      tentativas: 0, mp_refund_id: null,
+      updated_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+    }],
+    resolverPedidoFresco: () => pedido,
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 123, status: "approved", amount: 10 } },
+  ]);
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  assertEquals((await resposta.json()).estornos, { vistos: 1, concluidos: 1, adiados: 0, falhos: 0 });
+  assertEquals(mp.chamadas.map((c) => [c.metodo, c.chave, c.corpoEnviado]), [["POST", "feliz", {}]]);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "feliz");
+  const visita = registro.atualizacoesOrderRefunds.find((a) => Object.keys(a.valores).join() === "updated_at");
+  assertEquals(typeof visita?.valores.updated_at, "string", "também carimba visita que concluiu");
+});
+
 Deno.test("R11 - concluido cuja RPC concluir_estorno levanta: incrementa tentativas e grava o motivo leigo, linha continua em_processamento (D4, ANTES-DE-CRESCER 5)", async () => {
   const registro = {
     chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
@@ -3124,7 +3234,10 @@ Deno.test("MP-3 — cofre ausente: a fila de ESTORNOS também para fechada (falh
   // conserto de operador; não pode consumir o orçamento de tentativas de uma
   // devolução de dinheiro.
   assertEquals(capturado.chamadas, 0);
-  assertEquals(registro.atualizacoesOrderRefunds.length, 0);
+  // Sem credencial só há metadado de visita: status e tentativas intactos.
+  assertEquals(registro.atualizacoesOrderRefunds.length, 1);
+  assertEquals(Object.keys(registro.atualizacoesOrderRefunds[0].valores), ["updated_at"]);
+  assertEquals(registro.atualizacoesOrderRefunds[0].statusFiltro, ["solicitado", "em_processamento"]);
   assertEquals(registro.chamadasConcluirEstorno.length, 0);
 });
 
