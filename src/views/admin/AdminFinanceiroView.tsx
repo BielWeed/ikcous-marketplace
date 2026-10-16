@@ -12,7 +12,7 @@
 // celular e o aviso de alterações não salvas ao formulário da vez).
 
 import { Eye, EyeOff, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -50,17 +50,14 @@ import type {
 import { ContextoValoresOcultos } from "@/components/admin/financeiro/partes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   ContextoDoCacheFinanceiro,
   useCategoriasFinanceiras,
   useContasFinanceiras,
   useValoresOcultos,
 } from "@/hooks/useFinanceiro";
-import {
-  hojeEmSaoPaulo,
-  intervaloDoPeriodo,
-  rotuloDoPeriodo,
-} from "@/lib/financeiro";
+import { intervaloDoPeriodo, rotuloDoPeriodo } from "@/lib/financeiro";
 import type { View } from "@/types";
 import type { PeriodoEscolhido } from "@/types/financeiro";
 
@@ -102,11 +99,7 @@ export function AdminFinanceiroView({
 }: AdminFinanceiroViewProps) {
   const ativo = active;
   const [cache] = useState(() => new Map<string, unknown>());
-  const [hoje, setHoje] = useState(() => hojeEmSaoPaulo());
-  // Tela aberta de um dia para o outro: "hoje" anda quando ela volta a ativar.
-  useEffect(() => {
-    if (ativo) setHoje(hojeEmSaoPaulo());
-  }, [ativo]);
+  const hoje = useDiaDeSaoPaulo(ativo);
 
   const [aba, setAba] = useState<AbaDoFinanceiro>("visao");
   const [ladoDosPrevistos, setLadoDosPrevistos] =
@@ -123,6 +116,8 @@ export function AdminFinanceiroView({
   const [versao, setVersao] = useState(0);
   const [folha, setFolha] = useState<FolhaDoFinanceiro | null>(null);
   const [numeroDaFolha, setNumeroDaFolha] = useState(0);
+  const geracaoDaFolha = useRef(0);
+  const folhaEmEnvio = useRef(false);
   const [sujo, setSujo] = useState(false);
   const [ocultos, alternarOcultos] = useValoresOcultos();
 
@@ -130,22 +125,37 @@ export function AdminFinanceiroView({
   const categorias = useCategoriasFinanceiras(ativo, versao);
 
   const fecharFolha = useCallback(() => {
+    if (folhaEmEnvio.current) return;
     setFolha(null);
     setSujo(false);
   }, []);
   const abrirFolha = useCallback((nova: FolhaDoFinanceiro) => {
+    if (folhaEmEnvio.current) return;
     setSujo(false);
-    setNumeroDaFolha((n) => n + 1);
+    geracaoDaFolha.current += 1;
+    setNumeroDaFolha(geracaoDaFolha.current);
     setFolha(nova);
   }, []);
+  const aoMudarEnviando = useCallback(
+    (enviando: boolean) => {
+      if (geracaoDaFolha.current === numeroDaFolha) {
+        folhaEmEnvio.current = enviando;
+      }
+    },
+    [numeroDaFolha],
+  );
   const invalidar = useCallback(() => setVersao((v) => v + 1), []);
   const aoSalvar = useCallback(
     (mensagem: string) => {
       invalidar();
       toast.success(mensagem);
+      // A resposta pertence à folha que iniciou a escrita, mesmo que outra
+      // já tenha aberto. Atualizar os dados não deve apagar o formulário novo.
+      if (geracaoDaFolha.current !== numeroDaFolha) return;
+      folhaEmEnvio.current = false;
       fecharFolha();
     },
-    [invalidar, fecharFolha],
+    [invalidar, fecharFolha, numeroDaFolha],
   );
   const abrirPedido = useCallback(
     (pedidoId: string) => {
@@ -207,6 +217,7 @@ export function AdminFinanceiroView({
             categorias={listaDeCategorias}
             inicial={folha.inicial}
             aviso={contas.erro ?? categorias.erro}
+            aoMudarEnviando={aoMudarEnviando}
             aoFechar={fecharFolha}
             aoSalvar={aoSalvar}
             aoMudarSujo={setSujo}

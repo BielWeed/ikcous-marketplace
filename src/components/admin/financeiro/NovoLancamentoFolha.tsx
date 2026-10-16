@@ -18,6 +18,7 @@ import {
   validarLancamento,
   valorDaParcela,
 } from "@/lib/financeiro";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import {
   CONTA_BANCARIA,
   type CategoriaFinanceira,
@@ -63,6 +64,7 @@ export function NovoLancamentoFolha({
   aoFechar,
   aoSalvar,
   aoMudarSujo,
+  aoMudarEnviando,
 }: {
   readonly hoje: DataIso;
   readonly contas: readonly ContaFinanceira[];
@@ -73,6 +75,7 @@ export function NovoLancamentoFolha({
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
+  readonly aoMudarEnviando?: (enviando: boolean) => void;
 }) {
   const contasAtivas = useMemo(() => contas.filter((c) => c.ativa), [contas]);
   const [formInicial] = useState<FormularioDoLancamento>(() =>
@@ -129,6 +132,10 @@ export function NovoLancamentoFolha({
     });
   }
 
+  function fechar() {
+    if (!enviandoRef.current) aoFechar();
+  }
+
   async function salvar(evento?: { preventDefault: () => void }) {
     evento?.preventDefault();
     if (enviandoRef.current) return;
@@ -136,19 +143,33 @@ export function NovoLancamentoFolha({
     const resultado = validarLancamento(form, hoje);
     if (!resultado.ok) return;
     enviandoRef.current = true;
+    aoMudarEnviando?.(true);
     setEnviando(true);
     setErroDoServidor(null);
+    const erroDePrazo = new Error(
+      "A internet demorou demais. Confira o lançamento antes de tentar de novo — ele pode ter sido salvo.",
+    );
     try {
-      const ids = await salvarLancamento(resultado.payload);
+      // O prazo solta a tela, mas não cancela a gravação no servidor.
+      const ids = await aguardarComPrazo(
+        salvarLancamento(resultado.payload),
+        30_000,
+        () => erroDePrazo,
+      );
       aoSalvar(
         ids.length > 1
           ? `${ids.length} parcelas lançadas.`
           : "Lançamento salvo.",
       );
     } catch (erro) {
-      setErroDoServidor(mensagemDeErroFinanceiro(erro));
+      setErroDoServidor(
+        erro === erroDePrazo
+          ? erroDePrazo.message
+          : mensagemDeErroFinanceiro(erro),
+      );
     } finally {
       enviandoRef.current = false;
+      aoMudarEnviando?.(false);
       setEnviando(false);
     }
   }
@@ -168,14 +189,15 @@ export function NovoLancamentoFolha({
     <FolhaFinanceira
       titulo="Novo lançamento"
       descricao="Receitas e despesas que não vêm de pedido: aluguel, fornecedor, taxa, conta de luz."
-      aoFechar={aoFechar}
+      aoFechar={fechar}
       rodape={
         <div className="flex flex-col gap-3">
           {erroDoServidor ? <EstadoDeErro mensagem={erroDoServidor} /> : null}
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={aoFechar}
+              onClick={fechar}
+              disabled={enviando}
               className={`${CLASSE_BOTAO_SECUNDARIO} flex-1`}
             >
               Cancelar
