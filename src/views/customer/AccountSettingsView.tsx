@@ -254,6 +254,7 @@ export function AccountSettingsView() {
     phone: "",
     email: "",
   });
+  const [profileDataOriginal, setProfileDataOriginal] = useState(profileData);
 
   // CONTA-01: a carga do perfil tem três estados OBSERVÁVEIS, não só
   // "chegou dado válido". Antes desta correção o `useEffect` abaixo só
@@ -305,6 +306,21 @@ export function AccountSettingsView() {
     confirmPassword: "",
   });
 
+  const edicaoPendente =
+    (profileLoadState === "loaded" &&
+      (profileData.name !== profileDataOriginal.name ||
+        profileData.phone !== profileDataOriginal.phone ||
+        somenteDigitosDoCpf(cpf) !== cpfOriginal)) ||
+    passwordData.newPassword !== "" ||
+    passwordData.confirmPassword !== "";
+  const recargaBloqueada = edicaoPendente || loading || updatingPassword;
+
+  // A atualização espera o rascunho ou o salvamento; sair da tela libera a marca.
+  useEffect(() => {
+    if (!recargaBloqueada) return;
+    return marcarOperacaoSensivel("edicao-da-conta");
+  }, [recargaBloqueada]);
+
   const carregarPerfil = useCallback(async () => {
     if (!user) return;
     setProfileLoadState("loading");
@@ -325,11 +341,13 @@ export function AccountSettingsView() {
         return;
       }
 
-      setProfileData({
+      const dadosCarregados = {
         name: profile.full_name || "",
         phone: formatarWhatsAppParaExibicao(profile.whatsapp || ""),
         email: user.email || "",
-      });
+      };
+      setProfileData(dadosCarregados);
+      setProfileDataOriginal(dadosCarregados);
       // Toda carga é um cadastro "não editado" de novo — inclusive ao
       // tentar de novo depois de um erro.
       setWhatsappEditado(false);
@@ -432,7 +450,9 @@ export function AccountSettingsView() {
     // tinha CPF TAMBÉM é uma mudança — é o caminho de limpar.
     const cpfMudou = digitosCpfAtual !== cpfOriginal;
 
+    const perfilEnviado = profileData;
     setLoading(true);
+    const desmarcar = marcarOperacaoSensivel("salvar-conta");
     try {
       // `update_my_profile_secure` faz `whatsapp = COALESCE(p_whatsapp,
       // whatsapp)` (SECURITY DEFINER, supabase/migrations) — mandar `null`
@@ -443,15 +463,17 @@ export function AccountSettingsView() {
         "update_my_profile_secure",
         {
           p_full_name: nomeAparado,
-          p_whatsapp: whatsappEditado ? profileData.phone : null,
+          p_whatsapp: whatsappEditado ? perfilEnviado.phone : null,
         },
       );
 
       if (error) throw error;
 
-      // O campo passa a mostrar o que foi gravado (já aparado) — mesmo que o
-      // CPF abaixo falhe, o nome já foi salvo.
-      setProfileData((p) => ({ ...p, name: nomeAparado }));
+      // O nome já foi salvo, mas uma edição feita durante o envio fica na tela.
+      setProfileDataOriginal({ ...perfilEnviado, name: nomeAparado });
+      setProfileData((p) =>
+        p.name === perfilEnviado.name ? { ...p, name: nomeAparado } : p,
+      );
 
       if (cpfMudou) {
         const resultadoCpf = await gravarCpfDaConta(digitosCpfAtual);
@@ -459,7 +481,6 @@ export function AccountSettingsView() {
           toast.error(mensagemFalhaCpf(resultadoCpf.motivo));
           // O resto do perfil (nome/WhatsApp) JÁ foi salvo com sucesso —
           // não desfaz; só o CPF fica pendente para uma nova tentativa.
-          setLoading(false);
           return;
         }
         setCpfOriginal(digitosCpfAtual);
@@ -473,6 +494,7 @@ export function AccountSettingsView() {
       console.error("Update error:", error);
       toast.error("Erro ao atualizar perfil");
     } finally {
+      desmarcar();
       setLoading(false);
     }
   };
