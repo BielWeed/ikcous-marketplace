@@ -521,6 +521,10 @@ export function PagamentoOnline({
           onVerMeusPedidos={onVerMeusPedidos}
           sessaoAtiva={sessaoAtiva}
           onEntrarDeNovo={onEntrarDeNovo}
+          // A falha de carga do formulário agora é da tela do cartão (antes
+          // subia ao CheckoutView, que escondia "Pagar com PIX" com a cobrança
+          // do pedido incerta): a mesma guarda viaja junto.
+          cobrancaIncerta={cobrancaIncerta}
         />
       );
     }

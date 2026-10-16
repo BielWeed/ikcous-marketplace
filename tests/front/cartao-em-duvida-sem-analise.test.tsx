@@ -29,7 +29,6 @@ import {
 } from "vitest";
 
 import {
-  MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE,
   classificarRespostaCartao,
   enviarPagamentoComCartao,
 } from "@/components/checkout/PagamentoComCartao";
@@ -37,6 +36,12 @@ import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
 import { carregarSdkMercadoPago } from "@/components/checkout/sdk-mercado-pago";
 import type { RespostaCriarPagamento } from "@/hooks/useOrders";
 import type { ConfigDoCartao } from "@/lib/config-do-cartao";
+
+// A saída "Pagar com PIX" depois de 3 minutos em análise (B2, 26/09/2026) deixou
+// de existir no redesenho de 16/10/2026 (decisão D4: o servidor recusa PIX com
+// o cartão em análise). O tempo continua aqui só para provar que NADA que
+// cobra aparece, nem depois dele.
+const MINUTOS_DA_ANTIGA_SAIDA_DO_B2 = 3;
 
 vi.mock("@/lib/supabase", () => ({
   supabase: { rpc: vi.fn(), functions: { invoke: vi.fn() } },
@@ -343,9 +348,7 @@ describe("PagamentoOnline em modo cartão — resposta sem order abre a verifica
       semPromessaNemSaidaQueCobra();
 
       await act(async () => {
-        vi.advanceTimersByTime(
-          MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE * 60_000 + 10_000,
-        );
+        vi.advanceTimersByTime(MINUTOS_DA_ANTIGA_SAIDA_DO_B2 * 60_000 + 10_000);
       });
       semPromessaNemSaidaQueCobra();
       expect(onTrocarParaPix).not.toHaveBeenCalled();
@@ -391,7 +394,7 @@ describe("PagamentoOnline em modo cartão — resposta sem order abre a verifica
     semPromessaNemSaidaQueCobra();
   });
 
-  it("CONTROLE: 'aguardando' COM paymentId continua mostrando 'Pagamento em análise pelo banco'", async () => {
+  it("CONTROLE: 'aguardando' COM paymentId continua mostrando 'Seu banco está analisando'", async () => {
     const { create } = instalarSdkFalso();
     criarPagamento.mockResolvedValue({
       paymentId: "ORD-VIVA-1",
@@ -402,7 +405,7 @@ describe("PagamentoOnline em modo cartão — resposta sem order abre a verifica
     await enviarCartao(create);
 
     expect(hospedeiro.textContent).toContain(
-      "Pagamento em análise pelo banco. Você será avisado quando for aprovado.",
+      "Seu banco está analisando. Não pague de novo. Avisamos aqui e por notificação",
     );
     expect(onCobrancaEmDuvida).not.toHaveBeenCalled();
   });

@@ -11,9 +11,10 @@ import {
   tiposDeCartaoAceitos,
 } from "@/lib/config-do-cartao";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
-import { formatCurrency } from "@/lib/utils";
-import { AlertCircle, Check, Clock, Loader2, ShieldCheck } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { arredondarParaCentavos, formatCurrency } from "@/lib/utils";
+import { Clock, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { BotaoDoCartao, PainelDoCartao } from "./AvisoDoCartao";
 import type {
   CategoriaErroPagamento,
   SinalDeErroPagamento,
@@ -36,6 +37,15 @@ import {
   lerDeviceIdDoMercadoPago,
 } from "./device-id-mercado-pago";
 import { emailDeTesteDoMercadoPago } from "./email-de-teste-do-mercado-pago";
+import { estiloDoBrick } from "./estilo-do-brick";
+import {
+  type CategoriaDaRecusa,
+  TEXTOS_DO_CARTAO,
+  categoriaDaRecusa,
+  categoriaDoServidor,
+  formatarHoraDoPrazo,
+  lerPrazoEmMs,
+} from "./mensagens-do-cartao";
 import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
@@ -53,6 +63,17 @@ import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
  * banco | recusado: motivo + outro cartão / PIX | em análise pelo banco).
  * Quem declara o pedido PAGO continua sendo só o webhook/reconciliação — a
  * tela de sucesso vem do tempo real + consulta do CheckoutView, igual ao PIX.
+ *
+ * REDESENHO (16/10/2026, decisões D4 do dono): o formulário e o botão "Pagar"
+ * continuam sendo do Brick (com as cores da loja, `estilo-do-brick.ts`); a
+ * moldura, o título, o total, os avisos e as saídas são nossos
+ * (`AvisoDoCartao.tsx`, frases em `mensagens-do-cartao.ts`). A regra que muda
+ * o desenho inteiro: **o Brick NUNCA desmonta por erro**. Recusa, dado errado
+ * e falha local viram um painel NOSSO acima do formulário e o que a pessoa
+ * digitou fica onde está — antes, qualquer erro subia ao pai, que trocava a
+ * tela por uma caixa de erro e remontava o Brick vazio. Sobe ao pai (`onErro`)
+ * só o que ele PRECISA saber para guardar dinheiro: erro terminal e erro
+ * ambíguo (a cobrança pode existir). A regra de cobrança não mudou.
  */
 
 type CriarPagamento = (
@@ -91,7 +112,17 @@ export type ResultadoDoCartao =
       readonly url: string;
       readonly paymentId: string | null;
     }
-  | { readonly tipo: "recusado"; readonly motivo: string }
+  | {
+      readonly tipo: "recusado";
+      readonly motivo: string;
+      /** Categoria já vista pelo servidor; ausente = usa o mapa por frase. */
+      readonly categoria?: CategoriaDaRecusa;
+    }
+  // Redesenho (16/10/2026): a validação LOCAL falhou — nada foi enviado ao
+  // servidor, nunca existiu cobrança. Antes era `erro` + `semCobranca`, e o pai
+  // trocava a tela inteira; agora a tela mostra a frase curada sem desmontar o
+  // Brick (o pai não precisa saber: não há cobrança para guardar).
+  | { readonly tipo: "dados-invalidos"; readonly mensagem: string }
   | {
       readonly tipo: "erro";
       readonly mensagem: string;
@@ -137,8 +168,66 @@ type EtapaDoCartao =
   | { readonly tipo: "encerrado"; readonly mensagem: string }
   | Exclude<
       ResultadoDoCartao,
-      { tipo: "erro" } | { tipo: "forma-desligada" } | { tipo: "em-duvida" }
+      | { tipo: "erro" }
+      | { tipo: "forma-desligada" }
+      | { tipo: "em-duvida" }
+      | { tipo: "dados-invalidos" }
     >;
+
+/**
+ * O que o painel de aviso diz enquanto o Brick segue montado (redesenho,
+ * 16/10/2026). Quatro são a recusa do banco por categoria; "carga-falhou" é o
+ * formulário que não carregou. `semEnvio` marca os dois que NÃO vieram de um
+ * POST (dado local errado, carga que falhou): neles o "Pagar com PIX" obedece
+ * à guarda que a caixa de erro do pai tinha — nunca com a cobrança do pedido
+ * já incerta (`cobrancaIncerta`). Uma recusa de verdade do banco não precisa
+ * dela: o servidor acabou de soltar a vaga.
+ */
+type TipoDeAviso =
+  | "dados"
+  | "sem-limite"
+  | "autorizacao"
+  | "recusa"
+  | "carga-falhou";
+
+type AvisoDoFormulario = {
+  readonly n: number;
+  readonly tipo: TipoDeAviso;
+  /** Só o dado errado LOCAL: a frase curada de `montarCorpoDoCartao`. */
+  readonly mensagem?: string;
+  /** Nenhum POST de cartão saiu desta tentativa (dado local, carga). */
+  readonly semEnvio?: boolean;
+};
+
+function tipoDoAvisoDaRecusa(categoria: CategoriaDaRecusa): TipoDeAviso {
+  switch (categoria) {
+    case "dados":
+      return "dados";
+    case "sem-limite":
+      return "sem-limite";
+    case "autorizacao":
+      return "autorizacao";
+    default:
+      return "recusa";
+  }
+}
+
+function tituloDoAviso(aviso: AvisoDoFormulario): string {
+  switch (aviso.tipo) {
+    case "dados":
+      // O dado errado LOCAL traz a frase curada do que conferir; o do servidor
+      // ("dados" por categoria) usa a frase geral.
+      return aviso.mensagem ?? TEXTOS_DO_CARTAO.dados;
+    case "sem-limite":
+      return TEXTOS_DO_CARTAO.semLimite;
+    case "autorizacao":
+      return TEXTOS_DO_CARTAO.autorizacao;
+    case "carga-falhou":
+      return TEXTOS_DO_CARTAO.cargaFalhou;
+    default:
+      return TEXTOS_DO_CARTAO.recusaGeral;
+  }
+}
 
 /** As etapas em que a tela consulta o servidor sozinha (com limite). */
 const ETAPAS_QUE_CONSULTAM: ReadonlySet<EtapaDoCartao["tipo"]> = new Set([
@@ -202,30 +291,48 @@ const MENSAGEM_COBRANCA_EM_DUVIDA =
   "Não conseguimos confirmar com o banco se o pagamento com cartão deste pedido foi feito.";
 
 /**
- * B2 da revisão de risco pré-publicação (26/09/2026): a tela "em análise"
- * (sem desafio, `processing` no MP — antifraude/emissor decidindo) ficava
- * sem saída até a reserva de 30 minutos morrer sozinha. A maioria das
- * decisões sai em segundos; quem cai numa revisão manual mais longa não
- * pode ficar preso. Curto o bastante para sobrar tempo de pagar o PIX
- * dentro da MESMA reserva; longo o bastante para não competir com uma
- * aprovação normal do banco. Seguro por construção: a edge responde 409
- * enquanto o cartão segue `processing` (achado B3, tratado no CheckoutView),
- * nunca cria uma segunda cobrança.
+ * "Em análise" NÃO oferece PIX (redesenho, 16/10/2026, decisão D4). A rodada B2
+ * de 26/09/2026 abria "Pagar com PIX" depois de 3 minutos de análise para a
+ * pessoa não ficar presa até a reserva morrer — mas o servidor responde 409
+ * enquanto o cartão segue `processing` (`cartaoEmAnalise`, ver o CheckoutView),
+ * então o botão levava a uma recusa. A saída honesta é esperar: a tela consulta
+ * o servidor sozinha (cadência de `confirmacao-do-cartao.ts`), "Verificar de
+ * novo" e "Ver meus pedidos" aparecem quando a cadência para.
  */
-export const MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE = 3;
 
 /**
  * Diagnóstico do checkout (29/09/2026): "Carregando o formulário do
  * cartão..." dependia do script do Mercado Pago carregar, SEM prazo — rede
- * presa deixava o spinner para sempre. O prazo é SÓ para a CARGA do SDK
+ * presa deixava o spinner para sempre. O prazo é para a CARGA do SDK
  * (`Promise.race` local, mesmo helper do PIX): estourou, entra pelo MESMO
- * caminho de SDK que não carrega — `onFalhaDeMontagem` → `semCobranca`
- * (nenhum POST de cartão existiu; o CheckoutView oferece "Pagar com PIX").
- * A fase seguinte (create()/onReady do Brick) continua sem prazo — o Brick
- * tem `onError` próprio para falha crítica; um `create()` que pendura sem
- * nem errar continua sendo a limitação documentada deste arquivo.
+ * caminho de SDK que não carrega — `onFalhaDeMontagem` (nenhum POST de cartão
+ * existiu: a tela mostra "Não foi possível carregar o formulário do cartão"
+ * com "Tentar de novo" e "Pagar com PIX").
  */
 export const TEMPO_LIMITE_CARREGAMENTO_SDK_MS = 15_000;
+
+/**
+ * Redesenho (16/10/2026, A6): o `create()` do Brick também esperava SEM prazo
+ * — um `create()` que pendura sem nem errar deixava o spinner para sempre.
+ * Estourou: mesma falha de montagem. O `create()` abandonado NÃO é
+ * esquecido: quando (se) ele voltar, é desmontado na hora, e um "Tentar de
+ * novo" espera por ele (até `ESPERA_DA_LIMPEZA_DO_BRICK_MS`) antes de criar
+ * outro no mesmo contêiner — dois Bricks no mesmo nó é erro do SDK.
+ */
+export const TEMPO_LIMITE_CRIACAO_DO_BRICK_MS = 20_000;
+const ESPERA_DA_LIMPEZA_DO_BRICK_MS = 3_000;
+
+/**
+ * Redesenho (16/10/2026, A6): o POST do cartão esperava SEM prazo. O limite é
+ * LOCAL (`comTempoLimite`): ele só deixa de ESPERAR — nunca cancela o POST em
+ * voo e nunca o reenvia. Estourou: a cobrança pode existir (o Mercado Pago
+ * pode ter aprovado e a resposta se perdeu), então o desfecho é o de
+ * "cobrança em dúvida" — a verificação que só consulta —, jamais "nada foi
+ * cobrado". 40 s cobrem o pior caminho da edge (chamadas ao Mercado Pago de
+ * até 15 s, `TEMPO_LIMITE_MS` em `_shared/mercadopago.ts`, em sequência); um
+ * estouro à toa é inofensivo (a verificação mostra a resposta de verdade).
+ */
+export const TEMPO_LIMITE_ENVIO_DO_CARTAO_MS = 40_000;
 
 /**
  * Domínios do Mercado Pago que podem hospedar o desafio 3-D Secure e mandar
@@ -513,7 +620,12 @@ export function classificarRespostaCartao(
         categoria: "terminal",
       };
     }
-    return { tipo: "recusado", motivo: motivo ?? MOTIVO_PADRAO_DA_RECUSA };
+    const categoria = categoriaDoServidor(r.categoriaDaRecusa);
+    return {
+      tipo: "recusado",
+      motivo: motivo ?? MOTIVO_PADRAO_DA_RECUSA,
+      ...(categoria ? { categoria } : {}),
+    };
   }
 
   if (r?.statusPagamento === "expirado") {
@@ -590,18 +702,34 @@ export async function enviarPagamentoComCartao({
     deviceId,
   });
   if (!montagem.ok) {
-    // `semCobranca`: a validação é LOCAL — nenhum POST chegou à edge (achado
-    // B1, rodada 2 da revisão de risco pré-publicação). Seguro oferecer PIX.
-    return {
-      tipo: "erro",
-      mensagem: montagem.mensagem,
-      categoria: "recuperavel",
-      sinal: "semCobranca",
-    };
+    // A validação é LOCAL — nenhum POST chegou à edge, nunca existiu cobrança
+    // (achado B1, rodada 2 da revisão de risco pré-publicação; era o `erro`
+    // com `semCobranca`, e o pai trocava a tela inteira por uma caixa de erro).
+    // Agora a tela mostra a frase sem desmontar o Brick.
+    return { tipo: "dados-invalidos", mensagem: montagem.mensagem };
   }
   try {
-    return classificarRespostaCartao(await criarPagamento(montagem.corpo));
+    // A6 (16/10/2026): prazo LOCAL no POST — ver
+    // `TEMPO_LIMITE_ENVIO_DO_CARTAO_MS`. `Promise.resolve` mantém tolerante um
+    // `criarPagamento` que devolve valor solto (dublês de teste).
+    return classificarRespostaCartao(
+      await comTempoLimite(
+        Promise.resolve(criarPagamento(montagem.corpo)),
+        TEMPO_LIMITE_ENVIO_DO_CARTAO_MS,
+      ),
+    );
   } catch (err: any) {
+    // Estourou o prazo (só o NOSSO relógio: o POST segue em voo, intocado).
+    // Cobrança INCERTA — o mesmo desfecho do 503 `indisponivel` logo abaixo:
+    // a verificação, que só consulta. NUNCA "nada foi cobrado", NUNCA outro
+    // POST. O `terminal` de um erro real da edge não passa por aqui: o
+    // marcador `tempoLimite` só existe no erro do `comTempoLimite`.
+    if (err?.tempoLimite === true) {
+      return {
+        tipo: "em-duvida",
+        pontoDePartida: { verificacao: "indisponivel" },
+      };
+    }
     // Mesmas fontes curadas do PIX (ver o catch de `dispararPagamentoPix`):
     // `criarPagamento` só lança texto da nossa edge ou o literal padrão.
     //
@@ -652,6 +780,14 @@ function erroCriticoDoBrick(erro: unknown): boolean {
 }
 
 /**
+ * `create()` que estourou o prazo e ainda pode voltar, POR CONTÊINER: quando
+ * volta, a instância é desmontada (ninguém a usa mais), e quem monta outro
+ * Brick no mesmo contêiner espera por isso. Só existe depois de um estouro —
+ * a primeira montagem nunca espera por nada.
+ */
+const limpezasDeCreateAbandonado = new Map<string, Promise<void>>();
+
+/**
  * Monta o Card Payment Brick e devolve a função de desmontagem do efeito.
  *
  * Mesmo desenho do antigo `montarBrick` (Payment Brick, aposentado com o
@@ -683,6 +819,10 @@ export function montarBrickDeCartao({
   onPronto: () => void;
 }): () => void {
   let cancelado = false;
+  // `create()` que estourou o prazo: a instância que ainda pode voltar não
+  // fala mais com a tela (`onReady`/`onError` dela são ignorados) — quem
+  // decide é a montagem seguinte.
+  let abandonado = false;
   let controlador: { unmount: () => void } | null = null;
 
   (async () => {
@@ -706,6 +846,18 @@ export function montarBrickDeCartao({
       );
       if (cancelado) return;
 
+      // Um `create()` abandonado neste mesmo contêiner (estourou o prazo numa
+      // montagem anterior) ainda pode voltar: espera ele se desmontar — com
+      // teto curto, para a pessoa nunca ficar presa por um que não volta.
+      const limpezaPendente = limpezasDeCreateAbandonado.get(containerId);
+      if (limpezaPendente) {
+        await comTempoLimite(
+          limpezaPendente,
+          ESPERA_DA_LIMPEZA_DO_BRICK_MS,
+        ).catch(() => {});
+        if (cancelado) return;
+      }
+
       const publicKey = chavePublicaMercadoPago();
       if (!publicKey) throw new Error("Pagamento indisponível.");
 
@@ -716,39 +868,73 @@ export function montarBrickDeCartao({
       const email =
         emailDeTesteDoMercadoPago() ?? textoNaoVazio(emailDoPagador);
 
-      const criado = await mp.bricks().create("cardPayment", containerId, {
-        initialization: {
-          amount: valor,
-          // Com o e-mail da conta preenchido, o Brick esconde o campo — o
-          // cliente logado não digita de novo o que a loja já sabe.
-          ...(email ? { payer: { email } } : {}),
-        },
-        customization: {
-          paymentMethods: {
-            minInstallments: 1,
-            maxInstallments: parcelasMaximasNoBrick(config),
-            types: { included: tiposDeCartaoAceitos(config) },
+      const emVoo: Promise<{ unmount: () => void }> = Promise.resolve(
+        mp.bricks().create("cardPayment", containerId, {
+          initialization: {
+            amount: arredondarParaCentavos(valor),
+            // Com o e-mail da conta preenchido, o Brick esconde o campo — o
+            // cliente logado não digita de novo o que a loja já sabe.
+            ...(email ? { payer: { email } } : {}),
           },
-        },
-        callbacks: {
-          onReady: () => {
-            if (!cancelado) onPronto();
+          customization: {
+            paymentMethods: {
+              minInstallments: 1,
+              maxInstallments: parcelasMaximasNoBrick(config),
+              types: { included: tiposDeCartaoAceitos(config) },
+            },
+            // Redesenho (16/10/2026): as cores da loja no botão e nos campos, e
+            // a moldura é nossa (ver `estilo-do-brick.ts`). É a ÚNICA chave nova
+            // — `initialization` e `paymentMethods` seguem como o contrato.
+            visual: estiloDoBrick(),
           },
-          onError: (erro: unknown) => {
-            // Só o tipo e a causa — o objeto do Brick não é despejado inteiro.
-            const { type, cause } = (erro ?? {}) as {
-              type?: unknown;
-              cause?: unknown;
-            };
-            console.error("brick de cartão:", type, cause);
-            if (!cancelado && erroCriticoDoBrick(erro)) onFalhaDeMontagem();
+          callbacks: {
+            onReady: () => {
+              if (!cancelado && !abandonado) onPronto();
+            },
+            onError: (erro: unknown) => {
+              // Só o tipo e a causa — o objeto do Brick não é despejado inteiro.
+              const { type, cause } = (erro ?? {}) as {
+                type?: unknown;
+                cause?: unknown;
+              };
+              console.error("brick de cartão:", type, cause);
+              if (!cancelado && !abandonado && erroCriticoDoBrick(erro)) {
+                onFalhaDeMontagem();
+              }
+            },
+            onSubmit: (
+              dados: DadosDoCartaoDoBrick,
+              adicionais?: DadosAdicionaisDoBrick,
+            ) => onEnviar(dados, adicionais),
           },
-          onSubmit: (
-            dados: DadosDoCartaoDoBrick,
-            adicionais?: DadosAdicionaisDoBrick,
-          ) => onEnviar(dados, adicionais),
-        },
-      });
+        }),
+      );
+
+      let criado: { unmount: () => void };
+      try {
+        criado = await comTempoLimite(emVoo, TEMPO_LIMITE_CRIACAO_DO_BRICK_MS);
+      } catch (erroDoCreate) {
+        if ((erroDoCreate as { tempoLimite?: unknown })?.tempoLimite === true) {
+          abandonado = true;
+          // Estourou o prazo: o `create()` segue em voo. Quando voltar, é
+          // desmontado (ninguém mais o usa) — e a montagem seguinte neste
+          // contêiner espera por isso, no máximo `ESPERA_DA_LIMPEZA_DO_BRICK_MS`.
+          const limpeza: Promise<void> = emVoo
+            .then(
+              (tardio) => {
+                tardio?.unmount?.();
+              },
+              () => {},
+            )
+            .finally(() => {
+              if (limpezasDeCreateAbandonado.get(containerId) === limpeza) {
+                limpezasDeCreateAbandonado.delete(containerId);
+              }
+            });
+          limpezasDeCreateAbandonado.set(containerId, limpeza);
+        }
+        throw erroDoCreate;
+      }
 
       if (cancelado) {
         criado.unmount();
@@ -787,6 +973,7 @@ export function PagamentoComCartao({
   onVerMeusPedidos,
   sessaoAtiva = true,
   onEntrarDeNovo,
+  cobrancaIncerta = false,
 }: {
   orderId: string;
   valor: number;
@@ -834,10 +1021,20 @@ export function PagamentoComCartao({
   // estado, e não consulta nada sem conta.
   sessaoAtiva?: boolean;
   onEntrarDeNovo?: () => void;
+  // Redesenho (16/10/2026): o pedido já teve uma cobrança de cartão INCERTA
+  // (o pai marca por pedido e nunca desmarca). A falha de carga do formulário
+  // era erro do pai, que escondia "Pagar com PIX" nesse caso; agora a falha é
+  // nossa, e a guarda veio junto. Ausente = `false`.
+  cobrancaIncerta?: boolean;
 }) {
   // Mesma escolha do PIX: só `criarPagamento`, sem realtime — quem vê o
   // pedido virar pago é o CheckoutView.
-  const { criarPagamento } = useOrders(false, false);
+  const { criarPagamento: criarPagamentoDoHook } = useOrders(false, false);
+  // O prazo da reserva vem junto de TODA resposta do POST (`expiraEm` é a data
+  // gravada no pedido). A tela o lê de passagem — sem mudar a resposta — e
+  // mostra o "Prazo informado" como o PIX. Antes da primeira resposta não há
+  // prazo conhecido aqui (o pai não o passa), e nada é inventado.
+  const [prazoEmMs, setPrazoEmMs] = useState<number | null>(null);
   const [etapa, setEtapa] = useState<EtapaDoCartao>({ tipo: "formulario" });
   // Cada "Tentar outro cartão" remonta o Brick do zero: formulário limpo e
   // token novo (o anterior é de uso único).
@@ -869,6 +1066,16 @@ export function PagamentoComCartao({
     };
   }, []);
 
+  const criarPagamento = useCallback<CriarPagamento>(
+    async (args) => {
+      const resposta = await criarPagamentoDoHook(args);
+      const prazo = lerPrazoEmMs(resposta?.expiraEm);
+      if (prazo !== null && montadoRef.current) setPrazoEmMs(prazo);
+      return resposta;
+    },
+    [criarPagamentoDoHook],
+  );
+
   // `useId` devolve algo como ":r3:" — o Brick procura o contêiner pelo id,
   // e dois-pontos atrapalham seletor CSS.
   const idCru = useId();
@@ -878,6 +1085,24 @@ export function PagamentoComCartao({
   const { credito, debito, parcelasMax } = config;
   const formularioAtivo = etapa.tipo === "formulario";
 
+  // Redesenho (16/10/2026): o aviso que mora ACIMA do formulário com o Brick
+  // montado. É o lugar de tudo que antes subia ao pai e derrubava o Brick: a
+  // recusa do banco, o dado errado e a falha de carga. `n` numera os avisos —
+  // dois seguidos da mesma categoria são painéis diferentes, e o foco volta ao
+  // título de cada um.
+  const [aviso, setAviso] = useState<AvisoDoFormulario | null>(null);
+  const contadorDeAvisosRef = useRef(0);
+  const mostrarAviso = useCallback(
+    (
+      tipo: TipoDeAviso,
+      extra: Pick<AvisoDoFormulario, "mensagem" | "semEnvio"> = {},
+    ) => {
+      contadorDeAvisosRef.current += 1;
+      setAviso({ n: contadorDeAvisosRef.current, tipo, ...extra });
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!formularioAtivo) return;
     const configDoBrick: ConfigDoCartao = { credito, debito, parcelasMax };
@@ -886,26 +1111,42 @@ export function PagamentoComCartao({
       valor,
       config: configDoBrick,
       emailDoPagador,
-      onPronto: () => setFormularioPronto(true),
-      onFalhaDeMontagem: () =>
-        // `semCobranca`: o Brick nem chegou a montar (SDK que não carregou,
-        // chave pública ausente, `create()` que falhou, COEP bloqueando o
-        // iframe) — nenhum POST de cartão foi feito. Seguro oferecer PIX
-        // (achado B1, rodada 2 da revisão de risco pré-publicação).
+      onPronto: () => {
+        setFormularioPronto(true);
+        // Um Brick que ficou pronto depois do aviso de carga (voltou tarde):
+        // o aviso deixou de ser verdade.
+        setAviso((atual) => (atual?.tipo === "carga-falhou" ? null : atual));
+      },
+      onFalhaDeMontagem: () => {
+        // O Brick nem chegou a montar (SDK que não carregou, chave pública
+        // ausente, `create()` que falhou ou estourou o prazo, COEP bloqueando o
+        // iframe) — nenhum POST de cartão foi feito, nunca houve cobrança
+        // (achado B1, rodada 2 da revisão de risco pré-publicação). Antes isto
+        // subia ao pai (`onErro` + `semCobranca`), que trocava a tela por uma
+        // caixa de erro; agora é um painel NOSSO ("Tentar de novo" e "Pagar
+        // com PIX"), sem o pai.
         //
-        // Rodada 7 (corrige o addendum da rodada 6): aquele addendum tirou
-        // "COEP bloqueando o iframe" da lista dizendo que "o COEP saiu do
-        // app" — falso NESTA branch: o COEP sai com a branch
-        // `fix/coep-sai-do-app`, ainda não mesclada aqui. A causa volta pra
-        // lista até esse merge acontecer. O teste do Brick contra o Mercado
-        // Pago de verdade continua no runbook, não numa suíte deste
-        // repositório.
-        onErroRef.current(
-          "Não foi possível carregar o pagamento.",
-          "recuperavel",
-          "semCobranca",
-        ),
+        // Rodada 7 (corrige o addendum da rodada 6): "COEP bloqueando o
+        // iframe" continua na lista de causas até o COEP sair de vez do app.
+        // O teste do Brick contra o Mercado Pago de verdade continua no
+        // runbook, não numa suíte deste repositório.
+        if (!montadoRef.current) return;
+        contadorDeAvisosRef.current += 1;
+        const n = contadorDeAvisosRef.current;
+        // Um aviso de recusa que já está na tela NÃO é trocado por este: o
+        // Brick pode avisar `onError` crítico depois de um `onSubmit`
+        // rejeitado (a doc do Mercado Pago não fixa a ordem), e a recusa é a
+        // verdade que a pessoa precisa ler.
+        setAviso((atual) =>
+          atual !== null && atual.tipo !== "carga-falhou"
+            ? atual
+            : { n, tipo: "carga-falhou", semEnvio: true },
+        );
+      },
       onEnviar: async (dados, adicionais) => {
+        // Um novo envio apaga o aviso do envio anterior: o painel velho não
+        // convive com um pagamento em andamento.
+        if (montadoRef.current) setAviso(null);
         const resultado = await enviarPagamentoComCartao({
           orderId,
           dados,
@@ -941,6 +1182,29 @@ export function PagamentoComCartao({
           // Relança para o Brick sair do "processando" (mesmo motivo do erro).
           throw new Error(MENSAGEM_COBRANCA_EM_DUVIDA);
         }
+        if (resultado.tipo === "dados-invalidos") {
+          // Nada saiu daqui: o Brick fica como está, com o que a pessoa
+          // digitou, e o painel diz o que conferir. O pai não é chamado —
+          // não existe cobrança para ele guardar.
+          mostrarAviso("dados", {
+            mensagem: resultado.mensagem,
+            semEnvio: true,
+          });
+          throw new Error(resultado.mensagem);
+        }
+        if (resultado.tipo === "recusado") {
+          // O banco disse não e o servidor já soltou a vaga (nenhum valor foi
+          // cobrado). O Brick NÃO desmonta: a pessoa corrige o dado, espera o
+          // app do banco ou toca em "Tentar outro cartão" (aí sim o formulário
+          // é refeito, por escolha dela). Relança para o Brick sair do
+          // "processando" e liberar o botão.
+          mostrarAviso(
+            tipoDoAvisoDaRecusa(
+              resultado.categoria ?? categoriaDaRecusa(resultado.motivo),
+            ),
+          );
+          throw new Error(resultado.motivo);
+        }
         if (resultado.tipo === "erro") {
           if (resultado.sinal) {
             onErroRef.current(
@@ -956,7 +1220,9 @@ export function PagamentoComCartao({
           throw new Error(resultado.mensagem);
         }
         // Sair do formulário desmonta o Brick (limpeza deste efeito); o
-        // contêiner continua no DOM, só escondido, até lá.
+        // contêiner continua no DOM, só escondido, até lá. Aqui só chegam o
+        // sucesso e os estados em que NÃO há mais o que digitar (aprovado,
+        // desafio, em análise): nenhum deles é erro.
         setEtapa(resultado);
       },
     });
@@ -971,6 +1237,7 @@ export function PagamentoComCartao({
     emailDoPagador,
     orderId,
     criarPagamento,
+    mostrarAviso,
   ]);
 
   // 3-D Secure: a página do desafio avisa por `postMessage` quando o cliente
@@ -1315,60 +1582,103 @@ export function PagamentoComCartao({
     sessaoAtiva === false &&
     (ETAPAS_QUE_CONSULTAM.has(etapa.tipo) || etapa.tipo === "aprovado");
 
+  // "Tentar outro cartão" e o "Tentar de novo" da falha de carga: o ÚNICO
+  // momento em que o formulário é refeito do zero — por escolha da pessoa.
   const tentarOutroCartao = () => {
     setFormularioPronto(false);
+    setAviso(null);
     setTentativa((n) => n + 1);
     setEtapa({ tipo: "formulario" });
   };
 
-  // B2: depois de alguns minutos "em análise", oferece PIX como saída (ver o
-  // comentário de MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE, acima). Mesmo
-  // padrão do relógio do prazo do PIX (`PagamentoOnline.tsx`): um `setInterval`
-  // que só reage ao relógio, nunca decide nada sozinho — quem aprova continua
-  // sendo o banco/webhook. Estado, não ref: o valor entra na conta de
-  // `pixDisponivelNaAnalise` durante o RENDER, e ref não pode ser lida ali
-  // (react-hooks/refs — "Cannot access ref value during render").
-  const emAnalise = etapa.tipo === "em-analise";
-  const [inicioDaAnalise, setInicioDaAnalise] = useState<number | null>(null);
-  const [agoraNaAnalise, setAgoraNaAnalise] = useState(() => Date.now());
+  // O prazo da reserva, como o relógio do PIX (`PagamentoOnline.tsx`): AVISO
+  // ESTIMADO, nunca decisão — o relógio do aparelho erra, e quem sabe se o
+  // pedido venceu é o servidor. Só roda com um prazo legível; passado o
+  // horário, a linha do prazo sai e entra o aviso prudente.
+  const [agora, setAgora] = useState(() => Date.now());
+  const prazoConhecido = prazoEmMs !== null;
   useEffect(() => {
-    if (!emAnalise) {
-      setInicioDaAnalise(null);
-      return;
-    }
-    const agora = Date.now();
-    setInicioDaAnalise(agora);
-    setAgoraNaAnalise(agora);
-    const id = setInterval(() => setAgoraNaAnalise(Date.now()), 10_000);
-    return () => clearInterval(id);
-  }, [emAnalise]);
-  const pixDisponivelNaAnalise =
-    inicioDaAnalise !== null &&
-    agoraNaAnalise - inicioDaAnalise >=
-      MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE * 60_000;
+    if (!prazoConhecido) return;
+    const atualizar = () => setAgora(Date.now());
+    atualizar();
+    const id = setInterval(atualizar, 10_000);
+    document.addEventListener("visibilitychange", atualizar);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", atualizar);
+    };
+  }, [prazoConhecido]);
+  const horarioPrevistoPassou = prazoEmMs !== null && agora >= prazoEmMs;
 
   const valorConhecido = Number.isFinite(valor) && valor > 0;
+
+  // "Pagar com PIX" nos avisos do formulário: o cartão MORREU (recusa) ou nunca
+  // chegou a existir (dado local, carga) — `cartaoAindaVivo: false`. Nos dois
+  // que não vieram de POST, a guarda do pai se mantém: com a cobrança do pedido
+  // já incerta, nada de PIX (ver `AvisoDoFormulario.semEnvio`).
+  const podeOferecerPix = (a: AvisoDoFormulario) =>
+    !(a.semEnvio && cobrancaIncerta);
+  const pagarComPixComCartaoMorto = () => onPagarComPix(false);
+  const mostrarPrazo = formularioAtivo && prazoEmMs !== null;
+  // Região viva e foco do formulário: ver `AvisoDoFormulario`.
+  const carregandoOFormulario =
+    formularioAtivo && !formularioPronto && aviso?.tipo !== "carga-falhou";
+  const brickEscondido = !formularioAtivo || aviso?.tipo === "carga-falhou";
 
   return (
     <section
       aria-labelledby={idTitulo}
-      className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6"
+      // UMA moldura só (redesenho, 16/10/2026): o Brick não desenha card por
+      // dentro (`formPadding: 0` em `estilo-do-brick.ts`) — antes eram duas
+      // caixas, uma dentro da outra. 12 px de respiro no celular: com a coluna
+      // do CheckoutView (`px-3.5`), uma tela de 375 px dá ~321 px úteis ao
+      // formulário (era ~315, com a segunda caixa).
+      className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-200 bg-white p-3 sm:p-6"
     >
-      <header className="space-y-1 text-center">
-        <h2
-          id={idTitulo}
-          className="text-xs font-bold uppercase tracking-wider text-zinc-500"
-        >
-          Pagamento com cartão
-        </h2>
+      <header className="space-y-3">
+        <div className="space-y-0.5">
+          <h2
+            id={idTitulo}
+            className="text-lg font-bold leading-tight text-zinc-900"
+          >
+            {TEXTOS_DO_CARTAO.titulo}
+          </h2>
+          {orderId && (
+            <p className="text-sm text-zinc-600">
+              Pedido #{numeroDoPedido(orderId)}
+            </p>
+          )}
+        </div>
         {valorConhecido && (
-          <p className="text-3xl font-black tabular-nums text-zinc-900">
-            {formatCurrency(valor)}
+          <p className="flex items-baseline justify-between gap-3 rounded-xl bg-zinc-50 px-3 py-2.5">
+            <span className="text-base font-medium text-zinc-700">
+              {TEXTOS_DO_CARTAO.total}
+            </span>
+            <span className="text-2xl font-black tabular-nums text-zinc-900">
+              {formatCurrency(arredondarParaCentavos(valor))}
+            </span>
           </p>
         )}
-        {orderId && (
-          <p className="text-xs text-zinc-500">
-            Pedido #{numeroDoPedido(orderId)}
+        {/* O app NÃO sabe se o cartão cobra juros: quem decide é o banco
+            emissor e o Brick mostra o total de cada parcela. Por isso só
+            "pode cobrar" — nunca "sem juros". Só crédito parcela. */}
+        {parcelasMaximasNoBrick(config) > 1 && (
+          <p className="text-sm leading-snug text-zinc-600">
+            {TEXTOS_DO_CARTAO.juros}
+          </p>
+        )}
+        {/* Prazo como o do PIX: só o horário INFORMADO pelo servidor, sem
+            contagem regressiva (um aparelho atrasado inventaria minutos). */}
+        {mostrarPrazo && !horarioPrevistoPassou && prazoEmMs !== null && (
+          <p className="flex items-start gap-2 text-sm text-zinc-700">
+            <Clock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <span>
+              Prazo informado: até{" "}
+              <strong className="tabular-nums">
+                {formatarHoraDoPrazo(prazoEmMs)}
+              </strong>
+              .
+            </span>
           </p>
         )}
       </header>
@@ -1376,34 +1686,56 @@ export function PagamentoComCartao({
       {/* Região viva sempre montada: o leitor de tela só anuncia mudança em
           região que já existia (mesmo motivo do aviso de horário do PIX). */}
       <div aria-live="polite" className="space-y-3">
-        {etapa.tipo === "recusado" && (
-          <div className="space-y-3 rounded-xl border border-red-100 bg-red-50 p-3">
-            <div className="flex items-start gap-2">
-              <AlertCircle
-                aria-hidden="true"
-                className="mt-0.5 size-5 shrink-0 text-red-500"
-              />
-              <p className="text-sm font-medium text-red-700">{etapa.motivo}</p>
-            </div>
-            <div className="grid gap-2">
-              <button
-                type="button"
-                onClick={tentarOutroCartao}
-                className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
-              >
+        {mostrarPrazo && horarioPrevistoPassou && (
+          <PainelDoCartao
+            tom="alerta"
+            titulo={TEXTOS_DO_CARTAO.horarioPassou}
+            detalhe={TEXTOS_DO_CARTAO.horarioPassouDetalhe}
+          />
+        )}
+
+        {formularioAtivo && aviso && (
+          <PainelDoCartao
+            key={aviso.n}
+            tom="erro"
+            focarNoTitulo
+            titulo={tituloDoAviso(aviso)}
+          >
+            {(aviso.tipo === "sem-limite" || aviso.tipo === "recusa") && (
+              <BotaoDoCartao variante="primario" onClick={tentarOutroCartao}>
                 Tentar outro cartão
-              </button>
-              <button
-                type="button"
-                // O banco já respondeu que este cartão morreu — nunca fica
-                // "vivo" depois de uma recusa definitiva.
-                onClick={() => onPagarComPix(false)}
-                className="flex min-h-12 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900 active:bg-zinc-50"
-              >
+              </BotaoDoCartao>
+            )}
+            {aviso.tipo === "carga-falhou" && (
+              <BotaoDoCartao variante="primario" onClick={tentarOutroCartao}>
+                Tentar de novo
+              </BotaoDoCartao>
+            )}
+            {podeOferecerPix(aviso) && (
+              <BotaoDoCartao onClick={pagarComPixComCartaoMorto}>
                 Pagar com PIX
-              </button>
-            </div>
-          </div>
+              </BotaoDoCartao>
+            )}
+          </PainelDoCartao>
+        )}
+
+        {etapa.tipo === "recusado" && (
+          // A recusa que a tela descobre DEPOIS (o desafio 3DS expirou, ou a
+          // consulta soltou a vaga): o Brick já tinha saído de cena — o
+          // formulário volta limpo em "Tentar outro cartão". A frase é a que o
+          // veredito A2 fixou ("não foi concluído", nunca "não foi aprovado").
+          <PainelDoCartao tom="erro" focarNoTitulo titulo={etapa.motivo}>
+            <BotaoDoCartao variante="primario" onClick={tentarOutroCartao}>
+              Tentar outro cartão
+            </BotaoDoCartao>
+            <BotaoDoCartao
+              // O banco já respondeu que este cartão morreu — nunca fica
+              // "vivo" depois de uma recusa definitiva.
+              onClick={pagarComPixComCartaoMorto}
+            >
+              Pagar com PIX
+            </BotaoDoCartao>
+          </PainelDoCartao>
         )}
 
         {semSessaoComCartaoVivo && (
@@ -1411,185 +1743,100 @@ export function PagamentoComCartao({
           // consulta é recusada pela edge (404 de dono) e a verificação do
           // pai nem roda — a tela pararia num spinner sem fim. O cartão pode
           // estar vivo: nada de PIX nem de outro cartão aqui.
-          <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <p className="flex items-start gap-2 text-sm font-medium text-amber-800">
-              <AlertCircle
-                aria-hidden="true"
-                className="mt-0.5 size-5 shrink-0"
-              />
-              Sua sessão expirou. Entre de novo para ver a confirmação deste
-              pagamento. Não pague de novo enquanto isso.
-            </p>
-            <div className="grid gap-2">
-              {onEntrarDeNovo && (
-                <button
-                  type="button"
-                  onClick={onEntrarDeNovo}
-                  className="flex min-h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-3 text-xs font-bold text-white active:bg-zinc-700"
-                >
-                  Entrar de novo
-                </button>
-              )}
-              {onVerMeusPedidos && (
-                <button
-                  type="button"
-                  onClick={onVerMeusPedidos}
-                  className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-                >
-                  Ver meus pedidos
-                </button>
-              )}
-            </div>
-          </div>
+          <PainelDoCartao
+            tom="alerta"
+            titulo="Sua sessão expirou. Entre de novo para ver a confirmação deste pagamento."
+            detalhe="Não pague de novo enquanto isso."
+          >
+            {onEntrarDeNovo && (
+              <BotaoDoCartao variante="primario" onClick={onEntrarDeNovo}>
+                Entrar de novo
+              </BotaoDoCartao>
+            )}
+            {onVerMeusPedidos && (
+              <BotaoDoCartao onClick={onVerMeusPedidos}>
+                Ver meus pedidos
+              </BotaoDoCartao>
+            )}
+          </PainelDoCartao>
         )}
 
         {etapa.tipo === "aprovado" && !semSessaoComCartaoVivo && (
-          <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-            <p className="flex items-start gap-2 text-sm font-medium text-emerald-800">
-              <Check aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-              Pagamento aprovado! Confirmando seu pedido…
-            </p>
-            {/* Quem grava o pedido como pago é o webhook/reconciliação —
-                pode levar alguns minutos. Nunca oferece pagar de novo. */}
-            {avisoDoAprovado && (
-              <>
-                <p className="text-xs text-emerald-900">
-                  O banco aprovou o pagamento; a loja ainda está registrando o
-                  pedido como pago, e isso pode levar alguns minutos. Não pague
-                  de novo — o pedido aparece como pago em Meus pedidos assim que
-                  for registrado.
-                </p>
-                {onVerMeusPedidos && (
-                  <button
-                    type="button"
-                    onClick={onVerMeusPedidos}
-                    className="flex min-h-11 w-full items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 text-xs font-bold text-emerald-900"
-                  >
-                    Ver meus pedidos
-                  </button>
-                )}
-              </>
+          <PainelDoCartao
+            tom="sucesso"
+            titulo="Pagamento aprovado! Confirmando seu pedido…"
+            // Quem grava o pedido como pago é o webhook/reconciliação —
+            // pode levar alguns minutos. Nunca oferece pagar de novo.
+            detalhe={
+              avisoDoAprovado
+                ? "O banco aprovou o pagamento; a loja ainda está registrando o pedido como pago, e isso pode levar alguns minutos. Não pague de novo — o pedido aparece como pago em Meus pedidos assim que for registrado."
+                : undefined
+            }
+          >
+            {avisoDoAprovado && onVerMeusPedidos && (
+              <BotaoDoCartao onClick={onVerMeusPedidos}>
+                Ver meus pedidos
+              </BotaoDoCartao>
             )}
-          </div>
+          </PainelDoCartao>
         )}
 
         {etapa.tipo === "encerrado" && (
-          <div className="space-y-3 rounded-xl border border-red-100 bg-red-50 p-3">
-            <div className="flex items-start gap-2">
-              <AlertCircle
-                aria-hidden="true"
-                className="mt-0.5 size-5 shrink-0 text-red-500"
-              />
-              <p className="text-sm font-medium text-red-700">
-                {etapa.mensagem}
-              </p>
-            </div>
+          <PainelDoCartao tom="erro" focarNoTitulo titulo={etapa.mensagem}>
             {onVerMeusPedidos && (
-              <button
-                type="button"
-                onClick={onVerMeusPedidos}
-                className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
-              >
+              <BotaoDoCartao variante="primario" onClick={onVerMeusPedidos}>
                 Ver meus pedidos
-              </button>
+              </BotaoDoCartao>
             )}
-          </div>
+          </PainelDoCartao>
         )}
 
         {etapa.tipo === "em-analise" && !semSessaoComCartaoVivo && (
-          <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <p className="flex items-start gap-2 text-sm font-medium text-amber-800">
-              <Clock aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-              Pagamento em análise pelo banco. Você será avisado quando for
-              aprovado.
-            </p>
-            {paradaAqui && (
-              <p className="text-xs text-amber-900">
-                O banco ainda não deu a resposta final. Não pague de novo com
-                cartão — se ele aprovar, a confirmação aparece aqui e em Meus
-                pedidos.
-              </p>
-            )}
+          // SEM "Pagar com PIX" (decisão D4, ver o comentário no topo do
+          // arquivo): o servidor recusa PIX enquanto o cartão está em análise.
+          <PainelDoCartao
+            tom="alerta"
+            titulo={TEXTOS_DO_CARTAO.emAnalise}
+            detalhe={
+              paradaAqui
+                ? "O banco ainda não deu a resposta final. Não pague de novo com cartão — se ele aprovar, a confirmação aparece aqui e em Meus pedidos."
+                : undefined
+            }
+          >
             {paradaAqui && podeVerificarDeNovo && (
-              <button
-                type="button"
-                onClick={verificarDeNovo}
-                className="flex min-h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-3 text-xs font-bold text-white active:bg-zinc-700"
-              >
+              <BotaoDoCartao variante="primario" onClick={verificarDeNovo}>
                 Verificar de novo
-              </button>
-            )}
-            {/* B2: só depois de alguns minutos — ver
-                MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE. Antes disso a
-                maioria das análises já teria decidido, e oferecer PIX cedo
-                demais competiria com uma aprovação normal. */}
-            {pixDisponivelNaAnalise && (
-              <button
-                type="button"
-                // Em análise pelo emissor/antifraude: o cartão AINDA pode ser
-                // aprovado.
-                onClick={() => onPagarComPix(true)}
-                className="flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900"
-              >
-                Pagar com PIX
-              </button>
+              </BotaoDoCartao>
             )}
             {paradaAqui && onVerMeusPedidos && (
-              <button
-                type="button"
-                onClick={onVerMeusPedidos}
-                className="flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900"
-              >
+              <BotaoDoCartao onClick={onVerMeusPedidos}>
                 Ver meus pedidos
-              </button>
+              </BotaoDoCartao>
             )}
-          </div>
+          </PainelDoCartao>
         )}
 
         {etapa.tipo === "confirmando-desafio" && !semSessaoComCartaoVivo && (
-          <div className="space-y-3 rounded-xl border border-zinc-100 bg-zinc-50 p-3">
-            {paradaAqui ? (
-              // A cadência terminou sem resposta final: a tela PARA de girar
-              // e diz o que sabe. O cartão continua tratado como vivo.
-              <>
-                <p className="flex items-start gap-2 text-sm font-medium text-zinc-800">
-                  <Clock
-                    aria-hidden="true"
-                    className="mt-0.5 size-5 shrink-0 text-zinc-500"
-                  />
-                  O banco ainda não confirmou este pagamento.
-                </p>
-                <p className="text-xs text-zinc-500">
-                  Não pague de novo com cartão. Se o banco aprovar, a
-                  confirmação aparece aqui e em Meus pedidos. Se tocar em
-                  &quot;Pagar com PIX&quot;, este pagamento é conferido com o
-                  banco antes: o PIX só é gerado se o banco confirmar que o
-                  pagamento com cartão foi cancelado.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="flex items-center gap-2 text-sm font-medium text-zinc-800">
-                  <Loader2
-                    aria-hidden="true"
-                    className="size-5 shrink-0 animate-spin text-zinc-500"
-                  />
-                  Confirmando com o banco…
-                </p>
-                <p className="text-xs text-zinc-500">
-                  A confirmação aparece nesta tela. Se o banco não aprovar, você
-                  pode pagar com PIX.
-                </p>
-              </>
-            )}
+          <PainelDoCartao
+            tom="info"
+            carregando={!paradaAqui}
+            titulo={
+              paradaAqui
+                ? // A cadência terminou sem resposta final: a tela PARA de
+                  // girar e diz o que sabe. O cartão continua tratado como vivo.
+                  "O banco ainda não confirmou este pagamento."
+                : "Confirmando com o banco…"
+            }
+            detalhe={
+              paradaAqui
+                ? 'Não pague de novo com cartão. Se o banco aprovar, a confirmação aparece aqui e em Meus pedidos. Se tocar em "Pagar com PIX", este pagamento é conferido com o banco antes: o PIX só é gerado se o banco confirmar que o pagamento com cartão foi cancelado.'
+                : "A confirmação aparece nesta tela. Se o banco não aprovar, você pode pagar com PIX."
+            }
+          >
             {paradaAqui && podeVerificarDeNovo && (
-              <button
-                type="button"
-                onClick={verificarDeNovo}
-                className="flex min-h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-3 text-xs font-bold text-white active:bg-zinc-700"
-              >
+              <BotaoDoCartao variante="primario" onClick={verificarDeNovo}>
                 Verificar de novo
-              </button>
+              </BotaoDoCartao>
             )}
             {/* B2, rodada 2 da revisão de risco pré-publicação (26/09/2026):
                 "Tentar outro cartão" saiu — com o cartão ainda em
@@ -1599,38 +1846,29 @@ export function PagamentoComCartao({
                 "Pagar com PIX" continua sendo a única saída real: a edge
                 cancela o cartão em `action_required`/`created` antes de criar
                 o PIX, ou responde 409 `cartaoEmAnalise` se não conseguir. */}
-            <button
-              type="button"
+            <BotaoDoCartao
               // O desafio 3DS acabou de ser concluído; o webhook ainda pode
               // aprovar o cartão a qualquer momento.
               onClick={() => onPagarComPix(true)}
-              className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
             >
               Pagar com PIX
-            </button>
+            </BotaoDoCartao>
             {paradaAqui && onVerMeusPedidos && (
-              <button
-                type="button"
-                onClick={onVerMeusPedidos}
-                className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-              >
+              <BotaoDoCartao onClick={onVerMeusPedidos}>
                 Ver meus pedidos
-              </button>
+              </BotaoDoCartao>
             )}
-          </div>
+          </PainelDoCartao>
         )}
       </div>
 
       {etapa.tipo === "desafio" && (
-        <div className="space-y-2">
-          <p className="flex items-start gap-2 text-sm text-zinc-700">
-            <ShieldCheck
-              aria-hidden="true"
-              className="mt-0.5 size-5 shrink-0 text-zinc-500"
-            />
-            Seu banco pediu uma confirmação de segurança. Siga as instruções
-            abaixo para concluir o pagamento.
-          </p>
+        <div className="space-y-3">
+          <PainelDoCartao
+            tom="info"
+            titulo={TEXTOS_DO_CARTAO.confirmacaoDoBanco}
+            detalhe="Siga as instruções abaixo para concluir o pagamento."
+          />
           {/* credentialless: mantido depois que o COEP saiu do app (26/09/2026,
               decisão do dono — travava o Card Payment Brick), mas NÃO provado
               contra o 3DS real. No Chromium 110+ o atributo abre o quadro num
@@ -1657,31 +1895,68 @@ export function PagamentoComCartao({
               SEM "Tentar outro cartão" (rodada 2 da revisão): com o cartão em
               `action_required`, um cartão novo bate na branch (d) da edge e
               recebe de volta o MESMO desafio — nunca troca nada de verdade. */}
-          <p className="text-xs text-zinc-500">
+          <p className="text-sm text-zinc-600">
             Não conseguiu concluir com o banco? Você pode pagar com PIX.
           </p>
-          <button
-            type="button"
+          <BotaoDoCartao
             // O desafio ainda está aberto — o cartão está vivo, esperando o
             // banco.
             onClick={() => onPagarComPix(true)}
-            className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
           >
             Pagar com PIX
-          </button>
+          </BotaoDoCartao>
         </div>
       )}
 
-      {/* O Brick é dono deste nó — ele fica SEMPRE montado (só escondido
-          fora do formulário) para a desmontagem do Brick nunca acontecer
-          com o contêiner já arrancado da página. */}
-      {formularioAtivo && !formularioPronto && (
-        <div className="flex items-center justify-center gap-2 py-6 text-sm text-zinc-500">
-          <Loader2 aria-hidden="true" className="size-5 animate-spin" />
-          Carregando o formulário do cartão...
+      {/* A área do formulário. A ALTURA é reservada desde o início (o Brick
+          tem ~7 campos): sem isso a tela pulava quando ele aparecia. Solta
+          quando o Brick fica pronto — o conteúdo real manda. O aviso de carga
+          mora numa região viva própria, SEMPRE montada: o leitor de tela só
+          anuncia o que muda dentro de uma região que já existia (antes o
+          spinner ficava fora de qualquer região). */}
+      <div
+        data-testid="area-do-formulario"
+        className={carregandoOFormulario ? "min-h-[28rem]" : undefined}
+      >
+        <div aria-live="polite">
+          {carregandoOFormulario && (
+            <div className="space-y-4 py-2">
+              <p className="flex items-center gap-2 text-sm text-zinc-700">
+                <Loader2
+                  aria-hidden="true"
+                  className="size-5 shrink-0 text-zinc-500 motion-safe:animate-spin"
+                />
+                <span>{TEXTOS_DO_CARTAO.carregando}</span>
+              </p>
+              {/* Esqueleto dos campos (só desenho: aria-hidden). */}
+              <div aria-hidden="true" className="space-y-4">
+                <div className="h-12 rounded-xl bg-zinc-100 motion-safe:animate-pulse" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="h-12 rounded-xl bg-zinc-100 motion-safe:animate-pulse" />
+                  <div className="h-12 rounded-xl bg-zinc-100 motion-safe:animate-pulse" />
+                </div>
+                <div className="h-12 rounded-xl bg-zinc-100 motion-safe:animate-pulse" />
+                <div className="h-12 rounded-xl bg-zinc-100 motion-safe:animate-pulse" />
+                <div className="h-12 rounded-xl bg-zinc-100 motion-safe:animate-pulse" />
+              </div>
+            </div>
+          )}
         </div>
+        {/* O Brick é dono deste nó — ele fica SEMPRE montado (só escondido
+            fora do formulário, ou quando a carga falhou) para a desmontagem
+            do Brick nunca acontecer com o contêiner já arrancado da página.
+            Erro de pagamento NÃO esconde: a pessoa corrige o que digitou. */}
+        <div id={idDoContainer} hidden={brickEscondido} />
+      </div>
+
+      {formularioAtivo && (
+        // Verdadeira e sem selo: o que o Mercado Pago e a loja de fato fazem
+        // com o número do cartão (o dado mora em iframes do Mercado Pago; o
+        // app só recebe o token de uso único). Nada de ícone de certificação.
+        <p className="text-sm leading-snug text-zinc-600">
+          {TEXTOS_DO_CARTAO.confianca}
+        </p>
       )}
-      <div id={idDoContainer} hidden={!formularioAtivo} />
     </section>
   );
 }

@@ -99,10 +99,10 @@ function clienteFalso(opts: {
   rpcConfirmarResultado?: string;
   rpcConfirmarError?: unknown;
   // Conferência de valor (laudo 31/08, A3): total do pedido devolvido pela
-  // leitura de `marketplace_orders` (default 149.9 — os mocks antigos não
-  // tinham `from()` nenhum e os MPs mockados não trazem valor, então a
-  // conferência deles nem roda). `erroFrom` injeta falha de leitura.
-  pedidoTotal?: number | null;
+  // leitura de `marketplace_orders` (default 149.9). Null e valores ilegíveis
+  // são preservados para testar a recusa. `erroFrom` injeta falha de leitura.
+  pedidoTotal?: unknown;
+  avisos?: Map<string, { enviado: boolean }>;
   erroFrom?: unknown;
   // Fase 3.5 (cartão): `rpc("liberar_cobranca_do_pedido")` — o boolean
   // devolvido (default true) e a falha de banco simulada.
@@ -115,6 +115,7 @@ function clienteFalso(opts: {
   registro: {
     adocoesPedido?: Array<{ valores: Record<string, unknown>; filtros: Array<[string, unknown]> }>;
     chamadasConfirmar: Array<{ args: Record<string, unknown> }>;
+    chamadasAviso?: Array<{ nome: string; args: Record<string, unknown> }>;
     chamadasLiberar?: Array<{ args: Record<string, unknown> }>;
     chamouCandidatos: boolean;
     chamadasConcluirEstorno?: Array<{ args: Record<string, unknown> }>;
@@ -184,6 +185,7 @@ function clienteFalso(opts: {
   // último código acumulados, como a tabela de verdade).
   aoRegistrarDiagnostico?: (args: Record<string, unknown>) => Record<string, unknown>;
 }) {
+  const avisos = opts.avisos ?? new Map<string, { enviado: boolean }>();
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
       if (nome === "pagamentos_a_reconciliar") {
@@ -195,6 +197,21 @@ function clienteFalso(opts: {
         opts.registro.chamadasConfirmar.push({ args: args ?? {} });
         if (opts.rpcConfirmarError) return { data: null, error: opts.rpcConfirmarError };
         return { data: opts.rpcConfirmarResultado ?? "pago", error: null };
+      }
+      if (nome === "reservar_aviso_ao_lojista") {
+        opts.registro.chamadasAviso?.push({ nome, args: args ?? {} });
+        const chave = String(args?.p_chave);
+        const anterior = avisos.get(chave);
+        if (anterior) return { data: anterior.enviado ? "enviado" : "em_envio", error: null };
+        avisos.set(chave, { enviado: false });
+        return { data: "reservado", error: null };
+      }
+      if (nome === "confirmar_aviso_ao_lojista" || nome === "liberar_aviso_ao_lojista") {
+        opts.registro.chamadasAviso?.push({ nome, args: args ?? {} });
+        const chave = String(args?.p_chave);
+        if (nome === "confirmar_aviso_ao_lojista") avisos.set(chave, { enviado: true });
+        else avisos.delete(chave);
+        return { data: true, error: null };
       }
       if (nome === "liberar_cobranca_do_pedido") {
         if (!opts.registro.chamadasLiberar) {
@@ -418,7 +435,7 @@ function clienteFalso(opts: {
                     return opts.erroFrom
                       ? { data: null, error: opts.erroFrom }
                       : {
-                        data: { total: opts.pedidoTotal ?? 149.9, total_amount: null },
+                        data: { total: opts.pedidoTotal === undefined ? 149.9 : opts.pedidoTotal, total_amount: null },
                         error: null,
                       };
                   },
@@ -544,7 +561,7 @@ Deno.test("order aprovada (processed:accredited) -> confirmados:1, p_payment_id 
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
   const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
-  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
   const req = requisicaoComSegredo(SEGREDO);
 
   const resposta = await handler(req, { supabase, fetchImpl });
@@ -561,6 +578,116 @@ Deno.test("order aprovada (processed:accredited) -> confirmados:1, p_payment_id 
 // --- 3.5 CONFERÊNCIA DE VALOR (laudo 31/08, A3; ressalva 1 da revisão do
 // PR #366): a reconciliação atinge PEDIDO VIVO — sem esta porta, o que o
 // webhook recusou por valor entrava aqui depois, por status. ----------------
+
+for (const rota of ["payment", "order"] as const) {
+  for (const caso of [
+    { nome: "ausente", valor: undefined },
+    { nome: "nulo", valor: null },
+    { nome: "NaN (JSON nulo)", valor: NaN },
+    { nome: "infinito (JSON nulo)", valor: Infinity },
+    { nome: "string NaN", valor: "NaN" },
+    { nome: "string ilegível", valor: "sem valor" },
+    { nome: "string vazia", valor: "" },
+    { nome: "zero", valor: 0 },
+  ]) {
+    Deno.test(`valor estrito — cron ${rota}: MP ${caso.nome} -> não confirma, alerta registrado`, async () => {
+      const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+      const id = rota === "payment" ? "88888" : "ORDTSTVALORESTRITO";
+      const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], registro });
+      const corpoMp = rota === "payment"
+        ? { id: 88888, status: "approved", transaction_amount: caso.valor }
+        : { id, status: "processed", status_detail: "accredited", total_amount: caso.valor };
+      const alertas: unknown[] = [];
+      const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+        supabase,
+        fetchImpl: fetchConsulta(200, corpoMp),
+        enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+      });
+      const corpo = await resposta.json();
+      assertEquals(resposta.status, 200);
+      assertEquals(corpo.confirmados, 0);
+      assertEquals(corpo.ignorados, 1);
+      assertEquals(corpo.falhas, 0);
+      assertEquals(registro.chamadasConfirmar.length, 0);
+      assertEquals(alertas.length, 1);
+      assertEquals(registro.chamadasAviso.map((c) => c.nome), ["reservar_aviso_ao_lojista", "confirmar_aviso_ao_lojista"]);
+    });
+  }
+
+  for (const total of [0, null, NaN, Infinity, -1, "ilegível", "", true, {}]) {
+    Deno.test(`valor estrito — cron ${rota}: total do pedido ${String(total)} -> não confirma, alerta registrado`, async () => {
+      const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+      const id = rota === "payment" ? "88888" : "ORDTSTVALORESTRITO";
+      const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], pedidoTotal: total, registro });
+      const corpoMp = rota === "payment"
+        ? { id: 88888, status: "approved", transaction_amount: 149.9 }
+        : { id, status: "processed", status_detail: "accredited", total_amount: "149.90" };
+      const alertas: unknown[] = [];
+      const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+        supabase,
+        fetchImpl: fetchConsulta(200, corpoMp),
+        enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+      });
+      const corpo = await resposta.json();
+      assertEquals(resposta.status, 200);
+      assertEquals(corpo.confirmados, 0);
+      assertEquals(corpo.ignorados, 1);
+      assertEquals(registro.chamadasConfirmar.length, 0);
+      assertEquals(alertas.length, 1);
+      assertEquals(registro.chamadasAviso[0].args.p_chave, `valor_nao_conferido:${UUID_PEDIDO_1}:${id}`);
+      // O mesmo número que o painel mostra no cartão do pedido (6 últimos, maiúsculas).
+      assertEquals((alertas[0] as { body: string }).body.startsWith(`#${UUID_PEDIDO_1.slice(-6).toUpperCase()} · `), true);
+    });
+  }
+
+  Deno.test(`valor estrito — cron ${rota}: pedido zero e MP zero nunca confirmam pagamento`, async () => {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+    const id = rota === "payment" ? "88888" : "ORDTSTVALORESTRITO";
+    const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], pedidoTotal: 0, registro });
+    const corpoMp = rota === "payment"
+      ? { id: 88888, status: "approved", transaction_amount: 0 }
+      : { id, status: "processed", status_detail: "accredited", total_amount: "0.00" };
+    const alertas: unknown[] = [];
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+      supabase,
+      fetchImpl: fetchConsulta(200, corpoMp),
+      enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.confirmados, 0);
+    assertEquals(corpo.ignorados, 1);
+    assertEquals(registro.chamadasConfirmar.length, 0);
+    assertEquals(alertas.length, 1);
+  });
+
+  Deno.test(`valor estrito — cron ${rota}: novo ciclo sem valor deduplica alerta; consulta corrigida confirma`, async () => {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, chamadasAviso: [] };
+    const id = rota === "payment" ? "88888" : "ORDTSTVALORESTRITO";
+    const avisos = new Map<string, { enviado: boolean }>();
+    const supabase = clienteFalso({ candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: id }], registro, avisos });
+    const alertas: unknown[] = [];
+    for (const valor of [undefined, undefined, 149.9]) {
+      const corpoMp = rota === "payment"
+        ? { id: 88888, status: "approved", transaction_amount: valor }
+        : { id, status: "processed", status_detail: "accredited", total_amount: valor };
+      const resposta = await handler(requisicaoComSegredo(SEGREDO), {
+        supabase,
+        fetchImpl: fetchConsulta(200, corpoMp),
+        enviarPushContado: async ({ aviso }) => { alertas.push(aviso); return 1; },
+        enviarPush: async () => {},
+        enviarComprovante: async () => {},
+      });
+      const corpo = await resposta.json();
+      assertEquals(resposta.status, 200);
+      assertEquals(corpo.confirmados, valor === undefined ? 0 : 1);
+      assertEquals(corpo.ignorados, valor === undefined ? 1 : 0);
+    }
+    assertEquals(alertas.length, 1);
+    assertEquals(registro.chamadasConfirmar.length, 1);
+    assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+  });
+}
 
 Deno.test("order aprovada com total_amount '10.00' de um pedido de R$ 149,90 -> NÃO confirma, ignorados:1", async () => {
   const registro = { chamadasConfirmar: [], chamouCandidatos: false };
@@ -786,7 +913,7 @@ Deno.test("candidato legado (id numérico) nunca chama /v1/orders/ — vai diret
   const fetchImpl = async (url: string) => {
     urlsChamadas.push(url);
     if (url.includes("/v1/payments/999")) {
-      return new Response(JSON.stringify({ id: 999, status: "approved" }), { status: 200 });
+      return new Response(JSON.stringify({ id: 999, status: "approved", transaction_amount: 149.9 }), { status: 200 });
     }
     throw new Error(`fetch inesperado nos testes: ${url}`);
   };
@@ -817,7 +944,7 @@ Deno.test("candidato novo (ULID de order) nunca chama /v1/payments/ — vai dire
     urlsChamadas.push(url);
     if (url.includes(`/v1/orders/${idOrder}`)) {
       return new Response(
-        JSON.stringify({ id: idOrder, status: "processed", status_detail: "accredited" }),
+        JSON.stringify({ id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" }),
         { status: 200 },
       );
     }
@@ -1019,7 +1146,7 @@ Deno.test("candidato legado pago (approved) é confirmado como pago_apos_expirar
   const urlsChamadas: string[] = [];
   const fetchImpl = async (url: string) => {
     urlsChamadas.push(url);
-    return new Response(JSON.stringify({ id: 555, status: "approved" }), { status: 200 });
+    return new Response(JSON.stringify({ id: 555, status: "approved", transaction_amount: 149.9 }), { status: 200 });
   };
   const req = requisicaoComSegredo(SEGREDO);
 
@@ -1081,7 +1208,7 @@ Deno.test("erro de rede na consulta de um candidato não impede o seguinte", asy
     if (url.includes("ORDTST04NETFAIL")) throw new Error("timeout de rede");
     if (url.includes("ORDTST05NETOK")) {
       return new Response(
-        JSON.stringify({ id: "ORDTST05NETOK", status: "processed", status_detail: "accredited" }),
+        JSON.stringify({ id: "ORDTST05NETOK", status: "processed", total_amount: "149.90", status_detail: "accredited" }),
         { status: 200 },
       );
     }
@@ -1145,6 +1272,7 @@ Deno.test("confirmar_pagamento rejeita para um candidato e o outro é processado
       JSON.stringify({
         id: url.includes("ORDTST06A") ? "ORDTST06A" : "ORDTST06B",
         status: "processed",
+        total_amount: "149.90",
         status_detail: "accredited",
       }),
       { status: 200 },
@@ -1264,7 +1392,7 @@ Deno.test("invariante confirmados + ignorados + falhas === verificados, com cand
     urlsChamadas.push(url);
     if (url.includes("/v1/orders/ORDTST08APROVADO")) {
       return new Response(
-        JSON.stringify({ id: "ORDTST08APROVADO", status: "processed", status_detail: "accredited" }),
+        JSON.stringify({ id: "ORDTST08APROVADO", status: "processed", total_amount: "149.90", status_detail: "accredited" }),
         { status: 200 },
       );
     }
@@ -1281,7 +1409,7 @@ Deno.test("invariante confirmados + ignorados + falhas === verificados, com cand
       );
     }
     if (url.includes("/v1/payments/777")) {
-      return new Response(JSON.stringify({ id: 777, status: "approved" }), { status: 200 });
+      return new Response(JSON.stringify({ id: 777, status: "approved", transaction_amount: 149.9 }), { status: 200 });
     }
     if (url.includes("/v1/payments/666")) {
       return new Response(JSON.stringify({ message: "payment not found" }), { status: 404 });
@@ -2469,7 +2597,7 @@ Deno.test("PEÇA 5 - resultado 'pago' via reconciliação -> dispara o comprovan
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
   const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
-  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
   const req = requisicaoComSegredo(SEGREDO);
   const chamadasComprovante: unknown[] = [];
   const enviarComprovante = async (args: unknown) => {
@@ -2495,7 +2623,7 @@ Deno.test("PEÇA 5 - resultado 'pago_apos_expirar' via reconciliação -> dispar
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
   const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago_apos_expirar", registro });
-  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
   const req = requisicaoComSegredo(SEGREDO);
   const chamadasComprovante: unknown[] = [];
   const enviarComprovante = async (args: unknown) => {
@@ -2521,7 +2649,7 @@ Deno.test("PEÇA 5 - resultado 'ja_pago' (reenvio) via reconciliação -> NÃO d
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
   const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "ja_pago", registro });
-  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
   const req = requisicaoComSegredo(SEGREDO);
   const chamadasComprovante: unknown[] = [];
   const enviarComprovante = async (args: unknown) => {
@@ -2658,7 +2786,7 @@ Deno.test("PEÇA 5 (caminho real) - 'pago' -> alcança a MESMA reserva do compro
       reservaResultados: [false], // basta provar que a reserva foi ALCANÇADA
       registro,
     });
-    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
 
     const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
 
@@ -2691,7 +2819,7 @@ Deno.test("PEÇA 5 (caminho real) - 'pago_apos_expirar' -> alcança a reserva do
       reservaResultados: [false],
       registro,
     });
-    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
 
     const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
 
@@ -2799,7 +2927,7 @@ Deno.test("aviso de pagamento atrasado (reconciliação): reserva NÃO concedida
         throw new Error(`from inesperado no dublê mínimo: ${tabela}`);
       },
     };
-    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
 
     const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
     const corpo = await resposta.json();
@@ -2846,7 +2974,7 @@ Deno.test("PEÇA 5 - AUSÊNCIA DE DUPLICATA: dois candidatos do MESMO pedido no 
       reservaResultados: [true, false],
       registro,
     });
-    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", status_detail: "accredited" });
+    const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
 
     const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
     const corpo = await resposta.json();
@@ -2904,6 +3032,7 @@ Deno.test("MP-1 — com chave do LOJISTA cadastrada, o Bearer da consulta ao MP 
     const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
       id: idOrder,
       status: "processed",
+      total_amount: "149.90",
       status_detail: "accredited",
     });
 
@@ -2934,6 +3063,7 @@ Deno.test("MP-2 — chave do lojista cadastrada + cofre ausente: o candidato é 
   const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
     id: idOrder,
     status: "processed",
+    total_amount: "149.90",
     status_detail: "accredited",
   });
 
@@ -3035,6 +3165,7 @@ Deno.test("MP-4 — lote com DOIS candidatos resolve as credenciais UMA vez (um 
     const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
       id: idOrder1,
       status: "processed",
+      total_amount: "149.90",
       status_detail: "accredited",
     });
 
@@ -3077,6 +3208,7 @@ function orderDoCandidato(id: string, status: string, statusDetail: string, tipo
     id,
     status,
     status_detail: statusDetail,
+    total_amount: "149.90",
     transactions: { payments: [{ id: "PAY1", status, status_detail: statusDetail, payment_method: { type: tipo } }] },
   };
 }
