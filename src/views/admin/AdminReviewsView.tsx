@@ -374,6 +374,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     const ok = await deleteReview(id);
     setConfirmDeleteId(null);
     if (!ok) return; // o toast de erro já foi dado no hook (useReviews)
+    // A avaliação saiu: o rascunho dela não pode manter a tela "com alterações".
+    setRascunhos((anteriores) => {
+      if (!(id in anteriores)) return anteriores;
+      const { [id]: _removido, ...restantes } = anteriores;
+      return restantes;
+    });
     haptic.success();
     if (adminReviews.length === 1 && page > 0) {
       setPage((p) => p - 1);

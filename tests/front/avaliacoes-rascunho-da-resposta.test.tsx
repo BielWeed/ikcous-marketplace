@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   ler: vi.fn(),
   responder: vi.fn(),
   assinar: vi.fn(() => () => {}),
+  excluir: vi.fn(),
 }));
 const avaliacoes: AdminReview[] = ["a", "b"].map((id) => ({
   id,
@@ -37,7 +38,7 @@ vi.mock("@/hooks/useReviews", () => ({
     getAllReviews: h.ler,
     addMerchantReply: h.responder,
     subscribeToReviews: h.assinar,
-    deleteReview: vi.fn(),
+    deleteReview: h.excluir,
     aprovarReview: vi.fn(),
   }),
 }));
@@ -75,6 +76,7 @@ let host: HTMLDivElement;
 beforeEach(() => {
   h.ler.mockReset().mockResolvedValue({ reviews: avaliacoes, total: 2 });
   h.responder.mockReset();
+  h.excluir.mockReset().mockResolvedValue(true);
   const dados = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (k: string) => dados.get(k) ?? null,
@@ -106,11 +108,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function montar(modo: "compact" | "detailed") {
+async function montar(
+  modo: "compact" | "detailed",
+  aoMudarSujo: (sujo: boolean) => void = () => {},
+) {
   localStorage.setItem("admin_reviews_view_mode", JSON.stringify(modo));
   const { AdminReviewsView } = await import("@/views/admin/AdminReviewsView");
   await act(async () => {
-    raiz.render(<AdminReviewsView active onNavigate={vi.fn()} />);
+    raiz.render(
+      <AdminReviewsView active onNavigate={vi.fn()} onSetDirty={aoMudarSujo} />,
+    );
   });
 }
 function abridores() {
@@ -191,3 +198,25 @@ it.each(["compact", "detailed"] as const)(
     expect(abridores().every((b) => !b.disabled)).toBe(true);
   },
 );
+
+it("excluir a avaliação descarta o rascunho e tira o aviso de alteração pendente", async () => {
+  const sujo = vi.fn();
+  await montar("detailed", sujo);
+  await clicar(abridores()[0]);
+  await digitar("Resposta que não vai ser enviada");
+  const cancelar = [...host.querySelectorAll<HTMLButtonElement>("button")].find(
+    (b) => b.textContent?.trim() === "Cancelar",
+  );
+  await clicar(cancelar!);
+  expect(sujo).toHaveBeenLastCalledWith(true);
+  const excluir = host.querySelector<HTMLButtonElement>(
+    'button[title="Excluir Avaliação"]',
+  );
+  await clicar(excluir!);
+  const confirmar = [
+    ...host.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((b) => b.textContent?.trim() === "Sim, Apagar");
+  await clicar(confirmar!);
+  expect(h.excluir).toHaveBeenCalledWith("a");
+  expect(sujo).toHaveBeenLastCalledWith(false);
+});
