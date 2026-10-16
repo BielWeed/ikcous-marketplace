@@ -167,6 +167,18 @@ export class DataVault {
               } catch {
                 // ignore
               }
+              // `beforeunload` também dispara quando a pessoa CANCELA a saída
+              // no diálogo de alterações não salvas: a página segue viva e o
+              // singleton ficaria apontando para esta conexão morta — `init()`
+              // a devolveria e `getAll()` leria `[]` como "cofre vazio". Marca
+              // a instância como fechada e solta o singleton, como o
+              // `onversionchange`: quem a segura reabre, o próximo `init()`
+              // abre uma conexão nova.
+              if (_instance !== null && _instance === instanciaDestaConexao) {
+                _instance._fechada = true;
+                _instance = null;
+                _initPromise = null;
+              }
             };
             window.addEventListener("beforeunload", cleanClose);
           }
