@@ -1346,6 +1346,9 @@ export const OrderDetail = memo(function OrderDetail({
   // componente tem que morar AQUI, não só dentro do card.
   const orderIdAtualRef = useRef(order.id);
   orderIdAtualRef.current = order.id;
+  // Cada salvamento de notas ganha um número; trocar de pedido invalida os
+  // que estavam no ar (ir de A para B e voltar a A não revive a resposta).
+  const salvamentoNotasRef = useRef(0);
 
   const [localNotes, setLocalNotes] = useState(order.notes || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -1524,13 +1527,19 @@ export const OrderDetail = memo(function OrderDetail({
   useEffect(() => {
     setLocalTrackingCode(order.trackingCode || "");
     setTrackingValue(order.trackingCode || "");
+  }, [order.id, order.trackingCode]);
+
+  useEffect(() => {
     setLocalNotes(order.notes || "");
     setNotesValue(order.notes || "");
-  }, [order.id, order.trackingCode, order.notes]);
+  }, [order.id, order.notes]);
 
   useEffect(() => {
     setIsEditingTracking(false);
     setIsSavingTracking(false);
+    setIsEditingNotes(false);
+    setIsSavingNotes(false);
+    salvamentoNotasRef.current++;
   }, [order.id]);
 
   const itemsSerialized = JSON.stringify(
@@ -1716,22 +1725,30 @@ export const OrderDetail = memo(function OrderDetail({
   };
 
   const handleSaveNotes = async () => {
+    const pedidoId = order.id;
+    const salvamento = ++salvamentoNotasRef.current;
+    const vigente = () =>
+      orderIdAtualRef.current === pedidoId &&
+      salvamentoNotasRef.current === salvamento;
     try {
       setIsSavingNotes(true);
       const { error } = await supabase
         .from("marketplace_orders")
         .update({ notes: notesValue.trim() || null })
-        .eq("id", order.id);
+        .eq("id", pedidoId);
 
+      // A resposta só pode alterar a ficha deste pedido E deste salvamento.
+      if (!vigente()) return;
       if (error) throw error;
       setLocalNotes(notesValue.trim());
       setIsEditingNotes(false);
       toast.success("Notas operacionais salvas!");
     } catch (err) {
+      if (!vigente()) return;
       console.error("Error saving notes:", err);
       toast.error("Erro ao salvar notas operacionais.");
     } finally {
-      setIsSavingNotes(false);
+      if (vigente()) setIsSavingNotes(false);
     }
   };
 
