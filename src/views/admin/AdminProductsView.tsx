@@ -594,6 +594,8 @@ export const AdminProductsView = memo(function AdminProductsView({
       const sucesso = await deleteProduct(productToDelete);
       if (sucesso) {
         haptic.success();
+        // A recarga atualiza o total e corrige a página se ela saiu do limite.
+        void loadData(currentPage);
         // Achado da revisão do Achado 7: `AlertDialogAction` do Radix é
         // `Dialog.Close` e fecha o diálogo síncrono no clique, antes de
         // qualquer `await` — mas o `finally` abaixo (`setProductToDelete`)
@@ -615,7 +617,14 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       setProductToDelete(null);
     }
-  }, [deleteProduct, productToDelete, isOffline, refreshFinancialStats]);
+  }, [
+    deleteProduct,
+    productToDelete,
+    isOffline,
+    refreshFinancialStats,
+    loadData,
+    currentPage,
+  ]);
 
   const handleDuplicate = useCallback(
     (product: any) => {

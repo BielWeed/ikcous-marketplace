@@ -1409,8 +1409,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   useEffect(() => {
     // Validar Estoque
-    const stock = Number.parseInt(formData.stock);
-    if (formData.stock && (Number.isNaN(stock) || stock < 0)) {
+    const stock = Number(formData.stock);
+    if (
+      formData.stock &&
+      (!/^\d+$/.test(formData.stock) || !Number.isSafeInteger(stock) || stock < 0)
+    ) {
       setStockError("O estoque deve ser maior ou igual a zero.");
     } else {
       setStockError("");
@@ -2094,7 +2097,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const sanitizedPrice = cleanNumberString(formData.price);
     const sanitizedCost = cleanNumberString(formData.costPrice);
     const sanitizedOriginal = cleanNumberString(formData.originalPrice);
-    const sanitizedStock = formData.stock.replace(/\D/g, "");
     const sanitizedWeight = cleanNumberString(formData.weightKg);
     const sanitizedWidth = cleanNumberString(formData.widthCm);
     const sanitizedHeight = cleanNumberString(formData.heightCm);
@@ -2113,7 +2115,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       pOriginalRaw !== undefined && !Number.isNaN(pOriginalRaw)
         ? pOriginalRaw
         : undefined;
-    const pStock = Number.parseInt(sanitizedStock) || 0;
+    const pStock = Number(formData.stock) || 0;
 
     const pWeightRaw = sanitizedWeight
       ? Number.parseFloat(sanitizedWeight)
@@ -2473,7 +2475,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     formData.stock &&
     formData.category !== "" &&
     Number.parseFloat(formData.price) > 0 &&
-    Number.parseInt(formData.stock) >= 0 &&
+    Number(formData.stock) >= 0 &&
     !skuError &&
     !codigoBarrasError &&
     !priceError &&
