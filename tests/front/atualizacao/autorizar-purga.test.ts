@@ -1,6 +1,7 @@
 // AUTORIZAÇÃO DA PURGA DE VERSÃO OBRIGATÓRIA — tudo o que acontece ANTES do
 // ponto sem volta (apagar SW, caches e IndexedDB). Antes de qualquer
-// apagamento: rede provada AGORA, nenhuma operação sensível, e a trava
+// apagamento: rede provada AGORA, momento seguro (conferido de novo DEPOIS da
+// leitura da rede, que pode demorar) e a trava
 // existente (máx. 2) gasta e CONFIRMADA lendo de volta. Qualquer recusa lança
 // ANTES de apagar qualquer coisa.
 //
@@ -25,9 +26,9 @@ function pedido(sobre: Partial<PedidoDeAutorizacao> = {}) {
     requerida: "2.0.0",
     versaoLocal: "1.5.0-sha.aaa",
     online: true,
-    haOperacaoSensivel: () => {
-      chamadas.push("operacao");
-      return false;
+    momentoSeguroAgora: () => {
+      chamadas.push("momento");
+      return true;
     },
     lerVersaoDoServidor: async () => {
       chamadas.push("leitura-de-versao");
@@ -103,13 +104,54 @@ describe("autorizar a purga obrigatória", () => {
       expect(trava().count).toBe(0);
     });
 
-    it("operação sensível em andamento: recusa e não lê rede nem grava", async () => {
+    it("momento NÃO seguro (operação sensível, checkout, venda suja...) logo de saída: recusa e não lê rede nem grava", async () => {
       const { base, chamadas, trava } = pedido({
-        haOperacaoSensivel: () => true,
+        momentoSeguroAgora: () => false,
       });
       expect(ehAdiamento(await recusa(base))).toBe(true);
       expect(trava().count).toBe(0);
       expect(chamadas).not.toContain("leitura-de-versao");
+    });
+
+    // O defeito: o momento só era conferido ANTES do await de /version.json. Com
+    // a leitura lenta, a pessoa entrava em pagamento/venda no meio da espera e
+    // a purga seguia em frente mesmo assim.
+    it("a pessoa ENTRA em tela de compra/venda enquanto /version.json demora: reconfere DEPOIS da leitura e recusa antes de gravar a trava", async () => {
+      let seguro = true;
+      const { base, chamadas, trava } = pedido({
+        momentoSeguroAgora: () => seguro,
+        lerVersaoDoServidor: async () => {
+          seguro = false; // entrou no checkout durante a espera
+          return "2.0.0-sha.bbb";
+        },
+      });
+      const gravarTrava = vi.fn();
+      const gravarLog = vi.fn();
+      const erro = await recusa({ ...base, gravarTrava, gravarLog });
+      expect(ehAdiamento(erro)).toBe(true);
+      expect(gravarTrava).not.toHaveBeenCalled();
+      expect(gravarLog).not.toHaveBeenCalled();
+      expect(trava().count).toBe(0);
+      expect(chamadas.some((c) => c.startsWith("gravar-trava"))).toBe(false);
+    });
+
+    it("o momento é reconferido DEPOIS da leitura e ANTES de gravar a trava (a ordem é o contrato)", async () => {
+      const { base, chamadas } = pedido();
+      await autorizarPurgaObrigatoria(base);
+      const iLeitura = chamadas.indexOf("leitura-de-versao");
+      const iGravar = chamadas.indexOf("gravar-trava:1");
+      const momentosEntre = chamadas
+        .slice(iLeitura + 1, iGravar)
+        .filter((c) => c === "momento");
+      expect(momentosEntre.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("controle: seguro antes E depois da leitura, autoriza (o veto não virou recusa permanente)", async () => {
+      const { base, trava } = pedido({
+        lerVersaoDoServidor: async () => "2.0.0-sha.bbb",
+      });
+      await expect(autorizarPurgaObrigatoria(base)).resolves.toBeUndefined();
+      expect(trava().count).toBe(1);
     });
 
     it("ambiente que não informa onLine (undefined) não é offline", async () => {

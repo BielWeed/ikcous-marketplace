@@ -1,9 +1,12 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { useStore } from "@/contexts/StoreContext";
 import { autorizarPurgaObrigatoria } from "@/lib/atualizacao/autorizar-purga";
-import { haOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { marcarRecargaPendente } from "@/lib/atualizacao/recarga-pendente";
 import { redeVerificadaParaPurga } from "@/lib/atualizacao/rede-para-purga";
+import {
+  momentoSeguroAgora,
+  recarregarSeSeguro,
+} from "@/lib/atualizacao/veto-de-recarga";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
 import {
   gravaMotivoDeRecarga,
@@ -213,8 +216,10 @@ export function useUpdateCheck() {
     async (requerida: string) => {
       // TUDO o que vem antes do ponto sem volta mora em autorizarPurgaObrigatoria
       // (provado por teste de comportamento): rede provada AGORA — /version.json
-      // relido neste instante, não a leitura de minutos atrás —, nenhuma operação
-      // sensível, e a trava existente (máx. 2) gasta e CONFIRMADA lendo de volta.
+      // relido neste instante, não a leitura de minutos atrás —, momento seguro
+      // COMPLETO conferido antes E depois dessa leitura (compra, venda, formulário
+      // sujo, operação sensível), e a trava existente (máx. 2) gasta e CONFIRMADA
+      // lendo de volta.
       // Qualquer recusa lança ANTES de apagar qualquer coisa; "agora não" lança
       // AtualizacaoAdiada e o instalador DEVOLVE a tentativa (queda de internet
       // não esgota o orçamento).
@@ -222,7 +227,7 @@ export function useUpdateCheck() {
         requerida,
         versaoLocal: SAFE_APP_VERSION,
         online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
-        haOperacaoSensivel,
+        momentoSeguroAgora,
         lerVersaoDoServidor: fetchServerVersion,
         lerTrava: readPurgeGuard,
         gravarTrava: (required, count) => {
@@ -300,7 +305,12 @@ export function useUpdateCheck() {
       // instalada sobrevive). A query de força da era antiga morreu sem
       // consumidor nenhum; recarregar de verdade vem do SW desregistrado,
       // não de parâmetro de URL que ninguém lê.
-      navegarPreservandoEndereco();
+      //
+      // VETO NO INSTANTE DO RELOAD: a limpeza acima leva segundos (caches,
+      // IndexedDB aguardado) e a pessoa pode ter entrado no checkout nesse
+      // intervalo. Vetado, não navega: a recarga fica PENDENTE e o gate a faz no
+      // próximo ponto de parada seguro (o app segue vivo, já sem o SW antigo).
+      recarregarSeSeguro(() => navegarPreservandoEndereco());
     },
     [fetchServerVersion],
   );

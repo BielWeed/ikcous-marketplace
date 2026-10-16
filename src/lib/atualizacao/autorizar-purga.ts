@@ -10,14 +10,18 @@
  *
  * A ordem é o contrato:
  *   1. navegador offline → adia (AtualizacaoAdiada, nada gasto);
- *   2. operação sensível em andamento → adia;
+ *   2. momento NÃO seguro (operação sensível, tela de compra, pedido pendente,
+ *      trabalho não salvo) → adia;
  *   3. RELÊ /version.json AGORA: a prova de rede de minutos atrás não vale — o
  *      aparelho pode ter ficado sem internet depois dela, e apagar o app sem
  *      rede o deixa sem app. Não legível → adia;
- *   4. a trava existente (máx. 2 purgas por versão exigida) é conferida, gasta
+ *   4. RECONFERE o momento seguro DEPOIS da leitura: ela pode demorar, e a
+ *      pessoa entra em pagamento ou venda no meio da espera. É o último passo
+ *      antes de gastar a trava, sem nenhum `await` entre os dois;
+ *   5. a trava existente (máx. 2 purgas por versão exigida) é conferida, gasta
  *      e CONFIRMADA lendo de volta. Esgotada, ou storage que não grava ou não
  *      confirma → Error comum (repetir não conserta; a tentativa conta);
- *   5. só então o log de diagnóstico do próximo boot.
+ *   6. só então o log de diagnóstico do próximo boot.
  * Se esta função resolve, quem chamou pode apagar. Se lança, NADA foi apagado.
  */
 import { AtualizacaoAdiada } from "./adiamento";
@@ -29,7 +33,10 @@ export interface PedidoDeAutorizacao {
   readonly versaoLocal: string;
   /** `navigator.onLine` (indefinido = o ambiente não informa). */
   readonly online: boolean | undefined;
-  readonly haOperacaoSensivel: () => boolean;
+  /** O momento seguro COMPLETO, lido ao vivo (a mesma regra do instalador:
+   * `true` = nada sensível em andamento). Chamado antes E depois da leitura de
+   * rede. */
+  readonly momentoSeguroAgora: () => boolean;
   /** Lê /version.json agora (null = não legível). Pode lançar. */
   readonly lerVersaoDoServidor: () => Promise<string | null>;
   readonly lerTrava: () => { required: string; count: number };
@@ -46,9 +53,9 @@ export async function autorizarPurgaObrigatoria(
   if (pedido.online === false) {
     throw new AtualizacaoAdiada("Purge obrigatório adiado: sem rede.");
   }
-  if (pedido.haOperacaoSensivel()) {
+  if (!pedido.momentoSeguroAgora()) {
     throw new AtualizacaoAdiada(
-      "Purge obrigatório adiado: operação sensível em andamento.",
+      "Purge obrigatório adiado: momento não seguro (compra, venda ou operação sensível).",
     );
   }
 
@@ -61,6 +68,14 @@ export async function autorizarPurgaObrigatoria(
   if (versaoDoServidor === null) {
     throw new AtualizacaoAdiada(
       "Purge obrigatório adiado: /version.json não legível agora.",
+    );
+  }
+
+  // A leitura acima é de rede e pode demorar: o momento de antes não vale mais.
+  // Daqui até gastar a trava não há nenhum `await`.
+  if (!pedido.momentoSeguroAgora()) {
+    throw new AtualizacaoAdiada(
+      "Purge obrigatório adiado: a pessoa entrou em momento não seguro durante a leitura da rede.",
     );
   }
 

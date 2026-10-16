@@ -327,7 +327,8 @@ describe("PWAUpdateGate orquestra a atualização", () => {
         JSON.stringify({
           origem: "1.31.0-sha.abcdef",
           count: 2,
-          ultimaEm: 1,
+          primeiraEm: Date.now(),
+          ultimaEm: Date.now(),
         }),
       );
       hook({ updateAvailable: true, newVersion: "9.9.9-sha.novo" });
@@ -343,7 +344,12 @@ describe("PWAUpdateGate orquestra a atualização", () => {
     it("controle: origem DIFERENTE esgotada não impede este build de tentar", async () => {
       local.set(
         "pwa_atualizacao_tentativas_origem",
-        JSON.stringify({ origem: "1.20.0-sha.velho", count: 2, ultimaEm: 1 }),
+        JSON.stringify({
+          origem: "1.20.0-sha.velho",
+          count: 2,
+          primeiraEm: Date.now(),
+          ultimaEm: Date.now(),
+        }),
       );
       hook({ updateAvailable: true, newVersion: "9.9.9-sha.novo" });
       montar("home");

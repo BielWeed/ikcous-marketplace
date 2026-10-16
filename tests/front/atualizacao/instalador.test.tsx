@@ -42,6 +42,7 @@ import {
   tentativasDaOrigem,
   tentativasFeitas,
 } from "@/lib/atualizacao/trava-anti-repeticao";
+import { momentoSeguroAgora } from "@/lib/atualizacao/veto-de-recarga";
 import { guardarPedidoPendenteDoCheckout } from "@/lib/pedido-pendente-do-checkout";
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -730,6 +731,93 @@ describe("instalador no ponto de parada", () => {
     });
   });
 
+  // ─── execução VENCIDA não fala pela seguinte ────────────────────────────────
+
+  describe("callback atrasado de uma execução vencida (cada tentativa tem identidade)", () => {
+    // A 1ª tentativa estoura o prazo de 15 s (conta, solta a reserva) e a 2ª
+    // começa. Depois a rejeição da 1ª finalmente chega. Ela NÃO pode devolver a
+    // tentativa da 2ª nem soltar a reserva da 2ª — senão uma 3ª instalação
+    // começaria com a 2ª ainda pendente.
+    async function ate2aTentativaEmCurso() {
+      let rejeitarPrimeira: (e: unknown) => void = () => {};
+      instalar
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((_ok, rejeitar) => {
+              rejeitarPrimeira = rejeitar;
+            }),
+        )
+        .mockImplementation(() => new Promise<void>(() => {}));
+      montar();
+      await navegarPara("favorites");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          PRAZO_DE_SEGURANCA_DA_INSTALACAO_MS + 100,
+        );
+      });
+      expect(obterEstadoDaAtualizacao().fase).toBe("aguardando");
+      await navegarPara("home");
+      expect(instalar).toHaveBeenCalledTimes(2);
+      expect(obterEstadoDaAtualizacao().fase).toBe("instalando");
+      return rejeitarPrimeira;
+    }
+
+    it("a rejeição 'agora não' ATRASADA da 1ª não devolve a tentativa da 2ª", async () => {
+      const rejeitarPrimeira = await ate2aTentativaEmCurso();
+      expect(tentativasFeitas("1.5.32-sha.novo")).toBe(2);
+      await act(async () => {
+        rejeitarPrimeira(new AtualizacaoAdiada("sem rede (atrasada)"));
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(tentativasFeitas("1.5.32-sha.novo")).toBe(2);
+      expect(tentativasDaOrigem("1.31.0-sha.origem")).toBe(2);
+    });
+
+    it("...nem solta a reserva da 2ª, nem tira a fase de 'instalando', e NENHUMA 3ª instalação começa", async () => {
+      const rejeitarPrimeira = await ate2aTentativaEmCurso();
+      expect(local.get(CHAVE_DA_RESERVA_DE_INSTALACAO)).toBeDefined();
+      await act(async () => {
+        rejeitarPrimeira(new AtualizacaoAdiada("sem rede (atrasada)"));
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(local.get(CHAVE_DA_RESERVA_DE_INSTALACAO)).toBeDefined();
+      expect(obterEstadoDaAtualizacao().fase).toBe("instalando");
+      await navegarPara("favorites");
+      await navegarPara("home");
+      expect(instalar).toHaveBeenCalledTimes(2);
+    });
+
+    it("rejeição com erro COMUM atrasada da 1ª também é ignorada (não derruba a 2ª)", async () => {
+      const rejeitarPrimeira = await ate2aTentativaEmCurso();
+      await act(async () => {
+        rejeitarPrimeira(new Error("falha tardia"));
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(local.get(CHAVE_DA_RESERVA_DE_INSTALACAO)).toBeDefined();
+      expect(obterEstadoDaAtualizacao().fase).toBe("instalando");
+    });
+
+    it("controle: a rejeição da execução VIVA continua valendo (devolve a tentativa e solta a reserva)", async () => {
+      let rejeitar: (e: unknown) => void = () => {};
+      instalar.mockImplementation(
+        () =>
+          new Promise<void>((_ok, r) => {
+            rejeitar = r;
+          }),
+      );
+      montar();
+      await navegarPara("favorites");
+      expect(tentativasFeitas("1.5.32-sha.novo")).toBe(1);
+      await act(async () => {
+        rejeitar(new AtualizacaoAdiada("sem rede"));
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(tentativasFeitas("1.5.32-sha.novo")).toBe(0);
+      expect(local.get(CHAVE_DA_RESERVA_DE_INSTALACAO)).toBeUndefined();
+      expect(obterEstadoDaAtualizacao().fase).toBe("aguardando");
+    });
+  });
+
   // ─── a fase nunca fica presa em "instalando" ────────────────────────────────
 
   describe("fase nunca presa", () => {
@@ -851,6 +939,64 @@ describe("instalador no ponto de parada", () => {
       guardarPedidoPendenteDoCheckout("u1", UUID);
       await navegarPara("profile", { modo: "so-recarregar" });
       expect(instalar).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── o veto de recarga: quem recarrega por conta própria pergunta AO VIVO ────
+
+  describe("veto de recarga (o que o apply e a purga consultam no instante do reload)", () => {
+    it("o instalador montado responde pela tela de AGORA: checkout vetado, tela segura liberada", async () => {
+      montar({ view: "checkout" });
+      expect(momentoSeguroAgora()).toBe(false);
+      montar({ view: "home" });
+      expect(momentoSeguroAgora()).toBe(true);
+      montar({ view: "admin-pdv", adminDirty: true });
+      expect(momentoSeguroAgora()).toBe(false);
+    });
+
+    it("ao desmontar, o instalador tira o avaliador dele (nada de tela velha respondendo)", async () => {
+      montar({ view: "checkout" });
+      expect(momentoSeguroAgora()).toBe(false);
+      act(() => raiz.unmount());
+      // sem instalador: só o que o módulo sabe sozinho (nada sensível aqui)
+      expect(momentoSeguroAgora()).toBe(true);
+      raiz = createRoot(host);
+    });
+
+    it("a operação sensível iniciada depois também veta, ao vivo", async () => {
+      montar({ view: "home" });
+      expect(momentoSeguroAgora()).toBe(true);
+      const desmarcar = marcarOperacaoSensivel("upload-de-imagem");
+      expect(momentoSeguroAgora()).toBe(false);
+      desmarcar();
+      expect(momentoSeguroAgora()).toBe(true);
+    });
+
+    it("apply VETADO no meio (o SW assumiu e a pessoa estava no checkout): o gate vira só-recarregar e recarrega no próximo ponto de parada, mesmo com a 1ª execução ainda 'instalando'", async () => {
+      instalar.mockImplementation(() => new Promise<void>(() => {}));
+      montar();
+      await navegarPara("favorites");
+      expect(instalar).toHaveBeenCalledTimes(1);
+      expect(obterEstadoDaAtualizacao().fase).toBe("instalando");
+      const gastas = tentativasFeitas("1.5.32-sha.novo");
+
+      // a pessoa entrou no checkout e o veto adiou a recarga: modo só-recarregar
+      await navegarPara("checkout", { modo: "so-recarregar" });
+      expect(instalar).toHaveBeenCalledTimes(1);
+      // sai do checkout bem antes dos 15 s do prazo da 1ª execução
+      await navegarPara("home", { modo: "so-recarregar" });
+      expect(instalar).toHaveBeenCalledTimes(2);
+      // só recarregar não gasta tentativa nenhuma
+      expect(tentativasFeitas("1.5.32-sha.novo")).toBe(gastas);
+    });
+
+    it("controle: no modo 'instalar' a 2ª execução NÃO começa por cima da primeira em curso", async () => {
+      instalar.mockImplementation(() => new Promise<void>(() => {}));
+      montar();
+      await navegarPara("favorites");
+      await navegarPara("home");
+      await navegarPara("favorites");
+      expect(instalar).toHaveBeenCalledTimes(1);
     });
   });
 

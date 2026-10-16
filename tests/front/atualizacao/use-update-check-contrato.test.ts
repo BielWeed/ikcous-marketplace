@@ -96,7 +96,7 @@ describe("a purga real (só no caminho obrigatório)", () => {
     expect(PURGA).toContain("await apagarCachesDoApp()");
   });
 
-  it("TODA a autorização (rede relida AGORA, operação sensível, trava com leitura de volta) é delegada a autorizarPurgaObrigatoria — provada em autorizar-purga.test.ts — e vem ANTES de qualquer apagamento", () => {
+  it("TODA a autorização (rede relida AGORA, momento seguro antes e depois dela, trava com leitura de volta) é delegada a autorizarPurgaObrigatoria — provada em autorizar-purga.test.ts — e vem ANTES de qualquer apagamento", () => {
     expect(PURGA).toContain("await autorizarPurgaObrigatoria({");
     expect(PURGA.indexOf("await autorizarPurgaObrigatoria({")).toBeLessThan(
       PURGA.indexOf("await apagarCachesDoApp()"),
@@ -106,13 +106,14 @@ describe("a purga real (só no caminho obrigatório)", () => {
     );
   });
 
-  it("a colagem passa os fatos certos: navigator.onLine, o registro de operações sensíveis, a leitura de /version.json, a trava EXISTENTE e o máximo de 2", () => {
+  it("a colagem passa os fatos certos: navigator.onLine, o momento seguro AO VIVO (o mesmo veto do instalador), a leitura de /version.json, a trava EXISTENTE e o máximo de 2", () => {
     const CHAMADA = trecho(
       "await autorizarPurgaObrigatoria({",
       "maximo: MAX_MANDATORY_PURGES,",
     );
     expect(CHAMADA).toContain("navigator.onLine");
-    expect(CHAMADA).toContain("haOperacaoSensivel,");
+    expect(CHAMADA).toContain("momentoSeguroAgora,");
+    expect(CHAMADA).not.toContain("haOperacaoSensivel");
     expect(CHAMADA).toContain("lerVersaoDoServidor: fetchServerVersion");
     expect(CHAMADA).toContain("lerTrava: readPurgeGuard");
     expect(CHAMADA).toContain(
@@ -132,6 +133,17 @@ describe("a purga real (só no caminho obrigatório)", () => {
     expect(PURGA.indexOf("gravaVersaoEsperadaDaAtualizacao")).toBeLessThan(
       PURGA.indexOf("navegarPreservandoEndereco()"),
     );
+  });
+
+  it("a navegação final passa pelo veto de recarga (a limpeza leva segundos e a pessoa pode ter entrado no checkout): vetada, fica pendente para o gate", () => {
+    expect(PURGA).toContain(
+      "recarregarSeSeguro(() => navegarPreservandoEndereco())",
+    );
+    // nenhuma navegação "nua" sobrou
+    expect(PURGA).not.toContain("navegarPreservandoEndereco(); }");
+    expect(
+      PURGA.indexOf("recarregarSeSeguro(() => navegarPreservandoEndereco())"),
+    ).toBeGreaterThan(PURGA.indexOf("await apagarIndexedDBAguardando()"));
   });
 
   it("as chaves pwa_* sobrevivem à purga (a trava não se apaga sozinha)", () => {
