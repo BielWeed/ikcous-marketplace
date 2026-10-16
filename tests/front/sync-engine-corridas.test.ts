@@ -442,6 +442,39 @@ describe("motor — detalhes de catchUp anteriores ao realtime", () => {
     });
   });
 
+  it("não manda às outras abas o produto nem as variações que o realtime tocou", async () => {
+    const aviso = vi.spyOn(BroadcastChannel.prototype, "postMessage");
+    try {
+      const cofre = bancoEmMemoria()();
+      await aplicar(cofre, "produtos", produto(), "INSERT");
+      const outro = {
+        ...produto(),
+        id: "calca",
+        product_variants: [{ ...variacao("g", 3), product_id: "calca" }],
+      };
+      const concluir = await iniciarDetalhesLentos(cofre, [produto(), outro]);
+      await aplicar(cofre, "produtos", {
+        id: "camisa",
+        nome: "Camisa nova",
+        estoque: 10,
+      });
+      await concluir();
+      const lotes = aviso.mock.calls
+        .map(([mensagem]) => mensagem as Record<string, unknown>)
+        .filter((m) => m.type === "db_change_bulk_products");
+      expect(lotes).toHaveLength(1);
+      const [lote] = lotes;
+      expect((lote.products as { id: string }[]).map((p) => p.id)).toEqual([
+        "calca",
+      ]);
+      expect((lote.variants as { id: string }[]).map((v) => v.id)).toEqual([
+        "g",
+      ]);
+    } finally {
+      aviso.mockRestore();
+    }
+  });
+
   it("reconcilia pelo servidor na próxima rodada sem carregar os ids tocados", async () => {
     const cofre = bancoEmMemoria()();
     await aplicar(cofre, "produtos", produto(), "INSERT");

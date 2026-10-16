@@ -1134,22 +1134,23 @@ export const RealtimeSyncEngine = {
 
             // O realtime pode ter gravado um valor mais novo durante a busca.
             // Esses produtos e suas variações ficam para a próxima rodada.
-            const mappedProducts = rawProducts
-              .filter((p: any) => !_produtosTocados?.has(p.id))
-              .map((p: any) => mapProductFromDB(p));
+            const produtosParaGravar = rawProducts.filter(
+              (p: any) => !_produtosTocados?.has(p.id),
+            );
+            const mappedProducts = produtosParaGravar.map((p: any) =>
+              mapProductFromDB(p),
+            );
 
             await vault.putMany("products", mappedProducts);
             await vault.setLastSync("products");
 
-            const allVariants = rawProducts.flatMap(
+            const allVariants = produtosParaGravar.flatMap(
               (p: any) => p.product_variants || [],
             );
             if (allVariants.length > 0 && variantRecord) {
-              const mappedVariants = allVariants
-                .filter((v) => !_produtosTocados?.has(v.product_id))
-                .map((v) =>
-                  variantRecord.mapRecord ? variantRecord.mapRecord(v) : v,
-                );
+              const mappedVariants = allVariants.map((v) =>
+                variantRecord.mapRecord ? variantRecord.mapRecord(v) : v,
+              );
               await vault.putMany("product_variants", mappedVariants);
               await vault.setLastSync("product_variants");
             }
@@ -1157,7 +1158,7 @@ export const RealtimeSyncEngine = {
             // Broadcast bulk update to other tabs
             bc?.postMessage({
               type: "db_change_bulk_products",
-              products: rawProducts,
+              products: produtosParaGravar,
               variants: allVariants,
             });
 
