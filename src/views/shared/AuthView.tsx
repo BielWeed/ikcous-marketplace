@@ -22,7 +22,7 @@ import {
   Sparkles,
   User,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AuthViewProps {
@@ -92,7 +92,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       ? "Este link expirou ou já foi usado. Peça um novo abaixo."
       : null,
   );
-  const [viewMode, setViewMode] = useState<
+  const [viewMode, setViewModeAtual] = useState<
     "login" | "signup" | "forgot" | "reset-prompt" | "new-password"
   >(
     isPasswordRecovery
@@ -101,6 +101,12 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         ? "forgot"
         : "login",
   );
+  // Sair e voltar ao mesmo modo também começa outro fluxo.
+  const fluxoDaTela = useRef(0);
+  const setViewMode = useCallback((modo: typeof viewMode) => {
+    fluxoDaTela.current += 1;
+    setViewModeAtual(modo);
+  }, []);
 
   useEffect(() => {
     if (linkDeRecuperacaoVencido) limparLinkDeRecuperacaoVencido();
@@ -114,7 +120,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       );
       setViewMode("new-password");
     }
-  }, [isPasswordRecovery]);
+  }, [isPasswordRecovery, setViewMode]);
 
   const isLogin = viewMode === "login";
   const [email, setEmail] = useState("");
@@ -139,6 +145,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [emailDaConfirmacao, setEmailDaConfirmacao] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   // #200 — distingue, dentro do erro de login, o caso "e-mail ainda não
   // confirmado" (ver handleSubmit) para exibir o botão de reenvio SÓ nele.
@@ -154,6 +161,8 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const emailEnviado = email.trim();
+    const fluxoEnviado = fluxoDaTela.current;
     setLoginError(null);
     setEmailNaoConfirmado(false);
     setAvisoDoLink(null);
@@ -309,14 +318,21 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           return;
         }
         const success = await signUp(
-          email.trim(),
+          emailEnviado,
           password,
           fullName.trim(),
           phone.trim(),
           cpf.trim() ? cpf : undefined,
         );
         if (success) {
-          setShowConfirmation(true);
+          if (fluxoDaTela.current === fluxoEnviado) {
+            setEmailDaConfirmacao(emailEnviado);
+            setShowConfirmation(true);
+          } else {
+            toast.success(
+              `Se ${emailEnviado} ainda não tinha conta, enviamos um link de confirmação. Se já tem conta, entre ou recupere sua senha.`,
+            );
+          }
         }
       } else if (viewMode === "forgot") {
         if (!email.trim()) {
@@ -328,10 +344,13 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         // cadastrado de não cadastrado (é assim que a enumeração se fecha):
         // só resta o caminho de sucesso, que sempre leva à mesma tela de
         // confirmação, e o de erro genuíno (rede, rate limit).
-        const res = await resetPassword(email.trim());
+        const res = await resetPassword(emailEnviado);
         if (res.success) {
           toast.success(res.message);
-          setViewMode("reset-prompt");
+          if (fluxoDaTela.current === fluxoEnviado) {
+            setEmailDaConfirmacao(emailEnviado);
+            setViewMode("reset-prompt");
+          }
         } else {
           toast.error(res.message || "Erro ao solicitar link de recuperação.");
         }
@@ -367,7 +386,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     reenvioConfirmacaoEmCurso.current = true;
     setReenviandoConfirmacao(true);
     try {
-      await resendConfirmationEmail(email.trim());
+      await resendConfirmationEmail(
+        showConfirmation ? emailDaConfirmacao : email.trim(),
+      );
     } catch (err) {
       console.error(err);
       const message =
@@ -420,7 +441,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               Se este e-mail ainda não tinha conta, enviamos um link de
               confirmação para:
               <br />
-              <span className="font-bold text-zinc-900">{email}</span>
+              <span className="font-bold text-zinc-900">
+                {emailDaConfirmacao}
+              </span>
               <br />
               <br />
               Se você já tem conta, não precisa esperar: toque em "Retornar ao
@@ -514,7 +537,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               Se este e-mail estiver cadastrado, enviamos um link de recuperação
               para:
               <br />
-              <span className="font-bold text-zinc-900">{email}</span>
+              <span className="font-bold text-zinc-900">
+                {emailDaConfirmacao}
+              </span>
               <br />
               <br />
               Se você recebeu o e-mail, clique no link para definir sua nova
