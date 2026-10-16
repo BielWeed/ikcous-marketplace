@@ -135,7 +135,7 @@ describe.each(imagens)(
       autenticacao.user = CONTA_A;
       autenticacao.profile = PERFIL_A;
       leitores = [];
-      vi.spyOn(globalThis, "FileReader").mockImplementation(() => {
+      vi.spyOn(globalThis, "FileReader").mockImplementation(function () {
         const leitor: Leitor = {
           onload: null,
           onerror: null,
