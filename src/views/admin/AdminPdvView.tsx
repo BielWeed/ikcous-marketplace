@@ -49,6 +49,7 @@ import type {
   ReciboDaVendaRegistrada,
   RespostaDoCodigo,
 } from "@/hooks/useVendaPresencial";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import type { Leitura } from "@/lib/leitor/decodificador";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
@@ -411,119 +412,126 @@ export function AdminPdvView({
     // já tinha sido gravada, o servidor devolve `ja_existia` em vez de
     // debitar o estoque de novo. A resposta que chegar depois do prazo é
     // descartada por `aguardarComPrazo`.
-    const { data, error } = await aguardarComPrazo(
-      Promise.resolve(
-        supabase.rpc("registrar_venda_presencial", {
-          p_itens: estado.itens.map((item) => ({
-            product_id: item.productId,
-            variant_id: item.variantId,
-            quantity: item.quantidade,
-          })),
-          p_pagamento: estado.pagamento,
-          p_cliente_user_id:
-            estado.cliente.tipo === "cadastrado" ? estado.cliente.userId : null,
-          p_cliente_nome:
-            estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
-          p_cliente_whatsapp:
-            estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
-          p_desconto: estado.desconto,
-          p_observacao: estado.motivoDoDesconto || null,
-          // A MESMA chave em toda retentativa do MESMO cupom — nasce em
-          // `estadoInicialDaVenda`/`cupom_limpo` (C3.1), nunca aqui. É o que
-          // faz a segunda tentativa de uma venda que já foi gravada (rede
-          // caindo na resposta, F5 no meio do envio) devolver `ja_existia:
-          // true` em vez de debitar estoque duas vezes.
-          p_idempotency_key: estado.chaveDeIdempotencia,
-        }),
-      ),
-      PRAZO_DO_REGISTRO_DA_VENDA_MS,
-      () => new Error("O registro da venda não respondeu a tempo."),
-    );
-
-    // Deixa o erro CRU subir: quem traduz para português é
-    // `mensagemDaFalhaDaVenda` (C3.4), chamada de dentro de
-    // `FechamentoDaVenda` — repetir a tradução aqui criaria dois lugares
-    // decidindo a mesma frase (o mesmo defeito que o cabeçalho de
-    // `recusaDoPedido.ts` descreve para outra RPC). Em QUALQUER falha aqui
-    // (rede, 22023, 23505, 42501, PGRST202) nada é despachado: o cupom (e o
-    // rascunho, que só é apagado depois de `venda_registrada` — ver o
-    // efeito de gravação em `useVendaPresencial.ts`) ficam exatamente como
-    // estavam. É a invariante de D3, não um `if`.
-    if (error) throw error;
-
-    const resposta = data as unknown as RespostaDoFechamento;
-    const pedido = resposta.order;
-
-    // Retentativa de uma venda que JÁ foi gravada e depois ANULADA (a chave de
-    // idempotência devolve o mesmo pedido): o recibo de uma compra que não vale
-    // mais seria mostrado como se valesse. A recusa leva `code` 22023 para a
-    // tradução do fechamento mostrar a frase e oferecer "nova venda".
-    if (resposta.ja_existia && pedido.status === "cancelled") {
-      throw {
-        code: "22023",
-        message:
-          "Esta venda já foi anulada. Comece uma venda nova para registrar de novo.",
-      };
-    }
-
-    const recibo: ReciboDaVendaRegistrada = {
-      orderId: pedido.id,
-      // Seis últimos caracteres, maiúsculos — mesma regra de
-      // `AdminOrdersView.tsx:2028`.
-      numero: pedido.id.slice(-6).toUpperCase(),
-      criadoEm: pedido.created_at,
-      total: pedido.total,
-      subtotal: pedido.subtotal,
-      desconto: pedido.discount,
-      pagamento: pedido.payment_method,
-      // B2 (fila do bastão 19/09): da RESPOSTA do banco, nunca da tela — ver
-      // `clienteDoRecibo` acima. O recibo mostra o cliente da venda que o
-      // banco gravou; um F5 ou uma troca de cliente por baixo do fechamento
-      // não reescreve a história.
-      cliente: clienteDoRecibo(pedido),
-      // PASSO 3(a) da tarefa, ao pé da letra: os itens saem de
-      // `resposta.items` (o BANCO), e só imagem/variação vêm do cupom da
-      // tela, por `product_id`+`variant_id` (ver `montarItensDoRecibo`
-      // acima). Usar `estado.itens` aqui é o achado BLOQUEIA da revisão: o
-      // cupom continua interativo por baixo do fechamento e pode ter mudado
-      // entre a tentativa que gravou e esta leitura da resposta.
-      itens: montarItensDoRecibo(resposta.items),
-      jaExistia: resposta.ja_existia,
-    };
-
-    // (a) primeiro o recibo entra no estado — só DEPOIS disso o efeito de
-    // C3.1 apaga o rascunho (ele apaga quando vê `estado.recibo !== null`,
-    // não antes): se a montagem do recibo tivesse estourado ANTES deste
-    // despacho, o cupom continuaria intacto em disco.
-    despachar({ tipo: "venda_registrada", recibo });
-
-    // (c) o e-mail de confirmação, SEM `await` e com `.catch` que só
-    // registra — a venda JÁ está gravada, uma falha de envio não pode
-    // derrubar a tela do recibo (mesma forma e mesmo motivo de
-    // `useOrders.ts:2988-3020`, `enviarComprovanteAoCliente`). A edge
-    // decide sozinha o caso "sem e-mail" (`comprovante.ts:280-289`) — por
-    // isso NENHUMA guarda aqui.
-    //
-    // NÃO chamamos `notify-new-order`: quem registrou a venda é o próprio
-    // lojista — avisá-lo do que ele acabou de fazer é ruído, e a edge nem
-    // aceita um sinal de origem para dispensar isso (divergência da
-    // tarefa, `notify-new-order/index.ts:32,150-153`).
+    const desmarcar = marcarOperacaoSensivel("registro-de-venda-do-pdv");
     try {
-      void (supabase.functions as any)
-        .invoke("send-order-confirmation", { body: { orderId: pedido.id } })
-        .then((r: any) => {
-          if (r?.error) {
-            console.warn(
-              "send-order-confirmation: comprovante não saiu",
-              r.error,
-            );
-          }
-        })
-        .catch((err: unknown) => {
-          console.warn("send-order-confirmation: comprovante não saiu", err);
-        });
-    } catch (err) {
-      console.warn("send-order-confirmation: comprovante não saiu", err);
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc("registrar_venda_presencial", {
+            p_itens: estado.itens.map((item) => ({
+              product_id: item.productId,
+              variant_id: item.variantId,
+              quantity: item.quantidade,
+            })),
+            p_pagamento: estado.pagamento,
+            p_cliente_user_id:
+              estado.cliente.tipo === "cadastrado"
+                ? estado.cliente.userId
+                : null,
+            p_cliente_nome:
+              estado.cliente.tipo === "avulso" ? estado.cliente.nome : null,
+            p_cliente_whatsapp:
+              estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
+            p_desconto: estado.desconto,
+            p_observacao: estado.motivoDoDesconto || null,
+            // A MESMA chave em toda retentativa do MESMO cupom — nasce em
+            // `estadoInicialDaVenda`/`cupom_limpo` (C3.1), nunca aqui. É o que
+            // faz a segunda tentativa de uma venda que já foi gravada (rede
+            // caindo na resposta, F5 no meio do envio) devolver `ja_existia:
+            // true` em vez de debitar estoque duas vezes.
+            p_idempotency_key: estado.chaveDeIdempotencia,
+          }),
+        ),
+        PRAZO_DO_REGISTRO_DA_VENDA_MS,
+        () => new Error("O registro da venda não respondeu a tempo."),
+      );
+
+      // Deixa o erro CRU subir: quem traduz para português é
+      // `mensagemDaFalhaDaVenda` (C3.4), chamada de dentro de
+      // `FechamentoDaVenda` — repetir a tradução aqui criaria dois lugares
+      // decidindo a mesma frase (o mesmo defeito que o cabeçalho de
+      // `recusaDoPedido.ts` descreve para outra RPC). Em QUALQUER falha aqui
+      // (rede, 22023, 23505, 42501, PGRST202) nada é despachado: o cupom (e o
+      // rascunho, que só é apagado depois de `venda_registrada` — ver o
+      // efeito de gravação em `useVendaPresencial.ts`) ficam exatamente como
+      // estavam. É a invariante de D3, não um `if`.
+      if (error) throw error;
+
+      const resposta = data as unknown as RespostaDoFechamento;
+      const pedido = resposta.order;
+
+      // Retentativa de uma venda que JÁ foi gravada e depois ANULADA (a chave de
+      // idempotência devolve o mesmo pedido): o recibo de uma compra que não vale
+      // mais seria mostrado como se valesse. A recusa leva `code` 22023 para a
+      // tradução do fechamento mostrar a frase e oferecer "nova venda".
+      if (resposta.ja_existia && pedido.status === "cancelled") {
+        throw {
+          code: "22023",
+          message:
+            "Esta venda já foi anulada. Comece uma venda nova para registrar de novo.",
+        };
+      }
+
+      const recibo: ReciboDaVendaRegistrada = {
+        orderId: pedido.id,
+        // Seis últimos caracteres, maiúsculos — mesma regra de
+        // `AdminOrdersView.tsx:2028`.
+        numero: pedido.id.slice(-6).toUpperCase(),
+        criadoEm: pedido.created_at,
+        total: pedido.total,
+        subtotal: pedido.subtotal,
+        desconto: pedido.discount,
+        pagamento: pedido.payment_method,
+        // B2 (fila do bastão 19/09): da RESPOSTA do banco, nunca da tela — ver
+        // `clienteDoRecibo` acima. O recibo mostra o cliente da venda que o
+        // banco gravou; um F5 ou uma troca de cliente por baixo do fechamento
+        // não reescreve a história.
+        cliente: clienteDoRecibo(pedido),
+        // PASSO 3(a) da tarefa, ao pé da letra: os itens saem de
+        // `resposta.items` (o BANCO), e só imagem/variação vêm do cupom da
+        // tela, por `product_id`+`variant_id` (ver `montarItensDoRecibo`
+        // acima). Usar `estado.itens` aqui é o achado BLOQUEIA da revisão: o
+        // cupom continua interativo por baixo do fechamento e pode ter mudado
+        // entre a tentativa que gravou e esta leitura da resposta.
+        itens: montarItensDoRecibo(resposta.items),
+        jaExistia: resposta.ja_existia,
+      };
+
+      // (a) primeiro o recibo entra no estado — só DEPOIS disso o efeito de
+      // C3.1 apaga o rascunho (ele apaga quando vê `estado.recibo !== null`,
+      // não antes): se a montagem do recibo tivesse estourado ANTES deste
+      // despacho, o cupom continuaria intacto em disco.
+      despachar({ tipo: "venda_registrada", recibo });
+
+      // (c) o e-mail de confirmação, SEM `await` e com `.catch` que só
+      // registra — a venda JÁ está gravada, uma falha de envio não pode
+      // derrubar a tela do recibo (mesma forma e mesmo motivo de
+      // `useOrders.ts:2988-3020`, `enviarComprovanteAoCliente`). A edge
+      // decide sozinha o caso "sem e-mail" (`comprovante.ts:280-289`) — por
+      // isso NENHUMA guarda aqui.
+      //
+      // NÃO chamamos `notify-new-order`: quem registrou a venda é o próprio
+      // lojista — avisá-lo do que ele acabou de fazer é ruído, e a edge nem
+      // aceita um sinal de origem para dispensar isso (divergência da
+      // tarefa, `notify-new-order/index.ts:32,150-153`).
+      try {
+        void (supabase.functions as any)
+          .invoke("send-order-confirmation", { body: { orderId: pedido.id } })
+          .then((r: any) => {
+            if (r?.error) {
+              console.warn(
+                "send-order-confirmation: comprovante não saiu",
+                r.error,
+              );
+            }
+          })
+          .catch((err: unknown) => {
+            console.warn("send-order-confirmation: comprovante não saiu", err);
+          });
+      } catch (err) {
+        console.warn("send-order-confirmation: comprovante não saiu", err);
+      }
+    } finally {
+      desmarcar();
     }
   }
 

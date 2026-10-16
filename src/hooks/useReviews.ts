@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   geracaoAtualDoCache,
   getReviewsCache,
@@ -208,6 +209,7 @@ export function useReviews() {
 
   const addReview = useCallback(
     async (review: { productId: string; rating: number; comment: string }) => {
+      const desmarcar = marcarOperacaoSensivel("envio-de-avaliacao");
       try {
         // ZENITH v21.7: Rely on AuthContext's verified user
         if (!user) {
@@ -262,6 +264,8 @@ export function useReviews() {
         console.error("Error adding review:", error);
         toast.error(mensagemAmigavelErroAvaliacao(error));
         return null;
+      } finally {
+        desmarcar();
       }
     },
     [getReviewsByProduct, user],
