@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { supabase } from "@/lib/supabase";
 import {
   cachedQuestionsData,
@@ -416,6 +417,7 @@ export function useQuestions() {
 
   const addQuestion = useCallback(
     async (question: { productId: string; question: string }) => {
+      const desmarcar = marcarOperacaoSensivel("envio-de-pergunta");
       try {
         // ZENITH v21.7: Rely on AuthContext's verified user
         if (!user) {
@@ -442,6 +444,8 @@ export function useQuestions() {
         console.error("Error adding question:", error);
         toast.error("Erro ao enviar pergunta.");
         return null;
+      } finally {
+        desmarcar();
       }
     },
     [getQuestionsByProduct, user],

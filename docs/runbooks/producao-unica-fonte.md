@@ -48,6 +48,8 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
 
 2. **Ensaio do portao (so leitura).**
 
+   Antes de publicar, a versão precisa ter título e ao menos uma novidade, correção ou melhoria em `src/novidades/notas-das-versoes.json`, escritas em linguagem de lojista leigo. A nota tem de estar **commitada no SHA da release** (nota só local não conta) e as três listas (`novidades`, `correcoes`, `melhorias`) precisam existir, mesmo vazias. Uma linha simples como "Correções de estabilidade." basta.
+
    ```powershell
    node scripts/frota/publicar-release.mjs --sha <sha40> --deployment <dpl_...>
    ```

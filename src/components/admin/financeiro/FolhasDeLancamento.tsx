@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { baixarLancamento, cancelarLancamento } from "@/hooks/useFinanceiro";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   ehDataIso,
   formatarData,
@@ -249,6 +250,7 @@ export function BaixarLancamentoFolha({
     enviandoRef.current = true;
     setEnviando(true);
     setErroDoServidor(null);
+    const fim = marcarOperacaoSensivel("baixa-financeira");
     try {
       await baixarLancamento({ id: alvo.id, data, contaId: contaId || null });
       aoSalvar(
@@ -259,6 +261,7 @@ export function BaixarLancamentoFolha({
     } catch (erro) {
       setErroDoServidor(mensagemDeErroFinanceiro(erro));
     } finally {
+      fim();
       enviandoRef.current = false;
       setEnviando(false);
     }

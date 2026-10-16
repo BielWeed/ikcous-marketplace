@@ -42,6 +42,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   MENSAGEM_FIM_ANTES_DO_INICIO,
   fimDoBannerEmTexto,
@@ -1000,6 +1001,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     // derivado do tipo REAL do blob é compartilhado com a tela de produtos.
     const file = arquivoDaImagemRecortada(croppedBlob, "banner-image-");
     const loadingToast = toast.loading("Enviando imagem recortada...");
+    const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       const url = await uploadBannerImage(file);
       if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
@@ -1012,6 +1014,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       console.error("Error uploading adjusted banner image:", error);
       toast.error("Erro ao salvar imagem ajustada", { id: loadingToast });
     } finally {
+      fim();
       setIsUploadingAdjusted(false);
     }
   };
@@ -1699,6 +1702,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
     setUploading(true);
     const loadingToast = toast.loading("Enviando imagem do banner...");
+    const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       const url = await uploadBannerImage(file);
       if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
@@ -1709,6 +1713,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     } catch {
       toast.error("Erro ao enviar imagem", { id: loadingToast });
     } finally {
+      fim();
       setUploading(false);
     }
   };
@@ -1729,6 +1734,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     if (isSubmitting) return;
     setIsSubmitting(true);
     isSubmittingRef.current = true;
+    const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
       if (!formData.imageUrl) {
         toast.error("Imagem é obrigatória");
@@ -1811,6 +1817,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       console.error("Erro ao salvar banner:", error);
       toast.error("Erro ao salvar as configurações do banner.");
     } finally {
+      fim();
       setIsSubmitting(false);
       isSubmittingRef.current = false;
     }

@@ -225,10 +225,19 @@ function sonda(dominio, ref, titulo, sha = SHA) {
   };
 }
 
+const ARQUIVO_NOTAS = "src/novidades/notas-das-versoes.json";
+const NOTA_VALIDA = {
+  titulo: "Atualização do app",
+  novidades: [],
+  correcoes: ["Correções de estabilidade."],
+  melhorias: [],
+};
+
 // Árvores de arquivos por commit. criar-pagamento importa _shared/mp.ts; a
 // release mudou criar-pagamento/index.ts e acrescentou _shared/novo.ts.
 const ARVORE = {
   [SHA]: {
+    [ARQUIVO_NOTAS]: JSON.stringify({ "1.5.18": NOTA_VALIDA }),
     "supabase/functions/criar-pagamento/index.ts":
       'import { a } from "../_shared/mp.ts";\nimport "../_shared/novo.ts";\n// novo',
     "supabase/functions/_shared/mp.ts": "export const a = 1;",
@@ -474,6 +483,152 @@ function deps(ajuste = {}) {
 
 const executar = (d, promover = false) =>
   publicarRelease({ sha: SHA, deploymentId: DPL, promover }, d);
+
+// As notas vêm da mesma árvore falsa por SHA que as functions: nenhum arquivo
+// local nem serviço real decide se esta release pode ser publicada.
+for (const campo of ["novidades", "correcoes", "melhorias"]) {
+  for (const promover of [false, true]) {
+    Deno.test(`nota da versão válida em ${campo}: ${promover ? "promove" : "ensaio só lê"}`, async () => {
+      const { d, chamadas } = deps();
+      const ler = d.lerArquivoNoSha;
+      d.lerArquivoNoSha = (sha, caminho) => {
+        if (caminho !== ARQUIVO_NOTAS) return ler(sha, caminho);
+        assertEquals(sha, SHA);
+        return JSON.stringify({
+          "1.5.18": {
+            titulo: "Atualização do app",
+            novidades: [],
+            correcoes: [],
+            melhorias: [],
+            [campo]: ["Correções de estabilidade."],
+          },
+        });
+      };
+      const r = await executar(d, promover);
+      assertEquals(r.codigo, 0, r.relatorio);
+      assertEquals(chamadas.promover, promover ? [DPL] : []);
+      assertStringIncludes(r.relatorio, "- nota da versão: OK: 1.5.18");
+      assertStringIncludes(r.relatorio, ARQUIVO_NOTAS);
+      assertEquals(r.notasDaVersao, {
+        ok: true,
+        versao: "1.5.18",
+        arquivo: ARQUIVO_NOTAS,
+        problemas: [],
+      });
+    });
+  }
+}
+
+for (const [nome, conteudo, falta] of [
+  ["sem arquivo", null, "arquivo ausente"],
+  [
+    "sem a versão",
+    JSON.stringify({ "1.5.17": NOTA_VALIDA }),
+    "entrada ausente",
+  ],
+  [
+    "título vazio",
+    JSON.stringify({ "1.5.18": { ...NOTA_VALIDA, titulo: " \n\t " } }),
+    "titulo",
+  ],
+  [
+    "sem nenhum item",
+    JSON.stringify({ "1.5.18": { ...NOTA_VALIDA, correcoes: [] } }),
+    "ao menos um item",
+  ],
+  ["JSON inválido", "{", "JSON inválido"],
+  ["raiz nula", "null", "objeto"],
+  ["raiz como lista", "[]", "objeto"],
+  ["entrada nula", JSON.stringify({ "1.5.18": null }), "objeto"],
+  ["entrada como lista", JSON.stringify({ "1.5.18": [] }), "objeto"],
+  [
+    "lista ausente",
+    JSON.stringify({ "1.5.18": { ...NOTA_VALIDA, novidades: undefined } }),
+    "novidades",
+  ],
+  [
+    "lista malformada",
+    JSON.stringify({ "1.5.18": { ...NOTA_VALIDA, novidades: "texto" } }),
+    "novidades",
+  ],
+  [
+    "item vazio mesmo com outra lista válida",
+    JSON.stringify({ "1.5.18": { ...NOTA_VALIDA, novidades: [" \t "] } }),
+    "novidades",
+  ],
+  [
+    "item que não é texto",
+    JSON.stringify({ "1.5.18": { ...NOTA_VALIDA, melhorias: [42] } }),
+    "melhorias",
+  ],
+]) {
+  for (const promover of [false, true]) {
+    Deno.test(`nota da versão BLOQUEIA ${nome}: ${promover ? "promoção" : "ensaio"} preserva o resto do relatório`, async () => {
+      const { d, chamadas } = deps();
+      const ler = d.lerArquivoNoSha;
+      d.lerArquivoNoSha = (sha, caminho) =>
+        caminho === ARQUIVO_NOTAS ? conteudo : ler(sha, caminho);
+      const r = await executar(d, promover);
+      assertEquals(r.codigo, 1, r.relatorio);
+      assertEquals(chamadas.promover, []);
+      assertStringIncludes(r.relatorio, "- nota da versão: BLOQUEADO");
+      const bloqueio = r.bloqueios.find((b) => b.alvo === ARQUIVO_NOTAS);
+      assert(bloqueio, JSON.stringify(r.bloqueios));
+      for (const trecho of [
+        "1.5.18",
+        ARQUIVO_NOTAS,
+        falta,
+        "Exemplo mínimo aceito",
+        '"titulo"',
+        "Correções de estabilidade.",
+      ])
+        assertStringIncludes(bloqueio.motivo, trecho);
+      assertEquals(r.notasDaVersao.ok, false);
+      assertEquals(r.notasDaVersao.versao, "1.5.18");
+      assertStringIncludes(r.relatorio, "## 2. Inventário oficial");
+      assertStringIncludes(r.relatorio, "## 3. Prontidão das lojas assinantes");
+      assertStringIncludes(r.relatorio, "- functions: 3 em dia");
+      assertEquals(chamadas.conferir, ["antes"]);
+      assertEquals(
+        [...new Set(chamadas.migrationList)].sort(),
+        [CAF, SAVY].sort(),
+      );
+    });
+  }
+}
+
+Deno.test("nota da versão usa o núcleo semver do candidato, sem SHA nem identidade", async () => {
+  const { d } = deps({
+    versaoCandidato: versao().replaceAll("1.5.18", "1.5.19"),
+  });
+  const sem = await executar(d);
+  assertEquals(sem.codigo, 1, sem.relatorio);
+  assertStringIncludes(sem.relatorio, "1.5.19");
+  const ler = d.lerArquivoNoSha;
+  d.lerArquivoNoSha = (sha, caminho) =>
+    caminho === ARQUIVO_NOTAS
+      ? JSON.stringify({ "1.5.19": NOTA_VALIDA })
+      : ler(sha, caminho);
+  const com = await executar(d);
+  assertEquals(com.codigo, 0, com.relatorio);
+  assertEquals(com.notasDaVersao.versao, "1.5.19");
+});
+
+Deno.test("nota da versão com falha de leitura bloqueia e ainda mostra o backend pendente", async () => {
+  const { d, chamadas } = deps({ runsConferir: [] });
+  const ler = d.lerArquivoNoSha;
+  d.lerArquivoNoSha = (sha, caminho) => {
+    if (caminho === ARQUIVO_NOTAS) throw new Error("leitura falhou");
+    return ler(sha, caminho);
+  };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover, []);
+  assertStringIncludes(r.relatorio, "arquivo não pôde ser lido");
+  assert(r.bloqueios.some((b) => b.alvo.includes(SAVY)));
+  assertStringIncludes(r.relatorio, "Próximo passo seguro");
+  assertStringIncludes(r.relatorio, `-f "consulta=${PROVA}"`);
+});
 
 Deno.test("PRONTO com candidato VÁLIDO: ensaio não promove, mostra o comando e versão antiga não bloqueia", async () => {
   const { d, chamadas } = deps();

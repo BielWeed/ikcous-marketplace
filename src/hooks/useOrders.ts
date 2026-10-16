@@ -2,6 +2,7 @@ import { statusConfig } from "@/components/admin/orders/OrderStatusBadge";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   CHAVE_BASE_DA_FILA_DE_PEDIDOS,
   chaveDoUsuario,
@@ -2299,6 +2300,17 @@ export function useOrders(
    * ali antes de religar.
    */
   const desmontadoRef = useRef(false);
+  // O finally e o desmonte podem encerrar a mesma marca: desmarcar é idempotente.
+  const operacoesSensiveisRef = useRef(new Set<() => void>());
+  const iniciarOperacaoSensivel = useCallback((motivo: string) => {
+    const desmarcar = marcarOperacaoSensivel(motivo);
+    const fim = () => {
+      desmarcar();
+      operacoesSensiveisRef.current.delete(fim);
+    };
+    operacoesSensiveisRef.current.add(fim);
+    return fim;
+  }, []);
   // pedidos-4: modo "buscar também os antigos" — quando o lojista pede, a
   // varredura passa a ir SEM janela (p_dias null) e FICA assim (sticky):
   // depois que ele pediu a lista completa, servir de novo a recortada
@@ -3606,6 +3618,7 @@ export function useOrders(
    */
   const registrarPagamentoRecebido = useCallback(
     async (orderId: string, recebido: boolean) => {
+      const fim = marcarOperacaoSensivel("registrar-pagamento-manual");
       try {
         const { data, error } = await (supabase.rpc as any)(
           "registrar_pagamento_recebido",
@@ -3665,6 +3678,8 @@ export function useOrders(
           { description: err?.message },
         );
         throw err;
+      } finally {
+        fim();
       }
     },
     [],
@@ -3842,6 +3857,8 @@ export function useOrders(
         ? "create_marketplace_order_v24"
         : "create_marketplace_order_v23";
 
+      // Sair do checkout não cancela a RPC: só o finally libera a marca.
+      const fim = marcarOperacaoSensivel("envio-de-pedido");
       try {
         // 🛡️ SECURITY: Usando a RPC v22 Blindada (Zero-Trust)
         // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
@@ -3932,6 +3949,8 @@ export function useOrders(
         // recusa. O toast que existia aqui empilhava DOIS avisos da mesma
         // falha, e o segundo ainda nascia sem o contexto que a tela acrescenta.
         throw err;
+      } finally {
+        fim();
       }
     },
     [avisarLojista, enviarComprovanteAoCliente],
@@ -4251,22 +4270,24 @@ export function useOrders(
     // desmonte, contra um `localStorage` que já não é o da tela.
     const timersPendentes = new Set<ReturnType<typeof setTimeout>>();
     const handleOnlineSync = () => {
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         timersPendentes.delete(timer);
-        syncOfflineOrderUpdates(userId)
-          .then((filaAvancou) => {
-            if (filaAvancou) {
-              recarregarAposReconexaoRef
-                .current({ silencioso: true })
-                .catch(() => {});
-            }
-          })
-          .catch((err) => {
-            // Rede de segurança: `processarFilaOfflineDePedidos` já trata o
-            // storage, mas esta promessa nunca pode terminar sem dono — sem
-            // isto, qualquer rejeição vira "unhandled rejection".
-            console.error("[Offline Sync] Failed to sync offline orders:", err);
-          });
+        const fim = iniciarOperacaoSensivel("fila-offline-de-pedidos");
+        try {
+          const filaAvancou = await syncOfflineOrderUpdates(userId);
+          if (filaAvancou) {
+            recarregarAposReconexaoRef
+              .current({ silencioso: true })
+              .catch(() => {});
+          }
+        } catch (err) {
+          // Rede de segurança: `processarFilaOfflineDePedidos` já trata o
+          // storage, mas esta promessa nunca pode terminar sem dono — sem
+          // isto, qualquer rejeição vira "unhandled rejection".
+          console.error("[Offline Sync] Failed to sync offline orders:", err);
+        } finally {
+          fim();
+        }
       }, 1000);
       timersPendentes.add(timer);
     };
@@ -4280,13 +4301,14 @@ export function useOrders(
       for (const timer of timersPendentes) clearTimeout(timer);
       timersPendentes.clear();
     };
-  }, [user?.id, isUserAdmin]);
+  }, [user?.id, isUserAdmin, iniciarOperacaoSensivel]);
 
   useEffect(() => {
     // Em StrictMode (dev) o React roda setup → cleanup → setup na PRIMEIRA
     // montagem: sem rearmar aqui, a bandeira ficaria `true` numa instância
     // viva e o encadeamento do voo sujo nunca mais religaria (revisão).
     desmontadoRef.current = false;
+    const operacoesSensiveis = operacoesSensiveisRef.current;
     return () => {
       // Ressalva 'b' da revisão (useOrders-cancelados-janela-e-colunas):
       // marca o desmonte ANTES de qualquer outra limpeza abaixo — é o que
@@ -4294,6 +4316,7 @@ export function useOrders(
       // "voo sujo" depois que esta instância já morreu (ver o docstring de
       // `desmontadoRef`, acima).
       desmontadoRef.current = true;
+      for (const fim of operacoesSensiveis) fim();
       if (userOrdersAbortControllerRef.current) {
         userOrdersAbortControllerRef.current.abort();
       }

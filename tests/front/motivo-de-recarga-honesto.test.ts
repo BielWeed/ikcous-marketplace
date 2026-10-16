@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHAVE_MOTIVO_DE_RECARGA,
+  CHAVE_ORIGEM_DE_ATUALIZACAO,
+  CHAVE_VERSAO_ESPERADA_DA_ATUALIZACAO,
   atualizacaoTrocouDeBuild,
+  consumirOrigemDaAtualizacao,
   descreveMotivoDeRecarga,
   gravaMotivoDeRecarga,
   gravaOrigemDeAtualizacao,
+  gravaVersaoEsperadaDaAtualizacao,
   limpaMotivoDeRecarga,
 } from "../../src/lib/motivo-de-recarga";
 
@@ -177,5 +181,171 @@ describe("motivo-de-recarga — o toast do boot diz a verdade (laudo #2, P-1)", 
     vi.stubGlobal("sessionStorage", sessaoA);
     expect(atualizacaoTrocouDeBuild("1.5.1-sha.bbb2222")).toBe(true);
     expect(atualizacaoTrocouDeBuild("1.5.1-sha.bbb2222")).toBe(false);
+  });
+  // ── Atualização única (16/10): a origem também diz DE ONDE veio ──────────
+
+  describe("consumirOrigemDaAtualizacao — lê, limpa e devolve de onde veio", () => {
+    it("origem diferente do build atual: trocou, e `de` é a versão de origem", () => {
+      gravaOrigemDeAtualizacao("1.5.31-sha.aaa1111");
+      expect(consumirOrigemDaAtualizacao("1.5.32-sha.bbb2222")).toEqual({
+        trocouDeBuild: true,
+        de: "1.5.31-sha.aaa1111",
+        versaoEsperada: null,
+      });
+    });
+
+    it("consome: a segunda leitura não encontra mais nada", () => {
+      gravaOrigemDeAtualizacao("1.5.31-sha.aaa1111");
+      consumirOrigemDaAtualizacao("1.5.32-sha.bbb2222");
+      expect(consumirOrigemDaAtualizacao("1.5.32-sha.bbb2222")).toEqual({
+        trocouDeBuild: false,
+        de: null,
+        versaoEsperada: null,
+      });
+      expect(sessionStorage.getItem(CHAVE_ORIGEM_DE_ATUALIZACAO)).toBeNull();
+    });
+
+    it("MESMO build (recarga que não curou): não trocou — sem sucesso inventado", () => {
+      gravaOrigemDeAtualizacao("1.5.31-sha.aaa1111");
+      expect(
+        consumirOrigemDaAtualizacao("1.5.31-sha.aaa1111").trocouDeBuild,
+      ).toBe(false);
+    });
+
+    it("sem origem gravada: sem evidência e `de` nulo", () => {
+      expect(consumirOrigemDaAtualizacao("1.5.32-sha.bbb2222")).toEqual({
+        trocouDeBuild: false,
+        de: null,
+        versaoEsperada: null,
+      });
+    });
+
+    it("sessionStorage LANÇANDO: devolve 'não trocou' em vez de derrubar o boot", () => {
+      vi.stubGlobal("sessionStorage", {
+        getItem: () => {
+          throw new Error("SecurityError");
+        },
+        setItem: () => {
+          throw new Error("SecurityError");
+        },
+        removeItem: () => {
+          throw new Error("SecurityError");
+        },
+      });
+      expect(consumirOrigemDaAtualizacao("1.5.32")).toEqual({
+        trocouDeBuild: false,
+        de: null,
+        versaoEsperada: null,
+      });
+    });
+
+    it("atualizacaoTrocouDeBuild continua igual (mesmo veredito, também consome)", () => {
+      gravaOrigemDeAtualizacao("1.5.31-sha.aaa1111");
+      expect(atualizacaoTrocouDeBuild("1.5.32-sha.bbb2222")).toBe(true);
+      expect(sessionStorage.getItem(CHAVE_ORIGEM_DE_ATUALIZACAO)).toBeNull();
+    });
+
+    // ── A tentativa carrega a versão-alvo esperada (16/10) ─────────────────
+
+    describe("versão esperada: o sucesso só vale se a que chegou serve à esperada", () => {
+      it("chegou a versão esperada: trocou, com a esperada devolvida", () => {
+        gravaOrigemDeAtualizacao("1.5.31-sha.aaa1111");
+        gravaVersaoEsperadaDaAtualizacao("1.5.32");
+        expect(consumirOrigemDaAtualizacao("1.5.32-sha.bbb2222")).toEqual({
+          trocouDeBuild: true,
+          de: "1.5.31-sha.aaa1111",
+          versaoEsperada: "1.5.32",
+        });
+      });
+
+      it("chegou uma versão MAIS NOVA que a esperada (deploy no meio do caminho): também é sucesso", () => {
+        gravaOrigemDeAtualizacao("1.5.31-sha.aaa1111");
+        gravaVersaoEsperadaDaAtualizacao("1.5.32");
+        expect(
+          consumirOrigemDaAtualizacao("1.5.33-sha.ccc3333").trocouDeBuild,
+        ).toBe(true);
+      });
+
+      it("chegou build DIFERENTE mas de versão MENOR que a esperada: NÃO é sucesso (neutro, nunca 'Pronto')", () => {
+        gravaOrigemDeAtualizacao("1.5.30-sha.aaa1111");
+        gravaVersaoEsperadaDaAtualizacao("1.5.32");
+        const r = consumirOrigemDaAtualizacao("1.5.31-sha.bbb2222");
+        expect(r.trocouDeBuild).toBe(false);
+        expect(r.de).toBe("1.5.30-sha.aaa1111");
+      });
+
+      it("chegou versão ilegível: NÃO é sucesso", () => {
+        gravaOrigemDeAtualizacao("1.5.30-sha.aaa1111");
+        gravaVersaoEsperadaDaAtualizacao("1.5.32");
+        expect(consumirOrigemDaAtualizacao("dev").trocouDeBuild).toBe(false);
+      });
+
+      it("sem versão esperada gravada, vale só a troca de build (comportamento de sempre)", () => {
+        gravaOrigemDeAtualizacao("1.5.30-sha.aaa1111");
+        expect(
+          consumirOrigemDaAtualizacao("1.5.31-sha.bbb2222").trocouDeBuild,
+        ).toBe(true);
+      });
+
+      it("esperada ilegível não contradiz ninguém (nada a comparar)", () => {
+        gravaOrigemDeAtualizacao("1.5.30-sha.aaa1111");
+        gravaVersaoEsperadaDaAtualizacao("lixo");
+        expect(
+          consumirOrigemDaAtualizacao("1.5.31-sha.bbb2222").trocouDeBuild,
+        ).toBe(true);
+      });
+
+      it("a leitura LIMPA as duas chaves (a esperada não vaza para o próximo boot)", () => {
+        gravaOrigemDeAtualizacao("1.5.30-sha.aaa1111");
+        gravaVersaoEsperadaDaAtualizacao("1.5.32");
+        consumirOrigemDaAtualizacao("1.5.32-sha.bbb2222");
+        expect(sessionStorage.getItem(CHAVE_ORIGEM_DE_ATUALIZACAO)).toBeNull();
+        expect(
+          sessionStorage.getItem(CHAVE_VERSAO_ESPERADA_DA_ATUALIZACAO),
+        ).toBeNull();
+        gravaOrigemDeAtualizacao("1.5.32-sha.bbb2222");
+        expect(
+          consumirOrigemDaAtualizacao("1.5.33-sha.ccc3333").trocouDeBuild,
+        ).toBe(true);
+      });
+
+      it("esperada sem origem (o apply nunca partiu): sem evidência, e a esperada some", () => {
+        gravaVersaoEsperadaDaAtualizacao("1.5.32");
+        expect(consumirOrigemDaAtualizacao("1.5.32-sha.bbb2222")).toEqual({
+          trocouDeBuild: false,
+          de: null,
+          versaoEsperada: "1.5.32",
+        });
+        expect(
+          sessionStorage.getItem(CHAVE_VERSAO_ESPERADA_DA_ATUALIZACAO),
+        ).toBeNull();
+      });
+
+      it("gravar esperada nula/vazia apaga a anterior; storage lançando não derruba", () => {
+        gravaVersaoEsperadaDaAtualizacao("1.5.32");
+        gravaVersaoEsperadaDaAtualizacao(null);
+        expect(
+          sessionStorage.getItem(CHAVE_VERSAO_ESPERADA_DA_ATUALIZACAO),
+        ).toBeNull();
+        vi.stubGlobal("sessionStorage", {
+          getItem: () => {
+            throw new Error("x");
+          },
+          setItem: () => {
+            throw new Error("x");
+          },
+          removeItem: () => {
+            throw new Error("x");
+          },
+        });
+        expect(() => gravaVersaoEsperadaDaAtualizacao("1.5.32")).not.toThrow();
+      });
+
+      it("atualizacaoTrocouDeBuild herda a regra (o consumidor de hoje, o App, ganha a proteção)", () => {
+        gravaOrigemDeAtualizacao("1.5.30-sha.aaa1111");
+        gravaVersaoEsperadaDaAtualizacao("1.5.32");
+        expect(atualizacaoTrocouDeBuild("1.5.31-sha.bbb2222")).toBe(false);
+      });
+    });
   });
 });
