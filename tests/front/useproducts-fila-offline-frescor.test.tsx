@@ -160,8 +160,10 @@ describe("fila offline de produtos — frescor e medidas", () => {
   it("item legado sem versão não sobrescreve e sai da fila com aviso", async () => {
     guardar({ stock: 6 });
     const [item] = JSON.parse(localStorage.getItem(CHAVE) ?? "[]");
-    delete item.baseUpdatedAt;
-    localStorage.setItem(CHAVE, JSON.stringify([item]));
+    const semBase = Object.fromEntries(
+      Object.entries(item).filter(([chave]) => chave !== "baseUpdatedAt"),
+    );
+    localStorage.setItem(CHAVE, JSON.stringify([semBase]));
     expect(await _syncOfflineUpdatesParaTeste("lojista-1")).toBe(false);
     expect(mock.payloads).toEqual([]);
     expect(mock.filters).toEqual([]);
