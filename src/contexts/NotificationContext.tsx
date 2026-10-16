@@ -68,6 +68,15 @@ export function NotificationProvider({
   // "Tudo em ordem" para uma cliente com avisos não lidos que a consulta
   // não conseguiu trazer.
   const [erro, setErro] = useState<string | null>(null);
+  // Troca direta de conta (A→B sem passar por deslogado): o efeito de limpeza
+  // roda DEPOIS do primeiro quadro, que mostraria os avisos de A para B. Zerar
+  // durante a renderização faz o React descartar esse quadro antes de pintar.
+  const [donoDosAvisos, setDonoDosAvisos] = useState(user?.id ?? null);
+  if (donoDosAvisos !== (user?.id ?? null)) {
+    setDonoDosAvisos(user?.id ?? null);
+    setNotifications([]);
+    setErro(null);
+  }
   const lastFetchRef = useRef<number>(0);
   // ids da última busca cujo usuario_id era nulo (aviso de campanha) — é o
   // que diferencia, em markAsRead/markAllAsRead/deleteNotification, uma
@@ -82,7 +91,15 @@ export function NotificationProvider({
   const consultasEmVooRef = useRef(0);
   const usuarioAtualIdRef = useRef<string | null>(user?.id ?? null);
   useEffect(() => {
-    usuarioAtualIdRef.current = user?.id ?? null;
+    const usuarioId = user?.id ?? null;
+    if (usuarioAtualIdRef.current !== usuarioId) {
+      // Troca direta de conta também encerra os dados da sessão anterior,
+      // antes de buscar os avisos da nova conta (mesmo se a consulta falhar).
+      setNotifications([]);
+      campanhaIdsRef.current = new Set();
+      setErro(null);
+    }
+    usuarioAtualIdRef.current = usuarioId;
   }, [user]);
 
   const fetchNotifications = useCallback(
@@ -237,6 +254,7 @@ export function NotificationProvider({
 
   const markAllAsRead = useCallback(async () => {
     if (!user) return;
+    const donoDaOperacao = user.id;
     const idsNaoLidos = new Set(
       notifications.filter((n) => !n.read).map((n) => n.id),
     );
@@ -247,21 +265,29 @@ export function NotificationProvider({
       const { error } = await supabase
         .from("notificacoes")
         .update({ lida: true })
-        .eq("usuario_id", user.id)
+        .eq("usuario_id", donoDaOperacao)
         .eq("lida", false);
 
-      if (error) throw error;
-      invalidarConsultasEmVoo();
+      const contaMudou = usuarioAtualIdRef.current !== donoDaOperacao;
+      if (error) {
+        if (contaMudou) return;
+        throw error;
+      }
 
       // O UPDATE acima só alcança as linhas da própria cliente. Os avisos de
       // campanha (usuario_id nulo) que ainda estavam não lidos ficam de fora
       // da policy — a leitura deles é registrada localmente, para o contador
       // e a lista concordarem com o que a tela acabou de afirmar.
       if (idsDeCampanhaNaoLidos.length > 0) {
-        const estadoLocal = lerEstadoLocalDaCampanha(user.id);
+        // Gravar na chave de A é certo mesmo se a conta já trocou: o gesto foi de A.
+        const estadoLocal = lerEstadoLocalDaCampanha(donoDaOperacao);
         for (const id of idsDeCampanhaNaoLidos) estadoLocal.lidas.add(id);
-        persistirEstadoLocalDaCampanha(user.id, estadoLocal);
+        persistirEstadoLocalDaCampanha(donoDaOperacao, estadoLocal);
       }
+
+      // O estado em memória já é de outra conta: não toca.
+      if (contaMudou) return;
+      invalidarConsultasEmVoo();
 
       // Avisos que chegaram durante o UPDATE continuam não lidos.
       setNotifications((prev) =>
