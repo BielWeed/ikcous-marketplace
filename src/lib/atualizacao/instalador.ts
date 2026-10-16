@@ -54,7 +54,10 @@ import {
   podeTentarAtualizar,
   reservarTentativa,
 } from "./trava-anti-repeticao";
-import { definirAvaliadorDeMomentoSeguro } from "./veto-de-recarga";
+import {
+  assinarVetoDeRecarga,
+  definirAvaliadorDeMomentoSeguro,
+} from "./veto-de-recarga";
 
 /** Se a recarga não aconteceu neste prazo (beforeunload cancelou, o SW não
  * assumiu, página congelada), a fase volta a "aguardando". */
@@ -234,6 +237,17 @@ export function useInstaladorNoPontoDeParada(opcoes: OpcoesDoInstalador): void {
       if (atual && Date.now() - atual.inicio >= prazo()) falhou(atual);
     };
 
+    // Recarga vetada no ÚLTIMO instante (a pessoa entrou no carrinho durante a
+    // purga ou enquanto o SW assumia): a execução em curso termina AQUI, sem
+    // esperar o prazo de 15 s — senão a ilha diria "Atualizando o app…" em cima
+    // do checkout e esconderia sino e busca. Volta a "aguardando" e solta a
+    // reserva SEM erro: não devolve a tentativa (ela foi gasta de verdade) nem
+    // gasta outra, e não reinstala sozinho. A recarga já ficou pendente; o
+    // próximo ponto de parada seguro a faz no modo "so-recarregar".
+    const desassinarVeto = assinarVetoDeRecarga(() => {
+      if (atual) falhou(atual);
+    });
+
     const iniciar = (gasta: Execucao["gasta"] = null) => {
       const c = vivo.current;
       if (atual) {
@@ -377,6 +391,7 @@ export function useInstaladorNoPontoDeParada(opcoes: OpcoesDoInstalador): void {
       if (atual) encerrar(atual);
       atual = null;
       desfazerAvaliador();
+      desassinarVeto();
       if (temporizadorDaGraca !== null) clearTimeout(temporizadorDaGraca);
       soltarReservaDeInstalacao(coordenacao.id);
       coordenacao.fechar();

@@ -58,14 +58,34 @@ export function momentoSeguroAgora(): boolean {
   }
 }
 
+const assinantesDoVeto = new Set<() => void>();
+
+/** Quem quer saber, NA HORA, que uma recarga foi vetada no último instante: o
+ * instalador, que então solta a fase "instalando" (senão a ilha diria
+ * "Atualizando o app…" em cima do carrinho até o prazo de 15 s). Devolve a
+ * função que desassina. */
+export function assinarVetoDeRecarga(ouvinte: () => void): () => void {
+  assinantesDoVeto.add(ouvinte);
+  return () => {
+    assinantesDoVeto.delete(ouvinte);
+  };
+}
+
 /** Recarrega agora se for seguro (devolve `true`). Vetado: não recarrega, deixa
- * a recarga PENDENTE para o próximo ponto de parada seguro do gate e devolve
- * `false`. */
+ * a recarga PENDENTE para o próximo ponto de parada seguro do gate, avisa os
+ * assinantes do veto e devolve `false`. */
 export function recarregarSeSeguro(recarregar: () => void): boolean {
   if (momentoSeguroAgora()) {
     recarregar();
     return true;
   }
   marcarRecargaPendente();
+  for (const ouvinte of [...assinantesDoVeto]) {
+    try {
+      ouvinte();
+    } catch {
+      // Um assinante com defeito não desfaz o veto nem cala os outros.
+    }
+  }
   return false;
 }
