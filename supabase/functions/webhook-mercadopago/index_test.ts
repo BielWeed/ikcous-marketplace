@@ -4710,7 +4710,7 @@ Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada
   assertEquals((registro as any).valorEstornadoAcumulado, valorApos1a);
 });
 
-// W5a–W5h: o fallback clássico (E27/E39) já contou o dinheiro antes de
+// W5a–W5p: o fallback clássico (E27/E39) já contou o dinheiro antes de
 // refunds[] materializar a identidade. Exercita o handler REAL entre entregas.
 function cenarioDeIdentidadeTardia(opts: {
   linhas?: Array<Record<string, unknown>>;
@@ -4863,6 +4863,104 @@ Deno.test("W5j - acumulado ilegível: não adota por coincidência de valor, sin
     assertEquals(c.registro.updatesOrderRefunds.length, 0);
     assertEquals(c.registro.chamadasExternoDoMp.length, 1);
     assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado"));
+  }
+});
+
+// Cada cenário abaixo deixa valor, conclusão e acumulado aptos à adoção
+// se SOMENTE a guarda nomeada for retirada (prova por mutantes).
+Deno.test("W5k - pagamento muda antes da leitura fresca: refund da cobrança antiga não adota a linha", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  const c = cenarioDeIdentidadeTardia({
+    linhas: [base.linha("legado-outro-pagamento")], estornado: 30,
+    // A guarda externa já leu '999'. A leitura fresca do desfecho vê
+    // '777777': sem esta corrida, a guarda externa esconderia o mutante M4.
+    aposLer: () => { c.pedido.gateway_payment_id = "777777"; },
+  });
+  const resposta = await c.entregar(30, [refundTardio()]);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(resposta.status, 200);
+  assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [30]);
+  assertEquals(c.pedido.valor_estornado, 60);
+  assertEquals(c.logs.length, 0, "a cobrança diferente não fornece candidato sem identidade");
+});
+
+Deno.test("W5l - linha concluída de contestação não recebe identidade de refund regular", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  const c = cenarioDeIdentidadeTardia({
+    linhas: [{ ...base.linha("legado-contestacao"), mp_chargeback_id: "CBK-antigo" }], estornado: 30,
+  });
+  const resposta = await c.entregar(30, [refundTardio()]);
+  // Sem o filtro, tenta UPDATE e o compare-and-set de mp_chargeback_id
+  // ainda recusa: 500 também é regressão, mesmo sem identidade persistida.
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(resposta.status, 200);
+  assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [30]);
+  assertEquals(c.pedido.valor_estornado, 60);
+  assertEquals(c.logs.length, 0, "contestação não é candidata à adoção de refund");
+});
+
+Deno.test("W5m - linha concluída do sistema sem ID não é candidata à adoção do app", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  const c = cenarioDeIdentidadeTardia({
+    linhas: [{ ...base.linha("legado-sistema"), solicitado_por: "sistema" }], estornado: 30,
+  });
+  const resposta = await c.entregar(30, [refundTardio()]);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(resposta.status, 200);
+  assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [30]);
+  assertEquals(c.pedido.valor_estornado, 60);
+  assertEquals(c.logs.length, 0, "linha do sistema não é candidata do app");
+});
+
+Deno.test("W5n - conclusão local com mp_status sem prova de aprovação não autoriza adoção", async () => {
+  const base = cenarioDeIdentidadeTardia({ linhas: [] });
+  for (const mpStatus of [null, "in_process", "rejected"]) {
+    const c = cenarioDeIdentidadeTardia({
+      linhas: [{ ...base.linha("legado-sem-aprovacao"), mp_status: mpStatus }], estornado: 30,
+    });
+    const resposta = await c.entregar(30, [refundTardio()]);
+    assertEquals(c.registro.updatesOrderRefunds.length, 0);
+    assertEquals(resposta.status, 200);
+    assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+    assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [30]);
+    assertEquals(c.pedido.valor_estornado, 60);
+    assertEquals(c.logs.length, 0, "mp_status sem aprovação não fornece candidato");
+  }
+});
+
+Deno.test("W5o - mesmo refund ID com valores 20 e 30 não prova identidade mesmo com acumulado 30", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  // O Map termina com 30, igual à linha antiga. Sem a guarda de valores
+  // conflitantes, o acumulado fecha e o handler adota ao percorrer os 20.
+  assertEquals((await c.entregar(30, [refundTardio("refund-30", 20), refundTardio()])).status, 200);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(linhasDoRefund(c.registro, "refund-30").map((r) => r.id), ["sistema-1"]);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_valor), [20]);
+  assertEquals(c.pedido.valor_estornado, 50, "conserva a RPC externa antiga e deduplica o ID");
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado" &&
+    (l[1] as any)?.motivo === "valor_divergente" && (l[1] as any)?.valorRefund === 20));
+});
+
+Deno.test("W5p - dois refunds livres de 30 para uma linha: acumulado 30 isola unicidade do lado MP", async () => {
+  for (const refunds of [[refundTardio("r-a"), refundTardio("r-b")], [refundTardio("r-b"), refundTardio("r-a")]]) {
+    const c = cenarioDeIdentidadeTardia();
+    await c.entregar(30);
+    // Sem refundsDoValor.length === 1, as duas propostas descontariam a
+    // MESMA linha duas vezes: 30 + 30 + 30 - 30 - 30 = 30. W5i usa 60 e
+    // barrava também pelo acumulado, escondendo a falta desta guarda.
+    const resposta = await c.entregar(30, refunds);
+    assertEquals(c.registro.updatesOrderRefunds.length, 0);
+    assertEquals(resposta.status, 200);
+    assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_mp_refund_id), refunds.map((r) => r.id));
+    assertEquals(linhasDoRefund(c.registro, "r-a").map((r) => r.id), [refunds[0].id === "r-a" ? "sistema-1" : "sistema-2"]);
+    assertEquals(linhasDoRefund(c.registro, "r-b").map((r) => r.id), [refunds[0].id === "r-b" ? "sistema-1" : "sistema-2"]);
+    assertEquals(c.pedido.valor_estornado, 90);
+    assertEquals(c.logs.filter((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado" &&
+      (l[1] as any)?.motivo === "identidade_ou_acumulado_ambiguo").length, 2);
   }
 });
 
