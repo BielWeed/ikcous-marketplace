@@ -57,6 +57,7 @@ type Chamada = { tipo: "rpc" | "from"; nome: string; args?: unknown };
 function clienteFalso(opts: {
   pedido?: Record<string, unknown> | null;
   erroLeituraPedido?: unknown;
+  erroLeituraItens?: unknown;
   itens?: Array<Record<string, unknown>>;
   storeConfig?: Record<string, unknown> | null;
   endereco?: Record<string, unknown> | null;
@@ -79,7 +80,9 @@ function clienteFalso(opts: {
           ? { data: null, error: opts.erroLeituraPedido }
           : { data: opts.pedido ?? null, error: null };
       case "marketplace_order_items":
-        return { data: opts.itens ?? [], error: null };
+        return opts.erroLeituraItens
+          ? { data: null, error: opts.erroLeituraItens }
+          : { data: opts.itens ?? [], error: null };
       case "user_addresses":
         return { data: opts.endereco ?? null, error: null };
       case "store_config":
@@ -267,6 +270,50 @@ Deno.test("reserva concedida -> a RPC 'reivindicar_email_de_confirmacao' é cham
 });
 
 // --- sucesso: envia e devolve ok:true ----------------------------------------
+
+Deno.test("leitura dos itens falha depois de reservar -> não envia, libera a reserva e permite tentar de novo", async () => {
+  const chamadas: Chamada[] = [];
+  const opcoes = {
+    pedido: { id: UUID_PEDIDO, customer_data: { email: "cliente@exemplo.com" } },
+    erroLeituraItens: { message: "connection reset" } as unknown,
+    itens: [{ product_name: "Produto", quantity: 1, price: 10 }],
+    chamadas,
+  };
+  const cliente = clienteFalso(opcoes);
+  let reservado = false;
+  let envios = 0;
+  const supabase = {
+    ...cliente,
+    rpc: async (nome: string, args: Record<string, unknown>) => {
+      const resultado = await cliente.rpc(nome, args);
+      if (nome === "reivindicar_email_de_confirmacao") {
+        const ganhou = !reservado;
+        reservado = true;
+        return { data: ganhou, error: null };
+      }
+      if (nome === "liberar_email_de_confirmacao") reservado = false;
+      return resultado;
+    },
+  };
+  const enviar = () => enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
+      enviarEmail: async () => { envios++; },
+    },
+  });
+
+  assertEquals(await enviar(), { ok: false, motivo: "envio_falhou" });
+  assertEquals(envios, 0);
+  assertEquals(reservado, false);
+  assertEquals(chamadas.at(-1), {
+    tipo: "rpc", nome: "liberar_email_de_confirmacao", args: { p_order_id: UUID_PEDIDO },
+  });
+  opcoes.erroLeituraItens = null;
+  assertEquals(await enviar(), { ok: true });
+  assertEquals(envios, 1);
+});
 
 Deno.test("reserva concedida + SMTP configurado -> envia com o texto certo e devolve ok:true", async () => {
   const pedido = {
