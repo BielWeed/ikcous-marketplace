@@ -499,15 +499,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             catalogo ? aplicarCatalogoAoCarrinho(itens, catalogo) : itens;
 
           setCart((prev) => {
+            const tombstones = loadTombstones();
             const prevHash = JSON.stringify(prev);
             const reconHash = JSON.stringify(reconstructedCart);
-            if (prevHash === reconHash) {
+            if (prevHash === reconHash && tombstones.size === 0) {
               // Skip updating state if the lists match exactly to prevent cycles
               return comOCatalogo(prev);
             }
 
             // If local cart is empty AND no tombstones exist, adopt remote
-            const tombstones = loadTombstones();
             if (prev.length === 0 && tombstones.size === 0) {
               console.log(
                 "[CartContext] ✅ Remote cart adopted (local was empty, no tombstones).",
@@ -525,6 +525,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             // Add local items first (these carry local timestamps)
             prev.forEach((item) => {
               const key = `${item.product.id}-${item.variantId || ""}`;
+              // A exclusão de outra aba também vale para a cópia que ficou aqui.
+              const tombstone = tombstones.get(key);
+              if (
+                tombstone &&
+                tombstone.deletedAt > (item.lastModifiedAt || 0)
+              ) {
+                return;
+              }
               mergedMap.set(key, {
                 ...item,
                 lastModifiedAt: item.lastModifiedAt || 0,
@@ -685,6 +693,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setReenvio((n) => n + 1);
   }, []);
 
+  useEffect(() => {
+    const aoVoltarOnline = () => {
+      if (!syncPending.current) pedirReenvioSeDevido();
+    };
+    window.addEventListener("online", aoVoltarOnline);
+    return () => window.removeEventListener("online", aoVoltarOnline);
+  }, [pedirReenvioSeDevido]);
+
   // Sync back to Supabase (Atomic-ish Strategy)
   const syncToDB = useCallback(
     async (currentCart: CartItem[], immediate = false) => {
@@ -756,7 +772,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error("[CartContext] ❌ DB Sync Failed:", err);
         syncPending.current = false;
-        pedirReenvioSeDevido();
+        // Sem outra edição, o evento online retoma a gravação que falhou.
+        reenvioDevido.current = true;
       }
     },
     [user, authLoading, pedirReenvioSeDevido],

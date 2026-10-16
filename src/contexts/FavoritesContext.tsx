@@ -647,6 +647,25 @@ export function FavoritesProvider({
   }, [user, allProducts, dbFavoriteIds, localFavoriteIds]);
 
   // 3. Actions
+  const gravacoesPorProdutoRef = useRef(new Map<string, Promise<unknown>>());
+  const enfileirarGravacao = useCallback(
+    async <T,>(chave: string, gravar: () => PromiseLike<T>) => {
+      const filas = gravacoesPorProdutoRef.current;
+      // Cada produto de cada conta segue a ordem dos toques, inclusive após uma falha.
+      const gravacao = (filas.get(chave) ?? Promise.resolve())
+        .catch(() => {})
+        .then(gravar);
+      filas.set(chave, gravacao);
+      try {
+        const resultado = await gravacao;
+        return { resultado, ultima: filas.get(chave) === gravacao };
+      } finally {
+        if (filas.get(chave) === gravacao) filas.delete(chave);
+      }
+    },
+    [],
+  );
+
   const addToFavorites = useCallback(
     async (product: Product) => {
       if (user) {
@@ -660,17 +679,25 @@ export function FavoritesProvider({
         // tem uma gravação em voo. `insert` faria essa segunda tentativa
         // colidir (chave única `user_id,product_id`) e devolver erro para
         // um favorito que, na verdade, está indo pro ar sem problema.
-        const { error } = await supabase
-          .from("favorites")
-          .upsert(
-            { user_id: user.id, product_id: product.id },
-            { onConflict: "user_id,product_id", ignoreDuplicates: true },
-          );
+        const {
+          resultado: { error },
+          ultima,
+        } = await enfileirarGravacao(`${user.id}:${product.id}`, () =>
+          supabase
+            .from("favorites")
+            .upsert(
+              { user_id: user.id, product_id: product.id },
+              { onConflict: "user_id,product_id", ignoreDuplicates: true },
+            ),
+        );
+        if (usuarioAtualIdRef.current !== user.id) return;
 
         if (error) {
           console.error(error);
           toast.error("Erro ao salvar favorito");
-          setDbFavoriteIds((prev) => prev.filter((id) => id !== product.id));
+          if (ultima) {
+            setDbFavoriteIds((prev) => prev.filter((id) => id !== product.id));
+          }
         } else {
           // Correção (26/08/2026) — aposenta este id da fila pendente se ele
           // estiver lá (ex.: uma tentativa anterior tinha falhado e ficado
@@ -699,7 +726,7 @@ export function FavoritesProvider({
         toast.success("Adicionado aos favoritos");
       }
     },
-    [user, setLocalFavoritesRaw],
+    [user, setLocalFavoritesRaw, enfileirarGravacao],
   );
 
   const removeFromFavorites = useCallback(
@@ -707,16 +734,23 @@ export function FavoritesProvider({
       if (user) {
         // Optimistic
         setDbFavoriteIds((prev) => prev.filter((id) => id !== productId));
-        const { error } = await supabase
-          .from("favorites")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("product_id", productId);
+        const {
+          resultado: { error },
+          ultima,
+        } = await enfileirarGravacao(`${user.id}:${productId}`, () =>
+          supabase
+            .from("favorites")
+            .delete()
+            .eq("user_id", user.id)
+            .eq("product_id", productId),
+        );
+        // O rollback de quem saiu não pode alterar os favoritos da conta atual.
+        if (usuarioAtualIdRef.current !== user.id) return;
 
         if (error) {
           console.error(error);
           toast.error("Erro ao remover favorito");
-          setDbFavoriteIds((prev) => [...prev, productId]);
+          if (ultima) setDbFavoriteIds((prev) => [...prev, productId]);
         } else {
           // Correção (26/08/2026) — o defeito que motivou esta rodada: sem
           // isto, remover um favorito que também estava preso na fila
@@ -740,7 +774,7 @@ export function FavoritesProvider({
         toast.success("Removido dos favoritos");
       }
     },
-    [user, setLocalFavoritesRaw],
+    [user, setLocalFavoritesRaw, enfileirarGravacao],
   );
 
   const toggleFavorite = useCallback(
