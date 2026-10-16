@@ -48,6 +48,8 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
 
 2. **Ensaio do portao (so leitura).**
 
+   Antes de publicar, a versão precisa ter título e ao menos uma novidade, correção ou melhoria em `src/novidades/notas-das-versoes.json`.
+
    ```powershell
    node scripts/frota/publicar-release.mjs --sha <sha40> --deployment <dpl_...>
    ```

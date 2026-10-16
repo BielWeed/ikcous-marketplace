@@ -234,6 +234,76 @@ export async function conferirCandidato({
   return { ok: problemas.length === 0, deployment: d, problemas };
 }
 
+/**
+ * A lojista precisa saber o que mudou antes de receber a atualização. Lemos
+ * só o arquivo versionado no SHA: uma nota local ainda sem commit não pode
+ * liberar a publicação, e o ensaio não cria nem corrige notas por conta própria.
+ */
+function conferirNotasDaVersao(versao, sha, lerArquivoNoSha) {
+  const arquivo = "src/novidades/notas-das-versoes.json";
+  const resultado = {
+    ok: true,
+    versao: versao ?? null,
+    arquivo,
+    problemas: [],
+  };
+  const exemplo = JSON.stringify({
+    [versao ?? "x.y.z"]: {
+      titulo: "Atualização do app",
+      novidades: [],
+      correcoes: ["Correções de estabilidade."],
+      melhorias: [],
+    },
+  });
+  const bloquear = (motivo) => ({
+    ...resultado,
+    ok: false,
+    problemas: [
+      `Nota da versão ${versao ?? "não identificada"} em ${arquivo}: ${motivo}. Exemplo mínimo aceito: ${exemplo}`,
+    ],
+  });
+  // codeVersion já passou pelo contrato do candidato: é o núcleo x.y.z,
+  // sem os sufixos de SHA e identidade da versão completa do build.
+  if (!versao)
+    return bloquear("a versão não pôde ser identificada no candidato validado");
+  let fonte;
+  try {
+    fonte = lerArquivoNoSha(sha, arquivo);
+  } catch {
+    return bloquear("arquivo não pôde ser lido no SHA da release");
+  }
+  if (fonte === null || fonte === undefined)
+    return bloquear("arquivo ausente ou não pôde ser lido no SHA da release");
+  let notas;
+  try {
+    notas = JSON.parse(fonte);
+  } catch {
+    return bloquear("JSON inválido");
+  }
+  if (!notas || typeof notas !== "object" || Array.isArray(notas))
+    return bloquear("o JSON precisa ser um objeto com as notas por versão");
+  if (!Object.hasOwn(notas, versao))
+    return bloquear("entrada ausente para esta versão");
+  const nota = notas[versao];
+  if (!nota || typeof nota !== "object" || Array.isArray(nota))
+    return bloquear("a entrada da versão precisa ser um objeto");
+  const textoPreenchido = (texto) =>
+    typeof texto === "string" && texto.trim().length > 0;
+  if (!textoPreenchido(nota.titulo))
+    return bloquear("falta titulo com texto não vazio");
+  let itens = 0;
+  for (const campo of ["novidades", "correcoes", "melhorias"]) {
+    if (!Array.isArray(nota[campo]) || !nota[campo].every(textoPreenchido))
+      return bloquear(`${campo} precisa ser uma lista de textos não vazios`);
+    itens += nota[campo].length;
+  }
+  if (!itens)
+    return bloquear(
+      "falta ao menos um item em novidades, correcoes ou melhorias",
+    );
+  return resultado;
+}
+
 // ------------------------------------------------------------------ etapa 2
 
 /**
@@ -1224,6 +1294,20 @@ export async function publicarRelease(opcoes, deps) {
   for (const p of cand.problemas)
     bloqueios.push({ alvo: `deployment ${deploymentId}`, motivo: p });
 
+  const notasDaVersao = conferirNotasDaVersao(
+    cand.deployment?.codeVersion,
+    sha,
+    deps.lerArquivoNoSha,
+  );
+  linhas.push(
+    notasDaVersao.ok
+      ? `- nota da versão: OK: ${notasDaVersao.versao} em ${notasDaVersao.arquivo}`
+      : `- nota da versão: BLOQUEADO: ${notasDaVersao.problemas.join("; ")}`,
+    "",
+  );
+  for (const p of notasDaVersao.problemas)
+    bloqueios.push({ alvo: notasDaVersao.arquivo, motivo: p });
+
   // 2. inventário oficial + identidade/isolamento/canônico antes do promote
   const inventario = await deps.inventariar(politica);
   const { lojas, problemas: probInv } = lojasDoInventario(inventario, politica);
@@ -1418,6 +1502,7 @@ export async function publicarRelease(opcoes, deps) {
       codigo: 1,
       relatorio: linhas.join("\n"),
       bloqueios,
+      notasDaVersao,
       consertos,
       lojas,
       producaoAnterior,
@@ -1436,6 +1521,7 @@ export async function publicarRelease(opcoes, deps) {
       codigo: 0,
       relatorio: linhas.join("\n"),
       bloqueios,
+      notasDaVersao,
       lojas,
       producaoAnterior,
     };
@@ -1456,6 +1542,7 @@ export async function publicarRelease(opcoes, deps) {
       codigo: 1,
       relatorio: linhas.join("\n"),
       bloqueios: [{ alvo: "promote", motivo: e.message }],
+      notasDaVersao,
       lojas,
       producaoAnterior,
     };
@@ -1490,6 +1577,7 @@ export async function publicarRelease(opcoes, deps) {
     bloqueios: ok
       ? []
       : [{ alvo: "frota", motivo: "conferência pós-promote falhou" }],
+    notasDaVersao,
     lojas,
     producaoAnterior,
   };
@@ -1787,7 +1875,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (a.json) {
     writeFileSync(
       a.json,
-      `${JSON.stringify({ geradoEm: new Date().toISOString(), codigo: r.codigo, bloqueios: r.bloqueios, lojas: r.lojas, producaoAnterior: r.producaoAnterior }, null, 2)}\n`,
+      `${JSON.stringify({ geradoEm: new Date().toISOString(), codigo: r.codigo, bloqueios: r.bloqueios, notasDaVersao: r.notasDaVersao, lojas: r.lojas, producaoAnterior: r.producaoAnterior }, null, 2)}\n`,
     );
   }
   return r.codigo;
