@@ -87,6 +87,7 @@ export function useDevolucaoCliente(
   const [idDosDados, setIdDosDados] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(false);
+  const [idDoErro, setIdDoErro] = useState<string | null>(null);
   const ativoRef = useRef(true);
   const orderIdRef = useRef(orderId);
   // Rodada da leitura: a resposta velha que chega depois da nova não pinta
@@ -107,12 +108,14 @@ export function useDevolucaoCliente(
       ]);
       if (!valeAinda()) return;
       if (respElegibilidade.error || respLista.error) {
+        setIdDoErro(orderId);
         setErro(true);
         return;
       }
       const lida = lerElegibilidade(respElegibilidade.data);
       const lista = lerDevolucoesDoPedido(respLista.data);
       if (!lida || !lista) {
+        setIdDoErro(orderId);
         setErro(true);
         return;
       }
@@ -127,6 +130,7 @@ export function useDevolucaoCliente(
           ? null
           : lerDevolucaoDetalhe(respDetalhe.data);
         if (!detalhe) {
+          setIdDoErro(orderId);
           setErro(true);
           return;
         }
@@ -140,7 +144,10 @@ export function useDevolucaoCliente(
     } catch {
       // Inclui o cliente sem `rpc` (dublê de teste antigo) e a rede caída:
       // "não consegui ler" nunca vira "não tem devolução".
-      if (valeAinda()) setErro(true);
+      if (valeAinda()) {
+        setIdDoErro(orderId);
+        setErro(true);
+      }
     } finally {
       if (valeAinda()) setCarregando(false);
     }
@@ -154,6 +161,7 @@ export function useDevolucaoCliente(
     setElegibilidade(null);
     setDevolucoes([]);
     setIdDosDados(null);
+    setIdDoErro(null);
     setErro(false);
     setCarregando(false);
     if (habilitado) void carregar();
@@ -314,7 +322,7 @@ export function useDevolucaoCliente(
     devolucoes: dadosSaoDesteId ? devolucoes : [],
     atual: dadosSaoDesteId ? atual : null,
     carregando,
-    erro,
+    erro: idDoErro === orderId && erro,
     recarregar: carregar,
     solicitar,
     enviarFoto,

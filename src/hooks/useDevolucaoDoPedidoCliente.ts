@@ -53,6 +53,7 @@ export function useDevolucaoDoPedidoCliente(
   const [linhas, setLinhas] = useState<LinhaDevolucaoDoCliente[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(false);
+  const [idDoErro, setIdDoErro] = useState<string | null>(null);
   // Qual pedido já teve uma leitura bem-sucedida (guarda o id, não um
   // booleano: trocar de pedido volta a "ainda não sei").
   const [lidoDoPedido, setLidoDoPedido] = useState<string | null>(null);
@@ -78,6 +79,7 @@ export function useDevolucaoDoPedidoCliente(
     // tenta de novo algumas vezes e só então desiste. Depois de uma leitura
     // boa, a falha de uma volta do relógio não apaga o que já se sabe.
     const aoFalhar = () => {
+      setIdDoErro(orderId);
       setErro(true);
       if (lidoRef.current === orderId) return;
       falhasRef.current += 1;
@@ -146,5 +148,11 @@ export function useDevolucaoDoPedidoCliente(
   }, [habilitado, temLinhaAtiva, carregar]);
 
   const lido = lidoDoPedido === orderId;
-  return { linhas, carregando, erro, lido, desistiu: !lido && desistiu };
+  return {
+    linhas,
+    carregando,
+    erro: idDoErro === orderId && erro,
+    lido,
+    desistiu: !lido && desistiu,
+  };
 }

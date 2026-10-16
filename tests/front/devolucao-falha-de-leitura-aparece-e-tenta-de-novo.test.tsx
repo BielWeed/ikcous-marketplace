@@ -1,19 +1,27 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { Profiler, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as devolucaoCliente from "@/hooks/useDevolucaoCliente";
+import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
 import type { Order } from "@/types";
 
-const { rpc, fetchUserOrders, updateOrderStatus, respostas, falhas } =
-  vi.hoisted(() => ({
-    rpc: vi.fn(),
-    fetchUserOrders: vi.fn(),
-    updateOrderStatus: vi.fn(),
-    respostas: new Map<string, unknown>(),
-    falhas: new Set<string>(),
-  }));
+const {
+  rpc,
+  lerReembolsos,
+  fetchUserOrders,
+  updateOrderStatus,
+  respostas,
+  falhas,
+} = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  lerReembolsos: vi.fn(),
+  fetchUserOrders: vi.fn(),
+  updateOrderStatus: vi.fn(),
+  respostas: new Map<string, unknown>(),
+  falhas: new Set<string>(),
+}));
 
 const pedidoEntregue: Order = {
   id: "pedido-devolucao-teste",
@@ -53,7 +61,7 @@ vi.mock("@/lib/supabase", () => ({
       select: () => ({
         eq: () => ({
           in: () => Promise.resolve({ data: [], error: null }),
-          order: () => Promise.resolve({ data: [], error: null }),
+          order: () => lerReembolsos(),
         }),
       }),
     }),
@@ -141,6 +149,7 @@ function pendente() {
 
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
+let quadros: Array<{ pedido: string; aviso: string | null }>;
 
 // O hook e o cartão são reais. O spy só permite observar a chamada de
 // recarregar e provocar uma recarga sem sair da ficha já montada.
@@ -155,16 +164,26 @@ function ultimaLeitura() {
 }
 
 async function renderizar() {
+  const id = pedidoAtual.id;
   const { OrderDetailsView } = await import(
     "@/views/customer/OrderDetailsView"
   );
   await act(async () => {
     raiz.render(
-      <OrderDetailsView
-        orderId={pedidoEntregue.id}
-        onBack={() => {}}
-        onNavigate={() => {}}
-      />,
+      <Profiler
+        id="ficha-do-pedido"
+        onRender={() => {
+          // O commit já alterou o DOM, mas a limpeza dos efeitos ainda não
+          // rodou: registra também o quadro fugaz que o act acaba escondendo.
+          quadros.push({ pedido: id, aviso: aviso()?.textContent ?? null });
+        }}
+      >
+        <OrderDetailsView
+          orderId={id}
+          onBack={() => {}}
+          onNavigate={() => {}}
+        />
+      </Profiler>,
     );
   });
 }
@@ -184,6 +203,7 @@ function tentarDeNovo() {
 }
 
 beforeEach(() => {
+  quadros = [];
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.spyOn(devolucaoCliente, "useDevolucaoCliente");
   pedidoAtual = pedidoEntregue;
@@ -191,6 +211,8 @@ beforeEach(() => {
   fetchUserOrders.mockImplementation(async () => [pedidoAtual]);
   updateOrderStatus.mockReset();
   rpc.mockReset();
+  lerReembolsos.mockReset();
+  lerReembolsos.mockResolvedValue({ data: [], error: null });
   falhas.clear();
   respostas.clear();
   respostas.set("devolucao_elegibilidade", ELEGIBILIDADE);
@@ -212,9 +234,84 @@ afterEach(() => {
   hospedeiro.remove();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("falha ao ler a devolução na ficha do pedido", () => {
+  it.each(["RPC", "resposta inválida", "detalhe", "exceção"])(
+    "erro de A por %s não aparece em nenhum quadro de B antes da leitura",
+    async (falha) => {
+      if (falha === "RPC") {
+        falhas.add("devolucao_elegibilidade");
+      } else if (falha === "resposta inválida") {
+        respostas.set("devolucao_elegibilidade", null);
+      } else if (falha === "detalhe") {
+        respostas.set("devolucoes_do_pedido", [DEVOLUCAO]);
+      } else {
+        rpc.mockRejectedValue(new Error("Falha simulada de rede"));
+      }
+      await renderizar();
+      expect(ultimaLeitura().erro).toBe(true);
+      expect(aviso()?.textContent).toContain(AVISO);
+
+      const leituraDeB = pendente();
+      rpc.mockImplementation((nome: string) =>
+        nome === "devolucao_elegibilidade"
+          ? leituraDeB.promessa
+          : Promise.resolve({ data: [], error: null }),
+      );
+      const hook = vi.mocked(devolucaoCliente.useDevolucaoCliente);
+      const inicio = hook.mock.results.length;
+      pedidoAtual = { ...pedidoEntregue, id: "pedido-b" };
+
+      await renderizar();
+
+      const quadrosDeB = quadros.filter(
+        (quadro) => quadro.pedido === "pedido-b",
+      );
+      expect(quadrosDeB.length).toBeGreaterThan(0);
+      expect(quadrosDeB.every((quadro) => quadro.aviso === null)).toBe(true);
+      // O spy guarda TODAS as devoluções do hook, inclusive o primeiro
+      // render com carregando=false, antes do efeito iniciar a leitura de B.
+      const leiturasDeB = hook.mock.results
+        .slice(inicio)
+        .flatMap((resultado, i) =>
+          hook.mock.calls[inicio + i]?.[0] === "pedido-b" &&
+          resultado.type === "return"
+            ? [resultado.value]
+            : [],
+        );
+      expect(leiturasDeB.length).toBeGreaterThan(0);
+      expect(leiturasDeB.every((leitura) => leitura.erro === false)).toBe(true);
+      expect(ultimaLeitura().carregando).toBe(true);
+      expect(aviso()).toBeNull();
+
+      await act(async () =>
+        leituraDeB.resolver({
+          data: null,
+          error: { message: "Falha real de B" },
+        }),
+      );
+      expect(ultimaLeitura().erro).toBe(true);
+      expect(aviso()?.textContent).toContain(AVISO);
+
+      rpc.mockImplementation((nome: string) =>
+        Promise.resolve({
+          data: nome === "devolucao_elegibilidade" ? ELEGIBILIDADE : [],
+          error: null,
+        }),
+      );
+      await act(async () => tentarDeNovo());
+
+      expect(ultimaLeitura().erro).toBe(false);
+      expect(aviso()).toBeNull();
+      expect(solicitar()).not.toBeNull();
+      expect(rpc).toHaveBeenLastCalledWith("devolucoes_do_pedido", {
+        p_order_id: "pedido-b",
+      });
+    },
+  );
+
   it.each(["devolucao_elegibilidade", "devolucoes_do_pedido"])(
     "falha em %s mostra aviso e permite tentar de novo com sucesso",
     async (consulta) => {
@@ -316,4 +413,54 @@ describe("falha ao ler a devolução na ficha do pedido", () => {
     expect(aviso()).toBeNull();
     expect(solicitar()).toBeNull();
   });
+});
+
+describe("erro da devolução de dinheiro pertence ao pedido lido", () => {
+  it.each(["RPC", "exceção"])(
+    "falha de A por %s não vaza em nenhum render de B e a nova tentativa funciona",
+    async (falha) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      if (falha === "RPC") {
+        lerReembolsos.mockResolvedValue({
+          data: null,
+          error: { message: "rede" },
+        });
+      } else {
+        lerReembolsos.mockRejectedValue(new Error("rede"));
+      }
+      const leituras: Array<ReturnType<typeof useDevolucaoDoPedidoCliente>> =
+        [];
+      function Sonda({ id }: { id: string }) {
+        const leitura = useDevolucaoDoPedidoCliente(id, true);
+        leituras.push(leitura);
+        return null;
+      }
+      await act(async () => raiz.render(<Sonda id="pedido-a" />));
+      expect(leituras.at(-1)?.erro).toBe(true);
+      const leituraDeB = pendente();
+      lerReembolsos.mockReturnValue(leituraDeB.promessa);
+      const inicio = leituras.length;
+
+      await act(async () => raiz.render(<Sonda id="pedido-b" />));
+
+      expect(leituras.length).toBeGreaterThan(inicio);
+      expect(leituras.slice(inicio).every((leitura) => !leitura.erro)).toBe(
+        true,
+      );
+      expect(leituras.at(-1)?.carregando).toBe(true);
+      await act(async () =>
+        leituraDeB.resolver({
+          data: null,
+          error: { message: "Falha real de B" },
+        }),
+      );
+      expect(leituras.at(-1)?.erro).toBe(true);
+
+      lerReembolsos.mockResolvedValue({ data: [], error: null });
+      await act(async () => vi.advanceTimersByTimeAsync(4_000));
+
+      expect(leituras.at(-1)?.erro).toBe(false);
+      expect(leituras.at(-1)?.lido).toBe(true);
+    },
+  );
 });
