@@ -1,5 +1,5 @@
 {
-  "_comentario": "Por onde o backend de cada loja ASSINANTE recebe uma release: o alvo (input `projeto`) dos workflows aplicar-migrations.yml e publicar-functions.yml. Isto NAO e lista de clientes por release: a lista de lojas vem do inventario (aliases do projeto Vercel + ficha servida pelo porteiro, cadastro frota_lojas). Uma loja assinante nova entra aqui UMA vez, no cadastro dela (quando o dono cria o segredo e o alvo do workflow); ate entrar, publicar-release.mjs BLOQUEIA a publicacao e diz o nome dela. Loja de teste nao entra aqui: ela esta em politica.json (lojasSemBackendGerenciado).",
+  "_comentario": "Por onde o backend de cada loja ASSINANTE recebe uma release: o alvo (input `projeto`) dos workflows aplicar-migrations.yml e publicar-functions.yml. Isto NAO e lista de clientes por release: a lista de lojas vem do inventario (aliases do projeto Vercel + ficha servida pelo porteiro, cadastro frota_lojas). Uma loja assinante nova entra aqui UMA vez, no cadastro dela (quando o dono cria o segredo e o alvo do workflow); ate entrar, publicar-release.mjs BLOQUEIA a publicacao e diz o nome dela. As tres lojas de teste foram descontinuadas pelo dono em 16/10/2026 e sairam da politica de atualizacao.",
   "ramoDaRelease": "claude/app-major-upgrade-wmc8x2",
   "funcoesNaoPublicadas": ["send-order-whatsapp"],
   "validadeDaEvidenciaHoras": 6,

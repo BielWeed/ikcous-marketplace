@@ -38,7 +38,7 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    `publicar-functions` (GitHub → Actions → "Publicar edge functions
    (Supabase)") roda o mesmo comando num runner do GitHub, com o destino
    escolhido numa lista fechada — `ikcous-publicada` (IKCOUS), `savy`,
-   `almeida`, `sandbox` ou `loja`, sem cursor no lugar errado. Atenção: `loja`
+   `sandbox` ou `loja`, sem cursor no lugar errado. Atenção: `loja`
    **não é a loja ativa**, é o projeto antigo `dekxabvqdsuukijblazl`. Como disparar e o que ele recusa: §5.3.2.
 
    O `lofznuxcvezrhxsgjqyg` é o **sandbox do MCP** — apesar do nome, não é loja
@@ -270,7 +270,7 @@ regra inteira está na §5.2.1 — leia-a antes de mexer em qualquer linha `MP_`
 | `MP_SANDBOX_PAYER_EMAIL` | Supabase → Edge Functions → Secrets | **opcional**, só faz sentido em ambiente de TESTE. Presente (e não vazia), `criar-pagamento` troca o e-mail do pagador do PIX por este valor e liga `payer.first_name = "APRO"` — o valor mágico que a doc de teste de PIX do MP exige para a order simular o fluxo completo. Desde 13/08/2026 uma string vazia já se comporta como ausente (achado de revisão: CHECKOUT-070), mas a forma CERTA de desligar o sandbox continua sendo **apagar o secret**, não deixar o campo em branco — é a única sem margem para engano |
 | `MP_WEBHOOK_SECRET` | Supabase → Secrets | a assinatura secreta do 5.1, também **RESERVA**: vale quando o lojista não cadastrou chave nenhuma e — sozinha entre as duas — também quando ele cadastrou o token mas deixou a "Chave de notificações" vazia (o campo é opcional na tela). Sem essa segunda reserva, notificação legítima viraria `401` e o pedido pago ficaria "aguardando" até expirar. O TOKEN não tem reserva nenhuma (§5.2.1) |
 | `RECONCILIACAO_SECRET` | Supabase → Secrets | **tem de bater** com o segredo homônimo no Vault |
-| `SUPABASE_ACCESS_TOKEN` | GitHub → Settings → Secrets and variables → Actions | **só para o workflow `publicar-functions`** (§5.3.2): token pessoal da conta do Supabase (avatar → Account → Access Tokens). Vale para **todos** os projetos da conta, não só a loja — por isso o workflow tem destino fechado (`ikcous-publicada`, `savy`, `almeida`, `sandbox` ou `loja`; `ikcous-publicada` e `savy` usam cada um o seu segredo próprio) e imprime o ref antes de publicar. Nunca em `.env`, nunca no código, nunca em Supabase → Secrets (lá não serve para nada). Revogar: na mesma página do Supabase; a partir daí o workflow falha no passo "Confere o segredo", antes de tocar em qualquer coisa |
+| `SUPABASE_ACCESS_TOKEN` | GitHub → Settings → Secrets and variables → Actions | **só para o workflow `publicar-functions`** (§5.3.2): token pessoal da conta do Supabase (avatar → Account → Access Tokens). Vale para **todos** os projetos da conta, não só a loja — por isso o workflow tem destino fechado (`ikcous-publicada`, `savy`, `sandbox` ou `loja`; `ikcous-publicada` e `savy` usam cada um o seu segredo próprio) e imprime o ref antes de publicar. Nunca em `.env`, nunca no código, nunca em Supabase → Secrets (lá não serve para nada). Revogar: na mesma página do Supabase; a partir daí o workflow falha no passo "Confere o segredo", antes de tocar em qualquer coisa |
 
 Os dois segredos do Vault (`reconciliacao_url` e `reconciliacao_secret`) foram criados em
 10/08/2026 pela migration `20260808000100`, **fora** dela, com `vault.create_secret`. Se o
@@ -501,25 +501,24 @@ escolher a **branch** (o que sobe é o código daquele commit) e preencher:
   apelido `cobranca`, que vira as cinco da §5.3 na ordem certa;
 - `projeto`: `ikcous-publicada` (`cafkrminfnokvgjqtkle`, a loja principal no ar, o padrão desde
   03/10/2026, com o segredo próprio `SUPABASE_ACCESS_TOKEN_IKCOUS`), `savy` (`gnjsrucsmjkajijrakzr`),
-  `almeida` (`cuemaffjmhkebhmghbap`, Almeida Store, desde 30/09/2026), `sandbox`
+  `sandbox`
   (`lofznuxcvezrhxsgjqyg`) ou `loja` (`dekxabvqdsuukijblazl`, projeto antigo da principal: nenhuma
   loja no ar chama as functions dele).
-- `expected_sha`: para `ikcous-publicada`, `savy` e `almeida`, o SHA completo (40 caracteres) do commit aprovado. O workflow
+- `expected_sha`: para `ikcous-publicada` e `savy`, o SHA completo (40 caracteres) do commit aprovado. O workflow
   compara esse valor com o SHA do próprio run **antes** do primeiro deploy; se a branch tiver
   avançado desde a revisão, o run falha sem publicar. Confira também o `head_sha` do run.
 
-Nos destinos `ikcous-publicada`, `savy` e `almeida`, o campo `functions` aceita somente as cinco
+Nos destinos `ikcous-publicada` e `savy`, o campo `functions` aceita somente as cinco
 Functions financeiras do apelido `cobranca`, juntas ou individualmente. Outros nomes são
 recusados antes do deploy. **Exceção desde 09/10/2026:** `ikcous-publicada` e `savy` (as lojas
-reais, e só elas) aceitam também `send-order-confirmation`, pelo nome; a `almeida` continua nas
-cinco, e o apelido `cobranca` continua sendo só as cinco. Motivo: o comprovante da venda de
+reais, e só elas) aceitam também `send-order-confirmation`, pelo nome; o apelido `cobranca` continua sendo só as cinco. Motivo: o comprovante da venda de
 balcão compartilha `_shared/pedido.ts` e `_shared/comprovante.ts` com `criar-pagamento`,
 `webhook-mercadopago`, `reconciliar-pagamentos` e `send-order-confirmation`; sem poder publicar
 esta última, a release travaria sempre que esses arquivos mudassem.
 
 **Segunda exceção, desde 13/10/2026 (decisão do dono):** `ikcous-publicada` e `savy`, e só elas,
 aceitam também `calculate-shipping`, `notify-new-order`, `send-otp-email`, `melhor-envio-etiqueta`
-e `send-push`, **sempre pelo nome** (o apelido `cobranca` não as inclui, a `almeida` não as aceita
+e `send-push`, **sempre pelo nome** (o apelido `cobranca` não as inclui
 e a `send-order-whatsapp` continua proibida). Antes, uma delas que mudasse numa release deixava a
 loja parada pelo nome, sem comando de publicação. O `verify_jwt` de cada uma é o de
 `supabase/config.toml` (o workflow nunca passa `--no-verify-jwt`; a `notify-new-order` é
@@ -531,8 +530,8 @@ só a IKCOUS guarda esse retrato no resumo do run, a Savy não. Passo a passo e 
 
 A lista que a release
 enxerga é `functionsPublicaveis` em `scripts/frota/canais-de-backend.json`, e o teste
-`tests/ci_publicar_functions_test.ts` exige que ela concorde com o workflow. As outras lojas clientes (Brand Meliz e Space Loja do Kit) ficam em
-projetos de contas sem acesso deste token e **não têm rota** neste workflow.
+`tests/ci_publicar_functions_test.ts` exige que ela concorde com o workflow. Almeida Store, Brand Meliz e Space Loja dos Kit foram descontinuadas pelo dono em
+16/10/2026 e saíram permanentemente do caminho de atualização.
 
 O log imprime projeto e nomes antes de publicar e termina com o `supabase functions list` do
 projeto, que também vai para o resumo do job. A lista confirma as Functions ativas e suas versões
@@ -551,8 +550,8 @@ o ref de destino e o comportamento observado antes de declarar a publicação co
 - **só dispara à mão.** Push em `develop` ou `main` não publica nada: publicar em produção
   continua sendo um ato humano, só que sem exigir CLI e login na máquina de quem publica.
 
-**O que ele precisa, uma vez só:** `SUPABASE_ACCESS_TOKEN` para `loja`, `almeida` e `sandbox`
-(§5.2; a Almeida está no mesmo org Supabase da loja principal), ou
+**O que ele precisa, uma vez só:** `SUPABASE_ACCESS_TOKEN` para `loja` e `sandbox`
+(§5.2), ou
 `SUPABASE_ACCESS_TOKEN_SAVY` para `savy`. São tokens pessoais; mantenha cada valor apenas nos
 secrets do GitHub e nunca o copie para o log ou para uma conversa. O workflow confere apenas o
 segredo do destino escolhido e falha antes do deploy se ele faltar. A presença do secret e uma

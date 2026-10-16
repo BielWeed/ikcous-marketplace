@@ -13,6 +13,10 @@ central de banco para a Savy, entao a saida foi publicar endereco por endereco
 frota mostrava quais enderecos ficaram para tras. A correcao e um portao unico: nada de alias
 por endereco.
 
+**16/10/2026 — decisão do dono:** Almeida Store, Brand Meliz e Space Loja dos Kit foram
+descontinuadas permanentemente e saíram da política de atualização, inclusive do front.
+Permanecem IKCOUS e Savy; as menções anteriores às lojas de teste registram o histórico.
+
 ## Como funciona
 
 - UM projeto Vercel (`ickous-marketplace`) serve TODAS as lojas. O porteiro (`middleware.ts`)

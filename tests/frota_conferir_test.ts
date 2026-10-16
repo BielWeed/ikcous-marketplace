@@ -53,9 +53,6 @@ const IDENT =
 const REF = {
   ikcous: "cafkrminfnokvgjqtkle",
   savy: "gnjsrucsmjkajijrakzr",
-  almeida: "cuemaffjmhkebhmghbap",
-  brandmeliz: "htblgvlosaihdgckokld",
-  space: "bgwpxpcbffxazrxjduns",
 };
 const LOJAS = {
   "ickous-marketplace.vercel.app": {
@@ -63,12 +60,6 @@ const LOJAS = {
     titulo: "IKCOUS - imports",
   },
   "savycollection.vercel.app": { ref: REF.savy, titulo: "Savy" },
-  "almeidastore.vercel.app": { ref: REF.almeida, titulo: "Almeida Store" },
-  "brandmeliz.vercel.app": { ref: REF.brandmeliz, titulo: "Brand Meliz" },
-  "spacelojadoskit.vercel.app": {
-    ref: REF.space,
-    titulo: "Space Loja dos Kit",
-  },
 };
 const MANUTENCAO = [
   "savy-collection.vercel.app",
@@ -417,7 +408,7 @@ Deno.test("classificar: LOJA_TROCADA quando o HTML da loja tem ref ausente, dupl
   assertEquals(
     classificar(
       LOJA,
-      sonda(LOJA.dominio, { pagina: { refs: [REF.savy, REF.almeida] } }),
+      sonda(LOJA.dominio, { pagina: { refs: [REF.savy, REF.ikcous] } }),
       CTX,
     ).classe,
     "LOJA_TROCADA",
@@ -431,7 +422,7 @@ Deno.test("classificar: LOJA_TROCADA quando o HTML da loja tem ref ausente, dupl
 
 Deno.test("classificar: 3 amostras divergentes = LOJA_TROCADA", () => {
   const a = { status: 200, caderneta: "hit", titulo: "Savy", refs: [REF.savy] };
-  const b = { ...a, titulo: "Almeida Store", refs: [REF.almeida] };
+  const b = { ...a, titulo: "IKCOUS - imports", refs: [REF.ikcous] };
   const r = classificar(
     LOJA,
     sonda(LOJA.dominio, { amostras: [a, a, b] }),
@@ -443,7 +434,7 @@ Deno.test("classificar: 3 amostras divergentes = LOJA_TROCADA", () => {
   assertEquals(
     classificar(
       LOJA,
-      sonda(LOJA.dominio, { amostras: [a, { ...a, refs: [REF.almeida] }, a] }),
+      sonda(LOJA.dominio, { amostras: [a, { ...a, refs: [REF.ikcous] }, a] }),
       CTX,
     ).classe,
     "LOJA_TROCADA",
@@ -664,14 +655,14 @@ Deno.test("verificarIsolamentoCruzado: mesmo ref com títulos diferentes -> LOJA
   const r = verificarIsolamentoCruzado([
     s("a.vercel.app", REF.savy, "Savy"),
     s("b.vercel.app", REF.savy, "Savy"),
-    s("c.vercel.app", REF.savy, "Almeida Store"),
+    s("c.vercel.app", REF.savy, "IKCOUS - imports"),
   ]);
   assertEquals(Object.keys(r), ["c.vercel.app"]);
   assertEquals(r["c.vercel.app"][0].classe, "LOJA_TROCADA");
   // empate (1 x 1): ninguém é a "loja certa" -> os dois são acusados
   const e = verificarIsolamentoCruzado([
     s("a.vercel.app", REF.savy, "Savy"),
-    s("c.vercel.app", REF.savy, "Almeida Store"),
+    s("c.vercel.app", REF.savy, "IKCOUS - imports"),
   ]);
   assertEquals(Object.keys(e).sort(), ["a.vercel.app", "c.vercel.app"]);
 });
@@ -680,7 +671,7 @@ Deno.test("verificarIsolamentoCruzado: refs diferentes com o MESMO título -> SU
   const s = (d, ref, titulo) => sonda(d, { pagina: { refs: [ref], titulo } });
   const r = verificarIsolamentoCruzado([
     s("a.vercel.app", REF.savy, "Loja"),
-    s("b.vercel.app", REF.almeida, " loja "),
+    s("b.vercel.app", REF.ikcous, " loja "),
   ]);
   assertEquals(r["a.vercel.app"][0].classe, "SUSPEITA_ISOLAMENTO");
   assertEquals(r["b.vercel.app"][0].classe, "SUSPEITA_ISOLAMENTO");
@@ -688,7 +679,7 @@ Deno.test("verificarIsolamentoCruzado: refs diferentes com o MESMO título -> SU
   assertEquals(
     verificarIsolamentoCruzado([
       s("a.vercel.app", REF.savy, "Savy"),
-      s("b.vercel.app", REF.almeida, "Almeida"),
+      s("b.vercel.app", REF.ikcous, "IKCOUS"),
     ]),
     {},
   );
@@ -696,7 +687,7 @@ Deno.test("verificarIsolamentoCruzado: refs diferentes com o MESMO título -> SU
     verificarIsolamentoCruzado(
       [
         s("a.vercel.app", REF.savy, "Loja"),
-        s("b.vercel.app", REF.almeida, "Loja"),
+        s("b.vercel.app", REF.ikcous, "Loja"),
       ],
       new Set(["b.vercel.app"]),
     ),
@@ -938,23 +929,23 @@ Deno.test("conferirFrota: frota INTEIRA velha não dá verde (por isso --sha é 
 
 Deno.test("conferirFrota: 3 amostras divergentes da página = falha de isolamento", async () => {
   const mundo = mundoBase();
-  mundo["brandmeliz.vercel.app"].alterna = {
-    ref: REF.space,
-    titulo: "Space Loja dos Kit",
+  mundo["savycollection.vercel.app"].alterna = {
+    ref: REF.ikcous,
+    titulo: "IKCOUS - imports",
   };
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
   });
-  const x = r.resultados.find((y) => y.dominio === "brandmeliz.vercel.app");
+  const x = r.resultados.find((y) => y.dominio === "savycollection.vercel.app");
   assertEquals(x.classe, "LOJA_TROCADA");
   assertEquals(r.ok, false);
 });
 
 Deno.test("conferirFrota: endereço que não responde = INALCANCAVEL; version.json HTTP 500 idem", async () => {
   const mundo = mundoBase();
-  mundo["almeidastore.vercel.app"].falha = "derruba";
-  mundo["brandmeliz.vercel.app"].versaoHttp = 500;
+  mundo["ickous-marketplace.vercel.app"].falha = "derruba";
+  mundo["savycollection.vercel.app"].versaoHttp = 500;
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
@@ -962,14 +953,14 @@ Deno.test("conferirFrota: endereço que não responde = INALCANCAVEL; version.js
   const por = Object.fromEntries(
     r.resultados.map((x) => [x.dominio, x.classe]),
   );
-  assertEquals(por["almeidastore.vercel.app"], "INALCANCAVEL");
-  assertEquals(por["brandmeliz.vercel.app"], "INALCANCAVEL");
+  assertEquals(por["ickous-marketplace.vercel.app"], "INALCANCAVEL");
+  assertEquals(por["savycollection.vercel.app"], "INALCANCAVEL");
 });
 
 Deno.test("conferirFrota: loja mostrando a ficha de OUTRA (ref+título de outra loja) é LOJA_TROCADA nos dois", async () => {
   const mundo = mundoBase();
-  // almeida passa a servir o ref da savy mas com o próprio título
-  mundo["almeidastore.vercel.app"].ref = REF.savy;
+  // IKCOUS passa a servir o ref da savy mas com o próprio título
+  mundo["ickous-marketplace.vercel.app"].ref = REF.savy;
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
@@ -977,13 +968,13 @@ Deno.test("conferirFrota: loja mostrando a ficha de OUTRA (ref+título de outra 
   const por = Object.fromEntries(
     r.resultados.map((x) => [x.dominio, x.classe]),
   );
-  assertEquals(por["almeidastore.vercel.app"], "LOJA_TROCADA");
+  assertEquals(por["ickous-marketplace.vercel.app"], "LOJA_TROCADA");
   assertEquals(por["savycollection.vercel.app"], "LOJA_TROCADA");
 });
 
 Deno.test("conferirFrota: dois refs diferentes com o mesmo título = SUSPEITA_ISOLAMENTO", async () => {
   const mundo = mundoBase();
-  mundo["almeidastore.vercel.app"].titulo = "Savy";
+  mundo["ickous-marketplace.vercel.app"].titulo = "Savy";
   const r = await conferirFrota(POLITICA, {
     sha: SHA,
     fetchImpl: fetchFalso(mundo),
@@ -991,7 +982,7 @@ Deno.test("conferirFrota: dois refs diferentes com o mesmo título = SUSPEITA_IS
   const por = Object.fromEntries(
     r.resultados.map((x) => [x.dominio, x.classe]),
   );
-  assertEquals(por["almeidastore.vercel.app"], "SUSPEITA_ISOLAMENTO");
+  assertEquals(por["ickous-marketplace.vercel.app"], "SUSPEITA_ISOLAMENTO");
   assertEquals(por["savycollection.vercel.app"], "SUSPEITA_ISOLAMENTO");
 });
 
@@ -1024,7 +1015,7 @@ Deno.test("A) TODOS os endereços sem identityRevision e codeVersion: nenhum OK,
 Deno.test("A) cada campo malformado isolado, num endereço só, reprova SÓ aquele endereço", async () => {
   for (const [nome, campo] of Object.entries(CAMPOS_MALFORMADOS)) {
     const mundo = mundoBase();
-    const alvo = mundo["brandmeliz.vercel.app"];
+    const alvo = mundo["savycollection.vercel.app"];
     // o campo vai para o JSON como o build o serviria (undefined some do JSON)
     Object.assign(alvo, {
       ...("codeSha" in campo ? { sha: campo.codeSha } : {}),
@@ -1045,11 +1036,11 @@ Deno.test("A) cada campo malformado isolado, num endereço só, reprova SÓ aque
     const por = Object.fromEntries(
       r.resultados.map((x) => [x.dominio, x.classe]),
     );
-    assert(por["brandmeliz.vercel.app"] !== "OK", `virou OK: ${nome}`);
+    assert(por["savycollection.vercel.app"] !== "OK", `virou OK: ${nome}`);
     assertEquals(r.ok, false, nome);
     assertEquals(
       r.resultados.filter((x) => x.classe !== "OK").map((x) => x.dominio),
-      ["brandmeliz.vercel.app"],
+      ["savycollection.vercel.app"],
       nome,
     );
   }
@@ -1125,7 +1116,7 @@ Deno.test("verificarCanonico: publicUrl fora do inventário, que não responde 2
     ],
     "canônico que serve outra loja": [
       sondaFicha("a.vercel.app", fichaDe(REF.savy, "https://o.vercel.app")),
-      sondaFicha("o.vercel.app", fichaDe(REF.almeida, "https://o.vercel.app")),
+      sondaFicha("o.vercel.app", fichaDe(REF.ikcous, "https://o.vercel.app")),
     ],
     "ficha sem publicUrl": [
       sondaFicha("a.vercel.app", fichaDe(REF.savy, null)),
@@ -1522,7 +1513,7 @@ Deno.test({
     const r = await rodar(["--sha", SHA], mundoBase());
     assertEquals(r.codigo, 0, r.saida + r.erro);
     assertStringIncludes(r.saida, "inventário: PARCIAL (sem --vercel)");
-    assertStringIncludes(r.saida, "6 de 6 endereços OK");
+    assertStringIncludes(r.saida, "3 de 3 endereços OK");
     assertStringIncludes(
       r.saida,
       "endereço→deployment: NÃO CONFERIDO (sem --vercel)",
@@ -1553,7 +1544,7 @@ Deno.test({
   ...SEM_SANITIZAR,
   async fn() {
     const mundo = mundoBase();
-    mundo["almeidastore.vercel.app"].ref = REF.savy;
+    mundo["ickous-marketplace.vercel.app"].ref = REF.savy;
     const r = await rodar(["--sha", SHA], mundo);
     assertEquals(r.codigo, 1);
     assertStringIncludes(r.saida, "LOJA_TROCADA");
@@ -1566,7 +1557,7 @@ Deno.test({
   ...SEM_SANITIZAR,
   async fn() {
     const mundo = mundoBase();
-    mundo["spacelojadoskit.vercel.app"].alterna = {
+    mundo["ickous-marketplace.vercel.app"].alterna = {
       ref: REF.savy,
       titulo: "Savy",
     };
@@ -1581,7 +1572,7 @@ Deno.test({
   ...SEM_SANITIZAR,
   async fn() {
     const mundo = mundoBase();
-    mundo["brandmeliz.vercel.app"].falha = "trava";
+    mundo["savycollection.vercel.app"].falha = "trava";
     const r = await rodar(["--sha", SHA], mundo);
     assertEquals(r.codigo, 1);
     assertStringIncludes(r.saida, "INALCANCAVEL");
@@ -1673,10 +1664,9 @@ Deno.test("workflow frota-conferir: sem segredo, contents: read, sem schedule, s
 
 Deno.test("política: só política (sem lista de clientes por release) e com o que o dono decidiu", () => {
   assertEquals(POLITICA.projetoVercel.id, "prj_JMNo9fA1kfDS7pxalOjhVaEr7QKY");
-  assertEquals(
-    POLITICA.lojasSemBackendGerenciado.map((l) => l.ref).sort(),
-    [REF.almeida, REF.brandmeliz, REF.space].sort(),
-  );
+  assertEquals(POLITICA.lojasSemBackendGerenciado, []);
+  assertEquals(POLITICA.enderecosDeReserva, Object.keys(LOJAS));
+  assertStringIncludes(POLITICA.motivoLojasSemBackendGerenciado, "16/10/2026");
   // Os 4 enderecos de manutencao foram descontinuados (dono, 12/10/2026) e
   // saíram do projeto Vercel: a política não os declara mais, senão a
   // conferência os sondaria, leria 404 e bloquearia a release.

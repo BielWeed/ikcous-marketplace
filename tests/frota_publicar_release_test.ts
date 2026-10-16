@@ -50,7 +50,7 @@ const OUTRO = "b".repeat(40);
 const IDENT = "e".repeat(64);
 const CAF = "cafkrminfnokvgjqtkle";
 const SAVY = "gnjsrucsmjkajijrakzr";
-const TESTE = "cuemaffjmhkebhmghbap";
+const TESTE = "tttttttttttttttttttt";
 const NOVA = "zzzzzzzzzzzzzzzzzzzz";
 const DPL = "dpl_Novo123";
 const DPL_ANTERIOR = "dpl_Anterior456";
@@ -165,7 +165,7 @@ const B38 = "38b-antes-gestao-de-categorias-funcoes-ausentes";
 
 const politica = {
   projetoVercel: { id: "prj_X", time: "team_Y" },
-  lojasSemBackendGerenciado: [{ ref: TESTE, nome: "Almeida Store" }],
+  lojasSemBackendGerenciado: [],
   enderecosEsperados: [{ dominio: "manut.vercel.app", estado: "manutencao" }],
   migrationsForaDaRelease: [{ versao: "20261201000000" }],
 };
@@ -348,7 +348,6 @@ function deps(ajuste = {}) {
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports"),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -487,11 +486,20 @@ Deno.test("PRONTO com candidato VÁLIDO: ensaio não promove, mostra o comando e
     `--sha ${SHA} --deployment ${DPL} --promover`,
   );
   assertEquals(chamadas.conferir, ["antes"]);
+  assertEquals([...new Set(chamadas.migrationList)].sort(), [CAF, SAVY].sort());
 });
 
-Deno.test("loja de teste da política nunca é consultada no backend", async () => {
-  const { d, chamadas } = deps();
-  await executar(d);
+Deno.test("exceção sintética da política nunca é consultada no backend", async () => {
+  const { d, chamadas, estado } = deps();
+  d.politica = {
+    ...politica,
+    lojasSemBackendGerenciado: [{ ref: TESTE, nome: "Loja Sintética" }],
+  };
+  estado.sondas.push(
+    sonda("loja-sintetica.vercel.app", TESTE, "Loja Sintética", BASE),
+  );
+  const r = await executar(d);
+  assertEquals(r.codigo, 0, r.relatorio);
   assert(!chamadas.migrationList.includes(TESTE));
   assert(!chamadas.baixar.some((b) => b.startsWith(TESTE)));
   assert(
@@ -2779,7 +2787,6 @@ function depsLote203(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -3057,7 +3064,6 @@ function depsLote204(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -3271,7 +3277,6 @@ function depsLote205(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -3518,7 +3523,6 @@ function depsLote207(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -3762,7 +3766,6 @@ function depsLote208(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -4009,7 +4012,6 @@ function depsLote209(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -4367,7 +4369,6 @@ function depsLote212(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -4705,7 +4706,6 @@ function depsLote215(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -4973,7 +4973,6 @@ function depsLote216(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -5237,7 +5236,6 @@ function depsLote217(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -5465,7 +5463,6 @@ function depsLote22(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -5754,7 +5751,6 @@ function depsLote220(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -5991,7 +5987,6 @@ function depsLote221(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -6224,7 +6219,6 @@ function depsLote222(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -6464,7 +6458,6 @@ function depsLote223(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -6703,7 +6696,6 @@ function depsLote224(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -6936,7 +6928,6 @@ function depsLote229(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -7172,7 +7163,6 @@ function depsLote232(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -7403,7 +7393,6 @@ function depsLote227(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -7657,7 +7646,6 @@ function depsLote225(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -7900,7 +7888,6 @@ function depsLote226(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -8159,7 +8146,6 @@ function depsLote230(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -8413,7 +8399,6 @@ function depsLote235(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -8648,7 +8633,6 @@ function depsLote236(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -8883,7 +8867,6 @@ function depsLote237(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -9111,7 +9094,6 @@ function depsLote238(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -9351,7 +9333,6 @@ function depsLote234(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -9583,7 +9564,6 @@ function depsLote239(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -9823,7 +9803,6 @@ function depsLote240(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -10066,7 +10045,6 @@ function depsLote241(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -10314,7 +10292,6 @@ function depsLote242(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -10558,7 +10535,6 @@ function depsLote243(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -10800,7 +10776,6 @@ function depsLote244(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },
@@ -11048,7 +11023,6 @@ function depsLote233(
     sondas: [
       sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
       sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
-      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
       {
         dominio: "manut.vercel.app",
         ficha: { status: 503, caderneta: "miss", refs: [] },

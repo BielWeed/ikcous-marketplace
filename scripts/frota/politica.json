@@ -4,12 +4,8 @@
     "time": "team_k1ETBasMWOehKveplLOcKxFA",
     "escopo": "gabriels-projects-5a19f6ee"
   },
-  "lojasSemBackendGerenciado": [
-    { "ref": "cuemaffjmhkebhmghbap", "nome": "Almeida Store" },
-    { "ref": "htblgvlosaihdgckokld", "nome": "Brand Meliz" },
-    { "ref": "bgwpxpcbffxazrxjduns", "nome": "Space Loja dos Kit" }
-  ],
-  "motivoLojasSemBackendGerenciado": "lojas de teste: banco e functions não se mexem (decisão do dono, 03/10/2026)",
+  "lojasSemBackendGerenciado": [],
+  "motivoLojasSemBackendGerenciado": "Almeida Store, Brand Meliz e Space Loja dos Kit foram descontinuadas permanentemente pelo dono em 16/10/2026 e saíram do caminho de atualização",
   "enderecosEsperados": [
     {
       "dominio": "ickous-marketplace-gabriels-projects-5a19f6ee.vercel.app",
@@ -27,10 +23,7 @@
   "aliasesDePreview": ["^ickous-marketplace-git-.+\\.vercel\\.app$"],
   "enderecosDeReserva": [
     "ickous-marketplace.vercel.app",
-    "savycollection.vercel.app",
-    "almeidastore.vercel.app",
-    "brandmeliz.vercel.app",
-    "spacelojadoskit.vercel.app"
+    "savycollection.vercel.app"
   ],
   "_comentario": {
     "estado": "manutencao = HTTP 503 + caderneta miss; redirecionamento = HTTP 308. Só política: quais endereços NÃO são loja. Quem é loja e qual loja vem da FICHA que o porteiro serve (cadastro frota_lojas), nunca daqui.",
