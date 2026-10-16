@@ -42,7 +42,10 @@ import {
   tentativasDaOrigem,
   tentativasFeitas,
 } from "@/lib/atualizacao/trava-anti-repeticao";
-import { momentoSeguroAgora } from "@/lib/atualizacao/veto-de-recarga";
+import {
+  momentoSeguroAgora,
+  recarregarSeSeguro,
+} from "@/lib/atualizacao/veto-de-recarga";
 import { guardarPedidoPendenteDoCheckout } from "@/lib/pedido-pendente-do-checkout";
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -988,6 +991,68 @@ describe("instalador no ponto de parada", () => {
       expect(instalar).toHaveBeenCalledTimes(2);
       // só recarregar não gasta tentativa nenhuma
       expect(tentativasFeitas("1.5.32-sha.novo")).toBe(gastas);
+    });
+
+    // O veto de ÚLTIMO INSTANTE (a pessoa entrou no carrinho durante a purga)
+    // segurava a fase em "instalando" até os 15 s do prazo: a ilha dizia
+    // "Atualizando o app…" em cima do checkout e escondia sino e busca.
+    describe("veto de último instante solta a fase NA HORA", () => {
+      async function ateOVetoDeUltimoInstante() {
+        instalar.mockImplementation(() => new Promise<void>(() => {}));
+        montar();
+        await navegarPara("favorites");
+        expect(obterEstadoDaAtualizacao().fase).toBe("instalando");
+        // a pessoa entra no carrinho durante a purga; o reload é vetado
+        montar({ view: "cart" });
+        const recarregar = vi.fn();
+        let recarregou = true;
+        act(() => {
+          recarregou = recarregarSeSeguro(recarregar);
+        });
+        return { recarregar, recarregou };
+      }
+
+      it("a fase deixa de ser 'instalando' no MESMO tick (não em 15 s) e volta a 'aguardando' com a versão", async () => {
+        const { recarregar, recarregou } = await ateOVetoDeUltimoInstante();
+        expect(recarregou).toBe(false);
+        expect(recarregar).not.toHaveBeenCalled();
+        expect(obterEstadoDaAtualizacao()).toEqual({
+          fase: "aguardando",
+          versaoNova: "1.5.32",
+        });
+      });
+
+      it("libera a reserva, sem devolver nem gastar tentativa extra, e NÃO reinstala sozinho (sem laço)", async () => {
+        await ateOVetoDeUltimoInstante();
+        expect(tentativasFeitas("1.5.32-sha.novo")).toBe(1);
+        expect(local.get(CHAVE_DA_RESERVA_DE_INSTALACAO)).toBeUndefined();
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(
+            PRAZO_DE_SEGURANCA_DA_INSTALACAO_MS * 3,
+          );
+        });
+        expect(instalar).toHaveBeenCalledTimes(1);
+        expect(obterEstadoDaAtualizacao().fase).toBe("aguardando");
+        expect(tentativasFeitas("1.5.32-sha.novo")).toBe(1);
+      });
+
+      it("ao chegar o próximo ponto de parada seguro, recarrega (modo só-recarregar, sem gastar tentativa)", async () => {
+        await ateOVetoDeUltimoInstante();
+        await navegarPara("home", { modo: "so-recarregar" });
+        expect(instalar).toHaveBeenCalledTimes(2);
+        expect(tentativasFeitas("1.5.32-sha.novo")).toBe(1);
+      });
+
+      it("controle: o veto de último instante sem execução em curso não mexe na fase", async () => {
+        montar();
+        await esperarJanela();
+        expect(obterEstadoDaAtualizacao().fase).toBe("aguardando");
+        montar({ view: "cart" });
+        act(() => {
+          recarregarSeSeguro(vi.fn());
+        });
+        expect(obterEstadoDaAtualizacao().fase).toBe("aguardando");
+      });
     });
 
     it("controle: no modo 'instalar' a 2ª execução NÃO começa por cima da primeira em curso", async () => {

@@ -17,6 +17,7 @@ import {
   limparRecargaPendente,
 } from "@/lib/atualizacao/recarga-pendente";
 import {
+  assinarVetoDeRecarga,
   definirAvaliadorDeMomentoSeguro,
   momentoSeguroAgora,
   recarregarSeSeguro,
@@ -116,6 +117,36 @@ describe("veto de recarga", () => {
       expect(recarregarSeSeguro(recarregar)).toBe(false);
       expect(recarregar).not.toHaveBeenCalled();
       expect(haRecargaPendente()).toBe(true);
+    });
+
+    it("vetado, AVISA quem assinou o veto (o instalador solta a fase na hora); seguro, não avisa; desassinar para de avisar", () => {
+      let livre = false;
+      definirAvaliadorDeMomentoSeguro(() => livre);
+      const avisos = vi.fn();
+      const desassinar = assinarVetoDeRecarga(avisos);
+      recarregarSeSeguro(vi.fn());
+      expect(avisos).toHaveBeenCalledTimes(1);
+      livre = true;
+      recarregarSeSeguro(vi.fn());
+      expect(avisos).toHaveBeenCalledTimes(1);
+      livre = false;
+      desassinar();
+      recarregarSeSeguro(vi.fn());
+      expect(avisos).toHaveBeenCalledTimes(1);
+    });
+
+    it("assinante que LANÇA não impede a recarga de ficar pendente nem os outros de serem avisados", () => {
+      definirAvaliadorDeMomentoSeguro(() => false);
+      const outro = vi.fn();
+      const d1 = assinarVetoDeRecarga(() => {
+        throw new Error("defeito");
+      });
+      const d2 = assinarVetoDeRecarga(outro);
+      expect(() => recarregarSeSeguro(vi.fn())).not.toThrow();
+      expect(outro).toHaveBeenCalledTimes(1);
+      expect(haRecargaPendente()).toBe(true);
+      d1();
+      d2();
     });
 
     it("vetado e depois liberado: NÃO recarrega sozinho (quem recarrega é o gate, num ponto de parada)", () => {
