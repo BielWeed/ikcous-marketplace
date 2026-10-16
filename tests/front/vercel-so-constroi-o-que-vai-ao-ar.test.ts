@@ -106,6 +106,16 @@ describe("vercel.json — só constrói o que vai ao ar", () => {
     }
   });
 
+  it("o ignoreCommand cabe nos 256 caracteres que a Vercel aceita (a CLI o envia como configuração do projeto)", () => {
+    const comando = (
+      JSON.parse(readFileSync("vercel.json", "utf8")) as {
+        ignoreCommand?: string;
+      }
+    ).ignoreCommand;
+    expect(typeof comando).toBe("string");
+    expect((comando as string).length).toBeLessThanOrEqual(256);
+  });
+
   it("o desligamento é por padrão de branch, nunca global", () => {
     expect(typeof regras).toBe("object");
     expect(regras).not.toBeNull();
