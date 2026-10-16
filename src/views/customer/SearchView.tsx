@@ -103,6 +103,12 @@ export const SearchView = React.memo(function SearchView({
   const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
   const { prefetchView } = usePrefetchOnHover();
   const { products: allProducts } = useProducts();
+  // O catálogo da dona da loja inclui pausados. A busca, a contagem e as
+  // categorias precisam mostrar só o que está à venda, como a vitrine.
+  const produtosAVenda = useMemo(
+    () => allProducts.filter((p) => p.isActive),
+    [allProducts],
+  );
   const {
     query,
     setQuery,
@@ -116,7 +122,7 @@ export const SearchView = React.memo(function SearchView({
     setSort,
     filteredProducts,
     totalResults,
-  } = useSearch(allProducts);
+  } = useSearch(produtosAVenda);
 
   const { isFavorite, toggleFavorite } = useFavorites();
   const handleProductClick = useCallback(
@@ -202,20 +208,19 @@ export const SearchView = React.memo(function SearchView({
   // dono da loja (admin) a lista carrega o catálogo inteiro — trending só
   // sugere produto ATIVO, pausado não é vitrine nem aqui.
   const trendingProducts = useMemo(() => {
-    return allProducts
-      .filter((p) => p.isActive)
+    return [...produtosAVenda]
       .sort((a, b) => {
         const aAvailable = a.stock > 0 ? 1 : 0;
         const bAvailable = b.stock > 0 ? 1 : 0;
         return bAvailable - aAvailable;
       })
       .slice(0, 4);
-  }, [allProducts]);
+  }, [produtosAVenda]);
 
   // Extract unique categories
   const categoriesSet = [
     "Todas",
-    ...Array.from(new Set(allProducts.map((p) => p.category))),
+    ...Array.from(new Set(produtosAVenda.map((p) => p.category))),
   ];
 
   // Só filtros — categoria, preço e ordenação. É o handler do "Limpar Tudo"
