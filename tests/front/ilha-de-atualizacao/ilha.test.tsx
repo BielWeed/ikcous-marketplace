@@ -87,6 +87,19 @@ describe("ilha da atualização", () => {
     expect(host.textContent).toBe("");
   });
 
+  it("a conclusão anunciada no boot espera a ilha montar: os 3 s contam da tela, não do boot", () => {
+    // Boot anuncia (como `aoIniciarAposAtualizacao`), mas a barra do painel
+    // só monta depois de conferir o acesso — aqui, 5 s depois.
+    act(() => anunciarAtualizacaoConcluida({ duracaoMs: 15_000 }));
+    act(() => vi.advanceTimersByTime(5000));
+    act(() => raiz.render(<IlhaDeAtualizacao variante="painel" />));
+    expect(host.textContent).toBe("Pronto! App atualizado");
+    act(() => vi.advanceTimersByTime(2999));
+    expect(host.textContent).toBe("Pronto! App atualizado");
+    act(() => vi.advanceTimersByTime(1));
+    expect(host.textContent).toBe("");
+  });
+
   it("menos movimento mostra o texto inteiro sem expansão nem giro", () => {
     movimento.reduzido = true;
     definirEstadoDaAtualizacao({ fase: "instalando" });

@@ -14,6 +14,10 @@ import { cn } from "@/lib/utils";
 import { nucleoSemver } from "@/lib/versao-do-servidor";
 import { motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Clock3, LoaderCircle } from "lucide-react";
+import { useEffect } from "react";
+
+/** Se nenhuma ilha chegar a montar, a conclusão some sozinha depois disto. */
+const PRAZO_DE_RESERVA_DO_BOOT_MS = 15_000;
 
 type VarianteDaIlha = "cliente" | "painel";
 
@@ -38,6 +42,13 @@ export function IlhaDeAtualizacao({
 }) {
   const { fase } = useEstadoDaAtualizacao();
   const reduzMovimento = useReducedMotion();
+  // O boot anuncia a conclusão com um prazo longo de reserva: no painel, a
+  // barra só monta depois de o acesso ser conferido, e os 3 s não podem
+  // correr antes de a ilha existir na tela. Ao montar, o prazo recomeça —
+  // mesma fase, então ninguém é avisado de nada além do novo temporizador.
+  useEffect(() => {
+    if (fase === "concluida") anunciarAtualizacaoConcluida();
+  }, [fase]);
   let texto = "";
   if (fase === "instalando") texto = "Atualizando o app…";
   if (fase === "concluida") texto = "Pronto! App atualizado";
@@ -109,7 +120,7 @@ export function aoIniciarAposAtualizacao(
   const { trocouDeBuild, de } = consumirOrigemDaAtualizacao(versaoAtual);
   limpaMotivoDeRecarga();
   if (trocouDeBuild) {
-    anunciarAtualizacaoConcluida();
+    anunciarAtualizacaoConcluida({ duracaoMs: PRAZO_DE_RESERVA_DO_BOOT_MS });
     const para = nucleoSemver(versaoAtual);
     if (para) {
       registrarNovidadesDaAtualizacao({ de: nucleoSemver(de), para });
