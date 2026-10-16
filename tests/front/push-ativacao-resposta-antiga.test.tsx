@@ -216,7 +216,9 @@ describe("usePushNotifications — ativação de uma geração antiga", () => {
     "mudar a conta para %j durante a criação desfaz a inscrição nova sem gravar",
     async (proximaConta) => {
       const criacao = adiarInscricaoNoNavegador();
-      upsert.mockResolvedValue({ error: { message: "RLS recusou a inscrição" } });
+      upsert.mockResolvedValue({
+        error: { message: "RLS recusou a inscrição" },
+      });
       const renderizar = await montar();
       const { ativacao } = await iniciarAtivacao(0);
       expect(inscreverNoNavegador).toHaveBeenCalledTimes(1);
