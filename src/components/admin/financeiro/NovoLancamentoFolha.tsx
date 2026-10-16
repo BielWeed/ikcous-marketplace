@@ -18,6 +18,7 @@ import {
   validarLancamento,
   valorDaParcela,
 } from "@/lib/financeiro";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import {
   CONTA_BANCARIA,
   type CategoriaFinanceira,
@@ -145,15 +146,27 @@ export function NovoLancamentoFolha({
     aoMudarEnviando?.(true);
     setEnviando(true);
     setErroDoServidor(null);
+    const erroDePrazo = new Error(
+      "A internet demorou demais. Confira o lançamento antes de tentar de novo — ele pode ter sido salvo.",
+    );
     try {
-      const ids = await salvarLancamento(resultado.payload);
+      // O prazo solta a tela, mas não cancela a gravação no servidor.
+      const ids = await aguardarComPrazo(
+        salvarLancamento(resultado.payload),
+        30_000,
+        () => erroDePrazo,
+      );
       aoSalvar(
         ids.length > 1
           ? `${ids.length} parcelas lançadas.`
           : "Lançamento salvo.",
       );
     } catch (erro) {
-      setErroDoServidor(mensagemDeErroFinanceiro(erro));
+      setErroDoServidor(
+        erro === erroDePrazo
+          ? erroDePrazo.message
+          : mensagemDeErroFinanceiro(erro),
+      );
     } finally {
       enviandoRef.current = false;
       aoMudarEnviando?.(false);

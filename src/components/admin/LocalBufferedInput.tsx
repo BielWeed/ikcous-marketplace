@@ -39,8 +39,17 @@ const formatPhone = (val: string, anterior?: string) => {
   return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7, 11)}`;
 };
 
+const sinalDaMoeda = (val: string, permiteNegativo: boolean) => {
+  if (!permiteNegativo) return "";
+  const texto = val.replace(/R\$/gi, "").replace(/\s/g, "");
+  return /^[-−]|[-−]$/.test(texto) ||
+    (texto.startsWith("(") && texto.endsWith(")"))
+    ? "-"
+    : "";
+};
+
 const formatCurrency = (val: string, permiteNegativo = false) => {
-  const sinal = permiteNegativo && val.trimStart().startsWith("-") ? "-" : "";
+  const sinal = sinalDaMoeda(val, permiteNegativo);
   const clean = val.replace(/\D/g, "");
   if (clean.length === 0) return sinal;
   const num = Number.parseFloat(clean) / 100;
@@ -54,7 +63,7 @@ const formatCurrency = (val: string, permiteNegativo = false) => {
 };
 
 const parseCurrencyToFloatString = (val: string, permiteNegativo = false) => {
-  const sinal = permiteNegativo && val.trimStart().startsWith("-") ? "-" : "";
+  const sinal = sinalDaMoeda(val, permiteNegativo);
   const clean = val.replace(/\D/g, "");
   if (clean.length === 0) return sinal;
   const num = Number.parseFloat(clean) / 100;

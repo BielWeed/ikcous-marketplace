@@ -21,6 +21,18 @@ import { CONTA_BANCARIA, type ContaFinanceira } from "@/types/financeiro";
 import { AdminFinanceiroView } from "@/views/admin/AdminFinanceiroView";
 
 const HOJE = "2026-10-13";
+const MOEDAS_NEGATIVAS = [
+  ["-100,00", "100,00", "100.00"],
+  ["−1.234,56", "1.234,56", "1234.56"],
+  ["−R$ 1.234,56", "1.234,56", "1234.56"],
+  ["R$ -100,00", "100,00", "100.00"],
+  ["R$\u00a0−100,00", "100,00", "100.00"],
+  ["(100,00)", "100,00", "100.00"],
+  ["(R$ 100,00)", "100,00", "100.00"],
+  ["100,00-", "100,00", "100.00"],
+  ["100,00−", "100,00", "100.00"],
+  [" R$ 100,00 − ", "100,00", "100.00"],
+] as const;
 const CONTA: ContaFinanceira = {
   id: CONTA_BANCARIA,
   nome: "Conta bancária",
@@ -221,23 +233,59 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     },
   );
 
-  it("mantém a máscara sem negativos nos consumidores que não optaram por eles", async () => {
-    const onFlush = vi.fn();
-    await act(async () => {
-      raiz.render(
-        <LocalBufferedInput
-          id="moeda"
-          value="-100.00"
-          mask="currency"
-          onFlush={onFlush}
-        />,
-      );
-    });
-    expect(campo("moeda").value).toBe("100,00");
-    await digitar("moeda", "-100,00");
-    expect(campo("moeda").value).toBe("100,00");
-    expect(onFlush).toHaveBeenLastCalledWith("100.00");
-  });
+  it.each(MOEDAS_NEGATIVAS)(
+    "preserva o negativo de %s na máscara, no debounce e no blur",
+    async (entrada, exibicao, valor) => {
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+      const onFlush = vi.fn();
+      await act(async () => {
+        raiz.render(
+          <LocalBufferedInput
+            id="moeda"
+            value=""
+            mask="currency"
+            permiteNegativo
+            onFlush={onFlush}
+          />,
+        );
+      });
+      await digitarSemSair("moeda", entrada);
+      expect(campo("moeda").value).toBe(`-${exibicao}`);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      expect(onFlush).toHaveBeenLastCalledWith(`-${valor}`);
+      onFlush.mockClear();
+      await act(async () => {
+        campo("moeda").dispatchEvent(
+          new FocusEvent("focusout", { bubbles: true }),
+        );
+      });
+      expect(campo("moeda").value).toBe(`-${exibicao}`);
+      expect(onFlush).toHaveBeenCalledExactlyOnceWith(`-${valor}`);
+    },
+  );
+
+  it.each(MOEDAS_NEGATIVAS)(
+    "mantém a máscara sem negativos para %s quando o consumidor não optou por eles",
+    async (entrada, exibicao, valor) => {
+      const onFlush = vi.fn();
+      await act(async () => {
+        raiz.render(
+          <LocalBufferedInput
+            id="moeda"
+            value="-100.00"
+            mask="currency"
+            onFlush={onFlush}
+          />,
+        );
+      });
+      expect(campo("moeda").value).toBe("100,00");
+      await digitar("moeda", entrada);
+      expect(campo("moeda").value).toBe(exibicao);
+      expect(onFlush).toHaveBeenLastCalledWith(valor);
+    },
+  );
 
   it("preserva o sinal digitado sozinho e os centavos negativos também no debounce", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
@@ -367,6 +415,72 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     expect(botaoEm(folha(), "Cancelar").disabled).toBe(false);
     await clicar(botaoEm(folha(), "Cancelar"));
     expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
+  });
+
+  it("solta a trava em 30 segundos quando o envio nunca responde, avisa e não reenvia", async () => {
+    const envio = pendente();
+    await montarPainel();
+    await abrirLancamentoValido();
+    rpcFalso.mockImplementation((nome: string) => {
+      if (nome === "fin_lancamento_salvar") return envio.promessa;
+      return Promise.resolve({ data: [], error: null });
+    });
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const atual = folha();
+    await clicar(botaoEm(atual, "Salvar lançamento"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_999);
+    });
+    expect(botaoEm(atual, "Cancelar").disabled).toBe(true);
+    expect(atual.textContent).not.toContain("A internet demorou demais.");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(botaoEm(atual, "Cancelar").disabled).toBe(false);
+    expect(botaoEm(atual, "Salvar lançamento").disabled).toBe(false);
+    expect(atual.textContent).toContain(
+      "A internet demorou demais. Confira o lançamento antes de tentar de novo — ele pode ter sido salvo.",
+    );
+    expect(campo("fin-lanc-descricao").value).toBe("Lançamento A");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(
+      rpcFalso.mock.calls.filter(([nome]) => nome === "fin_lancamento_salvar"),
+    ).toHaveLength(1);
+    await clicar(botaoEm(atual, "Cancelar"));
+    expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
+    await clicar(botaoEm(hospedeiro, "Novo lançamento"));
+    expect(campo("fin-lanc-descricao").value).toBe("");
+  });
+
+  it("ignora a resposta que chega depois do prazo e preserva a folha nova", async () => {
+    const envio = pendente();
+    await montarPainel();
+    await abrirLancamentoValido();
+    rpcFalso.mockImplementation((nome: string) => {
+      if (nome === "fin_lancamento_salvar") return envio.promessa;
+      return Promise.resolve({ data: [], error: null });
+    });
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    await clicar(botaoEm(folha(), "Salvar lançamento"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await clicar(botaoEm(folha(), "Cancelar"));
+    await clicar(botaoEm(hospedeiro, "Novo lançamento"));
+    await digitar("fin-lanc-descricao", "Lançamento B");
+    const nova = folha();
+    await act(async () =>
+      envio.resolver({ data: { ids: ["a"] }, error: null }),
+    );
+    await esperar();
+    expect(folha()).toBe(nova);
+    expect(campo("fin-lanc-descricao").value).toBe("Lançamento B");
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    expect(
+      rpcFalso.mock.calls.filter(([nome]) => nome === "fin_lancamento_salvar"),
+    ).toHaveLength(1);
   });
 
   it("atualiza o período e o hoje da folha ao voltar visível depois da meia-noite de São Paulo", async () => {
