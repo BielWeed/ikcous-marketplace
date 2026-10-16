@@ -23,7 +23,7 @@
  *    lojista + comprovante ao cliente; 'pago_apos_expirar' → push "Pagamento
  *    fora do fluxo" + o aviso HONESTO de pagamento atrasado. QUALQUER outro
  *    desfecho ('ja_pago', 'divergente', 'inexistente', 'ignorado', erro) →
- *    nada, nem a leitura do pedido.
+ *    nada, nem a leitura do pedido (exceção única descrita abaixo).
  *
  * POR QUE OS EFEITOS NÃO SAEM EM DOBRO com dois caminhos chegando juntos:
  * a RPC devolve 'pago'/'pago_apos_expirar' para UMA chamada só — a que fez a
@@ -33,7 +33,11 @@
  * imediata. O comprovante tem ainda a reserva própria
  * (`reivindicar_email_de_confirmacao`). O push NÃO tem reserva própria: a
  * garantia dele é só essa transição única — por isso a regra "efeito só
- * depois de a RPC dizer que ESTE chamador confirmou" não tem exceção.
+ * depois de a RPC dizer que ESTE chamador confirmou" vale para o push e o
+ * comprovante. ÚNICA exceção: o webhook, em 'ja_pago' de pedido
+ * 'pago_apos_expirar' cujo aviso por e-mail ainda não saiu, reenvia SÓ esse
+ * aviso (`reenviarAvisoPendenteDoPagamentoAtrasado`); a reserva atômica
+ * decide quem envia.
  *
  * O TEXTO MORA AQUI, UMA VEZ: `webhook-mercadopago/index.ts` e
  * `reconciliar-pagamentos/index.ts` chamam `serve()` no import (guardado só

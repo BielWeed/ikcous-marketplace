@@ -2177,7 +2177,8 @@ async function handler(
   // transição sob o `FOR UPDATE` da RPC. `ja_pago`/`ja_estornado`/`ignorado`
   // são reenvio do MP (ou o outro caminho) encontrando um estado que já foi
   // tratado — 200, sem efeito, é o que impede o reenvio de virar spam para o
-  // lojista. `divergente`/`inexistente` NÃO são esse caso benigno: significam
+  // lojista. Exceção única: `ja_pago` de pedido `pago_apos_expirar` cujo aviso
+  // de e-mail ficou pendente reenvia só esse aviso (reserva atômica). `divergente`/`inexistente` NÃO são esse caso benigno: significam
   // que a confirmação (já aprovada pelo MP) não bate com o pedido, e por isso
   // são logados como erro no bloco abaixo, não silenciados. Falha de push ou
   // de e-mail nunca sobe (o módulo engole e loga): o pedido já está pago.

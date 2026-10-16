@@ -354,7 +354,7 @@ async function esperarComLimite<T>(
   ms: number,
 ): Promise<T> {
   const erro = new Error(
-    "Sem resposta do serviço de push em 10 s; o aviso pode ter chegado ao aparelho mesmo assim",
+    "Sem resposta do serviço de push dentro do prazo; o aviso pode ter chegado ao aparelho mesmo assim",
   );
   if (ms <= 0) throw erro;
   let temporizador: ReturnType<typeof setTimeout> | undefined;
