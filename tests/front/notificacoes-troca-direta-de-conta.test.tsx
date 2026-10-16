@@ -221,6 +221,12 @@ describe("notificações — troca direta de conta não mistura dados", () => {
     expect(
       localStorage.getItem("notificacoes-campanha-estado:cliente-b"),
     ).toBeNull();
+    // O gesto foi de A: a leitura da campanha fica gravada na chave de A.
+    expect(
+      JSON.parse(
+        localStorage.getItem("notificacoes-campanha-estado:cliente-a")!,
+      ),
+    ).toEqual({ lidas: ["campanha"], ocultas: [] });
   });
 
   it("a mesma conta mantém a lista enquanto recarrega e continua podendo marcar todas", async () => {

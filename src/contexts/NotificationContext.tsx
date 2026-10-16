@@ -259,19 +259,26 @@ export function NotificationProvider({
         .eq("usuario_id", donoDaOperacao)
         .eq("lida", false);
 
-      if (usuarioAtualIdRef.current !== donoDaOperacao) return;
-      if (error) throw error;
-      invalidarConsultasEmVoo();
+      const contaMudou = usuarioAtualIdRef.current !== donoDaOperacao;
+      if (error) {
+        if (contaMudou) return;
+        throw error;
+      }
 
       // O UPDATE acima só alcança as linhas da própria cliente. Os avisos de
       // campanha (usuario_id nulo) que ainda estavam não lidos ficam de fora
       // da policy — a leitura deles é registrada localmente, para o contador
       // e a lista concordarem com o que a tela acabou de afirmar.
       if (idsDeCampanhaNaoLidos.length > 0) {
-        const estadoLocal = lerEstadoLocalDaCampanha(user.id);
+        // Gravar na chave de A é certo mesmo se a conta já trocou: o gesto foi de A.
+        const estadoLocal = lerEstadoLocalDaCampanha(donoDaOperacao);
         for (const id of idsDeCampanhaNaoLidos) estadoLocal.lidas.add(id);
-        persistirEstadoLocalDaCampanha(user.id, estadoLocal);
+        persistirEstadoLocalDaCampanha(donoDaOperacao, estadoLocal);
       }
+
+      // O estado em memória já é de outra conta: não toca.
+      if (contaMudou) return;
+      invalidarConsultasEmVoo();
 
       // Avisos que chegaram durante o UPDATE continuam não lidos.
       setNotifications((prev) =>
