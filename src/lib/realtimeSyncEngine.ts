@@ -149,6 +149,16 @@ export const TABLE_CONFIGS: TableConfig[] = [
           ? Number(raw.local_delivery_fee)
           : undefined,
       localCepRange: raw.local_cep_range,
+      // "Como entrego na minha cidade" (16/10/2026): sem estes dois, o eco do
+      // Realtime religaria a entrega própria de quem escolheu "Só retiro" —
+      // o `mapConfig` do StoreContext lê "ausente" como o padrão de hoje.
+      // Banco sem as colunas (ou valor nulo) segue `undefined`.
+      localDeliveryEnabled: raw.local_delivery_enabled ?? undefined,
+      localDeliveryDays:
+        raw.local_delivery_days !== null &&
+        raw.local_delivery_days !== undefined
+          ? Number(raw.local_delivery_days)
+          : undefined,
       homeSections: raw.home_sections,
       // 20261171000000 (T3, 23/09): banco sem as colunas -- `undefined`,
       // mesmo tratamento das demais colunas deste mapa (o merge com o

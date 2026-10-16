@@ -85,7 +85,7 @@ export function Linha({
           {nome}
         </p>
         {dica != null && (
-          <p className="mt-0.5 text-[13px] leading-snug text-zinc-500">
+          <p className="mt-0.5 text-[13px] leading-snug text-zinc-400">
             {dica}
           </p>
         )}

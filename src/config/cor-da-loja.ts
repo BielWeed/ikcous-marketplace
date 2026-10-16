@@ -1,3 +1,4 @@
+import { DIAS_DA_ENTREGA_PROPRIA_PADRAO } from "@/lib/guarda-de-frete";
 import type { StoreConfig } from "@/types";
 
 // DONO ÚNICO da regra de cor da loja (defeito do b531ca9 apontado na revisão
@@ -59,6 +60,13 @@ export const defaultStoreConfig: StoreConfig = {
   enabledShippingMethods: ["sedex", "pac"],
   shippingCoverage: "national",
   localDeliveryFee: 10,
+  // "Como entrego na minha cidade" (16/10/2026): o PADRÃO é o que toda loja
+  // já era — entrega própria ligada, 1 dia. Fica aqui (e não só no fallback
+  // do `mapConfig`) para o estado inicial, o cache antigo do cofre e a
+  // leitura do banco concordarem: sem isso, o primeiro `fetchConfig` depois
+  // do deploy enxerga "config mudou" onde nada mudou e grava o cofre à toa.
+  localDeliveryEnabled: true,
+  localDeliveryDays: DIAS_DA_ENTREGA_PROPRIA_PADRAO,
   localCepRange: "",
   // Estratégias de frete nacional (migration 20261171000000): loja nova
   // nasce DESLIGADA -- mesma decisão (D2/M2) de "sem regra até a lojista

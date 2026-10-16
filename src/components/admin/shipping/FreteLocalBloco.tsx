@@ -9,6 +9,7 @@ import {
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
 import { cepEhLocal } from "@/lib/cep-local";
+import type { ModoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
 import {
   alcanceEhSoPertoDaLoja,
   avisoDaFaixaDeCep,
@@ -17,6 +18,7 @@ import {
   prefixoDoCepDaLoja,
   resumoDoAlcance,
 } from "@/lib/loja-pronta";
+import { cepCompleto } from "@/lib/loja-pronta";
 import { reais } from "@/lib/status-da-entrega";
 import type { View } from "@/types";
 import { memo, useEffect, useRef, useState } from "react";
@@ -57,13 +59,37 @@ function OpcaoDeAlcance({
       aria-checked={ativa}
       disabled={desabilitado}
       onClick={onEscolher}
-      className={`flex min-h-11 flex-col items-start gap-1 rounded-xl border p-4 text-left transition-colors active:scale-[0.99] disabled:opacity-50 ${ativa ? "border-admin-accent bg-admin-accent/10" : "border-white/10 bg-zinc-900/60 hover:border-white/25"}`}
+      className={`flex min-h-11 flex-col items-start gap-1 rounded-xl border border-solid p-4 text-left transition-colors active:scale-[0.99] disabled:opacity-50 ${ativa ? "border-admin-accent bg-admin-accent/10" : "border-white/10 bg-zinc-900/60 hover:border-white/25"}`}
     >
       <span className="text-sm font-bold text-zinc-100">{titulo}</span>
       <span className="text-[12.5px] leading-snug text-zinc-400">{efeito}</span>
     </button>
   );
 }
+
+/** As três respostas de "Como você entrega na sua cidade?" e o EFEITO de cada. */
+const RESPOSTAS_DE_ENTREGA: readonly {
+  readonly modo: ModoDaEntregaNaCidade;
+  readonly titulo: string;
+  readonly efeito: string;
+}[] = [
+  {
+    modo: "entrego",
+    titulo: "Entrego",
+    efeito:
+      "Você leva o pedido até o cliente da sua cidade. Ele não pode retirar na loja.",
+  },
+  {
+    modo: "entrego_e_retiro",
+    titulo: "Entrego e retiro",
+    efeito: "O cliente escolhe: recebe em casa ou retira na loja, de graça.",
+  },
+  {
+    modo: "so_retiro",
+    titulo: "Só retiro",
+    efeito: "Seus clientes só poderão retirar na loja. Não oferecemos entrega.",
+  },
+];
 
 /**
  * Seção "Entrega na sua cidade" da tela de Frete v2 — direção D aprovada
@@ -103,16 +129,20 @@ function OpcaoDeAlcance({
  * continua, recolhido, para quem já o usa. Nenhum formato novo: só o que
  * `cepEhLocal`/`is_local_cep`/edge já leem.
  *
- * RETIRADA NA LOJA (release 1.5.3): a segunda chave de verdade da seção —
- * "Permitir retirada na loja" grava a chave `store-pickup` em
- * `enabledShippingMethods` (o pai calcula a lista a partir do config
- * ATUAL, preservando os serviços de transportadora). A cliente da MESMA
- * área da entrega local vê "Retirar na loja", grátis, com o endereço de
- * Minha loja — aqui ele só aparece para LEITURA (D7, painel simples: o
- * endereço tem uma casa só). Sem esse endereço a chave NÃO liga: a tela
- * explica e oferece "Cadastrar endereço em Minha loja" (a edge também não
- * oferece a retirada sem endereço — a chave ligada ali seria chave que
- * mente).
+ * COMO VOCÊ ENTREGA (16/10/2026): três respostas ("Entrego", "Entrego e
+ * retiro", "Só retiro") no lugar do interruptor "Permitir retirada na loja".
+ * O pai traduz a escolha nos dois campos reais (entrega própria ligada +
+ * chave `store-pickup` em `enabledShippingMethods`, calculada do config
+ * ATUAL, preservando os serviços de transportadora). A cliente vê "Retirar na
+ * loja", grátis, com o endereço de Minha loja — aqui ele só aparece para
+ * LEITURA (D7, painel simples: o endereço tem uma casa só). Sem esse
+ * endereço as duas respostas com retirada NÃO se escolhem: a tela explica e
+ * oferece "Cadastrar endereço em Minha loja" (a edge também não oferece a
+ * retirada sem endereço — a retirada ligada ali seria chave que mente).
+ *
+ * "Só retiro" não entrega, então esconde o que só existe para entrega: valor,
+ * prazo, alcance por CEP e "Só entregar na cidade" (quem é de fora também
+ * retira). O pai guarda esses valores e eles voltam ao escolher "Entrego".
  */
 export const FreteLocalBloco = memo(function FreteLocalBloco({
   valor,
@@ -126,8 +156,10 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   semOrigem,
   cepDaLoja,
   desabilitado,
-  retirada = false,
-  onRetirada,
+  modo = "entrego",
+  onModo,
+  dias = "1",
+  onDias,
   enderecoDaLoja,
   onNavigate,
   mostrarCabecalho = true,
@@ -147,11 +179,15 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   /** CEP de origem da loja — a dica da faixa vazia cita os 5 primeiros números. */
   readonly cepDaLoja?: string | null;
   readonly desabilitado?: boolean;
-  /** Retirada na loja ligada no formulário (chave `store-pickup`). */
-  readonly retirada?: boolean;
-  /** Ausente = a tela não oferece a chave (nada é exibido). */
-  readonly onRetirada?: (ligada: boolean) => void;
-  /** `store_address` salvo — sem ele a retirada não liga. */
+  /** Como a loja entrega na cidade, no formulário. */
+  readonly modo?: ModoDaEntregaNaCidade;
+  /** Ausente = a tela não oferece as três respostas (nada é exibido). */
+  readonly onModo?: (modo: ModoDaEntregaNaCidade) => void;
+  /** Prazo da entrega própria, como o texto do campo (0 a 30; vazio = 1). */
+  readonly dias?: string;
+  /** Ausente = sem campo de prazo. */
+  readonly onDias?: (dias: string) => void;
+  /** `store_address` salvo — sem ele a retirada não se escolhe. */
   readonly enderecoDaLoja?: string | null;
   /** Leva a Minha loja (`admin-about-store`), onde o endereço se cadastra.
    * Ausente = sem botão (nada de botão morto). */
@@ -168,7 +204,9 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
    * ausente = não se sabe: a tela não promete a compra. */
   readonly pagamentoPeloAppLigado?: boolean | null;
 }) {
-  const [semEnderecoAoLigar, setSemEnderecoAoLigar] = useState(false);
+  const [semEnderecoAoEscolher, setSemEnderecoAoEscolher] = useState(false);
+  const [semCepAoEscolher, setSemCepAoEscolher] = useState(false);
+  const soRetiro = modo === "so_retiro";
   const prefixo = prefixoDoCepDaLoja(cepDaLoja);
   const soPerto = alcanceEhSoPertoDaLoja(cepDaLoja, faixa);
   const faixaEscrita = faixa.trim() !== "";
@@ -194,6 +232,29 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   const temEndereco = (enderecoDaLoja ?? "").trim() !== "";
   const onde =
     cidade && uf ? `${cidade}/${uf}` : cidade ? cidade : "sua cidade";
+  // UM aviso só sobre o endereço (nunca dois empilhados, nem repetido na dica):
+  // o estado salvo/escolhido sem endereço ganha o texto do que isso causa; o
+  // clique recusado só explica por que a escolha não valeu.
+  const avisoDoEndereco: string | null =
+    temEndereco || !onModo
+      ? null
+      : soRetiro
+        ? "Sem endereço cadastrado, ninguém consegue comprar: cadastre o endereço em Minha loja ou volte a entregar."
+        : modo !== "entrego"
+          ? "A retirada está ligada, mas a loja está sem endereço: a opção não aparece para o cliente até você cadastrar o endereço em Minha loja."
+          : semEnderecoAoEscolher
+            ? "Para escolher a retirada, cadastre o endereço da loja em Minha loja. O cliente precisa saber onde buscar."
+            : null;
+  // "Só retiro" sem o CEP completo da loja: a edge e as RPCs recusam toda compra
+  // (origin_cep vazio), então a escolha não vale e o estado salvo avisa. A
+  // régua de "CEP completo" é a MESMA da loja pronta.
+  const semCepDaLoja = !cepCompleto(cepDaLoja);
+  const avisoDoCep: string | null =
+    onModo && semCepDaLoja && (soRetiro || semCepAoEscolher)
+      ? "Para vender só com retirada, cadastre o CEP da loja em Minha loja."
+      : null;
+  // UM alerta só: a falta do CEP vem antes da falta do endereço.
+  const alertaDoModo = avisoDoCep ?? avisoDoEndereco;
   const entraNoTeste =
     prefixo !== null && cepDeTeste.replace(/\D/g, "").length === 8
       ? cepEhLocal(cepDaLoja ?? "", cepDeTeste, faixa)
@@ -256,8 +317,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               <>
                 <PontoEstado tom="positivo" />
                 <span>
-                  <b className="font-semibold text-zinc-200">ligada</b> ·
-                  entrega própria
+                  <b className="font-semibold text-zinc-200">ligada</b> ·{" "}
+                  {soRetiro ? "só retirada" : "entrega própria"}
                 </span>
               </>
             )
@@ -265,43 +326,134 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
         />
       )}
 
-      <Linha
-        nome="Só entregar na cidade"
-        dica="Ligada: quem é de fora não consegue comprar. Desligada: o resto do Brasil compra com a transportadora."
-      >
-        <Chave
-          rotulo="Só entregar na cidade"
-          ligada={coverage === "local"}
-          desabilitado={desabilitado}
-          onToggle={() =>
-            onCoverage(coverage === "local" ? "national" : "local")
-          }
-        />
-      </Linha>
-
-      <Linha nome="Valor por pedido" dica={`O que o cliente de ${onde} paga`}>
-        {/* Mesma mecânica da tela anterior (o campo vazio lê 0 = grátis na
-            cidade) — mudou a casca, não o comportamento. */}
-        <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2">
-          <span className="text-xs font-semibold text-zinc-500">R$</span>
-          <input
-            id="local-delivery-fee"
-            type="number"
-            min="0"
-            step="0.5"
-            inputMode="decimal"
-            value={valor === 0 ? "" : valor}
-            onChange={(e) =>
-              onValor(e.target.value === "" ? 0 : Number(e.target.value))
-            }
-            placeholder="0"
-            disabled={desabilitado}
-            className="w-20 bg-transparent text-right text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none"
-          />
+      {onModo && (
+        <div className="py-4" data-como-entrego="">
+          <p className="text-sm font-bold text-zinc-100">
+            Como você entrega na sua cidade?
+          </p>
+          <div
+            role="radiogroup"
+            aria-label="Como você entrega na sua cidade"
+            className="mt-3 grid gap-3 sm:grid-cols-3"
+          >
+            {RESPOSTAS_DE_ENTREGA.map((r) => (
+              <OpcaoDeAlcance
+                key={r.modo}
+                ativa={modo === r.modo}
+                titulo={r.titulo}
+                efeito={r.efeito}
+                desabilitado={desabilitado}
+                onEscolher={() => {
+                  // Só retiro sem CEP da loja: ninguém consegue comprar.
+                  if (r.modo === "so_retiro" && semCepDaLoja) {
+                    setSemCepAoEscolher(true);
+                    setSemEnderecoAoEscolher(false);
+                    return;
+                  }
+                  // Retirada sem endereço seria promessa vazia: a escolha não
+                  // vale e a tela manda cadastrar o endereço.
+                  if (r.modo !== "entrego" && !temEndereco) {
+                    setSemEnderecoAoEscolher(true);
+                    setSemCepAoEscolher(false);
+                    return;
+                  }
+                  setSemEnderecoAoEscolher(false);
+                  setSemCepAoEscolher(false);
+                  onModo(r.modo);
+                }}
+              />
+            ))}
+          </div>
+          {alertaDoModo && (
+            // Colado nos cartões: no celular um aviso lá embaixo ficava fora
+            // da tela e parecia que o toque não tinha feito nada.
+            <p
+              role="alert"
+              className="mt-3 text-[12.5px] leading-snug text-amber-300"
+            >
+              {alertaDoModo}
+            </p>
+          )}
+          {avisoDoCep && onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate("admin-about-store")}
+              className="mt-2 flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+            >
+              Abrir Minha loja
+            </button>
+          )}
         </div>
-      </Linha>
+      )}
 
-      {prefixo === null ? (
+      {!soRetiro && (
+        <Linha
+          nome="Só entregar na cidade"
+          dica="Ligada: quem é de fora não consegue comprar. Desligada: o resto do Brasil compra com a transportadora."
+        >
+          <Chave
+            rotulo="Só entregar na cidade"
+            ligada={coverage === "local"}
+            desabilitado={desabilitado}
+            onToggle={() =>
+              onCoverage(coverage === "local" ? "national" : "local")
+            }
+          />
+        </Linha>
+      )}
+
+      {!soRetiro && (
+        <Linha
+          nome="Valor por pedido"
+          dica={`O que o cliente de ${onde} paga${onDias ? " e em quantos dias você entrega (0 = no mesmo dia)" : ""}`}
+        >
+          {/* Mesma mecânica da tela anterior (o campo vazio lê 0 = grátis na
+            cidade) — mudou a casca, não o comportamento. */}
+          <label
+            htmlFor="local-delivery-fee"
+            className="flex min-h-11 cursor-text items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2"
+          >
+            <span className="text-xs font-semibold text-zinc-400">R$</span>
+            <input
+              id="local-delivery-fee"
+              type="number"
+              min="0"
+              step="0.5"
+              inputMode="decimal"
+              value={valor === 0 ? "" : valor}
+              onChange={(e) =>
+                onValor(e.target.value === "" ? 0 : Number(e.target.value))
+              }
+              placeholder="0"
+              disabled={desabilitado}
+              className="w-20 bg-transparent text-right text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </label>
+          {onDias && (
+            <label
+              htmlFor="local-delivery-days"
+              className="flex min-h-11 cursor-text items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-2"
+            >
+              <input
+                id="local-delivery-days"
+                type="text"
+                inputMode="numeric"
+                aria-label="Prazo da entrega própria em dias"
+                value={dias}
+                onChange={(e) => onDias(e.target.value)}
+                placeholder="1"
+                disabled={desabilitado}
+                className="w-10 bg-transparent text-right text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50"
+              />
+              <span className="text-xs font-semibold text-zinc-400">
+                {dias === "1" ? "dia" : "dias"}
+              </span>
+            </label>
+          )}
+        </Linha>
+      )}
+
+      {soRetiro ? null : prefixo === null ? (
         // Sem CEP completo da loja não há "perto da loja" para escolher: só o
         // campo de texto, como sempre foi.
         <Linha nome="Escrever faixa de CEP" dica={dicaDoTexto(cepDaLoja)}>
@@ -394,7 +546,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                     // O botão some (a região entrou): o foco volta ao campo.
                     campoDeTesteRef.current?.focus();
                   }}
-                  className="mt-2 flex min-h-11 items-center rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-200 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:opacity-50"
+                  className="mt-2 flex min-h-11 items-center rounded-lg border border-solid border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-200 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:opacity-50"
                 >
                   Incluir a região deste CEP
                 </button>
@@ -402,10 +554,10 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             </div>
           )}
 
-          <details ref={detalhesRef} className="mt-2">
+          <details ref={detalhesRef} className="group mt-2">
             <summary
               onClick={() => setMexeuNoPainel(true)}
-              className="flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-zinc-300"
+              className="flex min-h-11 cursor-pointer list-none items-center text-[13px] font-semibold text-zinc-300 before:mr-2 before:inline-block before:text-base before:text-zinc-300 before:transition-transform before:content-['▸'] group-open:before:rotate-90 [&::-webkit-details-marker]:hidden"
             >
               Escrever faixa de CEP
             </summary>
@@ -416,65 +568,36 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
         </div>
       )}
 
-      {avisoDaFaixa && (
+      {!soRetiro && avisoDaFaixa && (
         <p role="note" className="mt-2 text-xs text-amber-300">
           {avisoDaFaixa}
         </p>
       )}
 
-      {onRetirada && (
-        <>
-          <Linha
-            nome="Permitir retirada na loja"
-            dica={
-              temEndereco
-                ? `Quem é da mesma área da entrega local pode buscar o pedido de graça em: ${(enderecoDaLoja ?? "").trim()}`
-                : "Para oferecer a retirada, cadastre o endereço da loja em Minha loja — a cliente precisa saber onde buscar o pedido."
-            }
-          >
-            {!temEndereco && onNavigate && (
-              <button
-                type="button"
-                onClick={() => onNavigate("admin-about-store")}
-                className="flex min-h-11 shrink-0 items-center rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
-              >
-                Cadastrar endereço em Minha loja
-              </button>
-            )}
-            <Chave
-              rotulo="Permitir retirada na loja"
-              ligada={retirada}
-              desabilitado={desabilitado}
-              onToggle={() => {
-                if (!retirada && !temEndereco) {
-                  setSemEnderecoAoLigar(true);
-                  return;
-                }
-                setSemEnderecoAoLigar(false);
-                onRetirada(!retirada);
-              }}
-            />
-          </Linha>
-          {semEnderecoAoLigar && !retirada && !temEndereco && (
-            <p
-              role="alert"
-              className="mt-2 text-[12.5px] leading-snug text-amber-300"
+      {/* Em "Entrego" a cliente NÃO pode retirar: com endereço cadastrado a
+          linha afirmaria o contrário, então só aparece sem endereço (o botão
+          de cadastrar é o caminho para ligar a retirada depois). */}
+      {onModo && (modo !== "entrego" || !temEndereco) && (
+        <Linha
+          nome="Endereço da retirada"
+          dica={
+            temEndereco
+              ? `${soRetiro ? "Todo cliente" : "Quem é da mesma área da entrega local"} pode buscar o pedido de graça em: ${(enderecoDaLoja ?? "").trim()}`
+              : alertaDoModo
+                ? undefined
+                : "Para oferecer a retirada, cadastre o endereço da loja em Minha loja — o cliente precisa saber onde buscar o pedido."
+          }
+        >
+          {!temEndereco && onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate("admin-about-store")}
+              className="flex min-h-11 shrink-0 items-center rounded-lg border border-solid border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
             >
-              Para ligar a retirada, cadastre o endereço da loja em Minha loja.
-              A cliente precisa saber onde buscar.
-            </p>
+              Cadastrar endereço em Minha loja
+            </button>
           )}
-          {retirada && !temEndereco && (
-            <p
-              role="alert"
-              className="mt-2 text-[12.5px] leading-snug text-amber-300"
-            >
-              A retirada está ligada, mas a loja está sem endereço: a opção não
-              aparece para a cliente até você cadastrar o endereço em Minha
-              loja.
-            </p>
-          )}
-        </>
+        </Linha>
       )}
     </section>
   );

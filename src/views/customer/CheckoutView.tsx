@@ -71,6 +71,7 @@ import {
   formaDePagamentoDesligadaNaLoja,
   pagamentoIncompativelComFrete,
   primeiraFormaDePagamentoDisponivel,
+  retiradaLivreParaQualquerCep,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
@@ -3325,7 +3326,13 @@ export function CheckoutViewDaConta({
     !!config.originCep &&
     !!cepDoConvidado &&
     soDigitos(cepDoConvidado).length === 8 &&
-    !cepEhLocal(config.originCep, cepDoConvidado, config.localCepRange);
+    !cepEhLocal(config.originCep, cepDoConvidado, config.localCepRange) &&
+    // "COMO ENTREGO NA MINHA CIDADE" (16/10/2026): em "Só retiro" a retirada
+    // vale para QUALQUER CEP e a RPC do pedido aceita o convidado nesse caso
+    // (`v_retirada_livre`) — não há entrega fora da cidade para exigir conta.
+    // Só vale com a retirada MARCADA: sem ela (ou com a "Entrega Local" velha
+    // de um app/cache antigo, ou uma transportadora) a regra segue inteira.
+    !retiradaLivreParaQualquerCep(config, selectedShippingOption?.id);
 
   // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
   // `calculate-shipping` recusar cotar quando a loja não configurou o CEP de

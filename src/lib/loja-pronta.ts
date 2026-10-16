@@ -1,6 +1,10 @@
 import { cepEhLocal } from "@/lib/cep-local";
 import { lerEnderecoConferido } from "@/lib/endereco-da-loja";
 import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
+import {
+  modoDaEntregaNaCidade,
+  retiradaLigadaNaLista,
+} from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import type { View } from "@/types";
 
@@ -16,7 +20,7 @@ import type { View } from "@/types";
 export type EstadoDoItem = "carregando" | "feito" | "pendente";
 
 /** CEP completo: oito dígitos, com ou sem o hífen após o quinto. */
-function cepCompleto(cep: string | null | undefined): boolean {
+export function cepCompleto(cep: string | null | undefined): boolean {
   return /^\d{5}-?\d{3}$/.test(cep?.trim() ?? "");
 }
 
@@ -42,16 +46,30 @@ function cepCompleto(cep: string | null | undefined): boolean {
  * aviso é calado de propósito) e QUALQUER faixa preenchida. O aviso do ramo da
  * faixa preenchida ("nem o CEP da loja entra") é só aviso na tela de Frete —
  * uma faixa legítima pode deixar o CEP da loja de fora — e nunca trava o passo.
+ *
+ * "SÓ RETIRO" (16/10/2026): sem entrega própria não há alcance a confirmar. O
+ * passo vale pela RETIRADA: ligada e com o endereço da loja conferido (o texto
+ * do formato novo, com o CEP da loja) — o endereço é o que a cliente recebe
+ * para buscar o pedido. Alcance e valor não são olhados.
  */
 export function estadoDaEntrega(
   config: {
     readonly originCep?: string | null;
     readonly localCepRange?: string | null;
+    readonly storeAddress?: string | null;
+    readonly localDeliveryEnabled?: boolean | null;
+    readonly enabledShippingMethods?: readonly string[] | null;
   },
   configCarregando: boolean,
 ): EstadoDoItem {
   if (configCarregando) return "carregando";
   if (!cepCompleto(config.originCep)) return "pendente";
+  if (modoDaEntregaNaCidade(config) === "so_retiro") {
+    return retiradaLigadaNaLista(config.enabledShippingMethods) &&
+      lerEnderecoConferido(config.storeAddress, config.originCep) !== null
+      ? "feito"
+      : "pendente";
+  }
   return entregaComAlcanceCurto(config) ? "pendente" : "feito";
 }
 
@@ -67,8 +85,10 @@ export function estadoDaEntrega(
 export function entregaComAlcanceCurto(config: {
   readonly originCep?: string | null;
   readonly localCepRange?: string | null;
+  readonly localDeliveryEnabled?: boolean | null;
 }): boolean {
   return (
+    config.localDeliveryEnabled !== false &&
     cepCompleto(config.originCep) &&
     (config.localCepRange ?? "").trim() === "" &&
     avisoDaFaixaDeCep(config) !== null
@@ -290,6 +310,8 @@ export interface ConfigDosSeisPassos {
   readonly whatsappNumber?: string | null;
   /** O aviso da faixa de CEP (`avisoDaFaixaDeCep`) e o passo "entrega" leem. */
   readonly localCepRange?: string | null;
+  /** "Só retiro" (entrega própria desligada) muda o que o passo "entrega" pede. */
+  readonly localDeliveryEnabled?: boolean | null;
 }
 
 /** Os fatos que NÃO vêm da config. */

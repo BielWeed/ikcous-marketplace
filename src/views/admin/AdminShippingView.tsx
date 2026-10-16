@@ -29,7 +29,15 @@ import {
   estrategiaTemAlcanceEditavel,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
-import { listaComRetirada, retiradaLigadaNaLista } from "@/lib/guarda-de-frete";
+import {
+  DIAS_DA_ENTREGA_PROPRIA_PADRAO,
+  type ModoDaEntregaNaCidade,
+  diasDaEntregaPropria,
+  listaComRetirada,
+  modoDaEntregaNaCidade,
+  retiradaLigadaNaLista,
+} from "@/lib/guarda-de-frete";
+import { alcanceAoMudarOCepDaLoja, cepCompleto } from "@/lib/loja-pronta";
 import { usePagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
 import {
   type PresetFreteGratis,
@@ -50,6 +58,22 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+
+/**
+ * O prazo digitado como número, ou o padrão (1) se o campo está vazio. Texto
+ * fora de 0 a 30 nem entra no campo (`aceitarDias`), então aqui só sobra
+ * vazio ou número válido — `diasDaEntregaPropria` é a rede de segurança.
+ */
+function diasDoTexto(texto: string): number {
+  return texto.trim() === ""
+    ? DIAS_DA_ENTREGA_PROPRIA_PADRAO
+    : diasDaEntregaPropria(Number(texto));
+}
+
+/** Só inteiro de 0 a 30 (ou vazio, para quem apaga para digitar de novo). */
+function aceitarDias(texto: string): boolean {
+  return /^\d{0,2}$/.test(texto) && (texto === "" || Number(texto) <= 30);
+}
 
 const ORDEM_DE_EXIBICAO: readonly ProvedorFrete[] = [
   "melhor_envio",
@@ -218,8 +242,13 @@ export const AdminShippingView = memo(function AdminShippingView({
     shippingCoverage: "national" as "local" | "national",
     localDeliveryFee: 10,
     localCepRange: "",
-    retiradaNaLoja: false,
+    modo: "entrego" as ModoDaEntregaNaCidade,
+    diasDaEntrega: String(DIAS_DA_ENTREGA_PROPRIA_PADRAO),
   });
+  // O CEP da loja com que o formulário foi montado: "Só perto da loja" é uma
+  // CÓPIA dos 5 primeiros números dele, e o Salvar a regrava se Minha loja
+  // mudou o CEP enquanto esta tela estava aberta.
+  const cepDoFormularioRef = useRef<string | null | undefined>(undefined);
 
   // ── Formulário NACIONAL (T4, herdado de AdminShippingNationalView) ───
   const [formDataNacional, setFormDataNacional] = useState({
@@ -313,6 +342,7 @@ export const AdminShippingView = memo(function AdminShippingView({
         return;
       }
       jaSincronizouRef.current = true;
+      cepDoFormularioRef.current = config.originCep;
       const minSalvo = Number(config.freeShippingMin ?? 0);
       const presetSalvo = presetDoConfig(minSalvo);
       setFormData({
@@ -323,7 +353,8 @@ export const AdminShippingView = memo(function AdminShippingView({
           | "national",
         localDeliveryFee: Number(config.localDeliveryFee ?? 10),
         localCepRange: config.localCepRange || "",
-        retiradaNaLoja: retiradaLigadaNaLista(config.enabledShippingMethods),
+        modo: modoDaEntregaNaCidade(config),
+        diasDaEntrega: String(diasDaEntregaPropria(config.localDeliveryDays)),
       });
       fetchCreds();
     }
@@ -429,13 +460,33 @@ export const AdminShippingView = memo(function AdminShippingView({
     if (formData.localDeliveryFee !== Number(config.localDeliveryFee ?? 10))
       return true;
     if (formData.localCepRange !== (config.localCepRange || "")) return true;
+    if (formData.modo !== modoDaEntregaNaCidade(config)) return true;
     if (
-      formData.retiradaNaLoja !==
-      retiradaLigadaNaLista(config.enabledShippingMethods)
+      diasDoTexto(formData.diasDaEntrega) !==
+      diasDaEntregaPropria(config.localDeliveryDays)
     )
       return true;
     return false;
   }, [formData, config]);
+
+  // Retirada (as duas respostas com ela) exige o endereço da loja. É a MESMA
+  // fonte que o bloco lê (`config.storeAddress`): o eco do Realtime não traz o
+  // endereço, e nesse instante a tela trata como "sem endereço" e NÃO deixa
+  // gravar uma retirada nova — melhor recusar do que gravar retirada que a
+  // cliente não consegue usar. Quem já tinha a retirada ligada e só mexe em
+  // outra coisa não é barrado (o modo não mudou).
+  const temEnderecoDaLoja = (config?.storeAddress ?? "").trim() !== "";
+  const retiradaSemEndereco =
+    !!config &&
+    formData.modo !== "entrego" &&
+    formData.modo !== modoDaEntregaNaCidade(config) &&
+    !temEnderecoDaLoja;
+
+  // "Só retiro" sem o CEP completo da loja: a edge e as RPCs recusam toda
+  // compra (origin_cep vazio). Vale também para a loja que JÁ está nesse modo:
+  // o salvar fica travado enquanto o modo resultante for "Só retiro".
+  const soRetiroSemCep =
+    !!config && formData.modo === "so_retiro" && !cepCompleto(config.originCep);
 
   // ── Dirty check NACIONAL (T4, herdado) ─────────────────────────────────
   const isFormDirtyNacional = useMemo(() => {
@@ -547,12 +598,40 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
+    if (retiradaSemEndereco) {
+      // Antes do `setIsSaving`: recusar não pode deixar a tela em "Salvando…".
+      toast.error("Cadastre o endereço da loja em Minha loja", {
+        description: "Sem endereço, o cliente não sabe onde retirar.",
+      });
+      return;
+    }
+
+    if (soRetiroSemCep) {
+      toast.error("Cadastre o CEP da loja em Minha loja", {
+        description:
+          "Para vender só com retirada, a loja precisa do CEP. Ou escolha outra forma de entrega.",
+      });
+      return;
+    }
+
     setIsSaving(true);
     haptic.medium();
 
     const retiradaMudou =
-      formData.retiradaNaLoja !==
+      (formData.modo !== "entrego") !==
       retiradaLigadaNaLista(config?.enabledShippingMethods);
+    // O alcance "só perto da loja" é uma cópia do CEP: se Minha loja o mudou
+    // desde que o formulário abriu, o Salvar leva o alcance junto. Limite
+    // conhecido: um alcance escrito de propósito IGUAL aos 5 primeiros números
+    // do CEP antigo (ex.: "38500") é indistinguível do automático e também
+    // acompanha o CEP novo.
+    const alcanceAntes = formData.localCepRange;
+    const alcance =
+      alcanceAoMudarOCepDaLoja(
+        cepDoFormularioRef.current,
+        config?.originCep,
+        formData.localCepRange,
+      ) ?? formData.localCepRange;
 
     const ehDesconto =
       formDataNacional.estrategia === "desconto_na_mais_barata";
@@ -576,12 +655,14 @@ export const AdminShippingView = memo(function AdminShippingView({
         freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
         shippingCoverage: formData.shippingCoverage,
         localDeliveryFee: Math.max(0, formData.localDeliveryFee),
-        localCepRange: formData.localCepRange,
+        localCepRange: alcance,
+        localDeliveryEnabled: formData.modo !== "so_retiro",
+        localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
         ...(retiradaMudou
           ? {
               enabledShippingMethods: listaComRetirada(
                 config?.enabledShippingMethods,
-                formData.retiradaNaLoja,
+                formData.modo !== "entrego",
               ),
             }
           : {}),
@@ -602,6 +683,16 @@ export const AdminShippingView = memo(function AdminShippingView({
       // "esquecido" de uma estratégia anterior deixaria `isFormDirty`
       // nacional preso em `true` para sempre.
       setFormDataNacional(nacionalAjustado);
+      if (alcance !== alcanceAntes) {
+        // O alcance foi regravado: o formulário o acompanha, senão ficaria
+        // "diferente do salvo" para sempre — mas só se o campo ainda é o de
+        // antes do Salvar (os campos seguem editáveis enquanto salva).
+        setFormData((prev) =>
+          prev.localCepRange === alcanceAntes
+            ? { ...prev, localCepRange: alcance }
+            : prev,
+        );
+      }
       setFalhaAoSalvar(false);
       // As regras salvaram; um token de transportadora ainda não salvo
       // continua segurando a guarda.
@@ -627,7 +718,12 @@ export const AdminShippingView = memo(function AdminShippingView({
         ? "pendente"
         : "limpo";
   const podeClicarSalvar =
-    !isSaving && !isOffline && isFormDirty && !erroNacional;
+    !isSaving &&
+    !isOffline &&
+    isFormDirty &&
+    !erroNacional &&
+    !retiradaSemEndereco &&
+    !soRetiroSemCep;
 
   // Map (não Record indexado por variável): indexação dinâmica dispara
   // `security/detect-object-injection` do eslint e o teto do lint reprova
@@ -797,10 +893,15 @@ export const AdminShippingView = memo(function AdminShippingView({
                   semOrigem={!config?.originCep}
                   cepDaLoja={config?.originCep}
                   desabilitado={isOffline}
-                  retirada={formData.retiradaNaLoja}
-                  onRetirada={(retiradaNaLoja) =>
-                    atualizarFormData((prev) => ({ ...prev, retiradaNaLoja }))
+                  modo={formData.modo}
+                  onModo={(modo) =>
+                    atualizarFormData((prev) => ({ ...prev, modo }))
                   }
+                  dias={formData.diasDaEntrega}
+                  onDias={(diasDaEntrega) => {
+                    if (aceitarDias(diasDaEntrega))
+                      atualizarFormData((prev) => ({ ...prev, diasDaEntrega }));
+                  }}
                   enderecoDaLoja={config?.storeAddress}
                   onNavigate={onNavigate}
                   nomesLigados={credsErro || !credsLidas ? null : nomesLigados}

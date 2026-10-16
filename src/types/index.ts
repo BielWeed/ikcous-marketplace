@@ -359,6 +359,18 @@ export interface StoreConfig {
   enabledShippingMethods?: string[];
   shippingCoverage?: "local" | "national";
   localDeliveryFee?: number;
+  /**
+   * "Como entrego na minha cidade" (16/10/2026, colunas
+   * `store_config.local_delivery_enabled` e `local_delivery_days`): a entrega
+   * própria está ligada (padrão `true`) e em quantos dias ela chega (0 a 30,
+   * padrão 1). Desligada = "Só retiro": a retirada vale para qualquer CEP
+   * (o modo sai de `modoDaEntregaNaCidade`, em `src/lib/guarda-de-frete.ts`
+   * — nunca recombine estes campos com a lista de métodos por conta
+   * própria). OPCIONAIS: banco sem as colunas (ou sem a migration) lê como
+   * o padrão de hoje, e o StoreContext preenche sempre.
+   */
+  localDeliveryEnabled?: boolean;
+  localDeliveryDays?: number;
   localCepRange?: string;
   /**
    * ESTRATÉGIAS DE FRETE NACIONAL (23/09/2026, migration
