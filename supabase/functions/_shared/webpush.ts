@@ -347,11 +347,15 @@ export const OPCOES_DE_AVISO_AO_LOJISTA = {
 // A corrida limita a espera mesmo se a promessa nunca assentar, e limpa o
 // timer quando a operação termina. Ela não cancela o envio que já começou.
 // Uma resposta tardia não altera a contagem nem dispara limpeza de inscrição.
+// O resultado é INDETERMINADO, não recusa: o texto do motivo diz isso ao
+// lojista, que não deve reenviar a campanha inteira por causa disso.
 async function esperarComLimite<T>(
   operacao: () => PromiseLike<T>,
   ms: number,
 ): Promise<T> {
-  const erro = new Error("Tempo limite do push excedido; falha temporária");
+  const erro = new Error(
+    "Sem resposta do serviço de push em 10 s; o aviso pode ter chegado ao aparelho mesmo assim",
+  );
   if (ms <= 0) throw erro;
   let temporizador: ReturnType<typeof setTimeout> | undefined;
   try {
