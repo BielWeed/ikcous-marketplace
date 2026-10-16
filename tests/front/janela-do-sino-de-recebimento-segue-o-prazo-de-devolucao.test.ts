@@ -128,6 +128,20 @@ describe("a leitura do prazo da loja", () => {
     expect(diasDoCorte(await inicioDaJanelaDoSino())).toBe(180);
   });
 
+  it("arrependimento maior que o defeito, sem troca: vale o maior (arrependimento 60 > defeito 30)", async () => {
+    maybeSingleMock.mockResolvedValue({
+      data: {
+        prazo_vicio_dias: 30,
+        prazo_troca_dias: 0,
+        prazo_arrependimento_dias: 60,
+        aceita_troca: false,
+      },
+      error: null,
+    });
+
+    expect(diasDoCorte(await inicioDaJanelaDoSino())).toBe(60);
+  });
+
   it("troca que a loja NÃO aceita não alarga a janela (o servidor recusa a troca)", async () => {
     maybeSingleMock.mockResolvedValue({
       data: {

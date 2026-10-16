@@ -44,8 +44,9 @@ import { supabase } from "@/lib/supabase";
  *     de volta para a lista pedido entregue há muito tempo. O pedido com o
  *     recebimento marcado não tem mais pagamento em branco e sai da lista;
  *     desfazer a marcação o devolve à lista, com a data renovada.
- *   - A janela é o prazo de devolução da loja (90 dias por padrão,
- *     `politica_devolucao.prazo_vicio_dias`), medido a partir de `updated_at`
+ *   - A janela é o MAIOR prazo de devolução da loja (defeito, arrependimento
+ *     e, se aceita troca, troca; 90 dias se a leitura falhar, ver
+ *     `inicioDaJanelaDoSino`), medido a partir de `updated_at`
  *     e não da entrega: um pedido mexido depois da entrega parece mais novo do
  *     que é, e o prazo da cliente (contado da entrega) pode acabar antes de o
  *     aviso sumir. É uma ajuda para a lojista, não a garantia do prazo da
