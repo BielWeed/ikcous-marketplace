@@ -56,7 +56,11 @@ import {
   mascararCpfParaExibicao,
   somenteDigitosDoCpf,
 } from "@/lib/cpf";
-import { gravarCpfDaConta, lerCpfDaConta } from "@/lib/cpf-da-conta";
+import {
+  gravarCpfDaConta,
+  lerCpfDaConta,
+  mensagemFalhaCpf,
+} from "@/lib/cpf-da-conta";
 import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
@@ -374,6 +378,8 @@ interface PedidoCongelado {
   readonly itens: CartItem[];
   readonly valor: number;
   readonly cpfParaRpc: string | undefined;
+  /** Conta do início da compra: o reenvio não herda quem entrou depois. */
+  readonly contaEsperada: string | null;
   /** O pedido nasceu SEM sessão: só um reenvio sem sessão devolve o mesmo pedido. */
   readonly semConta: boolean;
 }
@@ -3634,6 +3640,7 @@ export function CheckoutViewDaConta({
   };
 
   const handleSubmitEvent = async () => {
+    const contaEsperada = user?.id ?? null;
     // Pedido retomado com a primeira leitura em voo: o pedido JÁ existe, e
     // este envio criaria um segundo. Antes da trava de envio de propósito —
     // nada foi tomado, não há o que soltar. A tela de carregamento já tira o
@@ -4004,6 +4011,7 @@ export function CheckoutViewDaConta({
       itens: cart,
       valor: finalTotal,
       cpfParaRpc,
+      contaEsperada,
       semConta: !user,
     });
   };
@@ -4053,8 +4061,20 @@ export function CheckoutViewDaConta({
       // nunca loga o CPF. E só com a confirmação explícita "Este CPF é
       // meu…" (`salvarCpfNaConta`, desmarcada por padrão): o CPF do
       // destinatário pode ser de um terceiro e continua só no pedido.
-      if (user && cpfParaRpc && contaTemCpf === false && salvarCpfNaConta) {
-        void gravarCpfDaConta(cpfParaRpc);
+      if (
+        user &&
+        pedido.contaEsperada &&
+        cpfParaRpc &&
+        contaTemCpf === false &&
+        salvarCpfNaConta
+      ) {
+        // O CPF é conveniência pós-pedido: a falha só avisa, sem desfazer
+        // a compra nem limpar o campo. A conta veio do início da operação.
+        void gravarCpfDaConta(cpfParaRpc, pedido.contaEsperada).then(
+          (resultado) => {
+            if (!resultado.ok) toast.error(mensagemFalhaCpf(resultado.motivo));
+          },
+        );
       }
       setOrderId(order.id);
       setValorDoPedido(pedido.valor);
