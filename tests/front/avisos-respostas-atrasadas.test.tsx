@@ -13,6 +13,13 @@ const rede = vi.hoisted(() => ({
   }> | null,
   mutacao: Promise.resolve({ error: null }),
 }));
+// A consulta pendente do teste vale uma vez só: a consulta de reconciliação
+// que a ação dispara depois lê o estado do "servidor" (`rede.linhas`).
+function consumirConsulta() {
+  const pendente = rede.consulta;
+  rede.consulta = null;
+  return pendente ?? Promise.resolve({ data: rede.linhas, error: null });
+}
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: rede.user }) }));
 vi.mock("@/hooks/useLeaderElection", () => ({
   useLeaderElection: () => ({ isLeader: false }),
@@ -32,8 +39,7 @@ vi.mock("@/lib/supabase", () => ({
         limit: () =>
           campanha
             ? Promise.resolve({ data: rede.campanhas, error: null })
-            : (rede.consulta ??
-              Promise.resolve({ data: rede.linhas, error: null })),
+            : consumirConsulta(),
       };
       const mutacao = Object.assign(rede.mutacao, { eq: () => mutacao });
       return {
@@ -157,6 +163,12 @@ describe("avisos — respostas atrasadas respeitam as ações da cliente", () =>
         error: null;
       }>();
       rede.consulta = consulta.promessa;
+      // Estado do servidor depois da ação: é o que a consulta nova encontra.
+      if (!acao.includes("campanha")) {
+        rede.linhas = acao.startsWith("excluir")
+          ? []
+          : [{ ...aviso("antigo"), lida: true }];
+      }
       let busca: Promise<void> | undefined;
       await act(async () => {
         busca = espelho.atual!.refresh();
@@ -182,4 +194,42 @@ describe("avisos — respostas atrasadas respeitam as ações da cliente", () =>
       );
     },
   );
+
+  it("uma consulta que começa durante a gravação não faz sumir o aviso novo que só ela trazia", async () => {
+    const update = pendente<{ error: null }>();
+    rede.mutacao = update.promessa;
+    let acao: Promise<void> | undefined;
+    await act(async () => {
+      acao = espelho.atual!.markAsRead("antigo");
+    });
+    const consulta = pendente<{
+      data: Record<string, unknown>[];
+      error: null;
+    }>();
+    rede.consulta = consulta.promessa;
+    let busca: Promise<void> | undefined;
+    await act(async () => {
+      busca = espelho.atual!.refresh();
+    });
+    // O servidor gravou a leitura e já tem o aviso novo.
+    rede.linhas = [{ ...aviso("antigo"), lida: true }, aviso("novo")];
+    await act(async () => {
+      update.resolver({ error: null });
+      await acao;
+    });
+    await act(async () => {
+      consulta.resolver({
+        data: [aviso("antigo"), aviso("novo")],
+        error: null,
+      });
+      await busca;
+    });
+    expect(
+      espelho.atual!.notifications.find((n) => n.id === "novo"),
+    ).toBeDefined();
+    expect(
+      espelho.atual!.notifications.find((n) => n.id === "antigo")?.read,
+    ).toBe(true);
+    expect(espelho.atual!.loading).toBe(false);
+  });
 });
