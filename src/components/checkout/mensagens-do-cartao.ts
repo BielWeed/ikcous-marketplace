@@ -56,8 +56,7 @@ export function categoriaDaRecusa(motivo: unknown): CategoriaDaRecusa {
  * A categoria que o SERVIDOR já classificou (`categoriaDaRecusa` na resposta de
  * `criar-pagamento`, conjunto fechado). Valor fora do conjunto (ausente, lixo,
  * servidor antigo) devolve `null`: quem chama cai no mapa por frase. "O banco
- * pediu confirmação" (3DS não concluído) lê-se na tela como o pedido de
- * autorização no app do banco.
+ * pediu confirmação" (3DS não concluído) lê-se como o aviso geral.
  */
 export function categoriaDoServidor(valor: unknown): CategoriaDaRecusa | null {
   switch (valor) {
@@ -66,8 +65,11 @@ export function categoriaDoServidor(valor: unknown): CategoriaDaRecusa | null {
     case "sem_limite":
       return "sem-limite";
     case "banco_pediu_autorizacao":
-    case "banco_pediu_confirmacao":
       return "autorizacao";
+    // "O banco pediu confirmação" (3DS não concluído) fica no aviso geral, que
+    // mantém "Tentar outro cartão": mandar a pessoa ao app do banco para tentar o
+    // MESMO cartão falharia igual.
+    case "banco_pediu_confirmacao":
     case "outra":
       return "geral";
     default:

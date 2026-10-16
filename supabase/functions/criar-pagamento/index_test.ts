@@ -3010,7 +3010,11 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // cartão responde o 409 NÃO terminal "Muitas tentativas com cartão…" (na
   // lista de recuperáveis, acima), de UM ponto só (`respostaTetoDoCartao`),
   // chamado antes de cancelar um PIX vivo e na criação. 64 + 1 = 65.
-  assertEquals(achados, 65);
+  //
+  // 66, não mais 65: revisão do PR de pagamento (16/10/2026) — pedido de PIX com o
+  // cartão da vaga pago no MP e sem prova no banco responde o mesmo 409 NÃO
+  // terminal "em análise" do ramo (f) (na lista de recuperáveis, acima). 65 + 1 = 66.
+  assertEquals(achados, 66);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -3098,8 +3102,8 @@ Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cart�
 
   assertEquals(
     comOFlag,
-    13,
-    "o campo tem que aparecer em exatamente treze pontos de retorno (12 lugares; 'Há um pagamento...' aparece em 2) — ver a lista no comentário acima",
+    14,
+    "o campo tem que aparecer em exatamente catorze pontos de retorno (12 lugares; 'Há um pagamento...' aparece em 3: sentinela, vaga (f) e cartão já pago sem prova com PIX) — ver a lista no comentário acima",
   );
 });
 
@@ -5620,7 +5624,7 @@ for (
   });
 }
 
-Deno.test("vaga (f): cartão JÁ PAGO na vaga (sem prova de valor, banco 'aguardando') + pedido de PIX -> 200 'aguardando' (nunca 'pago'), nunca um PIX por cima", async () => {
+Deno.test("vaga (f): cartão JÁ PAGO na vaga (sem prova de valor, banco 'aguardando') + pedido de PIX -> 409 cartaoEmAnalise (nunca 'pago'), nunca um PIX por cima", async () => {
   const { supabase } = cenarioCartao({
     pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
   });
@@ -5633,7 +5637,10 @@ Deno.test("vaga (f): cartão JÁ PAGO na vaga (sem prova de valor, banco 'aguard
     fetchImpl: mp.fn,
   });
 
-  assertEquals((await resposta.json()).statusPagamento, "aguardando");
+  const corpo = await resposta.json();
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.cartaoEmAnalise, true);
+  assertEquals(corpo.statusPagamento, undefined);
   assertEquals(mp.criacoes().length, 0);
 });
 
@@ -6876,8 +6883,8 @@ Deno.test("Q1 — cartão em análise (processing) + sentinela: PIX repetido NUN
     fetchImpl: fn,
   });
   const cPixFinal = await rPixFinal.json();
-  assertEquals(rPixFinal.status, 200);
-  assertEquals(cPixFinal.statusPagamento, "aguardando");
+  assertEquals(rPixFinal.status, 409);
+  assertEquals(cPixFinal.cartaoEmAnalise, true);
   assertEquals(db.linha.gateway_payment_id, idOrderCartao);
   assertEquals(chamadasDeCriacao.includes("bank_transfer"), false, "nenhum PIX foi criado — nunca duas cobranças vivas");
 });
@@ -8439,8 +8446,11 @@ Deno.test("BLINDAGEM (guarda): cartão ambíguo -> PIX depois é bloqueado até 
   assertEquals(mp.posts.filter((p) => p.tipo === "bank_transfer").length, 0);
   assertEquals(pix.corpo.qrCode, undefined);
   assertEquals(db.linha.gateway_payment_id, cartoes(mp)[0].id);
-  // Resposta honesta (16/10/2026): sem prova de valor, a order paga não vira 'pago'.
-  assertEquals(pix.corpo.statusPagamento, "aguardando");
+  // Resposta honesta (16/10/2026): sem prova de valor, a order paga não vira
+  // 'pago'; no PIX, a tela recebe o 409 "em análise" (nunca "aguardando" sem QR).
+  assertEquals(pix.status, 409);
+  assertEquals(pix.corpo.cartaoEmAnalise, true);
+  assertEquals(pix.corpo.statusPagamento, undefined);
 });
 
 /**

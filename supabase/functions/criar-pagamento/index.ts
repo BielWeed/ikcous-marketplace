@@ -2437,6 +2437,16 @@ async function handler(
         // expirava com o dinheiro cobrado.
         if (statusNaVaga === "pago") {
           const bancoPago = await confirmarNaReconsulta(orderNaVaga);
+          // Pedido de PIX, cartão pago no MP e o banco ainda sem prova: `aguardando`
+          // sem QR faria a tela do PIX mostrar "não foi possível gerar o QR". O mesmo
+          // 409 do ramo (f) leva à caixa âmbar "em análise", que não deixa pagar de
+          // novo nem cancelar.
+          if (!bancoPago && metodo === "pix") {
+            return json(
+              { error: "Há um pagamento com cartão em análise para este pedido.", cartaoEmAnalise: true },
+              409,
+            );
+          }
           return json(
             {
               paymentId: paymentIdNaVaga,

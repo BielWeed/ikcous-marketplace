@@ -185,7 +185,7 @@ describe("categoriaDoServidor", () => {
     expect(categoriaDoServidor("dados_do_cartao")).toBe("dados");
     expect(categoriaDoServidor("sem_limite")).toBe("sem-limite");
     expect(categoriaDoServidor("banco_pediu_autorizacao")).toBe("autorizacao");
-    expect(categoriaDoServidor("banco_pediu_confirmacao")).toBe("autorizacao");
+    expect(categoriaDoServidor("banco_pediu_confirmacao")).toBe("geral");
     expect(categoriaDoServidor("outra")).toBe("geral");
     for (const lixo of [undefined, null, 3, {}, "", "geral", "SEM_LIMITE"]) {
       expect(categoriaDoServidor(lixo)).toBeNull();
