@@ -411,7 +411,10 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
       assertEquals(r.codigo, 0, r.stderr + r.stdout);
       assertEquals(r.outputs.ref, REF_IKCOUS_PUBLICADA);
       assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
-      assertStringIncludes(r.stdout, `Projeto: ikcous-publicada (${REF_IKCOUS_PUBLICADA})`);
+      assertStringIncludes(
+        r.stdout,
+        `Projeto: ikcous-publicada (${REF_IKCOUS_PUBLICADA})`,
+      );
     },
   );
 
@@ -500,7 +503,7 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
       for (const projeto of ["almeida", "brandmeliz", "spacelojadoskit"]) {
         const r = await validar(projeto, "cobranca", "a".repeat(40));
         assertEquals(r.codigo, 1, projeto);
-        assertStringIncludes(r.stdout, "projeto desconhecido: " + projeto);
+        assertStringIncludes(r.stdout, `projeto desconhecido: ${projeto}`);
         assertEquals(r.outputs, {});
       }
     },
@@ -905,10 +908,7 @@ Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy,
       for (const pedido of [CONFIRMACAO, `criar-pagamento,${CONFIRMACAO}`]) {
         const r = await validar("almeida", pedido, sha);
         assertEquals(r.codigo, 1, pedido);
-        assertStringIncludes(
-          r.stdout,
-          "projeto desconhecido: almeida",
-        );
+        assertStringIncludes(r.stdout, "projeto desconhecido: almeida");
         assertEquals(r.outputs, {});
       }
     },
@@ -1060,10 +1060,7 @@ Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, p
             1,
             `almeida: "${pedido}" deveria ser recusado`,
           );
-          assertStringIncludes(
-            r.stdout,
-            "projeto desconhecido: almeida",
-          );
+          assertStringIncludes(r.stdout, "projeto desconhecido: almeida");
           assertEquals(
             r.outputs,
             {},
@@ -1096,12 +1093,7 @@ Deno.test("publicar-functions: as cinco nomeadas (frete, aviso, OTP, etiqueta, p
   await t.step(
     "a send-order-whatsapp segue proibida em TODOS os destinos, mesmo junto das cinco",
     async () => {
-      for (const projeto of [
-        "ikcous-publicada",
-        "savy",
-        "loja",
-        "sandbox",
-      ]) {
+      for (const projeto of ["ikcous-publicada", "savy", "loja", "sandbox"]) {
         const r = await validar(projeto, "send-order-whatsapp", sha);
         assertEquals(r.codigo, 1, projeto);
         assertStringIncludes(r.stdout, "send-order-whatsapp foi despublicada");
@@ -1251,10 +1243,7 @@ Deno.test("publicar-functions: a credenciais-email (e-mail da loja no painel) so
       ]) {
         const r = await validar("almeida", pedido, sha);
         assertEquals(r.codigo, 1, pedido);
-        assertStringIncludes(
-          r.stdout,
-          "projeto desconhecido: almeida",
-        );
+        assertStringIncludes(r.stdout, "projeto desconhecido: almeida");
         assertEquals(r.outputs, {});
       }
     },
