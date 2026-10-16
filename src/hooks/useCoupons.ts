@@ -158,15 +158,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
 
       if (rodada !== rodadaRef.current) return;
 
-      if (error) {
-        if (error.code === "PGRST116") {
-          console.warn("Coupons access restricted to admins or active items.");
-          setCoupons([]);
-          setCachedCouponsData([]);
-          return;
-        }
-        throw error;
-      }
+      if (error) throw error;
 
       // PAINEL-12 + frente B: o mapeador único do cupom (usage_count só, `?? 0`;
       // alcance: banco sem a coluna = secreto).
@@ -176,15 +168,13 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       setCachedCouponsData(formattedCoupons);
       setCoupons(formattedCoupons);
       setErroDaListagem(null);
-    } catch (error: any) {
+    } catch (error) {
       if (rodada !== rodadaRef.current) return;
       console.error("Error fetching coupons:", error);
-      if (error.code !== "PGRST116") {
-        setErroDaListagem(
-          "Não conseguimos carregar os cupons agora. Seus cupons não sumiram.",
-        );
-        toast.error("Não foi possível carregar os cupons.");
-      }
+      setErroDaListagem(
+        "Não conseguimos carregar os cupons agora. Seus cupons não sumiram.",
+      );
+      toast.error("Não foi possível carregar os cupons.");
     } finally {
       if (rodada === rodadaRef.current) setLoading(false);
     }
