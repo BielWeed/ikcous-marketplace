@@ -344,6 +344,28 @@ export const OPCOES_DE_AVISO_AO_LOJISTA = {
   urgency: webpush.Urgency.High,
 } as const;
 
+// A corrida limita a espera mesmo se a promessa nunca assentar, e limpa o
+// timer quando a operação termina. Ela não cancela o envio que já começou.
+// Uma resposta tardia não altera a contagem nem dispara limpeza de inscrição.
+async function esperarComLimite<T>(
+  operacao: () => PromiseLike<T>,
+  ms: number,
+): Promise<T> {
+  const erro = new Error("Tempo limite do push excedido; falha temporária");
+  if (ms <= 0) throw erro;
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operacao(),
+      new Promise<never>((_, reject) => {
+        temporizador = setTimeout(() => reject(erro), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
+
 /**
  * Envia em lotes de 100 e devolve UM item por inscrição, na ordem de entrada.
  *
@@ -353,6 +375,10 @@ export const OPCOES_DE_AVISO_AO_LOJISTA = {
  * `opcoesDeEnvio` ({ urgency, ttl, topic }) vai direto para `pushTextMessage`.
  * Ausente, o envio é byte a byte o de antes (`{}`: urgência normal, TTL de 28
  * dias) — é o caso da campanha para clientes. Ver `OPCOES_DE_AVISO_AO_LOJISTA`.
+ *
+ * Cada envio/remoção espera no máximo `tempoLimitePorEnvioMs`. A campanha
+ * passa também `prazoFinalMs`, que limita toda a espera do lote ao orçamento
+ * restante, inclusive a limpeza em série depois do envio.
  */
 export async function enviarParaInscritos({
   servidor,
@@ -362,8 +388,12 @@ export async function enviarParaInscritos({
   tamanhoDoLote = 100,
   rotulo = "push",
   opcoesDeEnvio = {},
+  tempoLimitePorEnvioMs = 10_000,
+  prazoFinalMs = Infinity,
 }: any) {
   const itens: any[] = [];
+  const tempoRestante = () =>
+    Math.min(tempoLimitePorEnvioMs, prazoFinalMs - Date.now());
 
   for (let i = 0; i < inscricoes.length; i += tamanhoDoLote) {
     const lote = inscricoes.slice(i, i + tamanhoDoLote);
@@ -375,12 +405,15 @@ export async function enviarParaInscritos({
     const respostas = await Promise.all(
       lote.map(async (sub: any) => {
         try {
-          await servidor
-            .subscribe({
-              endpoint: sub.endpoint,
-              keys: { p256dh: sub.p256dh, auth: sub.auth },
-            })
-            .pushTextMessage(mensagem, opcoesDeEnvio);
+          await esperarComLimite(
+            () => servidor
+              .subscribe({
+                endpoint: sub.endpoint,
+                keys: { p256dh: sub.p256dh, auth: sub.auth },
+              })
+              .pushTextMessage(mensagem, opcoesDeEnvio),
+            tempoRestante(),
+          );
           return { sub, erro: null };
         } catch (erro) {
           return { sub, erro };
@@ -400,7 +433,13 @@ export async function enviarParaInscritos({
       let removida = false;
       if (inscricaoMorta && aoDetectarMorta) {
         try {
-          await aoDetectarMorta(sub.endpoint);
+          const resultado = await esperarComLimite<{ error?: unknown } | void>(
+            () => aoDetectarMorta(sub.endpoint),
+            tempoRestante(),
+          );
+          // PostgREST resolve com { error } mesmo quando o DELETE falha.
+          // Callbacks antigos de teste que retornam void continuam válidos.
+          if (resultado && resultado.error != null) throw resultado.error;
           removida = true;
         } catch (erroDaRemocao) {
           console.error(

@@ -17,6 +17,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import { comTempoLimite } from "../_shared/webpush.ts";
 import {
   base64UrlParaBytes,
   bytesParaBase64Url,
@@ -621,6 +622,70 @@ Deno.test("enviarComOrcamentoDeTempo corta quando o tempo estoura e reporta os n
   assertEquals(itens.length, 2);
   assertEquals(itens.every((i: any) => i.ok), true);
   assertEquals(naoTentados, 3);
+});
+
+Deno.test("enviarComOrcamentoDeTempo limita lote pendurado ao orçamento e conta os não tentados", async () => {
+  const tentadas: string[] = [];
+  const inscricoes = ["pendurada", "rapida", "sem-tentativa-1", "sem-tentativa-2"].map((id) => ({
+    endpoint: `https://push.example/${id}`,
+    p256dh: "x",
+    auth: "y",
+  }));
+  const resultado = await comTempoLimite(enviarComOrcamentoDeTempo({
+    servidor: {
+      subscribe: ({ endpoint }: { endpoint: string }) => ({
+        pushTextMessage: () => {
+          tentadas.push(endpoint);
+          return endpoint.endsWith("/pendurada")
+            ? new Promise<void>(() => {})
+            : Promise.resolve();
+        },
+      }),
+    },
+    inscricoes,
+    mensagem: "{}",
+    tamanhoDoLote: 2,
+    tempoLimitePorEnvioMs: 10_000,
+    orcamentoMs: 20,
+  }), 1_000);
+
+  assert(resultado, "o orçamento limita a espera mesmo com envio pendurado");
+  assertEquals(tentadas, inscricoes.slice(0, 2).map((sub) => sub.endpoint));
+  assertEquals(resultado.itens.map((item: { ok: boolean }) => item.ok), [false, true]);
+  assertEquals(resultado.naoTentados, 2);
+});
+
+Deno.test("enviarComOrcamentoDeTempo limita DELETE pendurado e preserva contagens", async () => {
+  const consoleError = console.error;
+  console.error = () => {};
+  try {
+    const resultado = await comTempoLimite(enviarComOrcamentoDeTempo({
+      servidor: {
+        subscribe: ({ endpoint }: { endpoint: string }) => ({
+          pushTextMessage: () => endpoint.endsWith("/morta")
+            ? Promise.reject({ response: new Response(null, { status: 410 }) })
+            : Promise.resolve(),
+        }),
+      },
+      inscricoes: ["morta", "rapida", "sem-tentativa"].map((id) => ({
+        endpoint: `https://push.example/${id}`,
+        p256dh: "x",
+        auth: "y",
+      })),
+      mensagem: "{}",
+      tamanhoDoLote: 2,
+      orcamentoMs: 20,
+      aoDetectarMorta: () => new Promise<void>(() => {}),
+    }), 1_000);
+
+    assert(resultado, "a limpeza de inscrições também respeita o orçamento");
+    assertEquals(resumir(resultado.itens).enviados, 1);
+    assertEquals(resumir(resultado.itens).falharam, 1);
+    assertEquals(resumir(resultado.itens).removidas, 0);
+    assertEquals(resultado.naoTentados, 1);
+  } finally {
+    console.error = consoleError;
+  }
 });
 
 Deno.test("enviarComOrcamentoDeTempo com orçamento já estourado não tenta nenhuma", async () => {
