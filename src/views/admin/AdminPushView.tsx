@@ -903,9 +903,8 @@ export const AdminPushView = memo(function AdminPushView({
         avisoNoAppFalhou = true;
       }
 
-      const { data: envio, error: pushError } = await supabase.functions.invoke(
-        "send-push",
-        {
+      const { data: envio, error: pushError } = await supabase.functions
+        .invoke("send-push", {
           body: {
             title: notification.title,
             body: notification.body,
@@ -915,8 +914,8 @@ export const AdminPushView = memo(function AdminPushView({
               keys: { p256dh: t.p256dh, auth: t.auth },
             })),
           },
-        },
-      );
+        })
+        .catch((error: unknown) => ({ data: null, error }));
 
       // A resposta agora traz contagem de verdade. Até 05/08/2026 a função
       // devolvia `{ success: true }` mesmo com todos os envios falhando, e esta
@@ -924,12 +923,15 @@ export const AdminPushView = memo(function AdminPushView({
       // cima de zero entrega. Ver PUSH-010 (#80).
       const entregues = Number(envio?.enviados ?? 0);
       const falharam = Number(envio?.falharam ?? 0);
+      // Sem contagem válida, o resultado continua desconhecido.
+      const envioConfirmado =
+        !pushError && Number.isInteger(envio?.enviados) && envio.enviados >= 0;
       const primeiraFalha = envio?.falhas?.[0];
       const detalheDaFalha = primeiraFalha
         ? `${primeiraFalha.quantidade}x ${primeiraFalha.motivo}`
         : undefined;
 
-      if (entregues > 0) {
+      if (envioConfirmado && entregues > 0) {
         const { error: ajusteError } = await supabase
           .from("push_notifications_log")
           .update({ recipient_count: entregues })
@@ -942,13 +944,11 @@ export const AdminPushView = memo(function AdminPushView({
         }
       }
 
-      if (pushError) {
-        // A função recusou a requisição inteira: chave VAPID ausente, sessão
-        // sem permissão de admin, corpo inválido. Nada saiu.
-        console.error("send-push recusou a requisição:", pushError);
-        toast.error("Nenhum push saiu", {
+      if (!envioConfirmado) {
+        console.error("Envio de push não confirmado:", pushError);
+        toast.error("Não foi possível confirmar o envio", {
           description:
-            "A função de envio recusou a requisição. O registro ficou salvo com 0 entregas.",
+            "Sua campanha foi mantida. Alguns clientes podem ter recebido. Se enviar de novo, eles podem receber a mensagem repetida.",
         });
       } else if (entregues === 0) {
         toast.error(`Nenhum dos ${finalRecipientCount} dispositivos recebeu`, {
@@ -994,7 +994,7 @@ export const AdminPushView = memo(function AdminPushView({
           segment,
         },
         {
-          status: pushError
+          status: !envioConfirmado
             ? "error"
             : entregues === 0
               ? "error"
@@ -1008,8 +1008,10 @@ export const AdminPushView = memo(function AdminPushView({
         },
       );
 
-      setNotification({ title: "", body: "", url: "/" });
-      setCustomPath("");
+      if (envioConfirmado && entregues > 0) {
+        setNotification({ title: "", body: "", url: "/" });
+        setCustomPath("");
+      }
       fetchHistory();
     } catch (error) {
       console.error("Error sending push:", error);
