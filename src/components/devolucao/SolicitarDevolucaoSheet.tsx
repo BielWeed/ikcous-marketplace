@@ -28,6 +28,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { DadosDaSolicitacao, Desfecho } from "@/hooks/useDevolucaoCliente";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   GRUPOS_DE_MOTIVO,
@@ -337,6 +338,13 @@ function FluxoDaDevolucao({
     aoMudarRascunho(estadoDoRascunho);
     return () => aoMudarRascunho("nenhum");
   }, [estadoDoRascunho, aoMudarRascunho]);
+  // Texto, motivo ou foto escolhida só existem nesta folha: recarregar o app
+  // (atualização obrigatória, ao ir para segundo plano) apagaria tudo. A
+  // atualização espera enquanto houver rascunho ou envio em curso.
+  useEffect(() => {
+    if (estadoDoRascunho === "nenhum") return;
+    return marcarOperacaoSensivel("rascunho-de-devolucao");
+  }, [estadoDoRascunho]);
 
   const tipo = motivo ? tipoPrevisto(motivo, janelas) : null;
   const permitidas = resolucoesPermitidas(motivo, janelas, politica);

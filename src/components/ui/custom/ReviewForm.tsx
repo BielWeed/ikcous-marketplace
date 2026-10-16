@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { useReviews } from "@/hooks/useReviews";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Star } from "lucide-react";
@@ -61,6 +62,12 @@ export function ReviewForm({
       temTextoRef.current = false;
     };
   }, [temTexto, temTextoRef]);
+  // O comentário digitado só existe neste formulário: recarregar o app
+  // (atualização obrigatória, ao ir para segundo plano) o apagaria.
+  useEffect(() => {
+    if (!temTexto) return;
+    return marcarOperacaoSensivel("avaliacao-em-digitacao");
+  }, [temTexto]);
 
   async function onSubmit(values: z.infer<typeof reviewSchema>) {
     setIsSubmitting(true);
