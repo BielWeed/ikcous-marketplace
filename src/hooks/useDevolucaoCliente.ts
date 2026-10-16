@@ -82,15 +82,21 @@ export function useDevolucaoCliente(
     useState<ElegibilidadeDevolucao | null>(null);
   const [devolucoes, setDevolucoes] = useState<ResumoDevolucao[]>([]);
   const [atual, setAtual] = useState<DevolucaoDetalhe | null>(null);
+  // Pedido a que os dados acima pertencem: no primeiro render depois da troca
+  // de `orderId` o estado ainda é do pedido anterior (a limpeza roda num efeito).
+  const [idDosDados, setIdDosDados] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(false);
   const ativoRef = useRef(true);
+  const orderIdRef = useRef(orderId);
   // Rodada da leitura: a resposta velha que chega depois da nova não pinta
   // a tela (mesmo padrão de useAvisosDoLojista).
   const rodadaRef = useRef(0);
 
   const carregar = useCallback(async () => {
-    if (!habilitado) return;
+    if (!habilitado || !ativoRef.current || orderIdRef.current !== orderId) {
+      return;
+    }
     const rodada = ++rodadaRef.current;
     const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     setCarregando(true);
@@ -129,6 +135,7 @@ export function useDevolucaoCliente(
       setElegibilidade(lida);
       setDevolucoes(lista);
       setAtual(detalhe);
+      setIdDosDados(orderId);
       setErro(false);
     } catch {
       // Inclui o cliente sem `rpc` (dublê de teste antigo) e a rede caída:
@@ -141,11 +148,20 @@ export function useDevolucaoCliente(
 
   useEffect(() => {
     ativoRef.current = true;
+    orderIdRef.current = orderId;
+    // Outro pedido começa sem dados nem erro da leitura anterior.
+    setAtual(null);
+    setElegibilidade(null);
+    setDevolucoes([]);
+    setIdDosDados(null);
+    setErro(false);
+    setCarregando(false);
     if (habilitado) void carregar();
     return () => {
       ativoRef.current = false;
+      rodadaRef.current += 1;
     };
-  }, [habilitado, carregar]);
+  }, [orderId, habilitado, carregar]);
 
   const solicitar = useCallback(
     async (
@@ -292,10 +308,11 @@ export function useDevolucaoCliente(
     [carregar],
   );
 
+  const dadosSaoDesteId = idDosDados === orderId;
   return {
-    elegibilidade,
-    devolucoes,
-    atual,
+    elegibilidade: dadosSaoDesteId ? elegibilidade : null,
+    devolucoes: dadosSaoDesteId ? devolucoes : [],
+    atual: dadosSaoDesteId ? atual : null,
     carregando,
     erro,
     recarregar: carregar,
