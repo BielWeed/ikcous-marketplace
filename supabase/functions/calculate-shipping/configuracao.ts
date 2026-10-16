@@ -23,6 +23,11 @@ import {
     VERSAO_DA_COTACAO_SUPERFRETE,
 } from './provedores.ts'
 import { type EstrategiaNacional, estrategiaNacionalDaLinha } from './estrategia-nacional.ts'
+import {
+    blocoDaEntregaPropriaNaRevisao,
+    type EntregaPropria,
+    entregaPropriaDaLinha,
+} from './entrega-propria.ts'
 
 /** As linhas especiais de `store_shipping_credentials` que NÃO são provedor. */
 export const LINHA_DOS_LIGADOS = '_ligados'
@@ -41,6 +46,37 @@ export const COLUNAS_DA_LOJA =
  */
 export const COLUNAS_NACIONAIS =
     'national_shipping_strategy, national_shipping_min, national_discount_type, national_discount_value, national_benefit_scope'
+
+/**
+ * As 2 colunas da ENTREGA PRÓPRIA (16/10/2026): o modo "Só retiro" e o prazo
+ * da Entrega Local. Mesma regra das nacionais: consulta SEPARADA e tolerante,
+ * NUNCA somada a `COLUNAS_DA_LOJA` — em banco antes da migration, o select
+ * principal (do qual a cotação inteira depende) continuaria funcionando;
+ * misturado ali, quebraria a cotação de TODA cliente.
+ */
+export const COLUNAS_DA_ENTREGA_PROPRIA = 'local_delivery_enabled, local_delivery_days'
+
+/**
+ * Leitura tolerante das 2 colunas da entrega própria: `{ok:true, entrega}`
+ * quando a linha bate com o CHECK da migration; `{ok:false}` em erro do
+ * PostgREST (banco sem as colunas — `42703`), exceção, ou linha com forma
+ * inesperada. Quem chama cai no comportamento de hoje (entrega ligada, 1
+ * dia) e NÃO põe nada na `revisaoConfig`.
+ */
+export async function lerEntregaPropriaDaLoja(supabase: any): Promise<{ ok: true; entrega: EntregaPropria } | { ok: false }> {
+    try {
+        const { data, error } = await supabase
+            .from('store_config')
+            .select(COLUNAS_DA_ENTREGA_PROPRIA)
+            .eq('id', 1)
+            .maybeSingle()
+        if (error || !data) return { ok: false }
+        const entrega = entregaPropriaDaLinha(data)
+        return entrega ? { ok: true, entrega } : { ok: false }
+    } catch {
+        return { ok: false }
+    }
+}
 
 /**
  * Leitura tolerante das 5 colunas nacionais: `{ok:true, estrategia}` quando a
@@ -155,12 +191,19 @@ export function conjuntoLigado(config: any, linhas: Map<string, any>): ConjuntoL
  * hash SÓ quando a leitura tolerante teve sucesso (`estrategiaNacional`
  * não-nulo) — banco antigo (sem as colunas, `null` aqui) mantém EXATAMENTE o
  * hash de hoje, byte a byte.
+ *
+ * `entregaPropria` (16/10/2026): o mesmo molde. O bloco `entrega_propria`
+ * entra em `loja` SÓ quando a leitura teve sucesso (não-nulo) E a loja está
+ * fora do padrão (só retiro, ou prazo diferente de 1 dia) — loja no padrão,
+ * banco sem as colunas ou leitura que falhou mantêm o hash de hoje, byte a
+ * byte.
  */
 export async function calcularRevisaoConfig(
     config: any,
     linhas: Map<string, any>,
     revisao: string | null,
     estrategiaNacional: EstrategiaNacional | null = null,
+    entregaPropria: EntregaPropria | null = null,
 ): Promise<string> {
     const { ligados } = conjuntoLigado(config, linhas)
     const linhaDosLigados = linhas.get(LINHA_DOS_LIGADOS)
@@ -184,6 +227,7 @@ export async function calcularRevisaoConfig(
                     national_benefit_scope: estrategiaNacional.alcance,
                 }
                 : {}),
+            ...blocoDaEntregaPropriaNaRevisao(entregaPropria),
         },
         provedores: ligados.map((p) => {
             const linha = linhas.get(p)
@@ -293,7 +337,8 @@ export function cotacaoDoCacheServe(options: unknown, assinatura: string): boole
  * pública e testes). Também lê a estratégia nacional (tolerante — banco sem
  * as colunas não muda o hash) para que o `revisao_config_frete` público (que
  * invalida o cache do celular) reaja a uma mudança de estratégia nacional
- * como reage a qualquer outra mudança de configuração.
+ * como reage a qualquer outra mudança de configuração. O mesmo vale para a
+ * entrega própria (modo e prazo): a leitura tolerante dela também entra.
  */
 export async function revisaoConfigDaLoja(supabase: any): Promise<string | null> {
     const revisao = await lerRevisao(supabase)
@@ -303,5 +348,12 @@ export async function revisaoConfigDaLoja(supabase: any): Promise<string | null>
     const credenciais = await lerCredenciais(supabase)
     if (!credenciais.ok) return null
     const leituraNacional = await lerEstrategiaNacionalDaLoja(supabase)
-    return await calcularRevisaoConfig(config, credenciais.linhas, revisao.revisao, leituraNacional.ok ? leituraNacional.estrategia : null)
+    const leituraEntrega = await lerEntregaPropriaDaLoja(supabase)
+    return await calcularRevisaoConfig(
+        config,
+        credenciais.linhas,
+        revisao.revisao,
+        leituraNacional.ok ? leituraNacional.estrategia : null,
+        leituraEntrega.ok ? leituraEntrega.entrega : null,
+    )
 }

@@ -146,6 +146,8 @@ export type Registro = {
     updatesConfig: any[]
     deletesCache: number
     cacheLinhas: any[]
+    /** Quantas vezes a cotação foi buscar `store_address` (a retirada só lê quando vai oferecer). */
+    leiturasDeEndereco: number
 }
 
 export function bancoFalso(opts: {
@@ -168,6 +170,14 @@ export function bancoFalso(opts: {
          * coluna ausente (os dois viram `{ok:false}`, espelho legado).
          */
         colunasNacionais?: boolean
+        /**
+         * Simula banco ANTES da migration da entrega própria: QUALQUER select
+         * de `store_config` que cite `local_delivery_enabled` ou
+         * `local_delivery_days` volta com o erro `42703` do PostgREST — o
+         * select separado E o principal. É o que prova que a coluna nova
+         * nunca entrou na lista que a cotação inteira depende.
+         */
+        colunasDaEntrega?: boolean
     }
 } = {}) {
     const config = { ...CONFIG_BASE, ...(opts.config ?? {}) }
@@ -182,6 +192,7 @@ export function bancoFalso(opts: {
         updatesConfig: [],
         deletesCache: 0,
         cacheLinhas: (opts.cache ?? []).map((l) => structuredClone(l)),
+        leiturasDeEndereco: 0,
     }
 
     const construtor = (tabela: string, operacao: string, carga?: any, opcoesUpsert?: any) => {
@@ -198,7 +209,14 @@ export function bancoFalso(opts: {
                     Object.assign(config, carga)
                     return { error: null }
                 }
+                if (falhas.colunasDaEntrega && (colunas.includes("local_delivery_enabled") || colunas.includes("local_delivery_days"))) {
+                    return {
+                        data: null,
+                        error: { message: "column store_config.local_delivery_enabled does not exist", code: "42703" },
+                    }
+                }
                 if (colunas.includes("store_address")) {
+                    registro.leiturasDeEndereco += 1
                     return { data: { store_address: opts.enderecoDaLoja ?? null }, error: null }
                 }
                 // Estratégia NACIONAL (23/09): leitura SEPARADA e tolerante
