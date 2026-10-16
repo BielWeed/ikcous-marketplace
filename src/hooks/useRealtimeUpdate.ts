@@ -10,7 +10,7 @@ import { useEffect, useRef } from "react";
  * Abas secundárias recebem os pings via BroadcastChannel local.
  *
  * Peça 22/09: este hook NÃO avisa por conta própria — nenhum toast aqui.
- * O ÚNICO avisador de atualização é o gate (UpdateNotification via
+ * O ÚNICO avisador de atualização é o gate (o gate de atualização via
  * useUpdateCheck), que respeita "Depois"/soneca, telas de compra e admin
  * dirty. O papel do ping é só acionar o deep checkUpdate (e propagar o ping
  * às abas secundárias).
