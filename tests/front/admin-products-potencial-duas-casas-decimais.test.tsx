@@ -233,6 +233,11 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
     await act(async () => {
       await esperarMicrotarefas();
     });
+    const abrir = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-controls="metricas-produto-prod-1"]',
+    );
+    expect(abrir).not.toBeNull();
+    await act(async () => abrir?.click());
   }
 
   function cartaoDoProduto(): HTMLElement {
