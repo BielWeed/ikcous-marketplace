@@ -1189,7 +1189,9 @@ interface OrderNotesCardProps {
   isSavingNotes: boolean;
   isOffline: boolean;
   notesStatus: "loading" | "ready" | "error";
+  abrindoEdicao: boolean;
   onRetry: () => void;
+  onEditNotes: () => void;
   setNotesValue: (val: string) => void;
   setIsEditingNotes: (val: boolean) => void;
   onSaveNotes: () => void;
@@ -1203,7 +1205,9 @@ function OrderNotesCard({
   isSavingNotes,
   isOffline,
   notesStatus,
+  abrindoEdicao,
   onRetry,
+  onEditNotes,
   setNotesValue,
   setIsEditingNotes,
   onSaveNotes,
@@ -1242,11 +1246,12 @@ function OrderNotesCard({
         >
           Anotações internas
         </label>
-        <p className="text-xs text-zinc-400">
+        <p id="notes-ajuda" className="text-xs text-zinc-400">
           Só você e sua equipe veem esta anotação. A cliente não vê.
         </p>
         <textarea
           id="notes-textarea"
+          aria-describedby="notes-ajuda"
           name="notes"
           autoComplete="off"
           maxLength={2000}
@@ -1302,8 +1307,8 @@ function OrderNotesCard({
         </div>
         <Button
           variant="ghost"
-          onClick={() => setIsEditingNotes(true)}
-          disabled={isOffline}
+          onClick={onEditNotes}
+          disabled={isOffline || abrindoEdicao}
           className="flex h-10 shrink-0 items-center gap-1 rounded-xl px-3 text-sm font-medium text-admin-gold hover:bg-admin-gold/10 hover:text-admin-gold active:scale-95 disabled:pointer-events-none disabled:opacity-40"
         >
           <Plus className="size-4" />
@@ -1323,8 +1328,8 @@ function OrderNotesCard({
         </h3>
         <Button
           variant="ghost"
-          onClick={() => setIsEditingNotes(true)}
-          disabled={isOffline}
+          onClick={onEditNotes}
+          disabled={isOffline || abrindoEdicao}
           className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-zinc-300 hover:bg-white/5 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
         >
           <Edit3 className="size-4 text-zinc-400" />
@@ -1381,6 +1386,10 @@ export const OrderDetail = memo(function OrderDetail({
     estado: OrderNotesCardProps["notesStatus"];
   }>({ pedidoId: order.id, estado: "loading" });
   const [tentativaNotas, setTentativaNotas] = useState(0);
+  const [abrindoEdicao, setAbrindoEdicao] = useState(false);
+  // Gravações da anotação de um pedido saem uma por vez, na ordem pedida: a
+  // resposta atrasada de uma não pode chegar ao banco depois da seguinte.
+  const filaNotasRef = useRef(new Map<string, Promise<unknown>>());
   const notesStatus =
     leituraNotas.pedidoId === order.id ? leituraNotas.estado : "loading";
 
@@ -1609,10 +1618,6 @@ export const OrderDetail = memo(function OrderDetail({
     setIsSavingNotes(false);
     salvamentoNotasRef.current++;
     salvamentoRastreioRef.current++;
-    return () => {
-      salvamentoNotasRef.current++;
-      salvamentoRastreioRef.current++;
-    };
   }, [order.id]);
 
   const itemsSerialized = JSON.stringify(
@@ -1810,6 +1815,36 @@ export const OrderDetail = memo(function OrderDetail({
     }
   };
 
+  // Abrir o editor relê a anotação: outra aba pode ter salvado depois que a
+  // ficha abriu, e salvar por cima apagaria o que esta aba nunca viu.
+  const handleEditNotes = async () => {
+    const pedidoId = order.id;
+    const salvamento = salvamentoNotasRef.current;
+    setAbrindoEdicao(true);
+    try {
+      const { data, error } = await supabase
+        .from("marketplace_order_internal_notes")
+        .select("note")
+        .eq("order_id", pedidoId)
+        .maybeSingle();
+      if (
+        orderIdAtualRef.current !== pedidoId ||
+        salvamentoNotasRef.current !== salvamento
+      )
+        return;
+      if (error) throw error;
+      setLocalNotes(data?.note || "");
+      setNotesValue(data?.note || "");
+      setIsEditingNotes(true);
+    } catch {
+      if (orderIdAtualRef.current === pedidoId) {
+        toast.error("Não consegui abrir a edição. Tente de novo.");
+      }
+    } finally {
+      setAbrindoEdicao(false);
+    }
+  };
+
   const handleSaveNotes = async () => {
     if (isOffline || isSavingNotes || notesStatus !== "ready") return;
     const note = notesValue.trim();
@@ -1825,12 +1860,20 @@ export const OrderDetail = memo(function OrderDetail({
     try {
       setIsSavingNotes(true);
       const tabela = supabase.from("marketplace_order_internal_notes");
-      const { error } = await (note
-        ? tabela.upsert(
-            { order_id: pedidoId, note },
-            { onConflict: "order_id" },
-          )
-        : tabela.delete().eq("order_id", pedidoId));
+      const gravar = () =>
+        note
+          ? tabela.upsert(
+              { order_id: pedidoId, note },
+              { onConflict: "order_id" },
+            )
+          : tabela.delete().eq("order_id", pedidoId);
+      const fila = filaNotasRef.current;
+      const vez = (fila.get(pedidoId) ?? Promise.resolve()).then(gravar);
+      fila.set(
+        pedidoId,
+        vez.catch(() => undefined),
+      );
+      const { error } = await vez;
 
       // A resposta só pode alterar a ficha deste pedido E deste salvamento.
       if (!vigente()) return;
@@ -1839,8 +1882,9 @@ export const OrderDetail = memo(function OrderDetail({
       setNotesValue(note);
       setIsEditingNotes(false);
       toast.success("Anotação interna salva!");
-    } catch {
+    } catch (err) {
       if (!vigente()) return;
+      console.error("Error saving internal note:", err);
       toast.error("Erro ao salvar anotação interna.");
     } finally {
       if (vigente()) setIsSavingNotes(false);
@@ -2030,6 +2074,8 @@ export const OrderDetail = memo(function OrderDetail({
             isSavingNotes={isSavingNotes}
             isOffline={isOffline}
             notesStatus={notesStatus}
+            abrindoEdicao={abrindoEdicao}
+            onEditNotes={handleEditNotes}
             onRetry={() => setTentativaNotas((tentativa) => tentativa + 1)}
             setNotesValue={setNotesValue}
             setIsEditingNotes={setIsEditingNotes}
