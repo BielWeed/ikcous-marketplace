@@ -125,9 +125,7 @@ describe("Início: cada número diz o conceito e a janela", () => {
       raiz.render(<AdminDashboardView active={true} onNavigate={onNavigate} />);
     });
     await esperarAte(() => texto(hospedeiro).includes("Este mês"));
-    await esperarAte(() =>
-      texto(hospedeiro).includes("Previsto no Financeiro"),
-    );
+    await esperarAte(() => texto(hospedeiro).includes("R$ 1.200,50"));
   }
 
   beforeEach(async () => {
@@ -166,34 +164,36 @@ describe("Início: cada número diz o conceito e a janela", () => {
     hospedeiro.remove();
     await montar({ ...PAINEL, mes: { ...PAINEL.mes, receita: 0 } });
     expect(texto(hospedeiro)).toContain(
-      "Do Financeiro: vendas menos devoluções, custo dos produtos e despesas do mês",
+      "Desconta estornos, devoluções, custos e despesas, mesmo não pagas. Sem custo cadastrado, usa R$ 0 de custo.",
     );
   });
 
   it("(b) 'Contas vencidas' aparece uma vez (no Para fazer) e 'A pagar (vencidas + próximos 7 dias)' leva ao Financeiro", () => {
     const pagina = texto(hospedeiro);
-    expect(ocorrencias(pagina, "Contas vencidas")).toBe(1);
-    expect(pagina).toContain("Devoluções abertas");
+    expect(ocorrencias(pagina, "2 contas vencidas")).toBe(1);
+    expect(pagina).toContain("1 devolução aberta");
 
     const paraFazer = hospedeiro.querySelector(
       '[aria-labelledby="inicio-para-fazer-titulo"]',
     );
-    expect(texto(paraFazer)).toContain("Contas vencidas");
+    expect(texto(paraFazer)).toContain("2 contas vencidas");
 
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      texto(b).includes("A pagar (vencidas + próximos 7 dias)"),
+      (b.getAttribute("aria-label") ?? "").startsWith("A pagar —"),
     );
     expect(botao).toBeTruthy();
+    expect(texto(botao ?? null)).toContain("Vencidas + próximos 7 dias");
     act(() => botao?.click());
     expect(onNavigate).toHaveBeenCalledWith("admin-financeiro");
   });
 
   it("(b2) 'A pagar (vencidas + próximos 7 dias)' é um botão-linha novo (rounded-2xl, gradiente, min-h-11)", () => {
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      texto(b).includes("A pagar (vencidas + próximos 7 dias)"),
+      (b.getAttribute("aria-label") ?? "").startsWith("A pagar —"),
     );
     expect(botao).toBeTruthy();
-    for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {
+    expect(texto(botao ?? null)).toContain("Vencidas + próximos 7 dias");
+    for (const classe of ["rounded-2xl", "min-h-11", "transition-colors"]) {
       expect(botao?.classList.contains(classe)).toBe(true);
     }
     expect(

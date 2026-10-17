@@ -302,7 +302,7 @@ describe("Novidades do app na central do lojista", () => {
     },
   );
 
-  it("fica antes dos avisos, com seção e botões acessíveis", async () => {
+  it("ordena Precisa de você, De olho e Novidades, com atalho e botões acessíveis", async () => {
     guardar([NOVA]);
     await montar();
 
@@ -313,12 +313,54 @@ describe("Novidades do app na central do lojista", () => {
       "Novidades do app",
     );
     const secoes = Array.from(hospedeiro.querySelectorAll("section"));
-    expect(secoes[0]).toBe(secao);
+    expect(secoes.map((no) => no.getAttribute("data-bloco") ?? no)).toEqual([
+      "precisa-de-voce",
+      "de-olho",
+      secao,
+    ]);
+    const atalho = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[data-atalho="novidades"]',
+    );
+    expect(atalho?.textContent).toContain("1 novidade não lida");
+    expect(atalho?.classList.contains("min-h-11")).toBe(true);
+    // Foca o título por JS e NÃO navega: um hash dispararia popstate (= Voltar).
+    const antes = window.location.href;
+    const titulo = document.getElementById(tituloId ?? "");
+    // O título já nasce focável por JS (tabindex -1): o teste não o repõe.
+    expect(titulo?.getAttribute("tabindex")).toBe("-1");
+    // O jsdom não implementa a rolagem; o foco é o que se prova aqui.
+    const rolagem = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: rolagem,
+    });
+    act(() => atalho?.click());
+    expect(window.location.href).toBe(antes);
+    expect(document.activeElement).toBe(titulo);
+    expect(rolagem).toHaveBeenCalledTimes(1);
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
     for (const botao of secao.querySelectorAll("button")) {
       expect(botao.type).toBe("button");
       expect(botao.classList.contains("min-h-11")).toBe(true);
       expect(botao.className).toContain("focus-visible:ring-2");
     }
+  });
+
+  it("o vazio pode coexistir com novidades, e o atalho some ao ler tudo", async () => {
+    avisos = [];
+    guardar([NOVA, { ...ANTIGA, lida: false }]);
+    await montar();
+    expect(hospedeiro.textContent).toContain("Tudo em dia");
+    expect(
+      hospedeiro.querySelector('button[data-atalho="novidades"]')?.textContent,
+    ).toContain("2 novidades não lidas");
+    expect(hospedeiro.querySelector("article")).not.toBeNull();
+    act(() => botaoComTexto("Marcar tudo como lido").click());
+    expect(
+      hospedeiro.querySelector('button[data-atalho="novidades"]'),
+    ).toBeNull();
+    expect(hospedeiro.querySelectorAll("article")).toHaveLength(2);
+    expect(hospedeiro.textContent).toContain("Tudo em dia");
   });
 
   it("não altera o retrato compartilhado nem as listas de texto", async () => {

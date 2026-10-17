@@ -14,15 +14,14 @@ import {
 } from "@/lib/avisos-do-aparelho";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
-import { BellOff, BellRing } from "lucide-react";
+import { BellOff, BellRing, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BOTAO_INICIO, CARTAO_INICIO } from "./visualDoInicio";
 
 type EstadoDoTeste = "ocioso" | "enviando" | "enviado" | "falhou" | "sem-rede";
 
-const BOTAO_BASE =
-  "flex min-h-11 items-center justify-center rounded-xl px-4 text-xs font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60";
-const BOTAO_PRIMARIO = `${BOTAO_BASE} bg-admin-gold text-black hover:bg-admin-gold/90`;
-const BOTAO_SECUNDARIO = `${BOTAO_BASE} border border-white/20 text-zinc-100 hover:bg-white/10`;
+const BOTAO_PRIMARIO = BOTAO_INICIO;
+const BOTAO_SECUNDARIO = BOTAO_INICIO;
 
 function ListaDePassos({ passos }: Readonly<{ passos: readonly string[] }>) {
   return (
@@ -207,17 +206,17 @@ function CartaoInterno({
   ) => (
     <section
       aria-label="Avisos de pedido novo neste aparelho"
-      className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-white shadow-lg"
+      className={CARTAO_INICIO}
     >
       <div className="flex items-start gap-3">
         <span
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-amber-400/30 bg-amber-400/10 text-amber-200"
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-300/25 bg-sky-300/10 text-sky-300"
           aria-hidden="true"
         >
           {icone}
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-black leading-snug text-amber-100">
+          <h2 className="text-base font-bold leading-snug text-white">
             {titulo}
           </h2>
           {corpo}
@@ -299,15 +298,14 @@ function CartaoInterno({
       }}
       className={BOTAO_SECUNDARIO}
     >
-      Agora não
+      Agora não · ocultar por 7 dias
     </button>
   );
-  const titulo = "Você não está recebendo aviso de pedido novo neste aparelho";
   const icone = <BellOff className="size-5" />;
 
   if (situacao === "instalar-no-ios") {
     return regiao(
-      titulo,
+      "Instalar no iOS",
       icone,
       <>
         <p className="mt-1 text-xs leading-relaxed text-zinc-200">
@@ -322,7 +320,7 @@ function CartaoInterno({
 
   if (situacao === "ios-antigo") {
     return regiao(
-      titulo,
+      "Atualize o iOS para receber avisos",
       icone,
       <>
         <p className="mt-1 text-xs leading-relaxed text-zinc-200">
@@ -338,7 +336,7 @@ function CartaoInterno({
 
   if (situacao === "sem-suporte") {
     return regiao(
-      titulo,
+      "Sem suporte neste aparelho",
       icone,
       <>
         <p className="mt-1 text-xs leading-relaxed text-zinc-200">
@@ -353,7 +351,7 @@ function CartaoInterno({
 
   if (situacao === "bloqueado") {
     return regiao(
-      titulo,
+      "Bloqueado no navegador",
       icone,
       <>
         <p className="mt-1 text-xs leading-relaxed text-zinc-200">
@@ -371,31 +369,64 @@ function CartaoInterno({
     );
   }
 
-  return regiao(
-    titulo,
-    icone,
-    <>
-      <p className="mt-1 text-xs leading-relaxed text-zinc-200">
-        Sem isso, a loja só vê o pedido quando você abre o painel. Ligando os
-        avisos, este aparelho avisa assim que um pedido chega.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => void ligar()}
-          disabled={ligando}
-          aria-busy={ligando}
-          className={BOTAO_PRIMARIO}
+  return (
+    <section
+      aria-label="Avisos de pedido novo neste aparelho"
+      className={`${CARTAO_INICIO} space-y-3 !p-3`}
+    >
+      <button
+        type="button"
+        onClick={() => void ligar()}
+        disabled={ligando}
+        aria-busy={ligando}
+        aria-label={ligando ? "Ligando..." : "Ligar avisos neste aparelho"}
+        className="flex min-h-12 w-full items-center gap-3 rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:opacity-60"
+      >
+        <span
+          aria-hidden="true"
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-300/25 bg-sky-300/10 text-sky-300"
         >
-          {ligando ? "Ligando..." : "Ligar avisos neste aparelho"}
-        </button>
-        {agoraNao}
-      </div>
+          {ligando ? (
+            <RefreshCw className="size-5 animate-spin" />
+          ) : (
+            <BellOff className="size-5" />
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-bold text-white">
+            {ligando ? "Ligando..." : "Ligar avisos neste aparelho"}
+          </span>
+          <span className="mt-1 block text-xs text-zinc-400">
+            {ligando
+              ? "Aguarde a autorização deste aparelho."
+              : "Desligados · receba novos pedidos"}
+          </span>
+        </span>
+        <ChevronRight
+          className="size-4 shrink-0 text-zinc-400"
+          aria-hidden="true"
+        />
+      </button>
+      {ligando ? (
+        <div
+          aria-hidden="true"
+          className="h-1 overflow-hidden rounded-full bg-white/5"
+        >
+          <div className="h-full w-1/3 animate-pulse bg-sky-300" />
+        </div>
+      ) : null}
+      {isOffline ? (
+        <p className="text-sm text-orange-300">
+          Avisos de pedidos indisponíveis. Conecte-se para ligar ou testar os
+          avisos.
+        </p>
+      ) : null}
+      {agoraNao}
       {erroDeLigar ? (
         <p role="alert" className="mt-3 text-xs text-red-300">
           {erroDeLigar}
         </p>
       ) : null}
-    </>,
+    </section>
   );
 }

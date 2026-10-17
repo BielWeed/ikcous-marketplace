@@ -1,5 +1,5 @@
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
-import { MapPin, Share2, UserRound } from "lucide-react";
+import { CheckCircle2, MapPin, Share2, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -25,10 +25,12 @@ export function PerfilDaLoja({
   responsavel: string | null;
 }>) {
   const [logoFalhou, setLogoFalhou] = useState(false);
+  const [linkCopiado, setLinkCopiado] = useState(false);
   const inicial = nome.trim().charAt(0).toUpperCase() || "L";
   const local = [cidade, uf].filter(Boolean).join(" / ");
 
   async function compartilharLoja() {
+    setLinkCopiado(false);
     const url = `${window.location.origin}/`;
     if (navigator.share) {
       try {
@@ -50,6 +52,7 @@ export function PerfilDaLoja({
     // `copiarParaClipboard` (só comemora quando DEU CERTO).
     if (await copiarParaClipboard(url)) {
       toast.success("Link da loja copiado");
+      setLinkCopiado(true);
     } else {
       toast.error("Não foi possível compartilhar agora");
     }
@@ -58,58 +61,76 @@ export function PerfilDaLoja({
   return (
     <section
       aria-label="Sua loja"
-      className="admin-glass relative flex items-center gap-4 overflow-hidden rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-5"
+      className="min-w-0 rounded-[22px] border border-white/10 bg-zinc-900/50 p-3 lg:border-0 lg:bg-transparent lg:p-0"
     >
-      <div className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-admin-gold/[0.06] blur-3xl" />
-      <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 sm:size-16">
-        {logoUrl && !logoFalhou ? (
-          <img
-            src={logoUrl}
-            alt={`Logo da ${nome}`}
-            className="size-full object-cover"
-            onError={() => setLogoFalhou(true)}
-          />
-        ) : (
-          <span
-            aria-hidden="true"
-            className="text-2xl font-black italic text-admin-gold"
-          >
-            {inicial}
-          </span>
-        )}
-      </div>
-
-      <div className="relative min-w-0 flex-1">
-        <h2 className="truncate text-lg font-black tracking-tight text-white sm:text-xl">
-          {nome}
-        </h2>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
-          {local ? (
-            <span className="inline-flex items-center gap-1">
-              <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-              {local}
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-sky-400/10 text-sky-300">
+          {logoUrl && !logoFalhou ? (
+            <img
+              src={logoUrl}
+              alt={`Logo da ${nome}`}
+              className="size-full object-cover"
+              onError={() => setLogoFalhou(true)}
+            />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="text-2xl font-bold text-sky-300"
+            >
+              {inicial}
             </span>
-          ) : null}
-          {responsavel ? (
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <UserRound className="size-3.5 shrink-0" aria-hidden="true" />
-              <span className="truncate">{responsavel}</span>
-            </span>
-          ) : null}
+          )}
         </div>
-      </div>
 
-      <button
-        type="button"
-        onClick={() => void compartilharLoja()}
-        aria-label="Compartilhar o link da loja"
-        className="relative flex min-h-11 min-w-11 shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:border-admin-gold/30 hover:text-white"
-      >
-        <Share2 className="size-4" aria-hidden="true" />
-        <span className="sr-only xs:not-sr-only" aria-hidden="true">
-          Compartilhar
-        </span>
-      </button>
+        <div className="relative min-w-0 flex-1">
+          <h2 className="break-words text-base font-bold leading-snug text-white [overflow-wrap:anywhere]">
+            {nome}
+          </h2>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400">
+            {local ? (
+              <span className="inline-flex items-center gap-1">
+                <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
+                {local}
+              </span>
+            ) : null}
+            {responsavel ? (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <UserRound className="size-3.5 shrink-0" aria-hidden="true" />
+                <span className="break-words [overflow-wrap:anywhere]">
+                  {responsavel}
+                </span>
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void compartilharLoja()}
+          aria-label="Compartilhar o link da loja"
+          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-400/10 text-sky-300 transition-colors hover:bg-sky-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+        >
+          <Share2 className="size-5" aria-hidden="true" />
+          <span className="sr-only" aria-hidden="true">
+            Compartilhar
+          </span>
+        </button>
+      </div>
+      {linkCopiado ? (
+        <div
+          role="status"
+          className="mt-3 space-y-2 border-t border-white/10 pt-3"
+        >
+          <p className="flex items-center gap-2 text-sm font-semibold text-teal-300">
+            <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />
+            Endereço da loja copiado
+          </p>
+          <p className="text-sm leading-relaxed text-zinc-400">
+            Compartilhamento indisponível neste aparelho. Cole o endereço na
+            conversa.
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }
