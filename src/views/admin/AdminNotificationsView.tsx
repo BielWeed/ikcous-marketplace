@@ -503,9 +503,17 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
 
       <div className="mx-auto max-w-3xl space-y-7 px-5 pb-6 pt-2">
         {naoLidas > 0 && (
-          <a
-            href={`#${novidadesId}`}
-            className={`flex min-h-11 items-center gap-2 rounded-2xl border border-white/10 bg-[#17171C] px-3 py-2 text-sm text-violet-300 ${FOCO}`}
+          <button
+            type="button"
+            data-atalho="novidades"
+            // Foco por JS, sem navegar: um link com hash dispararia popstate e
+            // o app trata popstate como "Voltar" (App.tsx, laudo Opus do PR #455).
+            onClick={() => {
+              const titulo = document.getElementById(novidadesId);
+              titulo?.scrollIntoView({ block: "start" });
+              titulo?.focus();
+            }}
+            className={`flex min-h-11 w-full items-center gap-2 rounded-2xl border border-white/10 bg-[#17171C] px-3 py-2 text-left text-sm text-violet-300 ${FOCO}`}
           >
             <Sparkles aria-hidden="true" className="size-5 shrink-0" />
             <span className="min-w-0 flex-1">
@@ -516,7 +524,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
               aria-hidden="true"
               className="size-4 shrink-0 text-zinc-400"
             />
-          </a>
+          </button>
         )}
 
         {fontesComFalha.length > 0 && (
@@ -558,9 +566,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
         <Bloco
           nome="precisa-de-voce"
           titulo="Precisa de você"
-          legenda={`${precisaDeVoce.length} ${
-            precisaDeVoce.length === 1 ? "pendência" : "pendências"
-          } no total`}
+          legenda={`${precisaDeVoce.length} ${precisaDeVoce.length === 1 ? "item" : "itens"}`}
           avisos={precisaDeVoce}
           onNavigate={onNavigate}
         />
@@ -603,9 +609,7 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
         />
         {avisos.length > 0 && (
           <p className="py-2 text-center text-xs text-zinc-400">
-            {avisos.length} {avisos.length === 1 ? "aviso" : "avisos"} ·{" "}
-            {precisaDeVoce.length}{" "}
-            {precisaDeVoce.length === 1 ? "pendência" : "pendências"} no sino
+            {avisos.length} {avisos.length === 1 ? "aviso" : "avisos"} no total
           </p>
         )}
       </div>

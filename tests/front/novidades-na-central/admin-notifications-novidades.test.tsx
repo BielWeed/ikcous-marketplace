@@ -284,7 +284,7 @@ describe("Novidades do app na central do lojista", () => {
       const deOlho = hospedeiro.querySelector('[data-bloco="de-olho"]');
       expect(precisa?.querySelectorAll("[data-aviso]")).toHaveLength(1);
       expect(deOlho?.querySelectorAll("[data-aviso]")).toHaveLength(1);
-      expect(precisa?.textContent).toContain("1 pendência no total");
+      expect(precisa?.textContent).toContain("1 item");
       expect(deOlho?.textContent).toContain("não conta no sino");
       expect(botaoComTexto("Pedido esperando você").textContent).toContain(
         "R$ 90,00",
@@ -318,9 +318,20 @@ describe("Novidades do app na central do lojista", () => {
       "de-olho",
       secao,
     ]);
-    const atalho = hospedeiro.querySelector(`a[href="#${tituloId}"]`);
+    const atalho = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[data-atalho="novidades"]',
+    );
     expect(atalho?.textContent).toContain("1 novidade não lida");
     expect(atalho?.classList.contains("min-h-11")).toBe(true);
+    // Foca o título por JS e NÃO navega: um hash dispararia popstate (= Voltar).
+    const antes = window.location.href;
+    const titulo = document.getElementById(tituloId ?? "");
+    titulo?.setAttribute("tabindex", "-1");
+    // O jsdom não implementa a rolagem; o foco é o que se prova aqui.
+    HTMLElement.prototype.scrollIntoView = () => {};
+    act(() => atalho?.click());
+    expect(window.location.href).toBe(antes);
+    expect(document.activeElement).toBe(titulo);
     for (const botao of secao.querySelectorAll("button")) {
       expect(botao.type).toBe("button");
       expect(botao.classList.contains("min-h-11")).toBe(true);
@@ -333,12 +344,14 @@ describe("Novidades do app na central do lojista", () => {
     guardar([NOVA, { ...ANTIGA, lida: false }]);
     await montar();
     expect(hospedeiro.textContent).toContain("Tudo em dia");
-    expect(hospedeiro.querySelector("a")?.textContent).toContain(
-      "2 novidades não lidas",
-    );
+    expect(
+      hospedeiro.querySelector('button[data-atalho="novidades"]')?.textContent,
+    ).toContain("2 novidades não lidas");
     expect(hospedeiro.querySelector("article")).not.toBeNull();
     act(() => botaoComTexto("Marcar tudo como lido").click());
-    expect(hospedeiro.querySelector("a")).toBeNull();
+    expect(
+      hospedeiro.querySelector('button[data-atalho="novidades"]'),
+    ).toBeNull();
     expect(hospedeiro.querySelectorAll("article")).toHaveLength(2);
     expect(hospedeiro.textContent).toContain("Tudo em dia");
   });

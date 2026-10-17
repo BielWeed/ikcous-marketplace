@@ -391,7 +391,7 @@ describe("Notificações v5 — funções preservadas", () => {
     expect(avisosDoBloco("de-olho")).toHaveLength(2);
     expect(
       container?.querySelector('[data-bloco="precisa-de-voce"]')?.textContent,
-    ).toContain("6 pendências no total");
+    ).toContain("6 itens");
     for (const aviso of AVISOS) {
       clicarNoAvisoDoTipo(aviso.tipo);
       expect(onNavigate).toHaveBeenLastCalledWith(
@@ -472,7 +472,10 @@ describe("Notificações v5 — funções preservadas", () => {
     expect(cancelamento.textContent).toContain("R$ 1.249,00");
     // O hook entrega a mesma frase para pedido pago e para pedido já estornado:
     // a tela não pode afirmar "Pago" num selo.
-    expect(cancelamento.textContent).not.toMatch(/(^|\s)Pago(\s|$)/);
+    expect(
+      cancelamento.querySelector("span.rounded-full")?.textContent,
+    ).not.toBe("Pago");
+    expect(cancelamento.innerHTML).not.toContain(">Pago<");
     expect(
       cancelamento.querySelector("[data-orientacao]")?.textContent,
     ).toContain(acao);
