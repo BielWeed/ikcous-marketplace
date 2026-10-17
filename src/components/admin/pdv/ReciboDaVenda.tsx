@@ -207,7 +207,9 @@ export function ReciboDaVenda({
           <div>
             <p className="sr-only">Pagamento</p>
             <p>{ROTULO_DO_PAGAMENTO[recibo.pagamento]}</p>
-            <p className="pdv-muted">Pagamento conferido pelo lojista</p>
+            {recibo.pagamento !== "cash" && (
+              <p className="pdv-muted">Pagamento conferido pelo lojista</p>
+            )}
           </div>
         </div>
       </div>

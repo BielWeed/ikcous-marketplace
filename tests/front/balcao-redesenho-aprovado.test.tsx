@@ -139,6 +139,10 @@ it("fechamento apresenta desconto antes do pagamento e conserva a conferência o
   expect(botao("Registrar venda").disabled).toBe(true);
   expect(host.querySelector('label[for="conferi-o-pagamento"]')).not.toBeNull();
   expect(host.textContent).toContain("Total com desconto");
+  // O valor cobrado é o total COM desconto, não o subtotal: 12 × 99,90 − 5.
+  expect(host.querySelector(".pdv-footer strong")!.textContent).toBe(
+    "R$ 1.193,80",
+  );
   await act(async () => botao("Registrar venda").click());
   expect(registrar).not.toHaveBeenCalled();
 });
@@ -204,4 +208,43 @@ it("recibo explica WhatsApp inválido e oferece impressão antes da anulação e
     botao("Anular venda").compareDocumentPosition(botao("Nova venda")) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
+});
+
+it("recibo mostra o total com desconto e só diz 'conferido' quando houve conferência", async () => {
+  const base = {
+    orderId: "p2",
+    numero: "ABC124",
+    criadoEm: "2026-10-17T15:00:00Z",
+    itens: [item],
+    subtotal: 1198.8,
+    desconto: 5,
+    total: 1193.8,
+    cliente: { tipo: "avulso" as const, nome: "Lia", whatsapp: "11999990000" },
+    jaExistia: false,
+  };
+  await act(async () =>
+    raiz.render(
+      <ReciboDaVenda
+        recibo={{ ...base, pagamento: "pix" }}
+        despachar={vi.fn()}
+        limparCupom={vi.fn()}
+        aoAnular={vi.fn()}
+      />,
+    ),
+  );
+  const totais = [...host.querySelectorAll(".pdv-total")];
+  const linhaTotal = totais.find((l) => l.textContent?.startsWith("Total"))!;
+  expect(linhaTotal.querySelector("strong")!.textContent).toBe("R$ 1.193,80");
+  expect(host.textContent).toContain("Pagamento conferido pelo lojista");
+  await act(async () =>
+    raiz.render(
+      <ReciboDaVenda
+        recibo={{ ...base, pagamento: "cash" }}
+        despachar={vi.fn()}
+        limparCupom={vi.fn()}
+        aoAnular={vi.fn()}
+      />,
+    ),
+  );
+  expect(host.textContent).not.toContain("Pagamento conferido pelo lojista");
 });

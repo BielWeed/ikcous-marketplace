@@ -490,7 +490,9 @@ export function CupomDaVenda({
         <div className="pdv-heading">
           <ShoppingCart aria-hidden="true" className="pdv-icon pdv-purple" />
           <h3 className="flex-1">Cupom</h3>
-          <span className="pdv-muted">{estado.itens.length} itens</span>
+          <span className="pdv-muted">
+            {estado.itens.length} {estado.itens.length === 1 ? "item" : "itens"}
+          </span>
           {(estado.etapa === "cliente" || estado.etapa === "fechamento") && (
             <strong className="text-sm">R$ {reais(subtotal)}</strong>
           )}
@@ -771,13 +773,14 @@ export function CupomDaVenda({
                           {ativas.length > 0
                             ? `${ativas.length} variação(ões)`
                             : `R$ ${reais(produto.preco_venda)}`}
-                          {ativas.length === 0 && produto.estoque <= 1 && (
-                            <span className="pdv-orange">
-                              {produto.estoque <= 0
-                                ? " · Sem estoque"
-                                : " · Só 1 em estoque"}
-                            </span>
-                          )}
+                          {ativas.length === 0 &&
+                            (produto.estoque === 1 || produto.estoque <= 0) && (
+                              <span className="pdv-orange">
+                                {produto.estoque <= 0
+                                  ? " · Sem estoque"
+                                  : " · Só 1 em estoque"}
+                              </span>
+                            )}
                         </span>
                       </span>
                       {ativas.length > 0 ? (
