@@ -332,6 +332,25 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     ).toBe(true);
   });
 
+  it("depois de expandir as métricas, 'Recolher' volta ao resumo (em grade e em carrossel)", async () => {
+    rpc.mockResolvedValue(sucesso([]));
+    await abrirTela();
+    const metricas = () =>
+      hospedeiro.querySelector('[aria-label="Métricas de Clientes"]')!;
+    expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(0);
+
+    await clicar("Expandir");
+    expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(4);
+    await clicar("Recolher");
+    expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(0);
+
+    await clicar("Expandir");
+    await clicar("Carrossel");
+    await clicar("Recolher");
+    expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(0);
+    expect(hospedeiro.textContent).toContain("Expandir");
+  });
+
   it("o raio aparece apenas no cliente com aviso ativo, nos dois modos", async () => {
     rpc.mockResolvedValue(
       sucesso([

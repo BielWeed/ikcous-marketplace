@@ -105,22 +105,35 @@ export function MetricasClientes({
             <h2 className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
               Métricas de Clientes
             </h2>
-            <button
-              type="button"
-              onClick={() => {
-                setGrupo(0);
-                faixa.current?.scrollTo?.({ left: 0 });
-                setModo(modo === "grade" ? "carrossel" : "grade");
-              }}
-              aria-expanded={modo === "grade"}
-              className={`flex min-h-11 items-center gap-1 text-xs font-semibold ${FOCO_CLIENTES}`}
-            >
-              {modo === "grade" ? "Carrossel" : "Expandir"}
-              <ChevronUp
-                aria-hidden="true"
-                className="size-4 text-violet-300"
-              />
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setModo("resumo")}
+                className={`flex min-h-11 items-center gap-1 text-xs font-semibold ${FOCO_CLIENTES}`}
+              >
+                Recolher
+                <ChevronDown
+                  aria-hidden="true"
+                  className="size-4 text-violet-300"
+                />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGrupo(0);
+                  faixa.current?.scrollTo?.({ left: 0 });
+                  setModo(modo === "grade" ? "carrossel" : "grade");
+                }}
+                aria-expanded={modo === "grade"}
+                className={`flex min-h-11 items-center gap-1 text-xs font-semibold ${FOCO_CLIENTES}`}
+              >
+                {modo === "grade" ? "Carrossel" : "Expandir"}
+                <ChevronUp
+                  aria-hidden="true"
+                  className="size-4 text-violet-300"
+                />
+              </button>
+            </div>
           </div>
           <div
             ref={faixa}
