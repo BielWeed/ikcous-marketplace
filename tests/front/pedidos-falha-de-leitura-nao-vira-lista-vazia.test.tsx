@@ -129,9 +129,9 @@ describe("Pedidos — falha de leitura não vira lista vazia", () => {
   }
 
   function botao(texto: string) {
-    const encontrado = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (elemento) => elemento.textContent?.trim() === texto,
-    );
+    const encontrado = Array.from(
+      document.body.querySelectorAll("button"),
+    ).find((elemento) => elemento.textContent?.trim() === texto);
     expect(encontrado).toBeDefined();
     return encontrado!;
   }
@@ -142,7 +142,7 @@ describe("Pedidos — falha de leitura não vira lista vazia", () => {
     );
     expect(botao("Tentar de novo")).toBeDefined();
     expect(hospedeiro.textContent).not.toMatch(
-      /Nenhum pedido|Ainda não tem nenhum pedido/,
+      /Nenhum pedido|Seus pedidos vão aparecer aqui/,
     );
   }
 
@@ -174,7 +174,15 @@ describe("Pedidos — falha de leitura não vira lista vazia", () => {
     expect(hospedeiro.querySelector("article")?.textContent).toContain(
       pedido.customer_name,
     );
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label^="Status do pedido:"]',
+        )!
+        .click(),
+    );
     await act(async () => botao("Todos").click());
+    await act(async () => botao("Fechar").click());
     await act(async () => {
       await vi.advanceTimersByTimeAsync(320);
     });
@@ -193,7 +201,7 @@ describe("Pedidos — falha de leitura não vira lista vazia", () => {
       error: null,
     });
     await abrir();
-    expect(hospedeiro.textContent).toContain("Ainda não tem nenhum pedido");
+    expect(hospedeiro.textContent).toContain("Seus pedidos vão aparecer aqui");
     expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   });
 });

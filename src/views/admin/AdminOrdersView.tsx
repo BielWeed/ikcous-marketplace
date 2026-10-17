@@ -1,8 +1,5 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
-import {
-  AdminKpiCarousel,
-  type KpiCardConfig,
-} from "@/components/admin/AdminKpiCarousel";
+import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
@@ -20,20 +17,21 @@ import {
   rotuloDoStatus,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
-import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
 import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { branding } from "@/config/branding";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import { useDevolucoesAbertas } from "@/hooks/useDevolucoesAdmin";
 import {
   type EstornoEmCurso,
@@ -52,6 +50,7 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
+import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
 import { formatarInteiro } from "@/lib/crm";
 import { recorteDaListaDePedidos } from "@/lib/filtro-da-lista-de-pedidos";
 import {
@@ -79,29 +78,152 @@ import { haptic } from "@/utils/haptic";
 import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import {
   AlertCircle,
+  CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
+  CreditCard,
   Download,
   Filter,
   HelpCircle,
-  LayoutGrid,
-  List,
   Loader2,
   Package,
+  RefreshCw,
+  RotateCcw,
   Search,
+  SlidersHorizontal,
+  Store,
   Truck,
+  WifiOff,
+  X,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 
-const STATUS_ORDER_COLORS: Record<string, string> = {
-  pending: "bg-blue-500",
-  processing: "bg-amber-500",
-  shipping: "bg-indigo-500",
-  delivered: "bg-emerald-500",
-  cancelled: "bg-zinc-500",
-};
+const STATUS_ORDER_COLORS = new Map(
+  Object.entries({
+    pending: "bg-blue-500",
+    processing: "bg-violet-300",
+    shipping: "bg-cyan-300",
+    delivered: "bg-emerald-500",
+    cancelled: "bg-red-400",
+  }),
+);
+
+const FOCO_PEDIDOS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
+const BOTAO_PEDIDOS = `flex min-h-11 items-center justify-center gap-2 whitespace-normal rounded-2xl border border-white/10 bg-[#1E1E24] px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-[#26262E] disabled:text-zinc-400 ${FOCO_PEDIDOS}`;
+const OPCAO_PEDIDOS = `${BOTAO_PEDIDOS} w-full rounded-full text-left`;
+const SELECIONADO_PEDIDOS =
+  "border-admin-gold bg-admin-gold/10 ring-1 ring-admin-gold";
+
+/** Uma métrica inteira por vez; setas fora do texto e grade ao expandir. */
+function MetricasDePedidos({
+  cards,
+}: { readonly cards: readonly KpiCardConfig[] }) {
+  const [expandido, setExpandido] = useState(false);
+  const [indice, setIndice] = useState(0);
+  return (
+    <section aria-label="Métricas de Pedidos" className="space-y-3">
+      <div className="flex items-center gap-2">
+        {expandido ? (
+          <h2 className="flex-1 text-xs font-bold uppercase tracking-wide text-zinc-400">
+            Métricas de Pedidos
+          </h2>
+        ) : (
+          <button
+            type="button"
+            aria-label="Métrica anterior"
+            title="Anterior"
+            onClick={() =>
+              setIndice((indice + cards.length - 1) % cards.length)
+            }
+            className={`${BOTAO_PEDIDOS} size-11 shrink-0 p-0`}
+          >
+            <ChevronLeft aria-hidden="true" className="size-5" />
+          </button>
+        )}
+        <div
+          className={expandido ? "hidden" : "min-w-0 flex-1"}
+          aria-live="polite"
+        >
+          {cards.map((card, i) => (
+            <div key={card.label} hidden={indice !== i}>
+              <div className="flex min-h-14 items-center gap-2 rounded-2xl border border-white/10 bg-[#101013] p-2">
+                <card.icon
+                  aria-hidden="true"
+                  className={cn("size-6 shrink-0", card.accent)}
+                />
+                <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                  <h3 className="text-2xl font-bold tabular-nums text-white">
+                    {card.value}
+                  </h3>
+                  <p className="min-w-0 flex-1 text-sm leading-snug text-zinc-100">
+                    {card.label}
+                  </p>
+                  <p className="sr-only">{card.subValue}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {!expandido && (
+          <button
+            type="button"
+            aria-label="Próxima métrica"
+            title="Próximo"
+            onClick={() => setIndice((indice + 1) % cards.length)}
+            className={`${BOTAO_PEDIDOS} size-11 shrink-0 p-0`}
+          >
+            <ChevronRight aria-hidden="true" className="size-5" />
+          </button>
+        )}
+        <button
+          type="button"
+          aria-expanded={expandido}
+          onClick={() => setExpandido(!expandido)}
+          className={`${BOTAO_PEDIDOS} shrink-0 px-2 text-xs`}
+        >
+          {expandido ? "Carrossel" : "Expandir"}
+        </button>
+      </div>
+      {expandido && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {cards.map((card) => (
+              <article
+                key={card.label}
+                className="flex items-start gap-2 rounded-2xl border border-white/10 bg-[#101013] p-3"
+              >
+                <card.icon
+                  aria-hidden="true"
+                  className={cn("mt-1 size-6 shrink-0", card.accent)}
+                />
+                <div className="min-w-0">
+                  <h3 className="text-2xl font-bold text-white">
+                    {card.value}
+                  </h3>
+                  <p className="text-xs leading-relaxed text-zinc-300">
+                    {card.label}
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+                    {card.subValue}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <p className="text-xs text-zinc-400">
+            Para preparar: só pedidos com pagamento liberado.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
 
 /**
  * Subtítulo do cartão "Para preparar" — achado 10 da auditoria de
@@ -346,6 +468,31 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const [gerandoCsv, setGerandoCsv] = useState(false);
   const exportacaoCsvEmCursoRef = useRef(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [painelDeFiltros, setPainelDeFiltros] = useState<
+    "ferramentas" | "filtros" | null
+  >(null);
+  const { anular } = useAnularVendaDoBalcao();
+  const [avisoDaAnulacao, setAvisoDaAnulacao] = useState<{
+    numero: string;
+    total: number;
+    forma: string;
+    jaAnulada: boolean;
+  } | null>(null);
+  const anularVendaDaLista = async (id: string, motivo: string) => {
+    // O realtime pode tirar o cartão do filtro Finalizado antes da resposta.
+    // O resultado e a orientação de devolver o dinheiro pertencem à tela.
+    const pedido = orders.find((item) => item.id === id);
+    const resultado = await anular(id, motivo);
+    if (pedido) {
+      setAvisoDaAnulacao({
+        numero: numeroDoPedido(id),
+        total: pedido.total,
+        forma: pedido.paymentMethod,
+        jaAnulada: resultado.jaAnulada,
+      });
+    }
+    return resultado;
+  };
 
   const [showVisualLoading, setShowVisualLoading] = useState(false);
   useEffect(() => {
@@ -567,14 +714,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         label: "Para preparar",
         value: formatarInteiro(paraPreparar),
         icon: Package,
-        accent: "text-amber-500",
+        accent: "text-violet-300",
         subValue: SUBTITULO_PARA_PREPARAR,
       },
       {
         label: "Aguardando pagamento",
         value: formatarInteiro(aguardandoPagamento),
         icon: Clock,
-        accent: "text-blue-500",
+        accent: "text-orange-300",
         subValue: "PIX ou cartão ainda não pago",
       },
       {
@@ -585,14 +732,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         label: "A caminho ou retirada",
         value: formatarInteiro(aCaminho),
         icon: Truck,
-        accent: "text-indigo-500",
+        accent: "text-cyan-300",
         subValue: "Enviados",
       },
       {
         label: "Finalizados",
         value: formatarInteiro(stats.completed),
         icon: CheckCircle2,
-        accent: "text-sky-500",
+        accent: "text-emerald-300",
         subValue: "Desde o início · app e balcão",
       },
     ],
@@ -1041,6 +1188,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   useEffect(() => {
     if (!active) {
       setShowHelpModal(false);
+      setPainelDeFiltros(null);
       setIsTyping(false);
       setShowVisualLoading(false);
     }
@@ -1555,110 +1703,96 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-admin-bg pb-admin lg:pb-12 font-sans text-white duration-200 animate-in fade-in selection:bg-admin-gold/30"
+      className="pb-admin h-auto bg-[#08080A] font-sans text-white lg:pb-12"
     >
-      {/* Header Elite */}
-      {/* Botão de alerta + dropdown no canto direito da linha do título (sem
-          pendência e lista completa, ele nem nasce). A porta de Devoluções NÃO
-          mora aqui: é a da faixa de atalhos da aba, com o contador. */}
-      <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <AdminPageHeader
-          titulo={NOMES_DO_PAINEL["admin-orders"]}
-          acoes=<AlertasCancelados
-            pagoCanceladoCount={paidOnCancelledCount}
-            avisoPagoAposCancelado={avisoPagoAposCancelado}
-            pedidosEsperandoRetorno={pedidosEsperandoRetorno}
-            pedidosParaDevolverAgora={pedidosParaDevolverAgora}
-            estornosEmCurso={estornosEmCurso}
-            incompleto={pedidosCanceladosIncompleto}
-            foraDaJanela={canceladosForaDaJanela}
-            onIncluirAntigos={() => {
-              void buscarTambemCanceladosAntigos();
-            }}
-            confirmandoRetornoId={confirmandoRetornoId}
-            onConfirmarRetorno={handleConfirmarRetorno}
-            estornandoId={estornandoId}
-            conferindoEstornoId={conferindoEstornoId}
-            onAbrir={estornos.recarregar}
-            onRegistrarEstorno={registrarEstornoFeito}
-            onVerPedidos={irParaPedidosCancelados}
-          />
-        >
+      <header className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
+        <div className="min-w-0">
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-orders"]} />
+          <div className="mt-1 flex items-center gap-2">
+            <PontoDeOperacao sincronizando={!isLoaded} />
+            <span className="text-xs text-zinc-400">
+              {isOffline
+                ? "Sem conexão"
+                : !isLoaded
+                  ? "Sincronizando pedidos…"
+                  : "Pedidos da loja"}
+            </span>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowHelpModal(true)}
-            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
+            aria-label="Guia de Ajuda e Explicações"
             title="Guia de Ajuda e Explicações"
+            onClick={() => setShowHelpModal(true)}
+            className={`${BOTAO_PEDIDOS} size-11 min-h-11 min-w-11 p-0`}
           >
-            <span
-              aria-hidden="true"
-              className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
-            >
-              <HelpCircle className="size-4.5" />
-            </span>
+            <HelpCircle aria-hidden="true" className="size-5" />
           </button>
-          {/* Missão 06 (C3): a tag "Operações ao Vivo" mentia — ficava verde
-              depois da carga mesmo com o tempo real morto. O ponto mostra o
-              estado REAL de conexão (medido no AdminLayout e compartilhado);
-              o âmbar da carga inicial é o único "sincronizando" honesto.
-              Desde o pedido do Gabriel de 02/09 à tarde ele vive AQUI, ao
-              lado direito do título, para liberar o canto para o botão de
-              alertas (igual nas telas de Produtos e Clientes). */}
-          <PontoDeOperacao sincronizando={!isLoaded} />
-        </AdminPageHeader>
-      </div>
-
-      <div className="space-y-8 p-4 sm:p-6 lg:p-8">
-        {/* Support Section */}
-        <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-          <AtalhosDaAba
-            aba="pedidos"
-            onNavigate={onNavigate}
-            contadores={{
-              "admin-devolucoes": {
-                valor: devolucoesAbertas ?? 0,
-                legenda: "em andamento",
-              },
-            }}
-          />
+          <button
+            type="button"
+            aria-label={`Devoluções${devolucoesAbertas ? `, ${devolucoesAbertas} em andamento` : ""}`}
+            title="Devoluções"
+            onClick={() => abrirDevolucoes()}
+            className={`${BOTAO_PEDIDOS} relative size-11 p-0 text-pink-300`}
+          >
+            <RotateCcw aria-hidden="true" className="size-5" />
+            {Boolean(devolucoesAbertas) && (
+              <span className="absolute -right-1 -top-1 rounded-full bg-pink-300 px-1.5 text-[11px] font-bold text-zinc-950">
+                {devolucoesAbertas}
+              </span>
+            )}
+          </button>
+          <div className="[&_.text-amber-500]:text-orange-300 [&_.text-zinc-500]:text-zinc-400 [&_.tracking-widest]:tracking-normal [&_.truncate]:overflow-visible [&_.truncate]:text-clip [&_.truncate]:whitespace-normal [&_.uppercase]:normal-case [&_[data-testid=alertas-cancelados-alavanca]]:size-11 [&_[data-testid=alertas-cancelados-alavanca]]:rounded-2xl [&_[data-testid=alertas-cancelados-alavanca]]:border-white/10 [&_[data-testid=alertas-cancelados-alavanca]]:bg-[#17171C] [&_[data-testid=alertas-cancelados-alavanca]]:text-red-300 [&_[data-testid=alertas-cancelados-badge]]:bg-red-300 [&_[id=alertas-cancelados-conteudo]]:rounded-[24px] [&_[id=alertas-cancelados-conteudo]]:bg-[#17171C] [&_button]:min-h-11">
+            <AlertasCancelados
+              pagoCanceladoCount={paidOnCancelledCount}
+              avisoPagoAposCancelado={avisoPagoAposCancelado}
+              pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+              pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+              estornosEmCurso={estornosEmCurso}
+              incompleto={pedidosCanceladosIncompleto}
+              foraDaJanela={canceladosForaDaJanela}
+              onIncluirAntigos={() => {
+                void buscarTambemCanceladosAntigos();
+              }}
+              confirmandoRetornoId={confirmandoRetornoId}
+              onConfirmarRetorno={handleConfirmarRetorno}
+              estornandoId={estornandoId}
+              conferindoEstornoId={conferindoEstornoId}
+              onAbrir={estornos.recarregar}
+              onRegistrarEstorno={registrarEstornoFeito}
+              onVerPedidos={irParaPedidosCancelados}
+            />
+          </div>
         </div>
+      </header>
 
+      <div className="space-y-7 px-5 pt-3">
         {active && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <LocalErrorBoundary>
-              <AdminKpiCarousel
-                active={active}
-                cards={kpiCards}
-                loading={(!isLoaded || loading) && !analyticsStats}
-                title="Métricas de Pedidos"
-              />
+              <MetricasDePedidos cards={kpiCards} />
             </LocalErrorBoundary>
             {avisoPagamentoAConferir && (
               <div role="status" data-aviso="pagamento-a-conferir">
-                <SeloDeStatus tom="atencao" className="rounded-xl text-left">
+                <SeloDeStatus tom="atencao" className="rounded-2xl text-left">
                   {avisoPagamentoAConferir}
                 </SeloDeStatus>
               </div>
             )}
           </div>
         )}
-
-        {/* Unified Control Bar Compacta — âncora do scroll do botão "Ver
-            pedidos" do dropdown de alertas (id lido por
-            `irParaPedidosCancelados`). */}
-        {/* Barra de busca + chips de filtro ancorados (pedido do Gabriel,
-            02/09: os chips fazem parte da mesma âncora). Filha DIRETA do
-            container que rola — sticky só anda dentro do próprio containing
-            block. O id="admin-pedidos-lista" (âncora do scroll do botão
-            "Ver pedidos") fica no bloco da lista, mais abaixo. */}
-        <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-admin-bg/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-          <div className="flex w-full items-center gap-3">
-            <div className="group relative w-full flex-1">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+        <div className="sticky top-0 z-30 -mx-5 space-y-2 border-b border-white/5 bg-[#08080A]/95 px-5 py-2 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <div className="group relative min-w-0 flex-1">
+              <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
                 {!isLoaded || isTyping ? (
-                  <Loader2 className="size-4 animate-spin text-admin-gold" />
+                  <Loader2
+                    aria-hidden="true"
+                    className="size-5 animate-spin text-sky-300"
+                  />
                 ) : (
-                  <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
+                  <Search aria-hidden="true" className="size-5 text-zinc-400" />
                 )}
               </div>
               <label htmlFor="orders-search" className="sr-only">
@@ -1668,7 +1802,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 id="orders-search"
                 name="search"
                 placeholder="Buscar…"
-                className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                className="h-11 w-full rounded-2xl border-white/10 bg-[#17171C] pl-10 text-sm text-white placeholder:text-zinc-400 focus-visible:ring-sky-300"
                 value={searchQuery}
                 onChange={(val) => {
                   setSearchQuery(val);
@@ -1677,362 +1811,484 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 onTyping={setIsTyping}
                 delay={300}
               />
+              <span id="pedidos-busca-ajuda" className="sr-only">
+                Busque por ID, nome, telefone ou #número.
+              </span>
             </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="group relative size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+            <button
+              type="button"
+              aria-label={`Status do pedido: ${filter === "open" ? "Em Aberto" : filter === "all" ? "Todos" : rotuloDoStatus(filter)}`}
+              onClick={() => setPainelDeFiltros("filtros")}
+              className={`${BOTAO_PEDIDOS} ${SELECIONADO_PEDIDOS} max-w-[45%] gap-1 px-2 text-xs`}
+            >
+              <span>
+                {filter === "open"
+                  ? "Em Aberto"
+                  : filter === "all"
+                    ? "Todos"
+                    : rotuloDoStatus(filter)}
+              </span>
+              <span className="tabular-nums text-admin-gold">
+                {totalOrders}
+              </span>
+              <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
+            </button>
+            <button
+              type="button"
+              aria-label="Filtros e ferramentas"
+              onClick={() => setPainelDeFiltros("ferramentas")}
+              className={`${BOTAO_PEDIDOS} relative size-11 shrink-0 p-0 text-violet-300`}
+            >
+              <SlidersHorizontal aria-hidden="true" className="size-5" />
+              {(dateRange.start ||
+                dateRange.end ||
+                canalFilter !== "all" ||
+                paymentFilter !== "all") && (
+                <span className="absolute -right-1 -top-1 rounded-full bg-violet-300 px-1.5 text-[11px] font-bold text-zinc-950">
+                  {Number(Boolean(dateRange.start || dateRange.end)) +
+                    Number(canalFilter !== "all") +
+                    Number(paymentFilter !== "all")}
+                </span>
+              )}
+            </button>
+          </div>
+          {(dateRange.start ||
+            dateRange.end ||
+            canalFilter !== "all" ||
+            paymentFilter !== "all") && (
+            <div className="flex flex-wrap gap-2">
+              {(dateRange.start || dateRange.end) && (
+                <button
+                  type="button"
+                  aria-label="Limpar Datas"
+                  onClick={() => {
+                    setDateRange({ start: "", end: "" });
+                    setCurrentPage(0);
+                  }}
+                  className={`${BOTAO_PEDIDOS} flex-1 text-xs`}
                 >
-                  <Filter className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                  {(paymentFilter !== "all" || canalFilter !== "all") && (
-                    // O filtro persiste em localStorage: sem isto, o admin
-                    // reabre a tela já filtrada sem nenhuma pista visível
-                    // (achado da revisão da Task 9). C4.4: canalFilter
-                    // persiste do mesmo jeito e precisa da mesma bolinha.
-                    <span
-                      aria-hidden="true"
-                      className="absolute right-2.5 top-2.5 size-2 rounded-full bg-admin-gold shadow-[0_0_6px_rgba(212,175,55,0.6)]"
-                    />
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="mt-2 w-80 rounded-3xl border-zinc-800/50 bg-zinc-950 p-4 shadow-2xl backdrop-blur-3xl"
+                  {dateRange.start
+                    ? dateRange.start.split("-").reverse().join("/")
+                    : "Início"}{" "}
+                  –{" "}
+                  {dateRange.end
+                    ? dateRange.end.split("-").reverse().join("/")
+                    : "Fim"}
+                  <X aria-hidden="true" className="size-4 shrink-0" />
+                </button>
+              )}
+              {canalFilter !== "all" && (
+                <button
+                  type="button"
+                  aria-label="Limpar Canal da Venda"
+                  onClick={() => {
+                    setCanalFilter("all");
+                    setCurrentPage(0);
+                  }}
+                  className={`${BOTAO_PEDIDOS} flex-1 text-xs`}
+                >
+                  {canalFilter === "online" ? "Site" : "Balcão"}
+                  <X aria-hidden="true" className="size-4 shrink-0" />
+                </button>
+              )}
+              {paymentFilter !== "all" && (
+                <button
+                  type="button"
+                  aria-label="Limpar Status de Pagamento"
+                  onClick={() => {
+                    setPaymentFilter("all");
+                    setCurrentPage(0);
+                  }}
+                  className={`${BOTAO_PEDIDOS} flex-1 text-xs`}
+                >
+                  {getPaymentStatusConfig(paymentFilter).label}
+                  <X aria-hidden="true" className="size-4 shrink-0" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        <Dialog
+          open={painelDeFiltros !== null}
+          onOpenChange={(aberto) => {
+            if (!aberto) setPainelDeFiltros(null);
+          }}
+        >
+          <DialogContent
+            showCloseButton={false}
+            className="bottom-0 left-1/2 top-auto z-[80] max-h-[90dvh] max-w-full -translate-x-1/2 translate-y-0 gap-5 overflow-y-auto rounded-b-none rounded-t-[28px] border-white/15 bg-[#17171C] p-5 pb-[max(20px,env(safe-area-inset-bottom))] text-zinc-100 sm:bottom-auto sm:top-1/2 sm:max-w-lg sm:-translate-y-1/2 sm:rounded-[28px]"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <DialogTitle className="text-xl font-bold">
+                {painelDeFiltros === "ferramentas"
+                  ? "Filtros e ferramentas"
+                  : "Filtros"}
+              </DialogTitle>
+              <button
+                type="button"
+                aria-label="Fechar filtros e ferramentas"
+                className={`${BOTAO_PEDIDOS} size-11 p-0`}
+                onClick={() => setPainelDeFiltros(null)}
               >
-                <div className="space-y-4">
-                  <h4 className="px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                <X aria-hidden="true" className="size-5" />
+              </button>
+            </div>
+            <DialogDescription className="text-sm text-zinc-400">
+              Buscar por ID, nome, telefone ou #número.
+            </DialogDescription>
+            {painelDeFiltros === "ferramentas" ? (
+              <div className="space-y-7">
+                <button
+                  type="button"
+                  onClick={() => setPainelDeFiltros("filtros")}
+                  className={`${BOTAO_PEDIDOS} w-full`}
+                >
+                  <Filter
+                    aria-hidden="true"
+                    className="size-5 text-violet-300"
+                  />
+                  Abrir filtros
+                </button>
+                <fieldset className="space-y-3 border-t border-white/10 pt-4">
+                  <legend className="text-xs font-bold uppercase tracking-wide text-zinc-400">
+                    Visualização
+                  </legend>
+                  {(["compact", "detailed"] as const).map((modo) => (
+                    <button
+                      key={modo}
+                      type="button"
+                      aria-pressed={viewMode === modo}
+                      onClick={() => setViewMode(modo)}
+                      className={cn(
+                        OPCAO_PEDIDOS,
+                        viewMode === modo && SELECIONADO_PEDIDOS,
+                      )}
+                    >
+                      {modo === "compact"
+                        ? "Visualização Compacta"
+                        : "Visualização Detalhada"}
+                    </button>
+                  ))}
+                </fieldset>
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wide text-zinc-400">
+                    Exportação
+                  </h3>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={exportarCsv}
+                    disabled={totalOrders === 0 || gerandoCsv}
+                    aria-label={rotuloExportarCsv}
+                    title={rotuloExportarCsv}
+                    className={`${BOTAO_PEDIDOS} min-h-14 w-full`}
+                  >
+                    {gerandoCsv ? (
+                      <Loader2
+                        aria-hidden="true"
+                        className="size-5 animate-spin text-sky-300"
+                      />
+                    ) : (
+                      <Download aria-hidden="true" className="size-5" />
+                    )}
+                    CSV
+                  </Button>
+                  <p className="text-xs leading-relaxed text-zinc-400">
+                    Exporta todos os pedidos do recorte, incluindo as demais
+                    páginas.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-7">
+                <fieldset className="space-y-2">
+                  <legend className="mb-3 text-xs font-bold uppercase tracking-wide text-zinc-400">
+                    Status do pedido
+                  </legend>
+                  {[
+                    { status: "open", label: "Em Aberto" },
+                    ...Object.entries(statusConfig).map(([status, cfg]) => ({
+                      status,
+                      label: cfg.label,
+                    })),
+                    { status: "all", label: "Todos" },
+                  ].map(({ status, label }) => (
+                    <button
+                      key={status}
+                      type="button"
+                      aria-pressed={filter === status}
+                      onClick={() => {
+                        setFilter(status as typeof filter);
+                        setCurrentPage(0);
+                      }}
+                      className={cn(
+                        OPCAO_PEDIDOS,
+                        filter === status && SELECIONADO_PEDIDOS,
+                      )}
+                    >
+                      {STATUS_ORDER_COLORS.has(status) && (
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "size-1.5 shrink-0 rounded-full",
+                            STATUS_ORDER_COLORS.get(status),
+                          )}
+                        />
+                      )}
+                      {label}
+                    </button>
+                  ))}
+                </fieldset>
+                <fieldset className="space-y-3">
+                  <legend className="mb-3 flex items-center gap-2 text-sm font-bold">
+                    <CalendarDays
+                      aria-hidden="true"
+                      className="size-5 text-cyan-300"
+                    />
                     Filtro Temporal
-                  </h4>
+                  </legend>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="group relative">
-                      <Input
-                        id="filter-date-start"
-                        name="start-date"
-                        type="date"
-                        autoComplete="off"
-                        className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                        value={dateRange.start}
-                        onChange={(e) => {
-                          setDateRange((prev) => ({
-                            ...prev,
-                            start: e.target.value,
-                          }));
-                          setCurrentPage(0);
-                        }}
-                      />
+                    {(["start", "end"] as const).map((limite) => (
                       <label
-                        htmlFor="filter-date-start"
-                        className="pointer-events-none absolute left-4 top-2 text-[11px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
+                        key={limite}
+                        className="min-w-0 rounded-2xl border border-white/10 bg-[#101013] p-3 text-xs text-zinc-400"
+                        htmlFor={`filter-date-${limite}`}
                       >
-                        Início
+                        {limite === "start" ? "Início" : "Fim"}
+                        <Input
+                          id={`filter-date-${limite}`}
+                          name={`${limite}-date`}
+                          type="date"
+                          autoComplete="off"
+                          className="mt-1 h-11 w-full min-w-0 border-0 bg-transparent p-0 text-xs text-zinc-100 [color-scheme:dark]"
+                          value={
+                            limite === "start" ? dateRange.start : dateRange.end
+                          }
+                          onChange={(e) => {
+                            setDateRange((prev) => ({
+                              ...prev,
+                              [limite]: e.target.value,
+                            }));
+                            setCurrentPage(0);
+                          }}
+                        />
                       </label>
-                    </div>
-                    <div className="group relative">
-                      <Input
-                        id="filter-date-end"
-                        name="end-date"
-                        type="date"
-                        autoComplete="off"
-                        className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                        value={dateRange.end}
-                        onChange={(e) => {
-                          setDateRange((prev) => ({
-                            ...prev,
-                            end: e.target.value,
-                          }));
-                          setCurrentPage(0);
-                        }}
-                      />
-                      <label
-                        htmlFor="filter-date-end"
-                        className="pointer-events-none absolute left-4 top-2 text-[11px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
-                      >
-                        Fim
-                      </label>
-                    </div>
+                    ))}
                   </div>
                   {(dateRange.start || dateRange.end) && (
-                    <Button
-                      variant="ghost"
-                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[11px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                    <button
+                      type="button"
                       onClick={() => {
                         setDateRange({ start: "", end: "" });
                         setCurrentPage(0);
                       }}
+                      className={BOTAO_PEDIDOS}
                     >
                       Limpar Datas
-                    </Button>
-                  )}
-
-                  <h4 className="mt-6 px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                    Status de Pagamento
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPaymentFilter("all");
-                        setCurrentPage(0);
-                      }}
-                      className={cn(
-                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
-                        paymentFilter === "all"
-                          ? "bg-admin-gold border-admin-gold text-black"
-                          : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
-                      )}
-                    >
-                      Todos
                     </button>
-                    {PAYMENT_STATUS_FILTER_VALUES.map((value) => (
+                  )}
+                </fieldset>
+                <fieldset className="space-y-3">
+                  <legend className="mb-3 flex items-center gap-2 text-sm font-bold">
+                    <Store
+                      aria-hidden="true"
+                      className="size-5 text-pink-300"
+                    />
+                    Canal da venda
+                  </legend>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { valor: "all", label: "Todos" },
+                        { valor: "online", label: "Site" },
+                        { valor: "presencial", label: "Balcão" },
+                      ] as const
+                    ).map(({ valor, label }) => (
                       <button
-                        key={value}
+                        key={valor}
                         type="button"
+                        aria-pressed={canalFilter === valor}
                         onClick={() => {
-                          setPaymentFilter(value);
+                          setCanalFilter(valor);
                           setCurrentPage(0);
                         }}
                         className={cn(
-                          "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
-                          paymentFilter === value
-                            ? "bg-admin-gold border-admin-gold text-black"
-                            : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                          OPCAO_PEDIDOS,
+                          "flex-1",
+                          canalFilter === valor && SELECIONADO_PEDIDOS,
                         )}
                       >
-                        {getPaymentStatusConfig(value).label}
+                        {label}
                       </button>
                     ))}
                   </div>
+                  {canalFilter !== "all" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCanalFilter("all");
+                        setCurrentPage(0);
+                      }}
+                      className={BOTAO_PEDIDOS}
+                    >
+                      Limpar Canal da Venda
+                    </button>
+                  )}
+                </fieldset>
+                <fieldset>
+                  <legend className="mb-3 flex items-center gap-2 text-sm font-bold">
+                    <CreditCard
+                      aria-hidden="true"
+                      className="size-5 text-emerald-300"
+                    />
+                    Status de Pagamento
+                  </legend>
+                  <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#101013]">
+                    {(["all", ...PAYMENT_STATUS_FILTER_VALUES] as const).map(
+                      (valor) => (
+                        <button
+                          key={valor}
+                          type="button"
+                          aria-pressed={paymentFilter === valor}
+                          onClick={() => {
+                            setPaymentFilter(valor);
+                            setCurrentPage(0);
+                          }}
+                          className={cn(
+                            "flex min-h-11 w-full items-center gap-2 border-b border-white/5 px-3 py-3 text-left text-sm text-zinc-200",
+                            FOCO_PEDIDOS,
+                            paymentFilter === valor && "bg-admin-gold/10",
+                          )}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "size-1.5 shrink-0 rounded-full bg-current",
+                              valor === "all"
+                                ? "text-zinc-300"
+                                : getPaymentStatusConfig(valor).color,
+                            )}
+                          />
+                          <span className="flex-1">
+                            {valor === "all"
+                              ? "Todos"
+                              : getPaymentStatusConfig(valor).label}
+                          </span>
+                          {paymentFilter === valor && (
+                            <CheckCircle2
+                              aria-hidden="true"
+                              className="size-5 shrink-0 text-admin-gold"
+                            />
+                          )}
+                        </button>
+                      ),
+                    )}
+                  </div>
                   {paymentFilter !== "all" && (
-                    <Button
-                      variant="ghost"
-                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[11px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                    <button
+                      type="button"
                       onClick={() => {
                         setPaymentFilter("all");
                         setCurrentPage(0);
                       }}
+                      className={`${BOTAO_PEDIDOS} mt-3`}
                     >
                       Limpar Status de Pagamento
-                    </Button>
-                  )}
-
-                  {/* C4.4: chip de canal — molde literal do grupo "Status de
-                      Pagamento" acima. Filtra NO BANCO (p_canal na RPC), não
-                      em memória. */}
-                  <h4 className="mt-6 px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                    Canal da venda
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCanalFilter("all");
-                        setCurrentPage(0);
-                      }}
-                      className={cn(
-                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
-                        canalFilter === "all"
-                          ? "bg-admin-gold border-admin-gold text-black"
-                          : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
-                      )}
-                    >
-                      Todos
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCanalFilter("online");
-                        setCurrentPage(0);
-                      }}
-                      className={cn(
-                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
-                        canalFilter === "online"
-                          ? "bg-admin-gold border-admin-gold text-black"
-                          : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
-                      )}
-                    >
-                      Site
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCanalFilter("presencial");
-                        setCurrentPage(0);
-                      }}
-                      className={cn(
-                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
-                        canalFilter === "presencial"
-                          ? "bg-admin-gold border-admin-gold text-black"
-                          : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
-                      )}
-                    >
-                      Balcão
-                    </button>
-                  </div>
-                  {canalFilter !== "all" && (
-                    <Button
-                      variant="ghost"
-                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[11px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
-                      onClick={() => {
-                        setCanalFilter("all");
-                        setCurrentPage(0);
-                      }}
-                    >
-                      Limpar Canal da Venda
-                    </Button>
                   )}
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() =>
-                setViewMode((prev) =>
-                  prev === "detailed" ? "compact" : "detailed",
-                )
-              }
-              className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
-              title={
-                viewMode === "detailed"
-                  ? "Visualização Compacta"
-                  : "Visualização Detalhada"
-              }
-            >
-              {viewMode === "detailed" ? (
-                <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-              ) : (
-                <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-              )}
-            </Button>
-
-            {/* Exportar CSV COMPACTO (pedido do Gabriel, 12/09/2026: "essa
-                opção está ocupando muito espaço (...) até ficar do lado do
-                campo de pesquisa"). Antes ocupava uma FILEIRA INTEIRA acima
-                da busca; agora é o terceiro controle da mesma linha.
-                🔴 O rótulo por extenso — com a contagem do FILTRO INTEIRO, não
-                a da página — não sumiu: virou o nome acessível do botão
-                (`aria-label`/`title`). Essa contagem é conserto deliberado de
-                uma mentira antiga na tela (o rótulo mostrava o total da página
-                e o CSV exportava o filtro inteiro) e está guardada por
-                tests/front/admin-orders-exportar-csv-rotulo-da-pagina.test.tsx
-                — que agora lê o nome acessível em vez do texto visível.
-                A palavra "CSV" fica visível de propósito: baixar um arquivo é
-                mais consequente que filtrar, e uma seta sozinha não diz o que
-                o toque vai fazer. */}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={exportarCsv}
-              disabled={totalOrders === 0 || gerandoCsv}
-              aria-label={rotuloExportarCsv}
-              title={rotuloExportarCsv}
-              className="group h-11 shrink-0 gap-1.5 rounded-xl border-zinc-800 bg-zinc-900/60 px-3 text-[11px] font-black uppercase tracking-widest text-zinc-500 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 hover:text-white focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
-            >
-              {gerandoCsv ? (
-                <Loader2 className="size-4 shrink-0 animate-spin text-admin-gold" />
-              ) : (
-                <Download className="size-4 shrink-0 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-              )}
-              <span>CSV</span>
-            </Button>
-          </div>
-
-          {/* Fileira de filtros de status — parte da MESMA âncora da busca
-                (pedido do Gabriel, 02/09): gruda junto com ela. Chips
-                COMPACTOS (pedido do Gabriel, 02/09 — fileira grande demais):
-                o botão mantém h-11 (alvo de toque de 44px, WCAG 2.5.8) e o
-                VISUAL desenha 32px via pseudo-elemento; o pseudo vive dentro
-                do botão, então o overflow-x-auto da fileira não o corta. */}
-          <div className="custom-scrollbar-hidden flex w-full snap-x gap-1.5 overflow-x-auto pt-2">
-            {" "}
-            <button
-              onClick={() => {
-                setFilter("open");
-                setCurrentPage(0);
-              }}
-              className={cn(
-                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
-                filter === "open"
-                  ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                  : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
-              )}
-            >
-              Em Aberto
-            </button>
-            {Object.entries(statusConfig).map(([status, cfg]) => (
-              <button
-                key={status}
-                onClick={() => {
-                  setFilter(status as OrderStatus);
-                  setCurrentPage(0);
-                }}
-                className={cn(
-                  "relative isolate flex h-11 shrink-0 snap-center items-center gap-1.5 rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
-                  filter === status
-                    ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                    : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
-                )}
-              >
-                <div
-                  className={cn(
-                    "w-1.5 h-1.5 rounded-full",
-                    STATUS_ORDER_COLORS[status] || "bg-gray-500",
-                  )}
-                />
-                {cfg.label}
-              </button>
-            ))}
-            {/* Saída honesta para ver tudo — inclusive cancelado e
-                entregue, que "Em Aberto" tira. Fica no FIM da fileira, não
-                perto do topo, porque não é o caminho recomendado. */}
-            <button
-              onClick={() => {
-                setFilter("all");
-                setCurrentPage(0);
-              }}
-              className={cn(
-                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
-                filter === "all"
-                  ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                  : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
-              )}
-            >
-              Todos
-            </button>
-          </div>
-        </div>
+                </fieldset>
+                <button
+                  type="button"
+                  onClick={() => setPainelDeFiltros(null)}
+                  className={`${BOTAO_PEDIDOS} min-h-14 w-full`}
+                >
+                  Fechar
+                </button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Orders List */}
-        <div
-          id="admin-pedidos-lista"
-          className="relative border-t border-white/5 pt-6"
-        >
+        <div id="admin-pedidos-lista" className="relative">
+          {avisoDaAnulacao && (
+            <div
+              role="status"
+              className="mb-4 flex items-start gap-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4"
+            >
+              <CheckCircle2
+                aria-hidden="true"
+                className="mt-1 size-5 shrink-0 text-emerald-300"
+              />
+              <div className="min-w-0 flex-1 text-sm leading-relaxed text-zinc-200">
+                <p className="font-bold text-emerald-300">
+                  Venda #{avisoDaAnulacao.numero}
+                </p>
+                <p>
+                  {avisoDaAnulacao.jaAnulada
+                    ? "Esta venda já estava anulada. Nada foi mexido de novo. O app não devolve o dinheiro."
+                    : "Venda anulada: o estoque voltou e o Financeiro já descontou. O app não devolve o dinheiro."}{" "}
+                  {orientacaoDeDevolucao(
+                    avisoDaAnulacao.forma,
+                    avisoDaAnulacao.total,
+                    avisoDaAnulacao.jaAnulada,
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Dispensar resultado da anulação"
+                onClick={() => setAvisoDaAnulacao(null)}
+                className={`${BOTAO_PEDIDOS} size-11 shrink-0 p-0`}
+              >
+                <X aria-hidden="true" className="size-5" />
+              </button>
+            </div>
+          )}
           {erroDaListagem ? (
             <div
               role="alert"
               className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-300"
             >
               <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
-              <p className="min-w-0 flex-1 text-xs">{erroDaListagem}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-red-300">
+                  Não foi possível carregar
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-300">
+                  {erroDaListagem}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => loadAllData(currentPage, false)}
                 disabled={loading}
                 className="flex min-h-11 shrink-0 items-center rounded-xl border border-solid border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider transition-colors hover:bg-red-500/10 disabled:opacity-50"
               >
+                <RefreshCw aria-hidden="true" className="mr-2 size-4" />
                 Tentar de novo
               </button>
             </div>
           ) : null}
+          {isOffline && paginatedOrders.length === 0 && (
+            <p
+              role="status"
+              className="mb-4 flex gap-2 rounded-2xl border border-orange-300/15 bg-orange-300/10 p-4 text-sm text-orange-300"
+            >
+              <WifiOff aria-hidden="true" className="size-5 shrink-0" />
+              Sem internet agora. Avançar, cancelar e editar ficam indisponíveis
+              até a conexão voltar.
+            </p>
+          )}
+          {!isLoaded && (
+            <p role="status" className="mb-3 text-sm text-zinc-400">
+              Carregando pedidos...
+            </p>
+          )}
           <LocalErrorBoundary>
             <div
               className={cn(
-                "space-y-8 relative transition-opacity duration-300 min-h-[400px]",
+                "relative min-h-[220px] space-y-6 transition-opacity duration-300",
                 !isLoaded && "opacity-50 pointer-events-none",
               )}
             >
@@ -2041,23 +2297,22 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               )}
               {!isLoaded && paginatedOrders.length === 0 ? (
                 viewMode === "detailed" ? (
-                  <div className="grid grid-cols-1 gap-5 sm:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]">
+                  <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]">
                     {Array.from({ length: 6 }).map((_, i) => (
                       <AdminOrderCardSkeleton key={i} viewMode="detailed" />
                     ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
+                  <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
                     {Array.from({ length: 10 }).map((_, i) => (
                       <AdminOrderCardSkeleton key={i} viewMode="compact" />
                     ))}
                   </div>
                 )
               ) : paginatedOrders.length === 0 && !erroDaListagem ? (
-                <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 px-6 py-12 text-center">
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent" />
-                  <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
-                    <Package className="size-6 text-zinc-600" />
+                <div className="flex flex-col items-center justify-center rounded-[24px] border border-white/10 bg-[#101013] px-5 py-8 text-center">
+                  <div className="mb-4 rounded-2xl border border-indigo-300/20 bg-indigo-300/10 p-3 text-indigo-300">
+                    <Package aria-hidden="true" className="size-6" />
                   </div>
                   {totalAbsolutoNaLoja === 0 ? (
                     // O COUNT sem filtro nenhum voltou ZERO: a loja não tem
@@ -2066,13 +2321,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     // do Gabriel, 02/09 — a foto mostrava a loja vazia com a
                     // orientação de "limpar o filtro").
                     <>
-                      <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                        Ainda não tem nenhum pedido
+                      <h3 className="text-lg font-bold leading-snug text-zinc-100">
+                        Seus pedidos vão aparecer aqui
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
-                        Quando a primeira venda acontecer, o pedido aparece aqui
-                        — com status, valor e o atalho de WhatsApp para o
-                        cliente.
+                      <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
+                        Quando chegar a primeira venda do site ou do balcão,
+                        acompanhe tudo por esta lista.
                       </p>
                     </>
                   ) : paymentFilter !== "all" ? (
@@ -2082,10 +2336,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     // Laudo 0109 (A-5): o texto antigo mandava paginar por um
                     // filtro client-side que morreu.
                     <>
-                      <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                      <h3 className="text-lg font-bold leading-snug text-zinc-100">
                         Nenhum pedido com esse filtro de pagamento
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
                         Nenhum pedido com esse status de pagamento. Limpe o
                         filtro para ver todos os pedidos.
                       </p>
@@ -2099,10 +2353,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     // pedidos ouvia "ainda não tem nenhum pedido" só por ter
                     // ligado o chip "Balcão").
                     <>
-                      <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                      <h3 className="text-lg font-bold leading-snug text-zinc-100">
                         Nenhum pedido nesse canal
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
                         Limpe o filtro de canal da venda para ver todos os
                         pedidos.
                       </p>
@@ -2120,31 +2374,69 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     // tela padrão — dizer o absoluto manda a lojista desistir
                     // de um pedido que existe.
                     <>
-                      <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                        Nenhum pedido corresponde ao que está sendo mostrado
-                        agora
+                      <h3 className="text-lg font-bold leading-snug text-zinc-100">
+                        Nenhum pedido neste recorte
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
                         Pode ser o filtro de status, a busca ou o período
-                        aplicado. Toque em "Todos", no fim da fileira de
-                        filtros, ou limpe a busca e o período para ver todos os
+                        aplicado. Limpe a busca e os filtros para ver Todos os
                         pedidos.
                       </p>
                     </>
                   ) : (
                     // Sem filtro de status, sem busca e sem período: aqui a
                     // lista vazia é mesmo "loja sem pedido nenhum".
-                    <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                      Ainda não tem nenhum pedido
+                    <h3 className="text-lg font-bold leading-snug text-zinc-100">
+                      Seus pedidos vão aparecer aqui
                     </h3>
+                  )}
+                  {totalAbsolutoNaLoja !== 0 && (
+                    <div className="mt-4 flex w-full max-w-sm flex-col gap-3">
+                      {(dateRange.start || dateRange.end) && (
+                        <button
+                          type="button"
+                          className={BOTAO_PEDIDOS}
+                          onClick={() => {
+                            setDateRange({ start: "", end: "" });
+                            setCurrentPage(0);
+                          }}
+                        >
+                          <CalendarDays
+                            aria-hidden="true"
+                            className="size-4 text-cyan-300"
+                          />
+                          Limpar Datas
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={BOTAO_PEDIDOS}
+                        onClick={() => {
+                          setFilter("all");
+                          setPaymentFilter("all");
+                          setCanalFilter("all");
+                          setSearchQuery("");
+                          setDateRange({ start: "", end: "" });
+                          setCurrentPage(0);
+                        }}
+                      >
+                        <X aria-hidden="true" className="size-4" />
+                        Limpar busca e filtros
+                      </button>
+                    </div>
                   )}
                 </div>
               ) : viewMode === "detailed" ? (
-                <div className="grid grid-cols-1 gap-5 sm:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]">
-                  {paginatedOrders.map((order) => (
+                <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]">
+                  {paginatedOrders.map((order, indice) => (
                     <AdminOrderCard
                       key={order.id}
                       order={order}
+                      onStatusChange={handleStatusChange}
+                      onReceberAntesDeAvancar={registrarPagamentoRecebido}
+                      onAnularVenda={anularVendaDaLista}
+                      isOffline={isOffline}
+                      destaquePrimario={indice === 0}
                       viewMode="detailed"
                       onSelect={handleSelectOrder}
                       onWhatsApp={handleWhatsApp}
@@ -2155,11 +2447,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
-                  {paginatedOrders.map((order) => (
+                <div className="grid grid-cols-1 gap-6 sm:[grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
+                  {paginatedOrders.map((order, indice) => (
                     <AdminOrderCard
                       key={order.id}
                       order={order}
+                      onStatusChange={handleStatusChange}
+                      onReceberAntesDeAvancar={registrarPagamentoRecebido}
+                      onAnularVenda={anularVendaDaLista}
+                      isOffline={isOffline}
+                      destaquePrimario={indice === 0}
                       viewMode="compact"
                       onSelect={handleSelectOrder}
                       onWhatsApp={handleWhatsApp}
@@ -2205,11 +2502,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-violet-300 pl-2 text-sm font-bold text-zinc-100">
               Ciclo de Vida do Pedido
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-[#101013] p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="size-2.5 rounded-full bg-blue-500" />
                   Pendente
@@ -2220,7 +2517,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-[#101013] p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="size-2.5 rounded-full bg-amber-500" />
                   Pago / Em Processamento
@@ -2231,7 +2528,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-[#101013] p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="size-2.5 rounded-full bg-indigo-500" />
                   Enviado
@@ -2242,7 +2539,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-[#101013] p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <span className="size-2.5 rounded-full bg-emerald-500" />
                   Entregue
@@ -2256,7 +2553,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-violet-300 pl-2 text-sm font-bold text-zinc-100">
               Recursos e Ações Rápidas
             </h4>
             <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">

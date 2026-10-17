@@ -423,7 +423,15 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     const contagensAntes = contagensFeitas();
     const listasAntes = loadOrdersEspiao.mock.calls.length;
 
-    const chip = Array.from(hospedeiro.querySelectorAll("button")).find(
+    // No desenho novo os status moram no painel "Filtros": abre pelo botão do topo.
+    const abrir = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      b.getAttribute("aria-label")?.startsWith("Status do pedido"),
+    );
+    expect(abrir).toBeTruthy();
+    await act(async () => {
+      abrir!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const chip = Array.from(document.body.querySelectorAll("button")).find(
       (b) => b.textContent?.trim() === "Em Trânsito",
     );
     expect(chip).toBeTruthy();

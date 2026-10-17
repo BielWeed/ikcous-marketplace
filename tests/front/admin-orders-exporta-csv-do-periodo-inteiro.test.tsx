@@ -99,9 +99,10 @@ describe("CSV de todos os pedidos do filtro", () => {
     // Desde 12/09/2026 o botão é compacto: o texto VISÍVEL é só "CSV" e o
     // rótulo por extenso vive no nome acessível (aria-label). Procurar pelo
     // nome acessível é o que continua descrevendo o que o lojista ouve/lê.
-    const encontrado = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (item) =>
-        /Exportar CSV|Gerando CSV/.test(item.getAttribute("aria-label") || ""),
+    const encontrado = Array.from(
+      document.body.querySelectorAll("button"),
+    ).find((item) =>
+      /Exportar CSV|Gerando CSV/.test(item.getAttribute("aria-label") || ""),
     );
     expect(encontrado).toBeDefined();
     return encontrado!;
@@ -114,12 +115,19 @@ describe("CSV de todos os pedidos do filtro", () => {
     // teste falhava 4 em 6 vezes mesmo no código original (medido em
     // 12/09/2026) — a tela ainda carregava, o botão nascia desabilitado e o
     // clique não exportava.
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Filtros e ferramentas"]',
+        )!
+        .click(),
+    );
     const limite = Date.now() + 5000;
     for (;;) {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       });
-      const pronto = Array.from(hospedeiro.querySelectorAll("button")).find(
+      const pronto = Array.from(document.body.querySelectorAll("button")).find(
         (item) =>
           /Exportar CSV/.test(item.getAttribute("aria-label") || "") &&
           !item.disabled,

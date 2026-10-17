@@ -109,10 +109,20 @@ async function esperarAte(
   });
 }
 
-function botaoComTexto(hospedeiro: HTMLElement, texto: string) {
-  return Array.from(hospedeiro.querySelectorAll("button")).find(
+function botaoComTexto(_hospedeiro: HTMLElement, texto: string) {
+  return Array.from(document.body.querySelectorAll("button")).find(
     (b) => b.textContent?.trim() === texto,
   );
+}
+
+async function abrirFiltros(hospedeiro: HTMLElement) {
+  await act(async () => {
+    hospedeiro
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label^="Status do pedido:"]',
+      )!
+      .click();
+  });
 }
 
 /** 3º argumento posicional de `loadOrders` na última chamada — é o valor que
@@ -190,6 +200,7 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
+    await abrirFiltros(hospedeiro);
     const emAberto = botaoComTexto(hospedeiro, "Em Aberto");
     expect(emAberto).toBeTruthy();
     expect(emAberto!.className).toContain("bg-admin-gold");
@@ -206,6 +217,7 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
 
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
+    await abrirFiltros(hospedeiro);
     const emAberto = botaoComTexto(hospedeiro, "Em Aberto");
     expect(emAberto!.className).toContain("bg-admin-gold");
     expect(ultimoStatusFilterEnviado()).toBe("open");
@@ -219,6 +231,7 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
+    await abrirFiltros(hospedeiro);
     const botaoTodos = botaoComTexto(hospedeiro, "Todos");
     expect(botaoTodos).toBeTruthy();
 
@@ -239,6 +252,7 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
+    await abrirFiltros(hospedeiro);
     const botaoCancelado = botaoComTexto(hospedeiro, "Cancelado");
     expect(botaoCancelado).toBeTruthy();
 
@@ -260,6 +274,7 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
+    await abrirFiltros(hospedeiro);
     const botaoTodos = botaoComTexto(hospedeiro, "Todos");
 
     await act(async () => {
@@ -336,10 +351,10 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
-    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
-    expect(hospedeiro.textContent).toContain(
-      "Nenhum pedido corresponde ao que está sendo mostrado agora",
+    expect(hospedeiro.textContent).not.toContain(
+      "Seus pedidos vão aparecer aqui",
     );
+    expect(hospedeiro.textContent).toContain("Nenhum pedido neste recorte");
     expect(hospedeiro.textContent).toContain("Todos");
   });
 
@@ -357,10 +372,10 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
-    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
-    expect(hospedeiro.textContent).toContain(
-      "Nenhum pedido corresponde ao que está sendo mostrado agora",
+    expect(hospedeiro.textContent).not.toContain(
+      "Seus pedidos vão aparecer aqui",
     );
+    expect(hospedeiro.textContent).toContain("Nenhum pedido neste recorte");
   });
 
   it("filtro 'Todos' + só o PERÍODO preenchido + lista vazia → o período sozinho já é estreitamento, mensagem nova (não a absoluta)", async () => {
@@ -382,10 +397,10 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
-    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
-    expect(hospedeiro.textContent).toContain(
-      "Nenhum pedido corresponde ao que está sendo mostrado agora",
+    expect(hospedeiro.textContent).not.toContain(
+      "Seus pedidos vão aparecer aqui",
     );
+    expect(hospedeiro.textContent).toContain("Nenhum pedido neste recorte");
   });
 
   it("filtro 'Todos', sem busca, sem período, lista vazia → aqui a mensagem absoluta é verdade e continua aparecendo", async () => {
@@ -398,10 +413,8 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
-    expect(hospedeiro.textContent).toContain("Ainda não tem nenhum pedido");
-    expect(hospedeiro.textContent).not.toContain(
-      "Nenhum pedido corresponde ao que está sendo mostrado agora",
-    );
+    expect(hospedeiro.textContent).toContain("Seus pedidos vão aparecer aqui");
+    expect(hospedeiro.textContent).not.toContain("Nenhum pedido neste recorte");
   });
 
   it("paymentFilter ativo continua com a redação dele, sem regredir para nenhuma das outras duas", async () => {
@@ -417,9 +430,9 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     expect(hospedeiro.textContent).toContain(
       "Nenhum pedido com esse filtro de pagamento",
     );
-    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
     expect(hospedeiro.textContent).not.toContain(
-      "Nenhum pedido corresponde ao que está sendo mostrado agora",
+      "Seus pedidos vão aparecer aqui",
     );
+    expect(hospedeiro.textContent).not.toContain("Nenhum pedido neste recorte");
   });
 });

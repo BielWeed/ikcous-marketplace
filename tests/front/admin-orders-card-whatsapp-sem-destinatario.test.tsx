@@ -93,7 +93,7 @@ function botoesWhatsapp(hospedeiro: HTMLElement) {
   return hospedeiro.querySelectorAll("button svg.lucide-message-circle");
 }
 
-describe("AdminOrdersView — card da lista sem destinatário não renderiza botão de WhatsApp (laudo 0109, A-7)", () => {
+describe("AdminOrdersView — card sem destinatário não permite abrir WhatsApp (laudo 0109, A-7)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -135,7 +135,7 @@ describe("AdminOrdersView — card da lista sem destinatário não renderiza bot
     mockOrders = [];
   });
 
-  it("cliente SEM número válido: o card não tem botão de WhatsApp", async () => {
+  it("cliente SEM número válido: contato desabilitado e motivo visível", async () => {
     mockOrders = [pedidoFake(null), pedidoFake("999")];
 
     const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
@@ -144,7 +144,13 @@ describe("AdminOrdersView — card da lista sem destinatário não renderiza bot
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
-    expect(botoesWhatsapp(hospedeiro).length).toBe(0);
+    expect(botoesWhatsapp(hospedeiro).length).toBe(2);
+    for (const icone of botoesWhatsapp(hospedeiro)) {
+      expect(icone.closest("button")?.disabled).toBe(true);
+    }
+    expect(hospedeiro.textContent).toContain(
+      "Este cliente não tem telefone válido",
+    );
   });
 
   it("cliente COM número válido (11 dígitos): o botão está no card", async () => {
