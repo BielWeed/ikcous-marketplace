@@ -49,10 +49,10 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const TITULO = "Você não está recebendo aviso de pedido novo neste aparelho";
+const TITULO = "Ligar avisos neste aparelho";
 const REGIAO = "Avisos de pedido novo neste aparelho";
 const LIGAR = "Ligar avisos neste aparelho";
-const AGORA_NAO = "Agora não";
+const AGORA_NAO = "Agora não · ocultar por 7 dias";
 const TESTE = "Mandar um aviso de teste";
 const DIA_MS = 24 * 60 * 60 * 1000;
 const HOJE = new Date("2026-10-14T12:00:00Z");
@@ -151,7 +151,8 @@ describe("CartaoDeAvisosDoAparelho", () => {
   const texto = () => hospedeiro.textContent ?? "";
   function botao(nome: string): HTMLButtonElement | undefined {
     return Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => (b.textContent ?? "").trim() === nome,
+      (b) =>
+        (b.getAttribute("aria-label") ?? b.textContent ?? "").trim() === nome,
     );
   }
   async function tocar(nome: string) {
@@ -173,7 +174,7 @@ describe("CartaoDeAvisosDoAparelho", () => {
       // Biome recusam).
       expect(r?.tagName).toBe("SECTION");
       expect(texto()).toContain(TITULO);
-      expect(texto()).toContain("só vê o pedido quando você abre o painel");
+      expect(texto()).toContain("Desligados · receba novos pedidos");
       expect(botao(LIGAR)).toBeDefined();
       expect(botao(AGORA_NAO)).toBeDefined();
     });
@@ -181,7 +182,7 @@ describe("CartaoDeAvisosDoAparelho", () => {
     it("os botões têm alvo de toque de 44px (min-h-11)", async () => {
       await montar();
       for (const nome of [LIGAR, AGORA_NAO]) {
-        expect(botao(nome)?.className, nome).toMatch(/\bmin-h-11\b/);
+        expect(botao(nome)?.className, nome).toMatch(/\bmin-h-(11|12)\b/);
       }
     });
 
@@ -251,7 +252,7 @@ describe("CartaoDeAvisosDoAparelho", () => {
       aparelhoSemAviso({ isSupported: false });
       await montar();
 
-      expect(texto()).toContain(TITULO);
+      expect(texto()).toContain("Sem suporte neste aparelho");
       expect(texto()).toContain("Este navegador não consegue receber avisos");
       expect(botao(LIGAR)).toBeUndefined();
       expect(botao(AGORA_NAO)).toBeDefined();

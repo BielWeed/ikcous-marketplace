@@ -241,7 +241,7 @@ describe("Relatórios — telas sem jargão", () => {
     });
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("valor médio por venda");
+    expect(texto).toContain("Valor médio por venda");
     expect(texto).not.toMatch(/ticket/i);
   });
 });
