@@ -2073,7 +2073,9 @@ nunca confirma.
     coluna de `tracking_code` fica). Não toca RLS, gatilho, função, `INSERT`, `SELECT` nem nenhuma linha: as
     anotações antigas continuam em `notes`. O pré-voo recusa (`B1_BASELINE_DIVERGENT`) qualquer ACL que não seja
     a de antes (`authenticated` com `UPDATE` de coluna em `notes` e `tracking_code`) nem a de depois (só
-    `tracking_code`), inclusive `UPDATE` de tabela inteira, `anon`/PUBLIC em coluna e `GRANT OPTION`; a
+    `tracking_code`), inclusive `UPDATE` de tabela inteira, `anon`/PUBLIC em coluna e `GRANT OPTION`; as colunas que o
+    `authenticated` atualiza são medidas pelo privilégio **efetivo** (direto, PUBLIC ou herdado de outro papel),
+    não só pela ACL direta; a
     conferência final aborta e desfaz tudo se `authenticated` ou `anon` ainda atualizam `notes`, se
     `authenticated` perdeu `tracking_code` ou se `service_role` perdeu `notes`.
     Consultas de catálogo `51a-conferir-notes-do-pedido-fechada-aplicado` (depois) e

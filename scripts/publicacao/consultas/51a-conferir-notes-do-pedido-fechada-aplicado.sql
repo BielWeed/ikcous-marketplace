@@ -22,16 +22,17 @@ WITH ord AS (
   UNION ALL
   SELECT 'tracking_code: authenticated atualiza so ele (sem GRANT OPTION), nenhuma outra coluna', 'sim', CASE WHEN COALESCE((has_column_privilege((SELECT auth FROM pap), (SELECT oid FROM ord), (SELECT rastreio FROM col), 'UPDATE')
     AND (SELECT string_agg(a.attname::text, ',' ORDER BY a.attname)
-           FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
+           FROM pg_attribute a
           WHERE a.attrelid = (SELECT oid FROM ord) AND a.attnum > 0 AND NOT a.attisdropped
-            AND g.privilege_type = 'UPDATE' AND g.grantee = (SELECT auth FROM pap)) = 'tracking_code'
+            AND has_column_privilege((SELECT auth FROM pap), (SELECT oid FROM ord), a.attnum, 'UPDATE')) = 'tracking_code'
     AND NOT EXISTS (SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
                      WHERE a.attrelid = (SELECT oid FROM ord) AND a.attnum > 0 AND NOT a.attisdropped
                        AND g.privilege_type = 'UPDATE' AND g.grantee = (SELECT auth FROM pap) AND g.is_grantable)), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'anon e PUBLIC: sem UPDATE em coluna alguma de marketplace_orders', 'sim', CASE WHEN COALESCE((NOT EXISTS (SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
+  SELECT 'anon e PUBLIC: sem UPDATE em coluna alguma de marketplace_orders', 'sim', CASE WHEN COALESCE((NOT EXISTS (SELECT 1 FROM pg_attribute a
                      WHERE a.attrelid = (SELECT oid FROM ord) AND a.attnum > 0 AND NOT a.attisdropped
-                       AND g.privilege_type = 'UPDATE' AND g.grantee IN (0, (SELECT anon FROM pap)))
+                       AND (has_column_privilege((SELECT anon FROM pap), (SELECT oid FROM ord), a.attnum, 'UPDATE')
+                            OR has_column_privilege('public'::name, (SELECT oid FROM ord), a.attnum, 'UPDATE')))
     AND NOT has_table_privilege((SELECT anon FROM pap), (SELECT oid FROM ord), 'UPDATE')), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'service_role: atualiza notes e tracking_code', 'sim', CASE WHEN COALESCE((has_column_privilege((SELECT srv FROM pap), (SELECT oid FROM ord), (SELECT notes FROM col), 'UPDATE')

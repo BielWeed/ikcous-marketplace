@@ -17,9 +17,9 @@ WITH ord AS (
   SELECT 'authenticated: atualiza notes e tracking_code por coluna, sem GRANT OPTION e nenhuma outra coluna', 'sim', CASE WHEN COALESCE((has_column_privilege((SELECT auth FROM pap), (SELECT oid FROM ord), (SELECT notes FROM col), 'UPDATE')
     AND has_column_privilege((SELECT auth FROM pap), (SELECT oid FROM ord), (SELECT rastreio FROM col), 'UPDATE')
     AND (SELECT string_agg(a.attname::text, ',' ORDER BY a.attname)
-           FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
+           FROM pg_attribute a
           WHERE a.attrelid = (SELECT oid FROM ord) AND a.attnum > 0 AND NOT a.attisdropped
-            AND g.privilege_type = 'UPDATE' AND g.grantee = (SELECT auth FROM pap)) = 'notes,tracking_code'
+            AND has_column_privilege((SELECT auth FROM pap), (SELECT oid FROM ord), a.attnum, 'UPDATE')) = 'notes,tracking_code'
     AND NOT EXISTS (SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
                      WHERE a.attrelid = (SELECT oid FROM ord) AND a.attnum > 0 AND NOT a.attisdropped
                        AND g.privilege_type = 'UPDATE' AND g.grantee = (SELECT auth FROM pap) AND g.is_grantable)), false) THEN 'sim' ELSE 'nao' END
@@ -29,9 +29,10 @@ WITH ord AS (
     AND NOT EXISTS (SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) g
                      WHERE c.oid = (SELECT oid FROM ord) AND g.privilege_type = 'UPDATE' AND g.grantee IN (0, (SELECT anon FROM pap), (SELECT auth FROM pap)))), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'anon e PUBLIC: sem UPDATE em coluna alguma de marketplace_orders', 'sim', CASE WHEN COALESCE((NOT EXISTS (SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
+  SELECT 'anon e PUBLIC: sem UPDATE em coluna alguma de marketplace_orders', 'sim', CASE WHEN COALESCE((NOT EXISTS (SELECT 1 FROM pg_attribute a
                      WHERE a.attrelid = (SELECT oid FROM ord) AND a.attnum > 0 AND NOT a.attisdropped
-                       AND g.privilege_type = 'UPDATE' AND g.grantee IN (0, (SELECT anon FROM pap)))), false) THEN 'sim' ELSE 'nao' END
+                       AND (has_column_privilege((SELECT anon FROM pap), (SELECT oid FROM ord), a.attnum, 'UPDATE')
+                            OR has_column_privilege('public'::name, (SELECT oid FROM ord), a.attnum, 'UPDATE')))), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'service_role: atualiza notes e tracking_code', 'sim', CASE WHEN COALESCE((has_column_privilege((SELECT srv FROM pap), (SELECT oid FROM ord), (SELECT notes FROM col), 'UPDATE')
     AND has_column_privilege((SELECT srv FROM pap), (SELECT oid FROM ord), (SELECT rastreio FROM col), 'UPDATE')), false) THEN 'sim' ELSE 'nao' END

@@ -11,9 +11,11 @@
 -- interna em notes, e ela chegaria ao celular da cliente.
 --
 -- O QUE ESTA MIGRATION FAZ, NA ORDEM:
---   1. PRÉ-VOO (B1_BASELINE_DIVERGENT), antes de qualquer escrita: lê a ACL de marketplace_orders e
---      só segue se ela estiver EXATAMENTE no estado de antes (authenticated com UPDATE de coluna em
---      notes e em tracking_code, nada mais) ou no estado de depois (só em tracking_code). Recusa
+--   1. PRÉ-VOO (B1_BASELINE_DIVERGENT), antes de qualquer escrita: lê o privilégio EFETIVO em
+--      marketplace_orders (has_column_privilege por coluna: conta o grant direto, o de PUBLIC e o
+--      herdado de outro papel, não só a ACL direta) e só segue se ele estiver EXATAMENTE no estado de
+--      antes (authenticated atualiza notes e tracking_code, nada mais) ou no de depois (só
+--      tracking_code); anon e PUBLIC não atualizam coluna nenhuma. Recusa
 --      anon/PUBLIC com UPDATE em qualquer coluna, UPDATE de TABELA inteira para anon/authenticated/
 --      PUBLIC (um REVOKE de coluna não tira privilégio de tabela: o apply abortaria no fim com o
 --      vazamento aberto, então recusa já aqui, com a mensagem certa), privilégio de coluna com
@@ -86,11 +88,14 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: anon, authenticated ou PUBLIC têm UPDATE de TABELA inteira em marketplace_orders — o REVOKE de coluna não adianta; revise a ACL antes de aplicar.';
   END IF;
 
-  -- anon e PUBLIC não atualizam coluna nenhuma.
-  IF EXISTS (SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
+  -- anon e PUBLIC não atualizam coluna nenhuma. Privilégio EFETIVO (has_column_privilege): conta o
+  -- grant direto, o de PUBLIC e o herdado de outro papel; ler só a ACL direta (attacl) deixaria passar
+  -- um papel herdado com UPDATE em qualquer coluna.
+  IF EXISTS (SELECT 1 FROM pg_attribute a
               WHERE a.attrelid = v_t AND a.attnum > 0 AND NOT a.attisdropped
-                AND g.privilege_type = 'UPDATE' AND g.grantee IN (0, v_anon)) THEN
-    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: anon ou PUBLIC têm UPDATE de coluna em marketplace_orders — loja que ninguém mediu.';
+                AND (has_column_privilege(v_anon, v_t, a.attnum, 'UPDATE')
+                     OR has_column_privilege('public'::name, v_t, a.attnum, 'UPDATE'))) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: anon ou PUBLIC têm UPDATE de coluna em marketplace_orders (direto, por PUBLIC ou herdado de papel) — loja que ninguém mediu.';
   END IF;
 
   -- UPDATE de coluna repassável (GRANT OPTION) deixaria o authenticated reabrir a porta sozinho.
@@ -100,11 +105,12 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: authenticated tem UPDATE de coluna com GRANT OPTION em marketplace_orders.';
   END IF;
 
-  -- As colunas em que o authenticated atualiza: exatamente as de antes ou exatamente as de depois.
+  -- As colunas em que o authenticated atualiza DE FATO (efetivo: direto, PUBLIC ou herdado de papel):
+  -- exatamente as de antes ou exatamente as de depois.
   SELECT string_agg(a.attname::text, ',' ORDER BY a.attname) INTO v_colunas
-    FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
+    FROM pg_attribute a
    WHERE a.attrelid = v_t AND a.attnum > 0 AND NOT a.attisdropped
-     AND g.privilege_type = 'UPDATE' AND g.grantee = v_auth;
+     AND has_column_privilege(v_auth, v_t, a.attnum, 'UPDATE');
   IF v_colunas IS DISTINCT FROM 'notes,tracking_code' AND v_colunas IS DISTINCT FROM 'tracking_code' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: authenticated atualiza as colunas [%] de marketplace_orders; esperado notes,tracking_code (antes) ou tracking_code (depois).', COALESCE(v_colunas, 'nenhuma');
   END IF;
@@ -141,10 +147,16 @@ BEGIN
   IF NOT has_column_privilege('authenticated', v_t, 'tracking_code', 'UPDATE') THEN
     RAISE EXCEPTION 'conferencia 20261248: authenticated perdeu o UPDATE em marketplace_orders.tracking_code';
   END IF;
+  IF EXISTS (SELECT 1 FROM pg_attribute a
+              WHERE a.attrelid = v_t AND a.attnum > 0 AND NOT a.attisdropped
+                AND (has_column_privilege(v_anon, v_t, a.attnum, 'UPDATE')
+                     OR has_column_privilege('public'::name, v_t, a.attnum, 'UPDATE'))) THEN
+    RAISE EXCEPTION 'conferencia 20261248: anon ou PUBLIC atualizam alguma coluna de marketplace_orders';
+  END IF;
   SELECT string_agg(a.attname::text, ',' ORDER BY a.attname) INTO v_colunas
-    FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
+    FROM pg_attribute a
    WHERE a.attrelid = v_t AND a.attnum > 0 AND NOT a.attisdropped
-     AND g.privilege_type = 'UPDATE' AND g.grantee = v_auth;
+     AND has_column_privilege(v_auth, v_t, a.attnum, 'UPDATE');
   IF v_colunas IS DISTINCT FROM 'tracking_code' THEN
     RAISE EXCEPTION 'conferencia 20261248: authenticated atualiza [%] de marketplace_orders; esperado só tracking_code', COALESCE(v_colunas, 'nenhuma');
   END IF;

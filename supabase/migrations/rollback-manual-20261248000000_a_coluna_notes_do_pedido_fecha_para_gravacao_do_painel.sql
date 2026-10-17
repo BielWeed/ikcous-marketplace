@@ -36,9 +36,10 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: marketplace_orders sem a coluna notes ou tracking_code.';
   END IF;
   IF has_table_privilege('anon', v_t, 'UPDATE')
-     OR EXISTS (SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) g
+     OR EXISTS (SELECT 1 FROM pg_attribute a
                  WHERE a.attrelid = v_t AND a.attnum > 0 AND NOT a.attisdropped
-                   AND g.privilege_type = 'UPDATE' AND g.grantee IN (0, v_anon)) THEN
+                   AND (has_column_privilege(v_anon, v_t, a.attnum, 'UPDATE')
+                        OR has_column_privilege('public'::name, v_t, a.attnum, 'UPDATE'))) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: anon ou PUBLIC têm UPDATE em marketplace_orders — meça a loja antes de reabrir a coluna.';
   END IF;
 END $preflight_rollback_20261248$;
