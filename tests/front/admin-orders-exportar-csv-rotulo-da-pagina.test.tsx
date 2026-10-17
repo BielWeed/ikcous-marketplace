@@ -85,8 +85,8 @@ function nomeAcessivel(b: HTMLButtonElement) {
   return (b.getAttribute("aria-label") || "").trim();
 }
 
-function botaoExportar(hospedeiro: HTMLElement) {
-  return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+function botaoExportar(_hospedeiro: HTMLElement) {
+  return Array.from(document.body.querySelectorAll("button")).find((b) =>
     nomeAcessivel(b).startsWith("Exportar CSV"),
   );
 }
@@ -159,6 +159,13 @@ describe("AdminOrdersView — o botão de exportar CSV diz quantos pedidos vai g
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Filtros e ferramentas"]',
+        )!
+        .click(),
+    );
     const botao = botaoExportar(hospedeiro);
     expect(botao).toBeTruthy();
     expect(nomeAcessivel(botao!)).toBe("Exportar CSV (25 no filtro)");
@@ -176,6 +183,13 @@ describe("AdminOrdersView — o botão de exportar CSV diz quantos pedidos vai g
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Filtros e ferramentas"]',
+        )!
+        .click(),
+    );
     const botao = botaoExportar(hospedeiro);
     expect(nomeAcessivel(botao!)).toBe("Exportar CSV (1 no filtro)");
   });
@@ -191,6 +205,13 @@ describe("AdminOrdersView — o botão de exportar CSV diz quantos pedidos vai g
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Filtros e ferramentas"]',
+        )!
+        .click(),
+    );
     const botao = botaoExportar(hospedeiro);
     expect(botao).toBeTruthy();
     expect(botao!.disabled).toBe(true);

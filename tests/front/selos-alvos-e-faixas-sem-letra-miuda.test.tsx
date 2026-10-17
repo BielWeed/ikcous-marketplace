@@ -128,14 +128,14 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
   }
 
   describe("(a) AdminOrderCard", () => {
-    it("'Marcar como recebido' tem 44px de altura (h-11)", () => {
+    it("'Marcar como recebido' tem ao menos 56px de altura", () => {
       montarCartao({});
       const botao = botaoComTexto("Marcar como recebido");
       expect(
         botao,
         "o botão precisa existir no pedido em dinheiro",
       ).toBeDefined();
-      expect(botao?.className).toContain("h-11");
+      expect(botao?.className).toContain("min-h-14");
       expect(botao?.className).not.toContain("h-10");
     });
 
@@ -168,7 +168,7 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
 
   describe("(b) selos de status", () => {
     function rotulo(): Element | null {
-      return hospedeiro.querySelector("span.uppercase");
+      return hospedeiro.querySelector("div > span:not([aria-hidden])");
     }
 
     it.each(["padrao", "cartao"] as const)(
@@ -187,7 +187,7 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
     );
 
     it.each(["padrao", "cartao"] as const)(
-      "PaymentStatusBadge (%s): rótulo em 11px",
+      "PaymentStatusBadge (%s): rótulo de pelo menos 11px",
       (tamanho) => {
         act(() => {
           raiz.render(
@@ -200,7 +200,9 @@ describe("selos, botões e faixas sem letra miúda nem alvo pequeno (onda K)", (
         });
         const span = rotulo();
         expect(span).not.toBeNull();
-        expect(span?.className).toContain("text-[11px]");
+        expect(span?.className).toContain(
+          tamanho === "cartao" ? "text-xs" : "text-[11px]",
+        );
         expect(span?.className).not.toMatch(TEXTO_MIUDO);
       },
     );

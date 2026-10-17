@@ -456,7 +456,7 @@ describe("AdminOrdersView — bolinha do filtro e estado vazio do canal (C4.4)",
     espiaoExportar.mockClear();
   });
 
-  it("chip 'Balcão' ligado: a bolinha dourada do ícone de filtro acende (achado 3)", async () => {
+  it("chip 'Balcão' ligado: o contador do ícone de filtro aparece (achado 3)", async () => {
     window.localStorage.setItem(
       "admin_orders_canal_filter",
       JSON.stringify("presencial"),
@@ -471,12 +471,13 @@ describe("AdminOrdersView — bolinha do filtro e estado vazio do canal (C4.4)",
     });
 
     const bolinha = hospedeiro.querySelector(
-      'span[aria-hidden="true"].bg-admin-gold',
+      'button[aria-label="Filtros e ferramentas"] span',
     );
     expect(bolinha).toBeTruthy();
+    expect(bolinha?.textContent).toBe("1");
   });
 
-  it("sem filtro nenhum ligado, a bolinha não aparece", async () => {
+  it("sem filtro nenhum ligado, o contador não aparece", async () => {
     mockOrders = [pedidoDoCard({ id: "ped-1" })];
     mockTotalOrders = 1;
 
@@ -487,7 +488,7 @@ describe("AdminOrdersView — bolinha do filtro e estado vazio do canal (C4.4)",
     });
 
     const bolinha = hospedeiro.querySelector(
-      'span[aria-hidden="true"].bg-admin-gold',
+      'button[aria-label="Filtros e ferramentas"] span',
     );
     expect(bolinha).toBeFalsy();
   });
@@ -532,7 +533,9 @@ describe("AdminOrdersView — bolinha do filtro e estado vazio do canal (C4.4)",
     });
 
     expect(hospedeiro.textContent).toContain("Nenhum pedido nesse canal");
-    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
+    expect(hospedeiro.textContent).not.toContain(
+      "Seus pedidos vão aparecer aqui",
+    );
   });
 });
 
@@ -676,8 +679,15 @@ describe("AdminOrdersView — o chip 'Balcão' chega de verdade ao hook (achado 
 
     // Mesmo botão que admin-orders-exportar-csv-rotulo-da-pagina.test.tsx
     // localiza: nome ACESSÍVEL (aria-label/title), não o texto visível "CSV".
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Filtros e ferramentas"]',
+        )!
+        .click(),
+    );
     const botaoExportar = Array.from(
-      hospedeiro.querySelectorAll("button"),
+      document.body.querySelectorAll("button"),
     ).find((b) =>
       (b.getAttribute("aria-label") || "").includes("Exportar CSV"),
     );

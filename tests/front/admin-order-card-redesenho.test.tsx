@@ -93,7 +93,7 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
     expect(texto).toContain("maleta canetas 120");
     expect(texto).toContain("99,90");
     // 1 linha de pedido com quantidade 2 = "2 itens", não "1 item".
-    expect(texto).toContain("2 itens");
+    expect(texto).toContain("2 un.");
     expect(texto).toContain("#ECA2D5");
   });
 
@@ -108,6 +108,12 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
         new MouseEvent("click", { bubbles: true }),
       );
     });
+    expect(aoRegistrar).not.toHaveBeenCalled();
+    const confirmar = [...document.body.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Recebi",
+    );
+    expect(confirmar).toBeTruthy();
+    act(() => confirmar?.click());
     expect(aoRegistrar).toHaveBeenCalledWith(
       "aaaaaaaa-0000-0000-0000-000000eca2d5",
       true,
@@ -156,13 +162,30 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
     expect(hospedeiro.textContent).toContain("Ver detalhes");
   });
 
-  it("sem WhatsApp válido o botão simplesmente não existe (laudo 0109, A-7)", () => {
+  it("sem WhatsApp válido mostra o motivo e mantém o contato desabilitado", () => {
     desenhar(pedido({ customer: { name: "Maria", whatsapp: "" } as never }));
-    expect(hospedeiro.querySelector('button[title="WhatsApp"]')).toBeNull();
+    const zap = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[title="WhatsApp"]',
+    );
+    expect(zap).toBeTruthy();
+    expect(zap?.disabled).toBe(true);
+    expect(hospedeiro.textContent).toContain(
+      "Este cliente não tem telefone válido",
+    );
+    act(() => zap?.click());
+    expect(aoChamarWhatsapp).not.toHaveBeenCalled();
   });
 
   it("clicar no card abre o pedido; o toque no WhatsApp não", () => {
     desenhar(pedido());
+    act(() => {
+      hospedeiro
+        .querySelector('button[title="WhatsApp"]')
+        ?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+        );
+    });
+    expect(aoSelecionar).not.toHaveBeenCalled();
     act(() => {
       hospedeiro
         .querySelector('button[title="WhatsApp"]')
@@ -173,7 +196,7 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
 
     act(() => {
       hospedeiro
-        .querySelector('[data-testid="pedido-card"]')
+        .querySelector("button[data-abrir-pedido]")
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(aoSelecionar).toHaveBeenCalledTimes(1);
@@ -192,6 +215,6 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
     expect(texto).toContain("Produto 0");
     expect(texto).toContain("Produto 2");
     expect(texto).not.toContain("Produto 3");
-    expect(texto).toMatch(/\+ 2 outros/);
+    expect(texto).toMatch(/e mais 2/);
   });
 });

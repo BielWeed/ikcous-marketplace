@@ -9,7 +9,7 @@
 //
 // O CONTRATO: quando a lista aparece vazia, a view mede o COUNT absoluto
 // (sem filtro nenhum, head count):
-//   - 0  → "Ainda não tem nenhum pedido" + convite da primeira venda;
+//   - 0  → "Seus pedidos vão aparecer aqui" + convite da primeira venda;
 //   - >0 → as mensagens de filtro/busca de sempre (listas de verdade).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -120,7 +120,7 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
     totalAbsolutoNoBanco = 0;
   });
 
-  it("loja sem venda nenhuma: 'Ainda não tem nenhum pedido', não orientação de filtro", async () => {
+  it("loja sem venda nenhuma: 'Seus pedidos vão aparecer aqui', não orientação de filtro", async () => {
     mockOrders = [];
     mockTotalOrders = 0;
     totalAbsolutoNoBanco = 0;
@@ -134,9 +134,9 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    expect(hospedeiro.textContent).toContain("Ainda não tem nenhum pedido");
+    expect(hospedeiro.textContent).toContain("Seus pedidos vão aparecer aqui");
     expect(hospedeiro.textContent).toContain(
-      "Quando a primeira venda acontecer",
+      "Quando chegar a primeira venda do site ou do balcão",
     );
     // A orientação de filtro não tem o que ensinar numa loja vazia.
     expect(hospedeiro.textContent).not.toContain("Pode ser o filtro de status");
@@ -155,9 +155,9 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    expect(hospedeiro.textContent).toContain(
-      "Nenhum pedido corresponde ao que está sendo mostrado agora",
+    expect(hospedeiro.textContent).toContain("Nenhum pedido neste recorte");
+    expect(hospedeiro.textContent).not.toContain(
+      "Seus pedidos vão aparecer aqui",
     );
-    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
   });
 });
