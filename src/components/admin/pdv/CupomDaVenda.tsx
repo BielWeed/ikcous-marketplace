@@ -773,14 +773,17 @@ export function CupomDaVenda({
                           {ativas.length > 0
                             ? `${ativas.length} variação(ões)`
                             : `R$ ${reais(produto.preco_venda)}`}
-                          {ativas.length === 0 &&
-                            (produto.estoque === 1 || produto.estoque <= 0) && (
-                              <span className="pdv-orange">
-                                {produto.estoque <= 0
-                                  ? " · Sem estoque"
-                                  : " · Só 1 em estoque"}
-                              </span>
-                            )}
+                          {ativas.length === 0 && (
+                            <span
+                              className={
+                                produto.estoque <= 0 ? "pdv-orange" : undefined
+                              }
+                            >
+                              {produto.estoque <= 0
+                                ? " · Sem estoque"
+                                : ` · ${produto.estoque} em estoque`}
+                            </span>
+                          )}
                         </span>
                       </span>
                       {ativas.length > 0 ? (
