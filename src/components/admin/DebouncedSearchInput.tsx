@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { X } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 
 interface DebouncedSearchInputProps {
@@ -15,6 +16,7 @@ interface DebouncedSearchInputProps {
   readonly className?: string;
   readonly id?: string;
   readonly name?: string;
+  readonly limpavel?: boolean;
 }
 
 export const DebouncedSearchInput = React.memo(function DebouncedSearchInput({
@@ -26,6 +28,7 @@ export const DebouncedSearchInput = React.memo(function DebouncedSearchInput({
   className = "",
   id,
   name,
+  limpavel = false,
 }: DebouncedSearchInputProps) {
   const [localValue, setLocalValue] = useState(value);
   const onChangeRef = useRef(onChange);
@@ -75,15 +78,36 @@ export const DebouncedSearchInput = React.memo(function DebouncedSearchInput({
     return () => clearTimeout(timer);
   }, [localValue, value, delay]);
 
-  return (
+  const campo = (
     <Input
       id={id}
       name={name}
       placeholder={placeholder}
-      className={className}
+      className={`${className}${limpavel ? " pr-11" : ""}`}
       value={localValue}
       onChange={(e) => setLocalValue(e.target.value)}
       autoComplete="off"
     />
+  );
+
+  if (!limpavel) return campo;
+
+  return (
+    <div className="relative">
+      {campo}
+      {localValue && (
+        <button
+          type="button"
+          aria-label="Limpar busca"
+          onClick={() => {
+            setLocalValue("");
+            document.getElementById(id ?? "")?.focus();
+          }}
+          className="absolute right-0 top-0 flex size-11 items-center justify-center rounded-xl text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+        >
+          <X aria-hidden="true" className="size-4" />
+        </button>
+      )}
+    </div>
   );
 });

@@ -98,4 +98,22 @@ describe("PaginacaoAdmin", () => {
     });
     expect(tela.firstChild).toBeNull();
   });
+
+  it("a aparência de Clientes mantém os limites e explica a última página", async () => {
+    const aoMudar = vi.fn();
+    const tela = montar({
+      aparencia: "clientes",
+      pagina: 1,
+      totalPaginas: 2,
+      totalItens: 19,
+      itensPorPagina: 12,
+      aoMudar,
+    });
+    expect(tela.textContent).toContain("Exibindo 13 - 19 de 19");
+    expect(tela.textContent).toContain("2 de 2");
+    expect(tela.textContent).toContain("Última página · Próximo indisponível");
+    expect(botaoPeloTexto(tela, "Próximo")?.disabled).toBe(true);
+    await act(async () => botaoPeloTexto(tela, "Anterior")!.click());
+    expect(aoMudar).toHaveBeenCalledExactlyOnceWith(0);
+  });
 });
