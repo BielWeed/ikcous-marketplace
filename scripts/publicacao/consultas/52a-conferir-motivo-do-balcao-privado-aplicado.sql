@@ -27,7 +27,8 @@ WITH ord AS (
          l.lanname = 'plpgsql' AND p.prosecdef AND p.provolatile = 'v'
            AND NOT p.proisstrict AND NOT p.proretset AND p.pronargs = 8
            AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]
-           AND pg_get_function_result(p.oid) = 'jsonb' AS atributos
+           AND pg_get_function_result(p.oid) = 'jsonb'
+           AND p.proowner = (SELECT dono FROM ord) AS atributos
     FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang
    WHERE p.oid = to_regprocedure('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)')
 ), itens(item, esperado, vivo) AS (

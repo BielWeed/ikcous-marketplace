@@ -339,6 +339,14 @@ async function provar() {
       ["corpo estranho", corpoMaisUmByte, [2]],
       ["atributo divergente", atributoTrocado, [3]],
       [
+        "dono da funcao diferente do dono do pedido",
+        (c) =>
+          c.query(
+            `CREATE ROLE pdv249_dono NOLOGIN; GRANT CREATE ON SCHEMA public TO pdv249_dono; ALTER FUNCTION ${FN} OWNER TO pdv249_dono`,
+          ),
+        [3],
+      ],
+      [
         "EXECUTE para anon",
         (c) => c.query(`GRANT EXECUTE ON FUNCTION ${FN} TO anon`),
         [4],
