@@ -82,8 +82,12 @@ describe("Início: os textos dizem a janela que o banco calcula", () => {
 
   it("(b) 'A receber' e 'A pagar' dizem que incluem o que já venceu", () => {
     const pagina = texto(hospedeiro);
-    expect(pagina).toContain("A receber (vencidas + próximos 7 dias)");
-    expect(pagina).toContain("A pagar (vencidas + próximos 7 dias)");
+    expect(
+      texto(hospedeiro.querySelector('[aria-label^="A receber —"]')),
+    ).toContain("Vencidas + próximos 7 dias");
+    expect(
+      texto(hospedeiro.querySelector('[aria-label^="A pagar —"]')),
+    ).toContain("Vencidas + próximos 7 dias");
     expect(pagina).not.toContain("A receber em 7 dias");
     expect(pagina).not.toContain("A pagar em 7 dias");
   });
@@ -93,7 +97,7 @@ describe("Início: os textos dizem a janela que o banco calcula", () => {
     expect(pagina).toContain("R$ 1.200,50");
     expect(pagina).toContain("R$ 300,00");
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      texto(b).includes("A pagar (vencidas + próximos 7 dias)"),
+      (b.getAttribute("aria-label") ?? "").startsWith("A pagar —"),
     );
     expect(botao).toBeTruthy();
     act(() => botao?.click());

@@ -188,13 +188,15 @@ describe("Início do painel", () => {
       "Vendas pagas no mês",
       "Lucro estimado",
       "Saldo em contas",
-      "A receber (vencidas + próximos 7 dias)",
+      "A receber",
     ]) {
       expect(pagina).toContain(rotulo);
     }
     expect(pagina).toContain("R$ 4.321,09");
     expect(pagina).toContain("R$ 8.765,43");
     expect(pagina).toContain("R$ 1.200,50");
+    const receber = hospedeiro.querySelector('[aria-label^="A receber —"]');
+    expect(texto(receber)).toContain("Vencidas + próximos 7 dias");
     // Hoje: receita, divisão app × balcão e a variação vs. semana passada.
     expect(pagina).toContain("R$ 350,00");
     expect(pagina).toContain("App");
@@ -262,7 +264,7 @@ describe("Início do painel", () => {
     expect(onNavigate).toHaveBeenLastCalledWith("admin-crm");
 
     await act(async () => {
-      botaoPorTexto(hospedeiro, "Caixa, extrato").click();
+      botaoPorTexto(hospedeiro, "Caixa e contas").click();
     });
     expect(onNavigate).toHaveBeenLastCalledWith("admin-financeiro");
     // "Vender" saiu do Início (27/09/2026): já vive na barra de baixo — ver
@@ -275,10 +277,10 @@ describe("Início do painel", () => {
     await esperarAte(() => texto(hospedeiro).includes("pendências"));
 
     const destinos: [string, string][] = [
-      ["Pedidos para preparar", "admin-orders"],
-      ["Devoluções abertas", "admin-devolucoes"],
-      ["Contas vencidas", "admin-financeiro"],
-      ["Produtos com estoque baixo", "admin-products"],
+      ["Preparar 5 pedidos", "admin-orders"],
+      ["1 devolução aberta", "admin-devolucoes"],
+      ["2 contas vencidas", "admin-financeiro"],
+      ["3 produtos com estoque baixo", "admin-products"],
     ];
     for (const [rotulo, destino] of destinos) {
       await act(async () => {
@@ -286,50 +288,69 @@ describe("Início do painel", () => {
       });
       expect(onNavigate).toHaveBeenLastCalledWith(destino);
     }
-    const preparar = botaoPorTexto(hospedeiro, "Pedidos para preparar");
+    const preparar = botaoPorTexto(hospedeiro, "Preparar 5 pedidos");
     expect(texto(preparar)).toContain("5");
     // 4 pendências acesas: preparar, devolução, vencidas, estoque.
     expect(texto(hospedeiro)).toContain("4 pendências");
   });
 
-  it("as linhas do 'Para fazer' usam o botão-linha novo; pendente segue âmbar", async () => {
+  it("o destaque usa dourado e as linhas mantêm a matiz de cada função", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     await montar();
     await esperarAte(() => texto(hospedeiro).includes("pendências"));
-
-    // Pendente (5 pedidos): casca do botão-linha, mas com o âmbar de estado.
-    const pendente = botaoPorTexto(hospedeiro, "Pedidos para preparar");
-    for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {
-      expect(pendente.classList.contains(classe)).toBe(true);
+    const preparar = botaoPorTexto(hospedeiro, "Preparar 5 pedidos");
+    for (const classe of ["rounded-2xl", "min-h-14", "bg-gradient-to-b"]) {
+      expect(preparar.classList.contains(classe)).toBe(true);
     }
-    expect(pendente.className).toContain("amber-500");
-    expect(pendente.querySelector("svg.text-amber-300")).not.toBeNull();
+    expect(preparar.className).toContain("to-yellow-500");
+    expect(preparar.querySelector("svg.lucide-package")).not.toBeNull();
 
-    // Em dia (caixa fechado): mesma casca, sem âmbar, selo de ícone dourado.
     const paraFazer = hospedeiro.querySelector<HTMLElement>(
       '[aria-labelledby="inicio-para-fazer-titulo"]',
     );
-    if (!paraFazer) throw new Error("'Para fazer' não encontrado");
-    const emDia = botaoPorTexto(paraFazer, "Fechado");
-    for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {
+    expect(paraFazer).not.toBeNull();
+    const vencida = botaoPorTexto(paraFazer!, "2 contas vencidas");
+    const emDia = botaoPorTexto(paraFazer!, "Caixa fechado");
+    for (const classe of ["rounded-2xl", "min-h-11", "text-left"]) {
       expect(emDia.classList.contains(classe)).toBe(true);
     }
-    expect(emDia.className).not.toContain("amber");
-    // Selo neutro (o âmbar é o único amarelo da lista); o dourado só no hover.
-    const selo = emDia.querySelector("span.size-10");
+    expect(vencida.querySelector("span.text-orange-300")).not.toBeNull();
+    const selo = emDia.querySelector("span.size-9");
     expect(selo).not.toBeNull();
-    expect(selo?.className).toContain("bg-white/[0.06]");
+    expect(selo?.className).toContain("bg-teal-400/10");
     expect(
       (selo?.className ?? "")
         .split(/\s+/)
         .filter((c) => /^(border|bg)-admin-gold/.test(c)),
     ).toEqual([]);
-    expect(selo?.querySelector("svg.text-zinc-400")).not.toBeNull();
-    // A seta cresceu para size-5.
+    expect(selo?.querySelector("svg.lucide-wallet")).not.toBeNull();
     expect(
       emDia.querySelector("svg.lucide-chevron-right.size-5"),
     ).not.toBeNull();
     expect(emDia.className).not.toContain("rounded-xl");
+    expect(paraFazer?.textContent).not.toContain("Preparar 5 pedidos");
+  });
+
+  it("segue a ordem aprovada e separa as três colunas no computador", async () => {
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    await montar();
+    const ids = Array.from(
+      hospedeiro.querySelectorAll(
+        'section[aria-labelledby^="inicio-"], nav[aria-label="Atalhos do painel"]',
+      ),
+    ).map((secao) => secao.getAttribute("aria-labelledby") ?? "atalhos");
+    expect(ids).toEqual([
+      "inicio-hoje-titulo",
+      "inicio-para-fazer-titulo",
+      "atalhos",
+      "inicio-mes-titulo",
+      "inicio-serie-titulo",
+      "inicio-assinatura-titulo",
+      "inicio-checklist-titulo",
+    ]);
+    expect(
+      hospedeiro.querySelector(".lg\\:grid-cols-3")?.children,
+    ).toHaveLength(3);
   });
 
   it("o cartão da loja mostra o ícone do app (quadrado), não a logo larga", async () => {
@@ -347,6 +368,32 @@ describe("Início do painel", () => {
     expect(imagem?.getAttribute("src")).not.toBe(
       "https://exemplo.test/logo-larga.png",
     );
+  });
+
+  it("sem vendas e com cadastro incompleto mostra o próximo passo como ação principal", async () => {
+    h.respostas.set("painel_inicio", {
+      data: {
+        ...PAINEL,
+        hoje: { ...PAINEL.hoje, pedidos: 0 },
+        mes: { ...PAINEL.mes, pedidos: 0 },
+        pendencias: { ...PAINEL.pendencias, pedidos_para_preparar: 0 },
+      },
+      error: null,
+    });
+    await montar();
+    await esperarAte(() =>
+      texto(hospedeiro).includes("Sua loja começa por aqui"),
+    );
+    const boasVindas = hospedeiro.querySelector(
+      'section[aria-label="Boas-vindas"]',
+    );
+    const proximo = boasVindas?.querySelector("button");
+    expect(proximo).not.toBeNull();
+    expect(proximo?.className).toContain("min-h-14");
+    expect(texto(boasVindas)).toContain("Próximo passo");
+    act(() => proximo?.click());
+    expect(onNavigate).toHaveBeenLastCalledWith("admin-about-store");
+    expect(texto(hospedeiro)).not.toContain("Preparar 0 pedidos");
   });
 
   it("função ainda não criada no banco vira aviso honesto, não número zero", async () => {

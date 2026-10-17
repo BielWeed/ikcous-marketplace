@@ -30,6 +30,12 @@ function montar(ui: ReactNode) {
   act(() => {
     root.render(ui);
   });
+  // O v5 mostra datas completas na tabela; abre a apresentação visual para
+  // provar os mesmos 14 dias e o contraste dos rótulos.
+  const tabela = container.querySelector<HTMLButtonElement>(
+    "button[aria-expanded]",
+  );
+  if (tabela) act(() => tabela.click());
   return container;
 }
 
@@ -85,7 +91,11 @@ describe("SerieDe14Dias — 14 colunas legíveis", () => {
     );
     expect(colunaDeHoje).not.toBeNull();
     expect(colunaDeHoje?.getAttribute("data-dia")).toBe(HOJE);
-    expect(colunaDeHoje?.textContent).toContain("Hoje");
+    expect(
+      tela.querySelector(
+        `tbody button[aria-label^="Selecionar ${HOJE.split("-").reverse().join("/")}"]`,
+      )?.textContent,
+    ).toContain("Hoje");
     // Só uma coluna é "hoje".
     expect(tela.querySelectorAll('[data-hoje="true"]')).toHaveLength(1);
   });
@@ -159,17 +169,17 @@ function rotuloDoPico(tela: HTMLElement) {
 }
 
 describe("SerieDe14Dias — o rótulo do pico nunca estoura o cartão", () => {
-  it("pico nas primeiras colunas ancora à esquerda (cresce para dentro do cartão)", () => {
+  it("pico no início fica no resumo que quebra linha, sem posição absoluta", () => {
     const tela = montar(
       <SerieDe14Dias serie={serieComPico(1)} carregando={false} />,
     );
     const rotulo = rotuloDoPico(tela);
-    expect(rotulo.classList.contains("left-0")).toBe(true);
+    expect(rotulo.classList.contains("break-words")).toBe(true);
     expect(rotulo.classList.contains("right-0")).toBe(false);
     expect(rotulo.classList.contains("inset-x-0")).toBe(false);
   });
 
-  it("pico numa coluna do meio fica centralizado de verdade (left-1/2 -translate-x-1/2)", () => {
+  it("pico no meio fica no resumo que quebra linha e palavras longas", () => {
     const tela = montar(
       <SerieDe14Dias serie={serieComPico(7)} carregando={false} />,
     );
@@ -178,19 +188,19 @@ describe("SerieDe14Dias — o rótulo do pico nunca estoura o cartão", () => {
     // o texto, mais largo que isso, saía alinhado ao início — não
     // centralizado. `left-1/2 -translate-x-1/2` centraliza pelo tamanho
     // real do texto, não pelo da coluna.
-    expect(rotulo.classList.contains("left-1/2")).toBe(true);
-    expect(rotulo.classList.contains("-translate-x-1/2")).toBe(true);
+    expect(rotulo.classList.contains("break-words")).toBe(true);
+    expect(rotulo.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
     expect(rotulo.classList.contains("inset-x-0")).toBe(false);
     expect(rotulo.classList.contains("left-0")).toBe(false);
     expect(rotulo.classList.contains("right-0")).toBe(false);
   });
 
-  it("pico nas últimas colunas (ex.: hoje) ancora à direita (cresce para dentro do cartão)", () => {
+  it("pico no fim continua no resumo, sem transbordar da última coluna", () => {
     const tela = montar(
       <SerieDe14Dias serie={serieComPico(13)} carregando={false} />,
     );
     const rotulo = rotuloDoPico(tela);
-    expect(rotulo.classList.contains("right-0")).toBe(true);
+    expect(rotulo.classList.contains("break-words")).toBe(true);
     expect(rotulo.classList.contains("left-0")).toBe(false);
     expect(rotulo.classList.contains("inset-x-0")).toBe(false);
   });
@@ -245,7 +255,7 @@ describe("SerieDe14Dias — contraste AA dos rótulos", () => {
 // Agora a linha do mês é reservada em TODAS as colunas (só o texto some,
 // via `invisible`, que preserva o espaço) e os 14 rótulos de dia aparecem
 // sempre — sem alternância.
-describe("SerieDe14Dias — os 14 rótulos aparecem sempre, e a linha do mês fica alinhada", () => {
+describe("SerieDe14Dias — os 14 rótulos ficam visíveis ao abrir a tabela, com mês em todas as linhas", () => {
   it("os 14 rótulos de dia aparecem sempre, sem a classe 'hidden' (nada de dia sim/dia não)", () => {
     const serie: PontoDaSerieDiaria[] = [{ dia: HOJE, receita: 350 }];
     const tela = montar(<SerieDe14Dias serie={serie} carregando={false} />);
@@ -258,7 +268,7 @@ describe("SerieDe14Dias — os 14 rótulos aparecem sempre, e a linha do mês fi
     }
   });
 
-  it("a linha do mês existe em toda coluna (mesmo invisível) — só a 1ª/virada mostra o texto", () => {
+  it("cada linha da tabela mostra seu mês, inclusive na virada", () => {
     // Série inteira em setembro: só a 1ª coluna tem "virada" (índice 0).
     const serie: PontoDaSerieDiaria[] = Array.from({ length: 14 }, (_, i) => {
       const dia = new Date(Date.UTC(2026, 8, 13 + i))
@@ -276,7 +286,7 @@ describe("SerieDe14Dias — os 14 rótulos aparecem sempre, e a linha do mês fi
     expect(meses).toHaveLength(14);
     expect(meses[0].classList.contains("invisible")).toBe(false);
     for (const el of Array.from(meses).slice(1)) {
-      expect(el.classList.contains("invisible")).toBe(true);
+      expect(el.classList.contains("invisible")).toBe(false);
     }
   });
 });
@@ -286,8 +296,8 @@ describe("SerieDe14Dias — os 14 rótulos aparecem sempre, e a linha do mês fi
 // da altura da coluna (~1,22:1 medido). Agora marcar uma coluna esmaece
 // (opacity-40) o trilho+barra das OUTRAS colunas, um contraste visual que
 // não depende da altura da barra marcada.
-describe("SerieDe14Dias — marcar uma coluna esmaece as outras (destaque visível)", () => {
-  it("pointermove numa coluna esmaece o trilho/barra das demais, não da marcada", () => {
+describe("SerieDe14Dias — marcar uma coluna a distingue das outras (seleção única)", () => {
+  it("pointermove marca uma única coluna e atualiza sua seleção", () => {
     const rectOriginal = Element.prototype.getBoundingClientRect;
     // jsdom não calcula layout: sem isto, `caixa.width <= 0` faz o handler
     // sair sem marcar nada. 350px / 14 colunas ≈ 25px cada — clientX=10
@@ -322,9 +332,9 @@ describe("SerieDe14Dias — marcar uma coluna esmaece as outras (destaque visív
         '[data-testid="serie-14d-grafico"]',
       );
       expect(graficos).toHaveLength(14);
-      expect(graficos[0].classList.contains("opacity-40")).toBe(false);
-      expect(graficos[1].classList.contains("opacity-40")).toBe(true);
-      expect(graficos[13].classList.contains("opacity-40")).toBe(true);
+      expect(colunas(tela)[0].getAttribute("data-selecionado")).toBe("true");
+      expect(colunas(tela)[1].getAttribute("data-selecionado")).toBe("false");
+      expect(colunas(tela)[13].getAttribute("data-selecionado")).toBe("false");
     } finally {
       Element.prototype.getBoundingClientRect = rectOriginal;
     }
@@ -359,14 +369,15 @@ describe("SerieDe14Dias — relógio fixo: 'Hoje' e a virada de mês", () => {
     );
     expect(colunaDeHoje?.getAttribute("data-dia")).toBe("2026-10-01");
     expect(
-      colunaDeHoje
+      tela
+        .querySelector('tbody button[aria-label^="Selecionar 01/10/2026"]')
         ?.querySelector('[data-testid="serie-14d-rotulo-dia"]')
         ?.textContent?.trim(),
     ).toBe("Hoje");
 
-    const mesDaVirada = colunaDeHoje?.querySelector(
-      '[data-testid="serie-14d-rotulo-mes"]',
-    );
+    const mesDaVirada = tela
+      .querySelector('tbody button[aria-label^="Selecionar 01/10/2026"]')
+      ?.querySelector('[data-testid="serie-14d-rotulo-mes"]');
     expect(mesDaVirada?.textContent?.trim()).toBe("out");
     expect(mesDaVirada?.classList.contains("invisible")).toBe(false);
   });
