@@ -470,6 +470,9 @@ describe("Notificações v5 — funções preservadas", () => {
     const cancelamento = todosOsAvisos()[0];
     expect(cancelamento.textContent).toContain(frase);
     expect(cancelamento.textContent).toContain("R$ 1.249,00");
+    // O hook entrega a mesma frase para pedido pago e para pedido já estornado:
+    // a tela não pode afirmar "Pago" num selo.
+    expect(cancelamento.textContent).not.toMatch(/(^|\s)Pago(\s|$)/);
     expect(
       cancelamento.querySelector("[data-orientacao]")?.textContent,
     ).toContain(acao);

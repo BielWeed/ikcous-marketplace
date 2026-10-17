@@ -285,11 +285,9 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
           ? "Confira o pedido"
           : ""
       : "";
-  const status = recebimento
-    ? "Entregue"
-    : aviso.tipo === "cancelamento" && valor
-      ? "Pago"
-      : "";
+  // Cancelamento não ganha selo "Pago": o hook também entrega pedidos já estornados
+  // com a mesma frase, e o selo afirmaria um estado financeiro que ele não sabe.
+  const status = recebimento ? "Entregue" : "";
 
   return (
     <button
