@@ -925,7 +925,7 @@ export async function run() {
     assertCoverage(baseline, evidence, evidence.precache);
     const shared = evidence.graph.find(
       (item) =>
-        item.fileName.startsWith("assets/vendor-react-") &&
+        item.fileName.startsWith("assets/vendor-inicio-") &&
         urls.has(item.fileName),
     );
     assert(shared, "SHARED_MUTATION_TARGET_REQUIRED");
