@@ -256,6 +256,7 @@ const globalSkuCache: Record<string, string> = {};
 // mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
 // quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
 const globalVariacaoCache = new Map<string, string>();
+const filaNotas = new Map<string, Promise<unknown>>();
 
 // Redesenho da ficha (08/10/2026, aprovado pelo dono): a MESMA linguagem do
 // card de pedido redesenhado em 07/10 (`AdminOrderCard`) — blocos
@@ -1387,9 +1388,6 @@ export const OrderDetail = memo(function OrderDetail({
   }>({ pedidoId: order.id, estado: "loading" });
   const [tentativaNotas, setTentativaNotas] = useState(0);
   const [abrindoEdicao, setAbrindoEdicao] = useState(false);
-  // Gravações da anotação de um pedido saem uma por vez, na ordem pedida: a
-  // resposta atrasada de uma não pode chegar ao banco depois da seguinte.
-  const filaNotasRef = useRef(new Map<string, Promise<unknown>>());
   const notesStatus =
     leituraNotas.pedidoId === order.id ? leituraNotas.estado : "loading";
 
@@ -1589,6 +1587,7 @@ export const OrderDetail = memo(function OrderDetail({
     setLeituraNotas({ pedidoId, estado: "loading" });
     const carregar = async () => {
       try {
+        await filaNotas.get(pedidoId);
         const { data, error } = await supabase
           .from("marketplace_order_internal_notes")
           .select("note")
@@ -1616,6 +1615,7 @@ export const OrderDetail = memo(function OrderDetail({
     setIsSavingTracking(false);
     setIsEditingNotes(false);
     setIsSavingNotes(false);
+    setAbrindoEdicao(false);
     salvamentoNotasRef.current++;
     salvamentoRastreioRef.current++;
   }, [order.id]);
@@ -1820,6 +1820,9 @@ export const OrderDetail = memo(function OrderDetail({
   const handleEditNotes = async () => {
     const pedidoId = order.id;
     const salvamento = salvamentoNotasRef.current;
+    const vigente = () =>
+      orderIdAtualRef.current === pedidoId &&
+      salvamentoNotasRef.current === salvamento;
     setAbrindoEdicao(true);
     try {
       const { data, error } = await supabase
@@ -1827,21 +1830,17 @@ export const OrderDetail = memo(function OrderDetail({
         .select("note")
         .eq("order_id", pedidoId)
         .maybeSingle();
-      if (
-        orderIdAtualRef.current !== pedidoId ||
-        salvamentoNotasRef.current !== salvamento
-      )
-        return;
+      if (!vigente()) return;
       if (error) throw error;
       setLocalNotes(data?.note || "");
       setNotesValue(data?.note || "");
       setIsEditingNotes(true);
     } catch {
-      if (orderIdAtualRef.current === pedidoId) {
+      if (vigente()) {
         toast.error("Não consegui abrir a edição. Tente de novo.");
       }
     } finally {
-      setAbrindoEdicao(false);
+      if (vigente()) setAbrindoEdicao(false);
     }
   };
 
@@ -1867,12 +1866,13 @@ export const OrderDetail = memo(function OrderDetail({
               { onConflict: "order_id" },
             )
           : tabela.delete().eq("order_id", pedidoId);
-      const fila = filaNotasRef.current;
+      const fila = filaNotas;
       const vez = (fila.get(pedidoId) ?? Promise.resolve()).then(gravar);
-      fila.set(
-        pedidoId,
-        vez.catch(() => undefined),
-      );
+      const pendente = vez.catch(() => undefined);
+      fila.set(pedidoId, pendente);
+      void pendente.then(() => {
+        if (fila.get(pedidoId) === pendente) fila.delete(pedidoId);
+      });
       const { error } = await vez;
 
       // A resposta só pode alterar a ficha deste pedido E deste salvamento.

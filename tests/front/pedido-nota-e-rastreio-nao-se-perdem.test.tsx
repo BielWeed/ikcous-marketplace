@@ -251,11 +251,10 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     clicar("Salvar");
     await mostrar(pedido("B"));
     await mostrar(pedido("A"));
+    await act(async () => envioA.concluir({ error: null }));
     await editarNotas();
     expect(campo("#notes-textarea").disabled).toBe(false);
     digitar("#notes-textarea", "Rascunho novo de A");
-
-    await act(async () => envioA.concluir({ error: null }));
 
     expect(campo("#notes-textarea").value).toBe("Rascunho novo de A");
     expect(campo("#notes-textarea").disabled).toBe(false);
@@ -591,11 +590,10 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     clicar("Salvar");
     await mostrar(pedido("B"));
     await mostrar(pedido("A"));
+    await act(async () => primeira.concluir({ error: null }));
     await editarNotas();
     digitar("#notes-textarea", "Versão nova");
     await act(async () => clicar("Salvar"));
-
-    await act(async () => primeira.concluir({ error: null }));
 
     expect(gravarNota).toHaveBeenCalledTimes(2);
     expect(banco.get("A")).toBe("Versão nova");
@@ -616,14 +614,115 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     clicar("Salvar");
     await mostrar(pedido("B"));
     await mostrar(pedido("A"));
+    expect(gravarNota).toHaveBeenCalledTimes(1);
+    await act(async () => cair(new Error("Caiu")));
     await editarNotas();
     digitar("#notes-textarea", "Versão nova");
     await act(async () => clicar("Salvar"));
-    expect(gravarNota).toHaveBeenCalledTimes(1);
-
-    await act(async () => cair(new Error("Caiu")));
 
     expect(gravarNota).toHaveBeenCalledTimes(2);
+    expect(banco.get("A")).toBe("Versão nova");
+    expect(hospedeiro.textContent).toContain("Versão nova");
+  });
+
+  it("voltar ao pedido espera a gravação pendente antes de reler a anotação", async () => {
+    const envio = envioPendente();
+    salvar.mockReturnValueOnce(envio.resposta);
+    await mostrar(pedido("A"));
+    await editarNotas();
+    digitar("#notes-textarea", "Versão nova");
+    await act(async () => clicar("Salvar"));
+    await mostrar(pedido("B"));
+    const leiturasAntes = ler.mock.calls.length;
+    await mostrar(pedido("A"));
+    const leiturasDurante = ler.mock.calls.length;
+    const textoDurante = hospedeiro.textContent;
+
+    await act(async () => envio.concluir({ error: null }));
+
+    expect(leiturasDurante).toBe(leiturasAntes);
+    expect(textoDurante).toContain("Carregando anotação interna");
+    expect(hospedeiro.textContent).toContain("Versão nova");
+    expect(hospedeiro.textContent).not.toContain("Interna de A");
+    expect(banco.get("A")).toBe("Versão nova");
+    await editarNotas();
+    expect(campo("#notes-textarea").value).toBe("Versão nova");
+  });
+
+  it("releitura de edição de A que nunca termina não bloqueia editar B", async () => {
+    await mostrar(pedido("A"));
+    ler.mockReturnValueOnce(new Promise(() => {}));
+    await editarNotas();
+
+    await mostrar(pedido("B"));
+
+    expect(hospedeiro.textContent).toContain("Interna de B");
+    const botaoB = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Editar notas",
+    );
+    expect(botaoB?.disabled).toBe(false);
+    await editarNotas();
+    expect(campo("#notes-textarea").value).toBe("Interna de B");
+  });
+
+  it("concluir a releitura de A não libera o botão enquanto B ainda está relendo", async () => {
+    await mostrar(pedido("A"));
+    let concluirA!: () => void;
+    ler.mockReturnValueOnce(
+      new Promise((resolve) => {
+        concluirA = () =>
+          resolve({ data: { note: "Antiga de A" }, error: null });
+      }),
+    );
+    await editarNotas();
+    await mostrar(pedido("B"));
+    let concluirB!: () => void;
+    ler.mockReturnValueOnce(
+      new Promise((resolve) => {
+        concluirB = () =>
+          resolve({ data: { note: "Atual de B" }, error: null });
+      }),
+    );
+    await editarNotas();
+    await act(async () => concluirA());
+    const botaoB = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Editar notas",
+    );
+    const desabilitadoDurante = botaoB?.disabled;
+    await act(async () => concluirB());
+
+    expect(desabilitadoDurante).toBe(true);
+    expect(campo("#notes-textarea").value).toBe("Atual de B");
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("desmontar e reabrir o pedido preserva a fila até a primeira gravação terminar", async () => {
+    const primeira = envioPendente();
+    salvar.mockReturnValueOnce(primeira.resposta);
+    await mostrar(pedido("A"));
+    await editarNotas();
+    digitar("#notes-textarea", "Primeira versão");
+    await act(async () => clicar("Salvar"));
+    await act(async () => raiz.render(<div />));
+    const leiturasAntes = ler.mock.calls.length;
+    await mostrar(pedido("A"));
+    const leiturasDurante = ler.mock.calls.length;
+    const textoDurante = hospedeiro.textContent;
+    const gravacoesDurante = gravarNota.mock.calls.length;
+
+    await act(async () => primeira.concluir({ error: null }));
+    await editarNotas();
+    expect(campo("#notes-textarea").value).toBe("Primeira versão");
+    digitar("#notes-textarea", "Versão nova");
+    await act(async () => clicar("Salvar"));
+
+    expect(leiturasDurante).toBe(leiturasAntes);
+    expect(textoDurante).toContain("Carregando anotação interna");
+    expect(gravacoesDurante).toBe(1);
+    expect(gravarNota.mock.calls.map(([, valores]) => valores.note)).toEqual([
+      "Primeira versão",
+      "Versão nova",
+    ]);
     expect(banco.get("A")).toBe("Versão nova");
     expect(hospedeiro.textContent).toContain("Versão nova");
   });
