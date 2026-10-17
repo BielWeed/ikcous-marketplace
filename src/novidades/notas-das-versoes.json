@@ -1,4 +1,14 @@
 {
+  "1.5.35": {
+    "titulo": "Anotação interna só da equipe",
+    "novidades": [],
+    "correcoes": [
+      "A anotação interna que você escreve no pedido agora fica só com você e sua equipe. A cliente não recebe mais esse texto no celular dela.",
+      "Ao abrir a edição da anotação, o painel confere o texto salvo antes. Assim, o que outra pessoa da equipe escreveu em outro aparelho não é apagado sem querer.",
+      "Na ficha do pedido, a observação da cliente, a variante escolhida e o frete aparecem em um bloco só para leitura, e você não apaga essas informações por engano."
+    ],
+    "melhorias": []
+  },
   "1.5.34": {
     "titulo": "Menos perda de texto e contas mais certas",
     "novidades": [],
