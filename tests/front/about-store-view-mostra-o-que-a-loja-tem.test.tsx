@@ -112,6 +112,18 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(botao?.className).toContain("fixed");
   });
 
+  it("WhatsApp flutuante sobe a área segura do aparelho: não fica atrás da barra de baixo", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    // A barra de baixo mede a altura dela MAIS a área segura (iPhone com
+    // barra de gestos); o botão precisa subir os dois, ou ela cobre parte dele.
+    const bottom = botaoWhatsapp()?.style.bottom ?? "";
+    expect(bottom).toContain("--nav-height");
+    expect(bottom).toContain("--safe-area-bottom");
+  });
+
   it("loja completa: nome, logo, local, horário e contato — nada inventado", async () => {
     configAtual = LOJA_COMPLETA;
 

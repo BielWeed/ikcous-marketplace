@@ -353,7 +353,10 @@ export function AboutStoreView() {
             onClick={falarComALoja}
             aria-label="Falar com a loja no WhatsApp"
             className="fixed right-4 z-[115] flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 transition-transform hover:bg-emerald-700 active:scale-95"
-            style={{ bottom: "calc(var(--nav-height, 56px) + 20px)" }}
+            style={{
+              bottom:
+                "calc(var(--nav-height, 56px) + 20px + var(--safe-area-bottom, 0px))",
+            }}
           >
             <IconeWhatsapp className="size-8" />
           </button>,
