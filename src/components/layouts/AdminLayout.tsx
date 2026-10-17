@@ -1151,7 +1151,8 @@ export function AdminLayout({
             </p>
           </div>
         )}
-        {naoConseguiuConferirAvisos && (
+        {naoConseguiuConferirAvisos && currentView !== "admin-pdv" && (
+          // Na venda em curso a faixa não empurra a tela (mesma regra da ilha de atualização).
           <div
             role="status"
             className="mx-5 my-2 flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-rose-300/20 bg-[#2B151D] p-3 text-xs text-[#F5C1CC]"

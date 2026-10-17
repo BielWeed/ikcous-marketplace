@@ -145,7 +145,7 @@ describe("AdminLayout — na tela de venda, a barra marca o Vender e não a aba 
     });
 
     const vender = hospedeiro.querySelector(
-      'button[aria-label="Vender"]',
+      'nav[aria-label="Navegação inferior do painel"] button[aria-label="Vender"]',
     ) as HTMLButtonElement | null;
     expect(vender).toBeTruthy();
     expect(vender!.className).toContain("text-admin-gold");

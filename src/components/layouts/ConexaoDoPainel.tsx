@@ -72,7 +72,8 @@ export function ConexaoDoPainel({
       <button
         ref={botao}
         type="button"
-        aria-label="Detalhes da conexão"
+        // O nome acessível começa pelo texto visível (WCAG 2.5.3) e diz o estado.
+        aria-label={`${nome ? `${nome} ` : ""}Admin, conexão ${visual.rotulo}. Detalhes da conexão`}
         aria-expanded={aberta}
         aria-controls={id}
         title={visual.titulo}
