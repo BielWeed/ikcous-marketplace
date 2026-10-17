@@ -3,9 +3,8 @@
     "titulo": "Anotação interna só da equipe",
     "novidades": [],
     "correcoes": [
-      "A anotação interna que você escreve no pedido agora fica só com você e sua equipe. A cliente não recebe mais esse texto no celular dela.",
-      "Ao abrir a edição da anotação, o painel confere o texto salvo antes. Assim, o que outra pessoa da equipe escreveu em outro aparelho não é apagado sem querer.",
-      "Na ficha do pedido, a observação da cliente, a variante escolhida e o frete aparecem em um bloco só para leitura, e você não apaga essas informações por engano."
+      "A anotação interna do pedido agora fica só com você e sua equipe. A cliente não recebe mais esse texto no celular dela.",
+      "Ao editar a anotação, o painel confere antes o texto salvo, para não apagar o que outra pessoa escreveu."
     ],
     "melhorias": []
   },
