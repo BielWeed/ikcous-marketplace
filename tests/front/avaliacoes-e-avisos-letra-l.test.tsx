@@ -92,7 +92,7 @@ describe("Avisos: o rótulo `leading-none` com `max-w` não estoura", () => {
   const fonte = ler("src/views/admin/AdminNotificationsView.tsx");
 
   it("o rótulo do cartão tem 11px e rastro `tracking-wider`", () => {
-    const rotulos = linhasCom(fonte, /block text-.*uppercase leading-none/);
+    const rotulos = linhasCom(fonte, /pt-1 text-.*uppercase leading-none/);
     expect(rotulos).toHaveLength(1);
     expect(rotulos[0]).toContain("text-[11px]");
     expect(rotulos[0]).not.toContain("tracking-widest");
