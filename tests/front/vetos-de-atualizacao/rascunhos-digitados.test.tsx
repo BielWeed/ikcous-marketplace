@@ -31,7 +31,14 @@ vi.mock("@/hooks/useReviews", () => ({
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: () => ({ update: () => ({ eq: vi.fn() }) }),
+    from: () => ({
+      update: () => ({ eq: vi.fn() }),
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        }),
+      }),
+    }),
     functions: { invoke: vi.fn() },
   },
 }));
