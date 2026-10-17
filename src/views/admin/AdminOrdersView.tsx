@@ -1,5 +1,6 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
@@ -1706,9 +1707,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     >
       <header className="flex items-center justify-between gap-3 px-5 pb-3 pt-5">
         <div className="min-w-0">
-          <h1 className="text-[28px] font-bold leading-tight tracking-tight text-white">
-            {NOMES_DO_PAINEL["admin-orders"]}
-          </h1>
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-orders"]} />
           <div className="mt-1 flex items-center gap-2">
             <PontoDeOperacao sincronizando={!isLoaded} />
             <span className="text-xs text-zinc-400">

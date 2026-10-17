@@ -1002,7 +1002,15 @@ describe("fetchPedidosCancelados — carregamento independente do filtro, busca,
     await esperarAte(() => fetchPedidosCanceladosMock.mock.calls.length > 0);
     expect(fetchPedidosCanceladosMock).toHaveBeenCalledTimes(1);
 
-    const botaoTodos = botaoComTexto(hospedeiro, "Todos");
+    // No desenho novo os status moram no painel "Filtros" (abre por cima, no body).
+    const abrirFiltros = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.getAttribute("aria-label")?.startsWith("Status do pedido"),
+    );
+    expect(abrirFiltros).toBeTruthy();
+    await act(async () => {
+      abrirFiltros!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const botaoTodos = botaoComTexto(document.body, "Todos");
     expect(botaoTodos).toBeTruthy();
     await act(async () => {
       botaoTodos!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
