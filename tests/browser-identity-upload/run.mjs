@@ -25,11 +25,17 @@ const bundle = await build({
   format: "iife",
   target: "chrome150",
   tsconfigRaw: { compilerOptions: { target: "ES2022", module: "ESNext" } },
+  alias: {
+    "tus-js-client": path.join(
+      root,
+      "node_modules/tus-js-client/lib/browser/index.js",
+    ),
+  },
   write: false,
   metafile: true,
 });
 const inputs = Object.keys(bundle.metafile.inputs);
-assert(inputs.includes("node_modules/tus-js-client/lib.esm/browser/index.js"));
+assert(inputs.includes("node_modules/tus-js-client/lib/browser/index.js"));
 assert(
   inputs.every(
     (name) =>
@@ -43,9 +49,7 @@ const tusInputs = inputs.filter((name) =>
   name.startsWith("node_modules/tus-js-client/"),
 );
 assert(
-  tusInputs.every((name) =>
-    name.startsWith("node_modules/tus-js-client/lib.esm/"),
-  ),
+  tusInputs.every((name) => name.startsWith("node_modules/tus-js-client/lib/")),
 );
 const script = bundle.outputFiles[0].contents;
 await writeFile(path.join(output, "bundle.js"), script);
