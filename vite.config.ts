@@ -215,6 +215,29 @@ export default defineConfig(async (context): Promise<UserConfig> => {
           },
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
+            // O cn() já faz parte do boot. Fixá-lo aqui impede que o Rollup
+            // o absorva no chunk do painel e leve esse chunk para a vitrine.
+            if (normalizedId.endsWith("/src/lib/utils.ts")) {
+              return "vendor-inicio";
+            }
+            // Peças pequenas compartilham imports, minificação e dicionário
+            // Brotli. Lista fechada: não absorver telas ou dependências novas
+            // por uma regra genérica de diretório. O nome sem Admin* mantém
+            // esta dependência estática do PDV no precache existente.
+            if (
+              /\/src\/components\/admin\/(AdminPageHeader|AdminHelpModal)\.tsx$/.test(
+                normalizedId,
+              ) ||
+              /\/src\/components\/admin\/primitivos\/(AcaoDoPainel|AlternadorDeTelas|AtalhosDaAba|EsqueletoDaLista|EstadoVazio|FolhaDoPainel|SecaoRecolhivel|SeloDeStatus)\.tsx$/.test(
+                normalizedId,
+              ) ||
+              /\/src\/components\/ui\/(select|tabs|badge|card|dropdown-menu)\.tsx$/.test(
+                normalizedId,
+              ) ||
+              normalizedId.endsWith("/src/hooks/useScrollRestoration.ts")
+            ) {
+              return "painel-ui";
+            }
             // Estes vendors já eram dependências estáticas do início da loja.
             // Juntos compartilham minificação e dicionário Brotli, sem
             // antecipar código que antes fosse lazy.
