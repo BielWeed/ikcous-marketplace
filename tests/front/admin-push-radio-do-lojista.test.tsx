@@ -504,12 +504,13 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
   // e remontam com o valor, então o colapso nunca descartou rascunho: a
   // guarda real é de navegação (onSetDirty), e a frase "Salve antes de
   // fechar" sai junto com a seção que a carregava.
-  it("a composição 'No ar agora' é cartão fixo — não colapsa, e o rascunho não desmonta nada", async () => {
+  it("a composição 'Mensagem' é cartão fixo — não colapsa, e o rascunho não desmonta nada", async () => {
     await abrirTela();
 
     // Zero controle de colapso para a composição.
-    const controleDeColapso = cabecalhoDeSecao("No ar agora");
-    expect(controleDeColapso).toBeUndefined();
+    const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
+    expect(mensagem).not.toBeNull();
+    expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
     expect(texto()).not.toMatch(/salve antes de fechar/i);
 
     const campo = hospedeiro.querySelector<HTMLInputElement>("#push-title");

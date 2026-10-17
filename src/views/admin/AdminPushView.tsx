@@ -290,7 +290,7 @@ function PreviaNoCelular({
           className="pointer-events-none absolute -top-12 left-1/4 h-28 w-1/2 rounded-full bg-white/[0.13] blur-3xl"
         />
         <div className="relative">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-200">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-200">
             <span className="size-1.5 rounded-full bg-admin-accent" />
             <Smartphone aria-hidden="true" className="size-[13px]" />
             Prévia ao vivo
@@ -1697,6 +1697,34 @@ export const AdminPushView = memo(function AdminPushView({
           </div>
         </div>
 
+        <div className="bg-gradient-to-b from-transparent to-admin-bg pt-6">
+          {/* Botão de Ação */}
+          <button
+            className="flex min-h-[60px] w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] px-3 py-3 text-base font-bold leading-snug text-zinc-950 shadow-[0_8px_28px_rgba(226,168,30,0.2)] transition-shadow motion-reduce:transition-none hover:shadow-[0_8px_32px_rgba(226,168,30,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-400 disabled:shadow-none"
+            onClick={handleSend}
+            disabled={botaoEnviarDesabilitado}
+          >
+            {loading ? (
+              <div className="flex items-center gap-2">
+                <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-zinc-950/25 border-t-zinc-950" />
+                <span>Enviando Notificação...</span>
+              </div>
+            ) : (
+              <>
+                <Send aria-hidden="true" className="size-[22px] shrink-0" />
+                {/* Direção B: um botão só, com o número real do segmento
+                    escolhido — `textoDeAlcanceEmAparelhos` mantém o
+                    singular e o traço do desconhecido, como sempre. */}
+                Enviar agora para {textoDeAlcanceEmAparelhos(reachExibido)}
+              </>
+            )}
+          </button>
+          <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs leading-relaxed text-zinc-400">
+            <Shield aria-hidden="true" className="size-4 shrink-0" />
+            Depois de enviar, não dá para desfazer.
+          </p>
+        </div>
+
         {/* Métrica + dica, lado a lado (direção B): os dois cartões de estado
             viram um par compacto. A prova social e o botão de teste de
             recebimento desceram para o bloco "Ajustes", no fim da tela —
@@ -1962,33 +1990,6 @@ export const AdminPushView = memo(function AdminPushView({
             </div>
           </SecaoColapsavel>
         )}
-        <div className="bg-gradient-to-b from-transparent to-admin-bg pt-6">
-          {/* Botão de Ação */}
-          <button
-            className="flex min-h-[60px] w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] px-3 py-3 text-base font-bold leading-snug text-zinc-950 shadow-[0_8px_28px_rgba(226,168,30,0.2)] transition-shadow motion-reduce:transition-none hover:shadow-[0_8px_32px_rgba(226,168,30,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-400 disabled:shadow-none"
-            onClick={handleSend}
-            disabled={botaoEnviarDesabilitado}
-          >
-            {loading ? (
-              <div className="flex items-center gap-2">
-                <div className="size-4 motion-safe:animate-spin rounded-full border-2 border-zinc-950/25 border-t-zinc-950" />
-                <span>Enviando Notificação...</span>
-              </div>
-            ) : (
-              <>
-                <Send aria-hidden="true" className="size-[22px] shrink-0" />
-                {/* Direção B: um botão só, com o número real do segmento
-                    escolhido — `textoDeAlcanceEmAparelhos` mantém o
-                    singular e o traço do desconhecido, como sempre. */}
-                Enviar agora para {textoDeAlcanceEmAparelhos(reachExibido)}
-              </>
-            )}
-          </button>
-          <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs leading-relaxed text-zinc-400">
-            <Shield aria-hidden="true" className="size-4 shrink-0" />
-            Depois de enviar, não dá para desfazer.
-          </p>
-        </div>
       </div>
 
       {/* Modal de Ajuda Limpo */}
