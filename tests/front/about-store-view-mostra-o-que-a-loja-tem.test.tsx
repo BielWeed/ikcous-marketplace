@@ -90,11 +90,39 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     return hospedeiro.textContent ?? "";
   }
 
+  // O botão mora no <body> (portal): no app o <main> tem `will-change:
+  // transform`, que prende qualquer `fixed` filho ao conteúdo que rola.
   function botaoWhatsapp() {
-    return hospedeiro.querySelector<HTMLButtonElement>(
+    return document.body.querySelector<HTMLButtonElement>(
       "button[aria-label='Falar com a loja no WhatsApp']",
     );
   }
+
+  it("WhatsApp flutuante fica FORA do container da tela (portal no body), senão rola junto com o conteúdo", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    const botao = botaoWhatsapp();
+    expect(botao).not.toBeNull();
+    // Nenhum ancestral da tela (como o <main> com will-change: transform) pode
+    // conter o botão: ele é filho direto do body e continua `fixed`.
+    expect(hospedeiro.contains(botao)).toBe(false);
+    expect(botao?.parentElement).toBe(document.body);
+    expect(botao?.className).toContain("fixed");
+  });
+
+  it("WhatsApp flutuante sobe a área segura do aparelho: não fica atrás da barra de baixo", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    // A barra de baixo mede a altura dela MAIS a área segura (iPhone com
+    // barra de gestos); o botão precisa subir os dois, ou ela cobre parte dele.
+    const bottom = botaoWhatsapp()?.style.bottom ?? "";
+    expect(bottom).toContain("--nav-height");
+    expect(bottom).toContain("--safe-area-bottom");
+  });
 
   it("loja completa: nome, logo, local, horário e contato — nada inventado", async () => {
     configAtual = LOJA_COMPLETA;
