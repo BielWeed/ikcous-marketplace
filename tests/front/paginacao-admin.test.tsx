@@ -116,4 +116,17 @@ describe("PaginacaoAdmin", () => {
     await act(async () => botaoPeloTexto(tela, "Anterior")!.click());
     expect(aoMudar).toHaveBeenCalledExactlyOnceWith(0);
   });
+
+  it("a aparência de Clientes com uma página só não cita botão que não existe", () => {
+    const tela = montar({
+      aparencia: "clientes",
+      pagina: 0,
+      totalPaginas: 1,
+      totalItens: 5,
+      itensPorPagina: 12,
+    });
+    expect(tela.textContent).toContain("Exibindo 1 - 5 de 5");
+    expect(tela.textContent).not.toContain("indisponível");
+    expect(botaoPeloTexto(tela, "Anterior")).toBeUndefined();
+  });
 });

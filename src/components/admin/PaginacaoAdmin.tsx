@@ -99,6 +99,7 @@ export function PaginacaoAdmin({
         </div>
       )}
       {aparencia === "clientes" &&
+        totalPaginas > 1 &&
         (paginaEfetiva === 0 || paginaEfetiva >= totalPaginas - 1) && (
           <p className="text-[11px] text-zinc-400">
             {paginaEfetiva === 0

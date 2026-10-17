@@ -56,6 +56,7 @@ function IdentidadeCliente({
         </Avatar>
         {customer.is_push_subscribed && (
           <span
+            role="img"
             aria-label="Avisos ativos"
             className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border-2 border-[#101013] bg-teal-400 text-teal-950"
           >

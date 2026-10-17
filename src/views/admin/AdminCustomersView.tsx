@@ -486,7 +486,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               type="button"
               aria-label="Guia de Clientes e Ajuda"
               title="Guia de Clientes e Ajuda"
-              className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-violet-300/20 bg-violet-300/10 text-violet-300 ${FOCO_CLIENTES}`}
+              className={`flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-violet-300/20 bg-violet-300/10 text-violet-300 ${FOCO_CLIENTES}`}
             >
               <HelpCircle aria-hidden="true" className="size-6" />
             </button>
@@ -628,7 +628,8 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                   Sem conexão com o servidor
                 </p>
                 <p className="mt-1">
-                  Busca, ordenação e menus continuam ativos.
+                  Os dados na tela podem estar desatualizados até a conexão
+                  voltar.
                 </p>
               </div>
             </div>
