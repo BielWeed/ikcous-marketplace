@@ -387,7 +387,7 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     expect(hospedeiro.querySelector("#push-destination")).not.toBeNull();
     expect(
       [...hospedeiro.querySelectorAll("button")].find((b) =>
-        (b.textContent ?? "").includes("Todos os Clientes"),
+        (b.textContent ?? "").includes("Todos os clientes"),
       ),
     ).toBeTruthy();
     expect(
