@@ -1106,6 +1106,35 @@ export type Database = {
           },
         ];
       };
+      marketplace_order_internal_notes: {
+        Row: {
+          note: string;
+          order_id: string;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          note: string;
+          order_id: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          note?: string;
+          order_id?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_order_internal_notes_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: true;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       marketplace_order_item_custo: {
         Row: {
           custo: number;

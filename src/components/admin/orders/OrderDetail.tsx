@@ -572,10 +572,6 @@ interface OrderDeliveryCardProps {
   isOffline: boolean;
   copiedAddress: boolean;
   mapsUrlQuery: string;
-  /** Estado LOCAL das anotações (`localNotes` de OrderDetail): a linha "Como
-   * vai" lê daqui, não de `order.notes`, para não ficar velha depois que a
-   * lojista salva uma anotação. */
-  notes: string;
   onCopyAddress: () => void;
   onWhatsAppDirect: () => void;
   // Laudo 0109 (A-7): null = número não abre conversa — sem botão.
@@ -591,19 +587,17 @@ function OrderDeliveryCard({
   isOffline,
   copiedAddress,
   mapsUrlQuery,
-  notes,
   onCopyAddress,
   onWhatsAppDirect,
   whatsappUrl,
 }: Readonly<OrderDeliveryCardProps>) {
   // Retirada na loja: a cliente BUSCA — a linha diz isso em vez de ler a nota
-  // de frete. Entrega comum: nome e prazo da nota do checkout (se a lojista
-  // apagar a frase ao editar a anotação, a linha some — aceito); sem nota
+  // de frete. Entrega comum: nome e prazo da nota do checkout; sem nota
   // (pedido antigo, venda de balcão), a linha simplesmente não aparece.
   const formaDeEntrega = order.retiradaNaLoja
     ? "Retirada na loja"
     : (() => {
-        const forma = formaDeEntregaDaNota(notes);
+        const forma = formaDeEntregaDaNota(order.notes);
         return forma ? `${forma.nome} · ${forma.prazo}` : null;
       })();
 
@@ -1194,29 +1188,51 @@ interface OrderNotesCardProps {
   notesValue: string;
   isSavingNotes: boolean;
   isOffline: boolean;
+  notesStatus: "loading" | "ready" | "error";
+  onRetry: () => void;
   setNotesValue: (val: string) => void;
   setIsEditingNotes: (val: boolean) => void;
   onSaveNotes: () => void;
 }
 
-// Linha "Anotações internas" da lista de envio — mesma ideia do rastreio:
-// vazia convida com "Adicionar", preenchida mostra o texto INTEIRO (sem
-// aspas nem itálico, com as quebras de linha) com "Editar", e editar abre o
-// campo ali mesmo. O texto inteiro importa: `notes` traz a observação da
-// cliente, a variante escolhida ("Produto: Tamanho G") e a frase do frete, e
-// a ficha não tem a variante em outro lugar. As palavras
-// "anotação"/"notas" ficam só para leitor de tela (`sr-only`), como no
-// rastreio.
+// Anotação privada da equipe, separada da observação pública do pedido.
 function OrderNotesCard({
   localNotes,
   isEditingNotes,
   notesValue,
   isSavingNotes,
   isOffline,
+  notesStatus,
+  onRetry,
   setNotesValue,
   setIsEditingNotes,
   onSaveNotes,
 }: Readonly<OrderNotesCardProps>) {
+  if (notesStatus !== "ready") {
+    return (
+      <div className="space-y-2 px-4 py-3.5">
+        <h3 className="text-sm font-medium text-zinc-200">
+          Anotações internas
+        </h3>
+        <p className="text-xs text-zinc-400" role="status">
+          {notesStatus === "loading"
+            ? "Carregando anotação interna…"
+            : "Não consegui carregar a anotação interna"}
+        </p>
+        {notesStatus === "error" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRetry}
+            disabled={isOffline}
+          >
+            Tentar de novo
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   if (isEditingNotes) {
     return (
       <div className="space-y-3 px-4 py-3.5 duration-300 animate-in fade-in">
@@ -1226,10 +1242,14 @@ function OrderNotesCard({
         >
           Anotações internas
         </label>
+        <p className="text-xs text-zinc-400">
+          Só você e sua equipe veem esta anotação. A cliente não vê.
+        </p>
         <textarea
           id="notes-textarea"
           name="notes"
           autoComplete="off"
+          maxLength={2000}
           value={notesValue}
           onChange={(e) => setNotesValue(e.target.value)}
           placeholder="Ex: Cliente solicitou entrega após as 18h..."
@@ -1254,7 +1274,7 @@ function OrderNotesCard({
             size="sm"
             onClick={onSaveNotes}
             className="flex h-10 items-center gap-1.5 rounded-xl bg-admin-gold px-4 text-sm font-semibold text-black hover:bg-admin-gold/90"
-            disabled={isSavingNotes}
+            disabled={isSavingNotes || isOffline}
           >
             {isSavingNotes ? (
               <Loader2 className="size-4 animate-spin" />
@@ -1352,10 +1372,17 @@ export const OrderDetail = memo(function OrderDetail({
   const salvamentoNotasRef = useRef(0);
   const salvamentoRastreioRef = useRef(0);
 
-  const [localNotes, setLocalNotes] = useState(order.notes || "");
+  const [localNotes, setLocalNotes] = useState("");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
-  const [notesValue, setNotesValue] = useState(order.notes || "");
+  const [notesValue, setNotesValue] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [leituraNotas, setLeituraNotas] = useState<{
+    pedidoId: string;
+    estado: OrderNotesCardProps["notesStatus"];
+  }>({ pedidoId: order.id, estado: "loading" });
+  const [tentativaNotas, setTentativaNotas] = useState(0);
+  const notesStatus =
+    leituraNotas.pedidoId === order.id ? leituraNotas.estado : "loading";
 
   // A anotação e o código de rastreio digitados só existem neste estado local
   // até a lojista salvar: recarregar o app (atualização obrigatória, ao ir para
@@ -1546,9 +1573,34 @@ export const OrderDetail = memo(function OrderDetail({
   }, [order.id, order.trackingCode]);
 
   useEffect(() => {
-    setLocalNotes(order.notes || "");
-    setNotesValue(order.notes || "");
-  }, [order.id, order.notes]);
+    const pedidoId = order.id;
+    let vigente = true;
+    setLocalNotes("");
+    setNotesValue("");
+    setLeituraNotas({ pedidoId, estado: "loading" });
+    const carregar = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("marketplace_order_internal_notes")
+          .select("note")
+          .eq("order_id", pedidoId)
+          .maybeSingle();
+        if (!vigente || orderIdAtualRef.current !== pedidoId) return;
+        if (error) throw error;
+        setLocalNotes(data?.note || "");
+        setNotesValue(data?.note || "");
+        setLeituraNotas({ pedidoId, estado: "ready" });
+      } catch {
+        if (vigente && orderIdAtualRef.current === pedidoId) {
+          setLeituraNotas({ pedidoId, estado: "error" });
+        }
+      }
+    };
+    void carregar();
+    return () => {
+      vigente = false;
+    };
+  }, [order.id, tentativaNotas]);
 
   useEffect(() => {
     setIsEditingTracking(false);
@@ -1557,6 +1609,10 @@ export const OrderDetail = memo(function OrderDetail({
     setIsSavingNotes(false);
     salvamentoNotasRef.current++;
     salvamentoRastreioRef.current++;
+    return () => {
+      salvamentoNotasRef.current++;
+      salvamentoRastreioRef.current++;
+    };
   }, [order.id]);
 
   const itemsSerialized = JSON.stringify(
@@ -1755,6 +1811,12 @@ export const OrderDetail = memo(function OrderDetail({
   };
 
   const handleSaveNotes = async () => {
+    if (isOffline || isSavingNotes || notesStatus !== "ready") return;
+    const note = notesValue.trim();
+    if (note.length > 2000) {
+      toast.error("A anotação interna pode ter até 2000 caracteres.");
+      return;
+    }
     const pedidoId = order.id;
     const salvamento = ++salvamentoNotasRef.current;
     const vigente = () =>
@@ -1762,21 +1824,24 @@ export const OrderDetail = memo(function OrderDetail({
       salvamentoNotasRef.current === salvamento;
     try {
       setIsSavingNotes(true);
-      const { error } = await supabase
-        .from("marketplace_orders")
-        .update({ notes: notesValue.trim() || null })
-        .eq("id", pedidoId);
+      const tabela = supabase.from("marketplace_order_internal_notes");
+      const { error } = await (note
+        ? tabela.upsert(
+            { order_id: pedidoId, note },
+            { onConflict: "order_id" },
+          )
+        : tabela.delete().eq("order_id", pedidoId));
 
       // A resposta só pode alterar a ficha deste pedido E deste salvamento.
       if (!vigente()) return;
       if (error) throw error;
-      setLocalNotes(notesValue.trim());
+      setLocalNotes(note);
+      setNotesValue(note);
       setIsEditingNotes(false);
-      toast.success("Notas operacionais salvas!");
-    } catch (err) {
+      toast.success("Anotação interna salva!");
+    } catch {
       if (!vigente()) return;
-      console.error("Error saving notes:", err);
-      toast.error("Erro ao salvar notas operacionais.");
+      toast.error("Erro ao salvar anotação interna.");
     } finally {
       if (vigente()) setIsSavingNotes(false);
     }
@@ -1886,7 +1951,6 @@ export const OrderDetail = memo(function OrderDetail({
           isOffline={isOffline}
           copiedAddress={copiedAddress}
           mapsUrlQuery={mapsUrlQuery}
-          notes={localNotes}
           onCopyAddress={handleCopyAddress}
           onWhatsAppDirect={handleWhatsAppDirect}
           whatsappUrl={whatsappUrl}
@@ -1949,12 +2013,24 @@ export const OrderDetail = memo(function OrderDetail({
             onSaveTracking={handleSaveTracking}
             onCopyTracking={handleCopyTracking}
           />
+          {order.notes && (
+            <div className="space-y-2 px-4 py-3.5">
+              <h3 className="text-sm font-medium text-zinc-200">
+                Observações do pedido
+              </h3>
+              <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-200">
+                {order.notes}
+              </p>
+            </div>
+          )}
           <OrderNotesCard
             localNotes={localNotes}
             isEditingNotes={isEditingNotes}
             notesValue={notesValue}
             isSavingNotes={isSavingNotes}
             isOffline={isOffline}
+            notesStatus={notesStatus}
+            onRetry={() => setTentativaNotas((tentativa) => tentativa + 1)}
             setNotesValue={setNotesValue}
             setIsEditingNotes={setIsEditingNotes}
             onSaveNotes={handleSaveNotes}
