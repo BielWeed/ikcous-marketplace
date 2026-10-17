@@ -2250,6 +2250,25 @@ const ROL_DA_50A = [
   "dependencias: marketplace_orders, portas do admin de agora e funcao do carimbo",
 ];
 const ROL_DA_50B = [...ROL_DA_50A];
+
+// Lote 51: 20261248000000 (so privilegio de coluna), catalogo apenas. Os dois lados tem rol proprio: a 51a
+// descreve o estado FECHADO, a 51b o de ANTES (authenticated ainda atualiza notes); a 51b nao prova ausencia.
+const ROL_DA_51A = [
+  "controle: funcoes de public visiveis a este papel",
+  "notes: sem UPDATE para authenticated, anon e PUBLIC (coluna, tabela inteira ou heranca)",
+  "tracking_code: authenticated atualiza so ele (sem GRANT OPTION), nenhuma outra coluna",
+  "anon e PUBLIC: sem UPDATE em coluna alguma de marketplace_orders",
+  "service_role: atualiza notes e tracking_code",
+  "dependencias: marketplace_orders (notes e tracking_code) e os papeis anon, authenticated e service_role",
+];
+const ROL_DA_51B = [
+  "controle: funcoes de public visiveis a este papel",
+  "authenticated: atualiza notes e tracking_code por coluna, sem GRANT OPTION e nenhuma outra coluna",
+  "authenticated e anon: sem UPDATE de tabela inteira em marketplace_orders (nem por PUBLIC ou heranca)",
+  "anon e PUBLIC: sem UPDATE em coluna alguma de marketplace_orders",
+  "service_role: atualiza notes e tracking_code",
+  "dependencias: marketplace_orders (notes e tracking_code) e os papeis anon, authenticated e service_role",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
@@ -2329,6 +2348,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "49b-antes-lancamento-idempotente-base-vigente": ROL_DA_49B,
   "50a-conferir-nota-interna-do-pedido-aplicado": ROL_DA_50A,
   "50b-antes-nota-interna-do-pedido-base-vigente": ROL_DA_50B,
+  "51a-conferir-notes-do-pedido-fechada-aplicado": ROL_DA_51A,
+  "51b-antes-notes-do-pedido-base-vigente": ROL_DA_51B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2949,6 +2970,8 @@ module.exports = {
   ROL_DA_49B,
   ROL_DA_50A,
   ROL_DA_50B,
+  ROL_DA_51A,
+  ROL_DA_51B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

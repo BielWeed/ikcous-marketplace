@@ -2065,3 +2065,31 @@ nunca confirma.
     com o dono e confirmação de sessão; sem cópia, as anotações dos pedidos se perdem.
     Pedido de privacidade: o roteiro [`atender-pedido-de-privacidade.md`](atender-pedido-de-privacidade.md)
     também apaga as linhas desta tabela dos pedidos da cliente. Nenhum apply é feito por este roteiro.
+
+51. **Lote de UMA migration, de apply normal: `20261248000000` — a coluna `notes` do pedido fecha para a gravação do painel.**
+    Segunda metade da `20261247000000` (item 50). Sem `backfillLedger` e sem `nuncaAplicar`; valem as duas
+    lojas assinantes, **IKCOUS primeiro e depois a Savy**. Só tira o `UPDATE` da **coluna**
+    `marketplace_orders.notes` do papel `authenticated` (`REVOKE UPDATE (notes)`, nunca de tabela: o grant de
+    coluna de `tracking_code` fica). Não toca RLS, gatilho, função, `INSERT`, `SELECT` nem nenhuma linha: as
+    anotações antigas continuam em `notes`. O pré-voo recusa (`B1_BASELINE_DIVERGENT`) qualquer ACL que não seja
+    a de antes (`authenticated` com `UPDATE` de coluna em `notes` e `tracking_code`) nem a de depois (só
+    `tracking_code`), inclusive `UPDATE` de tabela inteira, `anon`/PUBLIC em coluna e `GRANT OPTION`; a
+    conferência final aborta e desfaz tudo se `authenticated` ou `anon` ainda atualizam `notes`, se
+    `authenticated` perdeu `tracking_code` ou se `service_role` perdeu `notes`.
+    Consultas de catálogo `51a-conferir-notes-do-pedido-fechada-aplicado` (depois) e
+    `51b-antes-notes-do-pedido-base-vigente` (antes), seis linhas cada, rol fechado e próprio de cada lado.
+    **A 51b aceita só a ACL de antes e não prova a ausência do fechamento**; quem prova é a 51a.
+    **Ordem: depois do front novo no ar nas duas lojas** (1.5.35 desde 17/10/2026). Antes dele, o painel antigo
+    ainda grava a anotação em `notes`. **Caminho, uma loja por vez:** `51a` (sai NEGATIVA) → `51b` mais nova e
+    POSITIVA → um comando `aplicar-migrations.yml` com
+    `20261248000000_a_coluna_notes_do_pedido_fecha_para_gravacao_do_painel.sql` → `51a` de novo, que tem de sair
+    POSITIVA.
+    **O que quebra:** só um painel ANTIGO (anterior ao front novo) ao salvar a "Anotação interna": passa a
+    receber erro de permissão (`42501`) até a lojista atualizar o app. O rastreio, o status, o checkout e a
+    cliente não mudam. Busca de 17/10/2026: nenhum `UPDATE` de `notes` em `src/`, `supabase/functions` nem
+    `supabase/migrations`; as RPCs gravam como `SECURITY DEFINER`.
+    **Desfazer:** `rollback-manual-20261248000000_a_coluna_notes_do_pedido_fecha_para_gravacao_do_painel.sql`
+    pelo `aplicar-migrations.yml` (um `GRANT UPDATE (notes)`; **reabre a porta** — a anotação de um painel antigo
+    volta a chegar à cliente). Não toca dado. Nenhum apply é feito por este roteiro.
+    Prova: `tests/banco/notes-do-pedido-fechada-viva.cjs` (PG 17, papéis reais, mutantes); não prova o Postgres
+    da Supabase nem o papel de leitura de cada loja.
