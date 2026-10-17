@@ -326,12 +326,19 @@ describe("Novidades do app na central do lojista", () => {
     // Foca o título por JS e NÃO navega: um hash dispararia popstate (= Voltar).
     const antes = window.location.href;
     const titulo = document.getElementById(tituloId ?? "");
-    titulo?.setAttribute("tabindex", "-1");
+    // O título já nasce focável por JS (tabindex -1): o teste não o repõe.
+    expect(titulo?.getAttribute("tabindex")).toBe("-1");
     // O jsdom não implementa a rolagem; o foco é o que se prova aqui.
-    HTMLElement.prototype.scrollIntoView = () => {};
+    const rolagem = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: rolagem,
+    });
     act(() => atalho?.click());
     expect(window.location.href).toBe(antes);
     expect(document.activeElement).toBe(titulo);
+    expect(rolagem).toHaveBeenCalledTimes(1);
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
     for (const botao of secao.querySelectorAll("button")) {
       expect(botao.type).toBe("button");
       expect(botao.classList.contains("min-h-11")).toBe(true);
