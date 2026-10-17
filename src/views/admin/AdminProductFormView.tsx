@@ -7,6 +7,7 @@ import {
 } from "@/components/admin/LocalBufferedInput";
 import { PhoneSimulator } from "@/components/admin/PhoneSimulator";
 import { SecaoDoProduto } from "@/components/admin/products/SecaoDoProduto";
+import { useDeslocamentoDaBarra } from "@/components/admin/products/useDeslocamentoDaBarra";
 import "@/components/admin/products/formulario-produto.css";
 import {
   type LinhaProntaDaGrade,
@@ -2510,6 +2511,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             ),
             !!productId,
           );
+  const deslocamentoDaBarra = useDeslocamentoDaBarra();
   const botaoDeSalvarDesligado =
     isSubmitting ||
     showSuccess ||
@@ -4099,8 +4101,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     {formatCurrency(priceVal)}
                   </p>
                   <p className="text-xs text-zinc-400">
-                    {formData.variants.length} variações ·{" "}
-                    {formData.stock || "0"} un. no total
+                    {formData.variants.length}{" "}
+                    {formData.variants.length === 1 ? "variação" : "variações"}{" "}
+                    · {formData.stock || "0"} un. no total
                   </p>
                 </div>
               </div>
@@ -4903,7 +4906,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           <div
             aria-label="Ações do produto"
             role="region"
-            className="produto-formulario fixed inset-x-0 bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-50 border-t border-white/5 bg-[#101013]/95 px-5 py-3 shadow-[0_-12px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl lg:bottom-0 lg:left-64"
+            style={
+              {
+                "--desloc-barra": `${deslocamentoDaBarra}px`,
+              } as React.CSSProperties
+            }
+            className="produto-formulario fixed inset-x-0 bottom-[calc(6.5rem+var(--desloc-barra,0px)+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-50 border-t border-white/5 bg-[#101013]/95 px-5 py-3 shadow-[0_-12px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl lg:bottom-0 lg:left-64"
           >
             <div className="mx-auto max-w-3xl space-y-2">
               {motivoDoBloqueio && (
