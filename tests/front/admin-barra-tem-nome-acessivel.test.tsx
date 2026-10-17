@@ -9,11 +9,12 @@
 //   1. Cada aba da barra móvel é um botão com nome acessível próprio:
 //      Início, Pedidos, Produtos, Clientes, Ajustes (aria-label).
 //   2. O rótulo visível NUNCA leva a classe `hidden` — aparece sempre, a
-//      ~11px, e cabe porque a aba é `flex-1` (o Vender segue `shrink-0`).
+//      ~11px, e cabe porque os seis destinos dividem a largura disponível.
 //   3. O selo de pedidos entra no NOME ("Pedidos, 3 para preparar") e o selo
 //      visual fica `aria-hidden`, para o leitor não ler "Pedidos 3 3".
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { supabase } from "@/lib/supabase";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -101,6 +102,7 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    vi.mocked(supabase.from).mockImplementation(() => criarContagemBuilder());
     vi.stubGlobal(
       "BroadcastChannel",
       class {
@@ -165,6 +167,48 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
     );
   });
 
+  it("mantém os seis destinos na ordem aprovada, com Vender escrito", async () => {
+    const nav = await montar();
+    expect(
+      Array.from(nav.querySelectorAll("button")).map(
+        (b) => b.getAttribute("aria-label")?.split(",")[0],
+      ),
+    ).toEqual([...ABAS, "Vender"]);
+    const vender = botaoDaAba(nav, "Vender")!;
+    expect(vender.textContent?.trim()).toBe("Vender");
+    expect(vender.className).not.toContain("bg-admin-gold");
+    expect(vender.getAttribute("aria-current")).toBeNull();
+    expect(botaoDaAba(nav, "Início")!.getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(nav.className).toContain("h-16");
+    // Margem de 20px dos dois lados (`inset-x-5` = left-5 + right-5).
+    expect(nav.className).toContain("inset-x-5");
+  });
+
+  it("123 pedidos mostram 99+ sem perder o número no nome acessível", async () => {
+    vi.mocked(supabase.from).mockImplementation(() => {
+      const builder = criarContagemBuilder();
+      // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
+      builder.then = (resolve: any, reject?: any) =>
+        Promise.resolve({ count: 123, error: null }).then(resolve, reject);
+      return builder;
+    });
+    const nav = await montar();
+    await esperarAte(
+      () =>
+        botaoDaAba(nav, "Pedidos")?.getAttribute("aria-label") ===
+        "Pedidos, 123 para preparar",
+    );
+    const pedidos = botaoDaAba(nav, "Pedidos")!;
+    expect(pedidos.getAttribute("aria-label")).toBe(
+      "Pedidos, 123 para preparar",
+    );
+    expect(pedidos.querySelector('span[aria-hidden="true"]')?.textContent).toBe(
+      "99+",
+    );
+  });
+
   it("o rótulo visível de cada aba não carrega a classe `hidden`", async () => {
     const nav = await montar();
     for (const rotulo of ABAS) {
@@ -225,10 +269,8 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
   });
 });
 
-// O rótulo visível deixou a barra mais alta (~81px em vez de ~68px abaixo de
-// 640px). A folga de baixo do conteúdo no PWA instalado tinha 5.5rem (88px) e
-// a barra ocupa 12+81=93px: sobravam 5px do último elemento sob a barra.
-// Os dois modos usam a mesma folga base de 6.25rem.
+// A v5 reduz a ilha a 64px. Mantém a folga base de 6.25rem nos dois modos:
+// comporta os 64px, o afastamento inferior e o espaço até a última ação.
 describe("AdminLayout — folga de baixo comporta a barra com rótulo", () => {
   it("o --admin-tab-pb do PWA instalado usa 6.25rem, igual ao do navegador", () => {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo de um arquivo do próprio repositório, não entrada de usuário

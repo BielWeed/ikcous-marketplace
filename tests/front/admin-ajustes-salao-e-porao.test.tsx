@@ -277,7 +277,7 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
   /** O `<section>` do grupo, achado pelo título (o `<h2>` filho direto). */
   function secaoDoGrupo(titulo: string): Element {
     const secao = [...hospedeiro.querySelectorAll("section")].find(
-      (s) => s.querySelector(":scope > h2")?.textContent === titulo,
+      (s) => s.getAttribute("aria-label") === titulo,
     );
     expect(secao, `grupo "${titulo}" ausente`).toBeDefined();
     return secao as Element;
@@ -286,7 +286,8 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
   /** A linha de estado sob o título do grupo (o `<p>` filho direto). */
   function subtituloDoGrupo(titulo: string): string | null {
     return (
-      secaoDoGrupo(titulo).querySelector(":scope > p")?.textContent ?? null
+      secaoDoGrupo(titulo).querySelector("[data-grupo-subtitulo]")
+        ?.textContent ?? null
     );
   }
 
@@ -330,7 +331,7 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
     mockConfig.businessHours = "Seg-Sáb: 9h às 18h";
     await renderizar();
 
-    const titulos = [...hospedeiro.querySelectorAll("h2")].map(
+    const titulos = [...hospedeiro.querySelectorAll("[data-grupo-titulo]")].map(
       (h) => h.textContent,
     );
     expect(titulos).not.toContain("Como está sua loja");
@@ -471,11 +472,13 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
     });
   });
 
-  it("grupos sem passo próprio (Aparência, Regras de troca, Ferramentas) não inventam subtítulo", async () => {
+  it("grupos sem passo próprio usam descrição, e Ferramentas mostra a conexão real", async () => {
     await renderizar();
-    expect(subtituloDoGrupo("Aparência do app")).toBeNull();
-    expect(subtituloDoGrupo("Regras de troca e devolução")).toBeNull();
-    expect(subtituloDoGrupo("Ferramentas")).toBeNull();
+    expect(subtituloDoGrupo("Aparência do app")).toBe("Banners e vitrines");
+    expect(subtituloDoGrupo("Regras de troca e devolução")).toBe(
+      "Prazos, formas de devolver e política",
+    );
+    expect(subtituloDoGrupo("Ferramentas")).toBe("Conexão · Online");
   });
 
   it("'Conexão' mora em Ferramentas, junto de 'Minha loja está no ar?': Online", async () => {
@@ -690,7 +693,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
 
   it("os grupos aparecem na ordem do desenho: os seis grupos de Ajustes, sem o cartão de indicadores", async () => {
     await renderizar();
-    const titulos = [...hospedeiro.querySelectorAll("h2")].map(
+    const titulos = [...hospedeiro.querySelectorAll("[data-grupo-titulo]")].map(
       (h) => h.textContent,
     );
     expect(titulos).toEqual([
@@ -738,7 +741,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
   it("os acordeões nascem FECHADOS (decisão do dono, 02/09 — peça deliberada)", async () => {
     await renderizar();
     const cabecalhos = [
-      ...hospedeiro.querySelectorAll("button[aria-expanded]"),
+      ...hospedeiro.querySelectorAll(
+        "button[aria-expanded]:not([data-cabecalho-grupo])",
+      ),
     ];
     // "Nome, logo e cores" e "Atendimento" SAÍRAM em 22/09/2026 (duplicados
     // de AdminAboutStoreView): sobram Formas de pagamento (25/09/2026,
@@ -751,6 +756,12 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // nasce fechado (e só fala com o servidor quando a lojista o abre).
     // O sétimo é "Pedidos de privacidade dos clientes" (14/10/2026), também em
     // Minha loja, fechado e sem ler nada do banco até a lojista abrir.
+    const gruposRecolhidos = hospedeiro.querySelectorAll(
+      "button[data-cabecalho-grupo][aria-expanded]",
+    );
+    expect(gruposRecolhidos).toHaveLength(5);
+    for (const grupo of gruposRecolhidos)
+      expect(grupo.getAttribute("aria-expanded")).toBe("false");
     expect(cabecalhos.length).toBe(7);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
@@ -788,6 +799,10 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     });
     const onSetDirty = vi.fn();
     await renderizar(onSetDirty);
+    const cabecalhoDoGrupo = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[data-cabecalho-grupo][aria-label="Minha loja"]',
+    )!;
+    await act(async () => cabecalhoDoGrupo.click());
     const minhaLoja = () =>
       hospedeiro.querySelector("#grupo-de-ajustes-minha-loja");
     const chamouEmail = () =>
@@ -829,6 +844,13 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
       campo.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    await act(async () => cabecalhoDoGrupo.click());
+    expect(cabecalhoDoGrupo.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      minhaLoja()
+        ?.querySelector("[data-conteudo-grupo]")
+        ?.hasAttribute("hidden"),
+    ).toBe(false);
     expect(minhaLoja()?.textContent).toContain("Salve antes de fechar");
     await act(async () => {
       cabecalhoDaSecao("E-mail da loja")?.click();
@@ -879,9 +901,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     await renderizar();
     expect(cabecalhoDaSecao("Transportadoras")).toBeUndefined();
     const entrega = [...hospedeiro.querySelectorAll("section")].find(
-      (s) => s.querySelector(":scope > h2")?.textContent === "Entrega e frete",
+      (s) => s.getAttribute("aria-label") === "Entrega e frete",
     );
-    expect(entrega?.querySelector(":scope > p")?.textContent).toBe(
+    expect(entrega?.querySelector("[data-grupo-subtitulo]")?.textContent).toBe(
       "R$ 10 por entrega · Melhor Envio ligado",
     );
     reiniciarConfig();
@@ -900,7 +922,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     const onNavigate = vi.fn();
     await renderizar(undefined, onNavigate);
 
-    const portas = [...hospedeiro.querySelectorAll('[role="button"]')];
+    const portas = [...hospedeiro.querySelectorAll("[data-porta-ajustes]")];
     expect(portas.length).toBe(4);
     await act(async () => {
       for (const porta of portas) {

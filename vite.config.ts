@@ -108,10 +108,7 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       ],
       ["src/lib/prepareIdentityImage.ts", "AdminIdentityPrepare"],
       ["src/lib/uploadIdentityImage.ts", "AdminIdentityUpload"],
-      [
-        "node_modules/tus-js-client/lib.esm/browser/index.js",
-        "AdminIdentityTus",
-      ],
+      ["node_modules/tus-js-client/lib/browser/index.js", "AdminIdentityTus"],
       ["node_modules/image-dimensions/index.js", "AdminIdentityDimensions"],
       // A tela do balcão precisa estar no precache (vender offline é o
       // ponto): com o nome padrão ela nasceria `assets/AdminPdvView-<hash>.js`
@@ -166,6 +163,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     resolve: {
       alias: [
         { find: "@", replacement: path.resolve(__dirname, "./src") },
+        // O tus-js-client resolve, pelo campo `module`, a build `lib.esm`, que o
+        // Babel desce para ES5 e enche de helpers. A pasta `lib` do MESMO
+        // pacote (4.3.1) e o codigo-fonte moderno: o alvo do build ja e atual,
+        // entao o comportamento e o mesmo e o painel sai mais leve.
+        {
+          find: /^tus-js-client$/,
+          replacement: "tus-js-client/lib/browser/index.js",
+        },
         // O recharts importa 29 funções `lodash/<nome>` na versão CommonJS:
         // 263 módulos, cada um embrulhado pelo plugin commonjs. A MESMA versão
         // em ES module (lodash-es, mesma 4.18.1 do lodash que o recharts
@@ -210,8 +215,11 @@ export default defineConfig(async (context): Promise<UserConfig> => {
           },
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
+            // Estes vendors já eram dependências estáticas do início da loja.
+            // Juntos compartilham minificação e dicionário Brotli, sem
+            // antecipar código que antes fosse lazy.
             if (normalizedId.includes("commonjsHelpers")) {
-              return "vendor-react";
+              return "vendor-inicio";
             }
             if (id.includes("node_modules")) {
               if (normalizedId.includes("zxing-wasm")) {
@@ -256,29 +264,29 @@ export default defineConfig(async (context): Promise<UserConfig> => {
                 // brotli de biblioteca de gráfico para o boot de todo
                 // cliente da vitrine (modulepreload no index.html). Este
                 // vendor já é estático na entrada: zero requisição nova.
-                return "vendor-ui-helpers";
+                return "vendor-inicio";
               }
               if (normalizedId.includes("react-resizable-panels")) {
                 return "vendor-panels";
               }
               if (normalizedId.includes("lucide-react")) {
-                return "vendor-lucide";
+                return "vendor-inicio";
               }
               if (
                 normalizedId.includes("react-hook-form") ||
                 normalizedId.includes("zod") ||
                 normalizedId.includes("@hookform")
               ) {
-                return "vendor-form";
+                return "vendor-inicio";
               }
               if (normalizedId.includes("@radix-ui")) {
-                return "vendor-radix";
+                return "vendor-inicio";
               }
               if (normalizedId.includes("framer-motion")) {
                 return "vendor-motion";
               }
               if (normalizedId.includes("@supabase")) {
-                return "vendor-supabase";
+                return "vendor-inicio";
               }
               if (
                 normalizedId.includes("recharts") ||
@@ -291,7 +299,7 @@ export default defineConfig(async (context): Promise<UserConfig> => {
                 normalizedId.includes("/node_modules/react-dom/") ||
                 normalizedId.includes("/node_modules/scheduler/")
               ) {
-                return "vendor-react";
+                return "vendor-inicio";
               }
             }
           },

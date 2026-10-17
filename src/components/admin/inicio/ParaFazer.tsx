@@ -1,193 +1,184 @@
 import { formatarInteiro } from "@/lib/crm";
-import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { PainelInicio } from "@/types/painel";
 import {
+  AlertTriangle,
+  ArrowUpFromLine,
   CheckCircle2,
   ChevronRight,
-  type LucideIcon,
   Package,
-  PackageMinus,
-  Receipt,
   RotateCcw,
   Wallet,
 } from "lucide-react";
+import {
+  CARTAO_INICIO,
+  LINHA_INICIO,
+  SeloDoInicio,
+  TituloDoInicio,
+} from "./visualDoInicio";
 
-interface ItemParaFazer {
-  readonly chave: string;
-  readonly icone: LucideIcon;
-  readonly rotulo: string;
-  /** Texto do crachá; `null` = "não sei" (mostra "—"). */
-  readonly contagem: number | null;
-  /** O item pede ação agora (crachá aceso). */
-  readonly pendente: boolean;
-  readonly destino: View;
-  readonly textoDoCracha?: string;
-}
-
-function montarItens(painel: PainelInicio | null): ItemParaFazer[] {
+/** Só pendências conhecidas e o estado do caixa; desconhecido continua como —. */
+export function ParaFazer({
+  painel,
+  carregando,
+  onNavigate,
+  preparoEmDestaque = false,
+}: Readonly<{
+  painel: PainelInicio | null;
+  carregando: boolean;
+  onNavigate: (view: View) => void;
+  preparoEmDestaque?: boolean;
+}>) {
   const pend = painel?.pendencias;
   const preparar = pend?.pedidosParaPreparar ?? null;
   const devolucoes = pend?.devolucoesAbertas ?? null;
   const vencidas = painel?.contasVencidas ?? null;
   const estoque = pend?.estoqueBaixo ?? null;
   const caixaAberto = pend?.caixaAberto ?? false;
-  return [
+  const itens = [
     {
       chave: "preparar",
       icone: Package,
+      tom: "azul",
       rotulo: "Pedidos para preparar",
+      titulo: `${formatarInteiro(preparar)} ${preparar === 1 ? "pedido para preparar" : "pedidos para preparar"}`,
+      descricao: "Abrir Pedidos",
       contagem: preparar,
       pendente: (preparar ?? 0) > 0,
       destino: "admin-orders",
     },
     {
-      chave: "devolucoes",
-      icone: RotateCcw,
-      rotulo: "Devoluções abertas",
-      contagem: devolucoes,
-      pendente: (devolucoes ?? 0) > 0,
-      destino: "admin-devolucoes",
-    },
-    {
       chave: "vencidas",
-      icone: Receipt,
+      icone: ArrowUpFromLine,
+      tom: "laranja",
       rotulo: "Contas vencidas",
+      titulo: `${formatarInteiro(vencidas)} ${vencidas === 1 ? "conta vencida" : "contas vencidas"}`,
+      descricao: "Financeiro",
       contagem: vencidas,
       pendente: (vencidas ?? 0) > 0,
       destino: "admin-financeiro",
     },
     {
+      chave: "devolucoes",
+      icone: RotateCcw,
+      tom: "rosa",
+      rotulo: "Devoluções abertas",
+      titulo: `${formatarInteiro(devolucoes)} ${devolucoes === 1 ? "devolução aberta" : "devoluções abertas"}`,
+      descricao: "Ver devoluções",
+      contagem: devolucoes,
+      pendente: (devolucoes ?? 0) > 0,
+      destino: "admin-devolucoes",
+    },
+    {
       chave: "caixa",
       icone: Wallet,
-      rotulo: caixaAberto ? "Caixa aberto — feche no fim do dia" : "Caixa",
+      tom: "teal",
+      rotulo: "Caixa",
+      titulo: !painel
+        ? "Caixa —"
+        : caixaAberto
+          ? "Caixa aberto"
+          : "Caixa fechado",
+      descricao: caixaAberto
+        ? "Feche no fim do dia · Financeiro"
+        : "Abrir Financeiro",
       contagem: null,
       pendente: caixaAberto,
       destino: "admin-financeiro",
-      textoDoCracha: painel ? (caixaAberto ? "Aberto" : "Fechado") : undefined,
     },
     {
       chave: "estoque",
-      icone: PackageMinus,
+      icone: Package,
+      tom: "azul",
       rotulo: "Produtos com estoque baixo",
+      titulo: `${formatarInteiro(estoque)} ${estoque === 1 ? "produto com estoque baixo" : "produtos com estoque baixo"}`,
+      descricao: "Repor estoque · Produtos",
       contagem: estoque,
       pendente: (estoque ?? 0) > 0,
       destino: "admin-products",
     },
-  ];
-}
-
-// Casca do botão-linha (mesmo desenho do AtalhosDaAba); a cor de estado vem
-// de quem usa.
-const CASCA_DA_LINHA =
-  "group flex min-h-11 w-full items-center gap-3 rounded-2xl border bg-gradient-to-r to-transparent px-3 py-2.5 text-left shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]";
-
-/** "Para fazer": cada pendência com o seu número e o atalho para resolvê-la. */
-export function ParaFazer({
-  painel,
-  carregando,
-  onNavigate,
-}: Readonly<{
-  painel: PainelInicio | null;
-  carregando: boolean;
-  onNavigate: (view: View) => void;
-}>) {
-  const itens = montarItens(painel);
+  ] as const;
   const pendentes = itens.filter((item) => item.pendente).length;
   const esqueleto = carregando && !painel;
+  const visiveis = itens.filter(
+    (item) =>
+      !(item.chave === "preparar" && preparoEmDestaque && item.pendente) &&
+      (item.pendente || item.chave === "caixa" || item.contagem == null),
+  );
 
   return (
     <section
       aria-labelledby="inicio-para-fazer-titulo"
       aria-busy={esqueleto}
-      className="admin-glass h-full rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6"
+      className="min-w-0"
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2
+      <div className="flex items-start justify-between gap-3">
+        <TituloDoInicio
           id="inicio-para-fazer-titulo"
-          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
+          icone={AlertTriangle}
+          tom="laranja"
         >
           Para fazer
-        </h2>
-        {painel ? (
-          pendentes > 0 ? (
-            <span className="text-[11px] font-bold text-amber-300">
-              {pendentes} {pendentes === 1 ? "pendência" : "pendências"}
+        </TituloDoInicio>
+        {painel && pendentes > 0 ? (
+          <span className="pt-2 text-xs font-bold text-orange-300">
+            AGORA
+            <span className="sr-only">
+              {" "}
+              · {pendentes} {pendentes === 1 ? "pendência" : "pendências"}
             </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300">
-              <CheckCircle2 className="size-3.5" aria-hidden="true" />
-              Tudo em dia
-            </span>
-          )
+          </span>
         ) : null}
       </div>
-
-      <ul className="space-y-1.5">
-        {itens.map((item) => (
-          <li key={item.chave}>
-            <button
-              type="button"
-              onClick={() => onNavigate(item.destino)}
-              // Template e não `cn`: o tailwind-merge trata `bg-<cor>` e
-              // `bg-gradient-to-r` como conflito e descartaria o gradiente.
-              className={`${CASCA_DA_LINHA} ${
-                item.pendente
-                  ? "border-amber-500/25 bg-amber-500/[0.04] from-amber-500/[0.10] hover:border-amber-500/45"
-                  : "border-white/10 bg-zinc-900/70 from-white/[0.05] hover:border-admin-gold/40 hover:from-admin-gold/[0.08]"
-              }`}
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "flex size-10 shrink-0 items-center justify-center rounded-xl border",
-                  item.pendente
-                    ? "border-amber-500/30 bg-amber-500/10"
-                    : "border-white/10 bg-white/[0.06] group-hover:border-admin-gold/25 group-hover:bg-admin-gold/10",
-                )}
-              >
-                <item.icone
-                  className={cn(
-                    "size-5",
-                    item.pendente
-                      ? "text-amber-300"
-                      : "text-zinc-400 group-hover:text-admin-gold",
-                  )}
-                />
-              </span>
-              <span
-                className={cn(
-                  "min-w-0 flex-1 line-clamp-2 text-sm font-bold leading-tight",
-                  item.pendente ? "text-white" : "text-zinc-300",
-                )}
-              >
-                {item.rotulo}
-              </span>
-              {esqueleto ? (
-                <span
-                  className="premium-shimmer h-5 w-8 rounded-full"
-                  aria-hidden="true"
-                />
-              ) : (
-                <span
-                  className={cn(
-                    "min-w-8 rounded-full border px-2 py-0.5 text-center text-[11px] font-black tabular-nums",
-                    item.pendente
-                      ? "border-amber-500/30 bg-amber-500/15 text-amber-200"
-                      : "border-white/10 bg-white/5 text-zinc-400",
-                  )}
+      <div className={CARTAO_INICIO}>
+        {painel && pendentes === 0 ? (
+          <div className="mb-1 flex items-start gap-3 border-b border-white/10 pb-3">
+            <SeloDoInicio icone={CheckCircle2} tom="verde" />
+            <div>
+              <p className="text-base font-bold text-white">Tudo em dia</p>
+              <p className="mt-1 text-sm text-zinc-400">
+                Nenhuma pendência para resolver.
+              </p>
+            </div>
+          </div>
+        ) : null}
+        {esqueleto ? (
+          <div className="space-y-3" aria-hidden="true">
+            <div className="premium-shimmer h-5 w-3/4 rounded-lg" />
+            <div className="premium-shimmer h-5 w-2/3 rounded-lg" />
+            <p className="text-sm text-zinc-400">
+              Aguardando os dados. Zero só após confirmar.
+            </p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-white/10">
+            {visiveis.map((item) => (
+              <li key={item.chave}>
+                <button
+                  type="button"
+                  onClick={() => onNavigate(item.destino)}
+                  aria-label={`${item.rotulo}: ${item.titulo}. ${item.descricao}`}
+                  className={LINHA_INICIO}
                 >
-                  {item.textoDoCracha ?? formatarInteiro(item.contagem)}
-                </span>
-              )}
-              <ChevronRight
-                className="size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold"
-                aria-hidden="true"
-              />
-            </button>
-          </li>
-        ))}
-      </ul>
+                  <SeloDoInicio icone={item.icone} tom={item.tom} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-base font-semibold leading-snug text-white">
+                      {item.titulo}
+                    </span>
+                    <span className="mt-1 block text-sm text-zinc-400">
+                      {item.descricao}
+                    </span>
+                  </span>
+                  <ChevronRight
+                    className="size-5 shrink-0 text-zinc-400"
+                    aria-hidden="true"
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }

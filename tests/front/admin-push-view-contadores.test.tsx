@@ -209,7 +209,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
   // botão inteiro. Conserto 2 (revisão de 20/08/2026): o rótulo "Sem
   // comprar há 30d" contém um "0" (o "0" de "30d"), então
   // `botao.textContent.toContain("0")` passava mesmo com o multiplicador
-  // antigo devolvendo "Sem pedidos há 30d (qualquer status)2" — o "2" ficava colado ao "d" e
+  // antigo devolvendo "Inativos há 30 dias2" — o "2" ficava colado ao "d" e
   // nenhum `\bN\b` casava. O contador vive no `<span>` com a classe
   // `font-mono`, que é o único span com essa classe dentro do botão.
   function numeroDoSegmento(
@@ -225,13 +225,13 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     // mostraria 3, 2 e 3 (30%, 25% e 45% de 8).
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
-      (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
+      (b.textContent ?? "").includes("Gastaram R$ 150+"),
     );
     const botaoInativo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
+      (b.textContent ?? "").includes("Inativos há 30 dias"),
     );
     const botaoNovo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Cadastrados há ≤ 7 dias"),
+      (b.textContent ?? "").includes("Novos em 7 dias"),
     );
 
     expect(numeroDoSegmento(botaoVip)).toBe("2");
@@ -252,7 +252,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoInativo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
+      (b.textContent ?? "").includes("Inativos há 30 dias"),
     );
     expect(botaoInativo).toBeTruthy();
 
@@ -299,7 +299,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
-      (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
+      (b.textContent ?? "").includes("Gastaram R$ 150+"),
     );
     // A11: o rótulo agora DESCREVE a regra ("R$ 150+ (pagos)") — ou seja,
     // tem dígitos no próprio rótulo. A asserção antiga lia o textContent do
@@ -320,10 +320,10 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
-      (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
+      (b.textContent ?? "").includes("Gastaram R$ 150+"),
     );
     const botaoInativo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
+      (b.textContent ?? "").includes("Inativos há 30 dias"),
     );
 
     expect(botaoVip?.textContent).toContain("—");
@@ -347,19 +347,17 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = () => Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = () =>
-      botoes().find((b) =>
-        (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
-      );
+      botoes().find((b) => (b.textContent ?? "").includes("Gastaram R$ 150+"));
     const botaoInativo = () =>
       botoes().find((b) =>
-        (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
+        (b.textContent ?? "").includes("Inativos há 30 dias"),
       );
     const botaoEnviar = () =>
       botoes().find((b) =>
         (b.textContent ?? "").includes("Enviar agora para"),
       ) as HTMLButtonElement | undefined;
 
-    // 1) Seleciona "Gastaram R$ 150+ (pagos)" — mede 2 de verdade.
+    // 1) Seleciona "Gastaram R$ 150+" — mede 2 de verdade.
     await act(async () => {
       botaoVip()!.click();
     });
@@ -406,15 +404,13 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = () => Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = () =>
-      botoes().find((b) =>
-        (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
-      );
+      botoes().find((b) => (b.textContent ?? "").includes("Gastaram R$ 150+"));
     const botaoInativo = () =>
       botoes().find((b) =>
-        (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
+        (b.textContent ?? "").includes("Inativos há 30 dias"),
       );
 
-    // 1) Seleciona "Gastaram R$ 150+ (pagos)" e deixa medir de verdade: 2.
+    // 1) Seleciona "Gastaram R$ 150+" e deixa medir de verdade: 2.
     await act(async () => {
       botaoVip()!.click();
     });
@@ -498,7 +494,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
-      (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
+      (b.textContent ?? "").includes("Gastaram R$ 150+"),
     );
     await act(async () => {
       botaoVip!.click();
@@ -545,7 +541,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
   // `if (!error) setSubCount(...)` simplesmente não fazia nada quando a
   // consulta falhava — a tela ficava presa em "0" para sempre, indistinguível
   // de uma loja sem ninguém cadastrado. Estes três testes provam que os TRÊS
-  // lugares de exibição (topbar, cartão grande, badge "Todos os Clientes") e
+  // lugares de exibição (topbar, cartão grande, badge "Todos os clientes") e
   // o texto de alcance concordam entre si, e que o botão de enviar SEMPRE
   // falha fechado quando o total é desconhecido.
   describe("o total de aparelhos (subCount) distingue desconhecido de zero medido", () => {
@@ -564,7 +560,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     function numeroDoBadgeTodosOsClientes(): string | undefined {
       const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
-        (b) => (b.textContent ?? "").includes("Todos os Clientes"),
+        (b) => (b.textContent ?? "").includes("Todos os clientes"),
       );
       return botao?.textContent ?? undefined;
     }

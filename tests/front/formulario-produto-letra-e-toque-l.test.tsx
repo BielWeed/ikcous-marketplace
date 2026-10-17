@@ -76,7 +76,7 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     expect(gatilho).toContain("min-h-11");
   });
 
-  it("c. 'Tirar Foto' do estado vazio com min-h-11 e 11px; câmera e '+' das fotos com size-11", () => {
+  it("c. 'Tirar Foto' do estado vazio com min-h-11 e 11px; ações da galeria com 44px e largura inteira", () => {
     const rotulosDaCamera = [
       ...FONTE.matchAll(/<label\s+htmlFor="product-image-capture"/g),
     ].map((m) => tagAPartirDe(m.index));
@@ -90,12 +90,14 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     );
     expect(comFotos, "câmera da galeria com fotos").toBeDefined();
     expect(vazio, "Tirar Foto do estado vazio").toBeDefined();
-    expect(comFotos).toContain("size-11");
+    expect(comFotos).toContain("min-h-11");
+    expect(comFotos).toContain("w-full");
     expect(vazio).toContain("min-h-11");
     expect(vazio).toContain("text-[11px]");
 
     const adicionar = tagDe("label", 'title="Adicionar Mais Imagens"');
-    expect(adicionar).toContain("size-11");
+    expect(adicionar).toContain("min-h-11");
+    expect(adicionar).toContain("w-full");
   });
 
   it("d. 'Tentar de novo', 'Remover' e 'Recarregar' com min-h-11 e 11px", () => {
@@ -146,8 +148,10 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     const inicio = FONTE.indexOf("const VariantItem = React.memo(");
     const trecho = FONTE.slice(inicio);
     // lado esquerdo: o primeiro <div> depois do cartão
-    const cartao = trecho.indexOf('<div className="group flex');
+    // O cartão agora é relativo para ancorar o lápis de edição.
+    const cartao = trecho.indexOf('<div className="group ');
     expect(cartao).toBeGreaterThan(-1);
+    expect(tagAPartirDe(inicio + cartao)).toContain(" flex ");
     const esquerdo = tagAPartirDe(inicio + trecho.indexOf("<div", cartao + 5));
     expect(esquerdo).toContain("min-w-0");
     // <div> interno do texto: o que contém o data-testid
@@ -157,6 +161,9 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
         trecho.lastIndexOf("<div", trecho.lastIndexOf("<div", testid) - 1),
     );
     expect(interno).toContain("min-w-0");
+    const nome = tagAPartirDe(inicio + trecho.lastIndexOf("<span", testid));
+    expect(nome).toContain("min-w-0");
+    expect(nome).toContain("break-words");
     // linha das pílulas de estoque/preço
     const pilulas = tagDe("div", "tracking-tighter", inicio);
     expect(pilulas).toContain("flex-wrap");
@@ -171,10 +178,11 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     );
   });
 
-  it("g. 'Visualizar App' (botão flutuante) em 11px", () => {
+  it("g. 'Visualizar App' junto da ação principal com 56px e letra de 14px", () => {
     const posicao = FONTE.indexOf("Visualizar App");
     expect(posicao).toBeGreaterThan(-1);
-    const rotulo = tagAPartirDe(FONTE.lastIndexOf("<span", posicao));
-    expect(rotulo).toContain("text-[11px]");
+    const botao = tagAPartirDe(FONTE.lastIndexOf("<button", posicao));
+    expect(botao).toContain("min-h-14");
+    expect(botao).toContain("text-sm");
   });
 });

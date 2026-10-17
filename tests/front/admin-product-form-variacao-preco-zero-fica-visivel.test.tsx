@@ -201,7 +201,10 @@ describe("AdminProductFormView — preço 0 da variação fica visível", () => 
       for (const valor of ["Normal", "Comum"]) {
         const texto = linhaDaVariacao(valor);
         expect(texto).not.toContain("R$");
-        expect(texto.endsWith("1 UND")).toBe(true);
+        // As ações agora têm texto depois do estoque. O contador continua
+        // sem o zero solto que o curto-circuito desenhava.
+        expect(texto).toContain("1 UND");
+        expect(texto).not.toMatch(/1 UND\s*0/);
       }
     });
   });

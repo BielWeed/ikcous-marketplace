@@ -122,7 +122,7 @@ describe("nome configurado no painel e no endereço", () => {
       "Savy Store Admin",
     );
     expect(hospedeiro.querySelector("h1 span")?.className).toContain(
-      "text-admin-gold",
+      "text-[#A1A1AD]",
     );
     expect(document.title).toBe("Savy Store | Admin Dashboard");
     expect(

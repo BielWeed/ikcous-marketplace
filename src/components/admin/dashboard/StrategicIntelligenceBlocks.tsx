@@ -453,7 +453,7 @@ export const StrategicIntelligenceBlocks = React.memo(
             {/* CONTAINER DO GRÁFICO E DA LEGENDA DETALHADA */}
             <div className="relative z-10 flex flex-col items-center justify-between gap-4 sm:gap-10 lg:flex-row">
               {/* COLUNA DO GRÁFICO DONUT */}
-              <div className="relative flex h-[210px] w-full min-w-0 overflow-hidden items-center justify-center sm:h-[260px] lg:h-[320px] lg:w-[55%]">
+              <div className="relative flex h-[210px] w-full min-w-0 items-center justify-center overflow-hidden sm:h-[260px] lg:h-[320px] lg:w-[55%]">
                 <ResponsiveContainer
                   width="100%"
                   height="100%"

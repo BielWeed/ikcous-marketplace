@@ -143,7 +143,7 @@ describe("Ajustes — o diagnóstico de conexão fala em palavras", () => {
     expect(bloco.textContent).toContain("Testar a conexão agora");
   });
 
-  it("D2/D3 — loja respondendo rápido: 'Conexão boa', e os ms só no detalhe", async () => {
+  it("D2/D3 — loja respondendo rápido: frase e média em destaque, demais medidas no detalhe", async () => {
     consulta.duracaoMs = 40;
     await abrirDiagnostico();
     await testarAgora();
@@ -155,12 +155,14 @@ describe("Ajustes — o diagnóstico de conexão fala em palavras", () => {
     const detalhe = bloco.querySelector("details");
     expect(detalhe, "detalhe com os números ausente").not.toBeNull();
     expect(detalhe!.textContent).toContain("40 ms");
-    // Fora do detalhe, nenhum número em ms.
+    // V5: só a média ganha destaque; as demais medidas seguem no detalhe.
     const foraDoDetalhe = (bloco.textContent ?? "").replace(
       detalhe!.textContent ?? "",
       "",
     );
-    expect(foraDoDetalhe).not.toMatch(/\bms\b/);
+    expect(foraDoDetalhe.match(/40 ms/g)).toHaveLength(1);
+    expect(foraDoDetalhe).not.toContain("Mais rápida:");
+    expect(foraDoDetalhe).not.toContain("Tentativas sem resposta:");
   });
 
   it("D2 — loja demorando: 'Conexão lenta', com o que fazer", async () => {

@@ -191,6 +191,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -232,19 +233,24 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
   it("cada chip de público mostra o número GRANDE do seu segmento, e o selecionado fica em destaque", async () => {
     await abrirTela();
 
-    const chipTodos = chipDeSegmento("Todos os Clientes");
-    const chipVip = chipDeSegmento("Gastaram R$ 150+ (pagos)");
-    const chipInativo = chipDeSegmento("Sem pedidos há 30d (qualquer status)");
+    const chipTodos = chipDeSegmento("Todos os clientes");
+    const chipVip = chipDeSegmento("Gastaram R$ 150+");
+    const chipInativo = chipDeSegmento("Inativos há 30 dias");
 
     // Números medidos de verdade: all=8 (subCount), vip=2, inactive=0.
     expect(numeroDoChip(chipTodos)).toBe("8");
     expect(numeroDoChip(chipVip)).toBe("2");
     expect(numeroDoChip(chipInativo)).toBe("0");
+    expect(chipVip?.textContent).toContain("Só compras pagas");
+    expect(chipInativo?.textContent).toContain(
+      "Sem pedidos de qualquer status",
+    );
+    expect(chipInativo?.textContent).toContain("Indisponível");
 
     // O chip do segmento selecionado ("all" por padrão) tem destaque; os
     // outros não.
-    expect(chipTodos?.className).toContain("border-admin-gold/50");
-    expect(chipVip?.className).not.toContain("border-admin-gold/50");
+    expect(chipTodos?.className).toContain("border-admin-gold");
+    expect(chipVip?.className).not.toContain("border-admin-gold");
 
     // A linha de unidade embaixo do número — parte do chip da direção B
     // ("9 / aparelhos"), que o botão antigo não tinha.
@@ -257,7 +263,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
   it("segmento medido como zero aparece DESATIVADO, com o motivo do zero — e não pode ser selecionado", async () => {
     await abrirTela();
 
-    const chipInativo = chipDeSegmento("Sem pedidos há 30d (qualquer status)");
+    const chipInativo = chipDeSegmento("Inativos há 30 dias");
     expect(chipInativo).toBeTruthy();
 
     // Zero medido tem EXPLICAÇÃO na cara do chip — não é um zero mudo.
@@ -275,14 +281,14 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       await esperar(50);
     });
 
-    expect(chipInativo!.className).not.toContain("border-admin-gold/50");
+    expect(chipInativo!.className).not.toContain("border-admin-gold");
     expect(texto()).toContain("Receberão: 8 aparelhos");
   });
 
   it("contagem zero desatualizada REMEDE ao voltar o foco: cliente novo com a tela aberta destrava o chip (achado 3 da revisão do PR 549)", async () => {
     await abrirTela();
 
-    const chipNovos = chipDeSegmento("Cadastrados há ≤ 7 dias");
+    const chipNovos = chipDeSegmento("Novos em 7 dias");
     expect(chipNovos).toBeTruthy();
     // Abertura da tela: zero medido de verdade → chip desativado com motivo.
     expect(chipNovos!.disabled).toBe(true);
@@ -312,7 +318,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     estadoDoBanco.subCount = 0;
     await abrirTela();
 
-    const chipTodos = chipDeSegmento("Todos os Clientes");
+    const chipTodos = chipDeSegmento("Todos os clientes");
     expect(chipTodos).toBeTruthy();
     expect(chipTodos!.disabled).toBe(true);
     expect(numeroDoChip(chipTodos)).toBe("0");
@@ -376,6 +382,59 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
     expect(previaDepois!.textContent).toContain("Só hoje, confira na loja!");
     // O carimbo de tempo da notificação real.
     expect(previaDepois!.textContent).toContain("agora");
+  });
+
+  it("o relógio da prévia acompanha o minuto e a data local, e limpa o intervalo ao desmontar", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(new Date(2026, 9, 17, 23, 59));
+    const iniciarIntervalo = vi.spyOn(window, "setInterval");
+    const limparIntervalo = vi.spyOn(window, "clearInterval");
+    await abrirTela();
+
+    const previa = () =>
+      hospedeiro.querySelector('[data-testid="previa-celular"]')!.textContent;
+    expect(previa()).toContain("23:59");
+    expect(previa()).toContain("sábado, 17 de outubro");
+    const indice = iniciarIntervalo.mock.calls.findIndex(
+      ([, intervalo]) => intervalo === 60_000,
+    );
+    expect(indice).toBeGreaterThanOrEqual(0);
+    const relogio = iniciarIntervalo.mock.results.at(indice)?.value;
+
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(previa()).toContain("00:00");
+    expect(previa()).toContain("domingo, 18 de outubro");
+
+    await act(async () => {
+      raiz.render(null);
+    });
+    expect(limparIntervalo).toHaveBeenCalledWith(relogio);
+  });
+
+  it("o modelo aplicado fica selecionado e conserva o destino e o marcador de cupom", async () => {
+    await abrirTela();
+    const modelo = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (botao) => botao.textContent === "Oferta com cupom",
+    )!;
+    expect(modelo.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => {
+      modelo.click();
+    });
+    expect(modelo.getAttribute("aria-pressed")).toBe("true");
+    expect(modelo.className).toContain("border-admin-gold");
+    expect(
+      hospedeiro.querySelector("#push-destination")?.textContent,
+    ).toContain("Página de Busca de Produtos");
+    expect(
+      hospedeiro.querySelector('[data-testid="aviso-codigo-pendente"]'),
+    ).not.toBeNull();
+    expect(
+      Array.from(hospedeiro.querySelectorAll("button")).find((botao) =>
+        botao.textContent?.includes("Enviar agora para"),
+      )?.disabled,
+    ).toBe(true);
   });
 
   // Revisão do lote B (12/09/2026), achado 2: a proposta aprovada trava o
@@ -445,12 +504,13 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
   // e remontam com o valor, então o colapso nunca descartou rascunho: a
   // guarda real é de navegação (onSetDirty), e a frase "Salve antes de
   // fechar" sai junto com a seção que a carregava.
-  it("a composição 'No ar agora' é cartão fixo — não colapsa, e o rascunho não desmonta nada", async () => {
+  it("a composição 'Mensagem' é cartão fixo — não colapsa, e o rascunho não desmonta nada", async () => {
     await abrirTela();
 
     // Zero controle de colapso para a composição.
-    const controleDeColapso = cabecalhoDeSecao("No ar agora");
-    expect(controleDeColapso).toBeUndefined();
+    const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
+    expect(mensagem).not.toBeNull();
+    expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
     expect(texto()).not.toMatch(/salve antes de fechar/i);
 
     const campo = hospedeiro.querySelector<HTMLInputElement>("#push-title");

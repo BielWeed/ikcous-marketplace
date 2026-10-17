@@ -115,7 +115,7 @@ it("uma contagem antiga não aparece durante a medição do público atual", asy
   const novos = pendente();
   h.rpc.mockReturnValueOnce(vip.promessa).mockReturnValueOnce(novos.promessa);
   await publico("Gastaram R$ 150+");
-  await publico("Cadastrados há ≤ 7 dias");
+  await publico("Novos em 7 dias");
   expect(hospedeiro.textContent).toContain("Receberão: — aparelhos");
   await act(async () => {
     vip.resolver({ data: 31, error: null });
@@ -136,7 +136,7 @@ it.each([false, true])(
       .mockReturnValueOnce(vip.promessa)
       .mockResolvedValueOnce({ data: 5, error: null });
     await publico("Gastaram R$ 150+");
-    await publico("Cadastrados há ≤ 7 dias");
+    await publico("Novos em 7 dias");
     expect(hospedeiro.textContent).toContain("Receberão: 5 aparelhos");
     await act(async () => {
       if (falhar) vip.rejeitar(new Error("rede"));
@@ -150,7 +150,7 @@ it("voltar para Todos invalida a consulta anterior mesmo voltando depois ao mesm
   const vip = pendente();
   h.rpc.mockReturnValueOnce(vip.promessa);
   await publico("Gastaram R$ 150+");
-  await publico("Todos os Clientes");
+  await publico("Todos os clientes");
   const atual = pendente();
   h.rpc.mockReturnValueOnce(atual.promessa);
   await publico("Gastaram R$ 150+");

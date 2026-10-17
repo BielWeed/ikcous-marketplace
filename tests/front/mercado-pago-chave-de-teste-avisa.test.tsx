@@ -179,14 +179,14 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
     raiz = await montarSecao();
 
     const resumo = resumoDoTeste();
-    expect(resumo.className).toContain("amber");
+    expect(resumo.className).toContain("orange");
     expect(resumo.className).not.toContain("emerald");
     expect(resumo.textContent).toContain("TESTUSER1234567890");
     expect(resumo.textContent).toContain(FRASE_DO_AVISO);
     expect(resumo.textContent).toContain("troque pelas chaves de PRODUÇÃO");
     expect(resumo.textContent).toContain(PIX_FICA_DESLIGADO);
     expect(resumo.textContent).toBe(
-      `${CONTA_DE_TESTE.mensagem}${AVISO_CHAVES_DE_TESTE}`,
+      `${CONTA_DE_TESTE.mensagem}Último teste: ${new Date(CONTA_DE_TESTE.quando).toLocaleString("pt-BR")}${AVISO_CHAVES_DE_TESTE}`,
     );
   });
 
@@ -196,8 +196,13 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
 
     const resumo = resumoDoTeste();
     expect(resumo.className).toContain("emerald");
-    expect(resumo.className).not.toContain("amber");
-    expect(resumo.textContent).toBe(CONTA_DE_PRODUCAO.mensagem);
+    expect(resumo.className).not.toContain("orange");
+    expect(resumo.textContent).toBe(
+      `${CONTA_DE_PRODUCAO.mensagem}Último teste: ${new Date(CONTA_DE_PRODUCAO.quando).toLocaleString("pt-BR")}`,
+    );
+    expect(resumo.querySelector("time")?.dateTime).toBe(
+      CONTA_DE_PRODUCAO.quando,
+    );
     expect(document.body.textContent).not.toContain(FRASE_DO_AVISO);
   });
 
@@ -208,7 +213,7 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
 
     const resumo = resumoDoTeste();
     expect(resumo.className).toContain("emerald");
-    expect(resumo.className).not.toContain("amber");
+    expect(resumo.className).not.toContain("orange");
     expect(document.body.textContent).not.toContain(FRASE_DO_AVISO);
   });
 
@@ -229,7 +234,7 @@ describe("MercadoPagoSection — chave de TESTE avisa a lojista", () => {
     await abrirExpansor("Suas chaves");
     await clique(botaoPorTexto("Testar conexão"));
 
-    expect(resumoDoTeste().className).toContain("amber");
+    expect(resumoDoTeste().className).toContain("orange");
     expect(resumoDoTeste().className).not.toContain("emerald");
     expect(ocorrencias(document.body.textContent ?? "", FRASE_DO_AVISO)).toBe(
       1,

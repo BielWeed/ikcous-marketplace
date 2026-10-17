@@ -542,7 +542,13 @@ try {
       }),
       "process.env.NODE_ENV": '"production"',
     },
-    alias: { "@": path.join(root, "src") },
+    alias: {
+      "@": path.join(root, "src"),
+      "tus-js-client": path.join(
+        root,
+        "node_modules/tus-js-client/lib/browser/index.js",
+      ),
+    },
     plugins: [
       {
         name: "only-context-boundaries",
@@ -581,7 +587,7 @@ try {
     "src/lib/adminStoreIdentity.ts",
     "src/lib/prepareIdentityImage.ts",
     "src/lib/uploadIdentityImage.ts",
-    "node_modules/tus-js-client/lib.esm/browser/index.js",
+    "node_modules/tus-js-client/lib/browser/index.js",
   ])
     assert(inputs.includes(required), `BUNDLE_REQUIRED_${required}`);
   assert.deepEqual([...new Set(replacements)].sort(), [
