@@ -239,7 +239,7 @@ do build de produção**, e as libs resolvem para o ramo de dev.
 > contaminados é inferida da coincidência de dígitos, não de log guardado.
 
 **Correção.** Sempre `$env:NODE_ENV='production'; npx vite build`. Para conferir sem olhar tamanho:
-`Select-String -Path dist/assets/vendor-react-*.js -Pattern 'Invalid hook call'` — se achar, o build
+`Select-String -Path dist/assets/vendor-inicio-*.js -Pattern 'Invalid hook call'` — se achar, o build
 está contaminado. O `dist` atual desta máquina tem `vendor-react-9kfeT4KA.js` com 193.060 bytes, que
 é o build limpo. O deploy da Vercel não herda isso — `NODE_ENV=production` é o padrão lá.
 
