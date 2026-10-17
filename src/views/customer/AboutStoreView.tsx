@@ -7,9 +7,10 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { haptic } from "@/utils/haptic";
 import DOMPurify from "dompurify";
-import { motion } from "framer-motion";
+import { motion, useIsPresent } from "framer-motion";
 import { Clock, MapPin, Navigation } from "lucide-react";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 // Caixa do mapa embutido: o iframe sobe 56px para esconder o chip "Open in
 // Maps" do Google, e o centro GEOGRÁFICO do mapa (onde o Google desenha o
@@ -108,6 +109,10 @@ export function AboutStoreView() {
     .filter(Boolean)
     .join(", ");
   const temWhatsapp = lojaTemWhatsapp(config.whatsappNumber);
+  // Só LÊ o estado (não registra a tela como participante de saída, o que
+  // exigiria chamar safeToRemove). Fora de um AnimatePresence é sempre true; dentro dele vira
+  // false quando a tela está saindo — aí o botão (portalado) some junto.
+  const isPresent = useIsPresent();
   const inicial = storeName.charAt(0).toUpperCase();
 
   // A descrição é RICA (o lojista formata texto e anexa imagem no painel —
@@ -332,18 +337,28 @@ export function AboutStoreView() {
           flutuante, sempre visível enquanto a pessoa rola a descrição e o
           mapa. Ícone oficial do WhatsApp (IconeWhatsapp). Só existe se a loja
           configurou o número. O offset nasce ACIMA da nav do app
-          (--nav-height); z sob a nav para nunca competir com ela. */}
-      {temWhatsapp && (
-        <button
-          type="button"
-          onClick={falarComALoja}
-          aria-label="Falar com a loja no WhatsApp"
-          className="fixed right-4 z-[115] flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 transition-transform hover:bg-emerald-700 active:scale-95"
-          style={{ bottom: "calc(var(--nav-height, 56px) + 20px)" }}
-        >
-          <IconeWhatsapp className="size-8" />
-        </button>
-      )}
+          (--nav-height); z sob a nav para nunca competir com ela.
+
+          PORTAL no body (17/10/2026, relato do dono): o <main> do app tem
+          `will-change: transform` (animação de troca de tela), o que vira
+          o "bloco de contenção" de qualquer filho `fixed` — o botão rolava
+          junto com o conteúdo em vez de ficar parado na tela. Mesmo padrão
+          da FavoritesView/ProductView: o elemento fixo mora no body. */}
+      {temWhatsapp &&
+        isPresent &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <button
+            type="button"
+            onClick={falarComALoja}
+            aria-label="Falar com a loja no WhatsApp"
+            className="fixed right-4 z-[115] flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 transition-transform hover:bg-emerald-700 active:scale-95"
+            style={{ bottom: "calc(var(--nav-height, 56px) + 20px)" }}
+          >
+            <IconeWhatsapp className="size-8" />
+          </button>,
+          document.body,
+        )}
     </div>
   );
 }
