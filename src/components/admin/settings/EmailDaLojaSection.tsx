@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Loader2,
   Lock,
+  Mail,
   Save,
   Send,
   Trash2,
@@ -26,6 +27,7 @@ import {
   textoDaSaudeDoEnvio,
   validarGmailDaLoja,
 } from "./email-da-loja-conteudo";
+import { CARTAO_AJUSTES, IconeDeAjustes } from "./visual-ajustes";
 
 /**
  * Seção "E-mail da loja" da tela de Ajustes (14/10/2026, pedido do dono): a
@@ -47,22 +49,18 @@ import {
 
 const CLASSE_DO_SELO = new Map<SeloDoEmail["tipo"], string>([
   ["funcionando", "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"],
-  ["salvo_sem_teste", "border-amber-500/30 bg-amber-500/10 text-amber-300"],
+  ["salvo_sem_teste", "border-orange-500/30 bg-orange-500/10 text-orange-300"],
   ["problema", "border-red-500/30 bg-red-500/10 text-red-300"],
   ["nao_configurado", "border-red-500/30 bg-red-500/10 text-red-300"],
   ["servidor", "border-sky-500/30 bg-sky-500/10 text-sky-300"],
 ]);
 
 const CLASSE_DO_CAMPO =
-  "h-11 w-full min-w-0 rounded-lg border border-white/5 bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 aria-[invalid=true]:border-red-500/60";
-const CLASSE_DO_ROTULO =
-  "block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
-const CLASSE_BOTAO_DOURADO =
-  "flex min-h-11 items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40";
-const CLASSE_BOTAO_CONTORNO =
-  "flex min-h-11 items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-2 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40";
-const CLASSE_BOTAO_NEUTRO =
-  "min-h-11 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40";
+  "h-11 w-full min-w-0 rounded-2xl border border-white/15 bg-[#17171c] px-3 text-sm text-white placeholder-zinc-400 focus:border-teal-300 focus:outline-none disabled:cursor-not-allowed aria-[invalid=true]:border-red-400";
+const CLASSE_DO_ROTULO = "block text-xs font-medium text-zinc-400";
+const CLASSE_BOTAO_DOURADO = "ajustes-secundario min-h-11";
+const CLASSE_BOTAO_CONTORNO = "ajustes-secundario min-h-11";
+const CLASSE_BOTAO_NEUTRO = "ajustes-secundario min-h-11";
 
 const TOTAL_DE_PASSOS = PASSOS_DO_EMAIL.length;
 const PASSO_DE_COLAR = 4;
@@ -269,7 +267,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
         type="button"
         disabled={!testeLiberado}
         onClick={aoTestar}
-        className={CLASSE_BOTAO_CONTORNO}
+        className="ajustes-primario flex min-h-11 items-center gap-2"
       >
         {ocupado === "testando" ? (
           <Loader2 className="size-3.5 animate-spin" />
@@ -287,13 +285,13 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
       {senhaUtil && !dirty && segundosParaTestar > 0 && (
         <p
           data-contagem=""
-          className="text-[11px] font-bold uppercase tracking-widest text-amber-400"
+          className="text-[11px] font-bold uppercase tracking-widest text-orange-400"
         >
           Pode testar em {textoDaContagem(segundosParaTestar)}
         </p>
       )}
       {senhaUtil && dirty && (
-        <p className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-orange-400">
           Salve para testar
         </p>
       )}
@@ -323,7 +321,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
   const passo = PASSOS_DO_EMAIL[etapa - 1];
 
   return (
-    <div className="min-w-0 space-y-4" data-secao="email-da-loja">
+    <div className="min-w-0 space-y-7" data-secao="email-da-loja">
       {/* ── O selo: o estado de relance ─────────────────────────────── */}
       <div
         role="status"
@@ -356,7 +354,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
       )}
 
       {status.registroIlegivel && (
-        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs leading-relaxed text-amber-300">
+        <p className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-2.5 text-xs leading-relaxed text-orange-300">
           Não consegui ler o Gmail e a senha que estavam guardados. Salve os
           dois de novo, pelo passo a passo abaixo.
         </p>
@@ -367,7 +365,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
         <div
           data-cofre-falso=""
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-300"
+          className="flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-xs leading-relaxed text-orange-300"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
           <span className="min-w-0">{MENSAGEM_SEM_COFRE}</span>
@@ -376,8 +374,12 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
 
       {/* ── Resumo, quando já está salvo ────────────────────────────── */}
       {mostrarResumo && (
-        <div className="space-y-3 rounded-xl border border-white/5 bg-zinc-900/60 p-3">
-          <p className="text-xs text-zinc-300">
+        <div className={`${CARTAO_AJUSTES} space-y-4`}>
+          <div className="flex items-center gap-3">
+            <IconeDeAjustes icone={Mail} matiz="verde" />
+            <h3 className="text-base font-bold text-white">Gmail da loja</h3>
+          </div>
+          <p className="text-sm text-zinc-300">
             Gmail da loja:{" "}
             <strong className="break-all font-bold text-white">
               {status.usuario}
@@ -394,7 +396,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                 setVerPassos(true);
                 setEtapa(PASSO_DE_COLAR);
               }}
-              className="min-h-11 font-bold text-admin-gold underline underline-offset-2"
+              className="min-h-11 font-bold text-sky-300 underline underline-offset-2"
             >
               Trocar
             </button>
@@ -420,7 +422,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
         <section
           aria-labelledby="email-loja-titulo-do-passo"
           data-passo={etapa}
-          className="space-y-3 rounded-xl border border-white/5 bg-zinc-900/60 p-3"
+          className={`${CARTAO_AJUSTES} space-y-4`}
         >
           <div className="space-y-1.5">
             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
@@ -432,7 +434,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                   key={p.titulo}
                   className={cn(
                     "h-1 flex-1 rounded-full",
-                    i < etapa ? "bg-admin-gold" : "bg-white/10",
+                    i < etapa ? "bg-teal-300" : "bg-white/10",
                   )}
                 />
               ))}
@@ -575,7 +577,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                   <button
                     type="button"
                     onClick={() => setTrocandoSenha(true)}
-                    className="min-h-11 font-bold text-admin-gold underline underline-offset-2"
+                    className="min-h-11 font-bold text-sky-300 underline underline-offset-2"
                   >
                     trocar
                   </button>
@@ -605,7 +607,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                 </div>
               )}
               {isOffline && (
-                <p className="text-[11px] font-bold text-amber-400">
+                <p className="text-[11px] font-bold text-orange-400">
                   {MENSAGEM_SEM_INTERNET}
                 </p>
               )}
@@ -663,12 +665,12 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
           {confirmandoRemocao ? (
             <div
               role="alert"
-              className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5"
+              className="space-y-4 rounded-3xl border border-white/15 bg-gradient-to-br from-[#24242e] to-[#101013] p-4"
             >
-              <p className="text-xs font-bold leading-relaxed text-amber-300">
+              <p className="text-xs font-bold leading-relaxed text-orange-300">
                 Remover o Gmail da loja?
               </p>
-              <p className="text-[11px] leading-relaxed text-amber-200/90">
+              <p className="text-[11px] leading-relaxed text-orange-200/90">
                 A senha guardada é apagada. Se o servidor não tiver outra conta
                 de e-mail, seus clientes deixam de receber e-mail do pedido até
                 você cadastrar outro Gmail.
@@ -685,7 +687,7 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
                   type="button"
                   disabled={emAndamento || isOffline}
                   onClick={aoRemover}
-                  className="min-h-11 rounded-lg border border-red-400/40 bg-red-500/15 px-3 py-1.5 text-[11px] font-bold text-red-200 hover:bg-red-500/25 active:scale-95 disabled:opacity-40"
+                  className="ajustes-secundario min-h-11 !text-red-300"
                 >
                   Sim, remover
                 </button>
@@ -696,7 +698,10 @@ export const EmailDaLojaSection = memo(function EmailDaLojaSection({
               type="button"
               disabled={emAndamento}
               onClick={() => setConfirmandoRemocao(true)}
-              className={cn(CLASSE_BOTAO_NEUTRO, "flex items-center gap-1.5")}
+              className={cn(
+                CLASSE_BOTAO_NEUTRO,
+                "!justify-between !text-red-300",
+              )}
             >
               {ocupado === "removendo" ? (
                 <Loader2 className="size-3.5 animate-spin" />

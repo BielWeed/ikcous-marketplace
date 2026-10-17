@@ -136,14 +136,14 @@ describe("a tela de Ajustes", () => {
   });
 
   function titulosDosGrupos(): string[] {
-    return [...container.querySelectorAll("h2")]
+    return [...container.querySelectorAll("[data-grupo-titulo]")]
       .map((h) => h.textContent ?? "")
       .filter((t) => t !== "Como está sua loja");
   }
 
   function porta(nome: string): Element | undefined {
-    return [...container.querySelectorAll('[role="button"]')].find(
-      (el) => el.querySelector("h3")?.textContent === nome,
+    return [...container.querySelectorAll("[data-porta-ajustes]")].find(
+      (el) => el.querySelector("h3, [data-grupo-titulo]")?.textContent === nome,
     );
   }
 
@@ -157,11 +157,11 @@ describe("a tela de Ajustes", () => {
   it("cada porta mora dentro do grupo da constante, com o nome de NOMES_DO_PAINEL", () => {
     for (const grupo of GRUPOS_DE_AJUSTES) {
       const secao = [...container.querySelectorAll("section")].find(
-        (s) => s.querySelector(":scope > h2")?.textContent === grupo.titulo,
+        (s) => s.getAttribute("aria-label") === grupo.titulo,
       );
       expect(secao, `grupo ${grupo.titulo} ausente`).toBeDefined();
-      const nomes = [...secao!.querySelectorAll('[role="button"] h3')].map(
-        (h) => h.textContent,
+      const nomes = [...secao!.querySelectorAll("[data-porta-ajustes]")].map(
+        (porta) => porta.querySelector("h3, [data-grupo-titulo]")?.textContent,
       );
       expect(nomes).toEqual(grupo.portas.map((p) => NOMES_DO_PAINEL[p.tela]));
     }
@@ -187,7 +187,7 @@ describe("a tela de Ajustes", () => {
   });
 
   it("nenhum cartão leva para admin-push; banners, vitrines, Minha loja e Frete continuam alcançáveis", async () => {
-    for (const cartao of container.querySelectorAll('[role="button"]')) {
+    for (const cartao of container.querySelectorAll("[data-porta-ajustes]")) {
       await act(async () => {
         cartao.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
@@ -202,23 +202,24 @@ describe("a tela de Ajustes", () => {
   it("a porta tem o desenho de botão-linha do AtalhosDaAba (redesenho 10/10/2026)", () => {
     const cartao = porta("Entrega e frete") as HTMLElement;
     expect(cartao.className).toMatch(/\bmin-h-11\b/);
-    expect(cartao.className).toContain("rounded-2xl");
-    expect(cartao.className).toContain("border-white/10");
-    expect(cartao.className).toContain("bg-gradient-to-r");
+    expect(cartao.className).toContain("rounded-3xl");
+    expect(cartao.closest("section")?.className).toContain("border-white/10");
+    expect(cartao.closest("section")?.className).toContain("bg-[#101013]");
     // Nome: 15px bold, frase normal (nada de caixa-alta miúda com tracking largo).
-    const nome = cartao.querySelector("h3")!;
+    const nome = cartao.querySelector("[data-grupo-titulo]")!;
     expect(nome.className).toContain("text-[15px]");
     expect(nome.className).toContain("font-bold");
     expect(nome.className).not.toContain("uppercase");
     expect(nome.className).not.toContain("tracking-[0.2em]");
     // Descrição: text-xs e contraste mínimo zinc-400 (nada de 11px/zinc-500).
-    const descricao = cartao.querySelector("p")!;
+    const descricao = cartao.querySelector("[data-grupo-subtitulo]")!;
     expect(descricao.className).toContain("text-xs");
-    expect(descricao.className).toContain("text-zinc-400");
+    expect(descricao.className).toContain("text-orange-300");
+    expect(descricao.textContent).toBe("Falta: CEP da loja");
     expect(descricao.className).not.toContain("text-[11px]");
-    // Selo de ícone dourado e seta ChevronRight.
-    expect(cartao.querySelector("div.size-10")?.className).toContain(
-      "border-admin-gold/25",
+    // Selo laranja da entrega e seta ChevronRight, conforme o desenho aprovado.
+    expect(cartao.querySelector("span.size-10")?.className).toContain(
+      "border-orange-400/30",
     );
     expect(cartao.querySelector("svg.lucide-chevron-right")).not.toBeNull();
     expect(cartao.querySelector("svg.lucide-arrow-up-right")).toBeNull();

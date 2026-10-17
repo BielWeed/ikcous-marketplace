@@ -376,7 +376,9 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     // A composição é cartão FIXO: zero controle de colapso para ela — o
     // conteúdo (os campos, logo abaixo) está na árvore sem interação
     // nenhuma. O histórico segue colapsável e nasce aberto.
-    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
+    const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
+    expect(mensagem).not.toBeNull();
+    expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
     const historico = cabecalhoDeSecao(hospedeiro, "O que já foi ao ar");
     expect(historico).toBeTruthy();
     expect(historico!.getAttribute("aria-expanded")).toBe("true");
@@ -387,7 +389,7 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     expect(hospedeiro.querySelector("#push-destination")).not.toBeNull();
     expect(
       [...hospedeiro.querySelectorAll("button")].find((b) =>
-        (b.textContent ?? "").includes("Todos os Clientes"),
+        (b.textContent ?? "").includes("Todos os clientes"),
       ),
     ).toBeTruthy();
     expect(
@@ -447,7 +449,9 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     // A composição NÃO é recolhível — cartão fixo: sem controle de colapso,
     // o campo nunca sai da árvore (o recolher/reabrir vale só para o
     // histórico e os Ajustes).
-    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
+    const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
+    expect(mensagem).not.toBeNull();
+    expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
   });
 
@@ -470,7 +474,9 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     expect(textoDaTela()).not.toMatch(/salve antes de fechar/i);
 
     // E a composição segue inteira na árvore, com o rascunho no campo.
-    expect(cabecalhoDeSecao(hospedeiro, "No ar agora")).toBeUndefined();
+    const mensagem = hospedeiro.querySelector('section[aria-label="Mensagem"]');
+    expect(mensagem).not.toBeNull();
+    expect(mensagem!.querySelectorAll("button[aria-expanded]")).toHaveLength(0);
     expect(hospedeiro.querySelector("#push-title")).not.toBeNull();
     expect(
       (hospedeiro.querySelector("#push-title") as HTMLInputElement).value,

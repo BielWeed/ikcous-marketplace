@@ -30,8 +30,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { estadoDoBanco } = vi.hoisted(() => ({
   estadoDoBanco: {
     subCount: 8,
-    // Segmentos usados pelos botões "Gastaram R$ 150+ (pagos) / Sem comprar há
-    // 30d / Cadastrados há ≤ 7 dias" — não é o que este arquivo mede, mas o
+    // Segmentos usados pelos botões "Gastaram R$ 150+ / Sem comprar há
+    // 30d / Novos em 7 dias" — não é o que este arquivo mede, mas o
     // componente busca os três ao montar.
     porSegmento: {
       vip: [] as unknown[],
@@ -441,7 +441,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
   });
 
   it("segmento vazio (sem cliente específico): continua parando sem criar aviso no app — a trava da decisão 3", async () => {
-    // Mesma corrida do primeiro teste: o segmento "Sem pedidos há 30d (qualquer status)"
+    // Mesma corrida do primeiro teste: o segmento "Inativos há 30 dias"
     // tem 1 aparelho no instante em que é selecionado (habilita o botão),
     // e 0 no instante em que o `handleSend` mede de novo.
     estadoDoBanco.porSegmento.inactive = [
@@ -452,7 +452,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoInativo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
+      (b.textContent ?? "").includes("Inativos há 30 dias"),
     );
     expect(botaoInativo).toBeTruthy();
     await act(async () => {
@@ -518,9 +518,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
       const botaoInativo = Array.from(
         hospedeiro.querySelectorAll("button"),
-      ).find((b) =>
-        (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
-      );
+      ).find((b) => (b.textContent ?? "").includes("Inativos há 30 dias"));
       expect(botaoInativo).toBeTruthy();
       // Direção B "Rádio do lojista" (12/09/2026): o chip de segmento
       // medido como zero nasce desativado — pela interface não dá mais para
@@ -611,12 +609,12 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
   // três inserts em `notificacoes` — cliente específico COM aparelho,
   // segmento "all" e segmento não vazio — continuavam sem checar, e o
   // `catch` que os cobre só fazia `console.error` (silencioso para quem usa
-  // a tela). Cenário: envio para "Todos os Clientes", o push SAI, mas o
+  // a tela). Cenário: envio para "Todos os clientes", o push SAI, mas o
   // banco recusa a linha do aviso dentro do app — e ninguém era avisado
   // disso. O push tem de continuar sendo anunciado (não pode virar falha de
   // envio), e o aviso-no-app tem de ganhar um segundo aviso, distinto.
   describe("Parte B — a convenção do erro vale para os quatro inserts em notificacoes", () => {
-    it("segmento 'Todos os Clientes': insert do aviso recusado pelo banco não apaga a confirmação de que o push saiu, e soma um aviso à parte sobre o aviso no app", async () => {
+    it("segmento 'Todos os clientes': insert do aviso recusado pelo banco não apaga a confirmação de que o push saiu, e soma um aviso à parte sobre o aviso no app", async () => {
       await abrirTela();
       await preencherMensagem("Aviso geral", "Confira as novidades!");
 

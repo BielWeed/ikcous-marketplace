@@ -561,10 +561,10 @@ describe("Ajustes: só a porta e o subtítulo de 'Entrega e frete'", () => {
 
   function subtituloDaEntrega(): string | null {
     const secao = [...hospedeiro.querySelectorAll("section")].find(
-      (s) => s.querySelector(":scope > h2")?.textContent === "Entrega e frete",
+      (s) => s.getAttribute("aria-label") === "Entrega e frete",
     );
     expect(secao, "grupo 'Entrega e frete' ausente").toBeDefined();
-    return secao!.querySelector(":scope > p")?.textContent ?? null;
+    return secao!.querySelector("[data-grupo-subtitulo]")?.textContent ?? null;
   }
 
   it("J1 — não monta Transportadoras nem Consultas de frete; a porta leva ao Frete", async () => {

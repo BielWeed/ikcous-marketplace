@@ -1,4 +1,13 @@
-import { AlertTriangle, CreditCard, Loader2, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  Banknote,
+  CreditCard,
+  Loader2,
+  Lock,
+  Truck,
+  Wallet,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -18,6 +27,11 @@ import { haptic } from "@/utils/haptic";
 import type { StoreConfig } from "@/types";
 
 import { CARTAO_PELO_APP } from "./mercado-pago-conteudo";
+import {
+  CARTAO_AJUSTES,
+  CARTAO_DESTAQUE_AJUSTES,
+  IconeDeAjustes,
+} from "./visual-ajustes";
 
 /**
  * FORMAS DE PAGAMENTO POR LOJA (brief 25/09/2026, migration 20261174000000).
@@ -42,6 +56,8 @@ import { CARTAO_PELO_APP } from "./mercado-pago-conteudo";
  *     ANTES de gastar a chamada, com o texto explicando o porquê.
  */
 interface FormasDePagamentoSectionProps {
+  /** A mesma instância que alimenta o resumo no topo de Ajustes. */
+  readonly cartaoPeloApp?: React.ReactNode;
   readonly formasNaEntrega: readonly FormaDePagamentoNaEntrega[];
   readonly pixLigado: boolean;
   readonly pixChaveOk: boolean;
@@ -69,6 +85,7 @@ const ARIA_DA_FORMA = new Map<FormaDePagamentoNaEntrega, string>([
 ]);
 
 export function FormasDePagamentoSection({
+  cartaoPeloApp,
   formasNaEntrega,
   pixLigado,
   pixChaveOk,
@@ -77,6 +94,7 @@ export function FormasDePagamentoSection({
   onDirtyMudou,
   onAbrirMercadoPago,
 }: FormasDePagamentoSectionProps) {
+  const formasNaEntregaId = useId();
   const [salvando, setSalvando] = useState<FormaDePagamentoNaEntrega | null>(
     null,
   );
@@ -141,57 +159,104 @@ export function FormasDePagamentoSection({
   const semNenhumaNaEntrega = formasNaEntrega.length === 0;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-7">
+      <p className="text-xs text-emerald-300">Alterações salvas na hora</p>
       {/* Pagamento pelo app — NUNCA um switch aqui: ligar exige credencial
           do Mercado Pago, que só é cadastrada na seção própria. Duplicar o
           switch permitiria "ligar" sem chave nenhuma. Desde H6 (painel
           simples) a linha também não repete o estado ("Ligado/Desligado"):
           o status do PIX é só o termômetro no topo de Pagamentos. Aqui fica
           o atalho para a seção do Mercado Pago. */}
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 px-4 py-3">
-        <span className="min-w-0">
-          <span className="block truncate text-[11px] font-bold text-zinc-200">
-            Pagar pelo app (PIX)
+      <div className={`${CARTAO_AJUSTES} space-y-4`}>
+        <div className="flex items-center gap-3">
+          <IconeDeAjustes icone={Wallet} matiz="verde" />
+          <span className="min-w-0">
+            <span className="block text-base font-bold text-white">
+              Pagar pelo app (PIX)
+            </span>
+            <span className="block text-[11px] text-zinc-500">
+              As chaves e o Pausar ficam na seção Mercado Pago.
+            </span>
           </span>
-          <span className="block text-[11px] text-zinc-500">
-            As chaves e o Pausar ficam na seção Mercado Pago.
-          </span>
-        </span>
+        </div>
         <button
           type="button"
           onClick={onAbrirMercadoPago}
-          className="min-h-11 shrink-0 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95"
+          className="ajustes-secundario min-h-11"
         >
+          <Lock aria-hidden="true" className="size-4" />
           Configurar credenciais
         </button>
       </div>
 
-      <CartaoPeloAppBloco
-        pixLigado={pixLigado}
-        isOffline={isOffline}
-        onDirtyMudou={onDirtyMudou}
-      />
+      {cartaoPeloApp ?? (
+        <CartaoPeloAppBloco
+          pixLigado={pixLigado}
+          isOffline={isOffline}
+          onDirtyMudou={onDirtyMudou}
+        />
+      )}
 
       {/* Os 3 switches — cada um é a loja inteira, sempre, sem lote/rascunho
           (mesmo padrão imediato de AdminReviewsView: clique salva). */}
-      <div className="space-y-2 rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5">
+      <div className={`${CARTAO_AJUSTES} space-y-3`}>
+        <div className="flex items-center gap-3">
+          <IconeDeAjustes icone={Truck} matiz="azul" />
+          <div>
+            <h3 className="text-base font-bold">Na entrega ou retirada</h3>
+            <p className="text-xs text-zinc-400">
+              {formasNaEntrega.length}{" "}
+              {formasNaEntrega.length === 1
+                ? "forma disponível"
+                : "formas disponíveis"}
+            </p>
+          </div>
+        </div>
         {FORMAS_DE_PAGAMENTO_NA_ENTREGA_EM_ORDEM.map((forma) => (
           <label
             key={forma}
-            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
+            htmlFor={`${formasNaEntregaId}-${forma}`}
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-3 border-b border-white/10 py-3 last:border-0 has-[:disabled]:cursor-not-allowed"
           >
-            <span className="text-xs text-zinc-300">
-              {ROTULO_DA_FORMA.get(forma)}
+            <span className="flex min-w-0 items-center gap-3">
+              <IconeDeAjustes
+                icone={
+                  forma === "card"
+                    ? CreditCard
+                    : forma === "cash"
+                      ? Banknote
+                      : Wallet
+                }
+                matiz={
+                  forma === "card"
+                    ? "roxo"
+                    : forma === "cash"
+                      ? "azul"
+                      : "verde"
+                }
+              />
+              <span>
+                <span className="block text-sm text-white">
+                  {ROTULO_DA_FORMA.get(forma)}
+                </span>
+                <span className="block text-xs text-zinc-400">
+                  {ligada(forma) ? "Ligado" : "Desligado"}
+                </span>
+              </span>
             </span>
             <Switch
+              id={`${formasNaEntregaId}-${forma}`}
               checked={ligada(forma)}
               disabled={salvando !== null}
               aria-label={ARIA_DA_FORMA.get(forma)}
               onCheckedChange={(checked) => alternar(forma, checked)}
-              className="scale-75 data-[state=checked]:bg-admin-gold"
+              className="h-11 w-14 data-[state=checked]:bg-emerald-500"
             />
           </label>
         ))}
+        <p className="text-xs leading-relaxed text-zinc-400">
+          Sem pagamento pelo app, mantenha ao menos uma forma na entrega ligada.
+        </p>
       </div>
 
       {/* Efeito de desligar tudo — visível o tempo todo que a loja estiver
@@ -203,9 +268,9 @@ export function FormasDePagamentoSection({
           termômetro do PIX, no topo de Pagamentos, já denuncia. Não é status
           repetido: é a consequência para quem compra (ninguém finaliza). */}
       {semNenhumaNaEntrega && (
-        <div className="flex items-start gap-2.5 rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-3.5 py-3">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
-          <p className="text-[11px] leading-relaxed text-amber-200/90">
+        <div className="flex items-start gap-2.5 rounded-2xl border border-orange-500/20 bg-orange-500/[0.06] px-3.5 py-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-orange-400" />
+          <p className="text-[11px] leading-relaxed text-orange-200/90">
             {pixLigado ? (
               pixChaveOk ? (
                 <>
@@ -257,14 +322,25 @@ type LeituraDoCartao =
  * ligar fica travado com o porquê na tela — desligar continua possível, para
  * a lojista nunca ficar presa com o cartão ligado.
  */
-function CartaoPeloAppBloco({
+export function CartaoPeloAppBloco({
   pixLigado,
+  pixChaveOk = true,
   isOffline,
   onDirtyMudou,
+  children,
+  relerGatilho = 0,
 }: {
   readonly pixLigado: boolean;
+  readonly pixChaveOk?: boolean;
   readonly isOffline: boolean;
   readonly onDirtyMudou?: (dirty: boolean) => void;
+  /** Só apresentação: compartilha a leitura existente entre resumo e controles. */
+  readonly children?: (
+    resumo: React.ReactNode,
+    controles: React.ReactNode,
+    estado: LeituraDoCartao["estado"],
+  ) => React.ReactNode;
+  readonly relerGatilho?: number;
 }) {
   const [leitura, setLeitura] = useState<LeituraDoCartao>({
     estado: "carregando",
@@ -276,6 +352,7 @@ function CartaoPeloAppBloco({
 
   useEffect(() => {
     let vivo = true;
+    setLeitura({ estado: "carregando" });
     buscarConfigDoCartao().then((resultado) => {
       if (!vivo) return;
       setLeitura(
@@ -287,7 +364,7 @@ function CartaoPeloAppBloco({
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [relerGatilho]);
 
   async function salvar(desejada: ConfigDoCartao, sucesso: string) {
     if (isOffline) {
@@ -316,12 +393,12 @@ function CartaoPeloAppBloco({
   const config = leitura.estado === "ok" ? leitura.config : null;
   const podeMexer = config !== null && !salvando;
 
-  return (
-    <div className="space-y-2.5 rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5">
+  const controles = (
+    <div className={`${CARTAO_DESTAQUE_AJUSTES} space-y-4`}>
       <div className="flex items-center gap-2.5">
-        <CreditCard className="size-4 shrink-0 text-admin-gold" />
+        <IconeDeAjustes icone={CreditCard} matiz="roxo" />
         <span className="min-w-0">
-          <span className="block text-[11px] font-bold text-zinc-200">
+          <span className="block text-base font-bold text-white">
             {CARTAO_PELO_APP.titulo}
           </span>
           <span className="block text-[11px] text-zinc-500">
@@ -348,7 +425,16 @@ function CartaoPeloAppBloco({
             htmlFor={idDoCredito}
             className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
           >
-            <span className="text-xs text-zinc-300">Crédito</span>
+            <span>
+              <span className="block text-sm text-white">Crédito</span>
+              <span className="block text-xs text-zinc-400">
+                {!pixLigado && !config.credito
+                  ? "Indisponível: libere o pagamento pelo app."
+                  : config.credito
+                    ? "Ligado"
+                    : "Desligado"}
+              </span>
+            </span>
             <Switch
               id={idDoCredito}
               checked={config.credito}
@@ -362,14 +448,23 @@ function CartaoPeloAppBloco({
                     : "Cartão de crédito pelo app desligado",
                 )
               }
-              className="scale-75 data-[state=checked]:bg-admin-gold"
+              className="h-11 w-14 data-[state=checked]:bg-emerald-500"
             />
           </label>
           <label
             htmlFor={idDoDebito}
             className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
           >
-            <span className="text-xs text-zinc-300">Débito</span>
+            <span>
+              <span className="block text-sm text-white">Débito</span>
+              <span className="block text-xs text-zinc-400">
+                {!pixLigado && !config.debito
+                  ? "Indisponível: libere o pagamento pelo app."
+                  : config.debito
+                    ? "Ligado"
+                    : "Desligado"}
+              </span>
+            </span>
             <Switch
               id={idDoDebito}
               checked={config.debito}
@@ -383,7 +478,7 @@ function CartaoPeloAppBloco({
                     : "Cartão de débito pelo app desligado",
                 )
               }
-              className="scale-75 data-[state=checked]:bg-admin-gold"
+              className="h-11 w-14 data-[state=checked]:bg-emerald-500"
             />
           </label>
           {config.debito && (
@@ -393,7 +488,7 @@ function CartaoPeloAppBloco({
           )}
           {config.credito && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
+              <div className="space-y-2 rounded-2xl border border-white/15 bg-[#17171c] p-3">
                 <label
                   htmlFor={idDasParcelas}
                   className="text-xs text-zinc-300"
@@ -413,7 +508,7 @@ function CartaoPeloAppBloco({
                         : `Crédito em até ${parcelasMax}x`,
                     );
                   }}
-                  className="min-h-11 rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 font-mono text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-admin-gold/50 disabled:opacity-50"
+                  className="min-h-11 w-full rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:opacity-50"
                 >
                   {OPCOES_DE_PARCELAS.map((n) => (
                     <option
@@ -440,10 +535,53 @@ function CartaoPeloAppBloco({
           {CARTAO_PELO_APP.semPix}
         </p>
       )}
-      <p className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-amber-200/90">
-        <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-400" />
+      <p className="flex items-start gap-2 rounded-xl border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-orange-200/90">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-orange-400" />
         {CARTAO_PELO_APP.testeAntes}
       </p>
     </div>
+  );
+
+  if (!children) return controles;
+  const indisponivel = !pixLigado || !pixChaveOk;
+  const tipos =
+    config?.credito && config.debito
+      ? "Crédito e débito"
+      : config?.credito
+        ? "Crédito"
+        : "Débito";
+  const titulo =
+    leitura.estado !== "ok"
+      ? "Cartão"
+      : indisponivel
+        ? "Cartão indisponível"
+        : config?.credito || config?.debito
+          ? config.credito && config.debito
+            ? "Cartão ligado"
+            : `Cartão · ${tipos} ligado`
+          : "Cartão desligado";
+  const detalhe =
+    leitura.estado === "carregando"
+      ? "Consultando…"
+      : leitura.estado === "falhou"
+        ? "Não foi possível consultar"
+        : indisponivel
+          ? "Libere o pagamento pelo app"
+          : !config?.credito && !config?.debito
+            ? "Crédito e débito desligados"
+            : `${config.credito && config.debito ? tipos : config.credito ? "Débito desligado" : "Crédito desligado"} · ${config.credito && config.parcelasMax > 1 ? `até ${config.parcelasMax}x` : "à vista"}`;
+
+  return children(
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-start gap-3">
+      <dt className="flex items-center gap-2 text-sm font-bold text-white">
+        <IconeDeAjustes icone={CreditCard} matiz="roxo" />
+        {titulo}
+      </dt>
+      <dd className="pt-1 text-right text-xs leading-relaxed text-zinc-400">
+        {detalhe}
+      </dd>
+    </div>,
+    controles,
+    leitura.estado,
   );
 }

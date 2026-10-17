@@ -20,8 +20,20 @@ import {
   prazoVencido,
 } from "@/lib/pedidos-de-privacidade";
 import type { View } from "@/types";
-import { Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  Loader2,
+  Mail,
+  ShieldCheck,
+} from "lucide-react";
 import { memo, useEffect, useState } from "react";
+import {
+  CARTAO_AJUSTES,
+  CARTAO_DESTAQUE_AJUSTES,
+  IconeDeAjustes,
+} from "./visual-ajustes";
 
 // ⚠️ Os TEXTOS desta seção moram em src/config/textos-de-privacidade.ts e PRECISAM
 // de revisão do dono. O roteiro de quem atende está em
@@ -31,11 +43,10 @@ import { memo, useEffect, useState } from "react";
 // DEPOIS de anonimizar à mão. Apagar conta ou dado daqui nunca foi o desenho.
 
 const CLASSE_DO_BOTAO_DOURADO =
-  "flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40";
-const CLASSE_DO_BOTAO_NEUTRO =
-  "flex min-h-11 items-center justify-center rounded-lg border border-white/10 bg-zinc-800 px-3 py-2 text-xs font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40";
+  "ajustes-primario flex min-h-11 items-center justify-center gap-2";
+const CLASSE_DO_BOTAO_NEUTRO = "ajustes-secundario min-h-11";
 const CLASSE_DO_CAMPO =
-  "min-h-20 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 py-2 text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40";
+  "min-h-20 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 py-2 text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40";
 
 const TEXTO_DA_FALHA: Record<FalhaDaDecisao, string> = {
   ja_decidido: TEXTOS_DA_LOJA.falhaJaDecidido,
@@ -72,6 +83,7 @@ export const PrivacidadeDosClientesSection = memo(
     const [notas, setNotas] = useState<ReadonlyMap<string, string>>(new Map());
     const [pergunta, setPergunta] = useState<Decisao | null>(null);
     const [falha, setFalha] = useState<string | null>(null);
+    const [filtro, setFiltro] = useState<"abertos" | "respondidos">("abertos");
 
     const abertos = pedidos.filter((p) => p.situacao === "aberto");
     const decididos = pedidos
@@ -118,7 +130,7 @@ export const PrivacidadeDosClientesSection = memo(
     const agora = new Date();
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-7">
         <p className="text-xs leading-relaxed text-zinc-400">
           {TEXTOS_DA_LOJA.explicacao}
         </p>
@@ -163,28 +175,109 @@ export const PrivacidadeDosClientesSection = memo(
         )}
 
         {abertosCortou && (
-          <p role="alert" className="text-xs font-bold text-amber-300">
-            {TEXTOS_DA_LOJA.abertosCortados}
-          </p>
+          <div
+            role="alert"
+            className={`${CARTAO_AJUSTES} space-y-3 text-xs text-orange-300`}
+          >
+            <p className="flex items-center gap-2 text-sm font-bold">
+              <AlertCircle aria-hidden="true" className="size-5" />
+              Lista incompleta
+            </p>
+            <p>{TEXTOS_DA_LOJA.abertosCortados}</p>
+            <button
+              type="button"
+              onClick={() => void recarregar()}
+              className={CLASSE_DO_BOTAO_NEUTRO}
+            >
+              Tentar de novo
+            </button>
+          </div>
         )}
 
         {cortou && (
-          <p className="text-xs text-amber-300">
-            {TEXTOS_DA_LOJA.listaCortada}
-          </p>
+          <div
+            role="status"
+            className={`${CARTAO_AJUSTES} space-y-3 text-xs text-orange-300`}
+          >
+            <p className="text-sm font-bold">Lista incompleta</p>
+            <p>{TEXTOS_DA_LOJA.listaCortada}</p>
+            {!abertosCortou && (
+              <button
+                type="button"
+                onClick={() => void recarregar()}
+                className={CLASSE_DO_BOTAO_NEUTRO}
+              >
+                Tentar de novo
+              </button>
+            )}
+          </div>
         )}
 
+        {carga === "pronta" && (
+          <div
+            role="group"
+            aria-label="Filtrar pedidos de privacidade"
+            className="grid gap-2"
+          >
+            {(["abertos", "respondidos"] as const).map((opcao) => {
+              const parcial = opcao === "abertos" ? abertosCortou : cortou;
+              const total =
+                opcao === "abertos" ? abertos.length : decididos.length;
+              const rotulo =
+                opcao === "abertos"
+                  ? TEXTOS_DA_LOJA.abertos
+                  : TEXTOS_DA_LOJA.decididos;
+              return (
+                <button
+                  key={opcao}
+                  type="button"
+                  aria-pressed={filtro === opcao}
+                  onClick={() => setFiltro(opcao)}
+                  className={`flex min-h-11 items-center justify-between gap-3 rounded-2xl border p-3 text-left text-sm ${filtro === opcao ? "border-admin-gold bg-admin-gold/10 text-admin-gold" : "border-white/10 bg-[#17171c] text-zinc-200"}`}
+                >
+                  <span>
+                    {parcial
+                      ? `${rotulo} · ${total} carregados · lista incompleta`
+                      : `${rotulo} (${total})`}
+                  </span>
+                  {filtro === opcao && (
+                    <Check aria-hidden="true" className="size-5 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {carga === "pronta" &&
+          pedidos.length > 0 &&
+          (filtro === "abertos"
+            ? abertos.length === 0
+            : decididos.length === 0) && (
+            <p
+              role="status"
+              className={`${CARTAO_AJUSTES} text-sm text-zinc-400`}
+            >
+              {filtro === "abertos"
+                ? "Nenhum pedido de privacidade esperando resposta."
+                : "Nenhum pedido respondido por enquanto."}
+            </p>
+          )}
+
         {abertos.length > 0 && (
-          <div className="space-y-3">
+          <div hidden={filtro !== "abertos"} className="space-y-3">
             <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              {TEXTOS_DA_LOJA.abertos} ({abertos.length})
+              {TEXTOS_DA_LOJA.abertos}
+              {abertosCortou
+                ? ` · ${abertos.length} carregados · lista incompleta`
+                : ` (${abertos.length})`}
             </h4>
             <ul className="space-y-3">
-              {abertos.map((pedido) => (
+              {abertos.map((pedido, indice) => (
                 <li
                   key={pedido.id}
                   data-pedido-de-privacidade={pedido.id}
-                  className="space-y-3 rounded-2xl border border-white/10 bg-zinc-900/60 p-4"
+                  className={`${indice === 0 ? CARTAO_DESTAQUE_AJUSTES : CARTAO_AJUSTES} space-y-4`}
                 >
                   <CabecalhoDoPedido
                     pedido={pedido}
@@ -196,55 +289,76 @@ export const PrivacidadeDosClientesSection = memo(
                     }
                   />
                   <PrazoDoPedido pedido={pedido} agora={agora} />
-                  <div className="space-y-1">
-                    <label
-                      htmlFor={`nota-privacidade-${pedido.id}`}
-                      className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
-                    >
-                      {TEXTOS_DA_LOJA.notaRotulo}
-                    </label>
-                    <textarea
-                      id={`nota-privacidade-${pedido.id}`}
-                      value={notas.get(pedido.id) ?? ""}
-                      maxLength={1000}
-                      disabled={decidindo !== null}
-                      onChange={(evento) =>
-                        mudarNota(pedido.id, evento.target.value)
-                      }
-                      aria-describedby={`nota-privacidade-dica-${pedido.id}`}
-                      className={CLASSE_DO_CAMPO}
-                    />
-                    <p
-                      id={`nota-privacidade-dica-${pedido.id}`}
-                      className="text-[11px] text-zinc-500"
-                    >
-                      {TEXTOS_DA_LOJA.notaDica}
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <button
-                      type="button"
-                      disabled={decidindo !== null}
-                      onClick={() => {
-                        setFalha(null);
-                        setPergunta({ id: pedido.id, situacao: "atendido" });
-                      }}
-                      className={CLASSE_DO_BOTAO_DOURADO}
-                    >
-                      {TEXTOS_DA_LOJA.marcarAtendido}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={decidindo !== null}
-                      onClick={() => {
-                        setFalha(null);
-                        setPergunta({ id: pedido.id, situacao: "recusado" });
-                      }}
-                      className={CLASSE_DO_BOTAO_NEUTRO}
-                    >
-                      {TEXTOS_DA_LOJA.marcarRecusado}
-                    </button>
-                  </div>
+                  <details open={indice === 0} className="group">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-bold text-sky-300">
+                      Responder pedido{" "}
+                      <ChevronDown
+                        aria-hidden="true"
+                        className="size-5 shrink-0"
+                      />
+                    </summary>
+                    <div className="space-y-4 pt-3">
+                      <div className="space-y-1">
+                        <label
+                          htmlFor={`nota-privacidade-${pedido.id}`}
+                          className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+                        >
+                          {TEXTOS_DA_LOJA.notaRotulo}
+                        </label>
+                        <textarea
+                          id={`nota-privacidade-${pedido.id}`}
+                          value={notas.get(pedido.id) ?? ""}
+                          maxLength={1000}
+                          disabled={decidindo !== null}
+                          onChange={(evento) =>
+                            mudarNota(pedido.id, evento.target.value)
+                          }
+                          aria-describedby={`nota-privacidade-dica-${pedido.id}`}
+                          className={CLASSE_DO_CAMPO}
+                        />
+                        <p
+                          id={`nota-privacidade-dica-${pedido.id}`}
+                          className="text-[11px] text-zinc-500"
+                        >
+                          {TEXTOS_DA_LOJA.notaDica}
+                          <span className="mt-1 block tabular-nums">
+                            {(notas.get(pedido.id) ?? "").length} / 1.000
+                            caracteres
+                          </span>
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        <button
+                          type="button"
+                          disabled={decidindo !== null}
+                          onClick={() => {
+                            setFalha(null);
+                            setPergunta({
+                              id: pedido.id,
+                              situacao: "atendido",
+                            });
+                          }}
+                          className={CLASSE_DO_BOTAO_DOURADO}
+                        >
+                          {TEXTOS_DA_LOJA.marcarAtendido}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={decidindo !== null}
+                          onClick={() => {
+                            setFalha(null);
+                            setPergunta({
+                              id: pedido.id,
+                              situacao: "recusado",
+                            });
+                          }}
+                          className={`${CLASSE_DO_BOTAO_NEUTRO} !text-red-300`}
+                        >
+                          {TEXTOS_DA_LOJA.marcarRecusado}
+                        </button>
+                      </div>
+                    </div>
+                  </details>
                 </li>
               ))}
             </ul>
@@ -252,16 +366,19 @@ export const PrivacidadeDosClientesSection = memo(
         )}
 
         {decididos.length > 0 && (
-          <div className="space-y-3">
+          <div hidden={filtro !== "respondidos"} className="space-y-3">
             <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              {TEXTOS_DA_LOJA.decididos} ({decididos.length})
+              {TEXTOS_DA_LOJA.decididos}
+              {cortou
+                ? ` · ${decididos.length} carregados · lista incompleta`
+                : ` (${decididos.length})`}
             </h4>
             <ul className="space-y-2">
               {decididos.map((pedido) => (
                 <li
                   key={pedido.id}
                   data-pedido-de-privacidade={pedido.id}
-                  className="space-y-1 rounded-2xl border border-white/5 bg-zinc-950/40 p-3 text-xs text-zinc-300"
+                  className={`${CARTAO_AJUSTES} space-y-3 text-xs text-zinc-300`}
                 >
                   <CabecalhoDoPedido
                     pedido={pedido}
@@ -275,7 +392,7 @@ export const PrivacidadeDosClientesSection = memo(
                     {formatarDataDoPedido(pedido.atendido_em)}
                   </p>
                   {pedido.observacao && (
-                    <p className="whitespace-pre-line text-zinc-400">
+                    <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-200">
                       {pedido.observacao}
                     </p>
                   )}
@@ -295,7 +412,7 @@ export const PrivacidadeDosClientesSection = memo(
             if (!aberto) fecharPergunta();
           }}
         >
-          <AlertDialogContent>
+          <AlertDialogContent className="ajustes-dialog">
             <AlertDialogHeader>
               <AlertDialogTitle>
                 {pergunta?.situacao === "recusado"
@@ -309,20 +426,20 @@ export const PrivacidadeDosClientesSection = memo(
               </AlertDialogDescription>
             </AlertDialogHeader>
             {falha && (
-              <p role="alert" className="text-sm font-semibold text-red-700">
+              <p role="alert" className="text-sm font-semibold text-red-300">
                 {falha}
               </p>
             )}
-            <AlertDialogFooter>
+            <AlertDialogFooter className="!flex-col">
               <AlertDialogCancel
                 disabled={decidindo !== null}
-                className="min-h-11"
+                className="ajustes-secundario min-h-11"
               >
                 {TEXTOS_DA_LOJA.voltar}
               </AlertDialogCancel>
               <AlertDialogAction
                 disabled={decidindo !== null}
-                className="min-h-11"
+                className="ajustes-primario min-h-11"
                 onClick={(evento) => {
                   evento.preventDefault();
                   void confirmar();
@@ -352,14 +469,16 @@ function CabecalhoDoPedido({
   readonly onVerCliente?: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-2">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <IconeDeAjustes
+        icone={pedido.tipo === "corrigir_email" ? Mail : ShieldCheck}
+        matiz={pedido.tipo === "corrigir_email" ? "verde" : "roxo"}
+      />
       <div className="min-w-0 space-y-0.5">
-        <p className="truncate text-sm font-black text-white">
+        <p className="text-base font-bold text-white">
           {nome ?? TEXTOS_DA_LOJA.clienteSemNome}
         </p>
-        <p className="text-xs font-bold text-admin-gold">
-          {NOME_DO_PEDIDO[pedido.tipo]}
-        </p>
+        <p className="text-xs text-zinc-400">{NOME_DO_PEDIDO[pedido.tipo]}</p>
         <p className="text-xs text-zinc-400">
           {TEXTOS_DA_LOJA.pedidoEm} {formatarDataDoPedido(pedido.criado_em)}
         </p>

@@ -32,6 +32,7 @@ import {
   montarPromptParaAgenteMp,
   urlDeNotificacoesDoWebhook,
 } from "./mercado-pago-conteudo";
+import { CARTAO_AJUSTES, CARTAO_DESTAQUE_AJUSTES } from "./visual-ajustes";
 
 /**
  * Card "Mercado Pago" da tela de Ajustes — peça 20 (14/09/2026, pedido do
@@ -257,11 +258,11 @@ function Expansor({
         className="group flex min-h-11 w-full items-center justify-between gap-3 p-3 text-left"
       >
         <span className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-admin-gold/10 text-admin-gold ring-1 ring-admin-gold/20">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-sky-400/15 text-sky-300 ring-1 ring-sky-400/30">
             <Icone className="size-3.5" strokeWidth={2.25} />
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-[11px] font-black uppercase tracking-[0.2em] text-white">
+            <span className="block text-base font-bold text-white">
               {titulo}
             </span>
             <span className="block truncate text-[11px] normal-case tracking-normal text-zinc-500">
@@ -746,20 +747,26 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       <div
         role="alert"
         data-aviso-pausar-sem-transportadora=""
-        className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2"
+        className={`${CARTAO_DESTAQUE_AJUSTES} space-y-4`}
       >
-        <p className="flex items-start gap-1.5 text-xs font-bold text-amber-300">
+        <p className="flex items-start gap-1.5 text-xs font-bold text-orange-300">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          {textoDoAviso.titulo}
+          {servidorDesatualizado
+            ? "Confirmar desligamento do pagamento pelo app?"
+            : "Pausar o recebimento pelo app?"}
         </p>
-        <p className="text-[11px] leading-relaxed text-amber-200/90">
+        <p className="text-sm leading-relaxed text-zinc-300">
+          PIX e cartão (crédito e débito) ficarão indisponíveis para novos
+          pagamentos pelo app. Suas chaves permanecem salvas.
+        </p>
+        <p className="text-sm leading-relaxed text-zinc-300">
           {textoDoAviso.detalhe}
         </p>
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex flex-col gap-3">
           <button
             type="button"
             onClick={() => setConfirmandoPausa(false)}
-            className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95"
+            className="ajustes-secundario min-h-11"
           >
             Voltar
           </button>
@@ -767,7 +774,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             type="button"
             disabled={alternandoPix || isOffline || testando || salvando}
             onClick={() => pausarOuRetomar(false)}
-            className="min-h-11 shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+            className="ajustes-primario min-h-11"
           >
             {rotuloDeConfirmar}
           </button>
@@ -819,7 +826,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <button
             type="button"
             onClick={ler}
-            className="min-h-11 shrink-0 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-2.5 py-1 font-bold text-admin-gold hover:bg-admin-gold/20"
+            className="ajustes-secundario min-h-11"
           >
             Tentar de novo
           </button>
@@ -831,7 +838,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             !teste.conectado
               ? "items-center border-red-500/30 bg-red-500/10 text-red-300"
               : chaveDeTeste
-                ? "items-start border-amber-500/30 bg-amber-500/10 text-amber-300"
+                ? "items-start border-orange-500/30 bg-orange-500/10 text-orange-300"
                 : "items-center border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
           }`}
         >
@@ -842,6 +849,14 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           )}
           <span className="space-y-1">
             <span className="block">{teste.mensagem}</span>
+            {teste.quando && !Number.isNaN(Date.parse(teste.quando)) && (
+              <time
+                dateTime={teste.quando}
+                className="block text-xs text-zinc-300"
+              >
+                Último teste: {new Date(teste.quando).toLocaleString("pt-BR")}
+              </time>
+            )}
             {/* Conta de TESTE: o resumo não pinta verde nem fica calado. O
                 aviso do servidor (`avisoPix`, logo abaixo) já diz isto
                 quando acabou de chegar; reaberta a tela, é este texto que
@@ -861,7 +876,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         <p className="flex items-center gap-2 text-xs text-zinc-400">
           {config.configurado ? (
             <>
-              <ShieldCheck className="size-4 shrink-0 text-admin-gold" /> Chaves
+              <ShieldCheck className="size-4 shrink-0 text-sky-300" /> Chaves
               salvas. Falta testar a conexão.
             </>
           ) : (
@@ -911,7 +926,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <ol className="space-y-3">
             {PASSOS_DO_GUIA.map((passo, indice) => (
               <li key={passo.titulo} className="flex gap-3">
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-admin-gold/15 text-[11px] font-black text-admin-gold ring-1 ring-admin-gold/30">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-xs font-bold text-sky-300 ring-1 ring-sky-400/30">
                   {indice + 1}
                 </span>
                 <span className="min-w-0">
@@ -941,7 +956,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               className={`flex min-h-11 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${
                 copiado
                   ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                  : "border-admin-gold/30 bg-admin-gold/10 text-admin-gold hover:bg-admin-gold/20"
+                  : "border-white/15 bg-[#202026] text-zinc-100 hover:bg-white/10"
               }`}
             >
               {copiado ? (
@@ -979,7 +994,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 placeholder="APP_USR-…"
                 autoComplete="off"
                 spellCheck={false}
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -1007,7 +1022,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a chave secreta de produção…"
                 }
                 autoComplete="new-password"
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -1038,10 +1053,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a senha dos avisos da sua loja"
                 }
                 autoComplete="new-password"
-                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-violet-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
               {!config.mascara_webhook && (
-                <p className="text-[11px] leading-relaxed text-amber-300">
+                <p className="text-[11px] leading-relaxed text-orange-300">
                   Sem a senha dos avisos da sua loja, o pagamento pelo app não é
                   liberado. Testar conexão não confere os avisos; a chave global
                   do app não substitui a sua.
@@ -1054,7 +1069,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 type="button"
                 disabled={salvando || carregando || isOffline || alternandoPix}
                 onClick={salvar}
-                className="flex min-h-11 items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
+                className={`flex min-h-11 items-center gap-2 ${dirty ? "ajustes-primario" : "ajustes-secundario"}`}
               >
                 {salvando ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -1073,7 +1088,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     ? "Salve as chaves primeiro — o teste fala com o Mercado Pago usando o que está salvo."
                     : undefined
                 }
-                className="flex min-h-11 items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-2 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+                className={`flex min-h-11 items-center gap-2 ${dirty ? "ajustes-secundario" : "ajustes-primario"}`}
               >
                 {testando ? (
                   <RefreshCw className="size-3.5 animate-spin" />
@@ -1084,7 +1099,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               </button>
 
               {dirty && (
-                <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-orange-400">
                   Salve para testar
                 </span>
               )}
@@ -1108,7 +1123,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       {!carregando && !erroCarga && (
         <div
           data-estado-recebimento={estadoDoRecebimento}
-          className="space-y-2 rounded-xl border border-white/5 bg-zinc-900/60 p-3"
+          className={`${CARTAO_AJUSTES} space-y-4`}
         >
           <span className="block text-xs font-bold text-white">
             Receber PIX no app
@@ -1136,7 +1151,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     onClick={() =>
                       config.pix_ligado ? pedirPausa() : pausarOuRetomar(true)
                     }
-                    className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+                    className="ajustes-secundario min-h-11"
                   >
                     {config.pix_ligado
                       ? "Desligar o pagamento pelo app"
@@ -1144,7 +1159,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   </button>
                 </div>
               )}
-              <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+              <p className="flex items-start gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 p-2 text-[11px] leading-relaxed text-orange-300">
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                 <span>
                   O sistema de pagamentos desta loja ainda não foi atualizado.
@@ -1179,7 +1194,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 type="button"
                 disabled={alternandoPix || isOffline || testando || salvando}
                 onClick={pedirPausa}
-                className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+                className="ajustes-secundario min-h-11"
               >
                 Pausar
               </button>
@@ -1187,11 +1202,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           )}
 
           {estadoDoRecebimento === "pausado" && (
-            <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+            <div className={`${CARTAO_DESTAQUE_AJUSTES} space-y-4`}>
               <div className="flex items-center justify-between gap-3">
                 <p
                   role="status"
-                  className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                  className="flex items-center gap-1.5 text-xs font-bold text-orange-300"
                 >
                   <AlertCircle className="size-4 shrink-0" />
                   Pausado por você
@@ -1200,17 +1215,17 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   type="button"
                   disabled={alternandoPix || isOffline || testando || salvando}
                   onClick={() => pausarOuRetomar(true)}
-                  className="min-h-11 shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                  className="ajustes-primario min-h-11"
                 >
                   Retomar
                 </button>
               </div>
-              <p className="text-[11px] leading-relaxed text-amber-200/90">
+              <p className="text-[11px] leading-relaxed text-orange-200/90">
                 Nenhum cliente consegue pagar pelo app enquanto estiver pausado.
                 Salvar ou testar as chaves não religa: toque em Retomar.
               </p>
               {listaDoQueFalta.length > 0 && (
-                <p className="text-[11px] leading-relaxed text-amber-200/90">
+                <p className="text-[11px] leading-relaxed text-orange-200/90">
                   Para receber quando retomar, ainda falta:{" "}
                   {listaDoQueFalta.join(", ")}.
                 </p>
@@ -1222,7 +1237,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             <div className="space-y-1.5">
               <p
                 role="status"
-                className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                className="flex items-center gap-1.5 text-xs font-bold text-orange-300"
               >
                 <AlertCircle className="size-4 shrink-0" />
                 Falta para receber pelo app:
@@ -1239,7 +1254,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             <div className="space-y-1">
               <p
                 role="status"
-                className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                className="flex items-center gap-1.5 text-xs font-bold text-orange-300"
               >
                 <AlertCircle className="size-4 shrink-0" />
                 Tudo preenchido.
@@ -1258,8 +1273,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   esconder a saída. */}
           {estadoDoRecebimento === "recebendo" &&
             listaDoQueFalta.length > 0 && (
-              <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
-                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300">
+              <div className={`${CARTAO_DESTAQUE_AJUSTES} space-y-4`}>
+                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-orange-300">
                   <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                   <span>
                     O pagamento pelo app está ligado, mas ainda falta:{" "}
@@ -1272,7 +1287,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     type="button"
                     disabled={testeBloqueado}
                     onClick={testarConexao}
-                    className="flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                    className="flex min-h-11 items-center gap-1.5 rounded-lg border border-orange-400/40 bg-orange-500/15 px-3 py-1.5 text-[11px] font-bold text-orange-200 hover:bg-orange-500/25 active:scale-95 disabled:opacity-40"
                   >
                     {testando ? (
                       <RefreshCw className="size-3.5 animate-spin" />
@@ -1291,7 +1306,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           {avisoPix && (
             <p
               role="status"
-              className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300"
+              className="flex items-start gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 p-2 text-[11px] leading-relaxed text-orange-300"
             >
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
               <span>{avisoPix}</span>
@@ -1313,7 +1328,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   caso em que o cliente NÃO vê PIX — a tela conta em vez de
                   deixar o lojista descobrir na venda perdida. */}
           {config.pix_ligado && !config.public_key_na_loja && (
-            <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+            <p className="flex items-start gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 p-2 text-[11px] leading-relaxed text-orange-300">
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
               <span>
                 A ficha da loja ainda não carrega esta chave pública — salve as

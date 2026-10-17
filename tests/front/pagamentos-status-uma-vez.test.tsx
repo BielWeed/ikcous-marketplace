@@ -199,7 +199,7 @@ async function clicar(elemento: HTMLElement) {
 
 function grupo(titulo: string): HTMLElement {
   const secao = [...hospedeiro.querySelectorAll("section")].find(
-    (s) => s.querySelector(":scope > h2")?.textContent === titulo,
+    (s) => s.getAttribute("aria-label") === titulo,
   );
   if (!secao) throw new Error(`Grupo "${titulo}" não está na tela.`);
   return secao as HTMLElement;
@@ -211,6 +211,10 @@ async function renderizarAjustes() {
     raiz.render(<AdminSettingsView onNavigate={vi.fn()} active={true} />);
   });
   await assentar();
+  const grupo = hospedeiro.querySelector<HTMLButtonElement>(
+    'button[data-cabecalho-grupo][aria-label="Pagamentos"]',
+  )!;
+  await clicar(grupo);
 }
 
 /** Abre as três seções que já contaram o estado do PIX. */
@@ -228,7 +232,7 @@ async function abrirTudo() {
   await clicar(cabecalhoDaSecao("Minha loja está no ar?"));
 }
 
-describe("Ajustes — o status do PIX aparece uma vez", () => {
+describe("Ajustes v5 — resumo e explicação do PIX concordam, sem outros espelhos", () => {
   it("S1 — o termômetro mora no topo de Pagamentos, antes de qualquer seção", async () => {
     await renderizarAjustes();
 
@@ -245,15 +249,17 @@ describe("Ajustes — o status do PIX aparece uma vez", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     // E só ele: o rótulo do PIX não aparece em mais lugar nenhum.
-    expect(hospedeiro.textContent?.match(ROTULO_DO_PIX)).toHaveLength(1);
+    expect(hospedeiro.textContent?.match(ROTULO_DO_PIX)).toHaveLength(2);
+    expect(new Set(hospedeiro.textContent?.match(ROTULO_DO_PIX)).size).toBe(1);
   });
 
-  it("S1/S2/S3/S4 — com todas as seções abertas, o status continua aparecendo uma vez só", async () => {
+  it("S1/S2/S3/S4 — com todas as seções abertas, só o resumo e a explicação exibem o mesmo status", async () => {
     await renderizarAjustes();
     await abrirTudo();
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto.match(ROTULO_DO_PIX)).toHaveLength(1);
+    expect(texto.match(ROTULO_DO_PIX)).toHaveLength(2);
+    expect(new Set(texto.match(ROTULO_DO_PIX)).size).toBe(1);
     expect(texto.match(/Pagamento online \(PIX\)/g)).toHaveLength(1);
     expect(texto).not.toContain("PIX: ");
     expect(texto).not.toContain("Pix liberado");
@@ -334,7 +340,8 @@ describe("Ajustes — o status do PIX aparece uma vez", () => {
       (b) => b.textContent?.includes("Pagamento online (PIX)"),
     );
     expect(termometro?.textContent).toContain("Desligado");
-    expect(hospedeiro.textContent?.match(ROTULO_DO_PIX)).toHaveLength(1);
+    expect(hospedeiro.textContent?.match(ROTULO_DO_PIX)).toHaveLength(2);
+    expect(new Set(hospedeiro.textContent?.match(ROTULO_DO_PIX)).size).toBe(1);
   });
 });
 

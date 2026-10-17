@@ -473,7 +473,9 @@ describe("PrivacidadeDosClientesSection", () => {
       hospedeiro.querySelector('li[data-pedido-de-privacidade="aberto-novo"]'),
     ).not.toBeNull();
     // Só os respondidos têm limite, e a tela diz que cortou.
-    expect(corpo()).toContain("Já respondidos (200)");
+    expect(corpo()).toContain(
+      "Já respondidos · 200 carregados · lista incompleta",
+    );
     expect(corpo()).toContain(
       "Há mais pedidos já respondidos do que cabem aqui",
     );
@@ -508,5 +510,54 @@ describe("PrivacidadeDosClientesSection", () => {
     expect(
       hospedeiro.querySelectorAll("li[data-pedido-de-privacidade]"),
     ).toHaveLength(1);
+  });
+
+  it("filtros têm seleção explícita e mostram o vazio da lista escolhida", async () => {
+    banco.lista = { data: [pedido()], error: null };
+    await montar();
+    const filtros = hospedeiro.querySelector(
+      '[aria-label="Filtrar pedidos de privacidade"]',
+    )!;
+    const esperando = botao("Esperando resposta (1)", filtros)!;
+    const respondidos = botao("Já respondidos (0)", filtros)!;
+    expect(esperando.getAttribute("aria-pressed")).toBe("true");
+    act(() => respondidos.click());
+    expect(respondidos.getAttribute("aria-pressed")).toBe("true");
+    expect(esperando.getAttribute("aria-pressed")).toBe("false");
+    expect(corpo()).toContain("Nenhum pedido respondido por enquanto.");
+    expect(
+      hospedeiro
+        .querySelector("li[data-pedido-de-privacidade]")
+        ?.closest("[hidden]"),
+    ).not.toBeNull();
+    expect(banco.updates).toHaveLength(0);
+  });
+
+  it("contagem parcial é qualificada e o aviso vem antes dos filtros", async () => {
+    banco.lista = {
+      data: Array.from({ length: 201 }, (_, i) =>
+        pedido({
+          id: `resp-${i}`,
+          situacao: "atendido",
+          atendido_em: "2026-10-14T15:00:00Z",
+        }),
+      ),
+      error: null,
+    };
+    await montar();
+    const filtros = hospedeiro.querySelector(
+      '[aria-label="Filtrar pedidos de privacidade"]',
+    )!;
+    expect(filtros.textContent).toContain(
+      "Já respondidos · 200 carregados · lista incompleta",
+    );
+    expect(filtros.textContent).not.toContain("Já respondidos (200)");
+    const aviso = [...hospedeiro.querySelectorAll('[role="status"]')].find(
+      (el) => el.textContent?.includes("Lista incompleta"),
+    )!;
+    expect(
+      aviso.compareDocumentPosition(filtros) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(botao("Tentar de novo", aviso)).toBeDefined();
   });
 });
