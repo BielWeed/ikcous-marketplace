@@ -20,7 +20,7 @@ nas fontes interrompem a prova. Reserve também essas fontes durante o ensaio.
 
 O controle deve emitir e incluir os cinco facades no precache; o candidato deve
 emitir os mesmos módulos e excluir somente esses cinco. O comparador preserva
-a cobertura por facade, moduleIds, isEntry e isDynamicEntry. Remover vendor-react
+a cobertura por facade, moduleIds, isEntry e isDynamicEntry. Remover vendor-inicio
 apenas da cópia em memória do manifesto precisa reprovar.
 
 O controle pareado é um experimento presente, **não um RED histórico**.
