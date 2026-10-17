@@ -1,9 +1,7 @@
-import { ChipDeVariacao } from "@/components/admin/crm/ChipDeVariacao";
-import { TileDeKpi } from "@/components/admin/crm/TileDeKpi";
+import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   formatarInteiro,
   formatarMoeda,
-  formatarMoedaCompacta,
   formatarPercentual,
   variacaoPercentual,
 } from "@/lib/crm";
@@ -12,17 +10,27 @@ import type { PainelInicio } from "@/types/painel";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  BarChart3,
+  CalendarDays,
   ChevronRight,
-  Landmark,
-  PiggyBank,
   TrendingUp,
+  Wallet,
 } from "lucide-react";
+import {
+  CARTAO_INICIO,
+  LINHA_INICIO,
+  SeloDoInicio,
+  TituloDoInicio,
+  VALOR_INICIO,
+  VariacaoDoInicio,
+} from "./visualDoInicio";
 
-/**
- * Os quatro números do mês no Início (grade 2×2 no celular, 4 lado a lado
- * no computador) + a linha de apoio "a pagar (vencidas + próximos 7 dias)",
- * que leva ao Financeiro. "Contas vencidas" mora só no "Para fazer" (um número, um lugar).
- */
+const NOME_DO_MES = new Intl.DateTimeFormat("pt-BR", {
+  month: "long",
+  timeZone: "America/Sao_Paulo",
+});
+
+/** Mesmos números e comparações; resumo mensal e posição financeira separados. */
 export function NumerosDoMes({
   painel,
   carregando,
@@ -34,114 +42,129 @@ export function NumerosDoMes({
 }>) {
   const esqueleto = carregando && !painel;
   const mes = painel?.mes;
+  const dia = useDiaDeSaoPaulo();
   const margem =
     mes?.lucroEstimado != null && mes.receita != null && mes.receita > 0
       ? (mes.lucroEstimado / mes.receita) * 100
       : null;
 
+  const contas = [
+    {
+      titulo: "Saldo em contas",
+      detalhe: "Disponível nas contas",
+      valor: painel?.saldoTotal,
+      icone: Wallet,
+      tom: "teal",
+    },
+    {
+      titulo: "A receber",
+      detalhe: "Vencidas + próximos 7 dias",
+      valor: painel?.aReceber7d,
+      icone: ArrowDownToLine,
+      tom: "ceu",
+    },
+    {
+      titulo: "A pagar",
+      detalhe: "Vencidas + próximos 7 dias",
+      valor: painel?.aPagar7d,
+      icone: ArrowUpFromLine,
+      tom: "laranja",
+    },
+  ] as const;
+
   return (
     <section
       aria-labelledby="inicio-mes-titulo"
       aria-busy={esqueleto}
-      className="admin-glass h-full space-y-3 rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6"
+      className="min-w-0"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2
-          id="inicio-mes-titulo"
-          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
-        >
+      <div className="flex items-start justify-between gap-3">
+        <TituloDoInicio id="inicio-mes-titulo" icone={CalendarDays} tom="roxo">
           Este mês
-        </h2>
-        {mes && mes.pedidos != null ? (
-          <p className="text-[11px] text-zinc-400">
-            <strong className="font-bold tabular-nums text-zinc-300">
-              {formatarInteiro(mes.pedidos)}
-            </strong>{" "}
-            {mes.pedidos === 1 ? "venda" : "vendas"} · valor médio por venda{" "}
-            <strong className="font-bold tabular-nums text-zinc-300">
-              {formatarMoeda(mes.ticketMedio)}
-            </strong>
+        </TituloDoInicio>
+        <span className="pt-2 text-xs uppercase text-zinc-400">
+          {NOME_DO_MES.format(instanteDoDia(dia))}
+        </span>
+      </div>
+      <div className={`${CARTAO_INICIO} space-y-4`}>
+        <dl className="grid grid-cols-2 gap-3">
+          <div className="min-w-0">
+            <dt className="text-sm text-zinc-400">Vendas</dt>
+            <dd className={`mt-1 text-2xl ${VALOR_INICIO}`}>
+              {formatarInteiro(mes?.pedidos)}
+              <span className="sr-only"> vendas</span>
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-sm text-zinc-400">Valor médio por venda</dt>
+            <dd className={`mt-1 text-2xl ${VALOR_INICIO}`}>
+              {formatarMoeda(mes?.ticketMedio)}
+            </dd>
+          </div>
+        </dl>
+        <div className="space-y-3 border-t border-white/10 pt-4">
+          <p className="flex items-center gap-2.5 text-sm font-semibold text-white">
+            <SeloDoInicio icone={BarChart3} tom="verde" />
+            Vendas pagas no mês
           </p>
+          <p className={`text-[clamp(1.5rem,7vw,1.875rem)] ${VALOR_INICIO}`}>
+            {formatarMoeda(mes?.receita)}
+          </p>
+          <VariacaoDoInicio
+            pct={variacaoPercentual(mes?.receita, mes?.receitaMesAnterior)}
+            comparacao="vs. os mesmos dias do mês anterior"
+          />
+        </div>
+        <div className="space-y-3 border-t border-white/10 pt-4">
+          <p className="flex items-center gap-2.5 text-sm font-semibold text-white">
+            <SeloDoInicio icone={TrendingUp} tom="teal" />
+            Lucro estimado
+          </p>
+          <p className={`text-[26px] ${VALOR_INICIO}`}>
+            {formatarMoeda(mes?.lucroEstimado)}
+          </p>
+          {margem != null ? (
+            <p className="text-sm font-medium text-teal-300">
+              Margem estimada: {formatarPercentual(margem, 0)}
+            </p>
+          ) : null}
+          <p className="text-sm leading-relaxed text-zinc-400">
+            Desconta estornos, devoluções, custos e despesas, mesmo não pagas.
+            Sem custo cadastrado, usa R$ 0 de custo.
+          </p>
+        </div>
+        {esqueleto ? (
+          <div className="premium-shimmer h-4 rounded-lg" aria-hidden="true" />
         ) : null}
       </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:gap-4">
-        <TileDeKpi
-          superficie="admin-glass"
-          rotulo="Vendas pagas no mês"
-          icone={TrendingUp}
-          corDoIcone="text-emerald-400"
-          carregando={esqueleto}
-          valor={formatarMoeda(mes?.receita)}
-          valorCompacto={formatarMoedaCompacta(mes?.receita)}
-          rodape={
-            <ChipDeVariacao
-              pct={variacaoPercentual(mes?.receita, mes?.receitaMesAnterior)}
-              // O banco (`painel_inicio`) compara do dia 1 até o MESMO dia do
-              // mês passado, não com o mês inteiro: a frase diz o que ele faz.
-              comparacao="vs. os mesmos dias do mês anterior"
+      <div className={`${CARTAO_INICIO} mt-3 divide-y divide-white/10 py-1`}>
+        {contas.map((conta) => (
+          <button
+            key={conta.titulo}
+            type="button"
+            onClick={() => onNavigate("admin-financeiro")}
+            className={LINHA_INICIO}
+            aria-label={`${conta.titulo} — ${formatarMoeda(conta.valor)}. ${conta.detalhe}. Abrir Financeiro`}
+          >
+            <SeloDoInicio icone={conta.icone} tom={conta.tom} />
+            <span className="min-w-0 flex-1 space-y-1">
+              <span className="block text-base font-semibold text-white">
+                {conta.titulo}
+              </span>
+              <strong className={`block text-[22px] ${VALOR_INICIO}`}>
+                {formatarMoeda(conta.valor)}
+              </strong>
+              <span className="block text-sm text-zinc-400">
+                {conta.detalhe}
+              </span>
+            </span>
+            <ChevronRight
+              className="size-5 shrink-0 text-zinc-400"
+              aria-hidden="true"
             />
-          }
-        />
-        <TileDeKpi
-          superficie="admin-glass"
-          rotulo="Lucro estimado"
-          icone={PiggyBank}
-          corDoIcone="text-admin-gold"
-          carregando={esqueleto}
-          valor={formatarMoeda(mes?.lucroEstimado)}
-          valorCompacto={formatarMoedaCompacta(mes?.lucroEstimado)}
-          rodape={
-            margem == null
-              ? "Do Financeiro: vendas menos devoluções, custo dos produtos e despesas do mês"
-              : `Margem estimada de ${formatarPercentual(margem, 0)}`
-          }
-        />
-        <TileDeKpi
-          superficie="admin-glass"
-          rotulo="Saldo em contas"
-          icone={Landmark}
-          corDoIcone="text-sky-400"
-          carregando={esqueleto}
-          valor={formatarMoeda(painel?.saldoTotal)}
-          valorCompacto={formatarMoedaCompacta(painel?.saldoTotal)}
-          rodape="Caixa, banco e Mercado Pago"
-        />
-        <TileDeKpi
-          superficie="admin-glass"
-          // `painel_inicio` soma `venc <= hoje + 7`: entra também o que já venceu.
-          rotulo="A receber (vencidas + próximos 7 dias)"
-          icone={ArrowDownToLine}
-          corDoIcone="text-violet-400"
-          carregando={esqueleto}
-          valor={formatarMoeda(painel?.aReceber7d)}
-          valorCompacto={formatarMoedaCompacta(painel?.aReceber7d)}
-          rodape="Previsto no Financeiro"
-        />
+          </button>
+        ))}
       </div>
-
-      <button
-        type="button"
-        onClick={() => onNavigate("admin-financeiro")}
-        className="group flex min-h-11 w-full items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
-      >
-        <span
-          aria-hidden="true"
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-gold/25 bg-admin-gold/10"
-        >
-          <ArrowUpFromLine className="size-5 text-admin-gold" />
-        </span>
-        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm font-bold text-zinc-300">
-          A pagar (vencidas + próximos 7 dias){" "}
-          <strong className="font-black tabular-nums text-white">
-            {esqueleto ? "…" : formatarMoeda(painel?.aPagar7d)}
-          </strong>
-        </span>
-        <ChevronRight
-          className="size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold"
-          aria-hidden="true"
-        />
-      </button>
     </section>
   );
 }

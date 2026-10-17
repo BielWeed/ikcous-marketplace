@@ -2,79 +2,47 @@ import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { completarSerieDe14Dias, formatarData, formatarMoeda } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import type { PontoDaSerieDiaria } from "@/types/painel";
-import { type PointerEvent, useState } from "react";
+import {
+  BarChart3,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  List,
+} from "lucide-react";
+import { type PointerEvent, useId, useState } from "react";
+import {
+  BOTAO_INICIO,
+  CARTAO_INICIO,
+  FalhaDoInicio,
+  TituloDoInicio,
+  VALOR_INICIO,
+} from "./visualDoInicio";
 
-const MESES_ABREVIADOS = [
-  "jan",
-  "fev",
-  "mar",
-  "abr",
-  "mai",
-  "jun",
-  "jul",
-  "ago",
-  "set",
-  "out",
-  "nov",
-  "dez",
-];
+const DATA_CURTA = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "short",
+  timeZone: "UTC",
+});
+const dataCurta = (dia: string) =>
+  DATA_CURTA.format(new Date(`${dia}T12:00:00Z`))
+    .replace(" de ", " ")
+    .replace(".", "");
 
-type AncoragemDoRotulo = "esquerda" | "centro" | "direita";
-
-/**
- * O rótulo do valor do pico é bem mais largo que uma coluna (~24px) e
- * cresce para os dois lados quando centralizado — o que estoura a borda do
- * cartão quando o pico cai numa das primeiras/últimas colunas (achado do
- * Gabriel: "hoje", a última coluna, é o caso mais comum). Perto da borda o
- * rótulo ancora para o lado de DENTRO do cartão (onde sobra coluna); só no
- * meio, com coluna sobrando dos dois lados, ele fica centralizado de
- * verdade — `left-1/2 -translate-x-1/2` (não `inset-x-0 text-center`: essa
- * combinação limita a CAIXA à largura da coluna, e um texto mais largo que
- * a caixa saía alinhado ao início dela, não centralizado na tela).
- */
-function ancoragemDoRotulo(indice: number, total: number): AncoragemDoRotulo {
-  if (indice <= 3) return "esquerda";
-  if (indice >= total - 4) return "direita";
-  return "centro";
-}
-
-/**
- * Minigráfico de barras dos últimos 14 dias (receita por dia). Pedido do
- * Gabriel (27/09/2026): "não tem clareza: tem que dar para entender cada
- * barra de cada dia" — com poucas vendas o gráfico virava um bloco cinza
- * quase invisível (13 riscos de 1px, só o 1º/último rótulo). Agora:
- *
- * - `completarSerieDe14Dias` (src/lib/crm.ts) garante as 14 COLUNAS sempre,
- *   mesmo se a série chegar menor — cada dia tem seu "trilho" de fundo, e um
- *   dia sem venda nunca some nem vira uma barra;
- * - as 14 colunas mostram o número do dia SEMPRE (mês só na 1ª/na virada,
- *   linha reservada em toda coluna para a fileira de dias não desalinhar),
- *   Hoje sai escrito por extenso e no dourado do painel;
- * - venda em tom esmeralda (mesmo tom de "ótimo" do CRM), hoje em
- *   admin-gold; tocar/passar numa coluna marca ela — as barras das OUTRAS
- *   colunas esmaecem (opacity-40) para o destaque não depender só do trilho,
- *   que uma barra em 100% de altura cobre por inteiro — e mostra o dia +
- *   valor na linha de cima; a barra de maior valor ganha o rótulo do valor
- *   em cima, para dar escala.
- *
- * HTML puro (sem recharts): 14 barras não pedem biblioteca, e o Início abre
- * mais leve. A tabela escondida dá o mesmo dado a quem usa leitor de tela.
- */
+/** HTML puro: a mesma série, agora também escolhida por setas e tabela. */
 export function SerieDe14Dias({
   serie,
   carregando,
   falhou = false,
+  onTentarDeNovo,
 }: Readonly<{
   serie: readonly PontoDaSerieDiaria[];
   carregando: boolean;
-  /**
-   * O carregamento do Início falhou e não há retrato nenhum: sem este aviso,
-   * a série vazia diria "Sem vendas registradas" — uma afirmação sobre a loja
-   * que ninguém conferiu. Série que chegou (mesmo vazia) nunca passa por aqui.
-   */
   falhou?: boolean;
+  onTentarDeNovo?: () => void;
 }>) {
   const [marcado, setMarcado] = useState<number | null>(null);
+  const [tabelaAberta, setTabelaAberta] = useState(false);
+  const tabelaId = useId();
   const serieCompleta = completarSerieDe14Dias(serie);
   const total = serieCompleta.reduce((soma, ponto) => soma + ponto.receita, 0);
   const maximo = serieCompleta.reduce(
@@ -83,13 +51,11 @@ export function SerieDe14Dias({
   );
   const indicePico =
     maximo > 0 ? serieCompleta.findIndex((p) => p.receita === maximo) : -1;
-  const ancoragemDoRotuloDoPico =
-    indicePico >= 0
-      ? ancoragemDoRotulo(indicePico, serieCompleta.length)
-      : "centro";
-  const pontoMarcado =
-    marcado == null ? null : (serieCompleta.at(marcado) ?? null);
-  // Acompanha o relógio: passou da meia-noite, "Hoje" anda para a coluna nova.
+  const selecionado = Math.min(
+    marcado ?? serieCompleta.length - 1,
+    serieCompleta.length - 1,
+  );
+  const pontoMarcado = serieCompleta.at(selecionado);
   const diaDeHoje = useDiaDeSaoPaulo();
 
   const aoMoverPonteiro = (evento: PointerEvent<HTMLDivElement>) => {
@@ -108,72 +74,78 @@ export function SerieDe14Dias({
     <section
       aria-labelledby="inicio-serie-titulo"
       aria-busy={carregando && serieCompleta.length === 0}
-      className="admin-glass h-full rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6"
+      className="min-w-0"
     >
-      <div className="flex items-baseline justify-between gap-3">
-        <h2
-          id="inicio-serie-titulo"
-          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
-        >
-          Vendas pagas · 14 dias
-        </h2>
-        <p className="text-right text-[11px] text-zinc-400" aria-live="polite">
-          {pontoMarcado ? (
-            <>
-              {formatarData(pontoMarcado.dia)}{" "}
-              <strong className="font-bold tabular-nums text-white">
-                {formatarMoeda(pontoMarcado.receita)}
-              </strong>
-            </>
-          ) : serieCompleta.length > 0 ? (
-            <>
-              Total{" "}
-              <strong className="font-bold tabular-nums text-white">
-                {formatarMoeda(total)}
-              </strong>
-            </>
-          ) : falhou && !carregando ? (
-            "—"
-          ) : null}
-        </p>
-      </div>
-
+      <TituloDoInicio id="inicio-serie-titulo" icone={BarChart3} tom="azul">
+        Vendas pagas · 14 dias
+      </TituloDoInicio>
       {carregando && serieCompleta.length === 0 ? (
-        <div
-          className="premium-shimmer mt-4 h-28 w-full rounded-xl"
-          aria-hidden="true"
-        />
+        <div className={CARTAO_INICIO}>
+          <div className="premium-shimmer h-28 rounded-xl" aria-hidden="true" />
+          <p className="mt-3 text-sm text-zinc-400">Carregando as vendas…</p>
+        </div>
       ) : serieCompleta.length === 0 ? (
-        <p className="mt-4 flex h-24 items-center justify-center rounded-xl border border-dashed border-white/10 px-3 text-center text-xs text-zinc-400">
-          {falhou
-            ? "Não consegui carregar as vendas dos últimos 14 dias."
-            : "Sem vendas registradas nos últimos 14 dias."}
-        </p>
+        falhou ? (
+          <FalhaDoInicio onTentarDeNovo={onTentarDeNovo}>
+            <p>Não consegui carregar as vendas dos últimos 14 dias.</p>
+            <p aria-live="polite">—</p>
+          </FalhaDoInicio>
+        ) : (
+          <div className={CARTAO_INICIO}>
+            <p className="text-base font-semibold text-white">
+              Sem vendas registradas nos últimos 14 dias.
+            </p>
+            <p className="mt-2 text-sm text-zinc-400">
+              Os pagamentos confirmados aparecem aqui.
+            </p>
+          </div>
+        )
       ) : (
-        <>
+        <div className={`${CARTAO_INICIO} space-y-3`}>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Dia anterior"
+              disabled={selecionado <= 0}
+              onClick={() => setMarcado(selecionado - 1)}
+              className={`${BOTAO_INICIO} !w-11 min-w-11 shrink-0 !px-0`}
+            >
+              <ChevronLeft className="size-5" aria-hidden="true" />
+            </button>
+            <p
+              aria-live="polite"
+              aria-atomic="true"
+              className="min-w-0 flex-1 text-center"
+            >
+              <span className="block text-sm font-semibold text-blue-300">
+                {formatarData(pontoMarcado?.dia)}
+                {pontoMarcado?.dia === diaDeHoje ? " · Hoje" : ""}
+              </span>
+              <strong className={`mt-1 block text-xl ${VALOR_INICIO}`}>
+                {formatarMoeda(pontoMarcado?.receita)}
+              </strong>
+            </p>
+            <button
+              type="button"
+              aria-label="Próximo dia"
+              disabled={selecionado >= serieCompleta.length - 1}
+              onClick={() => setMarcado(selecionado + 1)}
+              className={`${BOTAO_INICIO} !w-11 min-w-11 shrink-0 !px-0`}
+            >
+              <ChevronRight className="size-5" aria-hidden="true" />
+            </button>
+          </div>
           <div
             data-testid="serie-14d-barras"
-            className="mt-6 flex touch-pan-y gap-0.5"
+            className="flex touch-pan-y gap-1"
             onPointerMove={aoMoverPonteiro}
             onPointerDown={aoMoverPonteiro}
-            onPointerLeave={() => setMarcado(null)}
             aria-hidden="true"
           >
             {serieCompleta.map((ponto, indice) => {
               const hoje = ponto.dia === diaDeHoje;
               const temVenda = ponto.receita > 0;
               const alturaPct = maximo > 0 ? (ponto.receita / maximo) * 100 : 0;
-              const [, mesTexto, diaTexto] = ponto.dia.split("-");
-              const mesAnterior =
-                indice > 0 ? serieCompleta[indice - 1].dia.split("-")[1] : null;
-              const mostrarMes = indice === 0 || mesTexto !== mesAnterior;
-              // As 14 colunas mostram o rótulo do dia SEMPRE (pedido do
-              // Gabriel: "cada barra de cada dia") — a folga medida a 375px
-              // e até a 320px é positiva, então nada de alternar dia
-              // sim/dia não; se algum dia isso apertar de verdade num
-              // celular menor, é a fonte do rótulo que cede, não a
-              // presença dele.
-              const outraColunaMarcada = marcado != null && marcado !== indice;
               return (
                 <div
                   key={ponto.dia}
@@ -181,123 +153,183 @@ export function SerieDe14Dias({
                   data-dia={ponto.dia}
                   data-hoje={hoje ? "true" : "false"}
                   data-com-venda={temVenda ? "true" : "false"}
-                  className="flex min-w-0 flex-1 flex-col items-center gap-1"
+                  data-selecionado={indice === selecionado ? "true" : "false"}
+                  className="min-w-0 flex-1"
+                  title={`${formatarData(ponto.dia)}: ${formatarMoeda(ponto.receita)}`}
                 >
-                  <div className="relative flex h-24 w-full items-end overflow-visible">
-                    {indice === indicePico ? (
-                      <span
-                        data-testid="serie-14d-pico"
-                        className={cn(
-                          "pointer-events-none absolute -top-4 whitespace-nowrap text-[11px] font-bold tabular-nums text-zinc-400",
-                          // O rótulo é bem mais largo que uma coluna
-                          // (~24px): centralizado, ele estoura a borda do
-                          // cartão quando o pico é uma das últimas colunas
-                          // (achado do Gabriel — "hoje" é o caso mais
-                          // comum). Perto do INÍCIO da janela ele cresce
-                          // para a direita (left-0, sem right-0: sobra
-                          // coluna à direita); perto do FIM cresce para a
-                          // esquerda (right-0, sem left-0); no meio sobra
-                          // cartão dos dois lados e ele fica centralizado
-                          // de verdade com `left-1/2 -translate-x-1/2`
-                          // (`inset-x-0 text-center` prendia a caixa à
-                          // largura da coluna e o texto saía alinhado ao
-                          // início dela, não centralizado na tela).
-                          ancoragemDoRotuloDoPico === "esquerda" &&
-                            "left-0 text-left",
-                          ancoragemDoRotuloDoPico === "direita" &&
-                            "right-0 text-right",
-                          ancoragemDoRotuloDoPico === "centro" &&
-                            "left-1/2 -translate-x-1/2",
-                        )}
-                      >
-                        {formatarMoeda(ponto.receita)}
-                      </span>
-                    ) : null}
-                    {/* Trilho + barra ficam num wrapper à parte porque só
-                        ELES esmaecem quando outra coluna está marcada — o
-                        texto (rótulo do pico, dia, mês) nunca perde
-                        contraste por causa de um toque em outro lugar. */}
-                    <div
-                      data-testid="serie-14d-grafico"
-                      className={cn(
-                        "absolute inset-0 flex items-end transition-opacity",
-                        outraColunaMarcada && "opacity-40",
-                      )}
-                    >
-                      {/* Trilho: SEMPRE visível, ocupa a altura inteira da
-                          coluna — é o que faz um dia sem venda continuar
-                          sendo uma coluna (não sumir). Opacidade baixa e
-                          altura fixa o distinguem de uma barra de venda
-                          (cor cheia, altura proporcional ao valor). */}
-                      <div
-                        className={cn(
-                          "absolute inset-x-0 bottom-0 h-full rounded-[4px] bg-zinc-800/50",
-                          marcado === indice && "bg-zinc-700/60",
-                          hoje && "ring-1 ring-inset ring-admin-gold/40",
-                        )}
-                      />
-                      {temVenda ? (
-                        <div
-                          data-testid="serie-14d-barra"
-                          className={cn(
-                            "relative w-full rounded-t-[4px] transition-[height]",
-                            hoje ? "bg-admin-gold" : "bg-emerald-400",
-                          )}
-                          style={{ height: `${Math.max(6, alturaPct)}%` }}
-                        />
-                      ) : null}
-                    </div>
-                  </div>
                   <div
-                    data-testid="serie-14d-rotulo"
-                    className="flex flex-col items-center gap-0.5 text-center"
+                    data-testid="serie-14d-grafico"
+                    className="relative flex h-28 items-end rounded bg-white/[0.02]"
                   >
-                    {/* A linha do mês é reservada em TODAS as colunas (só
-                        fica invisível fora da 1ª/virada) — sem isto, as
-                        colunas sem mês tinham uma linha a menos e o número
-                        do dia descia, desalinhando a fileira toda. */}
-                    <span
-                      data-testid="serie-14d-rotulo-mes"
-                      aria-hidden="true"
-                      className={cn(
-                        "text-[11px] uppercase leading-none text-zinc-400",
-                        !mostrarMes && "invisible",
-                      )}
-                    >
-                      {MESES_ABREVIADOS[Number(mesTexto) - 1]}
-                    </span>
-                    <span
-                      data-testid="serie-14d-rotulo-dia"
-                      className={cn(
-                        "text-[11px] leading-none tabular-nums",
-                        hoje ? "font-bold text-admin-gold" : "text-zinc-400",
-                      )}
-                    >
-                      {hoje ? "Hoje" : diaTexto}
-                    </span>
+                    {temVenda ? (
+                      <div
+                        data-testid="serie-14d-barra"
+                        className={cn(
+                          "w-full rounded-t-[5px]",
+                          indice === selecionado
+                            ? "bg-blue-300"
+                            : hoje
+                              ? "bg-slate-300"
+                              : "bg-slate-400",
+                        )}
+                        style={{ height: `${Math.max(6, alturaPct)}%` }}
+                      />
+                    ) : null}
+                    {indice === selecionado ? (
+                      <span className="absolute inset-x-0 -bottom-1 h-0.5 bg-blue-300" />
+                    ) : null}
                   </div>
                 </div>
               );
             })}
           </div>
-          <table className="sr-only">
-            <caption>Vendas pagas por dia nos últimos 14 dias</caption>
-            <thead>
+          <div
+            className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-400"
+            aria-hidden="true"
+          >
+            <span className="flex items-center gap-1">
+              <span className="size-2 rounded-sm bg-slate-400" />
+              Outros dias
+            </span>
+            {pontoMarcado?.dia !== diaDeHoje &&
+            serieCompleta.some((ponto) => ponto.dia === diaDeHoje) ? (
+              <span className="flex items-center gap-1">
+                <span className="size-2 rounded-sm bg-slate-300" />
+                Hoje
+              </span>
+            ) : null}
+            <span className="flex items-center gap-1">
+              <span className="size-2 rounded-sm bg-blue-300" />
+              {pontoMarcado?.dia === diaDeHoje
+                ? "Hoje · selecionado"
+                : "Selecionado"}
+            </span>
+          </div>
+          <div
+            className="flex justify-between gap-3 text-xs text-zinc-400"
+            aria-hidden="true"
+          >
+            <span>{dataCurta(serieCompleta[0].dia)}</span>
+            <span>
+              {dataCurta(serieCompleta[serieCompleta.length - 1].dia)}
+              {serieCompleta[serieCompleta.length - 1].dia === diaDeHoje
+                ? " · Hoje"
+                : ""}
+            </span>
+          </div>
+          <p className="text-sm leading-relaxed text-zinc-400">
+            Deslize no gráfico ou use as setas para escolher um dia.
+          </p>
+          <dl className="grid grid-cols-2 gap-3 border-t border-white/10 pt-3">
+            <div className="min-w-0">
+              <dt className="text-xs text-zinc-400">
+                Pico
+                {indicePico >= 0
+                  ? ` · ${dataCurta(serieCompleta[indicePico].dia)}`
+                  : ""}
+              </dt>
+              <dd
+                data-testid="serie-14d-pico"
+                className={`mt-1 text-sm ${VALOR_INICIO}`}
+              >
+                {formatarMoeda(maximo)}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-zinc-400">Total · 14 dias</dt>
+              <dd className={`mt-1 text-sm ${VALOR_INICIO}`}>
+                {formatarMoeda(total)}
+              </dd>
+            </div>
+          </dl>
+          <button
+            type="button"
+            className={BOTAO_INICIO}
+            aria-expanded={tabelaAberta}
+            aria-controls={tabelaId}
+            onClick={() => setTabelaAberta((aberta) => !aberta)}
+          >
+            <List className="size-5" aria-hidden="true" />
+            {tabelaAberta ? "Esconder tabela" : "Ver os 14 dias em tabela"}
+          </button>
+          <table
+            id={tabelaId}
+            className={
+              tabelaAberta
+                ? "w-full table-fixed border-separate border-spacing-y-2 text-sm"
+                : "sr-only"
+            }
+          >
+            <caption className="text-left font-semibold text-white">
+              Vendas pagas por dia nos últimos 14 dias
+            </caption>
+            <thead className="sr-only">
               <tr>
                 <th scope="col">Dia</th>
                 <th scope="col">Vendas pagas</th>
               </tr>
             </thead>
             <tbody>
-              {serieCompleta.map((ponto) => (
-                <tr key={ponto.dia}>
-                  <td>{formatarData(ponto.dia)}</td>
-                  <td>{formatarMoeda(ponto.receita)}</td>
+              {serieCompleta.map((ponto, indice) => (
+                <tr
+                  key={ponto.dia}
+                  className={
+                    indice === selecionado
+                      ? "bg-blue-300/10"
+                      : "bg-white/[0.03]"
+                  }
+                >
+                  <td className="rounded-l-xl p-2 text-zinc-400">
+                    {tabelaAberta ? (
+                      <button
+                        type="button"
+                        aria-label={`Selecionar ${formatarData(ponto.dia)}${ponto.dia === diaDeHoje ? " · Hoje" : ""}`}
+                        aria-pressed={indice === selecionado}
+                        onClick={() => setMarcado(indice)}
+                        className="flex min-h-11 w-full items-center gap-1 text-left text-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                      >
+                        <span data-testid="serie-14d-rotulo">
+                          <span
+                            data-testid="serie-14d-rotulo-dia"
+                            className={
+                              ponto.dia === diaDeHoje
+                                ? "text-[12px] font-bold text-blue-300"
+                                : "text-[12px] text-zinc-400"
+                            }
+                          >
+                            {ponto.dia === diaDeHoje
+                              ? "Hoje"
+                              : ponto.dia.slice(8, 10)}
+                          </span>{" "}
+                          <span
+                            data-testid="serie-14d-rotulo-mes"
+                            className="text-[12px] text-zinc-400"
+                          >
+                            {dataCurta(ponto.dia).split(" ")[1]}
+                          </span>
+                        </span>
+                        {indice === selecionado ? (
+                          <Check
+                            className="size-4 shrink-0"
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                      </button>
+                    ) : (
+                      <>
+                        {formatarData(ponto.dia)}
+                        {ponto.dia === diaDeHoje ? " · Hoje" : ""}
+                      </>
+                    )}
+                  </td>
+                  <td className={`rounded-r-xl p-2 text-right ${VALOR_INICIO}`}>
+                    {formatarMoeda(ponto.receita)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </>
+        </div>
       )}
     </section>
   );
