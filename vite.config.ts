@@ -108,10 +108,7 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       ],
       ["src/lib/prepareIdentityImage.ts", "AdminIdentityPrepare"],
       ["src/lib/uploadIdentityImage.ts", "AdminIdentityUpload"],
-      [
-        "node_modules/tus-js-client/lib.esm/browser/index.js",
-        "AdminIdentityTus",
-      ],
+      ["node_modules/tus-js-client/lib/browser/index.js", "AdminIdentityTus"],
       ["node_modules/image-dimensions/index.js", "AdminIdentityDimensions"],
       // A tela do balcão precisa estar no precache (vender offline é o
       // ponto): com o nome padrão ela nasceria `assets/AdminPdvView-<hash>.js`
@@ -166,6 +163,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
     resolve: {
       alias: [
         { find: "@", replacement: path.resolve(__dirname, "./src") },
+        // O tus-js-client resolve, pelo campo `module`, a build `lib.esm`, que o
+        // Babel desce para ES5 e enche de helpers. A pasta `lib` do MESMO
+        // pacote (4.3.1) e o codigo-fonte moderno: o alvo do build ja e atual,
+        // entao o comportamento e o mesmo e o painel sai mais leve.
+        {
+          find: /^tus-js-client$/,
+          replacement: "tus-js-client/lib/browser/index.js",
+        },
         // O recharts importa 29 funções `lodash/<nome>` na versão CommonJS:
         // 263 módulos, cada um embrulhado pelo plugin commonjs. A MESMA versão
         // em ES module (lodash-es, mesma 4.18.1 do lodash que o recharts
