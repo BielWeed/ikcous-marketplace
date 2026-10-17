@@ -188,3 +188,17 @@ it("reabrir Formas renova a leitura existente e recupera falha inicial", async (
   expect(resumo().textContent).toContain("Cartão · Crédito ligado");
   expect(resumo().textContent).toContain("Débito desligado · até 6x");
 });
+
+it("o cabeçalho de cada grupo liga o subtítulo ao botão para o leitor de tela", async () => {
+  await montar();
+  const cabecalhos = [...host.querySelectorAll("button[data-cabecalho-grupo]")];
+  const comSubtitulo = cabecalhos.filter((b) =>
+    b.querySelector("[data-grupo-subtitulo]"),
+  );
+  expect(comSubtitulo.length).toBeGreaterThan(0);
+  for (const botaoDoGrupo of comSubtitulo) {
+    const id = botaoDoGrupo.querySelector("[data-grupo-subtitulo]")!.id;
+    expect(id).not.toBe("");
+    expect(botaoDoGrupo.getAttribute("aria-describedby")).toContain(id);
+  }
+});

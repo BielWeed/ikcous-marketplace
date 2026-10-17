@@ -205,7 +205,10 @@ export function FormasDePagamentoSection({
           <div>
             <h3 className="text-base font-bold">Na entrega ou retirada</h3>
             <p className="text-xs text-zinc-400">
-              {formasNaEntrega.length} formas disponíveis
+              {formasNaEntrega.length}{" "}
+              {formasNaEntrega.length === 1
+                ? "forma disponível"
+                : "formas disponíveis"}
             </p>
           </div>
         </div>

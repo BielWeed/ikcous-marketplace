@@ -604,6 +604,14 @@ function GrupoDeAjustes({
           data-cabecalho-grupo=""
           data-porta-ajustes={direta ? "admin-shipping" : undefined}
           aria-label={grupo.titulo}
+          aria-describedby={
+            [
+              subtitulo ? `subtitulo-${chave}` : null,
+              aberta && comPendencia ? `pendencia-${chave}` : null,
+            ]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
           aria-expanded={direta ? undefined : aberta}
           aria-controls={direta ? undefined : `conteudo-${chave}`}
           onClick={() => {
@@ -627,13 +635,17 @@ function GrupoDeAjustes({
             {subtitulo && (
               <span
                 data-grupo-subtitulo=""
+                id={`subtitulo-${chave}`}
                 className={`mt-1 block text-xs font-normal leading-relaxed ${subtitulo.startsWith("Falta:") ? "text-orange-300" : "text-zinc-400"}`}
               >
                 {subtitulo}
               </span>
             )}
             {aberta && comPendencia && (
-              <span className="mt-1 block text-xs font-normal text-orange-300">
+              <span
+                id={`pendencia-${chave}`}
+                className="mt-1 block text-xs font-normal text-orange-300"
+              >
                 Salve antes de fechar
               </span>
             )}

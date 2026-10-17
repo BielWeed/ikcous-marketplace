@@ -759,7 +759,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           PIX e cartão (crédito e débito) ficarão indisponíveis para novos
           pagamentos pelo app. Suas chaves permanecem salvas.
         </p>
-        <p className="text-xs leading-relaxed text-zinc-400">
+        <p className="text-sm leading-relaxed text-zinc-300">
           {textoDoAviso.detalhe}
         </p>
         <div className="flex flex-col gap-3">
