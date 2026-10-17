@@ -7,7 +7,7 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { haptic } from "@/utils/haptic";
 import DOMPurify from "dompurify";
-import { motion, usePresence } from "framer-motion";
+import { motion, useIsPresent } from "framer-motion";
 import { Clock, MapPin, Navigation } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
@@ -109,9 +109,10 @@ export function AboutStoreView() {
     .filter(Boolean)
     .join(", ");
   const temWhatsapp = lojaTemWhatsapp(config.whatsappNumber);
-  // Fora de um AnimatePresence `isPresent` é sempre true; dentro dele vira
+  // Só LÊ o estado (não registra a tela como participante de saída, o que
+  // exigiria chamar safeToRemove). Fora de um AnimatePresence é sempre true; dentro dele vira
   // false quando a tela está saindo — aí o botão (portalado) some junto.
-  const [isPresent] = usePresence();
+  const isPresent = useIsPresent();
   const inicial = storeName.charAt(0).toUpperCase();
 
   // A descrição é RICA (o lojista formata texto e anexa imagem no painel —
