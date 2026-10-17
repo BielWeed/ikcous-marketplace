@@ -1,4 +1,5 @@
 import {
+  Archive,
   ArrowDownLeft,
   ArrowDownToLine,
   ArrowLeftRight,
@@ -68,7 +69,7 @@ export function IconeDoTipoDeConta({
 }) {
   switch (tipo) {
     case "caixa":
-      return <Store aria-hidden="true" className={className} />;
+      return <Archive aria-hidden="true" className={className} />;
     case "banco":
       return <Landmark aria-hidden="true" className={className} />;
     case "mercado_pago":
@@ -76,4 +77,11 @@ export function IconeDoTipoDeConta({
     default:
       return <PiggyBank aria-hidden="true" className={className} />;
   }
+}
+
+export function matizDoTipoDeConta(tipo: string): string {
+  if (tipo === "caixa") return "#2DD4BF";
+  if (tipo === "banco") return "#7AA2FF";
+  if (tipo === "mercado_pago") return "#BA9AFF";
+  return "#FF8BB2";
 }

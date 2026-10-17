@@ -1,4 +1,4 @@
-import { Lock } from "lucide-react";
+import { Check, Landmark, Lock, Tags } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
@@ -34,6 +34,8 @@ import {
   Campo,
   EstadoDeErro,
   Segmentado,
+  SeloFinanceiro,
+  useConfirmacaoFinanceira,
 } from "./partes";
 
 function Rodape({
@@ -50,7 +52,7 @@ function Rodape({
   return (
     <div className="flex flex-col gap-3">
       {erro ? <EstadoDeErro mensagem={erro} /> : null}
-      <div className="flex gap-3">
+      <div className="flex flex-col-reverse gap-3">
         <button
           type="button"
           onClick={aoVoltar}
@@ -112,7 +114,7 @@ function LinhaDoInterruptor({
         checked={ligado}
         disabled={desabilitado}
         onCheckedChange={aoMudar}
-        className="data-[state=checked]:bg-admin-gold"
+        className="h-11 w-14 shrink-0 px-1 data-[state=checked]:bg-teal-400 [&>span[data-state=checked]]:translate-x-5 [&>span]:size-6"
       />
     </div>
   );
@@ -132,6 +134,7 @@ export function ContaFolha({
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
+  const confirmarVisualmente = useConfirmacaoFinanceira();
   const [inicial] = useState<FormularioDaConta>(() => ({
     ...(conta ? { id: conta.id } : {}),
     nome: conta?.nome ?? "",
@@ -169,6 +172,29 @@ export function ContaFolha({
     setEnviando(true);
     try {
       await salvarConta(resultado.payload);
+      confirmarVisualmente({
+        titulo: conta ? "Conta atualizada." : "Conta criada.",
+        descricao: resultado.payload.nome,
+        valor: resultado.payload.saldo_inicial,
+        rotuloValor: "Saldo inicial",
+        linhas: [
+          {
+            rotulo: "Tipo",
+            texto: rotuloDoTipoDeConta(resultado.payload.tipo),
+          },
+          {
+            rotulo: "Saldo inicial em",
+            texto: resultado.payload.saldo_inicial_em
+              .split("-")
+              .reverse()
+              .join("/"),
+          },
+          {
+            rotulo: "Conta ativa",
+            texto: resultado.payload.ativa ? "Sim" : "Não",
+          },
+        ],
+      });
       aoSalvar(conta ? "Conta atualizada." : "Conta criada.");
     } catch (erro) {
       setErroDoServidor(mensagemDeErroFinanceiro(erro));
@@ -181,6 +207,8 @@ export function ContaFolha({
   return (
     <FolhaFinanceira
       titulo={conta ? "Editar conta" : "Nova conta"}
+      icone={Landmark}
+      matiz="#7AA2FF"
       descricao="Onde o dinheiro da loja mora: gaveta, banco, Mercado Pago, cofre."
       aoFechar={aoFechar}
       rodape={
@@ -222,7 +250,7 @@ export function ContaFolha({
             ))}
           </select>
         </Campo>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-5">
           <Campo
             id="fin-conta-saldo"
             rotulo="Saldo inicial (R$)"
@@ -237,7 +265,7 @@ export function ContaFolha({
               inputMode="text"
               placeholder="0,00"
               onFlush={(saldoInicial) => atualizar({ saldoInicial })}
-              className={`${CLASSE_CAMPO} tabular-nums`}
+              className={`${CLASSE_CAMPO} min-h-16 text-2xl font-bold tabular-nums`}
             />
           </Campo>
           <Campo
@@ -255,7 +283,7 @@ export function ContaFolha({
             />
           </Campo>
         </div>
-        <p className="-mt-2 text-[11px] text-zinc-400">
+        <p className="-mt-2 text-xs text-zinc-400">
           Quanto a conta tinha no começo desse dia, antes dos lançamentos dele.
           Tudo o que entrou e saiu desse dia até hoje — vendas e lançamentos já
           pagos ou recebidos — entra no saldo de hoje.
@@ -285,6 +313,7 @@ export function CategoriaFolha({
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
+  const confirmarVisualmente = useConfirmacaoFinanceira();
   const [inicial] = useState<FormularioDaCategoria>(() => ({
     ...(categoria ? { id: categoria.id } : {}),
     nome: categoria?.nome ?? "",
@@ -332,6 +361,25 @@ export function CategoriaFolha({
     setEnviando(true);
     try {
       await salvarCategoria(resultado.payload);
+      confirmarVisualmente({
+        titulo: categoria ? "Categoria atualizada." : "Categoria criada.",
+        descricao: resultado.payload.nome,
+        linhas: [
+          {
+            rotulo: "Natureza",
+            texto:
+              resultado.payload.natureza === "receita" ? "Receita" : "Despesa",
+          },
+          {
+            rotulo: "Linha do resultado",
+            texto: rotuloDoGrupoDre(resultado.payload.grupo_dre),
+          },
+          {
+            rotulo: "Categoria ativa",
+            texto: resultado.payload.ativa ? "Sim" : "Não",
+          },
+        ],
+      });
       aoSalvar(categoria ? "Categoria atualizada." : "Categoria criada.");
     } catch (erro) {
       setErroDoServidor(mensagemDeErroFinanceiro(erro));
@@ -344,6 +392,8 @@ export function CategoriaFolha({
   return (
     <FolhaFinanceira
       titulo={categoria ? "Editar categoria" : "Nova categoria"}
+      icone={Tags}
+      matiz="#BA9AFF"
       descricao="A categoria diz em que linha do resultado o valor aparece."
       aoFechar={aoFechar}
       rodape={
@@ -403,7 +453,7 @@ export function CategoriaFolha({
                   "flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl border p-3 transition-colors",
                   escolhido
                     ? "border-admin-gold/50 bg-admin-gold/10"
-                    : "border-white/10 bg-zinc-900/70 hover:border-admin-gold/30 hover:bg-white/5",
+                    : "border-white/10 bg-[#17171C] hover:bg-white/5",
                 )}
               >
                 <input
@@ -413,11 +463,25 @@ export function CategoriaFolha({
                   value={grupo}
                   checked={escolhido}
                   onChange={() => atualizar({ grupoDre: grupo })}
-                  className="mt-1 size-4 accent-[hsl(var(--admin-gold))]"
+                  className="peer sr-only"
                 />
+                <span className="rounded-xl peer-focus-visible:ring-2 peer-focus-visible:ring-sky-300">
+                  <SeloFinanceiro
+                    icone={escolhido ? Check : Tags}
+                    matiz={
+                      grupo === "financeiro"
+                        ? "#BA9AFF"
+                        : grupo === "despesa_fixa"
+                          ? "#FF9F5A"
+                          : grupo === "deducao"
+                            ? "#FF8BB2"
+                            : "#2DD4BF"
+                    }
+                  />
+                </span>
                 <span className="min-w-0 text-sm font-bold text-white">
                   {rotuloDoGrupoDre(grupo)}
-                  <span className="block text-[11px] font-normal text-zinc-400">
+                  <span className="block text-xs font-normal text-zinc-400">
                     {ajudaDoGrupoDre(grupo)}
                   </span>
                 </span>
@@ -425,7 +489,7 @@ export function CategoriaFolha({
             );
           })}
           {erros.grupoDre ? (
-            <p role="alert" className="text-[11px] font-bold text-red-400">
+            <p role="alert" className="text-xs font-bold text-red-400">
               {erros.grupoDre}
             </p>
           ) : null}

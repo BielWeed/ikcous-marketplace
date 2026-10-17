@@ -1,4 +1,11 @@
-import { AlertTriangle, CircleCheck, Info } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  CircleCheck,
+  Info,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -28,11 +35,11 @@ import {
   CLASSE_BOTAO_PRIMARIO,
   CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
-  CLASSE_CASCA_DO_CARTAO,
   CLASSE_ROTULO_DO_CARTAO,
   Campo,
   Dinheiro,
   EstadoDeErro,
+  useConfirmacaoFinanceira,
 } from "./partes";
 
 /** Contas que podem ser gaveta: as do tipo caixa (a de sistema primeiro). */
@@ -62,7 +69,7 @@ function RodapeDeAcao({
   return (
     <div className="flex flex-col gap-3">
       {erro ? <EstadoDeErro mensagem={erro} /> : null}
-      <div className="flex gap-3">
+      <div className="flex flex-col-reverse gap-3">
         <button
           type="button"
           onClick={aoVoltar}
@@ -117,6 +124,7 @@ export function AbrirCaixaFolha({
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
+  const confirmarVisualmente = useConfirmacaoFinanceira();
   const caixas = useMemo(() => contasDeCaixa(contas), [contas]);
   const contaPadrao = caixas.at(0)?.id ?? CONTA_CAIXA_DA_LOJA;
   const [valor, setValor] = useState("");
@@ -141,6 +149,19 @@ export function AbrirCaixaFolha({
     if (numero === null || numero < 0 || numero > VALOR_MAXIMO) return;
     void enviar(async () => {
       await abrirCaixa({ valorAbertura: numero, contaId });
+      confirmarVisualmente({
+        titulo: "Caixa aberto.",
+        descricao:
+          caixas.find((c) => c.id === contaId)?.nome ?? "Caixa da loja",
+        valor: numero,
+        rotuloValor: "Troco inicial",
+        linhas: [
+          {
+            rotulo: "Troco inicial",
+            texto: "Notas e moedas contadas na abertura",
+          },
+        ],
+      });
       aoSalvar("Caixa aberto.");
     });
   }
@@ -150,6 +171,8 @@ export function AbrirCaixaFolha({
   return (
     <FolhaFinanceira
       titulo="Abrir caixa"
+      icone={Archive}
+      matiz="#2DD4BF"
       descricao="Conte o dinheiro que já está na gaveta antes da primeira venda."
       aoFechar={aoFechar}
       rodape={
@@ -168,7 +191,7 @@ export function AbrirCaixaFolha({
           id="fin-caixa-abertura"
           rotulo="Dinheiro na gaveta (R$)"
           erro={erroValor}
-          ajuda="Troco inicial: notas e moedas contadas agora."
+          ajuda="Troco inicial: notas e moedas contadas agora. Pode ser 0,00."
         >
           <LocalBufferedInput
             id="fin-caixa-abertura"
@@ -197,7 +220,7 @@ export function AbrirCaixaFolha({
             </select>
           </Campo>
         ) : (
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             Conta:{" "}
             <strong className="text-zinc-300">
               {nomeDaConta ?? "Caixa da loja"}
@@ -227,6 +250,7 @@ export function MovimentarCaixaFolha({
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
+  const confirmarVisualmente = useConfirmacaoFinanceira();
   const sangria = movimento === "sangria";
   const [valor, setValor] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -266,6 +290,28 @@ export function MovimentarCaixaFolha({
           (sangria ? "Sangria do caixa" : "Suprimento do caixa"),
         contaContrapartida: contrapartida || null,
       });
+      confirmarVisualmente({
+        titulo: sangria ? "Sangria registrada." : "Suprimento registrado.",
+        descricao:
+          descricao.trim() ||
+          (sangria ? "Sangria do caixa" : "Suprimento do caixa"),
+        valor: numero,
+        sentido: sangria ? -1 : 1,
+        linhas: [
+          {
+            rotulo: sangria ? "Saiu de" : "Entrou em",
+            texto:
+              contas.find((c) => c.id === contaDoCaixa)?.nome ??
+              "Caixa da loja",
+          },
+          {
+            rotulo: "Contrapartida",
+            texto:
+              contas.find((c) => c.id === contrapartida)?.nome ??
+              "Nenhuma conta da loja",
+          },
+        ],
+      });
       aoSalvar(sangria ? "Sangria registrada." : "Suprimento registrado.");
     });
   }
@@ -273,6 +319,8 @@ export function MovimentarCaixaFolha({
   return (
     <FolhaFinanceira
       titulo={sangria ? "Sangria" : "Suprimento"}
+      icone={sangria ? ArrowUpFromLine : ArrowDownToLine}
+      matiz={sangria ? "#FF9F5A" : "#2DD4BF"}
       descricao={
         sangria
           ? "Tirar dinheiro da gaveta (levar ao banco, guardar no cofre)."
@@ -303,8 +351,16 @@ export function MovimentarCaixaFolha({
             className={`${CLASSE_CAMPO} text-xl font-black tabular-nums`}
           />
         </Campo>
+        {sangria ? (
+          <dl className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <dt className="text-zinc-400">Esperado na gaveta</dt>
+            <dd className="text-xl font-bold">
+              <Dinheiro valor={esperado} />
+            </dd>
+          </dl>
+        ) : null}
         {passaDoEsperado ? (
-          <p className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
+          <p className="flex items-start gap-2 rounded-xl border border-orange-400/20 bg-orange-400/5 p-3 text-xs text-orange-300">
             <AlertTriangle
               aria-hidden="true"
               className="mt-0.5 size-4 shrink-0"
@@ -313,6 +369,11 @@ export function MovimentarCaixaFolha({
               É mais do que o esperado na gaveta (<Dinheiro valor={esperado} />
               ). Confira a contagem antes de registrar.
             </span>
+          </p>
+        ) : null}
+        {passaDoEsperado ? (
+          <p className="text-xs text-zinc-400">
+            O aviso não impede o registro.
           </p>
         ) : null}
         <Campo id="fin-caixa-mov-descricao" rotulo="Descrição">
@@ -413,6 +474,8 @@ export function FecharCaixaFolha({
     return (
       <FolhaFinanceira
         titulo="Caixa fechado"
+        icone={CircleCheck}
+        matiz="#2DD4BF"
         aoFechar={aoFechar}
         rodape={
           <button
@@ -443,6 +506,8 @@ export function FecharCaixaFolha({
   return (
     <FolhaFinanceira
       titulo="Fechar caixa"
+      icone={Archive}
+      matiz="#2DD4BF"
       descricao={`${caixa.contaNome} — conte a gaveta e informe o total.`}
       aoFechar={aoFechar}
       rodape={
@@ -473,6 +538,10 @@ export function FecharCaixaFolha({
             className={`${CLASSE_CAMPO} text-xl font-black tabular-nums`}
           />
         </Campo>
+        <p className="text-xs leading-relaxed text-zinc-400">
+          O fechamento usa os valores confirmados pelo servidor. A prévia pode
+          mudar se houver movimento durante a contagem.
+        </p>
         <ComparativoDoFechamento
           esperado={caixa.esperado}
           contado={previa ? (contado ?? 0) : null}
@@ -528,29 +597,29 @@ function ComparativoDoFechamento({
           : "Diferença";
   return (
     <dl
-      className="grid grid-cols-3 gap-2"
+      className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-[#17171C] p-4"
       aria-label="Esperado, contado e diferença"
     >
-      <div className={`p-3 ${CLASSE_CASCA_DO_CARTAO}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2 py-2">
         <dt className={CLASSE_ROTULO_DO_CARTAO}>Esperado</dt>
-        <dd className="mt-1 text-sm font-black text-white">
+        <dd className="text-2xl font-bold text-white">
           {esperado === null ? "—" : <Dinheiro valor={esperado} />}
         </dd>
       </div>
-      <div className={`p-3 ${CLASSE_CASCA_DO_CARTAO}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2 py-2">
         <dt className={CLASSE_ROTULO_DO_CARTAO}>Contado</dt>
-        <dd className="mt-1 text-sm font-black text-white">
+        <dd className="text-2xl font-bold text-white">
           {contado === null ? "—" : <Dinheiro valor={contado} />}
         </dd>
       </div>
       <div
         className={
           situacao === null
-            ? `p-3 ${CLASSE_CASCA_DO_CARTAO}`
+            ? "flex flex-wrap items-baseline justify-between gap-2 border-t border-white/10 py-3"
             : cn(
-                "rounded-2xl border p-3",
+                "flex flex-wrap items-baseline justify-between gap-2 rounded-2xl border p-3",
                 situacao === "quebra" && "border-red-500/30 bg-red-500/10",
-                situacao === "sobra" && "border-amber-500/30 bg-amber-500/10",
+                situacao === "sobra" && "border-orange-400/30 bg-orange-400/10",
                 situacao === "bateu" &&
                   "border-emerald-500/30 bg-emerald-500/10",
               )
@@ -559,9 +628,9 @@ function ComparativoDoFechamento({
         <dt className={CLASSE_ROTULO_DO_CARTAO}>{rotuloDiferenca}</dt>
         <dd
           className={cn(
-            "mt-1 text-sm font-black",
+            "text-2xl font-bold",
             situacao === "quebra" && "text-red-300",
-            situacao === "sobra" && "text-amber-200",
+            situacao === "sobra" && "text-orange-300",
             situacao === "bateu" && "text-emerald-300",
           )}
         >

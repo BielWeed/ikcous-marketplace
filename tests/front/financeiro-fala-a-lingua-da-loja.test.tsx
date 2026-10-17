@@ -242,24 +242,22 @@ describe("Financeiro fala a língua da loja", () => {
     expect(jargaoEm(texto)).toEqual([]);
     expect(texto).not.toMatch(/compet[êe]ncia/i);
 
-    // O rótulo do KPI é longo (~288px a 11px em maiúsculas; o cartão tem
-    // ~134px no celular): quebra em até duas linhas em vez de cortar em
-    // "SOBRA DEPOIS D…". jsdom não mede largura, então trava a classe — e
-    // todos os rótulos reservam as duas linhas, para os valores alinharem.
+    // O v8 prioriza lucro líquido e deixa rótulos crescerem sem corte.
+    // O piso alinha os valores; jsdom confere classes, não largura física.
     const rotulos = [
       ...hospedeiro.querySelectorAll<HTMLElement>("[data-rotulo-do-kpi]"),
     ];
     expect(rotulos.map((r) => normalizar(r.textContent))).toEqual([
+      "Lucro líquido",
       "Receita líquida",
       "Lucro bruto",
       "Sobra depois dos custos da venda",
-      "Lucro líquido",
     ]);
     for (const rotulo of rotulos) {
       expect(rotulo.classList.contains("truncate"), rotulo.textContent).toBe(
         false,
       );
-      expect(rotulo.classList.contains("line-clamp-2")).toBe(true);
+      expect(rotulo.classList.contains("line-clamp-2")).toBe(false);
       expect(rotulo.classList.contains("break-words")).toBe(true);
       expect(rotulo.classList.contains("min-h-[2.5em]")).toBe(true);
     }

@@ -112,6 +112,22 @@ function tooltips(tela: HTMLElement) {
 }
 
 describe("FluxoDeCaixaGrafico — painel de saldo com poucos pontos conhecidos", () => {
+  it("sem movimentos: explica o vazio e mantém acesso à alternativa em tabela", () => {
+    const tela = montar(
+      <FluxoDeCaixaGrafico pontos={[]} carregando={false} ativo marco={null} />,
+    );
+    expect(tela.textContent).toContain(
+      "Nenhum dinheiro entrou ou saiu nos últimos 30 dias.",
+    );
+    const tabela = tela.querySelector("details");
+    expect(tabela?.querySelector("summary")?.textContent).toBe(
+      "Ver os números em tabela",
+    );
+    expect(tabela?.textContent).toContain(
+      "Nenhum dia com movimento para listar.",
+    );
+    expect(tela.querySelectorAll(".recharts-wrapper")).toHaveLength(0);
+  });
   it("0 pontos com saldo conhecido: sem AreaChart, frase da data do marco, sem 'saldo de hoje', e o BarChart segue com tooltip", () => {
     // Marco depois do fim da janela: todo mundo fica null (a conta só passou
     // a existir "amanhã", do ponto de vista da janela de 30 dias).
