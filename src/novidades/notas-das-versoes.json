@@ -1,4 +1,17 @@
 {
+  "1.5.34": {
+    "titulo": "Menos perda de texto e contas mais certas",
+    "novidades": [],
+    "correcoes": [
+      "Se você escreve uma anotação no pedido, uma avaliação ou um pedido de devolução e troca de aplicativo, o texto não se perde mais quando o app se atualiza.",
+      "O lucro mostrado no painel agora desconta o cupom que o cliente usou.",
+      "Se um lançamento do financeiro for enviado duas vezes por falha de internet, ele não é registrado em dobro.",
+      "Quando o Melhor Envio recusa a etiqueta depois do pagamento, o painel avisa em vez de dizer que deu certo.",
+      "O app continua abrindo sem internet mesmo quando uma atualização é interrompida no meio.",
+      "O frete calculado não some mais quando o armazenamento do celular está cheio."
+    ],
+    "melhorias": []
+  },
   "1.5.33": {
     "titulo": "Pequeno ajuste nas atualizações",
     "novidades": [],
