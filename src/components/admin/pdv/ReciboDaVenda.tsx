@@ -20,13 +20,18 @@ import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 import {
   Ban,
+  Banknote,
   CheckCircle2,
+  CreditCard,
   MessageCircle,
+  Plus,
   Printer,
+  QrCode,
   RefreshCcw,
-  ShoppingCart,
+  UserRound,
 } from "lucide-react";
 import { type ReactElement, useState } from "react";
+import "./pdv.css";
 
 export interface PropsDoReciboDaVenda {
   readonly recibo: ReciboDaVendaRegistrada;
@@ -119,77 +124,132 @@ export function ReciboDaVenda({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-      <div className="flex flex-col items-center gap-1 border-b border-dashed border-zinc-800 pb-4 text-center">
-        {anulada ? (
-          <Ban className="size-8 text-red-400" />
-        ) : (
-          <CheckCircle2 className="size-8 text-emerald-400" />
-        )}
-        <h3 className="text-lg font-bold text-white">
-          {anulada ? "Venda anulada" : "Compra na loja"}
-        </h3>
-        <p className="text-xs text-zinc-500">
-          Pedido #{recibo.numero} ·{" "}
-          {new Date(recibo.criadoEm).toLocaleString("pt-BR")}
-        </p>
+    <div className="pdv-receipt">
+      <div className="pdv-layer-heading">
+        <h2>{anulada ? "Venda anulada" : "Venda registrada"}</h2>
+        <p className="pdv-muted">3 · Recibo</p>
       </div>
-
-      {/* `recibo.jaExistia` (achado BLOQUEIA da revisão: o campo existia no
-          tipo desde C3.1 mas nunca era lido em lugar nenhum — o duplo toque
-          ficava silencioso). Não é erro: é o balconista clicando de novo
-          porque a resposta da primeira vez se perdeu (pdv-c1.json) — o
-          recibo é o MESMO pedido, e este aviso é só para ele conferir que
-          bateu com o que já tinha cobrado antes. */}
-      {recibo.jaExistia && (
-        <p
-          role="status"
-          className="flex items-center gap-2 rounded-xl border border-amber-800/50 bg-amber-950/30 p-3 text-xs text-amber-200"
-        >
-          <RefreshCcw className="size-4 shrink-0" />
-          Esta venda já tinha sido registrada; confira o que saiu no recibo.
-        </p>
-      )}
-
-      <div className="flex flex-col gap-1 text-sm">
-        <p className="font-semibold text-zinc-300">Cliente</p>
-        <p className="text-zinc-400">{nomeDoCliente(recibo.cliente)}</p>
-        {whatsapp && <p className="text-zinc-500">{whatsapp}</p>}
-      </div>
-
-      <ul className="flex flex-col gap-1.5 text-sm">
-        {recibo.itens.map((item) => (
-          <li key={item.chave} className="flex justify-between text-zinc-300">
-            <span>
-              {item.quantidade}x {item.nome}
-              {item.variacao ? ` (${item.variacao})` : ""}
-            </span>
-            <span>R$ {reais(item.preco * item.quantidade)}</span>
-          </li>
-        ))}
-      </ul>
-
-      <div className="flex flex-col gap-1 border-t border-zinc-800 pt-3 text-sm">
-        <div className="flex justify-between text-zinc-400">
-          <span>Subtotal</span>
-          <span>R$ {reais(recibo.subtotal)}</span>
-        </div>
-        {recibo.desconto > 0 && (
-          <div className="flex justify-between text-zinc-400">
-            <span>Desconto</span>
-            <span>- R$ {reais(recibo.desconto)}</span>
+      <div className="pdv-card pdv-stack">
+        <div className="pdv-heading">
+          {anulada ? (
+            <Ban aria-hidden="true" className="pdv-icon pdv-red" />
+          ) : (
+            <CheckCircle2 aria-hidden="true" className="pdv-icon pdv-green" />
+          )}
+          <div>
+            <h3 className="text-lg font-bold">
+              {anulada ? "Venda anulada" : "Compra na loja"}
+            </h3>
+            <p className="pdv-muted">
+              Pedido #{recibo.numero} ·{" "}
+              {new Date(recibo.criadoEm).toLocaleString("pt-BR")}
+            </p>
           </div>
-        )}
-        <div className="flex justify-between text-lg font-bold text-white">
-          <span>Total</span>
-          <span>R$ {reais(recibo.total)}</span>
         </div>
-        <div className="flex justify-between text-zinc-500">
-          <span>Pagamento</span>
-          <span>{ROTULO_DO_PAGAMENTO[recibo.pagamento]}</span>
+        {recibo.jaExistia && (
+          <p role="status" className="pdv-muted flex items-start gap-2">
+            <RefreshCcw
+              aria-hidden="true"
+              className="pdv-orange size-4 shrink-0"
+            />
+            Esta venda já tinha sido registrada; confira o que saiu no recibo.
+          </p>
+        )}
+        <div className="pdv-heading pdv-divider">
+          <UserRound aria-hidden="true" className="pdv-icon pdv-blue" />
+          <div>
+            <p className="sr-only">Cliente</p>
+            <p>
+              {nomeDoCliente(recibo.cliente)}
+              {recibo.cliente.tipo === "avulso" && " · cliente avulso"}
+            </p>
+            {whatsapp && <p className="pdv-muted">WhatsApp · {whatsapp}</p>}
+          </div>
+        </div>
+        <ul className="pdv-receipt-lines pdv-divider">
+          {recibo.itens.map((item) => (
+            <li key={item.chave} className="pdv-receipt-line">
+              <span>
+                <span className="block">{item.nome}</span>
+                <span className="pdv-muted">
+                  {item.variacao ? `${item.variacao} · ` : ""}
+                  {item.quantidade} un. × R$ {reais(item.preco)}
+                </span>
+              </span>
+              <span>R$ {reais(item.preco * item.quantidade)}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="pdv-stack pdv-divider">
+          <div className="pdv-total pdv-muted">
+            <span>Subtotal</span>
+            <span>R$ {reais(recibo.subtotal)}</span>
+          </div>
+          {recibo.desconto > 0 && (
+            <div className="pdv-total pdv-muted">
+              <span>Desconto</span>
+              <span>- R$ {reais(recibo.desconto)}</span>
+            </div>
+          )}
+          <div className="pdv-total">
+            <span>Total</span>
+            <strong>R$ {reais(recibo.total)}</strong>
+          </div>
+        </div>
+        <div className="pdv-heading pdv-divider">
+          {recibo.pagamento === "cash" ? (
+            <Banknote aria-hidden="true" className="pdv-icon pdv-green" />
+          ) : recibo.pagamento === "pix" ? (
+            <QrCode aria-hidden="true" className="pdv-icon pdv-teal" />
+          ) : (
+            <CreditCard aria-hidden="true" className="pdv-icon pdv-purple" />
+          )}
+          <div>
+            <p className="sr-only">Pagamento</p>
+            <p>{ROTULO_DO_PAGAMENTO[recibo.pagamento]}</p>
+            <p className="pdv-muted">Pagamento conferido pelo lojista</p>
+          </div>
         </div>
       </div>
 
+      {!anulada && (
+        <div className="pdv-stack">
+          <div className="pdv-actions">
+            <Button
+              type="button"
+              variant="outline"
+              className="pdv-secondary"
+              disabled={!linkWhatsapp}
+              aria-describedby={
+                !linkWhatsapp ? "whatsapp-recibo-indisponivel" : undefined
+              }
+              onClick={aoEnviarPorWhatsapp}
+            >
+              <MessageCircle aria-hidden="true" className="pdv-green size-5" />
+              Enviar por WhatsApp
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="pdv-secondary"
+              onClick={() => globalThis.print()}
+            >
+              <Printer aria-hidden="true" className="pdv-blue size-5" />
+              Imprimir
+            </Button>
+          </div>
+          {!linkWhatsapp && (
+            <p
+              id="whatsapp-recibo-indisponivel"
+              className="pdv-muted text-center"
+            >
+              {whatsapp
+                ? "Indisponível: WhatsApp do cliente inválido."
+                : "Indisponível: cliente sem WhatsApp."}
+            </p>
+          )}
+        </div>
+      )}
       {aoAnular && (
         <AnularVendaDoBalcao
           total={recibo.total}
@@ -199,43 +259,14 @@ export function ReciboDaVenda({
           aoConcluir={() => setAnulada(true)}
         />
       )}
-
-      <div className="flex flex-col gap-2 sm:flex-row">
-        {linkWhatsapp && !anulada && (
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={aoEnviarPorWhatsapp}
-          >
-            <MessageCircle className="mr-1.5 size-4" />
-            Enviar por WhatsApp
-          </Button>
-        )}
-        {!anulada && (
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={() => globalThis.print()}
-          >
-            <Printer className="mr-1.5 size-4" />
-            Imprimir
-          </Button>
-        )}
-        <Button
-          type="button"
-          className="flex-1 bg-admin-gold text-black hover:bg-admin-gold/90"
-          onClick={limparCupom}
-        >
-          <ShoppingCart className="mr-1.5 size-4" />
-          Nova venda
-        </Button>
-      </div>
-
-      {/* `OrderReceipt` é `hidden ... print:block` (contexto, fato 14): não
-          aparece aqui na tela, só quando o botão "Imprimir" chama
-          `window.print()`. */}
+      <Button
+        type="button"
+        className="pdv-primary bg-admin-gold text-black"
+        onClick={limparCupom}
+      >
+        <Plus aria-hidden="true" className="size-5" />
+        Nova venda
+      </Button>
       <OrderReceipt
         order={construirOrderParaImpressao(recibo)}
         storeName={storeName}
