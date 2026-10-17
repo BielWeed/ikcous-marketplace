@@ -61,6 +61,13 @@ const lerLF = (arquivo) =>
 const SQL_MIGRATION = lerLF(NOME);
 const SQL_ROLLBACK = lerLF(`rollback-manual-${NOME}`);
 const SQL_99 = lerLF(NOME_99);
+// A 249 sucede a 235. Esta prova continua medindo a correção histórica da trava:
+// desfaz SÓ a sucessora no clone antes das corridas e a repõe no fim, sem relaxar
+// nenhum hash/assert da 235 nem trocar corpos enquanto outra conexão corre.
+const NOME_SUCESSORA =
+  "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql";
+const SQL_SUCESSORA = lerLF(NOME_SUCESSORA);
+const RB_SUCESSORA = lerLF(`rollback-manual-${NOME_SUCESSORA}`);
 
 const FN =
   "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)";
@@ -1131,12 +1138,27 @@ async function main() {
   const c = new Client({ connectionString: url });
   await c.connect();
   const resultados = [];
+  let reporSucessora = false;
+  let erroDaReposicao = null;
   try {
     const existe = await c.query("SELECT to_regprocedure($1) AS f", [FN]);
     if (!existe.rows[0].f) {
       falhar("FALHOU", `${FN} não existe: o banco não foi migrado.`);
     }
-    const f = await defDaFuncao(c);
+    let f = await defDaFuncao(c);
+    const hashSucessora = md5(corpoDaFuncao(SQL_SUCESSORA));
+    if (f.corpo === hashSucessora) {
+      await c.query("BEGIN");
+      try {
+        await c.query(RB_SUCESSORA);
+        await c.query("COMMIT");
+        reporSucessora = true;
+      } catch (e) {
+        await c.query("ROLLBACK");
+        throw e;
+      }
+      f = await defDaFuncao(c);
+    }
     if (f.corpo !== HASH_NOVO) {
       falhar(
         "FALHOU",
@@ -1163,8 +1185,28 @@ async function main() {
       }
     }
   } finally {
-    await c.end();
+    try {
+      if (reporSucessora) {
+        await c.query("ROLLBACK");
+        await c.query("RESET ROLE");
+        await c.query("BEGIN");
+        try {
+          await c.query(SQL_SUCESSORA);
+          await c.query("COMMIT");
+          assert.equal(
+            (await defDaFuncao(c)).corpo,
+            md5(corpoDaFuncao(SQL_SUCESSORA)),
+          );
+        } catch (e) {
+          await c.query("ROLLBACK");
+          erroDaReposicao = e;
+        }
+      }
+    } finally {
+      await c.end();
+    }
   }
+  if (erroDaReposicao) throw erroDaReposicao;
   const falhas = resultados.filter((r) => !r.ok);
   const resumo = `${resultados.length - falhas.length}/${resultados.length} provas da venda repetida do balcão verdes.`;
   console.log(`\n[venda-balcao-mesma-chave] ${resumo}`);

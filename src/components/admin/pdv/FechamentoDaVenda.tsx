@@ -272,6 +272,7 @@ export function FechamentoDaVenda({
             </label>
             <LocalBufferedInput
               id="motivo-do-desconto"
+              maxLength={2000}
               disabled={estado.enviando}
               value={motivoStr}
               onFlush={(valor) => {
