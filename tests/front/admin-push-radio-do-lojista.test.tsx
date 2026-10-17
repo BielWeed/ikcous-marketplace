@@ -399,7 +399,7 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
       ([, intervalo]) => intervalo === 60_000,
     );
     expect(indice).toBeGreaterThanOrEqual(0);
-    const relogio = iniciarIntervalo.mock.results[indice].value;
+    const relogio = iniciarIntervalo.mock.results.at(indice)?.value;
 
     await act(async () => {
       vi.advanceTimersByTime(60_000);

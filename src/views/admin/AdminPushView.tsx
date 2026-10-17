@@ -1700,7 +1700,7 @@ export const AdminPushView = memo(function AdminPushView({
         <div className="bg-gradient-to-b from-transparent to-admin-bg pt-6">
           {/* Botão de Ação */}
           <button
-            className="flex min-h-[60px] w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] px-3 py-3 text-base font-bold leading-snug text-zinc-950 shadow-[0_8px_28px_rgba(226,168,30,0.2)] transition-shadow motion-reduce:transition-none hover:shadow-[0_8px_32px_rgba(226,168,30,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-400 disabled:shadow-none"
+            className="flex min-h-[60px] w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-b from-[#F8D25A] to-[#E2A81E] p-3 text-base font-bold leading-snug text-zinc-950 shadow-[0_8px_28px_rgba(226,168,30,0.2)] transition-shadow motion-reduce:transition-none hover:shadow-[0_8px_32px_rgba(226,168,30,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-400 disabled:shadow-none"
             onClick={handleSend}
             disabled={botaoEnviarDesabilitado}
           >
