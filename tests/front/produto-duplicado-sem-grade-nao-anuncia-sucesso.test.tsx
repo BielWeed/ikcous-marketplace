@@ -116,11 +116,13 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   AlertDialogAction: ({
     children,
     onClick,
+    "aria-label": ariaLabel,
   }: {
     children: ReactNode;
     onClick?: () => void;
+    "aria-label"?: string;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} aria-label={ariaLabel}>
       {children}
     </button>
   ),
@@ -169,8 +171,9 @@ function localizarBotaoPorTexto(
   raizDom: ParentNode,
   texto: string,
 ): HTMLButtonElement | undefined {
-  return [...raizDom.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+  return [...raizDom.querySelectorAll("button")].find(
+    (b) =>
+      b.getAttribute("aria-label") === texto || b.textContent?.includes(texto),
   );
 }
 

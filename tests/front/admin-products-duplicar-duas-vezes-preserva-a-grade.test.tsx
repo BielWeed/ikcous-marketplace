@@ -133,11 +133,13 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   AlertDialogAction: ({
     children,
     onClick,
+    "aria-label": ariaLabel,
   }: {
     children: ReactNode;
     onClick?: () => void;
+    "aria-label"?: string;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} aria-label={ariaLabel}>
       {children}
     </button>
   ),
@@ -186,8 +188,9 @@ function localizarBotaoPorTexto(
   raizDom: ParentNode,
   texto: string,
 ): HTMLButtonElement | undefined {
-  return [...raizDom.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+  return [...raizDom.querySelectorAll("button")].find(
+    (b) =>
+      b.getAttribute("aria-label") === texto || b.textContent?.includes(texto),
   ) as HTMLButtonElement | undefined;
 }
 
@@ -253,6 +256,7 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
   }
 
   async function duplicar() {
+    const chamadasAntes = addProduct.mock.calls.length;
     const botaoDuplicar = localizarBotaoPorTexto(
       hospedeiro,
       "Duplicar Produto",
@@ -261,6 +265,7 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
     await act(async () => {
       botaoDuplicar.click();
     });
+    expect(addProduct).toHaveBeenCalledTimes(chamadasAntes);
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,

@@ -79,10 +79,13 @@ describe("Produtos — guia com 44px e letra de 11px (L4)", () => {
     const linhas = [
       ...conceitos.matchAll(/className="[^"]*justify-between[^"]*"/g),
     ];
-    // 5 caixas de fórmula/regra + 4 linhas internas (fórmula e exemplo, 2 métricas)
-    expect(linhas.length).toBe(9);
+    // Sete conceitos e dois exemplos: nove linhas renderizadas a partir de dois moldes.
+    expect(conceitos.match(/formula: /g)).toHaveLength(7);
+    expect(conceitos.match(/exemplo:\s/g)).toHaveLength(2);
+    expect(linhas.length).toBe(2);
     for (const linha of linhas) {
       expect(linha[0], linha[0]).toContain("gap-2");
+      expect(linha[0], linha[0]).toContain("flex-wrap");
     }
   });
 });
