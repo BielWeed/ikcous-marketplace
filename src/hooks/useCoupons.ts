@@ -139,6 +139,8 @@ async function consultarCupom(
 export function useCoupons(autoFetch = false, sondarAlcance = false) {
   const { isAdmin } = useAuth();
   const [alcanceSuportado, setAlcanceSuportado] = useState(false);
+  /** A sonda ja respondeu (sim ou nao): antes disso `false` e so 'ainda nao sei'. */
+  const [alcanceSondado, setAlcanceSondado] = useState(false);
   const [coupons, setCoupons] = useState<Coupon[]>(
     () => cachedCouponsData || [],
   );
@@ -190,7 +192,10 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     if (!sondarAlcance) return;
     let vivo = true;
     bancoTemAlcanceDoCupom().then((sim) => {
-      if (vivo) setAlcanceSuportado(sim);
+      if (vivo) {
+        setAlcanceSuportado(sim);
+        setAlcanceSondado(true);
+      }
     });
     return () => {
       vivo = false;
@@ -478,6 +483,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     getCouponStats,
     /** `true` só depois da sonda confirmar a coluna `alcance` no banco. */
     alcanceSuportado,
+    alcanceSondado,
     listarClientesDoCupom,
     definirClientesDoCupom,
     buscarClientesParaCupom,

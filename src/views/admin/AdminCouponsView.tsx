@@ -28,8 +28,10 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   AVISO_CUPOM_PODE_COBRIR_A_COMPRA,
+  AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP,
   cupomPodeCobrirACompraInteira,
 } from "@/lib/cupom-que-cobre-a-compra";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { type RotuloDeCupom, rotuloDoCupom } from "@/utils/status-do-cupom";
@@ -103,6 +105,10 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   } = useCoupons(true);
   const isOffline = useOnlineStatus();
   const { config, isLoaded: configLoaded, updateConfig } = useStore();
+  // Mesma regra do formulario: sem nenhuma forma 'na retirada/entrega', a loja
+  // so recebe pelo app e um cupom que zera a compra deixa a cliente sem caminho.
+  const lojaSoRecebePeloApp =
+    formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
 
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
@@ -798,7 +804,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                           </p>
                           {cupomPodeCobrirACompraInteira(coupon) && (
                             <p className="text-sm leading-relaxed text-orange-200">
-                              {AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
+                              {lojaSoRecebePeloApp
+                                ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
+                                : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
                             </p>
                           )}
                           {indisponivel && (

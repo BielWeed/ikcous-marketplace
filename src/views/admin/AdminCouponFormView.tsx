@@ -68,6 +68,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     addCoupon,
     updateCoupon,
     alcanceSuportado,
+    alcanceSondado,
     listarClientesDoCupom,
     definirClientesDoCupom,
     buscarClientesParaCupom,
@@ -860,7 +861,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
             </section>
 
             {/* Quem pode usar (frente B). Banco sem a coluna: escondido. */}
-            {alcanceSuportado === false && (
+            {alcanceSondado && !alcanceSuportado && (
               <p
                 role="note"
                 className="rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-zinc-300"
