@@ -1410,7 +1410,7 @@ export const AdminPushView = memo(function AdminPushView({
                   <button
                     onClick={() => onNavigate("admin-push")}
                     disabled={isOffline}
-                    className="min-h-12 rounded-full border border-admin-border bg-white/5 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed"
+                    className="min-h-12 rounded-full border border-admin-border bg-white/5 px-4 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Mudar para todos os clientes
                   </button>
@@ -1563,7 +1563,7 @@ export const AdminPushView = memo(function AdminPushView({
                 <SelectTrigger
                   id="push-destination"
                   aria-label="Para onde o cliente vai ao clicar"
-                  className="h-auto min-h-[88px] w-full justify-between gap-3 whitespace-normal rounded-[20px] border-white/[0.08] bg-admin-card dark:bg-admin-card px-3.5 py-3 text-left shadow-none motion-reduce:transition-none focus-visible:border-white/35 focus-visible:ring-white/10 disabled:opacity-100 [&>svg]:hidden"
+                  className="h-auto min-h-[88px] w-full justify-between gap-3 whitespace-normal rounded-[20px] border-white/[0.08] bg-admin-card dark:bg-admin-card px-3.5 py-3 text-left shadow-none motion-reduce:transition-none focus-visible:border-white/35 focus-visible:ring-white/10 disabled:opacity-60 [&>svg]:hidden"
                 >
                   <SeloDeIcone
                     icone={Home}
@@ -1981,7 +1981,7 @@ export const AdminPushView = memo(function AdminPushView({
                 <button
                   onClick={handleTestSubscription}
                   disabled={isOffline}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-border bg-white/5 min-h-12 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10 motion-safe:active:scale-95 disabled:cursor-not-allowed"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-border bg-white/5 min-h-12 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10 motion-safe:active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Zap className="size-3 text-zinc-300" />
                   Testar Recebimento Neste Aparelho
