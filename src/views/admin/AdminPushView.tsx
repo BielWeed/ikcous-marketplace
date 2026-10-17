@@ -284,7 +284,7 @@ function PreviaNoCelular({
 
   return (
     <div data-testid="previa-celular" className="min-w-0">
-      <div className="relative min-w-0 w-full overflow-hidden rounded-[32px] border border-white/[0.14] bg-gradient-to-b from-[#2A2A33] to-[#0D0D11] p-4 shadow-[0_16px_40px_rgba(0,0,0,0.2)] sm:p-5">
+      <div className="relative mx-auto min-w-0 w-full max-w-[360px] overflow-hidden rounded-[32px] border border-white/[0.14] bg-gradient-to-b from-[#2A2A33] to-[#0D0D11] p-4 shadow-[0_16px_40px_rgba(0,0,0,0.2)] sm:p-5">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -top-12 left-1/4 h-28 w-1/2 rounded-full bg-white/[0.13] blur-3xl"
