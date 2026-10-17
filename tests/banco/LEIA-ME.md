@@ -888,3 +888,31 @@ aplicação.
   grant a anon e a service_role, dona lê, sem CHECK, limite maior, sem cascata, FK para auth.users,
   sem gatilho) derrubam cada um uma asserção, e a asserção certa. O ensaio do roteiro de
   privacidade (`anonimizar-conta-ensaio-viva.cjs`) cobre o passo que apaga as anotações da cliente.
+
+- **`notes-do-pedido-fechada-viva.cjs`** (20261248000000): execute pelo
+  `node tests/banco/rodar-isolado.cjs tests/banco/notes-do-pedido-fechada-viva.cjs`.
+  Segunda metade da anotação interna: a migration tira SÓ o `UPDATE` da coluna `marketplace_orders.notes`
+  do `authenticated` (um painel antigo ainda aberto gravaria a anotação onde a cliente lê). Com papéis
+  reais (SET LOCAL ROLE): o CONTROLE por rollback mostra que antes o admin grava `notes`; depois, admin,
+  dona do pedido e anon recebem 42501 em UPDATE, UPDATE sem mudar valor, UPDATE junto com o rastreio e
+  UPSERT, e nada muda (o rastreio recusado junto não grava); o admin ainda atualiza `tracking_code`, o
+  `service_role` atualiza `notes` e uma função SECURITY DEFINER do tipo das RPCs de pedido ainda grava;
+  leitura, INSERT com `notes`, rastreio e a função dão o MESMO resultado antes e depois, papel a papel.
+  Dado existente: as linhas (inclusive uma anotação antiga em `notes`) ficam byte a byte e a ACL muda só
+  na entrada de coluna de `notes` (tabela, outras colunas, políticas, gatilhos e funções idênticos).
+  Aplicar 2x é idêntico, rollback devolve a ACL de antes, reaplicar fecha de novo; um erro depois do
+  REVOKE desfaz o REVOKE; aplicar com um painel antigo no meio do salvamento não espera por ele e fecha
+  só `notes` para o próximo comando dele. O pré-voo recusa sem escrever 25 ACLs divergentes (18 a partir do estado de antes, 7 a partir do de depois) (tabela inteira
+  para authenticated/anon/PUBLIC, inclusive herdada; anon/PUBLIC em coluna; coluna a mais, inclusive por PUBLIC ou por
+  papel herdado com `WITH INHERIT TRUE` — o detector lê o privilégio EFETIVO, não só a ACL direta; `WITH INHERIT FALSE`
+  e membro `NOINHERIT` não contam e o apply segue; GRANT OPTION;
+  rastreio sem grant; service_role sem UPDATE; coluna, tabela ou papel ausentes) e a conferência final
+  aborta e desfaz quando o REVOKE não revoga (privilégio herdado por papel) e quando um REVOKE de tabela
+  levaria o rastreio. Portão 51a/51b lido como authenticated, negativo por objeto. 11 mutantes (sem o REVOKE;
+  REVOKE de coluna que leva o rastreio; REVOKE de tabela inteira; service_role fechado junto; migration que
+  apaga as anotações; sem a conferência final; sem o pré-voo; pré-voo sem a tabela inteira; pré-voo sem a
+  coluna a mais; detector do authenticated e detector de anon/PUBLIC voltando a ler só a ACL direta) derrubam cada um a prova certa. **Limite declarado:** os `REVOKE ... FROM anon` e
+  `FROM PUBLIC` são camada extra: o pré-voo já recusa anon/PUBLIC com UPDATE de coluna, então nenhum estado
+  aceito os exercita (nenhum mutante os alcança). Não prova o Postgres da Supabase.
+  `admin-atual-viva.cjs` passou a usar `tracking_code` (coluna que o authenticated ainda atualiza) onde
+  usava `notes` só como "uma coluna qualquer" para provar que o DML em pedido alheio acha 0 linhas.

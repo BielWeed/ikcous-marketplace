@@ -195,6 +195,8 @@ on:
           - 49b-antes-lancamento-idempotente-base-vigente
           - 50a-conferir-nota-interna-do-pedido-aplicado
           - 50b-antes-nota-interna-do-pedido-base-vigente
+          - 51a-conferir-notes-do-pedido-fechada-aplicado
+          - 51b-antes-notes-do-pedido-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

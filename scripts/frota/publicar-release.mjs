@@ -542,6 +542,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "49b-antes-lancamento-idempotente-base-vigente",
   "50a-conferir-nota-interna-do-pedido-aplicado",
   "50b-antes-nota-interna-do-pedido-base-vigente",
+  "51a-conferir-notes-do-pedido-fechada-aplicado",
+  "51b-antes-notes-do-pedido-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

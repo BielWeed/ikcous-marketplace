@@ -505,6 +505,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/lancamento-idempotente-viva.cjs",
     // 20261247000000: a anotacao interna do pedido nao chega a cliente (tabela so do admin de agora; papeis reais, pre-voo, rollbacks, mutantes e o portao 50a/50b).
     "tests/banco/nota-interna-do-pedido-viva.cjs",
+    // 20261248000000: a coluna notes do pedido fecha para a gravacao do painel (REVOKE UPDATE (notes) do authenticated; ACL de antes e de depois, pre-voo, conferencia final, atomicidade, mutantes e o portao 51a/51b).
+    "tests/banco/notes-do-pedido-fechada-viva.cjs",
     // 20261236000000: a compra que da R$ 0,00 nao se paga pelo app (create_marketplace_order_v24 recusa o total zero pelo app antes de gravar pedido, estoque e cupom; comportamento pelo checkout real, ordem provada por sequencia, e portao 37a/37b).
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-viva.cjs",
     "tests/banco/a-compra-que-da-zero-reais-nao-se-paga-pelo-app-portao-viva.cjs",

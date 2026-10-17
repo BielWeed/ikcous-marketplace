@@ -1176,7 +1176,7 @@ PROVAS.push({
       const up = await comoQuem(
         cliente,
         quem,
-        "UPDATE public.marketplace_orders SET notes = notes WHERE user_id IS DISTINCT FROM auth.uid()",
+        "UPDATE public.marketplace_orders SET tracking_code = tracking_code WHERE user_id IS DISTINCT FROM auth.uid()",
         [],
         { desfazer: true },
       );
@@ -1211,7 +1211,7 @@ PROVAS.push({
     const upAdm = await comoQuem(
       cliente,
       "admin",
-      "UPDATE public.marketplace_orders SET notes = notes WHERE user_id IS DISTINCT FROM auth.uid()",
+      "UPDATE public.marketplace_orders SET tracking_code = tracking_code WHERE user_id IS DISTINCT FROM auth.uid()",
       [],
       { desfazer: true },
     );
