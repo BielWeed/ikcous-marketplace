@@ -83,13 +83,14 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-/** O "Salvar" do MODAL da variação (o cabeçalho da tela também diz "Salvar"). */
+/** A confirmação do modal se distingue do Salvar do produto. */
 function clicarSalvarDoModalDaVariacao() {
   const modal = document.getElementById("variant-status")?.closest(".fixed");
   const botao = [...(modal?.querySelectorAll("button") ?? [])].find(
-    (b) => b.textContent?.trim() === "Salvar",
+    (b) => b.textContent?.trim() === "Salvar variação",
   );
-  if (!botao) throw new Error('Botão "Salvar" do modal não está na tela.');
+  if (!botao)
+    throw new Error('Botão "Salvar variação" do modal não está na tela.');
   botao.click();
 }
 

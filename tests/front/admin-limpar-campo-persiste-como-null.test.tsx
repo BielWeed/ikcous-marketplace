@@ -172,10 +172,17 @@ describe("AdminProductFormView — limpar campo persiste como null (#96)", () =>
   }
 
   async function salvar() {
-    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
+    // O redesenho levou a ação principal para uma barra fixa em portal.
+    // Ela pertence ao formulário, mas fica fora do hospedeiro no DOM.
+    const barra = document.querySelector(
+      '[role="region"][aria-label="Ações do produto"]',
+    );
+    expect(barra).not.toBeNull();
+    const botao = [...barra!.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Salvar",
     ) as HTMLButtonElement;
     expect(botao).toBeDefined();
+    expect(botao.disabled).toBe(false);
     await act(async () => {
       botao.click();
       await esperarMicrotarefas();
@@ -198,9 +205,19 @@ describe("AdminProductFormView — limpar campo persiste como null (#96)", () =>
   it("desmarcar 'Produto em Promoção' manda originalPrice como null, não undefined", async () => {
     await abrirProdutoEmPromocao();
 
+    const secao = document.querySelector<HTMLButtonElement>(
+      'section[aria-label="Custo e lucro"] > button[aria-expanded]',
+    );
+    expect(secao).not.toBeNull();
+    await act(async () => {
+      secao!.click();
+    });
+    expect(secao!.getAttribute("aria-expanded")).toBe("true");
+
     const marcador = document.getElementById(
       "product-promo-active",
     ) as HTMLInputElement;
+    expect(marcador.closest("[hidden]")).toBeNull();
     await act(async () => {
       marcador.click();
     });

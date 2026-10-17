@@ -6,7 +6,8 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { PhoneSimulator } from "@/components/admin/PhoneSimulator";
-import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
+import { SecaoDoProduto } from "@/components/admin/products/SecaoDoProduto";
+import "@/components/admin/products/formulario-produto.css";
 import {
   type LinhaProntaDaGrade,
   ModalVarianteGrade,
@@ -88,7 +89,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
-  BookOpen,
+  Barcode,
   Camera,
   Check,
   DollarSign,
@@ -103,10 +104,9 @@ import {
   Power,
   Scissors,
   ShieldCheck,
+  ShoppingBag,
   Smartphone,
   Trash2,
-  TrendingDown,
-  TrendingUp,
   X,
 } from "lucide-react";
 import React, {
@@ -2521,26 +2521,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // formulario vazio editavel e armadilha (save destrutivo). Erro na tela.
   if (productId && !isLoading && !currentProduct) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#08080a] px-5 text-center text-white">
         <div className="flex size-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
-          <svg
-            className="size-8 text-red-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.5}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-            />
-          </svg>
+          <AlertTriangle className="size-8 text-rose-300" />
         </div>
-        <p className="mt-6 text-[11px] font-black uppercase tracking-[0.2em] text-red-400">
+        <p className="mt-6 text-lg font-bold text-rose-300">
           Não foi possível carregar este produto
         </p>
-        <p className="mt-1 text-[11px] text-zinc-500">
+        <p className="mt-2 text-sm leading-relaxed text-zinc-300">
           Verifique a conexão — o formulário fica bloqueado para proteger os
           dados
         </p>
@@ -2631,15 +2619,22 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const marginPct =
     priceVal > 0 ? ((priceVal - costPriceVal) / priceVal) * 100 : 0;
   const hasActiveVariants = formData.variants.some((v) => v.active);
+  // Indicadores de apresentação, a partir dos mesmos campos da validação.
+  const preenchidos = [
+    formData.name,
+    formData.description,
+    formData.category,
+    formData.price,
+    formData.stock,
+  ].filter(Boolean).length;
+  const variacoesAtivas = formData.variants.filter((v) => v.active).length;
+  const avisoDeCusto =
+    (costError && !costError.startsWith("Aviso") ? costError : "") ||
+    originalPriceError;
+  const avisoAvancado = skuError || codigoBarrasError || estoqueMinimoError;
 
   return (
-    <div className="relative h-auto min-h-full overflow-x-hidden bg-zinc-950 pb-[calc(11.25rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] lg:pb-28 text-white">
-      {/* Background Decor */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute right-0 top-0 h-[500px] w-[500px] rounded-full bg-emerald-500/5 blur-[120px]" />
-        <div className="absolute bottom-0 left-0 h-[500px] w-[500px] rounded-full bg-blue-500/5 blur-[120px]" />
-      </div>
-
+    <div className="produto-formulario relative h-auto min-h-full overflow-x-hidden pb-[calc(19rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] text-white lg:pb-60">
       {gerenciandoCategorias && (
         <Suspense fallback={null}>
           <GerenciarCategorias
@@ -2662,22 +2657,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <motion.div
                   initial={{ scale: 0.9, y: 20 }}
                   animate={{ scale: 1, y: 0 }}
-                  className="gpu-accelerated relative w-full max-w-md overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900 p-8 shadow-2xl"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="titulo-da-categoria"
+                  className="produto-modal gpu-accelerated relative max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/10 p-5 shadow-2xl"
                 >
                   <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-5">
                     <Layers className="size-24 text-white" />
                   </div>
 
                   <div className="relative z-10 mb-8 flex items-center gap-4">
-                    <div className="flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
-                      <Layers className="size-6 text-emerald-500" />
+                    <div className="flex size-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-400/10">
+                      <Layers className="size-6 text-violet-300" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-black tracking-tight">
+                      <h3
+                        id="titulo-da-categoria"
+                        className="text-xl font-bold"
+                      >
                         Nova Categoria
                       </h3>
                       <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
-                        Classificação de Estoque
+                        Novo setor para organizar a loja
                       </p>
                     </div>
                   </div>
@@ -2714,7 +2715,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           category: formData.category || "",
                         }));
                       }}
-                      className="flex-1 py-5 text-xs font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
+                      className="min-h-14 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] px-3 text-sm font-bold text-white"
                     >
                       Cancelar
                     </button>
@@ -2753,7 +2754,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           }
                         }
                       }}
-                      className="flex-[2] rounded-2xl bg-emerald-500 py-5 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
+                      className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] px-3 text-sm font-bold text-[#211a07]"
                     >
                       Criar Setor
                     </button>
@@ -2773,19 +2774,22 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-0 backdrop-blur-sm sm:p-5"
               >
                 <motion.div
                   initial={{ scale: 0.9, y: 20 }}
                   animate={{ scale: 1, y: 0 }}
-                  className="gpu-accelerated flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900 shadow-2xl"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="titulo-da-variacao"
+                  className="produto-modal gpu-accelerated flex h-dvh max-h-dvh w-full max-w-lg flex-col overflow-hidden rounded-none border border-white/10 shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-3xl"
                 >
-                  <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-white/5 bg-zinc-900 p-8 pb-5">
-                    <div className="flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
-                      <Layers className="size-6 text-emerald-500" />
+                  <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-white/5 bg-[#08080a] p-5">
+                    <div className="flex size-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-400/10">
+                      <Layers className="size-6 text-violet-300" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-black tracking-tight">
+                      <h3 id="titulo-da-variacao" className="text-xl font-bold">
                         {editingVariant ? "Editar Variante" : "Nova Variante"}
                       </h3>
                       <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
@@ -2794,7 +2798,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </div>
                   </div>
 
-                  <div className="scrollbar-hide flex-1 space-y-6 overflow-y-auto p-8 py-6">
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
                     {/* Atributos da variante. Um par é o caso simples de
                         sempre; "+ Atributo" empilha dimensões (Cor E Tamanho)
                         que viram UMA combinação com estoque próprio — ver
@@ -2802,67 +2806,73 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     {variantFormData.pares.map((par, indice) => (
                       <div key={par.chave} className="space-y-2">
                         {indice === 0 ? (
-                          <>
-                            <label
-                              htmlFor="variant-name"
-                              className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                            >
-                              Atributo (ex: Cor, Tamanho)
-                            </label>
-                            <LocalBufferedInput
-                              id="variant-name"
-                              name="variant-name"
-                              type="text"
-                              value={par.name}
-                              onFlush={(val) =>
-                                atualizarParDeAtributo(indice, "name", val)
-                              }
-                              className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                              placeholder="Ex: Cor"
-                            />
-                            {suggestedAttributes.length > 0 && (
-                              <div className="ml-1 mt-1.5 flex flex-wrap gap-1.5">
-                                {suggestedAttributes.map((attr) => (
-                                  <button
-                                    key={attr}
-                                    type="button"
-                                    onClick={() =>
-                                      atualizarParDeAtributo(
-                                        indice,
-                                        "name",
-                                        attr,
-                                      )
-                                    }
-                                    className={cn(
-                                      "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
-                                      par.name === attr
-                                        ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                                        : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
-                                    )}
-                                  >
-                                    {attr}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            <label
-                              htmlFor="variant-value"
-                              className="ml-1 pt-2 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                            >
-                              Valor do Atributo
-                            </label>
-                            <LocalBufferedInput
-                              id="variant-value"
-                              name="variant-value"
-                              type="text"
-                              value={par.value}
-                              onFlush={(val) =>
-                                atualizarParDeAtributo(indice, "value", val)
-                              }
-                              className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                              placeholder="Ex: Espacial Grey"
-                            />
-                          </>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="min-w-0 space-y-2">
+                              <label
+                                htmlFor="variant-name"
+                                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                              >
+                                Atributo (ex: Cor, Tamanho)
+                              </label>
+                              <LocalBufferedInput
+                                id="variant-name"
+                                name="variant-name"
+                                type="text"
+                                value={par.name}
+                                onFlush={(val) =>
+                                  atualizarParDeAtributo(indice, "name", val)
+                                }
+                                className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                placeholder="Ex: Cor"
+                              />
+                            </div>
+                            <div className="min-w-0 space-y-2">
+                              <label
+                                htmlFor="variant-value"
+                                className="ml-1 pt-2 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                              >
+                                Valor do Atributo
+                              </label>
+                              <LocalBufferedInput
+                                id="variant-value"
+                                name="variant-value"
+                                type="text"
+                                value={par.value}
+                                onFlush={(val) =>
+                                  atualizarParDeAtributo(indice, "value", val)
+                                }
+                                className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                placeholder="Ex: Espacial Grey"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              {suggestedAttributes.length > 0 && (
+                                <div className="ml-1 mt-1.5 flex flex-wrap gap-1.5">
+                                  {suggestedAttributes.map((attr) => (
+                                    <button
+                                      key={attr}
+                                      type="button"
+                                      onClick={() =>
+                                        atualizarParDeAtributo(
+                                          indice,
+                                          "name",
+                                          attr,
+                                        )
+                                      }
+                                      className={cn(
+                                        "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
+                                        par.name === attr
+                                          ? "bg-admin-gold/10 border-admin-gold text-admin-gold"
+                                          : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
+                                      )}
+                                    >
+                                      {attr}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         ) : (
                           <div className="flex items-center gap-2 pt-1">
                             <div className="grid flex-1 grid-cols-2 gap-3">
@@ -2900,7 +2910,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   pares: p.pares.filter((_, j) => j !== indice),
                                 }))
                               }
-                              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
+                              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
                             >
                               <X className="size-4" />
                             </button>
@@ -2924,139 +2934,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     >
                       + Atributo
                     </button>
-
-                    {/* SKU & Status */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label
-                          htmlFor="variant-sku"
-                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                        >
-                          Código interno (SKU)
-                        </label>
-                        <LocalBufferedInput
-                          id="variant-sku"
-                          name="variant-sku"
-                          type="text"
-                          value={variantFormData.sku}
-                          onFlush={(val) =>
-                            setVariantFormData((p) => ({
-                              ...p,
-                              sku: val
-                                .trim()
-                                .toUpperCase()
-                                .replace(/\s+/g, "-"),
-                            }))
-                          }
-                          className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                          placeholder="Ex: COR-TAM"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label
-                          htmlFor="variant-status"
-                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                        >
-                          Aparece na loja?
-                        </label>
-                        <button
-                          id="variant-status"
-                          type="button"
-                          onClick={() =>
-                            setVariantFormData((p) => ({
-                              ...p,
-                              active: !p.active,
-                            }))
-                          }
-                          className={cn(
-                            "w-full px-5 py-4 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between active:scale-95 select-none",
-                            variantFormData.active
-                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
-                              : "bg-zinc-950 border-white/5 text-zinc-500 hover:bg-white/5",
-                          )}
-                        >
-                          <span>
-                            {variantFormData.active ? "Ativo" : "Offline"}
-                          </span>
-                          <span
-                            className={cn(
-                              "w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor] transition-all",
-                              variantFormData.active
-                                ? "bg-emerald-500 text-emerald-500/50 scale-100"
-                                : "bg-zinc-700 text-zinc-700/50 scale-90",
-                            )}
-                          />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Código de Barras (C5.2) — a caixa da PP tem um código
-                        diferente da caixa da M: cada variação leva o seu.
-                        O botão "Ler com a câmera" (C5.3) usa o slot
-                        reservado ao lado do input. */}
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="variant-codigo-barras"
-                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                      >
-                        Código de barras
-                      </label>
-                      {/* No celular o botão desce para baixo do campo: lado a
-                          lado, os 13 dígitos não cabiam (onda J). */}
-                      <div className="flex flex-col gap-2 xs:flex-row">
-                        <LocalBufferedInput
-                          id="variant-codigo-barras"
-                          name="variant-codigo-barras"
-                          type="text"
-                          inputMode="numeric"
-                          data-testid="codigo-barras-variacao"
-                          value={variantFormData.codigoBarras}
-                          onFlush={(val) =>
-                            setVariantFormData((p) => ({
-                              ...p,
-                              codigoBarras: normalizarCodigoBarras(val),
-                            }))
-                          }
-                          onBlur={(e) =>
-                            aoSairDoCampoDeCodigoDeBarras(
-                              e.target.value,
-                              "variacao",
-                              editingVariant?.id,
-                            )
-                          }
-                          className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                          placeholder="Ex: 7891234567890"
-                        />
-                        {/* C5.3 — some sem câmera: o leitor físico USB digita
-                            direto no campo acima, sem precisar deste botão. */}
-                        {temCameraDisponivel() && (
-                          <button
-                            type="button"
-                            onClick={() => setLeitorAberto("variacao")}
-                            className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
-                            title="Ler com a câmera"
-                          >
-                            <Camera className="size-4" />
-                            Ler com a câmera
-                          </button>
-                        )}
-                      </div>
-                      <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
-                        Opcional. É o código impresso na embalagem desta
-                        variação; a tela Vender lê ele pela câmera.
-                      </span>
-                      {variantCodigoBarrasError && (
-                        <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
-                          {variantCodigoBarrasError}
-                        </span>
-                      )}
-                      {!variantCodigoBarrasError &&
-                        variantCodigoBarrasAvisoRede && (
-                          <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
-                            {variantCodigoBarrasAvisoRede}
-                          </span>
-                        )}
-                    </div>
 
                     {/* Quantidade em Estoque & Sobrescrever Preço */}
                     <div className="grid grid-cols-2 gap-4">
@@ -3133,6 +3010,44 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       </div>
                     </div>
 
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="variant-status"
+                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                      >
+                        Aparece na loja?
+                      </label>
+                      <button
+                        id="variant-status"
+                        role="switch"
+                        aria-checked={variantFormData.active}
+                        type="button"
+                        onClick={() =>
+                          setVariantFormData((p) => ({
+                            ...p,
+                            active: !p.active,
+                          }))
+                        }
+                        className={cn(
+                          "w-full px-5 py-4 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between active:scale-95 select-none",
+                          variantFormData.active
+                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
+                            : "bg-zinc-950 border-white/5 text-zinc-500 hover:bg-white/5",
+                        )}
+                      >
+                        <span>
+                          {variantFormData.active ? "Ativo" : "Offline"}
+                        </span>
+                        <span
+                          className={cn(
+                            "w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor] transition-all",
+                            variantFormData.active
+                              ? "bg-emerald-500 text-emerald-500/50 scale-100"
+                              : "bg-zinc-700 text-zinc-700/50 scale-90",
+                          )}
+                        />
+                      </button>
+                    </div>
                     {/* Imagem da Variante — APONTA uma das imagens do produto
                         (pedido do Gabriel, 02/09: o upload era ineficiente;
                         a imagem já foi enviada quando o produto a recebeu, a
@@ -3166,14 +3081,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                     imageUrl: "",
                                   }))
                                 }
-                                className="relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-emerald-500 ring-2 ring-emerald-500/40 transition-all"
+                                className="relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-admin-gold ring-2 ring-admin-gold/30 transition-all"
                               >
                                 <img
                                   src={variantFormData.imageUrl}
                                   alt=""
                                   className="size-full object-cover"
                                 />
-                                <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[11px] font-black text-black">
+                                <span className="absolute inset-x-0 bottom-0 bg-admin-gold py-0.5 text-center text-[11px] font-black text-black">
                                   Atual
                                 </span>
                               </button>
@@ -3200,7 +3115,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 className={cn(
                                   "relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
                                   selecionada
-                                    ? "border-2 border-emerald-500 ring-2 ring-emerald-500/40"
+                                    ? "border-2 border-admin-gold ring-2 ring-admin-gold/30"
                                     : "border-white/10 hover:border-emerald-500/50",
                                 )}
                               >
@@ -3210,7 +3125,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   className="size-full object-cover"
                                 />
                                 {selecionada && (
-                                  <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[11px] font-black text-black">
+                                  <span className="absolute inset-x-0 bottom-0 bg-admin-gold py-0.5 text-center text-[11px] font-black text-black">
                                     Selecionada
                                   </span>
                                 )}
@@ -3225,9 +3140,109 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         checkout e na seleção de atributos.
                       </span>
                     </div>
+                    <details className="rounded-2xl border border-white/10 bg-[#101013]">
+                      <summary className="flex min-h-11 cursor-pointer items-center gap-3 p-3 text-sm font-bold">
+                        <Barcode className="size-5 text-pink-300" />
+                        Códigos e câmera
+                      </summary>
+                      <div className="space-y-4 p-3 pt-0">
+                        <div className="space-y-2">
+                          <label
+                            htmlFor="variant-sku"
+                            className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                          >
+                            Código interno (SKU)
+                          </label>
+                          <LocalBufferedInput
+                            id="variant-sku"
+                            name="variant-sku"
+                            type="text"
+                            value={variantFormData.sku}
+                            onFlush={(val) =>
+                              setVariantFormData((p) => ({
+                                ...p,
+                                sku: val
+                                  .trim()
+                                  .toUpperCase()
+                                  .replace(/\s+/g, "-"),
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            placeholder="Ex: COR-TAM"
+                          />
+                        </div>
+                        {/* Código de Barras (C5.2) — a caixa da PP tem um código
+                        diferente da caixa da M: cada variação leva o seu.
+                        O botão "Ler com a câmera" (C5.3) usa o slot
+                        reservado ao lado do input. */}
+                        <div className="space-y-2">
+                          <label
+                            htmlFor="variant-codigo-barras"
+                            className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                          >
+                            Código de barras
+                          </label>
+                          {/* No celular o botão desce para baixo do campo: lado a
+                          lado, os 13 dígitos não cabiam (onda J). */}
+                          <div className="flex flex-col gap-2 xs:flex-row">
+                            <LocalBufferedInput
+                              id="variant-codigo-barras"
+                              name="variant-codigo-barras"
+                              type="text"
+                              inputMode="numeric"
+                              data-testid="codigo-barras-variacao"
+                              value={variantFormData.codigoBarras}
+                              onFlush={(val) =>
+                                setVariantFormData((p) => ({
+                                  ...p,
+                                  codigoBarras: normalizarCodigoBarras(val),
+                                }))
+                              }
+                              onBlur={(e) =>
+                                aoSairDoCampoDeCodigoDeBarras(
+                                  e.target.value,
+                                  "variacao",
+                                  editingVariant?.id,
+                                )
+                              }
+                              className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              placeholder="Ex: 7891234567890"
+                            />
+                            {/* C5.3 — some sem câmera: o leitor físico USB digita
+                            direto no campo acima, sem precisar deste botão. */}
+                            {temCameraDisponivel() && (
+                              <button
+                                type="button"
+                                onClick={() => setLeitorAberto("variacao")}
+                                className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                                title="Ler com a câmera"
+                              >
+                                <Camera className="size-4" />
+                                Ler com a câmera
+                              </button>
+                            )}
+                          </div>
+                          <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
+                            Opcional. É o código impresso na embalagem desta
+                            variação; a tela Vender lê ele pela câmera.
+                          </span>
+                          {variantCodigoBarrasError && (
+                            <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                              {variantCodigoBarrasError}
+                            </span>
+                          )}
+                          {!variantCodigoBarrasError &&
+                            variantCodigoBarrasAvisoRede && (
+                              <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
+                                {variantCodigoBarrasAvisoRede}
+                              </span>
+                            )}
+                        </div>
+                      </div>
+                    </details>
                   </div>
 
-                  <div className="relative z-10 flex shrink-0 gap-4 border-t border-white/5 bg-zinc-950/40 p-8 pt-5">
+                  <div className="relative z-10 flex shrink-0 gap-4 border-t border-white/5 bg-[#101013] p-5">
                     <button
                       type="button"
                       onClick={() => {
@@ -3244,7 +3259,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         setShowVariantForm(false);
                         setEditingVariant(null);
                       }}
-                      className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
+                      className="min-h-14 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
                     >
                       Cancelar
                     </button>
@@ -3254,9 +3269,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         e.preventDefault();
                         await handleVariantSubmit();
                       }}
-                      className="flex-[2] rounded-2xl bg-emerald-500 py-4 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
+                      className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-sm font-bold text-[#211a07]"
                     >
-                      {editingVariant ? "Salvar" : "Salvar variação"}
+                      Salvar variação
                     </button>
                   </div>
                 </motion.div>
@@ -3282,96 +3297,31 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onEfetivar={handleEfetivarGrade}
       />
 
-      <header className="sticky top-0 z-30 border-b border-white/5 bg-zinc-950/80 px-4 py-3 backdrop-blur-md md:px-6 md:py-4">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <div className="flex items-center gap-3 md:gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                {/* Onda 4 da reforma visual (03/09): o título tinha fórmula
-                    própria (text-sm/base, com destaque verde) — agora é o
-                    AdminPageHeader, igual ao formulário de cupom; o botão de
-                    ajuda segue dentro da linha do título. */}
-                <AdminPageHeader
-                  titulo={`${productId ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-product-form"].toLowerCase()}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setShowHelpModal(true)}
-                    className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
-                    title="Guia de Cadastro e Ajuda"
-                  >
-                    {/* O botão é a área de toque de 44px; o círculo de 28px é só o desenho. */}
-                    <span
-                      aria-hidden="true"
-                      className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
-                    >
-                      <HelpCircle className="size-3.5" />
-                    </span>
-                  </button>
-                </AdminPageHeader>
-              </div>
-              <p className="mt-0.5 hidden items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500 sm:flex">
-                <ShieldCheck className="size-3 shrink-0 text-emerald-500" />
-                Ambiente de Gerenciamento Unificado
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 md:gap-3">
-            <div className="hidden flex-col items-end md:flex">
-              <span className="text-[11px] font-black uppercase tracking-widest text-zinc-500">
-                ID do Sistema
-              </span>
-              <span className="font-mono text-xs font-bold text-zinc-300">
-                {productId || "NEW_ENTRY"}
-              </span>
-            </div>
-
-            {isOffline && (
-              <span className="mr-1 animate-pulse rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-rose-500">
-                Sem Conexão
-              </span>
-            )}
-
-            <button
-              type="button"
-              onClick={() => handleSubmit()}
-              // #98 (ADMIN-060): `showSuccess` entra em `botaoDeSalvarDesligado` —
-              // entre o sucesso e a navegação (1,5s) o botão mostra "Salvo"
-              // mas isSubmitting já é false; sem ele o botão reabria para um
-              // segundo clique nessa janela.
-              disabled={botaoDeSalvarDesligado}
-              className={cn(
-                "min-h-11 min-w-11 px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[11px] border shrink-0",
-                isOffline
-                  ? "bg-zinc-900 border-rose-500/20 text-rose-400 cursor-not-allowed"
-                  : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-emerald-950 border-white/10 shadow-lg shadow-emerald-500/20 disabled:from-zinc-800/80 disabled:to-zinc-800/80 disabled:text-zinc-500 disabled:border-white/5 disabled:shadow-none disabled:pointer-events-none",
-              )}
+      <header className="sticky top-0 z-30 bg-[#08080a]/95 px-5 py-4 backdrop-blur-md">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+          <div className="min-w-0 [&_h1>span>span]:not-italic [&_h1>span]:whitespace-normal [&_h1]:text-[22px] [&_h1]:normal-case [&_h1]:leading-tight">
+            <AdminPageHeader
+              titulo={`${productId ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-product-form"].toLowerCase()}`}
+            />
+            <p
+              data-testid="progresso-do-produto"
+              className="mt-1 text-xs text-zinc-400"
             >
-              {isSubmitting ? (
-                <div className="size-3.5 animate-spin rounded-full border-2 border-emerald-950/30 border-t-emerald-950" />
-              ) : showSuccess ? (
-                <>
-                  <Check className="size-3.5" />
-                  Salvo
-                </>
-              ) : isOffline ? (
-                <>
-                  <AlertTriangle className="size-3.5" />
-                  Offline
-                </>
-              ) : (
-                <>
-                  {productId ? (
-                    <Edit2 className="size-3.5" />
-                  ) : (
-                    <Plus className="size-3.5" />
-                  )}
-                  {productId ? "Salvar" : "Publicar"}
-                </>
-              )}
-            </button>
+              {preenchidos} de 5 preenchidos
+              {avisoDeCusto || avisoAvancado || priceError || stockError
+                ? " · há avisos"
+                : ""}
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowHelpModal(true)}
+            aria-label="Como cadastrar um produto"
+            title="Guia de Cadastro e Ajuda"
+            className="flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-zinc-900 text-zinc-300"
+          >
+            <HelpCircle className="size-5" />
+          </button>
         </div>
       </header>
 
@@ -3380,7 +3330,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         initial="hidden"
         animate="visible"
         onSubmit={handleSubmit}
-        className="gpu-accelerated mx-auto max-w-5xl space-y-4 p-4 md:space-y-8 md:p-6"
+        className="gpu-accelerated mx-auto max-w-3xl space-y-7 px-5 py-4"
       >
         {isOffline && (
           <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
@@ -3391,69 +3341,281 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             </span>
           </div>
         )}
-        {motivoDoBloqueio && (
-          <p
-            data-testid="motivo-do-bloqueio"
-            role="status"
-            className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs font-bold text-amber-300"
+        {/* Fotos opcionais: a faixa abre os mesmos controles de envio. */}
+        <section className="relative">
+          <details
+            open={
+              formData.images.length > 0 ||
+              isUploadingImages ||
+              fotosComFalha.length > 0
+            }
+            className="group/fotos"
           >
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
-            {/* Com erro num CAMPO (e não foto subindo), o motivo vira um botão
-                de texto que leva até o campo — abre a seção recolhida onde o
-                erro ficou escondido e põe o foco nele. O botão de salvar
-                continua desligado; isto só mostra o caminho. */}
-            {!isImageUploading && idDoPrimeiroCampoComErro() ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const id = idDoPrimeiroCampoComErro();
-                  if (id) mostrarEFocarCampo(id);
-                }}
-                className="min-h-11 text-left font-bold underline underline-offset-2"
-              >
-                {motivoDoBloqueio}
-              </button>
-            ) : (
-              <span>{motivoDoBloqueio}</span>
-            )}
-          </p>
-        )}
-        {/* Visual Media Section */}
-        <section className="group relative">
-          <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-5 transition-opacity group-hover:opacity-10">
-            <ImageIcon className="size-24 text-white" />
-          </div>
-
-          <div className="mb-3 flex items-center justify-between md:mb-6">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
-                <Camera className="size-5 text-emerald-500" />
-              </div>
-              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                Fotos do Produto
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowPhotoGuide((prev) => !prev)}
-                className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
-                title="Ajuda / Guia de Fotos"
-              >
-                {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
-                    showPhotoGuide
-                      ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                      : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                  )}
-                >
-                  ?
+            <summary className="flex min-h-[64px] cursor-pointer list-none items-center gap-3 rounded-2xl bg-[#101013] py-2 pl-2 pr-[64px] [&::-webkit-details-marker]:hidden">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-teal-400/20 bg-teal-400/10 text-teal-300">
+                <Camera className="size-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-bold">
+                  Fotos do Produto
                 </span>
-              </button>
-            </div>
+                <span className="mt-1 block text-xs text-zinc-400">
+                  {formData.images.length
+                    ? `${formData.images.length} de 10 · Proporção ideal: 4:5`
+                    : "Opcional · até 10 fotos"}
+                </span>
+              </span>
+              <Plus className="size-6 shrink-0 text-teal-300" />
+            </summary>
+            <div className="w-full">
+              {formData.images.length === 0 ? (
+                <>
+                  {/* Falso positivo: o label TEM texto visível ("Adicionar
+                    Fotos do Produto" e a instrução de arrastar), e o input
+                    com o id casado está dentro dele. A regra só olha
+                    `depth: 2` por padrão e o texto está em label > div >
+                    div > p. Pôr `aria-label` aqui resolveria o lint e
+                    pioraria a acessibilidade: substituiria esse texto rico
+                    pelo rótulo curto no nome acessível. */}
+                  {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                  <label
+                    htmlFor="product-image-upload"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      if (isOffline) {
+                        toast.error("Não é possível enviar imagens offline.");
+                        return;
+                      }
+                      if (isImageUploading) return;
+                      const files = Array.from(e.dataTransfer.files || []);
+                      await processAndUploadImages(files);
+                    }}
+                    className={cn(
+                      "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
+                      isDragging
+                        ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+                        : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
+                      (isSubmitting || isImageUploading) &&
+                        "opacity-40 pointer-events-none",
+                    )}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
+                    <div className="relative z-10 flex flex-col items-center space-y-3 p-6 text-center">
+                      <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 shadow-xl transition-all duration-300 group-hover/upload:scale-110 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500">
+                        <Camera className="size-6" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-black uppercase tracking-widest text-zinc-300 transition-colors group-hover/upload:text-emerald-400">
+                          {isDragging
+                            ? "Solte para enviar!"
+                            : "Adicionar Fotos do Produto"}
+                        </p>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                          Arraste as imagens aqui ou clique para buscar
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-2 text-[11px] font-black uppercase tracking-wider text-zinc-650">
+                        <span>Proporção ideal: 4:5</span>
+                        <span className="size-1 rounded-full bg-zinc-700" />
+                        <span>Máx: 10 fotos</span>
+                        <span className="size-1 rounded-full bg-zinc-700" />
+                        <span>Até 12 MB cada</span>
+                      </div>
+                    </div>
+                    <input
+                      id="product-image-upload"
+                      name="product-images"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      disabled={isSubmitting || isImageUploading}
+                    />
+                  </label>
+                  {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`, fora
+                  do label de cima. O input de galeria (acima) fica SEM
+                  `capture` de propósito — com `capture` o celular deixa de
+                  oferecer a galeria e só abre a câmera. Os dois chamam o
+                  MESMO `handleImageUpload`: a origem do arquivo (câmera ou
+                  galeria) não muda o que a tela faz com ele. */}
+                  <label
+                    htmlFor="product-image-capture"
+                    className={cn(
+                      "mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/30 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
+                      (isSubmitting || isImageUploading) &&
+                        "opacity-40 pointer-events-none",
+                    )}
+                  >
+                    <Camera className="size-4" />
+                    Tirar Foto
+                    <input
+                      id="product-image-capture"
+                      name="product-image-capture"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      disabled={isSubmitting || isImageUploading}
+                    />
+                  </label>
+                </>
+              ) : (
+                <div className="relative w-full">
+                  {/* Single horizontal scroll carousel for ALL images */}
+                  <div
+                    ref={carrosselDeFotosRef}
+                    role="group"
+                    aria-label="Galeria de fotos do produto"
+                    className="scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent flex snap-x flex-row gap-4 overflow-x-auto scroll-smooth px-2 pb-4 pt-2"
+                  >
+                    <AnimatePresence>
+                      {formData.images.map((image, index) => {
+                        const meta = imageMetadata[image];
+                        const isCover = index === 0;
+                        return (
+                          <motion.div
+                            key={image}
+                            data-foto-principal={isCover ? "" : undefined}
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.8, opacity: 0 }}
+                            className={cn(
+                              "group/img relative w-[calc(50%-8px)] sm:w-48 shrink-0 snap-start rounded-2xl",
+                            )}
+                          >
+                            <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-white/5 bg-zinc-900">
+                              <img
+                                src={image}
+                                alt=""
+                                className="size-full object-cover transition-transform duration-700 group-hover/img:scale-105"
+                              />
+                            </div>
+                            <div className="mt-3 text-[11px] font-bold text-white">
+                              {isCover ? "Principal" : `Foto ${index + 1}`}
+                            </div>
+                            {meta && meta.status !== "loading" && (
+                              <p
+                                className={`mt-1 text-xs ${meta.status === "warning_aspect" || meta.status === "warning_res" ? "text-orange-300" : "text-zinc-400"}`}
+                              >
+                                {meta.status === "excellent"
+                                  ? "Excelente!"
+                                  : meta.status === "warning_aspect"
+                                    ? "Ajuste para 4:5."
+                                    : meta.status === "warning_res"
+                                      ? "Resolução baixa."
+                                      : "Boa qualidade."}
+                                <span className="block text-[11px] text-zinc-400">
+                                  {meta.width} × {meta.height} px
+                                </span>
+                              </p>
+                            )}
+                            <details className="mt-3">
+                              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-center rounded-2xl border border-white/10 bg-[#1e1e24] px-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
+                                Opções da foto {index + 1}
+                              </summary>
+                              <div className="mt-2 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-[#17171c] p-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openAdjuster(image, index)}
+                                  className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-blue-400/10 px-3 text-xs text-blue-300"
+                                  title="Ajustar e Cortar"
+                                >
+                                  <Scissors className="size-5" />
+                                  Ajustar e Cortar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeImage(index)}
+                                  className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-rose-400/10 px-3 text-xs text-rose-300"
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="size-5" />
+                                  Excluir
+                                </button>
+                                {!isCover && (
+                                  <button
+                                    type="button"
+                                    onClick={() => tornarPrincipal(index)}
+                                    disabled={isImageUploading || isSubmitting}
+                                    aria-label={`Tornar principal: foto ${index + 1} de ${formData.images.length}`}
+                                    className="min-h-11 w-full rounded-xl border border-white/10 px-2.5 text-[11px] font-bold text-violet-300 disabled:opacity-40"
+                                  >
+                                    Tornar principal
+                                  </button>
+                                )}
+                              </div>
+                            </details>
+                          </motion.div>
+                        );
+                      })}
 
-            {/* "+" Button e "Tirar Foto" - só visíveis quando já há imagens */}
+                      {isUploadingImages && (
+                        <motion.div
+                          key="uploading-shimmer"
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          exit={{ scale: 0.8, opacity: 0 }}
+                          className="relative flex aspect-[4/5] w-40 shrink-0 animate-pulse snap-start flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-white/10 bg-white/5 sm:w-48"
+                        >
+                          <Loader2 className="size-5 animate-spin text-emerald-400" />
+                          <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                            {imageUploadStep === "compressing"
+                              ? "Comprimindo..."
+                              : "Enviando..."}
+                          </span>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {formData.images.length > 1 && (
+                    <span className="ml-1 mt-1 block flex animate-pulse select-none items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                      ↔ Deslize para o lado para ver mais fotos
+                    </span>
+                  )}
+                </div>
+              )}
+              {fotosComFalha.length > 0 && (
+                <ul data-testid="fotos-com-falha" className="mt-3 space-y-2">
+                  {fotosComFalha.map((falha) => (
+                    <li
+                      key={falha.id}
+                      className="flex flex-col gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-300 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <span className="min-w-0">
+                        A foto "{falha.file.name}" {falha.motivo}. Ela não vai
+                        no produto — tente de novo, remova, ou publique sem ela.
+                      </span>
+                      <span className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void tentarFotoDeNovo(falha.id)}
+                          disabled={isImageUploading || isOffline}
+                          className="min-h-11 rounded-xl border border-white/10 bg-[#1e1e24] px-3 py-2 text-[11px] font-bold text-white disabled:opacity-40"
+                        >
+                          Tentar de novo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => descartarFotoComFalha(falha.id)}
+                          className="min-h-11 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-300"
+                        >
+                          Remover
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             {formData.images.length > 0 && (
               <div className="flex items-center gap-2">
                 {/* C5.3 — "Tirar foto": SEGUNDO input, com `capture`, para
@@ -3462,13 +3624,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <label
                   htmlFor="product-image-capture"
                   className={cn(
-                    "flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+                    "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] px-3 py-3 text-sm font-bold text-white cursor-pointer",
                     (isSubmitting || isImageUploading) &&
                       "opacity-40 pointer-events-none",
                   )}
                   title="Tirar Foto"
                 >
-                  <Camera className="size-5" />
+                  <Camera className="size-5" /> Tirar Foto
                   <input
                     id="product-image-capture"
                     name="product-image-capture"
@@ -3483,13 +3645,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <label
                   htmlFor="product-image-upload"
                   className={cn(
-                    "flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+                    "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] px-3 py-3 text-sm font-bold text-white cursor-pointer",
                     (isSubmitting || isImageUploading) &&
                       "opacity-40 pointer-events-none",
                   )}
                   title="Adicionar Mais Imagens"
                 >
-                  <Plus className="size-5" />
+                  <Plus className="size-5" /> Adicionar Mais Imagens
                   <input
                     id="product-image-upload"
                     name="product-images"
@@ -3503,312 +3665,31 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </label>
               </div>
             )}
-          </div>
-
-          <div className="w-full">
-            {formData.images.length === 0 ? (
-              <>
-                {/* Falso positivo: o label TEM texto visível ("Adicionar
-                    Fotos do Produto" e a instrução de arrastar), e o input
-                    com o id casado está dentro dele. A regra só olha
-                    `depth: 2` por padrão e o texto está em label > div >
-                    div > p. Pôr `aria-label` aqui resolveria o lint e
-                    pioraria a acessibilidade: substituiria esse texto rico
-                    pelo rótulo curto no nome acessível. */}
-                {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
-                <label
-                  htmlFor="product-image-upload"
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={async (e) => {
-                    e.preventDefault();
-                    setIsDragging(false);
-                    if (isOffline) {
-                      toast.error("Não é possível enviar imagens offline.");
-                      return;
-                    }
-                    if (isImageUploading) return;
-                    const files = Array.from(e.dataTransfer.files || []);
-                    await processAndUploadImages(files);
-                  }}
-                  className={cn(
-                    "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
-                    isDragging
-                      ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
-                      : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
-                    (isSubmitting || isImageUploading) &&
-                      "opacity-40 pointer-events-none",
-                  )}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
-                  <div className="relative z-10 flex flex-col items-center text-center p-6 space-y-3">
-                    <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all duration-300 shadow-xl">
-                      <Camera className="size-6" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-black uppercase tracking-widest text-zinc-300 group-hover/upload:text-emerald-400 transition-colors">
-                        {isDragging
-                          ? "Solte para enviar!"
-                          : "Adicionar Fotos do Produto"}
-                      </p>
-                      <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
-                        Arraste as imagens aqui ou clique para buscar
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-2 text-[11px] font-black uppercase tracking-wider text-zinc-650">
-                      <span>Proporção ideal: 4:5</span>
-                      <span className="size-1 rounded-full bg-zinc-700" />
-                      <span>Máx: 10 fotos</span>
-                      <span className="size-1 rounded-full bg-zinc-700" />
-                      <span>Até 12 MB cada</span>
-                    </div>
-                  </div>
-                  <input
-                    id="product-image-upload"
-                    name="product-images"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={isSubmitting || isImageUploading}
-                  />
-                </label>
-                {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`, fora
-                  do label de cima. O input de galeria (acima) fica SEM
-                  `capture` de propósito — com `capture` o celular deixa de
-                  oferecer a galeria e só abre a câmera. Os dois chamam o
-                  MESMO `handleImageUpload`: a origem do arquivo (câmera ou
-                  galeria) não muda o que a tela faz com ele. */}
-                <label
-                  htmlFor="product-image-capture"
-                  className={cn(
-                    "mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/30 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
-                    (isSubmitting || isImageUploading) &&
-                      "opacity-40 pointer-events-none",
-                  )}
-                >
-                  <Camera className="size-4" />
-                  Tirar Foto
-                  <input
-                    id="product-image-capture"
-                    name="product-image-capture"
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={isSubmitting || isImageUploading}
-                  />
-                </label>
-              </>
-            ) : (
-              <div className="relative w-full">
-                {/* Single horizontal scroll carousel for ALL images */}
-                <div
-                  ref={carrosselDeFotosRef}
-                  className="flex flex-row gap-4 overflow-x-auto px-2 pb-4 pt-2 snap-x scroll-smooth scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
-                >
-                  <AnimatePresence>
-                    {formData.images.map((image, index) => {
-                      const meta = imageMetadata[image];
-                      const isCover = index === 0;
-                      return (
-                        <motion.div
-                          key={image}
-                          data-foto-principal={isCover ? "" : undefined}
-                          initial={{ scale: 0.8, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          exit={{ scale: 0.8, opacity: 0 }}
-                          className={cn(
-                            "group/img relative aspect-[4/5] w-40 sm:w-48 shrink-0 snap-start rounded-2xl",
-                            isCover &&
-                              "ring-2 ring-emerald-500 ring-offset-2 ring-offset-zinc-950",
-                          )}
-                        >
-                          <div className="absolute inset-0 z-0 overflow-hidden rounded-2xl border border-white/5 bg-zinc-900 shadow-md transition-all duration-300 group-hover/img:border-emerald-500/30">
-                            <img
-                              src={image}
-                              alt=""
-                              className="size-full object-cover transition-transform duration-700 group-hover/img:scale-105"
-                            />
-
-                            {/* Actions Overlay */}
-                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/35 to-transparent opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100 hover-hover:focus-within:opacity-100 duration-300">
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => openAdjuster(image, index)}
-                                  className="flex size-11 items-center justify-center rounded-lg bg-emerald-500 text-emerald-950 shadow-lg transition-all hover:scale-110 hover:bg-emerald-400 active:scale-95"
-                                  title="Ajustar e Cortar"
-                                >
-                                  <Scissors className="size-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeImage(index)}
-                                  className="flex size-11 items-center justify-center rounded-lg bg-red-500 text-white shadow-lg transition-all hover:scale-110 hover:bg-red-400 active:scale-95"
-                                  title="Excluir"
-                                >
-                                  <Trash2 className="size-4" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* "Tornar principal": a capa é `images[0]`. Fica
-                              travado enquanto alguma foto sobe, como o resto
-                              dos botões de foto. */}
-                          {!isCover && (
-                            <button
-                              type="button"
-                              onClick={() => tornarPrincipal(index)}
-                              disabled={isImageUploading || isSubmitting}
-                              aria-label={`Tornar principal: foto ${index + 1} de ${formData.images.length}`}
-                              className="absolute left-2 top-2 z-20 min-h-11 rounded-lg border border-white/10 bg-black/70 px-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-lg backdrop-blur-md transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-                            >
-                              Tornar principal
-                            </button>
-                          )}
-
-                          {/* Status Warning Badge */}
-                          {meta && meta.status !== "loading" && (
-                            <div className="absolute right-2.5 top-2.5 z-20">
-                              <div
-                                className={`group/tooltip relative transition-opacity duration-300 ${
-                                  meta.status === "warning_aspect" ||
-                                  meta.status === "warning_res"
-                                    ? "opacity-100"
-                                    : "opacity-0 group-hover/img:opacity-100"
-                                }`}
-                              >
-                                <span
-                                  className={`flex size-4.5 cursor-help items-center justify-center rounded-full border border-white/10 text-[11px] font-black shadow-lg ${
-                                    meta.status === "excellent"
-                                      ? "bg-emerald-500 text-emerald-950"
-                                      : meta.status === "warning_aspect"
-                                        ? "bg-amber-500 text-zinc-950"
-                                        : meta.status === "warning_res"
-                                          ? "bg-red-500 text-white"
-                                          : "bg-blue-500 text-white"
-                                  }`}
-                                >
-                                  {meta.status === "excellent"
-                                    ? "✓"
-                                    : meta.status === "warning_aspect"
-                                      ? "!"
-                                      : meta.status === "warning_res"
-                                        ? "⚠"
-                                        : "i"}
-                                </span>
-                                <div className="pointer-events-none absolute bottom-6 right-0 z-30 w-36 rounded-xl border border-white/10 bg-zinc-950 p-2.5 text-[11px] font-black uppercase leading-normal tracking-wider text-white opacity-0 shadow-2xl transition-opacity group-hover/tooltip:opacity-100">
-                                  <span className="mb-0.5 block text-emerald-400">
-                                    Dim: {meta.width}x{meta.height}
-                                  </span>
-                                  {meta.status === "excellent" && "Excelente!"}
-                                  {meta.status === "warning_aspect" &&
-                                    "Ajuste para 4:5."}
-                                  {meta.status === "warning_res" &&
-                                    "Resolução baixa."}
-                                  {meta.status === "good" && "Boa qualidade."}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Cover / Index Badge */}
-                          <div
-                            className={cn(
-                              "absolute bottom-2.5 left-2.5 z-10 rounded-md border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider backdrop-blur-md",
-                              isCover
-                                ? "border-emerald-400/50 bg-emerald-500/90 text-emerald-950 shadow-md"
-                                : "border-white/10 bg-black/55 text-white/60",
-                            )}
-                          >
-                            {isCover ? "Principal" : `#${index + 1}`}
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-
-                    {isUploadingImages && (
-                      <motion.div
-                        key="uploading-shimmer"
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.8, opacity: 0 }}
-                        className="relative flex aspect-[4/5] w-40 sm:w-48 shrink-0 snap-start animate-pulse flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-white/10 bg-white/5"
-                      >
-                        <Loader2 className="size-5 animate-spin text-emerald-400" />
-                        <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                          {imageUploadStep === "compressing"
-                            ? "Comprimindo..."
-                            : "Enviando..."}
-                        </span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {formData.images.length > 1 && (
-                  <span className="ml-1 mt-1 block text-[11px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 animate-pulse select-none">
-                    ↔ Deslize para o lado para ver mais fotos
-                  </span>
-                )}
-              </div>
-            )}
-            {fotosComFalha.length > 0 && (
-              <ul data-testid="fotos-com-falha" className="mt-3 space-y-2">
-                {fotosComFalha.map((falha) => (
-                  <li
-                    key={falha.id}
-                    className="flex flex-col gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-300 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <span className="min-w-0">
-                      A foto "{falha.file.name}" {falha.motivo}. Ela não vai no
-                      produto — tente de novo, remova, ou publique sem ela.
-                    </span>
-                    <span className="flex shrink-0 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void tentarFotoDeNovo(falha.id)}
-                        disabled={isImageUploading || isOffline}
-                        className="min-h-11 rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-950 disabled:opacity-40"
-                      >
-                        Tentar de novo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => descartarFotoComFalha(falha.id)}
-                        className="min-h-11 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-300"
-                      >
-                        Remover
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+            <p className="mt-3 text-[11px] text-zinc-400">
+              Máx. 10 fotos · 12 MB cada · 30 MB por envio. A ordem não muda por
+              arraste.
+            </p>
+          </details>
+          <button
+            type="button"
+            onClick={() => setShowPhotoGuide((prev) => !prev)}
+            aria-label="Guia de Fotos do Produto"
+            title="Ajuda / Guia de Fotos"
+            className="absolute right-2 top-2 flex size-11 min-h-11 min-w-11 items-center justify-center rounded-2xl border border-teal-400/20 bg-teal-400/10 text-teal-300"
+          >
+            <HelpCircle className="size-5" />
+          </button>
         </section>
 
         {/* Guide Section */}
         <AnimatePresence>
           {showPhotoGuide && (
-            <motion.section
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4 border-t border-white/5 pt-6"
+            <AdminHelpModal
+              isOpen={true}
+              onClose={() => setShowPhotoGuide(false)}
+              title="Guia de Fotos do Produto"
+              icon={Camera}
             >
-              <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                <BookOpen className="size-4 text-emerald-400" />
-                Guia de Fotos do Produto
-              </h3>
               <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
                 <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                   Imagens de alta qualidade aumentam a conversão de vendas. Siga
@@ -3841,24 +3722,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   <span>Res: &gt; 800px</span>
                 </div>
               </div>
-            </motion.section>
+            </AdminHelpModal>
           )}
         </AnimatePresence>
 
         {/* Content Section */}
-        <section className="space-y-4 border-t border-white/5 pt-6 md:space-y-8 md:pt-12">
+        <section className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10">
               <Info className="size-5 text-blue-500" />
             </div>
-            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h3 className="text-base font-bold text-white">
               Dados do Produto
+              <span className="mt-1 block text-xs font-normal text-zinc-400">
+                Preencha os 5 campos com *
+              </span>
             </h3>
             <button
               type="button"
               onClick={() => toggleHelp("productData")}
-              className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
+              className="ml-auto flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-400/10 text-blue-300 active:scale-95"
               title="Ajuda / Guia de Dados do Produto"
+              aria-label="Guia de Cadastro e Informações"
             >
               {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
               <span
@@ -3878,17 +3763,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           {/* Data Guide Section */}
           <AnimatePresence>
             {expandedHelp.productData && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-4 border-b border-white/5 pb-6 pt-2"
+              <AdminHelpModal
+                isOpen={true}
+                onClose={() => toggleHelp("productData")}
+                title="Guia de Cadastro e Informações"
+                icon={Info}
               >
-                <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  <BookOpen className="size-4 text-blue-400" />
-                  Guia de Cadastro e Informações
-                </h3>
                 <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
                   <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                     O preenchimento correto dos dados melhora a indexação do
@@ -3958,12 +3838,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </li>
                   </ul>
                 </div>
-              </motion.div>
+              </AdminHelpModal>
             )}
           </AnimatePresence>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="produto-campo col-span-2 space-y-1">
               <label
                 htmlFor="product-name"
                 className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
@@ -3983,7 +3863,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               />
             </div>
 
-            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
+            <div className="produto-campo col-span-2 space-y-1">
               <label
                 htmlFor="product-description"
                 className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
@@ -3997,16 +3877,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 onFlush={(val) =>
                   setFormData((prev) => ({ ...prev, description: val }))
                 }
-                placeholder="Digite os detalhes e informações do product..."
+                placeholder="Conte como é o produto..."
                 rows={6}
                 className="w-full resize-none rounded-2xl border border-white/5 bg-zinc-950/50 px-4 py-3.5 text-sm font-medium leading-relaxed text-zinc-300 transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-3xl sm:px-6 sm:py-5"
               />
             </div>
 
-            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
-              <span className="ml-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500">
+            <div className="produto-campo col-span-2 space-y-1">
+              <label
+                htmlFor="product-category"
+                className="ml-1 block text-[11px] text-zinc-400"
+              >
                 Setor / Categoria *
-              </span>
+              </label>
               <div className="group relative">
                 <Select
                   name="category"
@@ -4075,7 +3958,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             {/* Preço de venda: sobe da antiga "Precificação" para o básico —
                 é o que toda lojista preenche. Só mudou de lugar no JSX; o
                 estado, o `id` e a validação (`priceError`) são os de sempre. */}
-            <div className="space-y-1.5 md:space-y-3">
+            <div className="produto-campo space-y-1">
               <label
                 htmlFor="product-sale-price"
                 className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
@@ -4083,11 +3966,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 Preço de Venda *
               </label>
               <div className="group relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-500/50 sm:left-6">
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 text-sm text-zinc-300">
                   R$
                 </span>
                 <LocalBufferedInput
                   id="product-sale-price"
+                  placeholder="0,00"
+                  aria-invalid={!!priceError}
+                  aria-describedby={
+                    priceError ? "product-price-error" : undefined
+                  }
                   name="price"
                   mask="currency"
                   value={formData.price}
@@ -4101,7 +3989,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 />
               </div>
               {priceError && (
-                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                <span
+                  id="product-price-error"
+                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                >
                   {priceError}
                 </span>
               )}
@@ -4129,7 +4020,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 )}
             </div>
 
-            <div className="space-y-1.5 md:space-y-3">
+            <div className="produto-campo space-y-1">
               <label
                 htmlFor="product-stock"
                 className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
@@ -4139,6 +4030,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="group relative">
                 <LocalBufferedInput
                   id="product-stock"
+                  placeholder="Ex: 24"
+                  aria-invalid={!!stockError}
+                  aria-describedby={
+                    hasActiveVariants
+                      ? "product-stock-info"
+                      : stockError
+                        ? "product-stock-error"
+                        : undefined
+                  }
                   name="stock"
                   type="number"
                   min="0"
@@ -4149,24 +4049,62 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   disabled={hasActiveVariants}
                   className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black tabular-nums text-white transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:opacity-50 sm:rounded-2xl sm:px-6 sm:py-5"
                 />
-                <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
+                <div className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-zinc-400">
                   <Package className="size-5" />
                 </div>
               </div>
               {hasActiveVariants ? (
-                <span className="ml-1 mt-1 block flex items-center gap-1.5 text-[11px] font-bold text-amber-500">
+                <span
+                  id="product-stock-info"
+                  className="ml-1 mt-1 block flex items-center gap-1.5 text-[11px] font-bold text-amber-500"
+                >
                   <Info className="size-3.5 shrink-0" />
                   Estoque gerenciado pelas variantes ativas ({formData.stock}{" "}
                   un).
                 </span>
               ) : (
                 stockError && (
-                  <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                  <span
+                    id="product-stock-error"
+                    className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                  >
                     {stockError}
                   </span>
                 )
               )}
             </div>
+
+            {formData.name && (
+              <div
+                data-testid="resumo-do-produto"
+                className="col-span-2 mt-4 flex items-center gap-4 rounded-[20px] border border-white/10 bg-[#17171c] p-3"
+              >
+                {formData.images[0] ? (
+                  <img
+                    src={formData.images[0]}
+                    alt="Foto principal do produto"
+                    className="h-20 w-16 shrink-0 rounded-xl object-cover"
+                  />
+                ) : (
+                  <span className="flex h-20 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-zinc-800 text-[11px] text-zinc-300">
+                    <ImageIcon className="size-6" />
+                    Sem foto
+                  </span>
+                )}
+                <div className="min-w-0 space-y-1">
+                  <p className="break-words text-base font-bold">
+                    {formData.name}
+                  </p>
+                  <p className="text-2xl font-bold tabular-nums">
+                    {formatCurrency(priceVal)}
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    {formData.variants.length} variações ·{" "}
+                    {formData.stock || "0"} un. no total
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Variações (H1): MONTADA e FECHADA — o conteúdo nunca desmonta
                 (SecaoRecolhivel só aplica `hidden`), então estado e botões
@@ -4176,18 +4114,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 DEPOIS que o produto chegou — `formData.variants` já está
                 cheio na primeira montagem. Produto com variações abre
                 expandido; sem variações, fechado. */}
-            <div className="md:col-span-2">
-              <SecaoRecolhivel
+            <div className="col-span-2">
+              <SecaoDoProduto
                 key={chaveDasVariacoes}
                 titulo="Variações"
+                icone={Layers}
+                cor="border-violet-400/20 bg-violet-400/10 text-violet-300"
                 resumo={
                   formData.variants.length === 0
                     ? "Cor, tamanho ou voltagem — opcional"
-                    : `${formData.variants.length} ${
-                        formData.variants.length === 1
-                          ? "variação"
-                          : "variações"
-                      }`
+                    : `${variacoesAtivas} ativas · ${formData.stock} un. · ${formData.variants.length - variacoesAtivas} offline`
                 }
                 abertaInicial={formData.variants.length > 0}
               >
@@ -4244,7 +4180,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         });
                         setShowVariantForm(true);
                       }}
-                      className="ml-auto mr-2 min-h-11 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                      className="ml-auto mr-2 min-h-11 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
                     >
                       + Novo
                     </button>
@@ -4255,7 +4191,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       type="button"
                       data-testid="abrir-grade"
                       onClick={() => setShowGradeForm(true)}
-                      className="min-h-11 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                      className="min-h-11 flex-1 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
                     >
                       + Grade
                     </button>
@@ -4287,17 +4223,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   {/* Variants Guide Section */}
                   <AnimatePresence>
                     {expandedHelp.productVariants && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="w-full space-y-3 border-b border-white/5 pb-4"
+                      <AdminHelpModal
+                        isOpen={true}
+                        onClose={() => toggleHelp("productVariants")}
+                        title="Como usar as Variações"
+                        icon={Layers}
                       >
-                        <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                          <BookOpen className="size-4 text-emerald-400" />
-                          Como usar as Variações
-                        </h3>
                         <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
                           <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                             Variações permitem vender o mesmo produto com
@@ -4360,14 +4291,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             </li>
                           </ul>
                         </div>
-                      </motion.div>
+                      </AdminHelpModal>
                     )}
                   </AnimatePresence>
 
                   <div className="space-y-3">
                     {formData.variants.length === 0 ? (
-                      <div className="rounded-3xl border border-dashed border-white/5 bg-zinc-900 p-8 text-center">
-                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-600">
+                      <div className="rounded-[20px] border border-white/10 bg-[#101013] p-5 text-center">
+                        <p className="text-sm font-bold text-zinc-300">
                           Nenhuma Variação Adicionada
                         </p>
                       </div>
@@ -4384,16 +4315,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     )}
                   </div>
                 </div>
-              </SecaoRecolhivel>
+              </SecaoDoProduto>
             </div>
 
             {/* Peso e medidas (H1): MONTADA e FECHADA. Com entrega local a
                 seção nem existe — como o campo já não existia. */}
             {!isLocalShipping && (
-              <div className="md:col-span-2">
-                <SecaoRecolhivel
+              <div className="col-span-2">
+                <SecaoDoProduto
                   titulo="Peso e medidas"
-                  resumo="Usados para calcular o frete"
+                  icone={ShoppingBag}
+                  cor="border-teal-400/20 bg-teal-400/10 text-teal-300"
+                  resumo={
+                    formData.weightKg &&
+                    formData.widthCm &&
+                    formData.heightCm &&
+                    formData.lengthCm
+                      ? `${formData.weightKg} kg · ${formData.widthCm} × ${formData.heightCm} × ${formData.lengthCm} cm`
+                      : "Usados para calcular o frete"
+                  }
                 >
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -4486,7 +4426,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       sistema utilizará valores padrão (0.3 kg e 15x15x15 cm).
                     </span>
                   </div>
-                </SecaoRecolhivel>
+                </SecaoDoProduto>
               </div>
             )}
           </div>
@@ -4497,9 +4437,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             FECHADA; um erro de validação dentro dela a abre sozinha. O AVISO
             de custo maior que o preço não é erro (não bloqueia o salvar), por
             isso não força a abertura. */}
-        <SecaoRecolhivel
+        <SecaoDoProduto
           titulo="Custo e lucro"
-          resumo="Quanto custou, preço “de” e margem"
+          icone={DollarSign}
+          cor="border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
+          aviso={avisoDeCusto}
+          resumo={
+            priceVal > 0 && costPriceVal > 0
+              ? `Lucro ${formatCurrency(priceVal - costPriceVal)} · margem ${percentualComUmaCasa(marginPct)}`
+              : "Quanto custou, preço “de” e margem"
+          }
           temErro={
             (!!costError && !costError.startsWith("Aviso")) ||
             !!originalPriceError
@@ -4528,48 +4475,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   </span>
                 </button>
               </div>
-
-              {priceVal > 0 && (
-                <div className="flex gap-3">
-                  <div className="flex flex-col items-end">
-                    <span className="mb-1 text-right text-[11px] font-black uppercase tracking-widest text-zinc-500">
-                      Margem Líquida
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{
-                            width: `${Math.min(100, Math.max(0, marginPct))}%`,
-                          }}
-                          className={`h-full ${marginPct > 30 ? "bg-emerald-500" : "bg-orange-500"}`}
-                        />
-                      </div>
-                      <span
-                        className={`text-sm font-black ${marginPct > 30 ? "text-emerald-500" : "text-orange-500"}`}
-                      >
-                        {percentualComUmaCasa(marginPct)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Pricing Guide Section */}
             <AnimatePresence>
               {expandedHelp.productPricing && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-4 border-b border-white/5 pb-4"
+                <AdminHelpModal
+                  isOpen={true}
+                  onClose={() => toggleHelp("productPricing")}
+                  title="Guia de Custos e Margens"
+                  icon={DollarSign}
                 >
-                  <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                    <BookOpen className="size-4 text-emerald-400" />
-                    Guia de Custos e Margens
-                  </h3>
                   <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
                     <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                       Configure os preços de forma estratégica. O sistema
@@ -4621,7 +4537,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       </li>
                     </ul>
                   </div>
-                </motion.div>
+                </AdminHelpModal>
               )}
             </AnimatePresence>
 
@@ -4639,6 +4555,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   </span>
                   <LocalBufferedInput
                     id="product-cost-price"
+                    aria-invalid={!!costError && !costError.startsWith("Aviso")}
+                    aria-describedby={
+                      costError ? "product-cost-error" : undefined
+                    }
                     name="costPrice"
                     mask="currency"
                     value={formData.costPrice}
@@ -4650,6 +4570,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </div>
                 {costError && (
                   <span
+                    id="product-cost-error"
                     className={cn(
                       "text-[11px] font-bold mt-1 ml-1 block",
                       costError.includes("Aviso")
@@ -4708,6 +4629,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       </span>
                       <LocalBufferedInput
                         id="product-original-price"
+                        aria-invalid={!!originalPriceError}
+                        aria-describedby={
+                          originalPriceError
+                            ? "product-original-error"
+                            : undefined
+                        }
                         name="originalPrice"
                         mask="currency"
                         value={formData.originalPrice}
@@ -4722,7 +4649,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       />
                     </div>
                     {originalPriceError && (
-                      <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                      <span
+                        id="product-original-error"
+                        className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                      >
                         {originalPriceError}
                       </span>
                     )}
@@ -4732,139 +4662,59 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             </div>
 
             {priceVal > 0 && costPriceVal > 0 && (
-              <div className="group/roi relative mt-4">
-                {/* Glassmorphism Background with animated border logic */}
-                <div
-                  className={cn(
-                    "absolute -inset-[1px] rounded-[2rem] blur-[2px] opacity-50 group-hover/roi:opacity-100 transition-opacity duration-500",
-                    marginPct <= 0
-                      ? "bg-gradient-to-r from-rose-500/20 via-rose-400/40 to-rose-500/20"
-                      : "bg-gradient-to-r from-emerald-500/20 via-emerald-400/40 to-emerald-500/20",
-                  )}
-                />
-
-                <div className="relative flex flex-col items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/40 p-4 backdrop-blur-3xl sm:rounded-[2rem] sm:p-7 md:flex-row md:gap-6">
-                  {/* Animated Glow Decor */}
-                  <div
-                    className={cn(
-                      "absolute top-0 right-0 w-32 h-32 blur-[50px] rounded-full pointer-events-none transition-all duration-700",
-                      marginPct <= 0
-                        ? "bg-rose-500/10 group-hover/roi:bg-rose-500/20"
-                        : "bg-emerald-500/10 group-hover/roi:bg-emerald-500/20",
-                    )}
-                  />
-
-                  <div className="flex w-full items-center gap-4 sm:gap-6 md:w-auto">
-                    <div className="relative">
-                      <div
-                        className={cn(
-                          "absolute inset-0 blur-xl rounded-2xl transition-all",
-                          marginPct <= 0
-                            ? "bg-rose-500/20 group-hover/roi:bg-rose-500/40"
-                            : "bg-emerald-500/20 group-hover/roi:bg-emerald-500/40",
-                        )}
-                      />
-                      <div
-                        className={cn(
-                          "relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center border transition-transform duration-500 shadow-lg",
-                          marginPct <= 0
-                            ? "bg-gradient-to-br from-rose-500/20 to-rose-600/10 border-rose-500/30 group-hover/roi:scale-110 shadow-rose-500/10 text-rose-400"
-                            : "bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 group-hover/roi:scale-110 shadow-emerald-500/10 text-emerald-400",
-                        )}
-                      >
-                        {marginPct <= 0 ? (
-                          <TrendingDown className="size-6 text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)] sm:size-8" />
-                        ) : (
-                          <TrendingUp className="size-6 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)] sm:size-8" />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <p
-                        className={cn(
-                          "text-[11px] font-black uppercase tracking-[0.2em] mb-1.5 opacity-80",
-                          marginPct <= 0 ? "text-rose-400" : "text-emerald-400",
-                        )}
-                      >
-                        {marginPct <= 0
-                          ? "Alerta de Margem"
-                          : "Análise de Lucro"}
-                      </p>
-                      <div className="flex items-baseline gap-2.5">
-                        <span className="text-xl font-black tabular-nums tracking-tighter text-white drop-shadow-sm sm:text-2xl md:text-3xl">
-                          R${" "}
-                          {(priceVal - costPriceVal).toLocaleString("pt-BR", {
-                            minimumFractionDigits: 2,
-                          })}
-                        </span>
-                        <span
-                          className={cn(
-                            "text-[11px] font-black uppercase tracking-widest italic",
-                            marginPct <= 0
-                              ? "text-rose-500/40"
-                              : "text-emerald-500/40",
-                          )}
-                        >
-                          / por unidade
-                        </span>
-                      </div>
-                    </div>
+              <div className="space-y-4 rounded-[20px] border border-white/10 bg-[#17171c] p-4">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-zinc-400">Margem Líquida</p>
+                    <p className="mt-2 text-4xl font-bold tabular-nums">
+                      {percentualComUmaCasa(marginPct)}
+                    </p>
                   </div>
-
-                  <div className="flex w-full flex-col items-center gap-2 border-t border-white/5 pt-3 sm:gap-3 md:w-auto md:items-end md:border-t-0 md:pt-0">
-                    <div className="flex flex-col items-center md:items-end">
-                      <span className="mb-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                        Análise do Sistema
-                      </span>
-                      <div className="group/badge relative">
-                        <div
-                          className={cn(
-                            "absolute inset-0 blur-md rounded-xl opacity-0 group-hover/roi:opacity-100 transition-opacity",
-                            marginPct <= 0
-                              ? "bg-rose-500/40"
-                              : "bg-emerald-500/40",
-                          )}
-                        />
-                        <div
-                          className={cn(
-                            "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl font-black text-[11px] uppercase tracking-wider relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500",
-                            marginPct <= 0
-                              ? "bg-rose-500 text-rose-950 shadow-[0_10px_20px_rgba(244,63,94,0.3)]"
-                              : "bg-emerald-500 text-emerald-950 shadow-[0_10px_20px_rgba(16,185,129,0.3)]",
-                          )}
-                        >
-                          {marginPct <= 0 ? (
-                            <>
-                              <AlertTriangle className="size-3.5" />
-                              Margem Negativa
-                            </>
-                          ) : (
-                            <>
-                              <Check className="size-3.5" />
-                              Alta Performance
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                  <div>
+                    <p className="text-xs text-zinc-400">
+                      {marginPct <= 0 ? "Alerta de Margem" : "Análise de Lucro"}
+                    </p>
+                    <p className="mt-2 text-base font-bold tabular-nums">
+                      {formatCurrency(priceVal - costPriceVal)} / un.
+                    </p>
                   </div>
-
-                  {/* Interactive background lines */}
-                  <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent opacity-20" />
                 </div>
+                <div
+                  className="h-2 overflow-hidden rounded-full bg-zinc-800"
+                  aria-hidden="true"
+                >
+                  <div
+                    className={`h-full rounded-full ${marginPct > 30 ? "bg-emerald-400" : "bg-orange-400"}`}
+                    style={{
+                      width: `${Math.min(100, Math.max(0, marginPct))}%`,
+                    }}
+                  />
+                </div>
+                <p
+                  className={`text-xs ${marginPct <= 0 ? "text-rose-300" : "text-emerald-300"}`}
+                >
+                  Análise do Sistema ·{" "}
+                  {marginPct <= 0 ? "Margem Negativa" : "Alta Performance"}
+                </p>
               </div>
             )}
           </div>
-        </SecaoRecolhivel>
+        </SecaoDoProduto>
 
         {/* Avançado (H1): código interno, código de barras e aviso de estoque
             — raros no dia a dia, mas nada se apaga. MONTADA e FECHADA; erro
             em qualquer um dos três (formato, duplicidade ou número inválido)
             a abre sozinha. */}
-        <SecaoRecolhivel
+        <SecaoDoProduto
           titulo="Avançado"
-          resumo="Código interno, código de barras e aviso de estoque"
+          icone={Barcode}
+          cor="border-pink-400/20 bg-pink-400/10 text-pink-300"
+          aviso={avisoAvancado}
+          resumo={
+            formData.sku
+              ? `${formData.sku} · aviso em ${formData.estoqueMinimo || "5"} un.`
+              : "Código interno, código de barras e aviso de estoque"
+          }
           temErro={!!skuError || !!codigoBarrasError || !!estoqueMinimoError}
         >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
@@ -4878,6 +4728,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="group relative">
                 <LocalBufferedInput
                   id="product-sku"
+                  aria-invalid={!!skuError}
+                  aria-describedby={skuError ? "product-sku-error" : undefined}
                   name="product-sku"
                   type="text"
                   value={formData.sku}
@@ -4895,7 +4747,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </div>
               </div>
               {skuError && (
-                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                <span
+                  id="product-sku-error"
+                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                >
                   {skuError}
                 </span>
               )}
@@ -4913,6 +4768,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="flex flex-col gap-2 xs:flex-row">
                 <LocalBufferedInput
                   id="product-codigo-barras"
+                  aria-invalid={!!codigoBarrasError}
+                  aria-describedby={
+                    codigoBarrasError ? "product-barcode-error" : undefined
+                  }
                   name="product-codigo-barras"
                   type="text"
                   inputMode="numeric"
@@ -4949,7 +4808,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 pela câmera.
               </span>
               {codigoBarrasError && (
-                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                <span
+                  id="product-barcode-error"
+                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                >
                   {codigoBarrasError}
                 </span>
               )}
@@ -5003,7 +4865,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
             </div>
           </div>
-        </SecaoRecolhivel>
+        </SecaoDoProduto>
+        <div className="space-y-3 text-xs text-zinc-400">
+          <button
+            type="button"
+            onClick={() => setShowHelpModal(true)}
+            className="flex min-h-11 items-center gap-3 text-left text-sm text-zinc-300"
+          >
+            <HelpCircle className="size-5 text-blue-300" />
+            Como cadastrar um produto
+          </button>
+          <p>Ambiente de Gerenciamento Unificado</p>
+          <p className="break-all">
+            ID do Sistema · {productId || "NEW_ENTRY"}
+          </p>
+        </div>
       </motion.form>
 
       {/* Image Cropper Modal */}
@@ -5022,29 +4898,93 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         )}
       </AnimatePresence>
 
-      {/* Floating Action Button */}
       {typeof document !== "undefined" &&
         createPortal(
-          // Sobe acima do nav inferior do admin no mobile. O nav é
-          // `fixed left-4 right-4 z-[60]` com bottom calculado
-          // (AdminLayout.tsx:944) — ele ganha no empilhamento e ocupa a mesma
-          // faixa, então `bottom-6` deixava este botão escondido atrás dele.
-          // A partir de `lg` o nav some (`lg:hidden`) e o botão volta ao pé.
-          <div className="fixed bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] right-6 z-50 lg:bottom-6">
-            <button
-              type="button"
-              onClick={() => setIsPreviewOpen(true)}
-              className="group flex cursor-pointer select-none items-center gap-2.5 rounded-full border border-white/10 bg-zinc-900 px-5 py-3.5 text-white shadow-[0_15px_30px_rgba(0,0,0,0.6)] backdrop-blur-xl transition-all hover:scale-105 hover:border-emerald-500/30 hover:bg-zinc-800 hover:shadow-[0_15px_30px_rgba(16,185,129,0.15)] active:scale-95"
-            >
-              <div className="relative flex items-center justify-center">
-                <span className="absolute inline-flex size-2.5 animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
+          <div
+            aria-label="Ações do produto"
+            role="region"
+            className="produto-formulario fixed inset-x-0 bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-50 border-t border-white/5 bg-[#101013]/95 px-5 py-3 shadow-[0_-12px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl lg:bottom-0 lg:left-64"
+          >
+            <div className="mx-auto max-w-3xl space-y-2">
+              {motivoDoBloqueio && (
+                <p
+                  data-testid="motivo-do-bloqueio"
+                  role="status"
+                  className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs font-bold text-amber-300"
+                >
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+                  {/* Com erro num CAMPO (e não foto subindo), o motivo vira um botão
+                de texto que leva até o campo — abre a seção recolhida onde o
+                erro ficou escondido e põe o foco nele. O botão de salvar
+                continua desligado; isto só mostra o caminho. */}
+                  {!isImageUploading && idDoPrimeiroCampoComErro() ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = idDoPrimeiroCampoComErro();
+                        if (id) mostrarEFocarCampo(id);
+                      }}
+                      className="min-h-11 text-left font-bold underline underline-offset-2"
+                    >
+                      {motivoDoBloqueio}
+                    </button>
+                  ) : (
+                    <span>{motivoDoBloqueio}</span>
+                  )}
+                </p>
+              )}
+              {!motivoDoBloqueio && !isOffline && (
+                <p className="text-xs text-zinc-400" role="status">
+                  {showSuccess
+                    ? "Salvo · voltando à lista"
+                    : isSubmitting
+                      ? "Salvando alterações…"
+                      : `Pronto para ${productId ? "salvar" : "publicar"} · 5 de 5`}
+                </p>
+              )}
+              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSubmit()}
+                  disabled={botaoDeSalvarDesligado}
+                  className="flex min-h-14 min-w-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-gradient-to-b from-[#f8d658] to-[#e3ac16] p-3 text-base font-bold text-[#211a07] shadow-lg disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-300 disabled:shadow-none"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="size-5 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : showSuccess ? (
+                    <>
+                      <Check className="size-5" />
+                      Salvo
+                    </>
+                  ) : isOffline ? (
+                    <>
+                      <AlertTriangle className="size-5" />
+                      Offline
+                    </>
+                  ) : (
+                    <>
+                      {productId ? (
+                        <Edit2 className="size-5" />
+                      ) : (
+                        <Plus className="size-5" />
+                      )}
+                      {productId ? "Salvar" : "Publicar"}
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(true)}
+                  className="flex min-h-14 min-w-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] p-3 text-sm font-bold text-white"
+                >
+                  <Smartphone className="size-5 shrink-0 text-blue-300" />
+                  Visualizar App
+                </button>
               </div>
-              <Smartphone className="size-4 text-zinc-400 transition-colors group-hover:text-emerald-400" />
-              <span className="text-[11px] font-black uppercase tracking-wider">
-                Visualizar App
-              </span>
-            </button>
+            </div>
           </div>,
           document.body,
         )}
@@ -5080,7 +5020,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-blue-400 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Estrutura do Formulário
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -5102,7 +5042,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <DollarSign className="size-4 text-admin-gold" />
+                  <DollarSign className="size-4 text-emerald-300" />
                   Precificação & Custos
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -5138,7 +5078,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </div>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-blue-400 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Dicas para um Cadastro de Sucesso
             </h4>
             <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">
@@ -5258,10 +5198,10 @@ const VariantItem = React.memo(function VariantItem({
   onToggleActive,
 }: VariantItemProps) {
   return (
-    <div className="group flex items-center justify-between rounded-2xl border border-white/5 bg-zinc-900 p-4 transition-all hover:border-emerald-500/30">
-      <div className="flex min-w-0 items-center gap-3">
+    <div className="group relative flex flex-wrap items-center gap-3 rounded-[20px] border border-white/10 bg-[#101013] p-3">
+      <div className="flex w-full min-w-0 items-center gap-3 pr-12">
         {variant.imageUrl && (
-          <div className="size-12 shrink-0 overflow-hidden rounded-lg border border-white/5">
+          <div className="h-16 w-12 shrink-0 overflow-hidden rounded-xl border border-white/5">
             <LazyImage
               src={variant.imageUrl}
               alt={`${variant.name}: ${variant.value}`}
@@ -5270,10 +5210,10 @@ const VariantItem = React.memo(function VariantItem({
           </div>
         )}
         <div className="min-w-0">
-          <div className="mb-1 flex items-center gap-2">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
             <span
               data-testid="variante-cadastrada"
-              className="text-xs font-black uppercase italic tracking-tight text-white"
+              className="min-w-0 break-words text-sm font-bold text-white"
             >
               {variant.name}: {variant.value}
             </span>
@@ -5281,6 +5221,9 @@ const VariantItem = React.memo(function VariantItem({
               <span className="rounded border border-white/5 bg-zinc-800 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-500">
                 Offline
               </span>
+            )}
+            {variant.active && (
+              <span className="text-xs text-emerald-300">Ativa</span>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-black uppercase tracking-tighter text-zinc-500">
@@ -5311,12 +5254,12 @@ const VariantItem = React.memo(function VariantItem({
           </div>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex w-full items-center gap-2">
         <button
           type="button"
           onClick={() => onEdit(variant)}
           aria-label={`Editar variação ${variant.value}`}
-          className="flex size-11 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-white/5 hover:text-white"
+          className="absolute right-3 top-3 flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-blue-400/10 text-blue-300"
         >
           <Edit2 className="size-3.5" />
         </button>
@@ -5330,21 +5273,23 @@ const VariantItem = React.memo(function VariantItem({
               : "Religar: volta a aparecer na loja"
           }
           className={cn(
-            "flex size-11 items-center justify-center rounded-lg transition-all hover:bg-white/5",
+            "flex size-11 min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] px-2 text-xs font-bold",
             variant.active
-              ? "text-emerald-500 hover:text-emerald-400"
+              ? "text-zinc-300 hover:text-white"
               : "text-zinc-600 hover:text-white",
           )}
         >
-          <Power className="size-3.5" />
+          <Power className="size-4 shrink-0" />
+          {variant.active ? "Desligar" : "Religar"}
         </button>
         <button
           type="button"
           onClick={() => onDelete(variant.id)}
           aria-label={`Excluir variação ${variant.value}`}
-          className="flex size-11 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-red-500/5 hover:text-red-500"
+          className="flex size-11 min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1e1e24] px-2 text-xs font-bold text-rose-300"
         >
-          <Trash2 className="size-3.5" />
+          <Trash2 className="size-4 shrink-0" />
+          Excluir variação
         </button>
       </div>
     </div>
