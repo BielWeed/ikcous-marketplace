@@ -77,7 +77,9 @@ Deno.test("248: pré-voo antes de qualquer escrita; conferência final depois do
     "has_table_privilege('authenticated'",
     "TABELA inteira",
     "aclexplode",
-    "g.grantee IN (0, v_anon)",
+    "has_column_privilege(v_anon, v_t, a.attnum, 'UPDATE')",
+    "has_column_privilege('public'::name, v_t, a.attnum, 'UPDATE')",
+    "has_column_privilege(v_auth, v_t, a.attnum, 'UPDATE')",
     "is_grantable",
     "'notes,tracking_code'",
     "service_role",
@@ -103,8 +105,21 @@ Deno.test("248: pré-voo antes de qualquer escrita; conferência final depois do
     "has_column_privilege('service_role', v_t, 'notes', 'UPDATE')",
     "perdeu o UPDATE em marketplace_orders.tracking_code",
     "v_colunas IS DISTINCT FROM 'tracking_code'",
+    "has_column_privilege(v_anon, v_t, a.attnum, 'UPDATE')",
+    "has_column_privilege('public'::name, v_t, a.attnum, 'UPDATE')",
+    "has_column_privilege(v_auth, v_t, a.attnum, 'UPDATE')",
   ])
     assert(depois.includes(trecho), trecho);
+  // O detector de colunas é EFETIVO (herança de papel, PUBLIC, tabela inteira): montar o conjunto
+  // lendo só a ACL direta da coluna (aclexplode(a.attacl)) deixava passar o privilégio herdado.
+  for (const trecho of [antes, depois]) {
+    const comando = /string_agg\(a\.attname[\s\S]*?;/.exec(trecho);
+    assert(comando, "falta o conjunto de colunas do authenticated");
+    assert(
+      !/aclexplode/.test(comando[0]),
+      "o conjunto de colunas lê só a ACL direta",
+    );
+  }
   assert.equal((depois.match(/RAISE EXCEPTION/g) || []).length >= 6, true);
 });
 

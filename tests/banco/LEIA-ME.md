@@ -902,14 +902,16 @@ aplicação.
   na entrada de coluna de `notes` (tabela, outras colunas, políticas, gatilhos e funções idênticos).
   Aplicar 2x é idêntico, rollback devolve a ACL de antes, reaplicar fecha de novo; um erro depois do
   REVOKE desfaz o REVOKE; aplicar com um painel antigo no meio do salvamento não espera por ele e fecha
-  só `notes` para o próximo comando dele. O pré-voo recusa sem escrever 19 ACLs divergentes (15 a partir do estado de antes, 4 a partir do de depois) (tabela inteira
-  para authenticated/anon/PUBLIC, inclusive herdada; anon/PUBLIC em coluna; coluna a mais; GRANT OPTION;
+  só `notes` para o próximo comando dele. O pré-voo recusa sem escrever 25 ACLs divergentes (18 a partir do estado de antes, 7 a partir do de depois) (tabela inteira
+  para authenticated/anon/PUBLIC, inclusive herdada; anon/PUBLIC em coluna; coluna a mais, inclusive por PUBLIC ou por
+  papel herdado com `WITH INHERIT TRUE` — o detector lê o privilégio EFETIVO, não só a ACL direta; `WITH INHERIT FALSE`
+  e membro `NOINHERIT` não contam e o apply segue; GRANT OPTION;
   rastreio sem grant; service_role sem UPDATE; coluna, tabela ou papel ausentes) e a conferência final
   aborta e desfaz quando o REVOKE não revoga (privilégio herdado por papel) e quando um REVOKE de tabela
-  levaria o rastreio. Portão 51a/51b lido como authenticated, negativo por objeto. 9 mutantes (sem o REVOKE;
+  levaria o rastreio. Portão 51a/51b lido como authenticated, negativo por objeto. 11 mutantes (sem o REVOKE;
   REVOKE de coluna que leva o rastreio; REVOKE de tabela inteira; service_role fechado junto; migration que
   apaga as anotações; sem a conferência final; sem o pré-voo; pré-voo sem a tabela inteira; pré-voo sem a
-  coluna a mais) derrubam cada um a prova certa. **Limite declarado:** os `REVOKE ... FROM anon` e
+  coluna a mais; detector do authenticated e detector de anon/PUBLIC voltando a ler só a ACL direta) derrubam cada um a prova certa. **Limite declarado:** os `REVOKE ... FROM anon` e
   `FROM PUBLIC` são camada extra: o pré-voo já recusa anon/PUBLIC com UPDATE de coluna, então nenhum estado
   aceito os exercita (nenhum mutante os alcança). Não prova o Postgres da Supabase.
   `admin-atual-viva.cjs` passou a usar `tracking_code` (coluna que o authenticated ainda atualiza) onde

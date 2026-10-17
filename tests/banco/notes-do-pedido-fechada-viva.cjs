@@ -30,7 +30,9 @@
  *       espera por ele e fecha só notes para o próximo comando dele;
  *   (f) pré-voo recusa, sem escrever, ACL que não é a de antes nem a de depois (tabela inteira para
  *       authenticated/anon/PUBLIC, inclusive herdada; anon/PUBLIC em coluna; coluna a mais; GRANT
- *       OPTION; rastreio sem grant; service_role sem UPDATE; coluna, tabela ou papel ausentes);
+ *       OPTION; rastreio sem grant; service_role sem UPDATE; coluna, tabela ou papel ausentes) e,
+ *       pelo privilégio EFETIVO, papel herdado ou PUBLIC com UPDATE em OUTRA coluna (total), no
+ *       estado de antes e no de depois (WITH INHERIT FALSE e membro NOINHERIT não contam);
  *   (g) portão 51a/51b: o catálogo real lido como authenticated, negativo por objeto;
  *   (h) MUTANTES (sem o REVOKE; REVOKE de coluna que leva o rastreio; REVOKE de tabela inteira;
  *       service_role fechado junto; sem a conferência final; sem o pré-voo; migration que apaga as
@@ -546,6 +548,26 @@ async function concorrencia(c, url) {
 // ---------------------------------------------------------------------------
 // Pré-voo e conferência final
 // ---------------------------------------------------------------------------
+// Privilégio EFETIVO em OUTRA coluna (total): conta o que vem de papel herdado e de PUBLIC, não só a ACL
+// direta. Um detector que lê só o attacl do authenticated aprova estes estados (mutante "só a ACL direta").
+const PAPEL_COM_TOTAL = `CREATE ROLE zz_herda NOLOGIN; GRANT UPDATE (total) ON ${TAB} TO zz_herda`;
+const HERANCA_EM_OUTRA_COLUNA = [
+  [
+    "authenticated herda papel com UPDATE em total (WITH INHERIT TRUE)",
+    `${PAPEL_COM_TOTAL}; GRANT zz_herda TO authenticated WITH INHERIT TRUE`,
+    "authenticated atualiza as colunas",
+  ],
+  [
+    "PUBLIC com UPDATE em total",
+    `GRANT UPDATE (total) ON ${TAB} TO PUBLIC`,
+    "anon ou PUBLIC",
+  ],
+  [
+    "anon herda papel com UPDATE em total",
+    `${PAPEL_COM_TOTAL}; GRANT zz_herda TO anon WITH INHERIT TRUE`,
+    "anon ou PUBLIC",
+  ],
+];
 const DIVERGENCIAS_DE_ANTES = [
   [
     "UPDATE de tabela inteira para authenticated",
@@ -622,6 +644,7 @@ const DIVERGENCIAS_DE_ANTES = [
     "ALTER ROLE anon RENAME TO anon_x",
     "faltam os papéis",
   ],
+  ...HERANCA_EM_OUTRA_COLUNA,
 ];
 const DIVERGENCIAS_DE_DEPOIS = [
   [
@@ -644,6 +667,11 @@ const DIVERGENCIAS_DE_DEPOIS = [
     `REVOKE UPDATE (tracking_code) ON ${TAB} FROM authenticated`,
     "[nenhuma]",
   ],
+  ...HERANCA_EM_OUTRA_COLUNA.map(([nome, montagem, fragmento]) => [
+    `depois + ${nome}`,
+    montagem,
+    fragmento,
+  ]),
 ];
 /** `sql` recusa com B1_BASELINE_DIVERGENT, sem escrever nada, a partir da divergência montada. */
 async function recusa(c, nome, montagem, fragmento, sql) {
@@ -690,6 +718,11 @@ async function preVooDoRollback(c) {
     [
       "rollback: anon com UPDATE de tabela",
       `GRANT UPDATE ON ${TAB} TO anon`,
+      "anon ou PUBLIC",
+    ],
+    [
+      "rollback: anon herda papel com UPDATE em total",
+      `${PAPEL_COM_TOTAL}; GRANT zz_herda TO anon WITH INHERIT TRUE`,
       "anon ou PUBLIC",
     ],
     [
@@ -783,25 +816,81 @@ async function conferenciaDoRastreio(c) {
 // ---------------------------------------------------------------------------
 // Portão 51a/51b: o catálogo real, lido como authenticated.
 // ---------------------------------------------------------------------------
-async function portao(c) {
-  const A = "51a-conferir-notes-do-pedido-fechada-aplicado";
-  const B = "51b-antes-notes-do-pedido-base-vigente";
-  const consulta = async (nome) => {
-    const sql = fs.readFileSync(path.join(CONSULTAS, `${nome}.sql`), "utf8");
-    assert.equal(CONF.contarStatements(sql), 1);
-    await c.query("SAVEPOINT leitura_catalogo");
+const A51 = "51a-conferir-notes-do-pedido-fechada-aplicado";
+const B51 = "51b-antes-notes-do-pedido-base-vigente";
+/** Lê a consulta do catálogo como authenticated, dentro da transação aberta, e confere o rol fechado. */
+async function lerCatalogo(c, nome) {
+  const sql = fs.readFileSync(path.join(CONSULTAS, `${nome}.sql`), "utf8");
+  assert.equal(CONF.contarStatements(sql), 1);
+  await c.query("SAVEPOINT leitura_catalogo");
+  try {
+    await c.query("SET LOCAL ROLE authenticated");
+    const rows = (await c.query(sql)).rows;
+    assert.equal(
+      CONF.estruturaDoRolFechado(rows, CONF.ROL_FECHADO_POR_CONSULTA[nome]),
+      null,
+    );
+    return rows;
+  } finally {
+    await c.query("ROLLBACK TO SAVEPOINT leitura_catalogo");
+  }
+}
+const aprovadas = (rows) => rows.every((r) => r.ok === true);
+
+/** Herança que NÃO conta (NOINHERIT): o apply segue, e a 51a/51b não reportam divergência. */
+async function herancaQueNaoConta(c) {
+  const casos = [
+    [
+      "GRANT … WITH INHERIT FALSE",
+      `${PAPEL_COM_TOTAL}; GRANT zz_herda TO authenticated WITH INHERIT FALSE`,
+    ],
+    [
+      "membro com NOINHERIT",
+      `${PAPEL_COM_TOTAL}; ALTER ROLE authenticated NOINHERIT; GRANT zz_herda TO authenticated`,
+    ],
+  ];
+  for (const [nome, montagem] of casos) {
+    await paraAntes(c);
+    await c.query("BEGIN");
     try {
-      await c.query("SET LOCAL ROLE authenticated");
-      const rows = (await c.query(sql)).rows;
+      for (const parte of montagem.split(";"))
+        if (parte.trim()) await c.query(parte);
       assert.equal(
-        CONF.estruturaDoRolFechado(rows, CONF.ROL_FECHADO_POR_CONSULTA[nome]),
-        null,
+        (
+          await c.query(
+            `SELECT has_column_privilege('authenticated', '${TAB}'::regclass, 'total', 'UPDATE') AS sim`,
+          )
+        ).rows[0].sim,
+        false,
+        `${nome}: o privilégio herdado não deveria contar`,
       );
-      return rows;
+      assert(
+        aprovadas(await lerCatalogo(c, B51)),
+        `${nome}: 51b reportou divergência em herança que não conta`,
+      );
+      await c.query(MIGRATION); // não recusa
+      assert(
+        aprovadas(await lerCatalogo(c, A51)),
+        `${nome}: 51a reportou divergência em herança que não conta`,
+      );
+      assert(
+        (
+          await c.query(
+            `SELECT has_column_privilege('authenticated', '${TAB}'::regclass, 'notes', 'UPDATE') AS sim`,
+          )
+        ).rows[0].sim === false,
+        `${nome}: notes continua aberta`,
+      );
     } finally {
-      await c.query("ROLLBACK TO SAVEPOINT leitura_catalogo");
+      await c.query("ROLLBACK");
     }
-  };
+  }
+}
+
+async function portao(c) {
+  const A = A51;
+  const B = B51;
+  const consulta = (nome) => lerCatalogo(c, nome);
   const positivas = (rows) => rows.every((r) => r.ok === true);
   const reprovados = (rows) =>
     rows.filter((r) => r.ok !== true).map((r) => r.item);
@@ -833,7 +922,7 @@ async function portao(c) {
       [
         "UPDATE de tabela inteira",
         `GRANT UPDATE ON ${TAB} TO authenticated`,
-        [2],
+        [1, 2],
       ],
       [
         "anon com UPDATE em coluna",
@@ -849,6 +938,21 @@ async function portao(c) {
         "coluna ausente",
         `ALTER TABLE ${TAB} RENAME COLUMN tracking_code TO tc_x`,
         [1, 4, 5],
+      ],
+      [
+        "papel herdado com UPDATE em outra coluna (total)",
+        `${PAPEL_COM_TOTAL}; GRANT zz_herda TO authenticated WITH INHERIT TRUE`,
+        [1],
+      ],
+      [
+        "PUBLIC com UPDATE em total",
+        `GRANT UPDATE (total) ON ${TAB} TO PUBLIC`,
+        [1, 3],
+      ],
+      [
+        "anon herda papel com UPDATE em total",
+        `${PAPEL_COM_TOTAL}; GRANT zz_herda TO anon WITH INHERIT TRUE`,
+        [3],
       ],
     ];
     for (const [item, sql, esperados] of mutacoesDaB) {
@@ -885,7 +989,7 @@ async function portao(c) {
       [
         "UPDATE de tabela inteira para authenticated",
         `GRANT UPDATE ON ${TAB} TO authenticated`,
-        [1],
+        [1, 2],
       ],
       [
         "notes aberta ao anon",
@@ -895,7 +999,7 @@ async function portao(c) {
       [
         "notes aberta ao PUBLIC",
         `GRANT UPDATE (notes) ON ${TAB} TO PUBLIC`,
-        [1, 3],
+        [1, 2, 3],
       ],
       [
         "rastreio perdido",
@@ -920,12 +1024,27 @@ async function portao(c) {
       [
         "herança de papel",
         `CREATE ROLE zz_herda NOLOGIN; GRANT UPDATE (notes) ON ${TAB} TO zz_herda; GRANT zz_herda TO authenticated`,
-        [1],
+        [1, 2],
       ],
       [
         "coluna ausente",
         `ALTER TABLE ${TAB} RENAME COLUMN notes TO notes_x`,
         [1, 4, 5],
+      ],
+      [
+        "papel herdado com UPDATE em outra coluna (total)",
+        `${PAPEL_COM_TOTAL}; GRANT zz_herda TO authenticated WITH INHERIT TRUE`,
+        [2],
+      ],
+      [
+        "PUBLIC com UPDATE em total",
+        `GRANT UPDATE (total) ON ${TAB} TO PUBLIC`,
+        [2, 3],
+      ],
+      [
+        "anon herda papel com UPDATE em total",
+        `${PAPEL_COM_TOTAL}; GRANT zz_herda TO anon WITH INHERIT TRUE`,
+        [3],
       ],
     ];
     for (const [item, sql, esperados] of mutacoes) {
@@ -1056,6 +1175,42 @@ const MUTANTES = [
     "pré-voo aceitou ou recusou pelo motivo errado",
   ],
   [
+    "o detector de colunas do authenticated volta a ler só a ACL DIRETA (papel herdado passa em silêncio)",
+    (s) => {
+      const efetivo = "has_column_privilege(v_auth, v_t, a.attnum, 'UPDATE')";
+      assert.equal(
+        s.split(efetivo).length,
+        3,
+        "mutante: pré-voo e conferência",
+      );
+      return s
+        .split(efetivo)
+        .join(
+          "EXISTS (SELECT 1 FROM aclexplode(a.attacl) g WHERE g.privilege_type = 'UPDATE' AND g.grantee = v_auth)",
+        );
+    },
+    preVoo,
+    "pré-voo aceitou ou recusou pelo motivo errado: authenticated herda papel com UPDATE em total",
+  ],
+  [
+    "o detector de anon e PUBLIC volta a ler só a ACL DIRETA (anon herdado passa em silêncio)",
+    (s) => {
+      const efetivo =
+        /\(has_column_privilege\(v_anon, v_t, a\.attnum, 'UPDATE'\)\s+OR has_column_privilege\('public'::name, v_t, a\.attnum, 'UPDATE'\)\)/g;
+      assert.equal(
+        (s.match(efetivo) || []).length,
+        2,
+        "mutante: pré-voo e conferência",
+      );
+      return s.replace(
+        efetivo,
+        "EXISTS (SELECT 1 FROM aclexplode(a.attacl) g WHERE g.privilege_type = 'UPDATE' AND g.grantee IN (0, v_anon))",
+      );
+    },
+    preVoo,
+    "pré-voo aceitou ou recusou pelo motivo errado: anon herda papel com UPDATE em total",
+  ],
+  [
     "sem o pré-voo (ACL desconhecida entraria no apply)",
     (s) => SEM_PREVOO(s),
     preVoo,
@@ -1160,6 +1315,10 @@ async function main() {
     );
     await provar("pré-voo do rollback recusa estado que não reconhece", () =>
       preVooDoRollback(c),
+    );
+    await provar(
+      "herança que não conta (WITH INHERIT FALSE, membro NOINHERIT): o apply segue e 51a/51b não reportam divergência",
+      () => herancaQueNaoConta(c),
     );
     await provar(
       "conferência final aborta e desfaz quando o REVOKE não revoga (herança) e quando levaria o rastreio",
