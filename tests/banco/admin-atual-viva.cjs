@@ -339,6 +339,18 @@ const POSTERIORES_A_97 = [
     nome: "20261238000000_a_cliente_pede_exclusao_da_conta_e_correcao_do_email.sql",
     noAr: `SELECT to_regclass('public.pedidos_de_privacidade') IS NOT NULL AS sim`,
   },
+  // 20261247000000: a anotacao interna do pedido. A politica FOR ALL de
+  // public.marketplace_order_internal_notes usa rls_admin_atual(): sem esta entrada o rollback da 97
+  // recusa (B1_BASELINE_DIVERGENT: "politicas fora da 20261197000000 ainda usam ..."). O rollback comum
+  // dela so' fecha a porta (tira a politica e os grants) e preserva tabela e linhas. Independe das outras
+  // da lista; no FIM de proposito, como as demais.
+  {
+    nome: "20261247000000_a_nota_interna_do_pedido_nao_chega_a_cliente.sql",
+    noAr: `SELECT EXISTS (
+       SELECT 1 FROM pg_policy
+        WHERE polname = 'nota_interna_so_admin_atual'
+          AND polrelid = to_regclass('public.marketplace_order_internal_notes')) AS sim`,
+  },
   // 20261243000000: desfazer o recebimento recusa pedido com devolucao. Redefine o corpo de
   // registrar_pagamento_recebido que a 97 deixa (e que a 95 e a 97 conferem por hash): com ela no ar
   // os rollbacks da 95 e da 97 recusam (B1_BASELINE_DIVERGENT: "corpo vivo de ...
