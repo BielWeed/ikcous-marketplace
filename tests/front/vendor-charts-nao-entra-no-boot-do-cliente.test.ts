@@ -29,14 +29,15 @@ import { describe, expect, it } from "vitest";
 const configTexto = readFileSync("vite.config.ts", "utf-8");
 
 describe("manualChunks — utilitários de className fora do chunk de gráficos", () => {
-  it("clsx, tailwind-merge e class-variance-authority são classificados no vendor-ui-helpers", () => {
-    // Recorta a regra do vendor-ui-helpers: do último `return "` antes dele
-    // até o `return "vendor-ui-helpers"`. O destino do clsx é decidido por
-    // ESTE bloco — classificar em outro vendor não vale (o vendor-ui-helpers
-    // já é estático na entrada, então não nasce requisição nova).
-    const fim = configTexto.indexOf('return "vendor-ui-helpers"');
+  it("clsx, tailwind-merge e class-variance-authority são classificados no vendor de início", () => {
+    // O vendor de início também recebe outros módulos. Recorta o retorno
+    // que vem DEPOIS do clsx para continuar provando a regra dos utilitários,
+    // que não podem ser absorvidos pelo chunk de gráficos.
+    const clsx = configTexto.indexOf('normalizedId.includes("clsx")');
+    expect(clsx).toBeGreaterThan(-1);
+    const fim = configTexto.indexOf('return "vendor-inicio"', clsx);
     expect(fim).toBeGreaterThan(-1);
-    // fim - 1: o próprio `return "vendor-ui-helpers"` começa com `return "` —
+    // fim - 1: o próprio `return "vendor-inicio"` começa com `return "` —
     // sem o -1, lastIndexOf devolve a MESMA ocorrência e a fatia sai vazia.
     const inicio = configTexto.lastIndexOf('return "', fim - 1);
     const regra = configTexto.slice(inicio, fim);
