@@ -135,11 +135,13 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   AlertDialogAction: ({
     children,
     onClick,
+    "aria-label": ariaLabel,
   }: {
     children: ReactNode;
     onClick?: () => void;
+    "aria-label"?: string;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} aria-label={ariaLabel}>
       {children}
     </button>
   ),
@@ -179,8 +181,9 @@ function localizarBotaoPorTexto(
   raizDom: ParentNode,
   texto: string,
 ): HTMLButtonElement | undefined {
-  return [...raizDom.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+  return [...raizDom.querySelectorAll("button")].find(
+    (b) =>
+      b.getAttribute("aria-label") === texto || b.textContent?.includes(texto),
   ) as HTMLButtonElement | undefined;
 }
 
@@ -247,7 +250,10 @@ describe("Produtos — exclusão e paginação", () => {
       botao!.click();
     });
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Confirmar Exclusão")!.click();
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Excluir Produto: confirmar exclusão",
+      )!.click();
     });
     await aguardarBusca();
   }
@@ -314,7 +320,10 @@ describe("Produtos — exclusão e paginação", () => {
       localizarBotaoPorTexto(hospedeiro, "Excluir Produto")!.click();
     });
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Confirmar Exclusão")!.click();
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Excluir Produto: confirmar exclusão",
+      )!.click();
     });
     // Enquanto a exclusão não volta, a lojista vai para a página anterior.
     await act(async () => {

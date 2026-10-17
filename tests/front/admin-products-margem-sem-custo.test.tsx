@@ -128,11 +128,13 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   AlertDialogAction: ({
     children,
     onClick,
+    "aria-label": ariaLabel,
   }: {
     children: ReactNode;
     onClick?: () => void;
+    "aria-label"?: string;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} aria-label={ariaLabel}>
       {children}
     </button>
   ),
@@ -263,6 +265,11 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     await act(async () => {
       await esperarMicrotarefas();
     });
+    const abrir = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-controls="metricas-produto-prod-1"]',
+    );
+    expect(abrir).not.toBeNull();
+    await act(async () => abrir?.click());
   }
 
   /** Raiz do cartão detalhado de UM produto — classe exclusiva
@@ -475,8 +482,10 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
       item.click();
       await esperarMicrotarefas();
     });
-    const confirmar = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Confirmar Duplicação"),
+    const confirmar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) =>
+        b.getAttribute("aria-label") ===
+        "Duplicar Produto: confirmar duplicação",
     ) as HTMLButtonElement;
     expect(confirmar).toBeDefined();
     await act(async () => {

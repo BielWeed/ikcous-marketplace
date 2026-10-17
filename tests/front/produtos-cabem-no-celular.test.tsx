@@ -35,6 +35,7 @@ const onNavigate = vi.fn();
 const fetchExecutiveSummary = vi.fn();
 
 let produtosMock: any[] = [];
+let offlineMock = false;
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
@@ -61,7 +62,7 @@ vi.mock("@/hooks/useCategories", () => ({
 }));
 
 vi.mock("@/hooks/useOnlineStatus", () => ({
-  useOnlineStatus: () => false,
+  useOnlineStatus: () => offlineMock,
 }));
 
 vi.mock("@/hooks/usePrefetchOnHover", () => ({
@@ -158,6 +159,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    offlineMock = false;
     loadProducts.mockImplementation(async () => ({
       products: produtosMock,
       total: 1,
@@ -283,13 +285,13 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
     });
   });
 
-  describe("c. nome da grade em até 2 linhas", () => {
-    it("o nome usa line-clamp-2 e quebra palavra, sem truncate", async () => {
+  describe("c. nome completo da grade", () => {
+    it("o nome quebra palavra sem limitar linhas nem truncar", async () => {
       montarProduto({});
       await montar();
 
       const nome = nomeDoProduto("compact");
-      expect(nome.className).toContain("line-clamp-2");
+      expect(nome.className).not.toMatch(/line-clamp|truncate/);
       expect(nome.className).toContain("break-words");
       expect(nome.className).not.toContain("truncate");
     });
@@ -317,43 +319,46 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       expect(cartao("detailed").textContent).not.toMatch(JARGAO);
     });
 
-    it("as 2 caixas empilham de lg em diante e o valor não cresce nem encolhe por breakpoint largo", async () => {
+    it("a margem tem coluna própria e o lucro sobre custo fica em linha expansível sem corte", async () => {
       montarProduto({ price: 15, costPrice: 10 });
       await montar("detailed");
-
+      const item = cartao("detailed");
       const valores = [
-        ...cartao("detailed").querySelectorAll(
-          "span.font-black.tracking-tighter.tabular-nums",
+        ...item.querySelectorAll<HTMLElement>(
+          "[data-margem], [data-lucro-sobre-custo]",
         ),
       ];
       expect(valores).toHaveLength(2);
-      // a grade das 2 caixas: lado a lado no celular, 1 coluna de lg em diante
-      // (selo no canto + valor precisam de >= 113px úteis; em 3-4 colunas do
-      // cartão a caixa sobra com 34-67px e o rótulo ficava por baixo do selo)
-      const grade = valores[0].closest("div.grid");
-      expect(grade?.className).toContain("grid-cols-2");
-      expect(grade?.className).toContain("lg:grid-cols-1");
+      expect(valores[0].closest("div.grid")?.className).toContain(
+        "grid-cols-3",
+      );
+      const detalhes = valores[1].closest<HTMLElement>(
+        "[data-metricas-do-produto]",
+      );
+      expect(detalhes?.hidden).toBe(true);
+      const abrir = item.querySelector<HTMLButtonElement>(
+        'button[aria-controls="metricas-produto-prod-1"]',
+      );
+      expect(abrir).not.toBeNull();
+      await act(async () => abrir?.click());
+      expect(detalhes?.hidden).toBe(false);
+      expect(valores[1].parentElement?.className).toContain("flex-wrap");
       for (const valor of valores) {
-        expect(valor.className).toContain("text-lg");
-        expect(valor.className).toContain("sm:text-[22px]");
-        // a 768px (md) são 2 produtos por linha com as caixas lado a lado:
-        // "1.150,0%" a 22px sobra 2,1px; em 20px (md:text-xl) sobram ~10,9px.
-        // De lg em diante a coluna é única e os 22px voltam.
-        expect(valor.className).toContain("md:text-xl");
-        expect(valor.className).toContain("lg:text-[22px]");
-        expect(valor.className).not.toContain("lg:text-[15px]");
-        expect(valor.className).not.toContain("2xl:text-[22px]");
+        expect(valor.className).toContain("whitespace-nowrap");
+        expect(valor.className).toContain("tabular-nums");
+        expect(valor.className).not.toMatch(/truncate|line-clamp/);
       }
     });
 
-    it("o nome inteiro em 2 linhas, sem ficar embaixo do menu ⋮", async () => {
+    it("o nome completo usa coluna separada do menu", async () => {
       montarProduto({});
       await montar("detailed");
 
       const nome = nomeDoProduto("detailed");
-      expect(nome.className).toContain("line-clamp-2");
+      expect(nome.className).not.toMatch(/line-clamp|truncate/);
       expect(nome.className).toContain("break-words");
-      expect(nome.className).toContain("pr-12");
+      expect(nome.parentElement?.className).toContain("min-w-0");
+      expect(nome.parentElement?.nextElementSibling?.tagName).toBe("BUTTON");
       expect(nome.className).not.toContain("truncate");
     });
   });
@@ -367,16 +372,20 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         'button[aria-label="Mostrar em lista com detalhes"]',
       ) as HTMLButtonElement | null;
       expect(paraLista, "botão de modo sem nome acessível").not.toBeNull();
-      expect(paraLista?.hasAttribute("aria-pressed")).toBe(false);
+      expect(paraLista?.getAttribute("aria-pressed")).toBe("false");
 
       await act(async () => {
         paraLista?.click();
         await esperarMicrotarefas();
       });
 
+      expect(paraLista?.getAttribute("aria-pressed")).toBe("true");
       expect(
-        hospedeiro.querySelector('button[aria-label="Mostrar em grade"]'),
-      ).not.toBeNull();
+        hospedeiro
+          .querySelector('button[aria-label="Mostrar em grade"]')
+          ?.getAttribute("aria-pressed"),
+      ).toBe("false");
+      expect(armazem.get("admin_products_view_mode")).toBe("detailed");
     });
   });
 
@@ -408,6 +417,109 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
     });
   });
 
+  describe("redesenho aprovado: catálogo primeiro", () => {
+    it("métricas começam recolhidas e o atalho abre e fecha os indicadores", async () => {
+      montarProduto({});
+      await montar();
+      const atalho = hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-controls="metricas-dos-produtos"]',
+      );
+      const metricas = hospedeiro.querySelector<HTMLElement>(
+        "#metricas-dos-produtos",
+      );
+      expect(atalho).not.toBeNull();
+      expect(metricas?.hidden).toBe(true);
+      expect(atalho?.getAttribute("aria-expanded")).toBe("false");
+      await act(async () => atalho?.click());
+      expect(metricas?.hidden).toBe(false);
+      expect(atalho?.getAttribute("aria-expanded")).toBe("true");
+      await act(async () => atalho?.click());
+      expect(metricas?.hidden).toBe(true);
+    });
+
+    it("preço vem antes das métricas secundárias, que abrem por produto", async () => {
+      montarProduto({ price: 15, costPrice: 10 });
+      await montar("detailed");
+      const item = cartao("detailed");
+      const botao = item.querySelector<HTMLButtonElement>(
+        "button[aria-expanded]",
+      );
+      const detalhes = item.querySelector<HTMLElement>(
+        "[data-metricas-do-produto]",
+      );
+      expect(detalhes?.hidden).toBe(true);
+      expect(item.textContent?.indexOf("Preço de Venda")).toBeLessThan(
+        item.textContent?.indexOf("Lucro sobre o custo") ?? -1,
+      );
+      await act(async () => botao?.click());
+      expect(detalhes?.hidden).toBe(false);
+      expect(botao?.textContent).toContain("Menos métricas");
+      expect(detalhes?.textContent).toContain("50,0%");
+      await act(async () => botao?.click());
+      expect(detalhes?.hidden).toBe(true);
+    });
+
+    it("custo suspeito acompanha a margem e oferece revisar o cadastro", async () => {
+      montarProduto({ price: 50, costPrice: 0.1 });
+      await montar("detailed");
+      const aviso = cartao("detailed").querySelector("[data-custo-suspeito]");
+      expect(aviso?.textContent).toContain(
+        "Margem calculada com custo suspeito",
+      );
+      expect(aviso?.textContent).toContain("99,8%");
+      expect(aviso?.textContent).toContain("R$ 0,10");
+      const revisar = [...cartao("detailed").querySelectorAll("button")].find(
+        (b) => b.textContent?.includes("Revisar custo"),
+      );
+      expect(revisar).toBeDefined();
+      await act(async () => revisar?.click());
+      expect(onNavigate).toHaveBeenCalledWith("admin-product-form", "prod-1");
+    });
+
+    it("offline explica o bloqueio e desabilita cadastro, edição, ativação e menu", async () => {
+      montarProduto({});
+      offlineMock = true;
+      await montar();
+      const item = cartao("compact");
+      expect(hospedeiro.textContent).toContain("Sem conexão com o servidor");
+      expect(hospedeiro.textContent).toContain(
+        "voltam quando a internet voltar",
+      );
+      for (const nome of ["Ações de", "Editar", "Pausar"]) {
+        const botao = item.querySelector<HTMLButtonElement>(
+          `button[aria-label^="${nome} "]`,
+        );
+        expect(botao, nome).not.toBeNull();
+        expect(botao?.disabled, nome).toBe(true);
+      }
+      const novo = [...hospedeiro.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes("Novo produto indisponível"),
+      );
+      expect(novo?.disabled).toBe(true);
+    });
+
+    it("sem foto usa câmera e texto; editar e menu identificam o produto", async () => {
+      montarProduto({
+        images: ["https://placehold.co/600x400?text=Sem+Imagem"],
+      });
+      await montar();
+      const item = cartao("compact");
+      expect(item.textContent).toContain("Sem foto");
+      expect(item.querySelector('img[src*="placehold.co"]')).toBeNull();
+      expect(
+        item.querySelector(
+          `button[aria-label="Ações de ${produtosMock[0].name}"]`,
+        ),
+      ).not.toBeNull();
+      const editar = item.querySelector<HTMLButtonElement>(
+        `button[aria-label="Editar ${produtosMock[0].name}"]`,
+      );
+      expect(editar).not.toBeNull();
+      await act(async () => editar?.click());
+      expect(onNavigate).toHaveBeenCalledWith("admin-product-form", "prod-1");
+    });
+  });
+
   describe("h. guia de métricas: exemplo e simulador em pt-BR e sem corte", () => {
     async function abrirGuia() {
       const ajuda = hospedeiro.querySelector(
@@ -433,9 +545,13 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       await montar();
       await abrirGuia();
 
-      const exemplo = [...document.querySelectorAll("span")].find((el) =>
-        el.textContent?.includes("Custo R$10 / Venda R$15"),
+      const titulo = [...document.querySelectorAll('[role="dialog"] p')].find(
+        (el) => el.textContent === "Margem de Lucro",
       );
+      expect(titulo, "conceito de margem ausente").toBeDefined();
+      const exemplo = [
+        ...(titulo?.parentElement?.querySelectorAll("span") ?? []),
+      ].find((el) => el.textContent?.includes("Custo R$10 / Venda R$15"));
       expect(exemplo, "exemplo da margem ausente").toBeDefined();
       expect(exemplo?.textContent).toContain("33,3%");
       expect(exemplo?.textContent).not.toContain("33.3%");

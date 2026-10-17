@@ -116,11 +116,13 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   AlertDialogAction: ({
     children,
     onClick,
+    "aria-label": ariaLabel,
   }: {
     children: ReactNode;
     onClick?: () => void;
+    "aria-label"?: string;
   }) => (
-    <button type="button" onClick={onClick}>
+    <button type="button" onClick={onClick} aria-label={ariaLabel}>
       {children}
     </button>
   ),
@@ -169,8 +171,9 @@ function localizarBotaoPorTexto(
   raizDom: ParentNode,
   texto: string,
 ): HTMLButtonElement | undefined {
-  return [...raizDom.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+  return [...raizDom.querySelectorAll("button")].find(
+    (b) =>
+      b.getAttribute("aria-label") === texto || b.textContent?.includes(texto),
   );
 }
 
@@ -247,7 +250,7 @@ describe("AdminProductsView — duplicação com grade não salva", () => {
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Confirmar Duplicação",
+      "Duplicar Produto: confirmar duplicação",
     )!;
     expect(botaoConfirmar).toBeDefined();
     await act(async () => {
@@ -275,7 +278,10 @@ describe("AdminProductsView — duplicação com grade não salva", () => {
       // não empilha um segundo erro, só deixa de anunciar sucesso.
       expect(toastError).not.toHaveBeenCalled();
       expect(
-        localizarBotaoPorTexto(hospedeiro, "Confirmar Duplicação"),
+        localizarBotaoPorTexto(
+          hospedeiro,
+          "Duplicar Produto: confirmar duplicação",
+        ),
       ).toBeUndefined();
       expect(fetchExecutiveSummary).toHaveBeenCalledExactlyOnceWith(true);
     },
@@ -292,7 +298,10 @@ describe("AdminProductsView — duplicação com grade não salva", () => {
     });
     expect(toastError).not.toHaveBeenCalled();
     expect(
-      localizarBotaoPorTexto(hospedeiro, "Confirmar Duplicação"),
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Duplicar Produto: confirmar duplicação",
+      ),
     ).toBeUndefined();
     expect(fetchExecutiveSummary).toHaveBeenCalledExactlyOnceWith(true);
   });
@@ -311,7 +320,10 @@ describe("AdminProductsView — duplicação com grade não salva", () => {
       description: "Não foi possível duplicar o produto.",
     });
     expect(
-      localizarBotaoPorTexto(hospedeiro, "Confirmar Duplicação"),
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Duplicar Produto: confirmar duplicação",
+      ),
     ).toBeUndefined();
     expect(fetchExecutiveSummary).not.toHaveBeenCalled();
   });

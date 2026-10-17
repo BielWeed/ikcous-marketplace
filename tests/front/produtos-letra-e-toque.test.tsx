@@ -57,6 +57,12 @@ function tagAntesDe(texto: string, nome: string, ancora: string): string {
 }
 
 describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
+  it("Fechar faz parte dos itens navegáveis do menu do produto", () => {
+    const fechar = tagAntesDe(FONTE, "DropdownMenuItem", "setAberto(false)");
+    expect(fechar).toContain("onClick={() => setAberto(false)}");
+    expect(fechar).toContain("produto-secundario");
+  });
+
   it("a. o botão de ajuda do cabeçalho é um envoltório de 44px", () => {
     const botao = tagAntesDe(FONTE, "button", 'toggleHelp("global-guide")}');
     expect(botao).toContain("min-h-11");
@@ -95,33 +101,20 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
     expect(FONTE).not.toMatch(/text-zinc-[67]00[^"]*uppercase/);
   });
 
-  it("e. nenhum literal com admin-glass carrega classe que ele apaga", () => {
-    const literais: string[] = [];
-    let desde = 0;
-    for (;;) {
-      const i = FONTE.indexOf("admin-glass", desde);
-      if (i === -1) break;
-      const inicio = Math.max(
-        FONTE.lastIndexOf('"', i),
-        FONTE.lastIndexOf("`", i),
-      );
-      const fimAspas = FONTE.indexOf('"', i);
-      const fimCrase = FONTE.indexOf("`", i);
-      const fim = [fimAspas, fimCrase]
-        .filter((n) => n > -1)
-        .sort((a, b) => a - b)[0];
-      literais.push(FONTE.slice(inicio + 1, fim));
-      desde = i + 1;
+  it("e. cartões usam superfícies próprias e os dois modos têm esqueleto", () => {
+    expect(FONTE).not.toContain("admin-glass");
+    const cartoes = [...FONTE.matchAll(/"produto-cartao[^"\n]*"/g)].map(
+      (m) => m[0],
+    );
+    expect(cartoes).toHaveLength(2);
+    for (const cartao of cartoes) {
+      expect(cartao).toContain("bg-[#101013]");
+      expect(cartao).toContain("border-white/10");
+      expect(cartao).not.toMatch(/shadow-lg|shadow-\[|border-y/);
     }
-    expect(literais.length).toBeGreaterThanOrEqual(5);
-
-    for (const literal of literais) {
-      expect(literal, literal).not.toMatch(/(?:^|\s)shadow-lg(?:\s|$)/);
-      expect(literal, literal).not.toMatch(/(?:^|\s)shadow-\[/);
-      expect(literal, literal).not.toMatch(/(?:^|\s)border-y(?:\s|$)/);
-    }
-
-    // o esqueleto segue com admin-glass (seletor `.admin-glass.animate-pulse`)
-    expect(literais.filter((l) => l.includes("animate-pulse")).length).toBe(2);
+    expect(FONTE.match(/produto-esqueleto/g)).toHaveLength(2);
+    expect(FONTE.match(/produto-esqueleto[^"\n]*animate-pulse/g)).toHaveLength(
+      2,
+    );
   });
 });

@@ -278,6 +278,13 @@ describe("AdminProductsView — achado 11: não afirma catálogo vazio antes de 
     await montar();
 
     expect(hospedeiro.textContent).not.toContain(TEXTO_VAZIO);
+    expect(hospedeiro.textContent).toContain("Recarregando...");
+    expect(hospedeiro.querySelectorAll(".produto-esqueleto")).toHaveLength(12);
+    expect(
+      hospedeiro
+        .querySelector('button[aria-label="Mostrar em grade"]')
+        ?.getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("depois da resposta com produtos: a lista aparece, sem o aviso de vazio", async () => {
@@ -314,5 +321,31 @@ describe("AdminProductsView — achado 11: não afirma catálogo vazio antes de 
     expect(hospedeiro.textContent).not.toContain(TEXTO_VAZIO);
     expect(hospedeiro.textContent).toContain("Erro ao Carregar Produtos");
     expect(hospedeiro.textContent).toContain("Tentar Novamente");
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "Confira a internet",
+    );
+    expect(
+      hospedeiro.querySelector('[data-testid="ponto-de-operacao"]'),
+    ).toBeNull();
+    expect(hospedeiro.textContent).toContain("Não sincronizou");
+    expect(hospedeiro.querySelectorAll(".produto-esqueleto")).toHaveLength(0);
+  });
+
+  it("tentar novamente recupera a lista sem afirmar que ela estava vazia", async () => {
+    loadProducts.mockResolvedValueOnce(null).mockImplementation(async () => {
+      produtosMock = dezenoveProdutos();
+      return { products: produtosMock, total: 19 };
+    });
+    await montar();
+    await avancar320ms();
+    const tentar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Tentar Novamente"),
+    );
+    expect(tentar).toBeDefined();
+    await act(async () => tentar?.click());
+    expect(loadProducts).toHaveBeenCalledTimes(2);
+    expect(hospedeiro.textContent).toContain("Produto 0");
+    expect(hospedeiro.textContent).not.toContain(TEXTO_VAZIO);
+    expect(hospedeiro.textContent).not.toContain("Erro ao Carregar Produtos");
   });
 });
