@@ -8,7 +8,7 @@
 //      para 11px trocando o espaçamento de letras `tracking-widest` por
 //      `tracking-wider`, para a caixa crescer sem estourar.
 //  (c) Redesenho aprovado v7: Cancelar mantém 44px e Salvar cresce para 56px.
-/* eslint-disable security/detect-non-literal-fs-filename, security/detect-unsafe-regex, security/detect-non-literal-regexp --
+/* eslint-disable security/detect-non-literal-fs-filename, security/detect-unsafe-regex --
    lê arquivos-fonte do próprio repositório (caminhos constantes deste teste, não entrada de usuário); regex constantes (os rótulos interpolados são literais fixos do próprio teste), sem backtracking sobre entrada externa */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
