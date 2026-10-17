@@ -33,6 +33,7 @@ import type {
 import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
 import { LeitorDeCodigo } from "@/components/admin/pdv/LeitorDeCodigo";
 import { ReciboDaVenda } from "@/components/admin/pdv/ReciboDaVenda";
+import { Button } from "@/components/ui/button";
 import { branding } from "@/config/branding";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
@@ -54,7 +55,7 @@ import type { Leitura } from "@/lib/leitor/decodificador";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
-import { ScanBarcode } from "lucide-react";
+import { ScanBarcode, Search } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -557,31 +558,52 @@ export function AdminPdvView({
     // etapa) ficava por trás da barra de navegação fixa, e a rolagem termina
     // exatamente ali — relato do dono em teste real no aparelho (19/09):
     // "os botões não têm rolagem suficiente para eu poder clicar".
-    <div className="pb-admin flex flex-col gap-4 lg:pb-12">
-      <div className="flex items-center justify-between gap-3">
+    <div className="pdv pb-admin lg:pb-12">
+      <div
+        className={`pdv-page-heading ${estado.etapa === "cupom" || estado.etapa === "escolha_de_variacao" ? "" : "sr-only"}`}
+      >
         <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-pdv"]} />
+        <p className="pdv-muted mt-2">Venda presencial · balcão</p>
       </div>
 
-      <LeitorDeCodigo
-        // Gate por `active` (nova-tela.md, molde AdminProductsView): quando
-        // a sub-view não está em foco, a câmera não pode continuar ligada
-        // comendo bateria do tablet do balcão.
-        aberto={active !== false && leitorAberto && estado.etapa === "cupom"}
-        aoLer={aoLerCodigo}
-        aoFechar={() => setLeitorAberto(false)}
-        titulo="Bipar produto"
-        dica="Aponte a câmera para o código de barras — ou digite embaixo"
-      />
-      {!leitorAberto && estado.etapa === "cupom" && (
-        <button
-          type="button"
-          onClick={() => setLeitorAberto(true)}
-          className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-700 p-3 text-sm font-semibold text-zinc-400"
-        >
-          <ScanBarcode className="size-4" />
-          Abrir leitor de código
-        </button>
+      {estado.etapa === "cupom" && (
+        <div className="pdv-actions">
+          <Button
+            type="button"
+            variant="outline"
+            className="pdv-secondary"
+            aria-expanded={leitorAberto}
+            aria-controls="leitor-do-balcao"
+            onClick={() => setLeitorAberto(true)}
+          >
+            <ScanBarcode aria-hidden="true" className="pdv-cyan size-5" />
+            {leitorAberto ? "Bipar produto" : "Abrir leitor de código"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="pdv-secondary"
+            onClick={() =>
+              document.getElementById("busca-manual-de-produto")?.focus()
+            }
+          >
+            <Search aria-hidden="true" className="pdv-blue size-5" />
+            Buscar produto
+          </Button>
+        </div>
       )}
+      <div id="leitor-do-balcao" className="empty:hidden">
+        <LeitorDeCodigo
+          // Gate por `active` (nova-tela.md, molde AdminProductsView): quando
+          // a sub-view não está em foco, a câmera não pode continuar ligada
+          // comendo bateria do tablet do balcão.
+          aberto={active !== false && leitorAberto && estado.etapa === "cupom"}
+          aoLer={aoLerCodigo}
+          aoFechar={() => setLeitorAberto(false)}
+          titulo="Bipar produto"
+          dica="Aponte a câmera para o código de barras — ou digite embaixo"
+        />
+      </div>
 
       {estado.etapa !== "recibo" && (
         <CupomDaVenda

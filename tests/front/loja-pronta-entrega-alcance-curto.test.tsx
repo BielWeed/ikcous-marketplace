@@ -256,13 +256,13 @@ describe("o cartão do Início", () => {
     );
   }
 
-  it("CEP de rua + alcance vazio: '5 de 6 prontos', sem 'Loja pronta para vender', e o 'Próximo passo' leva ao Frete", async () => {
+  it("CEP de rua + alcance vazio: '5 de 6 passos concluídos', sem 'Cadastro completo', e o 'Próximo passo' leva ao Frete", async () => {
     const onNavigate = vi.fn();
     await montar({ onNavigate });
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("5 de 6 prontos");
-    expect(texto).not.toContain("Loja pronta para vender");
+    expect(texto).toContain("5 de 6 passos concluídos");
+    expect(texto).not.toContain("Cadastro completo");
     expect(texto).toContain(
       "Hoje você entrega só em CEPs que começam com 30130",
     );
@@ -277,24 +277,24 @@ describe("o cartão do Início", () => {
     expect(onNavigate).toHaveBeenCalledWith("admin-shipping");
   });
 
-  it("mesmo CEP + alcance que cobre a cidade: 'Loja pronta para vender', sem aviso", async () => {
+  it("mesmo CEP + alcance que cobre a cidade: 'Cadastro completo', sem aviso", async () => {
     await montar({ config: config({ localCepRange: ALCANCE_DA_CIDADE }) });
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Loja pronta para vender");
-    expect(texto).not.toContain("de 6 prontos");
+    expect(texto).toContain("Cadastro completo");
+    expect(texto).toContain("6 de 6 passos concluídos");
     expect(texto).not.toContain("Hoje você entrega só em CEPs");
     expect(texto).not.toContain("só vale para CEPs que começam com");
   });
 
-  it("faixa preenchida que deixa o CEP da loja de fora: 'Loja pronta para vender' e o aviso amarelo continua no cartão e na tela de Frete", async () => {
+  it("faixa preenchida que deixa o CEP da loja de fora: 'Cadastro completo' e o aviso amarelo continua no cartão e na tela de Frete", async () => {
     const cfg = config({ localCepRange: "31000-000, 31999-999" });
     const aviso = avisoDaFaixaDeCep(cfg);
     expect(aviso).not.toBeNull();
 
     await montar({ config: cfg });
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Loja pronta para vender");
-    expect(texto).not.toContain("de 6 prontos");
+    expect(texto).toContain("Cadastro completo");
+    expect(texto).toContain("6 de 6 passos concluídos");
     expect(texto).not.toContain("Hoje você entrega só em CEPs");
     expect(texto).toContain(aviso as string);
 
@@ -321,7 +321,7 @@ describe("o cartão do Início", () => {
     hospedeiroDoFrete.remove();
   });
 
-  it("CEP geral da cidade (000) + alcance vazio: comportamento de antes, 'Loja pronta para vender'", async () => {
+  it("CEP geral da cidade (000) + alcance vazio: comportamento de antes, 'Cadastro completo'", async () => {
     const cep = montarEnderecoDaLoja({
       cep: "38500000",
       rua: "Rua de Teste",
@@ -338,7 +338,7 @@ describe("o cartão do Início", () => {
         localCepRange: "",
       }),
     });
-    expect(hospedeiro.textContent).toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).toContain("Cadastro completo");
   });
 
   it("config ainda carregando: 'Conferindo', nunca 'pendente' por alcance", async () => {

@@ -12,41 +12,34 @@ import {
 } from "@/lib/loja-pronta";
 import type { View } from "@/types";
 import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   CircleDashed,
   MapPin,
   MessageCircle,
   Package,
-  RefreshCw,
   Store,
   Truck,
   Wallet,
 } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import {
+  ACAO_PRINCIPAL_INICIO,
+  BOTAO_INICIO,
+  CARTAO_INICIO,
+  FalhaDoInicio,
+  LINHA_INICIO,
+  SeloDoInicio,
+  TituloDoInicio,
+  type TomDoInicio,
+} from "../inicio/visualDoInicio";
 
-/**
- * Bloco do Início: "quantos produtos estão acabando" + "sua loja está pronta
- * para vender?" — o cartão GUIADO dos seis passos (E3 do painel simples):
- * "4 de 6 prontos", UM botão grande "Próximo passo: …" que leva ao destino do
- * primeiro passo pendente e a lista dos seis recolhida atrás de um botão
- * (`aria-expanded`). Com 6/6 o cartão vira só a linha "Loja pronta para
- * vender". O horário de atendimento NÃO conta.
- *
- * Componente PURO (mesma escolha de StatusPagamentoPix.tsx): recebe tudo por
- * props, não lê `import.meta.env`, não chama hook de dados. É assim que os
- * estados de carregamento e "não sei" dão para exercitar por teste sem stub
- * de Supabase nem de ambiente. Quem lê os dados (painel_inicio, useStore) e
- * calcula essas props é o AdminDashboardView.
- *
- * "Não sei" nunca é zero: o card de estoque só mostra um número quando
- * `stats.inventoryAlerts` é, de fato, um `number` finito — senão ele diz em
- * texto que não conseguiu conferir e oferece tentar de novo. O mesmo vale para
- * a loja pronta: enquanto algum passo ainda carrega, o cartão diz "Conferindo
- * sua loja…" — nem contagem, nem "Próximo passo" (um passo anterior que ainda
- * carrega poderia virar pendente e mudar a ordem), nem "pronta".
+/** Checklist e estoque do Início, sem novas leituras de dados.
+ * A prontidão continua nas funções de loja-pronta; a apresentação completa
+ * deixa reabrir os seis passos e recolhe a lista ao concluir o cadastro.
+ * O modo de boas-vindas reaproveita o mesmo próximo passo e seu destino.
  */
 
 interface ProdutoMinimo {
@@ -54,6 +47,7 @@ interface ProdutoMinimo {
 }
 
 interface LojaProntaEEstoqueBaixoProps {
+  readonly somenteBoasVindas?: boolean;
   /** `stats` do painel (estoque baixo). `null`/ausente = "não sei" (nunca 0). */
   readonly stats: Pick<DashboardStats, "inventoryAlerts"> | null;
   /** Só o que os seis passos leem da config da loja (StoreContext). */
@@ -93,6 +87,14 @@ const ICONE_DO_PASSO: Record<ChaveDosSeisPassos, typeof Wallet> = {
   entrega: Truck,
   produto: Package,
 };
+const TOM_DO_PASSO: Record<ChaveDosSeisPassos, TomDoInicio> = {
+  marca: "teal",
+  endereco: "ceu",
+  whatsapp: "verde",
+  recebe: "roxo",
+  entrega: "laranja",
+  produto: "azul",
+};
 
 export function LojaProntaEEstoqueBaixo({
   stats,
@@ -106,6 +108,7 @@ export function LojaProntaEEstoqueBaixo({
   estoqueCarregando = false,
   onNavigate,
   onTentarDeNovo,
+  somenteBoasVindas = false,
 }: LojaProntaEEstoqueBaixoProps) {
   const idDaLista = useId();
   const [listaAberta, setListaAberta] = useState(false);
@@ -136,172 +139,212 @@ export function LojaProntaEEstoqueBaixo({
   const proximo = proximoPasso(passos);
   const conferindo = passos.some((passo) => passo.estado === "carregando");
   const lojaPronta = feitos === total;
+  useEffect(() => {
+    if (lojaPronta) setListaAberta(false);
+  }, [lojaPronta]);
   // O texto do aviso amarelo. Desde 15/10/2026 o MESMO aviso também deixa o
   // passo "entrega" pendente (`estadoDaEntrega`), então ele nunca convive com
   // "Loja pronta"; aqui ele só detalha o que o passo pede e leva ao Frete.
   const avisoDaFaixa = configCarregando ? null : avisoDaFaixaDeCep(config);
 
-  return (
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-      {/* Card: produtos com estoque acabando */}
-      {numeroDeAlertasValido ? (
+  if (somenteBoasVindas) {
+    if (conferindo || lojaPronta || !proximo) return null;
+    const Icone = ICONE_DO_PASSO[proximo.chave];
+    return (
+      <section
+        aria-label="Boas-vindas"
+        className={`${CARTAO_INICIO} space-y-4`}
+      >
+        <h2 className="text-[22px] font-bold text-white">
+          Sua loja começa por aqui
+        </h2>
+        <p className="text-base leading-relaxed text-zinc-400">
+          Complete sua loja. Próximo passo: {proximo.rotuloPendente}.
+        </p>
         <button
           type="button"
-          onClick={() => onNavigate("admin-notifications")}
-          className="flex min-h-11 items-center gap-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-5 text-left transition-colors hover:bg-white/[0.03]"
+          onClick={() => onNavigate(proximo.destino)}
+          className={ACAO_PRINCIPAL_INICIO}
         >
-          <AlertTriangle className="size-6 shrink-0 text-amber-400" />
-          <span className="min-w-0">
-            <span className="block text-[11px] font-black uppercase tracking-widest text-zinc-400">
-              Estoque baixo
-            </span>
-            <span className="block text-lg font-bold text-white">
-              Estoque baixo: {stats!.inventoryAlerts}{" "}
-              {stats!.inventoryAlerts === 1 ? "produto" : "produtos"}
-            </span>
-          </span>
+          <Icone className="size-5 shrink-0" aria-hidden="true" />
+          {proximo.rotuloPendente}
         </button>
-      ) : estoqueEstaCarregando ? (
-        <div className="flex items-center gap-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-5">
-          <CircleDashed className="size-6 shrink-0 animate-spin text-zinc-500" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[11px] font-black uppercase tracking-widest text-zinc-400">
-              Estoque baixo
-            </span>
-            <span className="block text-xs text-zinc-500">
-              Conferindo estoque…
-            </span>
-          </span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-5">
-          <AlertTriangle className="size-6 shrink-0 text-zinc-500" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[11px] font-black uppercase tracking-widest text-zinc-400">
-              Estoque baixo
-            </span>
-            <span className="block text-xs text-zinc-400">
-              Não foi possível conferir o estoque agora.
-            </span>
-          </span>
-          <button
-            type="button"
-            onClick={onTentarDeNovo}
-            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-white/10 px-3 text-[11px] font-black uppercase tracking-wider text-zinc-300 transition-colors hover:bg-white/5"
-          >
-            <RefreshCw className="size-3.5" />
-            Tentar de novo
-          </button>
-        </div>
-      )}
+      </section>
+    );
+  }
 
-      {/* Cartão guiado: a loja está pronta para vender? */}
-      <div className="rounded-2xl border border-white/5 bg-zinc-900/40 p-5">
-        {lojaPronta ? (
-          <p className="flex min-h-11 items-center gap-3 text-sm font-bold text-emerald-400">
-            <CheckCircle2 className="size-5 shrink-0" aria-hidden="true" />
-            Loja pronta para vender
-          </p>
-        ) : (
-          <>
-            <p className="mb-1 text-[11px] font-black uppercase tracking-widest text-zinc-400">
-              Sua loja está pronta para vender?
-            </p>
-            <p className="text-lg font-bold text-white">
+  return (
+    <div className="min-w-0 space-y-3">
+      <section aria-labelledby="inicio-checklist-titulo">
+        <TituloDoInicio id="inicio-checklist-titulo" icone={Store} tom="teal">
+          Sua loja está pronta para vender?
+        </TituloDoInicio>
+        <div className={`${CARTAO_INICIO} space-y-3`}>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-white">
               {conferindo
                 ? "Conferindo sua loja…"
-                : `${feitos} de ${total} prontos`}
+                : `${feitos} de ${total} passos concluídos`}
             </p>
-
-            {proximo && !conferindo && (
+            {lojaPronta ? (
+              <CheckCircle2
+                className="size-5 shrink-0 text-teal-300"
+                aria-label="Seis passos concluídos"
+              />
+            ) : null}
+          </div>
+          {lojaPronta ? (
+            <p className="text-sm text-zinc-400">Cadastro completo</p>
+          ) : null}
+          {proximo && !conferindo ? (
+            <>
               <button
                 type="button"
                 onClick={() => onNavigate(proximo.destino)}
-                className="mt-3 flex min-h-12 w-full items-center justify-between gap-3 rounded-xl bg-admin-gold px-4 py-2 text-left text-sm font-black text-black transition-colors hover:bg-admin-gold/90"
+                className={BOTAO_INICIO}
               >
                 <span className="min-w-0">
                   Próximo passo: {proximo.rotuloPendente}
                 </span>
                 <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
               </button>
-            )}
-
-            {proximo?.explicacaoPendente && !conferindo && (
-              <p className="mt-2 text-xs text-zinc-400">
-                {proximo.explicacaoPendente}
-              </p>
-            )}
-
+              {proximo.explicacaoPendente ? (
+                <p className="text-sm text-zinc-400">
+                  {proximo.explicacaoPendente}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+          {avisoDaFaixa ? (
             <button
               type="button"
-              aria-expanded={listaAberta}
-              aria-controls={listaAberta ? idDaLista : undefined}
-              onClick={() => setListaAberta((aberta) => !aberta)}
-              className="mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-1 text-left text-xs font-bold text-zinc-300 transition-colors hover:text-white"
+              onClick={() => onNavigate("admin-shipping")}
+              className={`${LINHA_INICIO} border-t border-white/10`}
             >
-              {listaAberta ? "Esconder os seis passos" : "Ver os seis passos"}
-              <ChevronDown
-                className={`size-4 shrink-0 transition-transform ${
-                  listaAberta ? "rotate-180" : ""
-                }`}
+              <SeloDoInicio icone={Truck} tom="laranja" />
+              <span className="min-w-0 flex-1 text-sm leading-relaxed text-orange-300">
+                {avisoDaFaixa}
+                <span className="mt-1 block text-zinc-400">
+                  Entrega e frete
+                </span>
+              </span>
+              <ChevronRight
+                className="size-5 shrink-0 text-zinc-400"
                 aria-hidden="true"
               />
             </button>
-
-            {listaAberta && (
-              <ul id={idDaLista} className="mt-1 space-y-1">
-                {passos.map((passo) => {
-                  const Icone = ICONE_DO_PASSO[passo.chave];
-                  return (
-                    <li
-                      key={passo.chave}
-                      className="flex min-h-11 items-center"
-                    >
-                      {passo.estado === "carregando" && (
-                        <span className="flex items-center gap-3">
-                          <CircleDashed className="size-4 shrink-0 animate-spin text-zinc-500" />
-                          <span className="text-xs text-zinc-500">
-                            Conferindo {passo.rotulo}…
-                          </span>
+          ) : null}
+          {listaAberta ? (
+            <ul
+              id={idDaLista}
+              className="divide-y divide-white/10 border-t border-white/10"
+            >
+              {passos.map((passo) => {
+                const Icone = ICONE_DO_PASSO[passo.chave];
+                return (
+                  <li key={passo.chave} className="min-h-11">
+                    {passo.estado === "carregando" ? (
+                      <span className="flex min-h-11 items-center gap-3 py-3">
+                        <CircleDashed
+                          className="size-5 shrink-0 animate-spin text-sky-300"
+                          aria-hidden="true"
+                        />
+                        <span className="text-sm text-zinc-400">
+                          Conferindo {passo.rotulo}…
                         </span>
-                      )}
-                      {passo.estado === "feito" && (
-                        <span className="flex items-center gap-3">
-                          <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
-                          <span className="text-xs text-zinc-300">
-                            {passo.rotuloFeito}
-                          </span>
+                      </span>
+                    ) : passo.estado === "feito" ? (
+                      <span className="flex min-h-11 items-center gap-3 py-3">
+                        <SeloDoInicio
+                          icone={Icone}
+                          tom={TOM_DO_PASSO[passo.chave]}
+                        />
+                        <span className="min-w-0 text-sm text-zinc-300">
+                          Concluído · {passo.rotuloFeito}
                         </span>
-                      )}
-                      {passo.estado === "pendente" && (
-                        <button
-                          type="button"
-                          onClick={() => onNavigate(passo.destino)}
-                          className="flex min-h-11 items-center gap-3 text-left transition-colors hover:text-white"
-                        >
-                          <Icone className="size-4 shrink-0 text-amber-400" />
-                          <span className="text-xs font-bold text-amber-300 underline underline-offset-2">
-                            {passo.rotuloPendente}
-                          </span>
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </>
-        )}
-        {avisoDaFaixa && (
+                        <CheckCircle2
+                          className="ml-auto size-4 shrink-0 text-teal-300"
+                          aria-hidden="true"
+                        />
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onNavigate(passo.destino)}
+                        className={LINHA_INICIO}
+                      >
+                        <SeloDoInicio
+                          icone={Icone}
+                          tom={TOM_DO_PASSO[passo.chave]}
+                        />
+                        <span className="min-w-0 flex-1 text-sm font-semibold text-white">
+                          {passo.rotuloPendente}
+                        </span>
+                        <ChevronRight
+                          className="size-5 shrink-0 text-zinc-400"
+                          aria-hidden="true"
+                        />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
           <button
             type="button"
-            onClick={() => onNavigate("admin-shipping")}
-            className="mt-3 min-h-11 w-full rounded-xl border border-amber-400/20 px-3 text-left text-xs text-amber-300 transition-colors hover:bg-white/5"
+            aria-expanded={listaAberta}
+            aria-controls={listaAberta ? idDaLista : undefined}
+            onClick={() => setListaAberta((aberta) => !aberta)}
+            className={BOTAO_INICIO}
           >
-            {avisoDaFaixa}
+            <ChevronDown
+              className={`size-5 shrink-0 ${listaAberta ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            />
+            {listaAberta ? "Esconder os seis passos" : "Ver os seis passos"}
           </button>
-        )}
-      </div>
+        </div>
+      </section>
+      {numeroDeAlertasValido ? (
+        <button
+          type="button"
+          onClick={() => onNavigate("admin-notifications")}
+          className={`${CARTAO_INICIO} ${LINHA_INICIO} !p-3`}
+        >
+          <SeloDoInicio icone={Package} tom="azul" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-semibold text-white">
+              Estoque baixo: {stats!.inventoryAlerts}{" "}
+              {stats!.inventoryAlerts === 1 ? "produto" : "produtos"}
+            </span>
+            <span className="mt-1 block text-sm text-zinc-400">
+              Abrir Notificações
+            </span>
+          </span>
+          <ChevronRight
+            className="size-5 shrink-0 text-zinc-400"
+            aria-hidden="true"
+          />
+        </button>
+      ) : estoqueEstaCarregando ? (
+        <div className={`${CARTAO_INICIO} flex items-center gap-3`}>
+          <CircleDashed
+            className="size-5 shrink-0 animate-spin text-sky-300"
+            aria-hidden="true"
+          />
+          <span className="text-sm text-zinc-400">
+            Estoque baixo · Conferindo estoque…
+          </span>
+        </div>
+      ) : (
+        <section aria-label="Estoque baixo">
+          <FalhaDoInicio onTentarDeNovo={onTentarDeNovo}>
+            Não foi possível conferir o estoque agora. A quantidade está
+            indisponível.
+          </FalhaDoInicio>
+        </section>
+      )}
     </div>
   );
 }

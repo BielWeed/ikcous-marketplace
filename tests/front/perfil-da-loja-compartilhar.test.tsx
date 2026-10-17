@@ -108,6 +108,10 @@ describe("PerfilDaLoja — Compartilhar no lugar de Ver loja", () => {
 
     expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/`);
     expect(toast.success).toHaveBeenCalledWith("Link da loja copiado");
+    expect(tela.querySelector('[role="status"]')?.textContent).toContain(
+      "Endereço da loja copiado",
+    );
+    expect(tela.textContent).toContain("Cole o endereço na conversa.");
     expect(toast.error).not.toHaveBeenCalled();
   });
 

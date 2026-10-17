@@ -127,7 +127,7 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
   });
 });
 
-describe("NumerosDoMes (Início) — os 4 tiles pedem a superfície admin-glass", () => {
+describe("NumerosDoMes (Início) — resumo e contas usam a mesma superfície", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -142,7 +142,7 @@ describe("NumerosDoMes (Início) — os 4 tiles pedem a superfície admin-glass"
     hospedeiro.remove();
   });
 
-  it("os 4 tiles usam admin-glass, igual aos outros cartões do Início", async () => {
+  it("o resumo e as contas usam os mesmos cartões neutros do Início", async () => {
     const { NumerosDoMes } = await import(
       "@/components/admin/inicio/NumerosDoMes"
     );
@@ -154,12 +154,15 @@ describe("NumerosDoMes (Início) — os 4 tiles pedem a superfície admin-glass"
     });
 
     const secao = hospedeiro.querySelector("section")!;
-    const tiles = Array.from(secao.querySelectorAll(".grid > div"));
-    expect(tiles).toHaveLength(4);
+    const tiles = Array.from(secao.children).filter((el) =>
+      el.classList.contains("rounded-[22px]"),
+    );
+    expect(tiles).toHaveLength(2);
+    expect(secao.querySelectorAll("button")).toHaveLength(3);
     for (const tile of tiles) {
-      expect(tile.classList.contains("admin-glass")).toBe(true);
+      expect(tile.classList.contains("bg-zinc-900/50")).toBe(true);
       expect(tile.classList.contains("bg-zinc-900/60")).toBe(false);
-      expect(tile.classList.contains("rounded-2xl")).toBe(true);
+      expect(tile.classList.contains("rounded-[22px]")).toBe(true);
     }
   });
 });

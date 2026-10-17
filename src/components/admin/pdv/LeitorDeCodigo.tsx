@@ -11,8 +11,10 @@
 import { Button } from "@/components/ui/button";
 import { useLeitorDeCodigo } from "@/hooks/useLeitorDeCodigo";
 import type { Leitura } from "@/lib/leitor/decodificador";
+import { Keyboard, RefreshCcw, ScanBarcode, X } from "lucide-react";
 import type { FormEvent, ReactElement } from "react";
 import { useState } from "react";
+import "./pdv.css";
 
 export interface PropsDoLeitorDeCodigo {
   readonly aberto: boolean;
@@ -57,18 +59,26 @@ export function LeitorDeCodigo({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-white">
+    <div className="pdv-stack">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-bold text-white">{titulo}</h2>
-          <p className="text-xs text-zinc-400">{dica}</p>
+          <h2 className="pdv-heading">
+            <ScanBarcode aria-hidden="true" className="pdv-icon pdv-cyan" />
+            {titulo}
+          </h2>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={aoFechar}>
+        <Button
+          type="button"
+          variant="outline"
+          className="pdv-secondary"
+          onClick={aoFechar}
+        >
+          <X aria-hidden="true" className="pdv-blue size-5" />
           Fechar
         </Button>
       </div>
 
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+      <div className="pdv-reader-preview">
         <video
           ref={refDoVideo}
           muted
@@ -80,57 +90,50 @@ export function LeitorDeCodigo({
         {/* Moldura decorativa — não é informação, só ajuda a mirar o código. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-8 rounded-lg border-2 border-white/70"
+          className="pointer-events-none absolute inset-x-8 inset-y-4 rounded-xl border border-sky-300/60"
         />
 
         {estado === "preparando" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-white">
+          <div role="status" className="pdv-reader-overlay">
             Abrindo a câmera…
           </div>
         )}
 
         {estado === "pausado" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-white">
+          <div role="status" className="pdv-reader-overlay">
             Leitura pausada
           </div>
         )}
-
-        {estado === "erro" && erro && (
-          <div
-            role="alert"
-            className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 p-4 text-center text-sm text-white"
-          >
-            <p>{erro.mensagem}</p>
-            <Button
-              type="button"
-              size="sm"
-              className="bg-admin-gold text-black hover:bg-admin-gold/90"
-              onClick={tentarDeNovo}
-            >
-              Tentar de novo
-            </Button>
-          </div>
-        )}
       </div>
+      <p className="pdv-muted">{dica}</p>
+      {estado === "erro" && erro && (
+        <div role="alert" className="pdv-notice">
+          <p className="pdv-heading">Não foi possível abrir a câmera</p>
+          <p>{erro.mensagem}</p>
+          <Button
+            type="button"
+            variant="outline"
+            className="pdv-secondary"
+            onClick={tentarDeNovo}
+          >
+            <RefreshCcw aria-hidden="true" className="pdv-blue size-5" />
+            Tentar de novo
+          </Button>
+        </div>
+      )}
 
       {/* A região existe SEMPRE que o componente está aberto — criada
           junto com o texto que ela vai anunciar não é anunciada (padrão da
           casa: src/components/ui/custom/QuantitySelector.tsx:51,
           src/components/admin/orders/EstornoCard.tsx:334). */}
-      <div aria-live="polite" className="text-xs font-semibold text-zinc-300">
+      <div aria-live="polite" className="pdv-muted">
         {ultimaLeitura ? `Código lido: ${ultimaLeitura.codigo}` : ""}
       </div>
 
       {mostrarCampoManual ? (
-        <form
-          onSubmit={aoSubmeterCodigoManual}
-          className="flex items-end gap-2"
-        >
+        <form onSubmit={aoSubmeterCodigoManual} className="pdv-stack">
           <div className="flex flex-1 flex-col gap-1">
-            <label
-              htmlFor="codigo-de-barras-manual"
-              className="text-xs font-semibold text-zinc-400"
-            >
+            <label htmlFor="codigo-de-barras-manual" className="pdv-muted">
               Código de barras
             </label>
             <input
@@ -139,14 +142,15 @@ export function LeitorDeCodigo({
               autoComplete="off"
               value={valorManual}
               onChange={(evento) => setValorManual(evento.target.value)}
-              className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-500"
+              className="pdv-field"
             />
           </div>
           <Button
             type="submit"
-            size="sm"
-            className="bg-admin-gold text-black hover:bg-admin-gold/90"
+            variant="outline"
+            className="pdv-secondary pdv-confirm"
           >
+            <ScanBarcode aria-hidden="true" className="pdv-cyan size-5" />
             Usar este código
           </Button>
         </form>
@@ -154,9 +158,10 @@ export function LeitorDeCodigo({
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          className="pdv-secondary"
           onClick={() => setMostrarCampoManual(true)}
         >
+          <Keyboard aria-hidden="true" className="pdv-purple size-5" />
           Digitar o código
         </Button>
       )}

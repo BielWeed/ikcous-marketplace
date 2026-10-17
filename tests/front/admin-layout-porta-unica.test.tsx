@@ -116,7 +116,7 @@ describe("AdminLayout — uma porta por função", () => {
 
   /** Subcabeçalho acoplado ao cabeçalho (Banners / Vitrines). */
   function subcabecalho(): string | null {
-    return hospedeiro.querySelector("header h1.truncate")?.textContent ?? null;
+    return hospedeiro.querySelector("header h1")?.textContent ?? null;
   }
 
   it("a barra lateral não tem botão 'Avisar clientes'", async () => {

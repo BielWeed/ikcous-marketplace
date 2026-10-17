@@ -205,10 +205,10 @@ describe("classesQuePerdem (o critério da guarda)", () => {
 describe("admin-glass sem classe que perde (varredura do painel)", () => {
   const { arquivosComAdminGlass, perdem } = varrer();
 
-  it("controle positivo: a varredura acha admin-glass em pelo menos 15 arquivos", () => {
+  it("controle positivo: a varredura acha admin-glass em pelo menos 5 arquivos", () => {
     // Eram 20 antes de Devoluções e Alertas trocarem o admin-glass por classes por
-    // extenso (18 hoje). O piso só existe para a regex não virar vácuo.
-    expect(arquivosComAdminGlass.length).toBeGreaterThanOrEqual(15);
+    // extenso (18 hoje) e os redesenhos do painel (Início e demais) seguem trocando. O piso só existe para a regex não virar vácuo.
+    expect(arquivosComAdminGlass.length).toBeGreaterThanOrEqual(5);
   });
 
   it("nenhum literal com admin-glass carrega classe que ele apaga (fora das exceções)", () => {
