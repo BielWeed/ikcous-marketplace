@@ -1,6 +1,18 @@
-import { AlertTriangle, Loader2, Save } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Clock,
+  Loader2,
+  MapPin,
+  RotateCcw,
+  Save,
+  Tag,
+  Type,
+  Wallet,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { CARTAO_AJUSTES, IconeDeAjustes } from "./visual-ajustes";
 
 import {
   LocalBufferedInput,
@@ -112,11 +124,9 @@ export function erroDoVicio(v: string): string | null {
 }
 
 const CAMPO =
-  "h-11 w-full rounded-xl border border-white/5 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none";
-const ROTULO =
-  "mb-1.5 block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
-const CAIXA =
-  "space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5";
+  "h-11 w-full rounded-xl border border-white/5 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-violet-300 focus:outline-none";
+const ROTULO = "mb-2 block text-sm font-bold leading-snug text-zinc-200";
+const CAIXA = `${CARTAO_AJUSTES} space-y-4`;
 
 /**
  * Política de trocas e devoluções da loja (P3 do AGENTS.md: cada lojista
@@ -385,7 +395,7 @@ export function PoliticaDeDevolucaoSection({
   return (
     <fieldset
       disabled={salvando}
-      className="min-w-0 space-y-4"
+      className="min-w-0 space-y-7"
       data-testid="politica-devolucao"
     >
       <p className="text-[11px] leading-relaxed text-zinc-400">
@@ -394,8 +404,11 @@ export function PoliticaDeDevolucaoSection({
       </p>
 
       <div className={CAIXA}>
-        <h4 className={ROTULO}>Prazos (dias após a entrega)</h4>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <h4 className="flex items-center gap-3 text-base font-bold">
+          <IconeDeAjustes icone={Clock} matiz="rosa" />
+          Prazos (dias após a entrega)
+        </h4>
+        <div className="grid gap-4 [&>div]:grid [&>div]:grid-cols-[1fr_76px] [&>div]:items-center [&>div]:gap-3 [&>div]:border-b [&>div]:border-white/10 [&>div]:pb-4">
           <div>
             <label htmlFor="politica-arrependimento" className={ROTULO}>
               Arrependimento
@@ -409,7 +422,10 @@ export function PoliticaDeDevolucaoSection({
               value={form.prazo_arrependimento_dias}
               onFlush={(v) => mudar("prazo_arrependimento_dias", v)}
               validate={erroDoArrependimento}
-              className={cn(CAMPO, "tabular-nums")}
+              className={cn(
+                CAMPO,
+                "text-center text-xl font-bold tabular-nums",
+              )}
             />
           </div>
           <div>
@@ -425,7 +441,10 @@ export function PoliticaDeDevolucaoSection({
               value={form.prazo_troca_dias}
               onFlush={(v) => mudar("prazo_troca_dias", v)}
               validate={erroDaTroca}
-              className={cn(CAMPO, "tabular-nums")}
+              className={cn(
+                CAMPO,
+                "text-center text-xl font-bold tabular-nums",
+              )}
             />
           </div>
           <div>
@@ -441,7 +460,10 @@ export function PoliticaDeDevolucaoSection({
               value={form.prazo_vicio_dias}
               onFlush={(v) => mudar("prazo_vicio_dias", v)}
               validate={erroDoVicio}
-              className={cn(CAMPO, "tabular-nums")}
+              className={cn(
+                CAMPO,
+                "text-center text-xl font-bold tabular-nums",
+              )}
             />
           </div>
         </div>
@@ -454,7 +476,9 @@ export function PoliticaDeDevolucaoSection({
       </div>
 
       <div className={CAIXA}>
-        <h4 className={ROTULO}>O que a loja aceita</h4>
+        <h4 className="flex items-center gap-3 text-base font-bold">
+          <IconeDeAjustes icone={Check} matiz="verde" />O que a loja aceita
+        </h4>
         <LinhaDeInterruptor
           rotulo="Troca por tamanho ou gosto"
           ajuda="Fora do arrependimento, o cliente só pode trocar ou pedir vale."
@@ -476,7 +500,10 @@ export function PoliticaDeDevolucaoSection({
       </div>
 
       <div className={CAIXA}>
-        <h4 className={ROTULO}>Como o produto volta</h4>
+        <h4 className="flex items-center gap-3 text-base font-bold">
+          <IconeDeAjustes icone={RotateCcw} matiz="azul" />
+          Como o produto volta
+        </h4>
         <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
           Pedidos locais (entrega da loja, retirada, balcão)
         </p>
@@ -507,7 +534,7 @@ export function PoliticaDeDevolucaoSection({
         ))}
         {(form.metodos_locais.length === 0 ||
           form.metodos_nacionais.length === 0) && (
-          <p className="flex items-start gap-2 text-[11px] leading-relaxed text-amber-300">
+          <p className="flex items-start gap-2 text-[11px] leading-relaxed text-orange-300">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             Com tudo desligado, o direito do cliente continua: ele ainda pode
             entregar na loja (pedido local) ou enviar por conta própria
@@ -515,7 +542,10 @@ export function PoliticaDeDevolucaoSection({
           </p>
         )}
         <div>
-          <p className={ROTULO}>Endereço para devolução</p>
+          <p className="flex items-center gap-3 text-sm font-bold">
+            <IconeDeAjustes icone={MapPin} matiz="ciano" />
+            Endereço para devolução
+          </p>
           <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs font-bold text-zinc-200">
             <input
               type="checkbox"
@@ -545,7 +575,10 @@ export function PoliticaDeDevolucaoSection({
       </div>
 
       <div className={CAIXA}>
-        <h4 className={ROTULO}>Dinheiro e frete</h4>
+        <h4 className="flex items-center gap-3 text-base font-bold">
+          <IconeDeAjustes icone={Wallet} matiz="roxo" />
+          Dinheiro e frete
+        </h4>
         <Escolha
           rotulo="Quando reembolsar"
           valor={form.reembolso_momento}
@@ -570,7 +603,10 @@ export function PoliticaDeDevolucaoSection({
       </div>
 
       <div className={CAIXA}>
-        <h4 className={ROTULO}>Categorias sem troca por gosto</h4>
+        <h4 className="flex items-center gap-3 text-base font-bold">
+          <IconeDeAjustes icone={Tag} matiz="laranja" />
+          Categorias sem troca por gosto
+        </h4>
         {nomesDasCategorias.length === 0 ? (
           <p className="text-[11px] text-zinc-500">
             Nenhuma categoria cadastrada.
@@ -606,7 +642,11 @@ export function PoliticaDeDevolucaoSection({
         </p>
       </div>
 
-      <div className={CAIXA}>
+      <div className={`${CAIXA} bg-gradient-to-br from-[#24242e] to-[#101013]`}>
+        <h4 className="flex items-center gap-3 text-base font-bold">
+          <IconeDeAjustes icone={Type} matiz="rosa" />
+          Texto da política
+        </h4>
         <label htmlFor="politica-texto" className={ROTULO}>
           Texto da política (o cliente lê antes de confirmar)
         </label>
@@ -617,26 +657,41 @@ export function PoliticaDeDevolucaoSection({
           rows={5}
           onFlush={(v) => mudar("texto_politica", v)}
           placeholder="Ex.: Aceitamos trocas em até 30 dias, com etiqueta e sem uso."
-          className="w-full rounded-xl border border-white/5 bg-zinc-950 p-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none"
+          className="min-h-48 w-full rounded-2xl border border-white/15 bg-[#17171c] p-4 text-sm leading-relaxed text-white placeholder:text-zinc-400 focus:border-pink-300 focus:outline-none"
         />
         <p className="text-right text-[11px] tabular-nums text-zinc-500">
           {form.texto_politica.length}/4000
         </p>
       </div>
 
-      <button
-        type="button"
-        onClick={() => void salvar()}
-        disabled={!sujo || salvando || temErro || isOffline}
-        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-widest text-black transition-all hover:bg-admin-gold/90 active:scale-95 disabled:opacity-50"
-      >
-        {salvando ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <Save className="size-4" />
-        )}
-        {sujo ? "Salvar política" : "Política salva"}
-      </button>
+      <div className="sticky bottom-[var(--admin-tab-pb,6.25rem)] z-20 -mx-3 space-y-2 border-t border-white/10 bg-[#08080a]/95 p-3 backdrop-blur-md lg:bottom-0">
+        <button
+          type="button"
+          onClick={() => void salvar()}
+          disabled={!sujo || salvando || temErro || isOffline}
+          className="ajustes-primario flex min-h-11 w-full items-center justify-center gap-2"
+        >
+          {salvando ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Save className="size-4" />
+          )}
+          {sujo ? "Salvar política" : "Política salva"}
+        </button>
+        <p role="status" className="text-center text-xs text-zinc-400">
+          {sujo ? "Salve antes de fechar" : "Os prazos contam da entrega"}
+        </p>
+        {!sujo &&
+          salva?.updated_at &&
+          !Number.isNaN(Date.parse(salva.updated_at)) && (
+            <p className="text-center text-xs text-zinc-400">
+              Salva em{" "}
+              <time dateTime={salva.updated_at}>
+                {new Date(salva.updated_at).toLocaleString("pt-BR")}
+              </time>
+            </p>
+          )}
+      </div>
     </fieldset>
   );
 }
@@ -664,7 +719,7 @@ function LinhaDeInterruptor({
         checked={ligado}
         aria-label={rotulo}
         onCheckedChange={onMudar}
-        className="data-[state=checked]:bg-admin-gold"
+        className="h-11 w-14 data-[state=checked]:bg-emerald-500"
       />
     </div>
   );
@@ -686,7 +741,7 @@ function Escolha<T extends string>({
       <legend className="mb-1.5 text-xs font-bold text-zinc-200">
         {rotulo}
       </legend>
-      <div className="grid grid-cols-2 gap-1.5">
+      <div className="grid gap-3">
         {opcoes.map(([chave, texto]) => (
           <button
             key={chave}

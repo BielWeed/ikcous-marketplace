@@ -167,6 +167,11 @@ describe("MercadoPagoSection — Pausar avisa que a transportadora para de vende
 
     expect(pausouNaEdge()).toBe(false);
     expect(aviso()).not.toBeNull();
+    expect(aviso()?.textContent).toContain("Pausar o recebimento pelo app?");
+    expect(aviso()?.textContent).toContain("PIX e cartão (crédito e débito)");
+    expect(aviso()?.textContent).not.toContain(
+      "Sua transportadora vai parar de vender.",
+    );
     expect(aviso()?.textContent).toMatch(/transportadora/i);
     expect(aviso()?.textContent).toMatch(/outras cidades/i);
     expect(aviso()?.textContent).toMatch(/retomar/i);
