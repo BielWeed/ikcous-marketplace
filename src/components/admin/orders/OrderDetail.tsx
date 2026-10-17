@@ -258,6 +258,16 @@ const globalSkuCache: Record<string, string> = {};
 const globalVariacaoCache = new Map<string, string>();
 const filaNotas = new Map<string, Promise<unknown>>();
 
+const lerNotaInterna = async (pedidoId: string) => {
+  const { data, error } = await supabase
+    .from("marketplace_order_internal_notes")
+    .select("note")
+    .eq("order_id", pedidoId)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.note || "";
+};
+
 // Redesenho da ficha (08/10/2026, aprovado pelo dono): a MESMA linguagem do
 // card de pedido redesenhado em 07/10 (`AdminOrderCard`) — blocos
 // `rounded-2xl border-white/5 bg-white/[0.03]`, sem vidro pesado nem brilho,
@@ -1588,15 +1598,10 @@ export const OrderDetail = memo(function OrderDetail({
     const carregar = async () => {
       try {
         await filaNotas.get(pedidoId);
-        const { data, error } = await supabase
-          .from("marketplace_order_internal_notes")
-          .select("note")
-          .eq("order_id", pedidoId)
-          .maybeSingle();
+        const note = await lerNotaInterna(pedidoId);
         if (!vigente || orderIdAtualRef.current !== pedidoId) return;
-        if (error) throw error;
-        setLocalNotes(data?.note || "");
-        setNotesValue(data?.note || "");
+        setLocalNotes(note);
+        setNotesValue(note);
         setLeituraNotas({ pedidoId, estado: "ready" });
       } catch {
         if (vigente && orderIdAtualRef.current === pedidoId) {
@@ -1825,15 +1830,10 @@ export const OrderDetail = memo(function OrderDetail({
       salvamentoNotasRef.current === salvamento;
     setAbrindoEdicao(true);
     try {
-      const { data, error } = await supabase
-        .from("marketplace_order_internal_notes")
-        .select("note")
-        .eq("order_id", pedidoId)
-        .maybeSingle();
+      const note = await lerNotaInterna(pedidoId);
       if (!vigente()) return;
-      if (error) throw error;
-      setLocalNotes(data?.note || "");
-      setNotesValue(data?.note || "");
+      setLocalNotes(note);
+      setNotesValue(note);
       setIsEditingNotes(true);
     } catch {
       if (vigente()) {
