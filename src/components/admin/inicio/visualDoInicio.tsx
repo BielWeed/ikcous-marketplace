@@ -31,7 +31,7 @@ export function SeloDoInicio({
   return (
     <span
       aria-hidden="true"
-      className={`flex size-9 shrink-0 items-center justify-center rounded-xl border ${TONS[tom]}`}
+      className={`flex size-9 shrink-0 items-center justify-center rounded-xl border ${Reflect.get(TONS, tom) as string}`}
     >
       <Icone className="size-5" />
     </span>

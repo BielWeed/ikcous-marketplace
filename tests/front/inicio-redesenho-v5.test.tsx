@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { CartaoDaAssinatura } from "@/components/admin/inicio/CartaoDaAssinatura";
 import { PerfilDaLoja } from "@/components/admin/inicio/PerfilDaLoja";
 import { SerieDe14Dias } from "@/components/admin/inicio/SerieDe14Dias";
 import { act } from "react";
@@ -110,4 +111,21 @@ it("distingue vazio, erro e carregamento sem inventar vendas", () => {
   act(() => raiz.render(<SerieDe14Dias serie={[]} carregando />));
   expect(tela.querySelector('[aria-busy="true"]')).not.toBeNull();
   expect(tela.textContent).not.toContain("Falha Operacional");
+});
+
+it("assinatura lida e sem registro explica que a cobrança é externa e não oferece botão inútil", () => {
+  act(() =>
+    raiz.render(
+      <CartaoDaAssinatura
+        assinatura={null}
+        lida
+        carregando={false}
+        erro={null}
+        onTentarDeNovo={() => undefined}
+      />,
+    ),
+  );
+  expect(tela.textContent).toContain("Plano ainda não sincronizado");
+  expect(tela.textContent).toContain("administrada fora do app");
+  expect(tela.querySelector("button")).toBeNull();
 });

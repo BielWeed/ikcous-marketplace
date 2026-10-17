@@ -17,7 +17,6 @@ import {
   Crown,
   ExternalLink,
   MessageCircle,
-  RefreshCw,
   Sparkles,
   XCircle,
 } from "lucide-react";
@@ -101,16 +100,10 @@ export function CartaoDaAssinatura({
             Plano ainda não sincronizado com a sua conta
           </p>
           <p className="text-sm leading-relaxed text-zinc-400">
-            Sincronize para ver os dados da assinatura.
+            A assinatura é administrada fora do app. Assim que o sistema de
+            cobrança sincronizar o seu plano, ele aparece aqui — nada muda na
+            sua loja enquanto isso.
           </p>
-          <button
-            type="button"
-            onClick={onTentarDeNovo}
-            className={BOTAO_INICIO}
-          >
-            <RefreshCw className="size-5" aria-hidden="true" />
-            Sincronizar
-          </button>
         </div>
       </section>
     );

@@ -225,7 +225,7 @@ export function SerieDe14Dias({
               <dt className="text-xs text-zinc-400">
                 Pico
                 {indicePico >= 0
-                  ? ` · ${dataCurta(serieCompleta[indicePico].dia)}`
+                  ? ` · ${dataCurta(serieCompleta.at(indicePico)?.dia ?? "")}`
                   : ""}
               </dt>
               <dd
