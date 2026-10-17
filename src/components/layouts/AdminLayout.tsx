@@ -814,7 +814,7 @@ export function AdminLayout({
     >
       {/* No computador, os mesmos destinos e estados ficam na lateral. */}
       <aside
-        className="z-50 hidden w-64 shrink-0 flex-col justify-between border-r border-white/5 bg-[#101013] p-5 lg:flex"
+        className="z-50 hidden w-64 shrink-0 flex-col justify-between gap-6 overflow-y-auto border-r border-white/5 bg-[#101013] p-5 lg:flex"
         style={
           {
             viewTransitionName: isViewTransitionSupported
