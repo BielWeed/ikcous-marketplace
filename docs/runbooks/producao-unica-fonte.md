@@ -2049,3 +2049,19 @@ nunca confirma.
     confirmação de sessão e função antiga. Perder os registros permite duplicar uma tentativa
     antiga depois de reaplicar. A 8e aceita os hashes anterior e sucessor conhecidos; os
     rollbacks da 99/97 desfazem esta sucessora primeiro. Nenhum apply é feito por este roteiro.
+
+50. **Lote de UMA migration, de apply normal: `20261247000000` — a anotação interna do pedido não chega à cliente.**
+    Consultas de catálogo `50a-conferir-nota-interna-do-pedido-aplicado` (depois) e
+    `50b-antes-nota-interna-do-pedido-base-vigente` (antes), seis linhas cada, rol fechado.
+    A 50b aceita a tabela ausente ou preservada fechada (sem política e sem privilégios) pelo rollback comum.
+    Cria `marketplace_order_internal_notes`, só do admin de agora (`rls_admin_atual()`); não toca
+    `marketplace_orders.notes` e não copia nenhuma anotação existente (sem backfill).
+    **Ordem: banco antes do front.** O front novo grava na tabela nova; o antigo continua funcionando.
+    A coluna `notes` só perde o UPDATE do papel authenticated numa migration posterior, com o front no ar.
+    **Desfazer:** retirar o front novo antes de executar
+    `rollback-manual-20261247000000_a_nota_interna_do_pedido_nao_chega_a_cliente.sql`, que fecha a porta e
+    preserva a tabela e as anotações (reaplicar a migration reabre). A tabela só é apagada pelo arquivo
+    separado `rollback-manual-destrutivo-20261247000000_a_nota_interna_do_pedido_nao_chega_a_cliente.sql`,
+    com o dono e confirmação de sessão; sem cópia, as anotações dos pedidos se perdem.
+    Pedido de privacidade: o roteiro [`atender-pedido-de-privacidade.md`](atender-pedido-de-privacidade.md)
+    também apaga as linhas desta tabela dos pedidos da cliente. Nenhum apply é feito por este roteiro.

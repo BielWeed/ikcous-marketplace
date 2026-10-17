@@ -183,6 +183,9 @@ nem pedido nenhum**:
   e-mail, CPF e **todo o endereço**, com o nome de campo que tiver, saem; o texto
   livre das observações é substituído por um aviso. **Ficam** valores, itens,
   datas, forma de pagamento, frete e rastreio;
+- as **anotações internas** da lojista sobre os pedidos dela
+  (`marketplace_order_internal_notes`) são **apagadas** (a linha inteira), com a
+  contagem no relatório;
 - devoluções: somem o texto que a cliente escreveu e a lista de fotos (o valor,
   o motivo e os estados ficam);
 - eventos de navegação (`analytics_events`): perdem o vínculo com a cliente.
@@ -287,6 +290,18 @@ BEGIN
    WHERE user_id = v_id;
   GET DIAGNOSTICS v_n = ROW_COUNT;
   v_rel := v_rel || format(E'pedidos anonimizados (continuam existindo): %s\n', v_n);
+
+  -- Anotação interna da lojista sobre os pedidos dela (tabela nova da 20261247): é texto livre
+  -- que pode citar a cliente, então SAI (apaga a linha, não só o texto). Loja que ainda não
+  -- recebeu a migration não tem a tabela: o bloco só avisa.
+  IF to_regclass('public.marketplace_order_internal_notes') IS NOT NULL THEN
+    DELETE FROM public.marketplace_order_internal_notes
+     WHERE order_id IN (SELECT id FROM public.marketplace_orders WHERE user_id = v_id);
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    v_rel := v_rel || format(E'anotações internas dos pedidos apagadas: %s\n', v_n);
+  ELSE
+    v_rel := v_rel || E'anotações internas dos pedidos: esta loja ainda não tem a tabela (nada a apagar)\n';
+  END IF;
 
   -- Devoluções: o que a cliente escreveu e a lista de fotos (as fotos já foram apagadas no passo 3).
   UPDATE public.devolucoes SET detalhe = NULL, fotos = '{}' WHERE user_id = v_id;

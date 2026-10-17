@@ -193,6 +193,8 @@ on:
           - 48b-antes-lucro-com-desconto-base-vigente
           - 49a-conferir-lancamento-idempotente-aplicado
           - 49b-antes-lancamento-idempotente-base-vigente
+          - 50a-conferir-nota-interna-do-pedido-aplicado
+          - 50b-antes-nota-interna-do-pedido-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

@@ -369,6 +369,17 @@ async function semear(c) {
     "deixar na portaria",
     null,
   );
+  // Anotação interna da lojista (20261247): texto livre que cita a cliente. Duas dela, uma da vizinha.
+  await c.query(
+    `INSERT INTO public.marketplace_order_internal_notes (order_id, note) VALUES
+       ('9b1caaaa-0000-4000-8000-000000000001', $1),
+       ('9b1caaaa-0000-4000-8000-000000000002', $2),
+       ('9b1caaaa-0000-4000-8000-0000000000aa', 'Vizinha pagou no balcao, sem pendencia')`,
+    [
+      `${NOME_ALVO} pediu para ligar no ${FONE_ALVO_FORMATADO} antes de entregar`,
+      `${NOME_ALVO} desistiu; devolver o sinal`,
+    ],
+  );
   await c.query(
     `INSERT INTO public.otp_verifications (email, whatsapp, otp_code, expires_at, order_id) VALUES
        ($1, $2, '123456', now() + interval '1 hour', '9b1caaaa-0000-4000-8000-000000000001'),
@@ -769,6 +780,17 @@ PROVAS.push({
         r.mensagem,
         /pedidos anonimizados \(continuam existindo\): 2/,
       );
+      assert.match(r.mensagem, /anotações internas dos pedidos apagadas: 2/);
+      assert.strictEqual(
+        (
+          await um(
+            c,
+            "SELECT count(*)::int n FROM public.marketplace_order_internal_notes",
+          )
+        ).n,
+        3,
+        "o ensaio apagou anotação interna",
+      );
       assert.match(r.mensagem, /endereços apagados: 1/);
       assert.match(r.mensagem, /sessões abertas encerradas: 2/);
       assert.match(
@@ -1018,6 +1040,21 @@ PROVAS.push({
       assert.strictEqual(
         ped.rows[1].observation,
         "[texto removido a pedido da cliente]",
+      );
+      // anotação interna da lojista: as linhas dos pedidos dela SAEM; a da vizinha fica.
+      assert.deepStrictEqual(
+        (
+          await c.query(
+            "SELECT order_id::text, note FROM public.marketplace_order_internal_notes ORDER BY order_id",
+          )
+        ).rows,
+        [
+          {
+            order_id: "9b1caaaa-0000-4000-8000-0000000000aa",
+            note: "Vizinha pagou no balcao, sem pendencia",
+          },
+        ],
+        "anotação interna da cliente sobrou ou a da vizinha mudou",
       );
       assert.strictEqual(
         JSON.stringify(
@@ -1355,6 +1392,12 @@ const MUTANTES = [
     sobra: "auth.audit_log_entries",
   },
   {
+    nome: "sem apagar as anotações internas dos pedidos",
+    mutar: (sql) =>
+      semOPasso(sql, "DELETE FROM public.marketplace_order_internal_notes"),
+    sobra: "public.marketplace_order_internal_notes",
+  },
+  {
     nome: "sem apagar os códigos de uso único",
     mutar: (sql) => semOPasso(sql, "DELETE FROM auth.one_time_tokens"),
     sobra: "auth.one_time_tokens",
@@ -1387,7 +1430,7 @@ const MUTANTES = [
 ];
 
 PROVAS.push({
-  nome: "(g) MUTANTES: o controle limpa tudo; tirar UM passo do roteiro (registro de atividade, códigos, 2 etapas, troca pendente, lista de permitidos do pedido) deixa dado dela e a prova cai",
+  nome: "(g) MUTANTES: o controle limpa tudo; tirar UM passo do roteiro (registro de atividade, anotações internas, códigos, 2 etapas, troca pendente, lista de permitidos do pedido) deixa dado dela e a prova cai",
   corpo: async (c) => {
     // CONTROLE: o roteiro inteiro, sem avaliação nem resposta da loja, não deixa nada.
     await emTransacao(c, async () => {

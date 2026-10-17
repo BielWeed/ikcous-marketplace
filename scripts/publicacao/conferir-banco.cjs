@@ -2239,6 +2239,17 @@ const ROL_DA_49A = [
   "fin_lancamento_tentativas: so servidor, RLS e nenhuma politica",
 ];
 const ROL_DA_49B = [...ROL_DA_49A];
+
+// Lote 50: 20261247000000, catalogo apenas; os dois lados tem o mesmo rol fechado.
+const ROL_DA_50A = [
+  "controle: funcoes de public visiveis a este papel",
+  "marketplace_order_internal_notes: forma conhecida (colunas, restricoes, valores padrao, gatilho)",
+  "marketplace_order_internal_notes: RLS ligada e uma unica politica, so do admin de agora",
+  "marketplace_order_internal_notes: ACL so authenticated (SELECT, INSERT, UPDATE, DELETE), nada a anon, PUBLIC e service_role",
+  "marketplace_order_internal_notes: dono certo, fora do realtime e sem ACL de coluna",
+  "dependencias: marketplace_orders, portas do admin de agora e funcao do carimbo",
+];
+const ROL_DA_50B = [...ROL_DA_50A];
 const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
@@ -2316,6 +2327,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "48b-antes-lucro-com-desconto-base-vigente": ROL_DA_48B,
   "49a-conferir-lancamento-idempotente-aplicado": ROL_DA_49A,
   "49b-antes-lancamento-idempotente-base-vigente": ROL_DA_49B,
+  "50a-conferir-nota-interna-do-pedido-aplicado": ROL_DA_50A,
+  "50b-antes-nota-interna-do-pedido-base-vigente": ROL_DA_50B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2934,6 +2947,8 @@ module.exports = {
   ROL_DA_48B,
   ROL_DA_49A,
   ROL_DA_49B,
+  ROL_DA_50A,
+  ROL_DA_50B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

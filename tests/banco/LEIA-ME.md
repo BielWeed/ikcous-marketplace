@@ -871,3 +871,20 @@ aplicação.
   Uma linha por criação com chave, sem expurgo automático. Banco antes do front.
   A cadeia da 99 inclui a 246 em `sucessoras-da-99.cjs`; isso alcança admin-atual-portas-viva,
   admin-atual-viva e pagamentos-rpc-viva sem relaxar os hashes originais.
+
+- **`nota-interna-do-pedido-viva.cjs`** (20261247000000): execute pelo
+  `node tests/banco/rodar-isolado.cjs tests/banco/nota-interna-do-pedido-viva.cjs`.
+  A anotação interna da lojista mora em `marketplace_order_internal_notes`, só do admin de agora
+  (`rls_admin_atual()`, a porta feita para política; `is_admin_atual()` é privada). Com papéis
+  reais (SET LOCAL ROLE): admin atual insere, lê, faz upsert, atualiza e apaga, e o servidor carimba
+  quem e quando; a cliente dona do pedido, outra cliente, o anon e o admin rebaixado (nas duas
+  direções, com JWT ainda de admin) não leem nem escrevem, e o CONTROLE com `is_admin()` mostra que é a
+  política que barra. Nota vazia, só espaço/tab/quebra e acima de 2000 caracteres são recusadas;
+  apagar o pedido apaga a nota; apagar a conta de quem escreveu não é travado (sem FK). Catálogo:
+  nada a anon, PUBLIC e service_role; fora do realtime. Apply 2x idêntico, pré-voo (18 divergências)
+  e rollbacks recusam estado desconhecido sem escrever, rollback comum fecha e preserva as linhas,
+  destrutivo exige confirmação e a porta fechada. Portão 50a/50b lido como authenticated. 13 mutantes
+  (sem política, is_admin() e is_admin_atual() no lugar de rls_admin_atual(), sem grant, sem RLS,
+  grant a anon e a service_role, dona lê, sem CHECK, limite maior, sem cascata, FK para auth.users,
+  sem gatilho) derrubam cada um uma asserção, e a asserção certa. O ensaio do roteiro de
+  privacidade (`anonimizar-conta-ensaio-viva.cjs`) cobre o passo que apaga as anotações da cliente.
