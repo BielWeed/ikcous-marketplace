@@ -147,7 +147,11 @@ const botoesTornarPrincipal = () => [
 
 /** As fotos do produto na tela, na ordem do carrossel. */
 const fotosNaTela = () =>
-  [...document.body.querySelectorAll("img")]
+  [
+    ...document.body.querySelectorAll(
+      '[aria-label="Galeria de fotos do produto"] img',
+    ),
+  ]
     .map((i) => i.getAttribute("src"))
     .filter((src): src is string => !!src && src.startsWith("https://cdn/"));
 
@@ -240,6 +244,11 @@ describe("AdminProductFormView — tornar uma foto a principal", () => {
     });
 
     expect(fotosNaTela()).toEqual([FOTO_C, FOTO_A, FOTO_B]);
+    expect(
+      document
+        .querySelector('[data-testid="resumo-do-produto"] img')
+        ?.getAttribute("src"),
+    ).toBe(FOTO_C);
     // A marca "Principal" acompanha a foto que virou capa: só uma na tela.
     const marcas = [...document.body.querySelectorAll("div")].filter(
       (d) => d.children.length === 0 && d.textContent === "Principal",

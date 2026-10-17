@@ -315,10 +315,9 @@ describe("AdminProductFormView — salvar não devolve o estoque que a tela leu 
     await abrirVariacaoParaEditar("Rosa");
     await digitarCampo("variant-stock", "10");
     await act(async () => {
-      // Dentro do modal o botão de confirmar se chama "Salvar" também; o do
-      // produto está atrás dele, então o último "Salvar" da tela é o do modal.
+      // A confirmação da variação se distingue da gravação do produto.
       const salvarDoModal = [...document.querySelectorAll("button")]
-        .filter((b) => b.textContent?.trim() === "Salvar")
+        .filter((b) => b.textContent?.trim() === "Salvar variação")
         .at(-1) as HTMLButtonElement;
       salvarDoModal.click();
     });

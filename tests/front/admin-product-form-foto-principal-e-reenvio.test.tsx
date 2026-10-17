@@ -146,9 +146,11 @@ const foto = (nome: string) =>
 
 /** URLs das fotos na ordem em que aparecem no carrossel do formulário. */
 const urlsNaTela = () =>
-  [...document.querySelectorAll('img[src^="https://cdn/"]')].map((i) =>
-    i.getAttribute("src"),
-  );
+  [
+    ...document.querySelectorAll(
+      '[aria-label="Galeria de fotos do produto"] img[src^="https://cdn/"]',
+    ),
+  ].map((i) => i.getAttribute("src"));
 
 const botoesTornarPrincipal = () => [
   ...document.querySelectorAll<HTMLButtonElement>(

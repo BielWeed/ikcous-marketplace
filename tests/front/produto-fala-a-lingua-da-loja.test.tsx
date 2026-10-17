@@ -230,7 +230,7 @@ describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
     );
   });
 
-  it("editar uma variação mostra o botão 'Salvar' (não 'Salvar Protocolo')", async () => {
+  it("editar uma variação mostra o botão 'Salvar variação' (não 'Salvar Protocolo')", async () => {
     await montar("prod-1");
     const editar = document
       .querySelector('[data-testid="variante-cadastrada"]')
@@ -245,7 +245,7 @@ describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
     const botoes = [...(modal?.querySelectorAll("button") ?? [])].map((b) =>
       b.textContent?.trim(),
     );
-    expect(botoes).toContain("Salvar");
+    expect(botoes).toContain("Salvar variação");
     expect(botoes).not.toContain("Salvar Protocolo");
   });
 
@@ -303,36 +303,74 @@ describe("AdminProductFormView — rótulos na língua da loja (G3)", () => {
 
   it("os guias do formulário e a ajuda geral não falam SKU/EAN/UPC/GTIN", async () => {
     await montar();
-    await act(async () => {
-      (
-        document.querySelector(
-          '[title="Ajuda / Guia de Dados do Produto"]',
-        ) as HTMLButtonElement
-      ).click();
-    });
-    await act(async () => {
-      (
-        document.querySelector(
-          '[title="Guia de Cadastro e Ajuda"]',
-        ) as HTMLButtonElement
-      ).click();
-    });
+    const guias = [
+      {
+        seletor: '[aria-label="Guia de Fotos do Produto"]',
+        titulo: "Guia de Fotos do Produto",
+        conteudo: "Resolução Recomendada",
+      },
+      {
+        seletor: '[title="Ajuda / Guia de Dados do Produto"]',
+        titulo: "Guia de Cadastro e Informações",
+        conteudo: "Código interno",
+      },
+      {
+        seletor: '[title="Ajuda / Guia de Variações"]',
+        titulo: "Como usar as Variações",
+        conteudo: "Estoque da Variação",
+      },
+      {
+        seletor: '[title="Ajuda / Guia de Precificação"]',
+        titulo: "Guia de Custos e Margens",
+        conteudo: "Produto em Promoção",
+      },
+      {
+        seletor: '[aria-label="Como cadastrar um produto"]',
+        titulo: "Como cadastrar um produto",
+        conteudo: "Dicas para um Cadastro de Sucesso",
+      },
+    ];
 
-    const guia = [...document.querySelectorAll("h3")].find((h) =>
-      h.textContent?.includes("Guia de Cadastro e Informações"),
-    );
-    expect(guia).toBeDefined();
-    const textoDoGuia = guia?.parentElement?.textContent ?? "";
-    expect(textoDoGuia).not.toMatch(JARGAO);
-    expect(textoDoGuia).toContain("Código interno");
+    for (const { seletor, titulo, conteudo } of guias) {
+      const abrir = document.querySelector<HTMLButtonElement>(seletor);
+      expect(abrir, titulo).not.toBeNull();
+      const secao = abrir
+        ?.closest("section[aria-label]")
+        ?.querySelector<HTMLButtonElement>("button[aria-expanded]");
+      if (secao?.getAttribute("aria-expanded") === "false") {
+        await act(async () => {
+          secao.click();
+        });
+        expect(secao.getAttribute("aria-expanded")).toBe("true");
+      }
+      expect(abrir?.closest("[hidden]"), titulo).toBeNull();
+      await act(async () => {
+        abrir!.click();
+      });
 
-    const ajuda = [...document.querySelectorAll("h4")].find((h) =>
-      h.textContent?.includes("Dicas para um Cadastro de Sucesso"),
-    );
-    expect(ajuda).toBeDefined();
-    const textoDaAjuda = document.body.textContent ?? "";
-    expect(textoDaAjuda).toContain("Como cadastrar um produto");
-    expect(ajuda?.parentElement?.textContent ?? "").not.toMatch(JARGAO);
+      // As ajudas agora são diálogos em portal, nomeados pelo título.
+      // Conferir o diálogo inteiro inclui o corpo, além do cabeçalho.
+      const dialogo = document.querySelector<HTMLElement>(
+        '[role="dialog"][data-state="open"]',
+      );
+      expect(dialogo, titulo).not.toBeNull();
+      const idDoTitulo = dialogo!.getAttribute("aria-labelledby") ?? "";
+      expect(document.getElementById(idDoTitulo)?.textContent).toBe(titulo);
+      const texto = dialogo!.textContent ?? "";
+      expect(texto).toContain(conteudo);
+      expect(texto).not.toMatch(JARGAO);
+
+      const fechar = dialogo!.querySelector<HTMLButtonElement>(
+        '[aria-label="Fechar"]',
+      );
+      expect(fechar).not.toBeNull();
+      await act(async () => {
+        fechar!.click();
+      });
+      expect(
+        document.querySelector('[role="dialog"][data-state="open"]'),
+      ).toBeNull();
+    }
   });
 });
 

@@ -67,10 +67,14 @@ describe("Grade do produto — letra e toque (onda L)", () => {
   });
 
   it('o botão "Aplicar para todas" tem 44px de altura', () => {
-    const botao = literalComMarcas(semComentarios(ler(LINHAS)), [
-      "text-emerald-500",
-      "px-5 py-3",
-    ]);
+    const fonte = semComentarios(ler(LINHAS));
+    // A cor mudou com o desenho; identificamos a ação pelo botão e seu texto.
+    const botoes = [...fonte.matchAll(/<button\b[\s\S]*?<\/button>/g)]
+      .map((m) => m[0])
+      .filter((b) => />\s*Aplicar para todas\s*<\/button>/.test(b));
+    expect(botoes).toHaveLength(1);
+    expect(botoes[0]).toContain("onClick={onAplicarParaTodas}");
+    const botao = literalComMarcas(botoes[0] ?? "", ["px-5 py-3"]);
     expect(botao).toContain("min-h-11");
     expect(botao).toContain("text-[11px]");
   });

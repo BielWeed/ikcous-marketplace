@@ -116,6 +116,15 @@ function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** A ação persistente é um portal, fora do hospedeiro do formulário. */
+function acoesDoProduto(): HTMLElement {
+  const barra = document.querySelector<HTMLElement>(
+    '[aria-label="Ações do produto"]',
+  );
+  if (!barra) throw new Error("Barra de ações do produto ausente");
+  return barra;
+}
+
 function localizarBotaoPorTexto(
   raizDom: ParentNode,
   texto: string,
@@ -222,7 +231,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
   it("clicar duas vezes rápido em Publicar chama addProduct UMA vez só", async () => {
     await preencherFormularioValido();
 
-    const botao = localizarBotaoPorTexto(hospedeiro, "Publicar")!;
+    const botao = localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!;
     expect(botao).toBeDefined();
     expect(botao.disabled).toBe(false);
 
@@ -261,7 +270,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     await preencherFormularioValido();
     vi.useFakeTimers();
 
-    const botao = localizarBotaoPorTexto(hospedeiro, "Publicar")!;
+    const botao = localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!;
 
     await act(async () => {
       botao.click();
@@ -339,7 +348,7 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
       await vi.advanceTimersByTimeAsync(300);
     });
 
-    const botao = localizarBotaoPorTexto(hospedeiro, "Publicar")!;
+    const botao = localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!;
     expect(botao.disabled).toBe(false);
 
     await act(async () => {
