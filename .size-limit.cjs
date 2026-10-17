@@ -144,8 +144,17 @@ module.exports = [
     // tentativa, reaproveitada ao reabrir ou recarregar o formulário depois do
     // aviso de internet lenta. O gerador de UUID já existia e foi reaproveitado
     // (sem cópia no painel); a proteção contra recarregar a página fica.
+    // 17/10/2026 — teto 467 -> 471 kB, ULTIMA subida (decisao da hub com o
+    // `socio`, sob a delegacao do dono de 15/10; o dono pode vetar e voltar a
+    // 467 em uma linha). Motivo: o redesenho aprovado de todas as telas do
+    // painel (Clientes, Produtos, Pedidos medido 467,34 e Financeiro previsto
+    // ~+2 kB). O painel carrega por tela (22 telas sob demanda), entao +3 kB
+    // custam ao lojista so na primeira abertura da tela. Duas caças a economia
+    // (PR #999, -4 kB; analise de 17/10, ~100 bytes) nao acharam mais gordura.
+    // REGRA: dai em diante o painel nao sobe mais; cada kB novo e pago com um
+    // kB tirado de outro lugar (primeira fonte: a biblioteca de graficos).
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "467 kB",
+    limit: "471 kB",
     webpack: false,
     running: false,
   },
