@@ -363,7 +363,7 @@ describe("FechamentoDaVenda (C3.2)", () => {
     expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   });
 
-  it("caso 7 — recibo sem WhatsApp não mostra o botão de WhatsApp", async () => {
+  it("caso 7 — recibo sem WhatsApp mantém o envio indisponível e explica o motivo", async () => {
     const recibo = reciboDeExemplo({
       cliente: { tipo: "sem_cliente" },
     });
@@ -379,9 +379,12 @@ describe("FechamentoDaVenda (C3.2)", () => {
     });
     await avancar();
 
-    expect(
-      localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp"),
-    ).toBeUndefined();
+    const enviar = localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp");
+    expect(enviar).toBeDefined();
+    expect(enviar?.disabled).toBe(true);
+    expect(hospedeiro.textContent).toContain(
+      "Indisponível: cliente sem WhatsApp.",
+    );
     expect(localizarBotaoPorTexto(hospedeiro, "Imprimir")).toBeTruthy();
   });
 });
