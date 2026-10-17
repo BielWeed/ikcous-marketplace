@@ -641,8 +641,10 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     // O recibo mostra o que o BANCO gravou (1x), nunca o que a tela tinha
     // no momento do clique (2x) — senão o balconista cobra R$ 79,80 e o
     // pedido registrado (e o estoque baixado) são de R$ 39,90.
-    expect(hospedeiro.textContent).toContain("1x Camiseta Lisa");
-    expect(hospedeiro.textContent).not.toContain("2x Camiseta Lisa");
+    const linhaDoRecibo = hospedeiro.querySelector(".pdv-receipt-lines li");
+    expect(linhaDoRecibo?.textContent).toContain("Camiseta Lisa");
+    expect(linhaDoRecibo?.textContent).toContain("1 un. × R$ 39,90");
+    expect(linhaDoRecibo?.textContent).not.toContain("2 un.");
   });
 
   it("caso 8 — `jaExistia: true` acende um aviso visível no recibo (a tela não fica muda sobre o duplo toque)", async () => {

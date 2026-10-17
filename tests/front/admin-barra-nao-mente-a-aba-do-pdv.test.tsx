@@ -8,13 +8,13 @@
 // A CAUSA: `isActive` das abas usa `parentView === item.view`, e o pai do
 // admin-pdv é admin-dashboard — pai esse que existe para o botão VOLTAR
 // (plano §5.3: "sub-view do painel principal"), não para herdar o destaque.
-// "Vender" é AÇÃO com botão próprio (o redondo, que já se marca com anel
-// quando o PDV está aberto) — nenhuma das 5 abas deve acender na tela dele.
+// "Vender" é AÇÃO com botão próprio — nenhuma das 5 abas deve acender na
+// tela dele. Na casca v5, Vender ganha rótulo e a mesma seleção das abas.
 //
 // O CONTRATO (este arquivo):
 //   1. Em admin-pdv, NENHUMA das 5 abas carrega o estado ativo
 //      (`text-admin-gold`) — na sidebar desktop nem na barra do celular.
-//   2. O botão redondo "Vender" se marca (anel) — o PDV tem dono do destaque.
+//   2. "Vender" se marca em dourado — o PDV tem dono do destaque.
 //   3. Controle: sub-view DE VERDADE (admin-coupon-form, filho de Produtos)
 //      continua acendendo a aba pai — a correção não pode cegar a barra toda.
 import { act } from "react";
@@ -134,7 +134,7 @@ describe("AdminLayout — na tela de venda, a barra marca o Vender e não a aba 
     }
   });
 
-  it("em admin-pdv, o botão redondo Vender carrega a marca do anel (o destaque tem dono)", async () => {
+  it("em admin-pdv, só Vender carrega a seleção dourada (o destaque tem dono)", async () => {
     const { AdminLayout } = await import("@/components/layouts/AdminLayout");
     await act(async () => {
       raiz.render(
@@ -145,10 +145,13 @@ describe("AdminLayout — na tela de venda, a barra marca o Vender e não a aba 
     });
 
     const vender = hospedeiro.querySelector(
-      'button[aria-label="Vender"]',
+      'nav[aria-label="Navegação inferior do painel"] button[aria-label="Vender"]',
     ) as HTMLButtonElement | null;
     expect(vender).toBeTruthy();
-    expect(vender!.className).toContain("ring-2");
+    expect(vender!.className).toContain("text-admin-gold");
+    expect(vender!.className).toContain("bg-[#3B3016]");
+    expect(vender!.getAttribute("aria-current")).toBe("page");
+    expect(vender!.textContent).toBe("Vender");
   });
 
   it("controle: sub-view de verdade (admin-user-detail) continua acendendo a aba pai Clientes", async () => {

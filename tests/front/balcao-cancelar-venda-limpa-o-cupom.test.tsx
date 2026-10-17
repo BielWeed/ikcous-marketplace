@@ -209,7 +209,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await bipar();
 
     await clicar("Cancelar venda");
-    expect(hospedeiro.textContent).toContain("Cancelar esta venda?");
+    expect(hospedeiro.textContent).toContain("Descartar este cupom?");
     expect(hospedeiro.textContent).toContain(
       "Os itens e o cliente escolhido serão limpos",
     );
@@ -219,7 +219,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     expect(document.activeElement).toBe(botao(hospedeiro, "Voltar"));
 
     await clicar("Voltar");
-    expect(hospedeiro.textContent).not.toContain("Cancelar esta venda?");
+    expect(hospedeiro.textContent).not.toContain("Descartar este cupom?");
     expect(hospedeiro.textContent).toContain("Camiseta Lisa");
     expect(botao(hospedeiro, "Cancelar venda")).toBeTruthy();
   });
@@ -267,7 +267,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await clicar("Sim, cancelar venda");
 
     expect(botao(hospedeiro, "Cancelar venda")).toBeUndefined();
-    expect(hospedeiro.textContent).not.toContain("Cancelar esta venda?");
+    expect(hospedeiro.textContent).not.toContain("Descartar este cupom?");
   });
 
   it("só cliente escolhido (sem item) também pode ser cancelado", async () => {
@@ -302,7 +302,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     await montar();
     await bipar();
     await clicar("Cancelar venda");
-    expect(hospedeiro.textContent).toContain("Cancelar esta venda?");
+    expect(hospedeiro.textContent).toContain("Descartar este cupom?");
 
     await clicar("Fechar venda");
     await clicar("Dinheiro");
@@ -310,7 +310,7 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
 
     // A venda está no ar: nada de "Sim, cancelar" para zerar a tela por cima.
     expect(botao(hospedeiro, "Sim, cancelar venda")).toBeUndefined();
-    expect(hospedeiro.textContent).not.toContain("Cancelar esta venda?");
+    expect(hospedeiro.textContent).not.toContain("Descartar este cupom?");
     expect(hospedeiro.textContent).toContain("Camiseta Lisa");
 
     await act(async () => {

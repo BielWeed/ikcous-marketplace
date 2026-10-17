@@ -218,12 +218,16 @@ async function esperarAte(
 }
 
 /** Monta o painel e devolve o botão do sino (cabeçalho mobile). */
-async function montarPainel(raiz: Root, hospedeiro: HTMLDivElement) {
+async function montarPainel(
+  raiz: Root,
+  hospedeiro: HTMLDivElement,
+  onNavigate = vi.fn(),
+) {
   const { AdminLayout } = await import("@/components/layouts/AdminLayout");
 
   await act(async () => {
     raiz.render(
-      <AdminLayout currentView="admin-dashboard" onNavigate={vi.fn()}>
+      <AdminLayout currentView="admin-dashboard" onNavigate={onNavigate}>
         <div />
       </AdminLayout>,
     );
@@ -297,13 +301,27 @@ describe("AdminLayout — o sino acende quando uma consulta falha, não quando a
   it("a consulta de pedidos falha, e nada mais está pendente — o sino ACENDE", async () => {
     ERRO_NA_CONSULTA_DE_PEDIDOS = true;
 
-    const sino = await montarPainel(raiz, hospedeiro);
+    const onNavigate = vi.fn();
+    const sino = await montarPainel(raiz, hospedeiro, onNavigate);
     await esperarContagensChegarem();
 
     // Nenhuma pendência real existe (tudo em 0) — se o sino acender, é por
     // causa da falha, não de uma contagem positiva. É exatamente esse o
     // defeito: hoje a falha faz a contagem ficar em 0 e o sino apaga.
     expect(sino.querySelector("span")).toBeTruthy();
+    expect(sino.querySelector("span")?.textContent).toBe("!");
+    expect(sino.getAttribute("title")).toBe("Falha ao conferir avisos");
+    expect(hospedeiro.textContent).toContain("Contagem atual não confirmada.");
+    expect(
+      Array.from(hospedeiro.querySelectorAll("button")).some(
+        (b) => b.textContent === "Ver avisos",
+      ),
+    ).toBe(true);
+    const verAvisos = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent === "Ver avisos",
+    )!;
+    act(() => verAvisos.click());
+    expect(onNavigate).toHaveBeenCalledWith("admin-notifications");
   });
 
   it("há pendência real (pedido pendente), sem falha nenhuma — o sino acende, como já acendia", async () => {
@@ -322,6 +340,10 @@ describe("AdminLayout — o sino acende quando uma consulta falha, não quando a
     // Sem este caso, uma correção que acendesse o sino sempre (para
     // qualquer coisa) passaria nos dois testes de cima também.
     expect(sino.querySelector("span")).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Falha ao conferir avisos");
+    expect(hospedeiro.textContent).not.toContain(
+      "Contagem atual não confirmada.",
+    );
   });
 
   // Ressalva 2 da revisão de 25/08/2026: quatro mutantes construídos contra

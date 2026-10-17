@@ -117,6 +117,12 @@ describe("LeitorDeCodigo (componente)", () => {
     expect(alerta?.textContent).toContain(
       "Você precisa permitir o acesso à câmera para ler o código.",
     );
+    expect(alerta?.textContent).toContain("Não foi possível abrir a câmera");
+    expect(
+      [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Digitar o código",
+      ),
+    ).toBeDefined();
 
     const botoes = Array.from(document.querySelectorAll("button"));
     const botaoTentarDeNovo = botoes.find(
