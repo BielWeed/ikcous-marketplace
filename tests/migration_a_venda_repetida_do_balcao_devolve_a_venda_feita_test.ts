@@ -326,10 +326,34 @@ Deno.test("as consultas 36a/36b, a 8e e a 9a citam os md5 REAIS dos dois corpos"
     c8e.includes(`('registrar_venda_presencial', '${HASH_VIGENTE}')`),
     "a 8e continua tendo o corpo da 20261199000000 como o `final`",
   );
-  // a 9a (igualdade exata) fixa o corpo novo
+  // A 36a aceita SOMENTE a sucessora medida que preserva a trava; a 36b continua
+  // negativa nela, porque prova o ANTES historico da 235 (sem trava).
+  const hashSucessora = md5(
+    corpo(
+      funcao(
+        ler(
+          "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql",
+        ),
+        "registrar_venda_presencial",
+      ),
+    ),
+  );
+  assert.ok(c36a.includes(`f.m = '${hashSucessora}'`));
+  assert.ok(!c36b.includes(hashSucessora), "36b nao aceita quem ja tem trava");
+  // A 9a (igualdade exata) acompanha o corpo FINAL vivo, hoje o sucessor da
+  // 20261249. O hash da 235 continua obrigatório na 8e e na 36a acima.
   const c9a = lerArquivo(
     "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
   );
-  assert.ok(c9a.includes(`('registrar_venda_presencial', '${novo}')`));
+  const sucessora = funcao(
+    ler(
+      "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql",
+    ),
+    "registrar_venda_presencial",
+  );
+  assert.ok(
+    c9a.includes(`('registrar_venda_presencial', '${md5(corpo(sucessora))}')`),
+  );
+  assert.ok(!c9a.includes(novo), "9a não fixa mais a 235 como corpo final");
   assert.ok(!c9a.includes(HASH_VIGENTE));
 });

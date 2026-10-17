@@ -447,7 +447,8 @@ export function AdminPdvView({
             p_cliente_whatsapp:
               estado.cliente.tipo === "avulso" ? estado.cliente.whatsapp : null,
             p_desconto: estado.desconto,
-            p_observacao: estado.motivoDoDesconto || null,
+            p_observacao:
+              estado.desconto > 0 ? estado.motivoDoDesconto || null : null,
             // A MESMA chave em toda retentativa do MESMO cupom — nasce em
             // `estadoInicialDaVenda`/`cupom_limpo` (C3.1), nunca aqui. É o que
             // faz a segunda tentativa de uma venda que já foi gravada (rede

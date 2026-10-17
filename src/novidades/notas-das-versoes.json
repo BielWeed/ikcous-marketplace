@@ -1,4 +1,12 @@
 {
+  "1.5.36": {
+    "titulo": "Motivo do desconto só da equipe",
+    "novidades": [],
+    "correcoes": [
+      "O motivo que você escreve ao dar desconto no balcão agora fica só com a equipe. A cliente cadastrada não recebe mais esse texto no celular dela."
+    ],
+    "melhorias": []
+  },
   "1.5.35": {
     "titulo": "Anotação interna só da equipe",
     "novidades": [],

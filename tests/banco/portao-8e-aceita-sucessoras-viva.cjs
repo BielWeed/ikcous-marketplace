@@ -12,7 +12,7 @@
  *                                         a CADEIA do painel_inicio, 99 → 12 → 28, repetida);
  *   get_admin_customers_paged(...)        20261199 → 20261230000000 (a busca de clientes);
  *   crm_clientes(text,text,integer,integer) 20261199 → 20261231000000 (a busca do CRM);
- *   registrar_venda_presencial(...)       20261199 → 20261235000000 (a venda repetida do balcão);
+ *   registrar_venda_presencial(...)       20261199 → 20261235000000 → 20261249000000 (trava e motivo privado);
  *   upsert_store_config(jsonb)            20261199 → 20261239000000 (a identidade legal da loja).
  * Sem isso a 8e dava ok=false nessas linhas numa loja que recebeu a sucessora e
  * o backfill do ledger 92-202 ficava bloqueado para sempre (CI run 38000693188,
@@ -88,7 +88,7 @@ const {
 const {
   desfazerEntregaNaCidadeNaTransacao,
 } = require("./a-loja-escolhe-como-entrega-posterior.cjs");
-// Esta prova mede as dez sucessoras originais e a 20261246 (fin_lancamento_salvar). A 20261242000000 (o custo do dia: sucessora de
+// Esta prova mede as dez sucessoras originais, a 20261246 (fin_lancamento_salvar) e a 20261249 (motivo privado do PDV). A 20261242000000 (o custo do dia: sucessora de
 // get_admin_analytics_v2 e a primeira de fin_dre) tem a PROVA PRÓPRIA do que a 8e faz com ela em
 // tests/banco/custo-do-dia-portao-viva.cjs (item 8); aqui `noEstado` devolve o clone ao estado anterior a ela.
 // A 20261245000000 (o lucro desconta o cupom: sucessora do analytics da 42) tem a PROVA PRÓPRIA em tests/banco/lucro-com-desconto-viva.cjs; `devolverAoEstadoAnteriorAoCustoDoDia` a desfaz antes.
@@ -124,7 +124,7 @@ const fnDe = (s) =>
 // A CADEIA de cada função, em ordem de aplicação: painel_inicio = [12, 28] (o `hashVigente` da 28 é
 // o `hashDesta` da 12), get_admin_analytics_v2 = [14, 34] (idem: o `hashVigente` da 34 é o `hashDesta`
 // da 14), crm_visao = [27, 32] (idem: o `hashVigente` da 32 é o `hashDesta` da 27),
-// get_admin_customers_paged = [30], crm_clientes = [31], registrar_venda_presencial = [35],
+// get_admin_customers_paged = [30], crm_clientes = [31], registrar_venda_presencial = [35, 49],
 // upsert_store_config = [39].
 // O representante de cada função é o ÚLTIMO elo (o topo da cadeia); o corpo da 99 é o `hashVigente` do PRIMEIRO.
 const CADEIAS = new Map();
@@ -140,10 +140,11 @@ const CRM_27 = CADEIAS.get("crm_visao")[0];
 const CLIENTES = topo("get_admin_customers_paged");
 const CRMC = topo("crm_clientes");
 const VENDA = topo("registrar_venda_presencial");
+const VENDA_35 = CADEIAS.get("registrar_venda_presencial")[0];
 const UPSERT = topo("upsert_store_config");
 const LANCAMENTO = topo("fin_lancamento_salvar");
 assert.ok(
-  SUCESSORAS_DA_99.length === 11 &&
+  SUCESSORAS_DA_99.length === 12 &&
     CADEIAS.size === 8 &&
     CADEIAS.get("painel_inicio").length === 2 &&
     PAINEL_12.hashDesta === PAINEL.hashVigente &&
@@ -153,10 +154,11 @@ assert.ok(
     CRM_27.hashDesta === CRM.hashVigente &&
     CADEIAS.get("get_admin_customers_paged").length === 1 &&
     CADEIAS.get("crm_clientes").length === 1 &&
-    CADEIAS.get("registrar_venda_presencial").length === 1 &&
+    CADEIAS.get("registrar_venda_presencial").length === 2 &&
+    VENDA_35.hashDesta === VENDA.hashVigente &&
     CADEIAS.get("upsert_store_config").length === 1 &&
     CADEIAS.get("fin_lancamento_salvar").length === 1,
-  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 + 20261234 (get_admin_analytics_v2), a 20261227 + 20261232 (crm_visao), a 20261230 (get_admin_customers_paged), a 20261231 (crm_clientes), a 20261235 (registrar_venda_presencial) , a 20261239 (upsert_store_config) e a 20261246 (fin_lancamento_salvar): reveja a 8e e esta prova",
+  "as sucessoras da 99 deixaram de ser a 20261212 + 20261228 (painel_inicio), a 20261214 + 20261234 (get_admin_analytics_v2), a 20261227 + 20261232 (crm_visao), a 20261230 (get_admin_customers_paged), a 20261231 (crm_clientes), a 20261235 + 20261249 (registrar_venda_presencial) , a 20261239 (upsert_store_config) e a 20261246 (fin_lancamento_salvar): reveja a 8e e esta prova",
 );
 const FUNCOES = [
   PAINEL,
@@ -286,7 +288,7 @@ const ESTADO_99 = async (c) => {
   assert.deepEqual(
     desfeitas,
     SUCESSORAS_DA_99.map((s) => s.nome).reverse(),
-    "as onze sucessoras tinham de estar no ar e sair",
+    "as doze sucessoras tinham de estar no ar e sair",
   );
   await exigirHashes(c, "estado 99", hashesCom([]));
 };
@@ -336,6 +338,16 @@ const CRM_NA_27 = async (c) => {
     hashesCom(FUNCOES.filter((s) => s !== CRM)).set(CRM, CRM_27.hashDesta),
   );
 };
+/** A venda PARADA NA 35 (a 249 desfeita): prova o elo intermediario da trava. */
+const VENDA_NA_35 = async (c) => {
+  await ARVORE(c);
+  await desfazerUma(VENDA)(c);
+  await exigirHashes(
+    c,
+    "venda na 35",
+    hashesCom(FUNCOES).set(VENDA, VENDA_35.hashDesta),
+  );
+};
 /** SÓ `mantida` no ar (no topo da sua cadeia): todas as outras voltam à 99, desfeitas pelo
  * rollback-manual de cada elo, do topo para a base da cadeia. */
 const SO = (mantida, rotulo) => async (c) => {
@@ -349,12 +361,24 @@ const SO_14 = SO(ANALYTICS, "só 14");
 const SO_27 = SO(CRM, "só 27 + 32");
 const SO_30 = SO(CLIENTES, "só 30");
 const SO_31 = SO(CRMC, "só 31");
-const SO_35 = SO(VENDA, "só 35");
+const SO_35_49 = SO(VENDA, "so 35 + 49");
+const SO_35 = async (c) => {
+  await SO_35_49(c);
+  await desfazerUma(VENDA)(c);
+  await exigirHashes(
+    c,
+    "so 35",
+    hashesCom([VENDA]).set(VENDA, VENDA_35.hashDesta),
+  );
+};
 const SO_39 = SO(UPSERT, "só 39");
 const SO_46 = SO(LANCAMENTO, "só 46");
 const ESTADOS = [
-  ["árvore inteira (12, 28, 14, 34, 27, 32, 30, 31, 35 e 39 no ar)", ARVORE],
-  ["estado da 20261199 (as onze sucessoras desfeitas)", ESTADO_99],
+  [
+    "árvore inteira (12, 28, 14, 34, 27, 32, 30, 31, 35, 39, 46 e 49 no ar)",
+    ARVORE,
+  ],
+  ["estado da 20261199 (as doze sucessoras desfeitas)", ESTADO_99],
   ["painel parado na 20261212 (a 20261228 desfeita)", PAINEL_NA_12],
   ["analytics parado na 20261214 (a 20261234 desfeita)", ANALYTICS_NA_14],
   ["crm parado na 20261227 (a 20261232 desfeita)", CRM_NA_27],
@@ -362,6 +386,8 @@ const ESTADOS = [
   ["misto: só a 20261227 + 20261232 (as outras desfeitas)", SO_27],
   ["misto: só a 20261230 (as outras desfeitas)", SO_30],
   ["misto: só a 20261231 (as outras desfeitas)", SO_31],
+  ["venda parada na 20261235 (a 20261249 desfeita)", VENDA_NA_35],
+  ["misto: so a 20261235 + 20261249 (as outras desfeitas)", SO_35_49],
   ["misto: só a 20261235 (as outras desfeitas)", SO_35],
   ["misto: só a 20261239 (as outras desfeitas)", SO_39],
   ["misto: só a 20261246 (as outras desfeitas)", SO_46],
@@ -655,7 +681,7 @@ async function provar() {
   for (const rows of respostas.slice(1))
     assert.deepEqual(rows, respostas[0], "os estados respondem igual");
   ok(
-    "os doze estados (árvore, 99, painel na 12, analytics na 14, crm na 27, só 14+34, só 27+32, só 30, só 31, só 35, só 39, só 46) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
+    "os quatorze estados (arvore, 99, painel na 12, analytics na 14, crm na 27, venda na 35, so 14+34, so 27+32, so 30, so 31, so 35+49, so 35, so 39, so 46) dão a MESMA resposta linha a linha (o vivo aceito mostra o esperado = hash da 99)",
   );
 
   // ------------------------------------------------------------- NEGATIVOS
@@ -841,7 +867,9 @@ async function provar() {
           ? ANALYTICS_NA_14
           : s === CRM_27
             ? CRM_NA_27
-            : ARVORE,
+            : s === VENDA_35
+              ? VENDA_NA_35
+              : ARVORE,
     );
   }
   for (const s of FUNCOES)
@@ -856,7 +884,7 @@ async function provar() {
     ARVORE,
   );
   await mutantePositivo(
-    "aceitos removidos (CTE sucessoras sem as onze)",
+    "aceitos removidos (CTE sucessoras sem as doze)",
     SUCESSORAS_DA_99.map((s) => [
       `('${fnDe(s)}', '${s.hashDesta}', '${s.nome.slice(0, 14)}')`,
       `('nenhuma_${s.nome.slice(0, 14)}', '${zero}', '${s.nome.slice(0, 14)}')`,
@@ -893,7 +921,7 @@ async function provar() {
     [item(PAINEL)],
   );
   ok(
-    "MUTANTES do texto da 8e: hash de cada elo da cadeia trocado (12, 28, 14, 34, 27, 32, 30, 31, 35 e 39, cada um no estado em que ele é o vivo), hash da 99 trocado (cada função), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
+    "MUTANTES do texto da 8e: hash de cada elo da cadeia trocado (12, 28, 14, 34, 27, 32, 30, 31, 35, 39, 46 e 49, cada um no estado em que ele é o vivo), hash da 99 trocado (cada função), aceitos removidos (sem o OR e com o CTE vazio), aceito de qualquer função, AUSENTE aceito, corpo estranho aceito e sobrecarga aceita — todos pegos, a prova ficaria VERMELHA",
   );
 }
 

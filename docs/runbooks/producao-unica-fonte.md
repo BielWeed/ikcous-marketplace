@@ -1407,10 +1407,12 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `aplicar-migrations.yml` com a migration -> o ensaio pede a `36a` DE NOVO, que tem de sair POSITIVA. `36a`
         POSITIVA com a versao fora do ledger: PARAR (sem backfill).
       - **A cadeia das sucessoras:** `registrar_venda_presencial` passa a ser `20261199000000` ->
-        `20261235000000`. A `8e` (lote 92-202) aceita o corpo novo ao lado do da `20261199000000`; a `9a` (lote
-        60-66, igualdade exata) passa a fixar o corpo novo e **so e POSITIVA depois deste apply**: o backfill do
-        ledger 60-66 que ela guarda espera por ele. Rodar a `8e` e a `9a` DE NOVO depois do apply.
-      - **Desfazer (decisao do DONO, nunca automatica):** pelo `aplicar-migrations.yml`:
+        `20261235000000` -> `20261249000000` (item 52, motivo privado). A `8e` (lote 92-202) aceita os tres
+        corpos medidos; a `36a` aceita os dois com trava, e a `36b` recusa ambos. A `9a` (lote 60-66,
+        igualdade exata) exige agora o corpo FINAL da 249: so a 235 ja nao basta para ela.
+        Rodar a `8e` e a `9a` DE NOVO depois do apply.
+      - **Desfazer (decisao do DONO, nunca automatica):** se a 249 estiver no ar, desfaze-la PRIMEIRO pelo
+        rollback do item 52 (preserva notas privadas); so depois, pelo `aplicar-migrations.yml`:
         `rollback-manual-20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql` (recria o corpo da
         `20261199000000`, mesmo md5, sem tocar a ACL nem o comentario, com pre-voo proprio; rodar duas vezes deixa o
         mesmo estado; NAO apaga nenhuma venda). Com ele **volta o defeito**. Depois dele a `36b` volta a ser
@@ -2095,3 +2097,32 @@ nunca confirma.
     volta a chegar à cliente). Não toca dado. Nenhum apply é feito por este roteiro.
     Prova: `tests/banco/notes-do-pedido-fechada-viva.cjs` (PG 17, papéis reais, mutantes); não prova o Postgres
     da Supabase nem o papel de leitura de cada loja.
+
+52. **Lote de UMA migration, de apply normal: `20261249000000` — o motivo do desconto do balcão não chega à cliente.**
+    Sucede a `20261235000000` em `registrar_venda_presencial`: em venda NOVA o motivo de `p_observacao`
+    fica em `marketplace_order_internal_notes` e `marketplace_orders.notes` recebe NULL. Preserva assinatura,
+    retorno, ACL (EXECUTE só `authenticated`, sem GRANT OPTION), trava consultiva pela chave e idempotência.
+    Repetir a venda devolve a existente, sem regravar o motivo. **Sem backfill:** motivos antigos em `notes`
+    continuam visíveis à cliente; esta migration não copia nem apaga dado existente.
+    **Ordem: banco ANTES do front**, depois da `20261235000000` e da tabela privada da `20261247000000`
+    OPERACIONAL. A `20261248000000` é independente. O front antigo continua funcionando com a mesma assinatura;
+    antecipar o front novo sem o banco ainda deixaria o motivo em `notes` nas vendas novas.
+    Consultas somente de catálogo, com rol fechado de **11 linhas cada**:
+    `52b-antes-motivo-do-balcao-base-vigente` antes do apply e
+    `52a-conferir-motivo-do-balcao-privado-aplicado` depois. A 52b aceita o corpo medido da 235
+    (`996caf02505ac16a8bded73bcf8900aa`) ou o já aplicado da 249
+    (`796e0aaeb00b6f5133a54ce12f2df396`), como o pré-voo idempotente; **não prova ausência** nem aplicação.
+    Só a 52a prova o corpo privado aplicado. As duas exigem os mesmos atributos/ACL da RPC, índice único válido
+    da chave e tabela privada operacional: forma, restrições, defaults, RLS, política exata do admin atual,
+    quatro privilégios só para `authenticated`, dono, gatilho/helper e ausência de publicação/ACL de coluna.
+    Tabela ausente ou fechada pelo rollback da 247 reprova; corpo desconhecido exige parar e medir.
+    **Caminho:** medir a 52a; se NEGATIVA, medir a 52b mais nova e POSITIVA; executar um apply normal pelo
+    `aplicar-migrations.yml` com `20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql`;
+    conferir a 52a POSITIVA antes de promover o front. Sem `backfillLedger` nem `nuncaAplicar`; se a 52a já for
+    POSITIVA e faltar a versão no ledger, parar para conferir a divergência, sem inferir apply pela 52b.
+    **Desfazer:** `rollback-manual-20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql`
+    devolve o corpo exato da 235 e **preserva vendas e notas privadas**. Não desfaz a 247 nem a 248, e não apaga
+    anotação: vendas NOVAS voltam a gravar o motivo em `notes`, visível à cliente (a porta de privacidade reabre).
+    Prova de comportamento: `tests/banco/pdv-motivo-privado-viva.cjs` (PG 17 efêmero, papéis reais e mutantes).
+    A 8e aceita os elos 99 → 235 → 249; a 9a exige a 249; a 36a continua provando a trava nos dois corpos
+    medidos com trava, e a 36b recusa ambos. Evidência local não mede o banco remoto. Nenhum apply é feito por este roteiro.

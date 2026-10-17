@@ -13,6 +13,7 @@
 -- Saida: item | esperado | vivo | ok, com as linhas ok = false primeiro. Rol FECHADO de 5 linhas, as mesmas em
 -- qualquer estado do banco (funcao ausente vira `AUSENTE` na propria linha). Tudo `true` = a loja esta na base de
 -- antes; uma loja que JA tem a trava pela chave reprova aqui de proposito, nas linhas do corpo e do marcador. Uma loja
+-- com a sucessora 20261249000000 tambem reprova no corpo e no marcador: ela PRESERVA a trava. Uma loja
 -- num corpo que ninguem mediu (a 20261199000000 nao aplicada, ou outra redefinicao) reprova na linha do corpo: PARE e
 -- meca antes de aplicar.
 --

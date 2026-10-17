@@ -1843,6 +1843,7 @@ const ROL_DA_35B = [
  * scripts/publicacao/consultas/36a-conferir-venda-repetida-do-balcao-aplicado.sql devolve, cada uma UMA vez, as mesmas em qualquer
  * estado do banco (funcao ausente vira `AUSENTE` na propria linha): o controle, UMA so funcao, o corpo vivo e o NOVO (md5), ele toma
  * a trava pela chave, os atributos de sempre e o EXECUTE so para authenticated (PUBLIC, anon e service_role sem).
+ * A 249 EXATA preserva a trava e tambem e aceita; o item e o esperado historico ficam estaveis.
  * tests/banco/venda-balcao-mesma-chave-portao-viva.cjs prova, num Postgres real, que este rol e EXATAMENTE o que a consulta devolve. */
 const ROL_DA_36A = [
   "controle: funcoes de public visiveis a este papel",
@@ -2269,6 +2270,33 @@ const ROL_DA_51B = [
   "service_role: atualiza notes e tracking_code",
   "dependencias: marketplace_orders (notes e tracking_code) e os papeis anon, authenticated e service_role",
 ];
+// Lote 52: corpo do PDV e nota privada OPERACIONAL nos dois lados; a 52b nao prova ausencia.
+const ROL_DA_52A = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_venda_presencial: sobrecargas",
+  "registrar_venda_presencial: corpo da 20261249000000 (motivo privado, md5)",
+  "registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)",
+  "registrar_venda_presencial: EXECUTE so authenticated, sem GRANT OPTION nem privilegio inesperado",
+  "marketplace_orders: indice unico valido da chave de idempotencia",
+  "marketplace_order_internal_notes: forma conhecida (colunas, restricoes, valores padrao, gatilho)",
+  "marketplace_order_internal_notes: RLS ligada e uma unica politica, so do admin de agora",
+  "marketplace_order_internal_notes: ACL so authenticated (SELECT, INSERT, UPDATE, DELETE), nada a anon, PUBLIC e service_role",
+  "marketplace_order_internal_notes: dono certo, fora do realtime e sem ACL de coluna",
+  "dependencias: marketplace_orders, portas do admin de agora e funcao do carimbo",
+];
+const ROL_DA_52B = [
+  "controle: funcoes de public visiveis a este papel",
+  "registrar_venda_presencial: sobrecargas",
+  "registrar_venda_presencial: corpo conhecido da 20261235 ou 20261249 (md5)",
+  "registrar_venda_presencial: atributos de sempre (SECURITY DEFINER, VOLATILE, search_path=pg_catalog, pg_temp)",
+  "registrar_venda_presencial: EXECUTE so authenticated, sem GRANT OPTION nem privilegio inesperado",
+  "marketplace_orders: indice unico valido da chave de idempotencia",
+  "marketplace_order_internal_notes: forma conhecida (colunas, restricoes, valores padrao, gatilho)",
+  "marketplace_order_internal_notes: RLS ligada e uma unica politica, so do admin de agora",
+  "marketplace_order_internal_notes: ACL so authenticated (SELECT, INSERT, UPDATE, DELETE), nada a anon, PUBLIC e service_role",
+  "marketplace_order_internal_notes: dono certo, fora do realtime e sem ACL de coluna",
+  "dependencias: marketplace_orders, portas do admin de agora e funcao do carimbo",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
@@ -2350,6 +2378,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "50b-antes-nota-interna-do-pedido-base-vigente": ROL_DA_50B,
   "51a-conferir-notes-do-pedido-fechada-aplicado": ROL_DA_51A,
   "51b-antes-notes-do-pedido-base-vigente": ROL_DA_51B,
+  "52a-conferir-motivo-do-balcao-privado-aplicado": ROL_DA_52A,
+  "52b-antes-motivo-do-balcao-base-vigente": ROL_DA_52B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -2972,6 +3002,8 @@ module.exports = {
   ROL_DA_50B,
   ROL_DA_51A,
   ROL_DA_51B,
+  ROL_DA_52A,
+  ROL_DA_52B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

@@ -203,7 +203,11 @@ describe("FechamentoDaVenda (C3.2)", () => {
     });
     await avancar(300);
 
-    expect(document.getElementById("motivo-do-desconto")).toBeTruthy();
+    const motivo = document.getElementById(
+      "motivo-do-desconto",
+    ) as HTMLInputElement;
+    expect(motivo).toBeTruthy();
+    expect(motivo.maxLength).toBe(2000);
     const botao = localizarBotaoPorTexto(
       hospedeiro,
       "Registrar venda",

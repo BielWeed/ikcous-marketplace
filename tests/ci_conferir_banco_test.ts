@@ -2221,6 +2221,20 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "996caf02505ac16a8bded73bcf8900aa",
           versao: "20261235000000",
         },
+        // 17/10/2026: motivo privado do balcão; hash recalculado do arquivo,
+        // com a mesma guarda da cadeia (o portão 8e precisa listar esta sucessora).
+        {
+          fn: "registrar_venda_presencial",
+          h: md5(
+            corpoNoTexto(
+              await Deno.readTextFile(
+                `${MIGRATIONS_DIR}/20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql`,
+              ),
+              "registrar_venda_presencial",
+            )!,
+          ),
+          versao: "20261249000000",
+        },
         {
           fn: "solicitar_estorno",
           h: "840de50f44958fe43b55f5222691df9b",
@@ -3553,7 +3567,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para as três que nenhuma migration posterior redefine; duas são da 20261199, registrar_venda_presencial é da 20261235 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
+    "quem é o dono do corpo: 60..66 só para as três que nenhuma migration posterior redefine; duas são da 20261199, registrar_venda_presencial é da 20261249 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261161000000",
@@ -3561,7 +3575,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
         get_admin_orders_paged: "20261199000000",
         get_product_recommendations: "20261160000000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
-        registrar_venda_presencial: "20261235000000",
+        registrar_venda_presencial: "20261249000000",
         upsert_store_config: "20261244000000",
       });
     },

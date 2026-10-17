@@ -288,6 +288,67 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     );
   }
 
+  it.each([
+    {
+      caso: "com desconto envia o motivo",
+      desconto: 5,
+      observacao: "Fidelidade",
+    },
+    {
+      caso: "ao zerar o desconto omite o motivo anterior",
+      desconto: 0,
+      observacao: null,
+    },
+  ])("$caso", async ({ desconto, observacao }) => {
+    registrarImplRef.atual = async () => ({
+      data: {
+        ja_existia: false,
+        order: {
+          ...pedidoDeExemplo("11111111-1111-1111-1111-111111111111"),
+          discount: desconto,
+          total: 39.9 - desconto,
+        },
+        items: [],
+      },
+      error: null,
+    });
+    await montarAtePagamentoEscolhido();
+
+    async function digitarCampo(id: string, valor: string): Promise<void> {
+      await act(async () => {
+        const campo = document.getElementById(id) as HTMLInputElement;
+        const setter = Object.getOwnPropertyDescriptor(
+          globalThis.HTMLInputElement.prototype,
+          "value",
+        )!.set!;
+        setter.call(campo, valor);
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await avancar(300);
+    }
+
+    await digitarCampo("desconto-da-venda", "500");
+    await digitarCampo("motivo-do-desconto", "Fidelidade");
+    if (desconto === 0) {
+      await digitarCampo("desconto-da-venda", "0");
+      expect(document.getElementById("motivo-do-desconto")).toBeNull();
+    }
+
+    const botao = localizarBotaoPorTexto(hospedeiro, "Registrar venda")!;
+    expect(botao.disabled).toBe(false);
+    await act(async () => {
+      botao.click();
+    });
+    await avancar();
+
+    const chamadas = chamadasDeRegistro();
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0][1]).toMatchObject({
+      p_desconto: desconto,
+      p_observacao: observacao,
+    });
+  });
+
   it("caso 1 — sucesso: os 8 parâmetros por nome, `p_itens` com 3 chaves, recibo, rascunho apagado, e-mail disparado, sem aviso ao lojista", async () => {
     registrarImplRef.atual = async () => ({
       data: {

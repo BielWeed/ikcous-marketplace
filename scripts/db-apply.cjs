@@ -2419,6 +2419,36 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O motivo do desconto do balcão fica na anotação privada da loja (20261249): a RPC recusa motivo acima de
+  // 2000 caracteres, grava o motivo em marketplace_order_internal_notes (uma vez, só venda nova) e mantém a
+  // trava pela chave (20261235), os dois gates de admin e a resposta idempotente.
+  "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql": [
+    {
+      funcao: "registrar_venda_presencial",
+      esperado: [
+        {
+          texto:
+            "INSERT INTO public.marketplace_order_internal_notes (order_id, note)",
+          vezes: 1,
+        },
+        {
+          texto: "O motivo do desconto pode ter até 2000 caracteres.",
+          vezes: 1,
+        },
+        {
+          texto:
+            "hashtextextended('venda_presencial:' || p_idempotency_key::text, 0)",
+          vezes: 1,
+        },
+        { texto: "IF public.is_admin() IS DISTINCT FROM true THEN", vezes: 1 },
+        {
+          texto: "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+          vezes: 1,
+        },
+        { texto: "'ja_existia', v_ja_existia,", vezes: 1 },
+      ],
+    },
+  ],
   "20261060000000_o_estoque_volta_uma_vez_so.sql": [
     {
       // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,
