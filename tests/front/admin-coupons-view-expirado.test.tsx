@@ -107,6 +107,51 @@ describe("AdminCouponsView — cupom vencido para de dizer Ativo", () => {
     mockCoupons = [];
   });
 
+  it("detalhes revelam mínimo e ativação sem esconder o desconto", async () => {
+    mockCoupons = [cupomFake({ code: "CODIGOCOMPLETO", minPurchase: 49.9 })];
+    await abrirTela();
+    const copiar = hospedeiro.querySelector(
+      '[aria-label="Copiar código CODIGOCOMPLETO"]',
+    );
+    expect(copiar?.textContent).toContain("CODIGOCOMPLETO");
+    expect(textoDoCard("CODIGOCOMPLETO")).toContain("10% OFF");
+    const detalhes = hospedeiro.querySelector(
+      '[aria-controls="coupon-details-cupom-1"]',
+    ) as HTMLButtonElement;
+    expect(detalhes.getAttribute("aria-expanded")).toBe("false");
+    expect(hospedeiro.querySelector("#coupon-details-cupom-1")).toBeNull();
+    await act(async () => detalhes.click());
+    expect(detalhes.getAttribute("aria-expanded")).toBe("true");
+    expect(textoDoCard("CODIGOCOMPLETO").replace(/\s+/g, " ")).toContain(
+      "R$ 49,90",
+    );
+    expect(textoDoCard("CODIGOCOMPLETO")).toContain("Ativação manual · Ligada");
+    expect(
+      hospedeiro.querySelector('[aria-label="Excluir cupom CODIGOCOMPLETO"]'),
+    ).not.toBeNull();
+    await act(async () => detalhes.click());
+    expect(detalhes.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("mantém a ordem recebida sem oferecer busca ou filtros", async () => {
+    mockCoupons = [
+      cupomFake({ id: "novo", code: "MAISRECENTE" }),
+      cupomFake({ id: "antigo", code: "MAISANTIGO" }),
+    ];
+    await abrirTela();
+    const codigos = [
+      ...hospedeiro.querySelectorAll('button[title="Copiar Código"]'),
+    ].map((b) => b.getAttribute("aria-label"));
+    expect(codigos).toEqual([
+      "Copiar código MAISRECENTE",
+      "Copiar código MAISANTIGO",
+    ]);
+    expect(hospedeiro.querySelector('input[type="search"]')).toBeNull();
+    expect(hospedeiro.textContent).toContain(
+      "2 cupons · mais recentes primeiro.",
+    );
+  });
+
   async function abrirTela() {
     const { AdminCouponsView } = await import("@/views/admin/AdminCouponsView");
     await act(async () => {
@@ -160,6 +205,12 @@ describe("AdminCouponsView — cupom vencido para de dizer Ativo", () => {
     await abrirTela();
 
     const texto = textoDoCard("PROMOVENCIDA");
+    expect(texto).toContain("Validade encerrada");
+    expect(
+      hospedeiro
+        .querySelector('[aria-label="Ativação manual de PROMOVENCIDA"]')
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
     expect(texto).toContain("Expirado");
     expect(texto).not.toContain("Ativo");
   });

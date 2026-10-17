@@ -1,12 +1,19 @@
+import {
+  CAMPO,
+  FOCO,
+  SECUNDARIO,
+  Selo,
+} from "@/components/admin/coupons/apresentacao";
 import { cn } from "@/lib/utils";
 import type { AlcanceDoCupom, ClienteDoCupom } from "@/types";
 import {
   AlertTriangle,
-  Eye,
-  KeyRound,
+  Check,
+  LockKeyhole,
   Search,
-  UserCheck,
+  Ticket,
   UserPlus,
+  Users,
   X,
 } from "lucide-react";
 import { type ReactElement, useRef, useState } from "react";
@@ -33,27 +40,31 @@ const OPCOES: ReadonlyArray<{
   valor: AlcanceDoCupom;
   titulo: string;
   explicacao: string;
-  Icone: typeof Eye;
+  Icone: typeof Ticket;
+  matiz: string;
 }> = [
   {
     valor: "codigo",
     titulo: "Quem tiver o código",
     explicacao: "Não aparece no checkout. Só vale para quem digitar o código.",
-    Icone: KeyRound,
+    Icone: Ticket,
+    matiz: "#FF91B9",
   },
   {
     valor: "vitrine",
     titulo: "Todos os clientes",
     explicacao:
       "Aparece no checkout de qualquer cliente, com o botão de aplicar.",
-    Icone: Eye,
+    Icone: Users,
+    matiz: "#53D9CD",
   },
   {
     valor: "exclusivo",
     titulo: "Clientes escolhidos",
     explicacao:
       "Só as contas escolhidas veem e usam. Para as outras, o código não existe.",
-    Icone: UserCheck,
+    Icone: LockKeyhole,
+    matiz: "#BAA0FF",
   },
 ];
 
@@ -137,12 +148,13 @@ export function QuemPodeUsarOCupom({
   }
 
   return (
-    <fieldset className="space-y-2" disabled={desabilitado}>
-      <legend className="mb-1.5 ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+    <fieldset className="min-w-0 space-y-3" disabled={desabilitado}>
+      <legend className="mb-3 flex items-center gap-2.5 text-lg font-bold text-zinc-50">
+        <Selo icone={Users} matiz="#73BFFF" />
         Quem pode usar
       </legend>
-      <div role="radiogroup" aria-label="Quem pode usar" className="space-y-2">
-        {OPCOES.map(({ valor, titulo, explicacao, Icone }) => {
+      <div role="radiogroup" aria-label="Quem pode usar" className="space-y-3">
+        {OPCOES.map(({ valor, titulo, explicacao, Icone, matiz }) => {
           const marcado = alcance === valor;
           return (
             <button
@@ -152,39 +164,44 @@ export function QuemPodeUsarOCupom({
               aria-checked={marcado}
               onClick={() => onAlcance(valor)}
               className={cn(
-                "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:opacity-50",
-                marcado
-                  ? "border-emerald-500/40 bg-emerald-500/10"
-                  : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]",
+                `flex min-h-11 w-full items-center gap-3 rounded-[20px] border p-4 text-left transition-colors ${FOCO}`,
+                marcado && !desabilitado
+                  ? "border-[#F5C542] bg-[#F5C542]/10"
+                  : "border-white/10 bg-[#101013] hover:bg-white/[0.06]",
               )}
             >
-              <Icone
-                aria-hidden="true"
-                className={cn(
-                  "mt-0.5 size-4 shrink-0",
-                  marcado ? "text-emerald-400" : "text-zinc-500",
-                )}
-              />
+              <Selo icone={Icone} matiz={desabilitado ? "#A1A1AD" : matiz} />
               <span className="min-w-0">
                 <span
                   className={cn(
-                    "block text-xs font-bold",
+                    "block text-sm font-bold",
                     marcado ? "text-white" : "text-zinc-300",
                   )}
                 >
                   {titulo}
                 </span>
-                <span className="mt-0.5 block text-[11px] leading-snug text-zinc-400">
+                <span className="mt-1 block text-sm leading-relaxed text-zinc-400">
                   {explicacao}
                 </span>
               </span>
+              {marcado && (
+                <Check
+                  aria-hidden="true"
+                  className={cn(
+                    "ml-auto size-5 shrink-0 rounded-full",
+                    desabilitado
+                      ? "text-zinc-400"
+                      : "bg-[#F5C542] p-0.5 text-[#1B1300]",
+                  )}
+                />
+              )}
             </button>
           );
         })}
       </div>
 
       {alcance === "vitrine" && semLimiteNemValidade && (
-        <p className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-[11px] leading-snug text-amber-200">
+        <p className="flex items-start gap-2 rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-sky-200">
           <AlertTriangle
             aria-hidden="true"
             className="mt-0.5 size-3.5 shrink-0"
@@ -195,17 +212,17 @@ export function QuemPodeUsarOCupom({
       )}
 
       {alcance === "exclusivo" && (
-        <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+        <div className="space-y-3 rounded-[20px] border border-white/10 bg-[#101013] p-4">
           <label
             htmlFor="coupon-clientes-busca"
-            className="block text-[11px] font-bold uppercase tracking-wider text-zinc-500"
+            className="block text-sm text-zinc-400"
           >
             Adicionar cliente
           </label>
           <div className="relative">
             <Search
               aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400"
             />
             <input
               id="coupon-clientes-busca"
@@ -215,17 +232,21 @@ export function QuemPodeUsarOCupom({
               value={termo}
               onChange={(e) => aoDigitar(e.target.value)}
               placeholder="Nome, e-mail ou WhatsApp"
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-9 pr-3 text-sm text-white placeholder:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
+              aria-describedby="coupon-clientes-busca-help"
+              className={`${CAMPO} border pl-9 pr-3 ${FOCO}`}
             />
           </div>
 
+          <p id="coupon-clientes-busca-help" className="text-xs text-zinc-400">
+            Nome, e-mail ou WhatsApp · 2 caracteres
+          </p>
           {buscando && (
-            <p className="text-[11px] text-zinc-500" aria-live="polite">
+            <p className="text-sm text-sky-300" aria-live="polite">
               Buscando…
             </p>
           )}
           {erroDaBusca && (
-            <p role="alert" className="text-[11px] text-red-400">
+            <p role="alert" className="text-sm leading-relaxed text-red-300">
               Não foi possível buscar clientes. Tente de novo.
             </p>
           )}
@@ -233,7 +254,7 @@ export function QuemPodeUsarOCupom({
             termo.trim().length >= 2 &&
             resultados.length === 0 &&
             !erroDaBusca && (
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-sm text-zinc-400">
                 Nenhum cliente encontrado.
               </p>
             )}
@@ -247,19 +268,19 @@ export function QuemPodeUsarOCupom({
                       type="button"
                       onClick={() => adicionar(c)}
                       disabled={jaEsta || listaTravada}
-                      className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-left hover:bg-white/[0.05] disabled:opacity-50"
+                      className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left hover:bg-white/[0.05] disabled:text-zinc-400 ${FOCO}`}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-xs font-semibold text-white">
+                        <span className="block break-words text-sm font-semibold text-zinc-50 [overflow-wrap:anywhere]">
                           {c.full_name || "Sem nome"}
                         </span>
                         {c.email && (
-                          <span className="block truncate text-[11px] text-zinc-500">
+                          <span className="block break-all text-xs text-zinc-400">
                             {c.email}
                           </span>
                         )}
                       </span>
-                      <span className="flex shrink-0 items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                      <span className="flex min-h-11 shrink-0 items-center gap-1 rounded-2xl border border-white/15 bg-[#1E1E24] px-3 text-sm font-semibold text-zinc-100">
                         <UserPlus aria-hidden="true" className="size-3.5" />
                         {jaEsta ? "Na lista" : "Adicionar"}
                       </span>
@@ -271,42 +292,42 @@ export function QuemPodeUsarOCupom({
           )}
 
           <div className="border-t border-white/5 pt-2">
-            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+            <p className="mb-3 text-sm font-bold text-zinc-50">
               {carregandoClientes
                 ? "Carregando a lista…"
                 : `Na lista (${clientes.length})`}
             </p>
             {falhaAoCarregar && (
-              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-2">
-                <p role="alert" className="text-[11px] text-red-300">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-300/20 bg-red-300/5 p-3">
+                <p
+                  role="alert"
+                  className="text-sm leading-relaxed text-red-300"
+                >
                   A lista de clientes deste cupom não carregou. Nada pode ser
                   mudado nela até carregar.
                 </p>
                 <button
                   type="button"
                   onClick={onCarregarDeNovo}
-                  className="min-h-11 shrink-0 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider text-white hover:bg-white/10"
+                  className={SECUNDARIO}
                 >
                   Carregar de novo
                 </button>
               </div>
             )}
             {!listaTravada && clientes.length === 0 && (
-              <p className="text-[11px] text-amber-300">
+              <p className="rounded-2xl border border-orange-300/20 bg-orange-300/5 p-3 text-sm leading-relaxed text-orange-200">
                 Nenhum cliente ainda — sem ninguém na lista, ninguém consegue
                 usar este cupom.
               </p>
             )}
-            <ul
-              aria-label="Clientes que podem usar"
-              className="flex flex-wrap gap-1.5"
-            >
+            <ul aria-label="Clientes que podem usar" className="space-y-3">
               {clientes.map((c) => (
                 <li
                   key={c.id}
-                  className="flex max-w-full items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] py-1 pl-3 pr-1 text-[11px] text-zinc-200"
+                  className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-[#17171C] py-1 pl-3 pr-1 text-sm text-zinc-100"
                 >
-                  <span className="truncate">
+                  <span className="min-w-0 break-words [overflow-wrap:anywhere]">
                     {c.nome || c.email || "Cliente sem nome"}
                   </span>
                   <button
@@ -314,13 +335,17 @@ export function QuemPodeUsarOCupom({
                     onClick={() => remover(c.id)}
                     disabled={listaTravada}
                     aria-label={`Tirar ${c.nome || c.email || "cliente"} da lista`}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"
+                    className={`flex size-11 shrink-0 items-center justify-center rounded-xl text-zinc-400 hover:bg-white/10 hover:text-white ${FOCO}`}
                   >
                     <X aria-hidden="true" className="size-3.5" />
                   </button>
                 </li>
               ))}
             </ul>
+            <p className="mt-3 text-xs leading-relaxed text-zinc-400">
+              Só estas contas podem usar o cupom, mesmo que outras conheçam o
+              código.
+            </p>
           </div>
         </div>
       )}

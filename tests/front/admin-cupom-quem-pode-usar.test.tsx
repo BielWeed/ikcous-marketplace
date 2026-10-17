@@ -46,6 +46,8 @@ const onNavigate = vi.fn();
 
 // O que a sonda do hook respondeu: o banco da loja já tem a coluna `alcance`?
 let alcanceSuportado = true;
+// A sonda já respondeu? Antes disso `alcanceSuportado=false` só quer dizer "ainda não sei".
+let alcanceSondado = true;
 
 let estadoCoupons: { coupons: Record<string, unknown>[]; loading: boolean } = {
   coupons: [],
@@ -56,6 +58,7 @@ vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({
     ...estadoCoupons,
     alcanceSuportado,
+    alcanceSondado,
     addCoupon,
     updateCoupon,
     listarClientesDoCupom,
@@ -127,6 +130,7 @@ beforeEach(() => {
   onNavigate.mockClear();
   estadoCoupons = { coupons: [], loading: false };
   alcanceSuportado = true;
+  alcanceSondado = true;
 });
 
 afterEach(() => {
@@ -421,10 +425,18 @@ describe("formulário de cupom — Quem pode usar", () => {
       alcanceSuportado = false;
     });
 
+    it("enquanto a sonda não respondeu, o aviso 'Somente os campos básicos' não aparece", async () => {
+      alcanceSondado = false;
+      await montar();
+      expect(container?.textContent).not.toContain("Somente os campos básicos");
+      expect(container?.textContent).not.toContain("Quem pode usar");
+    });
+
     it("o bloco 'Quem pode usar' não aparece", async () => {
       await montar();
       expect(container?.textContent).not.toContain("Quem pode usar");
       expect(container?.textContent).not.toContain("Clientes escolhidos");
+      expect(container?.textContent).toContain("Somente os campos básicos");
     });
 
     it("criar cupom salva como sempre: sem alcance e sem lista", async () => {

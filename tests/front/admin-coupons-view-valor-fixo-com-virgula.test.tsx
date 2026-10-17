@@ -94,6 +94,12 @@ describe("AdminCouponsView — o desconto de valor fixo usa vírgula, como o res
     await act(async () => {
       raiz.render(<AdminCouponsView active={true} onNavigate={vi.fn()} />);
     });
+    await act(async () => {
+      for (const botao of hospedeiro.querySelectorAll<HTMLButtonElement>(
+        'button[aria-controls^="coupon-details-"]',
+      ))
+        botao.click();
+    });
   }
 
   function textoDoCard(codigo: string): string {

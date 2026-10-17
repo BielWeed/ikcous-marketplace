@@ -80,6 +80,11 @@ describe("AdminCouponFormView — a pré-visualização do valor fixo usa vírgu
         <AdminCouponFormView couponId={couponId} onNavigate={vi.fn()} />,
       );
     });
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>('[aria-controls="coupon-preview"]')
+        ?.click();
+    });
   }
 
   it("cupom de R$ 10 de desconto aparece como R$ 10,00 na pré-visualização", async () => {

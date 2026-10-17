@@ -1,6 +1,14 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { QuemPodeUsarOCupom } from "@/components/admin/coupons/QuemPodeUsarOCupom";
+import {
+  CAMPO,
+  FOCO,
+  INTERRUPTOR,
+  PRIMARIO,
+  SECUNDARIO,
+  Selo,
+} from "@/components/admin/coupons/apresentacao";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +31,18 @@ import {
   dataEscolhidaParaValidade,
   validadeParaDataDoInput,
 } from "@/utils/validade-do-cupom";
-import { AlertTriangle, Calendar, Shuffle, Ticket } from "lucide-react";
+import {
+  AlertTriangle,
+  Calendar,
+  ChevronDown,
+  Percent,
+  Save,
+  Shuffle,
+  Ticket,
+  Users,
+  Wallet,
+  X,
+} from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -49,6 +68,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     addCoupon,
     updateCoupon,
     alcanceSuportado,
+    alcanceSondado,
     listarClientesDoCupom,
     definirClientesDoCupom,
     buscarClientesParaCupom,
@@ -60,6 +80,8 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
   const lojaSoRecebePeloApp =
     formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [previaAberta, setPreviaAberta] = useState(false);
+  const previaBotaoRef = useRef<HTMLButtonElement>(null);
 
   const [formData, setFormData] = useState<Partial<Coupon>>({
     code: "",
@@ -377,228 +399,292 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
   };
 
   return (
-    <div className="relative min-h-screen bg-[#09090b] pb-admin lg:pb-12 font-sans text-zinc-400">
-      {/* Action Header bar inside the view */}
-      <div className="sticky top-0 z-40 p-4 pb-0">
-        <div className="admin-glass flex items-center justify-between rounded-[2rem] border border-white/5 p-4 shadow-2xl">
-          <div className="flex items-center gap-3">
-            <div>
-              {/* Onda 3 da reforma visual (03/09): o título minúsculo
-                  (text-sm) virou o AdminPageHeader, igual ao resto do painel. */}
-              <AdminPageHeader
-                titulo={`${isEditing ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-coupon-form"].toLowerCase()}`}
-              />
-              <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                Configure os detalhes do seu cupom de desconto
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2">
-              <Ticket className="size-4.5 text-emerald-400" />
-            </div>
-          </div>
+    <div className="pb-admin relative min-h-screen bg-[#08080A] font-sans text-zinc-400 lg:pb-12">
+      <div className="sticky top-0 z-20 bg-[#08080A]/95 px-5 py-4 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-xl flex-wrap items-center justify-between gap-3 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight">
+          <AdminPageHeader
+            titulo={`${isEditing ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-coupon-form"].toLowerCase()}`}
+          />
+          <button
+            type="button"
+            onClick={handleCancel}
+            disabled={isSubmitting}
+            className={SECUNDARIO}
+          >
+            Cancelar
+          </button>
         </div>
       </div>
-
-      <div className="mx-auto max-w-xl p-4 mt-2 space-y-4">
+      <div className="mx-auto max-w-xl space-y-7 px-5 py-4">
         {isOffline && (
-          <div className="text-red-450 flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 duration-300 animate-in fade-in slide-in-from-top">
-            <AlertTriangle className="size-5 shrink-0 text-red-400" />
+          <div
+            role="status"
+            className="flex items-start gap-3 rounded-[20px] border border-orange-300/20 bg-orange-300/5 p-4"
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="size-5 shrink-0 text-orange-300"
+            />
             <div className="text-left">
-              <p className="text-[11px] font-black uppercase tracking-wider text-red-400">
+              <p className="text-sm font-bold text-zinc-50">
                 Modo Offline Ativo
               </p>
-              <p className="mt-1 text-[11px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
+              <p className="mt-1 text-sm leading-relaxed text-zinc-400">
                 Criação e edição de cupons estão temporariamente desabilitadas.
               </p>
             </div>
           </div>
         )}
 
-        <div className="space-y-4 rounded-3xl border border-white/5 bg-zinc-950/20 p-5 sm:p-6 backdrop-blur-md shadow-xl">
-          {/* Live Preview Block */}
-          <div className="space-y-2 border-b border-white/5 pb-4">
-            <div className="relative flex min-h-[110px] flex-col justify-between overflow-hidden rounded-2xl border border-emerald-500/10 bg-gradient-to-br from-emerald-500/10 via-zinc-900/40 to-zinc-950/60 p-4 shadow-lg">
-              {/* Preview Left Notch */}
-              <div className="pointer-events-none absolute -left-2.5 top-[48%] z-10 size-5 -translate-y-1/2 rounded-full border border-white/5 bg-[#09090b]" />
-              {/* Preview Right Notch */}
-              <div className="pointer-events-none absolute -right-2.5 top-[48%] z-10 size-5 -translate-y-1/2 rounded-full border border-white/5 bg-[#09090b]" />
-              {/* Preview Dashed Line */}
-              <div className="pointer-events-none absolute inset-x-2.5 top-[48%] -translate-y-1/2 border-t border-dashed border-white/10" />
-
-              {/* Preview Upper Section */}
-              <div className="flex items-center justify-between pb-2">
-                <div className="max-w-[70%] rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1">
-                  {/* `pr-[3px]`: mesmo defeito do card da lista de cupons
-                      (AdminCouponsView, corrigido em 12/09/2026) — `truncate` corta o
-                      que passa da borda, e a inclinação do glifo ITÁLICO do último
-                      caractere cai fora da largura declarada pela fonte. Aqui é a
-                      prévia ao vivo, então o lojista vê o próprio código aparado
-                      enquanto digita. */}
-                  <span className="block truncate pr-[3px] font-mono text-xs font-black uppercase italic tracking-tighter text-white">
-                    {formData.code || "CUPOMEXEMPLO"}
-                  </span>
-                </div>
-                <div
-                  className={cn(
-                    "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-black uppercase tracking-wider",
-                    formData.active
-                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                      : "border-zinc-500/20 bg-zinc-500/10 text-zinc-500",
-                  )}
-                >
-                  {formData.active ? "Ativo" : "Inativo"}
-                </div>
-              </div>
-
-              {/* Preview Lower Section */}
-              <div className="flex items-end justify-between pt-2">
-                <div>
-                  <p className="mb-0.5 text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                    Desconto
-                  </p>
-                  <p className="text-base font-black italic text-white leading-none">
+        {isSubmitting && (
+          <p
+            role="status"
+            className="rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-sky-300"
+          >
+            Salvando alterações... Aguarde a confirmação. Todos os controles e
+            Cancelar estão indisponíveis.
+          </p>
+        )}
+        {isEditing && !editingCoupon && (
+          <p
+            role="status"
+            className="rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-zinc-300"
+          >
+            {loading
+              ? "Aguarde: os dados do cupom ainda estão carregando."
+              : "Não foi possível carregar os dados deste cupom. Recarregue a página antes de salvar."}
+          </p>
+        )}
+        <div className="space-y-7">
+          <div>
+            <button
+              type="button"
+              aria-expanded={previaAberta}
+              aria-controls="coupon-preview"
+              ref={previaBotaoRef}
+              onClick={() => setPreviaAberta(!previaAberta)}
+              className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-violet-200/15 bg-gradient-to-br from-[#2C2838] to-[#17171C] px-3.5 py-3 text-left text-sm text-zinc-50 ${FOCO}`}
+            >
+              <span className="min-w-0 break-words">
+                {formData.code ? (
+                  <>
+                    <span className="break-all">{formData.code}</span> ·{" "}
                     {formData.type === "percentage"
-                      ? `${formData.value || 0}% OFF`
-                      : formatCurrency(Number(formData.value || 0))}
+                      ? `${formData.value || 0}%`
+                      : formatCurrency(Number(formData.value || 0))}{" "}
+                    · mín. {formatCurrency(formData.minPurchase || 0)}
+                  </>
+                ) : (
+                  "Prévia · código e desconto a preencher"
+                )}
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "size-4 shrink-0 text-zinc-400",
+                  previaAberta && "rotate-180",
+                )}
+              />
+            </button>
+            {previaAberta && (
+              <div id="coupon-preview" className="mt-3 space-y-3">
+                <div className="space-y-4 rounded-[24px] border border-violet-200/20 bg-gradient-to-br from-[#2C2838] to-[#17171C] p-5 shadow-xl">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex items-center gap-2 text-xs font-bold text-zinc-400">
+                      <Selo
+                        icone={
+                          formData.type === "percentage" ? Percent : Wallet
+                        }
+                        matiz={
+                          formData.type === "percentage" ? "#BAA0FF" : "#73BFFF"
+                        }
+                      />
+                      PRÉVIA DO CUPOM
+                    </span>
+                    <span
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-xs font-bold",
+                        formData.active
+                          ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-300"
+                          : "border-white/15 bg-white/5 text-zinc-400",
+                      )}
+                    >
+                      {formData.active ? "Ativo" : "Inativo"}
+                    </span>
+                  </div>
+                  <p className="break-all text-2xl font-bold uppercase text-zinc-50">
+                    {formData.code || "CUPOMEXEMPLO"}
                   </p>
+                  <div className="flex flex-wrap items-end justify-between gap-4 border-t border-white/10 pt-3">
+                    <div>
+                      <p className="text-xs text-zinc-400">Desconto</p>
+                      <p className="mt-1 text-3xl font-bold tabular-nums text-zinc-50">
+                        {formData.type === "percentage"
+                          ? `${formData.value || 0}% OFF`
+                          : formatCurrency(Number(formData.value || 0))}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-400">Mínimo Compra</p>
+                      <p className="mt-1 text-lg font-bold tabular-nums text-zinc-50">
+                        {formatCurrency(formData.minPurchase || 0)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="mb-0.5 text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                    Mínimo Compra
-                  </p>
-                  <p className="text-xs font-bold text-zinc-400 leading-none">
-                    {/* Achado 15 da auditoria de 20/08/2026 — mesmo defeito
-                        do card em AdminCouponsView.tsx: `.toFixed(0)`
-                        arredondava R$ 49,90 para "R$ 50". */}
-                    {formatCurrency(formData.minPurchase || 0)}
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviaAberta(false);
+                    previaBotaoRef.current?.focus();
+                  }}
+                  className={SECUNDARIO}
+                >
+                  Recolher prévia
+                </button>
+                <p className="text-xs text-zinc-400">
+                  Visualização em tempo real do cupom
+                </p>
               </div>
-            </div>
-            <p className="text-[11px] font-medium tracking-wide text-zinc-500 text-center select-none uppercase">
-              Visualização em tempo real do cupom
-            </p>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {/* Promo Code & Status switch */}
-            <div className="flex gap-3">
-              <div className="flex-1 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label
-                    htmlFor="coupon-code"
-                    className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
-                  >
-                    Código do Cupom
-                  </Label>
-                  <button
-                    type="button"
-                    onClick={gerarCodigo}
+          <div className="space-y-7">
+            <section
+              aria-labelledby="coupon-identification"
+              className="space-y-3"
+            >
+              <h2
+                id="coupon-identification"
+                className="flex items-center gap-2.5 text-lg font-bold text-zinc-50"
+              >
+                <Selo icone={Ticket} matiz="#FF91B9" />
+                Identificação
+              </h2>
+              <Label htmlFor="coupon-code" className="text-sm text-zinc-400">
+                Código do Cupom
+              </Label>
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <LocalBufferedInput
+                    id="coupon-code"
+                    name="code"
+                    autoComplete="off"
+                    value={formData.code || ""}
+                    onFlush={(val) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        code: codigoDoCupomParaSalvar(val, initialData.code),
+                      }))
+                    }
+                    placeholder="EX: VERAO10"
+                    useShadcn={true}
                     disabled={isOffline || isSubmitting}
-                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400 hover:bg-white/5 disabled:opacity-50"
-                  >
-                    <Shuffle aria-hidden="true" className="size-3" />
-                    Gerar
-                  </button>
+                    className={CAMPO}
+                  />
                 </div>
-                <LocalBufferedInput
-                  id="coupon-code"
-                  name="code"
-                  autoComplete="off"
-                  value={formData.code || ""}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      code: codigoDoCupomParaSalvar(val, initialData.code),
-                    }))
-                  }
-                  placeholder="EX: VERAO10"
-                  useShadcn={true}
+                <button
+                  type="button"
+                  onClick={gerarCodigo}
                   disabled={isOffline || isSubmitting}
-                  className="h-11 w-full rounded-xl border-white/10 bg-white/[0.03] text-sm font-bold uppercase italic tracking-tight transition-all focus:border-emerald-500/30 focus:ring-emerald-500/20 disabled:opacity-50"
-                />
+                  className={`${SECUNDARIO} min-h-12`}
+                >
+                  <Shuffle
+                    aria-hidden="true"
+                    className="size-5 text-violet-300"
+                  />
+                  Gerar
+                </button>
               </div>
-              <div className="w-[100px] space-y-1.5 shrink-0">
+              {!formData.code && (
+                <p className="text-xs text-zinc-400">
+                  Código vazio · digite ou gere um código.
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-3">
                 <Label
                   htmlFor="coupon-active"
-                  className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500 block text-center"
+                  className="text-sm font-semibold text-zinc-50"
                 >
                   Ativar?
                 </Label>
-                <div className="flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-3">
-                  <Switch
-                    id="coupon-active"
-                    checked={formData.active}
-                    disabled={isOffline || isSubmitting}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, active: checked })
-                    }
-                    className="data-[state=checked]:bg-emerald-500 scale-90"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Type & Value */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <span className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500 block">
-                  Tipo de Desconto
+                <span className="ml-auto text-xs text-zinc-400">
+                  Ativação manual
                 </span>
-                <div className="relative flex h-11 w-full overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] p-1 select-none">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      !isOffline &&
-                      !isSubmitting &&
-                      setFormData({ ...formData, type: "percentage" })
-                    }
-                    disabled={isOffline || isSubmitting}
-                    className={cn(
-                      "relative z-10 flex flex-1 items-center justify-center rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all disabled:opacity-50",
-                      formData.type === "percentage"
-                        ? "font-extrabold text-black"
-                        : "font-bold text-zinc-400 hover:text-white",
-                    )}
-                  >
-                    %
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      !isOffline &&
-                      !isSubmitting &&
-                      setFormData({ ...formData, type: "fixed" })
-                    }
-                    disabled={isOffline || isSubmitting}
-                    className={cn(
-                      "relative z-10 flex flex-1 items-center justify-center rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all disabled:opacity-50",
-                      formData.type === "fixed"
-                        ? "font-extrabold text-black"
-                        : "font-bold text-zinc-400 hover:text-white",
-                    )}
-                  >
-                    R$
-                  </button>
+                <Switch
+                  id="coupon-active"
+                  checked={formData.active}
+                  disabled={isOffline || isSubmitting}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, active: checked })
+                  }
+                  className={INTERRUPTOR}
+                />
+              </div>
+            </section>
 
-                  {/* Simulated pill position */}
-                  <div
-                    className={cn(
-                      "absolute inset-y-1 rounded-lg bg-white transition-all duration-300",
-                      formData.type === "percentage"
-                        ? "left-[4px] right-[50%]"
-                        : "left-[50%] right-[4px]",
-                    )}
+            <section aria-labelledby="coupon-discount" className="space-y-3">
+              <h2
+                id="coupon-discount"
+                className="flex items-center gap-2.5 text-lg font-bold text-zinc-50"
+              >
+                <Selo icone={Percent} matiz="#BAA0FF" />
+                Tipo de Desconto
+              </h2>
+              <div
+                className="grid grid-cols-2 gap-3"
+                role="group"
+                aria-label="Tipo de Desconto"
+              >
+                <button
+                  type="button"
+                  aria-pressed={formData.type === "percentage"}
+                  onClick={() =>
+                    !isOffline &&
+                    !isSubmitting &&
+                    setFormData({ ...formData, type: "percentage" })
+                  }
+                  disabled={isOffline || isSubmitting}
+                  className={cn(
+                    `${SECUNDARIO} min-h-12`,
+                    formData.type === "percentage" &&
+                      !isOffline &&
+                      !isSubmitting &&
+                      "border-[#F5C542] bg-[#F5C542]/10",
+                  )}
+                >
+                  <Percent
+                    aria-hidden="true"
+                    className="size-5 shrink-0 text-violet-300"
                   />
-                </div>
+                  % Percentual
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={formData.type === "fixed"}
+                  onClick={() =>
+                    !isOffline &&
+                    !isSubmitting &&
+                    setFormData({ ...formData, type: "fixed" })
+                  }
+                  disabled={isOffline || isSubmitting}
+                  className={cn(
+                    `${SECUNDARIO} min-h-12`,
+                    formData.type === "fixed" &&
+                      !isOffline &&
+                      !isSubmitting &&
+                      "border-[#F5C542] bg-[#F5C542]/10",
+                  )}
+                >
+                  <Wallet
+                    aria-hidden="true"
+                    className="size-5 shrink-0 text-sky-300"
+                  />
+                  R$ Fixo
+                </button>
               </div>
               <div className="space-y-1.5">
-                <Label
-                  htmlFor="coupon-value"
-                  className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
-                >
+                <Label htmlFor="coupon-value" className="text-sm text-zinc-400">
                   {formData.type === "percentage" ? "Valor (%)" : "Valor (R$)"}
                 </Label>
                 <LocalBufferedInput
@@ -614,67 +700,85 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                   }
                   useShadcn={true}
                   disabled={isOffline || isSubmitting}
-                  className="h-11 rounded-xl border-white/10 bg-white/[0.03] text-sm font-bold focus:ring-emerald-500/20 disabled:opacity-50"
+                  className={CAMPO}
                   placeholder="EX: 15"
                 />
               </div>
-            </div>
+            </section>
 
-            {/* Min Purchase & Limit */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="coupon-min-purchase"
-                  className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
-                >
-                  Mínimo de Compra
-                </Label>
-                <LocalBufferedInput
-                  id="coupon-min-purchase"
-                  name="minPurchase"
-                  type="number"
-                  autoComplete="off"
-                  min={0}
-                  value={formData.minPurchase || ""}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      minPurchase: Number(val),
-                    }))
-                  }
-                  useShadcn={true}
-                  disabled={isOffline || isSubmitting}
-                  className="h-11 rounded-xl border-white/10 bg-white/[0.03] text-sm font-bold disabled:opacity-50"
-                  placeholder="EX: 50"
-                />
+            <section aria-labelledby="coupon-limits" className="space-y-3">
+              <h2
+                id="coupon-limits"
+                className="flex items-center gap-2.5 text-lg font-bold text-zinc-50"
+              >
+                <Selo icone={Users} matiz="#73BFFF" />
+                Limites
+              </h2>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="coupon-min-purchase"
+                    className="text-sm text-zinc-400"
+                  >
+                    Mínimo de Compra
+                  </Label>
+                  <LocalBufferedInput
+                    id="coupon-min-purchase"
+                    name="minPurchase"
+                    type="number"
+                    autoComplete="off"
+                    min={0}
+                    value={formData.minPurchase || ""}
+                    onFlush={(val) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        minPurchase: Number(val),
+                      }))
+                    }
+                    useShadcn={true}
+                    disabled={isOffline || isSubmitting}
+                    className={CAMPO}
+                    placeholder="EX: 50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="coupon-usage-limit"
+                    className="text-sm text-zinc-400"
+                  >
+                    Limite de Uso
+                  </Label>
+                  <LocalBufferedInput
+                    id="coupon-usage-limit"
+                    name="usageLimit"
+                    type="number"
+                    autoComplete="off"
+                    min={0}
+                    value={formData.usageLimit || ""}
+                    onFlush={(val) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        usageLimit: Number(val),
+                      }))
+                    }
+                    useShadcn={true}
+                    disabled={isOffline || isSubmitting}
+                    placeholder="0 = Ilimitado"
+                    className={CAMPO}
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="coupon-usage-limit"
-                  className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
-                >
-                  Limite de Uso
-                </Label>
-                <LocalBufferedInput
-                  id="coupon-usage-limit"
-                  name="usageLimit"
-                  type="number"
-                  autoComplete="off"
-                  min={0}
-                  value={formData.usageLimit || ""}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      usageLimit: Number(val),
-                    }))
-                  }
-                  useShadcn={true}
-                  disabled={isOffline || isSubmitting}
-                  placeholder="0 = Ilimitado"
-                  className="h-11 rounded-xl border-white/10 bg-white/[0.03] text-sm font-bold disabled:opacity-50"
-                />
-              </div>
-            </div>
+
+              <p className="text-xs text-zinc-400">
+                0 = sem mínimo. Limite total do cupom · 0 = Ilimitado.
+              </p>
+              {isEditing && editingCoupon && (
+                <p className="text-xs leading-relaxed text-zinc-400">
+                  {editingCoupon.usageCount} utilizações acumuladas. O contador
+                  não pode ser editado e permanece ao alterar o limite.
+                </p>
+              )}
+            </section>
 
             {/* CUPOM QUE COBRE A COMPRA INTEIRA (dono, 14/10/2026): aviso, nunca
                 bloqueio — o cupom salva normalmente. Mais forte quando a loja
@@ -683,10 +787,13 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               <div
                 role="note"
                 data-testid="aviso-cupom-cobre-a-compra"
-                className="flex items-start gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 sm:col-span-2"
+                className="flex items-start gap-3 rounded-[20px] border border-orange-300/20 bg-orange-300/5 p-4"
               >
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
-                <p className="text-[11px] font-bold leading-snug tracking-wide text-amber-300">
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="mt-0.5 size-5 shrink-0 text-orange-300"
+                />
+                <p className="text-sm leading-relaxed text-orange-200">
                   {lojaSoRecebePeloApp
                     ? AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP
                     : AVISO_CUPOM_PODE_COBRIR_A_COMPRA}
@@ -694,38 +801,26 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               </div>
             )}
 
-            {/* Quem pode usar (frente B). Banco sem a coluna: escondido. */}
-            {alcanceSuportado && (
-              <div className="sm:col-span-2">
-                <QuemPodeUsarOCupom
-                  alcance={formData.alcance ?? "codigo"}
-                  onAlcance={(alcance) =>
-                    setFormData((prev) => ({ ...prev, alcance }))
-                  }
-                  clientes={clientes}
-                  onClientes={setClientes}
-                  carregandoClientes={listaDoExclusivo === "carregando"}
-                  falhaAoCarregar={listaDoExclusivo === "falhou"}
-                  onCarregarDeNovo={() => setTentativaDaLista((n) => n + 1)}
-                  buscarClientes={buscarClientesParaCupom}
-                  semLimiteNemValidade={
-                    !formData.validUntil && !Number(formData.usageLimit)
-                  }
-                  desabilitado={isOffline || isSubmitting}
-                />
-              </div>
-            )}
-
             {/* Validity date */}
-            <div className="space-y-1.5">
+            <section aria-labelledby="coupon-validity" className="space-y-3">
+              <h2
+                id="coupon-validity"
+                className="flex items-center gap-2.5 text-lg font-bold text-zinc-50"
+              >
+                <Selo icone={Calendar} matiz="#FFA45C" />
+                Validade
+              </h2>
               <Label
                 htmlFor="coupon-valid-until"
-                className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
+                className="text-sm text-zinc-400"
               >
                 Validade (Opcional)
               </Label>
               <div className="relative">
-                <Calendar className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
+                <Calendar
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-sky-300"
+                />
                 <Input
                   id="coupon-valid-until"
                   name="validUntil"
@@ -746,29 +841,71 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                       });
                     }
                   }}
-                  className="h-11 rounded-xl border-white/10 bg-white/[0.03] pl-10 text-sm font-bold focus:ring-emerald-500/20 disabled:opacity-50"
+                  className={`${CAMPO} pl-10 [color-scheme:dark]`}
                 />
               </div>
-            </div>
-          </div>
+              <p className="text-xs text-zinc-400">
+                Até 23:59 do dia escolhido, no seu fuso.
+              </p>
+              <button
+                type="button"
+                disabled={isOffline || isSubmitting || !formData.validUntil}
+                onClick={() =>
+                  setFormData({ ...formData, validUntil: undefined })
+                }
+                className={SECUNDARIO}
+              >
+                <X aria-hidden="true" className="size-4 text-zinc-400" />
+                Limpar validade
+              </button>
+            </section>
 
-          <div className="flex gap-3 pt-2">
-            <Button
-              variant="outline"
-              onClick={handleCancel}
-              disabled={isSubmitting}
-              className="h-11 flex-1 rounded-xl border-white/10 bg-white/5 text-[11px] font-bold uppercase tracking-wider text-zinc-400 hover:bg-white/10"
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={isOffline || isSubmitting}
-              className="h-11 flex-[1.5] rounded-xl bg-white text-[11px] font-bold uppercase tracking-wider text-black shadow-lg hover:scale-[1.01] active:scale-98 transition-all disabled:opacity-50"
-            >
-              {isSubmitting ? "Salvando..." : "Salvar Cupom"}
-            </Button>
+            {/* Quem pode usar (frente B). Banco sem a coluna: escondido. */}
+            {alcanceSondado && !alcanceSuportado && (
+              <p
+                role="note"
+                className="rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-zinc-300"
+              >
+                <strong className="block text-zinc-50">
+                  Somente os campos básicos
+                </strong>
+                As opções de público estão indisponíveis. Código, desconto,
+                limites e validade continuam disponíveis.
+              </p>
+            )}
+            {alcanceSuportado && (
+              <div className="sm:col-span-2">
+                <QuemPodeUsarOCupom
+                  alcance={formData.alcance ?? "codigo"}
+                  onAlcance={(alcance) =>
+                    setFormData((prev) => ({ ...prev, alcance }))
+                  }
+                  clientes={clientes}
+                  onClientes={setClientes}
+                  carregandoClientes={listaDoExclusivo === "carregando"}
+                  falhaAoCarregar={listaDoExclusivo === "falhou"}
+                  onCarregarDeNovo={() => setTentativaDaLista((n) => n + 1)}
+                  buscarClientes={buscarClientesParaCupom}
+                  semLimiteNemValidade={
+                    !formData.validUntil && !Number(formData.usageLimit)
+                  }
+                  desabilitado={isOffline || isSubmitting}
+                />
+              </div>
+            )}
           </div>
+        </div>
+      </div>
+      <div className="sticky bottom-[var(--admin-tab-pb,6.25rem)] z-20 border-t border-white/10 bg-[#17171C]/95 px-5 py-4 backdrop-blur-xl lg:bottom-0">
+        <div className="mx-auto max-w-xl">
+          <Button
+            onClick={handleSubmit}
+            disabled={isOffline || isSubmitting}
+            className={`${PRIMARIO} h-auto w-full`}
+          >
+            <Save aria-hidden="true" className="size-5" />
+            {isSubmitting ? "Salvando..." : "Salvar Cupom"}
+          </Button>
         </div>
       </div>
     </div>

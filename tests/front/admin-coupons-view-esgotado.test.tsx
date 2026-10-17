@@ -136,6 +136,12 @@ describe("AdminCouponsView — cupom esgotado para de dizer Ativo", () => {
     ];
     await abrirTela();
     const texto = textoDoCard("ACABOU");
+    expect(texto).toContain("Limite atingido");
+    expect(
+      hospedeiro
+        .querySelector('[aria-label="Ativação manual de ACABOU"]')
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
     expect(texto).toContain("Esgotado");
     expect(texto).not.toContain("Ativo");
   });

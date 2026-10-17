@@ -102,6 +102,12 @@ describe("AdminCouponsView — selos de quem vê o cupom no checkout", () => {
     await act(async () => {
       raiz.render(<AdminCouponsView active={true} onNavigate={vi.fn()} />);
     });
+    await act(async () => {
+      for (const botao of hospedeiro.querySelectorAll<HTMLButtonElement>(
+        'button[aria-controls^="coupon-details-"]',
+      ))
+        botao.click();
+    });
   }
 
   /** Texto só do cartão do cupom (a raiz do cartão tem a classe `group`). */

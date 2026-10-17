@@ -7,8 +7,8 @@
 //      "Mínimo Compra" do bilhete (7px) e o selo de status da lista (8px) sobem
 //      para 11px trocando o espaçamento de letras `tracking-widest` por
 //      `tracking-wider`, para a caixa crescer sem estourar.
-//  (c) O que NÃO muda: a altura h-11 dos botões "Cancelar" e "Salvar".
-/* eslint-disable security/detect-non-literal-fs-filename, security/detect-unsafe-regex, security/detect-non-literal-regexp --
+//  (c) Redesenho aprovado v7: Cancelar mantém 44px e Salvar cresce para 56px.
+/* eslint-disable security/detect-non-literal-fs-filename, security/detect-unsafe-regex --
    lê arquivos-fonte do próprio repositório (caminhos constantes deste teste, não entrada de usuário); regex constantes (os rótulos interpolados são literais fixos do próprio teste), sem backtracking sobre entrada externa */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -59,19 +59,19 @@ describe("cupons — sem texto abaixo de 11px", () => {
 });
 
 describe("cupons — pílula e selos do bilhete crescem sem estourar", () => {
-  it("a pílula Ativo/Inativo da prévia é 11px com tracking-wider", () => {
+  it("a pílula Ativo/Inativo da prévia cresce para 12px sem comprimir letras", () => {
     const [pilula, ...resto] = linhasCom(
       ler(FORMULARIO),
-      "flex items-center gap-1 rounded-full border px-2 py-0.5",
+      "rounded-full border px-3 py-1 text-xs font-bold",
     );
     expect(resto).toEqual([]);
     expect(pilula).toBeDefined();
-    expect(pilula).toMatch(/\btext-\[11px\]/);
-    expect(pilula).toMatch(/\btracking-wider\b/);
+    expect(pilula).toMatch(/\btext-xs\b/);
+    expect(pilula).toMatch(/\bfont-bold\b/);
     expect(pilula).not.toMatch(/\btracking-widest\b/);
   });
 
-  it('os rótulos "Desconto" e "Mínimo Compra" do bilhete são 11px com tracking-wider', () => {
+  it('os rótulos "Desconto" e "Mínimo Compra" da prévia crescem para 12px legíveis', () => {
     const fonte = semComentarios(ler(FORMULARIO));
     const rotulos = [
       /<p className="([^"]*)">\s*Desconto\s*<\/p>/,
@@ -81,8 +81,8 @@ describe("cupons — pílula e selos do bilhete crescem sem estourar", () => {
       const m = padrao.exec(fonte);
       expect(m, `rótulo ${padrao} do bilhete`).not.toBeNull();
       const classes = m?.[1] ?? "";
-      expect(classes).toMatch(/\btext-\[11px\]/);
-      expect(classes).toMatch(/\btracking-wider\b/);
+      expect(classes).toMatch(/\btext-xs\b/);
+      expect(classes).toMatch(/\btext-zinc-400\b/);
       expect(classes).not.toMatch(/\btracking-widest\b/);
     }
   });
@@ -94,23 +94,31 @@ describe("cupons — pílula e selos do bilhete crescem sem estourar", () => {
     expect(coladas).toEqual([]);
   });
 
-  it("o selo de status da lista é 11px com tracking-wider", () => {
+  it("o selo de status da lista cresce para 12px sem comprimir letras", () => {
     const [selo, ...resto] = linhasCom(ler(LISTA), "classesDoSeloPorRotulo[");
     const alvo = [selo, ...resto].filter((l) => l.includes("className="));
     expect(alvo).toHaveLength(1);
-    expect(alvo[0]).toMatch(/\btext-\[11px\]/);
-    expect(alvo[0]).toMatch(/\btracking-wider\b/);
+    expect(alvo[0]).toMatch(/\btext-xs\b/);
+    expect(alvo[0]).toMatch(/\bfont-bold\b/);
     expect(alvo[0]).not.toMatch(/\btracking-widest\b/);
   });
 });
 
-describe("cupons — o que não muda", () => {
-  it('os botões "Cancelar" e "Salvar" do formulário continuam h-11', () => {
-    const botoes = linhasCom(ler(FORMULARIO), 'className="h-11 flex-');
-    expect(botoes).toHaveLength(2);
-    for (const linha of botoes) {
-      expect(linha).toMatch(/\bh-11\b/);
-      expect(linha).toMatch(/\btext-\[11px\]/);
+describe("cupons — alvos de toque do formulário", () => {
+  it("Cancelar tem pelo menos 44px e Salvar pelo menos 56px", () => {
+    const fonte = ler(FORMULARIO);
+    const estilos = ler("src/components/admin/coupons/apresentacao.tsx");
+    expect(fonte).toMatch(/className=\{SECUNDARIO\}\s*>\s*Cancelar/);
+    expect(fonte).toMatch(/className=\{`\$\{PRIMARIO\} h-auto w-full`\}/);
+    for (const [nome, altura] of [
+      ["SECUNDARIO", "min-h-11"],
+      ["PRIMARIO", "min-h-14"],
+    ]) {
+      const linha = estilos
+        .split("\n")
+        .find((l) => l.includes(`const ${nome} =`));
+      expect(linha).toContain(altura);
+      expect(linha).toMatch(/text-(?:sm|base)/);
     }
   });
 });
@@ -120,105 +128,79 @@ describe("cupons — o que não muda", () => {
 // normal 12px cinza 300 (não mais "uppercase miúdo cinza 500") e valor branco
 // tabular. Só visual: os textos "Desconto", "Mínimo Compra", "Aproveitamento"
 // e "Expira em:" continuam os mesmos.
-describe("cupons — mini-caixas do bilhete no desenho novo do cartão de métrica", () => {
+// v7 troca as mini-caixas por um resumo compacto e detalhes recolhíveis.
+describe("cupons — resumo compacto sem perder valores e detalhes", () => {
   const fonte = semComentarios(ler(LISTA));
+  const trechoDoValor = (ancora: string) => {
+    const pos = fonte.indexOf(ancora);
+    expect(pos, ancora).toBeGreaterThan(-1);
+    return fonte.slice(fonte.lastIndexOf("<p", pos), pos);
+  };
 
   for (const rotulo of ["Desconto", "Mínimo Compra", "Aproveitamento"]) {
-    it(`o rótulo "${rotulo}" é 12px semibold cinza 300, sem uppercase`, () => {
-      const m = new RegExp(
-        `<(?:p|span) className="([^"]*)">\\s*${rotulo}\\s*</(?:p|span)>`,
-      ).exec(fonte);
-      expect(m, `rótulo ${rotulo}`).not.toBeNull();
-      const classes = m?.[1] ?? "";
-      expect(classes).toMatch(/\btext-xs\b/);
-      expect(classes).toMatch(/\bfont-semibold\b/);
-      expect(classes).toMatch(/\btext-zinc-300\b/);
-      expect(classes).not.toMatch(/\buppercase\b/);
+    it(`o conteúdo de "${rotulo}" permanece legível no resumo ou nos detalhes`, () => {
+      expect(fonte).toContain(rotulo);
+      expect(fonte).not.toMatch(TEXTO_PEQUENO);
+      expect(fonte).toContain("aria-expanded={aberto}");
+      expect(fonte).not.toContain('className="truncate');
+      expect(fonte).not.toContain("uppercase tracking-widest");
     });
   }
 
-  it("as caixas Desconto e Mínimo Compra têm a casca do KpiCard", () => {
-    // Ancorado nos rótulos: o <div> que abre logo antes de cada um.
-    for (const rotulo of ["Desconto", "Mínimo Compra"]) {
-      const posRotulo = fonte.search(
-        new RegExp(`<p className="[^"]*">\\s*${rotulo}\\s*</p>`),
-      );
-      expect(posRotulo, `rótulo ${rotulo}`).toBeGreaterThan(-1);
-      const caixa = fonte.slice(
-        fonte.lastIndexOf("<div", posRotulo),
-        posRotulo,
-      );
-      expect(caixa).toMatch(/\brounded-2xl\b/);
-      expect(caixa).toMatch(/\bborder-white\/10\b/);
-      expect(caixa).toMatch(/\bbg-gradient-to-b\b/);
-      expect(caixa).toMatch(/\bfrom-white\/\[0\.06\]/);
-      expect(caixa).toMatch(/\bmin-w-0\b/);
-    }
+  it("o cartão compacto mantém superfície, borda e espaço para o conteúdo", () => {
+    const pos = fonte.indexOf('className="group min-w-0');
+    expect(pos).toBeGreaterThan(-1);
+    const casca = fonte.slice(pos, fonte.indexOf(">", pos));
+    expect(casca).toContain("rounded-[20px]");
+    expect(casca).toContain("border-white/10");
+    expect(casca).toContain("bg-[#101013]");
+    expect(casca).toContain("p-3");
+    expect(casca).toContain("min-w-0");
   });
 
-  it("a mini-grade Desconto/Mínimo empilha de lg a xl (3 bilhetes + sidebar) e volta a par em 2xl", () => {
-    // Medido no Chromium a 1024px: com 3 bilhetes por linha e a sidebar w-64
-    // sobram ~42px úteis por caixa; "R$ 1.500,00" (nowrap, 18px) era cortado
-    // pela borda do bilhete. Em coluna única sobram >=127px.
-    const posRotulo = fonte.search(/<p className="[^"]*">\s*Desconto\s*<\/p>/);
-    expect(posRotulo).toBeGreaterThan(-1);
-    const antes = fonte.slice(0, posRotulo);
-    // A mini-grade é o <div> com `grid-cols-2` que antecede a caixa Desconto.
-    const grade = antes.slice(antes.lastIndexOf('<div className="mb-4 grid'));
-    const classes = /^<div className="([^"]*)"/.exec(grade)?.[1] ?? "";
-    expect(classes.split(/\s+/)).toEqual(
+  it("a lista reserva uma coluna no celular e só três no desktop amplo", () => {
+    const grade = linhasCom(fonte, "grid grid-cols-1 items-start").join(" ");
+    const classes = grade.split(/[\s"]+/);
+    expect(classes).toEqual(
       expect.arrayContaining([
         "grid-cols-1",
-        "xs:grid-cols-2",
-        "lg:grid-cols-1",
-        "2xl:grid-cols-2",
+        "md:grid-cols-2",
+        "xl:grid-cols-3",
       ]),
     );
-    // Abaixo de 480px (xs) a caixa de par ocupa ~240px úteis: coluna única.
-    expect(classes.split(/\s+/)).not.toContain("grid-cols-2");
+    expect(classes).not.toContain("lg:grid-cols-3");
   });
 
-  it("as mini-caixas Desconto/Mínimo usam p-3 (não p-3.5): +4px de folga ao dinheiro", () => {
-    // Medido em Inter: "R$ 1.500,00" entrava 11px no padding de 14px a 360px
-    // e sobrava 3,9px a 390 e 2,9px a 768. Com p-3 sobram 7,9 e 6,9px.
-    for (const rotulo of ["Desconto", "Mínimo Compra"]) {
-      const pos = fonte.search(
-        new RegExp(`<p className="[^"]*">\\s*${rotulo}\\s*</p>`),
-      );
-      expect(pos, rotulo).toBeGreaterThan(-1);
-      const antes = fonte.slice(0, pos);
-      const abertura = antes.slice(antes.lastIndexOf('<div className="'));
-      const classes = (
-        /^<div className="([^"]*)"/.exec(abertura)?.[1] ?? ""
-      ).split(/\s+/);
-      expect(classes, rotulo).toContain("p-3");
-      expect(classes, rotulo).not.toContain("p-3.5");
+  it("os dois valores têm espaço para quebrar sem corte por largura fixa", () => {
+    for (const ancora of [
+      "`${coupon.value",
+      "formatCurrency(coupon.minPurchase",
+    ]) {
+      const trecho = trechoDoValor(ancora);
+      expect(trecho).toContain("font-bold");
+      expect(trecho).not.toContain("truncate");
+      expect(trecho).not.toContain("w-[");
     }
   });
 
-  it("o dinheiro das caixas nunca parte no meio do número (whitespace-nowrap, 18px)", () => {
-    for (const ancora of ["% OFF`", "formatCurrency(coupon.minPurchase"]) {
-      const antes = fonte.slice(0, fonte.indexOf(ancora));
-      const abertura = antes.slice(antes.lastIndexOf('<p className="'));
-      const classes = /^<p className="([^"]*)"/.exec(abertura)?.[1] ?? "";
-      expect(classes, ancora).toMatch(/\bwhitespace-nowrap\b/);
-      expect(classes, ancora).toMatch(/\btext-lg\b/);
-      expect(classes, ancora).not.toMatch(/\bbreak-words\b/);
-      expect(classes, ancora).not.toMatch(/\btext-(?:xl|2xl|3xl)\b/);
+  it("o dinheiro do resumo e do mínimo usa tamanho legível sem esconder dígitos", () => {
+    for (const ancora of [
+      "`${coupon.value",
+      "formatCurrency(coupon.minPurchase",
+    ]) {
+      const trecho = trechoDoValor(ancora);
+      expect(trecho).toMatch(/text-(?:lg|2xl)/);
+      expect(trecho).toMatch(/\btabular-nums\b/);
+      expect(trecho).not.toMatch(/\btruncate\b/);
+      expect(trecho).not.toMatch(/\boverflow-hidden\b/);
     }
   });
 
-  it("o valor do mínimo é branco e tabular (era cinza 400)", () => {
-    // O <p> que abre logo antes de `formatCurrency(coupon.minPurchase`.
-    const antes = fonte.slice(
-      0,
-      fonte.indexOf("formatCurrency(coupon.minPurchase"),
-    );
-    const abertura = antes.slice(antes.lastIndexOf('<p className="'));
-    const classes = /^<p className="([^"]*)"/.exec(abertura)?.[1] ?? "";
-    expect(classes).toMatch(/\btext-white\b/);
-    expect(classes).toMatch(/\btabular-nums\b/);
-    expect(classes).not.toMatch(/\btext-zinc-400\b/);
+  it("o valor do mínimo continua claro e tabular", () => {
+    const trecho = trechoDoValor("formatCurrency(coupon.minPurchase");
+    expect(trecho).toMatch(/\btext-zinc-50\b/);
+    expect(trecho).toMatch(/\btabular-nums\b/);
+    expect(trecho).not.toMatch(/\btext-zinc-400\b/);
   });
 
   it('"Expira em:" e o contador de usos não usam cinza 500/600', () => {
