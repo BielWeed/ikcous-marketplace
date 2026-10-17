@@ -8,7 +8,6 @@
 //     cru do banco ("customer");
 //   - o menu diz "Ver ficha do cliente" e a ficha fala "carrinho"/"itens".
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import {
   afterEach,
@@ -148,29 +147,6 @@ vi.mock("@/hooks/usePrefetchOnHover", () => ({
     prefetchImage: vi.fn(),
   }),
 }));
-// Os itens do menu renderizam sempre (sem abrir o dropdown por pointer).
-vi.mock("@/components/ui/dropdown-menu", () => ({
-  DropdownMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-  DropdownMenuContent: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-  DropdownMenuLabel: ({ children }: { children: ReactNode }) => <>{children}</>,
-  DropdownMenuSeparator: () => null,
-  DropdownMenuItem: ({
-    children,
-    onClick,
-  }: {
-    children: ReactNode;
-    onClick?: () => void;
-  }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
-}));
 
 class ObservadorMudo {
   observe() {}
@@ -290,7 +266,7 @@ describe("Clientes no celular (J4)", () => {
     expect(hospedeiro.textContent ?? "").not.toMatch(/customer/i);
   });
 
-  it("(b) a linha de baixo do cartão compacto empilha no celular e vira par a partir de xs", async () => {
+  it("(b) o total e os pedidos usam uma linha flexível, que pode quebrar sem sair do cartão", async () => {
     h.modo = "compact";
     await abrirLista();
 
@@ -300,11 +276,11 @@ describe("Clientes no celular (J4)", () => {
     );
     expect(rotuloTotal).toBeDefined();
     const linha = rotuloTotal!.parentElement?.parentElement;
-    // Abaixo de 480px: uma coluna só ("Total já comprado" não quebra no meio
-    // da palavra); de `xs` para cima volta ao par lado a lado.
-    expect(linha?.className).toContain("grid-cols-1");
-    expect(linha?.className).toContain("xs:grid-cols-[minmax(0,1fr)_auto]");
-    expect(linha?.className).toContain("xs:items-end");
+    // A v6 usa toda a largura do celular. Os dois números ficam lado a lado
+    // quando cabem e a linha quebra quando o total exige mais espaço.
+    expect(linha?.className).toContain("flex");
+    expect(linha?.className).toContain("flex-wrap");
+    expect(linha?.className).toContain("min-w-0");
 
     expect(rotuloTotal!.className).not.toContain("tracking-[0.2em]");
     expect(rotuloTotal!.className).toContain("tracking-wide");
@@ -324,7 +300,7 @@ describe("Clientes no celular (J4)", () => {
     expect(cartao!.contains(rotuloPedidos!.nextElementSibling)).toBe(true);
   });
 
-  it("(b2) o rodapé de KPIs do cartão compacto usa o desenho novo do cartão de métrica", async () => {
+  it("(b2) os números ficam legíveis sobre a superfície do cartão compacto", async () => {
     h.modo = "compact";
     await abrirLista();
 
@@ -333,24 +309,22 @@ describe("Clientes no celular (J4)", () => {
     );
     expect(rotuloTotal).toBeDefined();
     const linha = rotuloTotal!.parentElement?.parentElement;
-    // O rodapé virou um cartãozinho (casca com borda de 10%), não só uma
-    // linha com filete em cima.
-    expect(linha?.className).toContain("rounded-xl");
-    expect(linha?.className).toContain("border-white/10");
-
+    const cartao = linha!.closest('[role="button"]');
+    expect(cartao?.className).toContain("rounded-2xl");
+    expect(cartao?.className).toContain("border-white/10");
     const rotuloPedidos = [...linha!.querySelectorAll("span")].find(
       (s) => s.textContent?.trim() === "Pedidos",
     );
     expect(rotuloPedidos).toBeDefined();
-    // Dinheiro nunca parte no meio do número: valor em 12px sem quebra, e o
-    // padding da caixa é enxuto (`px-2 py-2.5`) para o número caber.
+    // Dinheiro segue inteiro e agora usa 18px. O cartão ocupa uma coluna
+    // inteira no celular; o par quebra de linha quando necessário.
     const valorTotal = rotuloTotal!.nextElementSibling;
     expect(valorTotal?.className).toContain("whitespace-nowrap");
-    expect(valorTotal?.className).toContain("text-xs");
+    expect(valorTotal?.className).toContain("text-lg");
     expect(valorTotal?.className).not.toContain("break-words");
-    expect(rotuloPedidos!.nextElementSibling?.className).toContain("text-xs");
-    expect(linha?.className).toContain("px-2");
-    expect(linha?.className).toContain("py-2.5");
+    expect(rotuloPedidos!.nextElementSibling?.className).toContain("text-lg");
+    expect(cartao?.className).toContain("px-3");
+    expect(cartao?.className).toContain("py-2");
 
     for (const rotulo of [rotuloTotal!, rotuloPedidos!]) {
       // Rótulo em frase normal, 12px, cinza 300 — não uppercase miúdo cinza 600.
@@ -361,7 +335,7 @@ describe("Clientes no celular (J4)", () => {
     }
   });
 
-  it("(b3) de lg a xl (com a sidebar) o rodapé empilha: o valor em dinheiro não encosta em 'Pedidos'", async () => {
+  it("(b3) o total reserva sua largura e Pedidos pode passar para a linha seguinte", async () => {
     h.modo = "compact";
     await abrirLista();
 
@@ -370,18 +344,18 @@ describe("Clientes no celular (J4)", () => {
     );
     expect(rotuloTotal).toBeDefined();
     const linha = rotuloTotal!.parentElement?.parentElement;
-    // Medido no Chromium: com a sidebar w-64, de 1024 a ~1535px a coluna do
-    // valor (`whitespace-nowrap`, sem como ceder) passa da coluna `1fr` e
-    // sobrepõe "Pedidos". Nessa faixa o par vira uma coluna só; a partir de
-    // 2xl sobra largura e ele volta a ficar lado a lado.
-    const classes = (linha?.className ?? "").split(/\s+/);
-    expect(classes).toContain("lg:grid-cols-1");
-    expect(classes).toContain("lg:items-start");
-    expect(classes).toContain("2xl:grid-cols-[minmax(0,1fr)_auto]");
-    expect(classes).toContain("2xl:items-end");
+    expect(linha?.className).toContain("flex-wrap");
+    expect(rotuloTotal!.parentElement?.className).toContain("flex-[1_1_auto]");
+    const pedidos = [...linha!.querySelectorAll("span")].find(
+      (s) => s.textContent === "Pedidos",
+    )!;
+    expect(pedidos.parentElement?.className).toContain("flex-[1_1_60px]");
+    expect(rotuloTotal!.nextElementSibling?.className).toContain(
+      "whitespace-nowrap",
+    );
   });
 
-  it("(b4) o cartão compacto cede 8px de padding em lg (1024px) para o valor em dinheiro ter folga", async () => {
+  it("(b4) o compacto usa uma coluna no celular e até três no desktop, com padding enxuto", async () => {
     h.modo = "compact";
     await abrirLista();
 
@@ -391,20 +365,25 @@ describe("Clientes no celular (J4)", () => {
     expect(rotuloTotal).toBeDefined();
     const cartao = rotuloTotal!.closest('[role="button"]');
     expect(cartao).not.toBeNull();
-    // Medido em Inter a 1024px (rodapé empilhado): "R$ 1.312.456,78" sobrava
-    // 1,1px. `lg:p-4` devolve 8px de largura ao rodapé (folga ~9px); `xl:p-5`
-    // volta ao padding de sm porque a 1280px a coluna já é larga.
     const classes = (cartao?.className ?? "").split(/\s+/);
-    expect(classes).toContain("sm:p-5");
-    expect(classes).toContain("lg:p-4");
-    expect(classes).toContain("xl:p-5");
+    expect(classes).toContain("px-3");
+    expect(classes).toContain("min-w-0");
+    expect(classes).not.toContain("overflow-hidden");
+    expect(cartao!.parentElement?.className).toContain("grid-cols-1");
+    expect(cartao!.parentElement?.className).toContain("md:grid-cols-2");
+    expect(cartao!.parentElement?.className).toContain("2xl:grid-cols-3");
   });
 
   it("o menu diz 'Ver ficha do cliente' e não mais 'Ver Perfil Elite'", async () => {
     h.modo = "compact";
     await abrirLista();
 
-    const texto = hospedeiro.textContent ?? "";
+    const menu = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Gestão de Cliente: Paulo Lima"]',
+    )!;
+    await act(async () => menu.click());
+    const texto =
+      document.body.querySelector('[role="dialog"]')?.textContent ?? "";
     expect(texto).toContain("Ver ficha do cliente");
     expect(texto).not.toContain("Perfil Elite");
   });
