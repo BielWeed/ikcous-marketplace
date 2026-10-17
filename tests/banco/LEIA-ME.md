@@ -599,7 +599,8 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 - **portão da venda repetida do balcão (`venda-balcao-mesma-chave-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
   consultas `36a-conferir-venda-repetida-do-balcao-aplicado` (DEPOIS, 6 linhas) e
   `36b-antes-venda-repetida-do-balcao-corpo-vigente` (ANTES, 5 linhas; **não mede a ACL**, que é da 36a) do lote
-  `20261235000000`. Rol exato nos estados (depois, antes), um negativo por linha, mutantes do texto das consultas,
+  `20261235000000`. Reconhece tambem a sucessora exata 249; desfaz a 249 antes dos estados historicos da 235.
+  Rol exato nos estados (249, depois, antes), um negativo por linha, mutantes do texto das consultas,
   veredito do `conferir-banco.cjs` (`rol=ok`). **Não prova** a IKCOUS nem a Savy.
 - **a loja declara razão social, CNPJ/CPF e e-mail (`loja-declara-quem-e-viva.cjs`, via `rodar-isolado.cjs`)**: a
   migration `20261239000000` (`upsert_store_config`, as três colunas novas de `store_config` e a `v_store_config`),
@@ -916,3 +917,22 @@ aplicação.
   aceito os exercita (nenhum mutante os alcança). Não prova o Postgres da Supabase.
   `admin-atual-viva.cjs` passou a usar `tracking_code` (coluna que o authenticated ainda atualiza) onde
   usava `notes` só como "uma coluna qualquer" para provar que o DML em pedido alheio acha 0 linhas.
+
+- **`pdv-motivo-privado-viva.cjs`** (20261249000000, lote 52): execute pelo
+  `node tests/banco/rodar-isolado.cjs tests/banco/pdv-motivo-privado-viva.cjs`.
+  A venda nova grava o motivo do desconto só em `marketplace_order_internal_notes` e deixa `notes` NULL;
+  assinatura, ACL e trava consultiva da 235 continuam iguais. Repetição não regrava o motivo.
+  A prova congelada cobre o comportamento no PG 17 efêmero, papéis reais, pré-voo, rollback e mutantes.
+  `venda-balcao-mesma-chave-portao-viva.cjs` cobre as consultas 52a/52b como papel somente leitura, com os corpos
+  da 249, 235 e 99, negativos de sobrecarga, corpo, atributos, ACL/GRANT OPTION, índice e tabela ausente/fechada;
+  o resultado vai ao veredito e ao portão reais, inclusive resposta parcial recusada. Não mede o banco remoto.
+  Portão: `52a-conferir-motivo-do-balcao-privado-aplicado` exige o corpo 249;
+  `52b-antes-motivo-do-balcao-base-vigente` aceita 235 ou 249 (pré-voo idempotente, **não prova ausência**).
+  Ambas têm 11 linhas fixas de catálogo e exigem a tabela privada da 247 OPERACIONAL (ausente ou fechada reprova).
+  Ordem: banco antes do front. Sem backfill dos motivos antigos. O rollback da 249 preserva vendas e notas
+  privadas, mas reabre a exposição do motivo em `notes` nas vendas novas.
+  A cadeia 99 → 235 → 249 está no módulo `sucessoras-da-99.cjs`: desfazer em ordem inversa, repor na direta.
+  `portao-8e-aceita-sucessoras-viva.cjs` cobre o elo intermediário da 235 e o topo 249; a 8e aceita os três
+  corpos, a 9a exige o final 249. `venda-balcao-mesma-chave-portao-viva.cjs` também prova a 36a com a 249,
+  desfaz só a sucessora antes dos casos históricos da 235 e a repõe ao terminar a transação (ROLLBACK),
+  além de ensaiar rollback 249 → rollback 235 → apply 235 → apply 249. A 36b continua negativa com a trava.

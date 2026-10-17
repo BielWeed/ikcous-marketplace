@@ -20,7 +20,9 @@
  *   (5) MUTANTES do texto das consultas (o md5 do corpo novo trocado na 36a, o do vigente na 36b, o marcador
  *       sempre "sim" na 36a e sempre "nao" na 36b, o EXECUTE de anon e o de service_role sempre "nao"): cada
  *       um deixa um positivo reprovar ou um negativo passar.
- *   (6) rol FECHADO: as duas consultas devolvem SÓ as linhas do rol, ok booleano, ok=false primeiro; resposta
+ *   (6) Lote 52: 52a/52b com 249, 235 e 99; negativos de corpo, sobrecarga, atributos, ACL, indice,
+ *       tabela ausente/fechada e resposta parcial. Usa o mesmo papel somente leitura e portao real.
+ *   (7) rol FECHADO: as duas consultas devolvem SÓ as linhas do rol, ok booleano, ok=false primeiro; resposta
  *       parcial ou rol de outra consulta nunca é POSITIVA.
  *
  * Nada sai da máquina e nenhuma loja é tocada. A prova diz que as consultas DECIDEM certo, não em que estado a
@@ -48,14 +50,28 @@ const A = "36a-conferir-venda-repetida-do-balcao-aplicado";
 const B = "36b-antes-venda-repetida-do-balcao-corpo-vigente";
 const SQL_A = fs.readFileSync(path.join(CONSULTAS, `${A}.sql`), "utf8");
 const SQL_B = fs.readFileSync(path.join(CONSULTAS, `${B}.sql`), "utf8");
+const A52 = "52a-conferir-motivo-do-balcao-privado-aplicado";
+const B52 = "52b-antes-motivo-do-balcao-base-vigente";
+const SQL_52A = fs.readFileSync(path.join(CONSULTAS, `${A52}.sql`), "utf8");
+const SQL_52B = fs.readFileSync(path.join(CONSULTAS, `${B52}.sql`), "utf8");
 const CONF = require("../../scripts/publicacao/conferir-banco.cjs");
-const ROL = { [A]: CONF.ROL_DA_36A, [B]: CONF.ROL_DA_36B };
+const ROL = {
+  [A]: CONF.ROL_DA_36A,
+  [B]: CONF.ROL_DA_36B,
+  [A52]: CONF.ROL_DA_52A,
+  [B52]: CONF.ROL_DA_52B,
+};
+const SQL = { [A]: SQL_A, [B]: SQL_B, [A52]: SQL_52A, [B52]: SQL_52B };
 
 const NOME_99 = "20261199000000_portas_do_painel_exigem_admin_atual.sql";
 const NOME_36 =
   "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql";
 const ler = (nome) => fs.readFileSync(path.join(MIGRATIONS, nome), "utf8");
 const RB36 = ler(`rollback-manual-${NOME_36}`);
+const NOME_SUCESSORA =
+  "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql";
+const RB_SUCESSORA = ler(`rollback-manual-${NOME_SUCESSORA}`);
+const SQL_SUCESSORA = ler(NOME_SUCESSORA);
 const FN =
   "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)";
 
@@ -81,7 +97,7 @@ async function noEstado(montar, consultas = [A, B]) {
     await C.query("SET LOCAL transaction_read_only = on");
     const saidas = {};
     for (const nome of consultas) {
-      const sql = nome === A ? SQL_A : nome === B ? SQL_B : nome;
+      const sql = SQL[nome] ?? nome;
       assert.equal(CONF.contarStatements(sql), 1, "exatamente 1 statement");
       const r = await C.query(sql);
       assert.deepEqual(
@@ -194,7 +210,9 @@ const hashVivo = async (c) =>
     )
   ).rows[0]?.h ?? null;
 const DEPOIS = async (c) => {
-  // a árvore inteira: a 36 no ar (o corpo desta migration)
+  // A arvore inteira tem a 249. Desfaz SO ela antes de medir o estado historico;
+  // noEstado termina em ROLLBACK, que repoe a sucessora sem tocar nas notas privadas.
+  if ((await hashVivo(c)) === H249) await c.query(RB_SUCESSORA);
   assert.equal(
     await hashVivo(c),
     H36,
@@ -254,6 +272,8 @@ const P36 = hashesDe(ler(NOME_36));
 const P99 = hashesDe(ler(NOME_99));
 const H36 = P36.desta;
 const H99 = P36.vigente;
+const P249 = hashesDe(SQL_SUCESSORA);
+const H249 = P249.desta;
 
 function trocar(sql, de, para) {
   assert.equal(
@@ -267,6 +287,7 @@ function trocar(sql, de, para) {
 async function provar() {
   assert.equal(H99, P99.desta, "o vigente da 36 é o que a 99 deixa");
   assert.notEqual(H36, H99);
+  assert.equal(P249.vigente, H36, "a 249 parte do corpo exato da 235");
   const ITEM_CORPO_A = ROL[A][2];
   const ITEM_MARCADOR_A = ROL[A][3];
   const ITEM_CORPO_B = ROL[B][2];
@@ -275,6 +296,106 @@ async function provar() {
   assert.match(ITEM_MARCADOR_A, /toma a trava consultiva/);
   assert.match(ITEM_CORPO_B, /corpo e o da 20261199000000/);
   assert.match(ITEM_MARCADOR_B, /ainda NAO toma a trava/);
+
+  // A sucessora preserva a trava: 36a positiva com o corpo FINAL, 36b negativa.
+  const SUCESSORA = async (c) => {
+    assert.equal(await hashVivo(c), H249, "o clone tem de trazer a 249 no ar");
+  };
+  {
+    const s = await noEstado(SUCESSORA);
+    await exigirPositiva(A, "36a com a 249", s[A]);
+    await exigirReprovadas(B, "36b com a 249", s[B], [
+      ITEM_CORPO_B,
+      ITEM_MARCADOR_B,
+    ]);
+  }
+  ok(
+    "249 no ar: 36a aceita o corpo exato e a trava; 36b reprova o corpo e o marcador",
+  );
+
+  // Portao 52: mesmas consultas/contrato usados pela release, como papel somente leitura.
+  // A tabela privada continua operacional ao desfazer a 249, porque seu rollback preserva a 247.
+  {
+    for (const [rotulo, montar] of [
+      ["249", SUCESSORA],
+      ["235", DEPOIS],
+    ]) {
+      const s = await noEstado(montar, [A52, B52]);
+      await exigirPositiva(B52, `52b na ${rotulo}`, s[B52]);
+      if (montar === SUCESSORA) {
+        await exigirPositiva(A52, "52a na 249", s[A52]);
+      } else {
+        await exigirReprovadas(A52, "52a na 235", s[A52], [ROL[A52][2]]);
+      }
+    }
+    const s99 = await noEstado(ANTES, [A52, B52]);
+    for (const consulta of [A52, B52]) {
+      await exigirReprovadas(consulta, `${consulta} na 99`, s99[consulta], [
+        ROL[consulta][2],
+      ]);
+    }
+    const negativos52 = [
+      ["sobrecarga", sobrecarga, [1]],
+      ["corpo estranho", corpoMaisUmByte, [2]],
+      ["atributo divergente", atributoTrocado, [3]],
+      [
+        "EXECUTE para anon",
+        (c) => c.query(`GRANT EXECUTE ON FUNCTION ${FN} TO anon`),
+        [4],
+      ],
+      [
+        "GRANT OPTION",
+        (c) =>
+          c.query(
+            `GRANT EXECUTE ON FUNCTION ${FN} TO authenticated WITH GRANT OPTION`,
+          ),
+        [4],
+      ],
+      [
+        "indice ausente",
+        (c) =>
+          c.query("DROP INDEX public.marketplace_orders_chave_da_compra_unica"),
+        [5],
+      ],
+      [
+        "tabela privada ausente",
+        (c) => c.query("DROP TABLE public.marketplace_order_internal_notes"),
+        [6, 7, 8, 9],
+      ],
+      [
+        "tabela privada fechada",
+        async (c) => {
+          await c.query(
+            "DROP POLICY nota_interna_so_admin_atual ON public.marketplace_order_internal_notes",
+          );
+          await c.query(
+            "REVOKE ALL ON public.marketplace_order_internal_notes FROM authenticated",
+          );
+        },
+        [7, 8],
+      ],
+    ];
+    for (const [rotulo, defeito, indices] of negativos52) {
+      const s = await noEstado(em(SUCESSORA, defeito), [A52, B52]);
+      for (const consulta of [A52, B52]) {
+        await exigirReprovadas(
+          consulta,
+          `${consulta}: ${rotulo}`,
+          s[consulta],
+          indices.map((i) => ROL[consulta][i]),
+        );
+      }
+    }
+    const cheia = await noEstado(SUCESSORA, [A52, B52]);
+    for (const consulta of [A52, B52]) {
+      const parcial = cheia[consulta].slice(1);
+      assert.ok(veredito(consulta, parcial).includes("rol=invalido"));
+      assert.notEqual(await estadoNoPortao(consulta, parcial), "POSITIVA");
+    }
+  }
+  ok(
+    "52a/52b: 249 e 235, corpo da 99 recusado, negativos por objeto e rol parcial fechado no portao",
+  );
 
   // (1) DEPOIS
   {
@@ -300,6 +421,23 @@ async function provar() {
   }
   ok(
     "ANTES (o corpo da 20261199): 36b POSITIVA; 36a NEGATIVA só no corpo e no marcador",
+  );
+
+  {
+    const s = await noEstado(async (c) => {
+      await ANTES(c);
+      await c.query(ler(NOME_36));
+      await c.query(SQL_SUCESSORA);
+      assert.equal(
+        await hashVivo(c),
+        H249,
+        "repor a sucessora devolve o corpo final",
+      );
+    });
+    await exigirPositiva(A, "36a com a cadeia reposta", s[A]);
+  }
+  ok(
+    "rollback 249 -> rollback 235 -> apply 235 -> apply 249 repoe a cadeia final",
   );
 
   // (3) um negativo por linha da 36a
@@ -371,9 +509,16 @@ async function provar() {
     c.query(`GRANT EXECUTE ON FUNCTION ${FN} TO service_role`);
   const mutantes = [
     [
+      "36a sem o md5 da sucessora",
+      A,
+      trocar(SQL_A, `'${H249}'`, `'${zero}'`),
+      SUCESSORA,
+      "positivo",
+    ],
+    [
       "36a com o md5 do corpo novo trocado",
       A,
-      trocar(SQL_A, `'${H36}'`, `'${zero}'`),
+      trocar(SQL_A, `         '${H36}',`, `         '${zero}',`),
       DEPOIS,
       "positivo",
     ],

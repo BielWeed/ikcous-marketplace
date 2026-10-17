@@ -6,16 +6,18 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { createHash } = require("node:crypto");
-const { detectarTransacaoExplicita, removerRuido } = require(
-  "../scripts/db-prove-rollback.cjs",
-);
+const {
+  detectarTransacaoExplicita,
+  removerRuido,
+} = require("../scripts/db-prove-rollback.cjs");
 const NOME =
   "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql";
 const BASE =
   "20261235000000_a_venda_repetida_do_balcao_devolve_a_venda_feita.sql";
 const ler = (n) =>
-  Deno.readTextFileSync(new URL(`../supabase/migrations/${n}`, import.meta.url))
-    .replace(/\r/g, "");
+  Deno.readTextFileSync(
+    new URL(`../supabase/migrations/${n}`, import.meta.url),
+  ).replace(/\r/g, "");
 const migration = ler(NOME);
 const rollback = ler(`rollback-manual-${NOME}`);
 const md5 = (s) => createHash("md5").update(s).digest("hex");
@@ -37,7 +39,10 @@ const nova = funcao(migration);
 const HASH_BASE = "996caf02505ac16a8bded73bcf8900aa";
 const HASH_NOVO = md5(corpo(migration));
 const tirarComentarios = (s) =>
-  s.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+  s
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("--"))
+    .join("\n");
 const blocosDo = (s) =>
   [...s.matchAll(/DO \$(\w+)\$([\s\S]*?)END \$\1\$;/g)].map((m) => m[2]);
 
@@ -88,10 +93,12 @@ Deno.test("249: base é a última definição anterior; sem redefinição interm
     ...Deno.readDirSync(new URL("../supabase/migrations/", import.meta.url)),
   ]
     .filter((e) => e.isFile && /^\d{14}_.*\.sql$/.test(e.name) && e.name < NOME)
-    .map((e) => e.name).sort()
+    .map((e) => e.name)
+    .sort()
     .filter((n) =>
-      /^CREATE (OR REPLACE )?FUNCTION (public\.|"public"\.")registrar_venda_presencial"?\(/m
-        .test(ler(n))
+      /^CREATE (OR REPLACE )?FUNCTION (public\.|"public"\.")registrar_venda_presencial"?\(/m.test(
+        ler(n),
+      ),
     );
   assert.equal(anteriores.at(-1), BASE);
 });
@@ -123,8 +130,9 @@ Deno.test("249: aditiva, uma função, pré-voo antes da escrita e sem transaç�
     );
     const semFuncao = tirarComentarios(s.replace(funcao(s), ""));
     assert(
-      !/^\s*(INSERT|UPDATE|DELETE|TRUNCATE|ALTER|DROP|GRANT|REVOKE|COMMENT|CREATE)\b/im
-        .test(semFuncao),
+      !/^\s*(INSERT|UPDATE|DELETE|TRUNCATE|ALTER|DROP|GRANT|REVOKE|COMMENT|CREATE)\b/im.test(
+        semFuncao,
+      ),
     );
     assert(
       s.indexOf("END $preflight_") < s.indexOf("\nCREATE OR REPLACE FUNCTION"),
@@ -137,27 +145,26 @@ Deno.test("249: aditiva, uma função, pré-voo antes da escrita e sem transaç�
 Deno.test("249: pré-voo e conferência preservam atributos, ACL fechada, sobrecarga e índice", () => {
   for (const s of [migration, rollback]) {
     for (const b of blocosDo(s)) {
-      for (
-        const trecho of [
-          "l.lanname = 'plpgsql'",
-          "p.prosecdef",
-          "p.provolatile = 'v'",
-          "NOT p.proisstrict",
-          "NOT p.proretset",
-          "p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]",
-          "pg_get_function_result(p.oid) = 'jsonb'",
-          "p.pronargs = 8",
-          "has_function_privilege('authenticated', v_oid, 'EXECUTE')",
-          "has_function_privilege('anon', v_oid, 'EXECUTE')",
-          "has_function_privilege('service_role', v_oid, 'EXECUTE')",
-          "g.grantee = 0",
-          "g.grantee <> p.proowner",
-          "g.is_grantable",
-          "p.proname = 'registrar_venda_presencial'",
-          "marketplace_orders_chave_da_compra_unica",
-          "i.indisunique AND i.indisvalid",
-        ]
-      ) assert(b.includes(trecho), trecho);
+      for (const trecho of [
+        "l.lanname = 'plpgsql'",
+        "p.prosecdef",
+        "p.provolatile = 'v'",
+        "NOT p.proisstrict",
+        "NOT p.proretset",
+        "p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]",
+        "pg_get_function_result(p.oid) = 'jsonb'",
+        "p.pronargs = 8",
+        "has_function_privilege('authenticated', v_oid, 'EXECUTE')",
+        "has_function_privilege('anon', v_oid, 'EXECUTE')",
+        "has_function_privilege('service_role', v_oid, 'EXECUTE')",
+        "g.grantee = 0",
+        "g.grantee <> p.proowner",
+        "g.is_grantable",
+        "p.proname = 'registrar_venda_presencial'",
+        "marketplace_orders_chave_da_compra_unica",
+        "i.indisunique AND i.indisvalid",
+      ])
+        assert(b.includes(trecho), trecho);
       assert(b.includes("B1_BASELINE_DIVERGENT") || b.includes("conferencia"));
     }
   }

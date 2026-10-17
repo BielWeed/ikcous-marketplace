@@ -15,7 +15,7 @@
  * carimbo do vendedor; falha da nota desfaz venda/estoque; dados antigos ficam;
  * atributos/ACL/proconfig, hash real, apply 2x, pré-voo e rollback byte a byte.
  *
- * Mutantes: notes público; INSERT incondicional; INSERT fora do IF da venda
+ * Mutantes: notes público; histórico com motivo; INSERT incondicional; INSERT fora do IF da venda
  * nova; INSERT depois do handler; sem limite; D4 antiga; truncar. Os dois
  * deslocamentos também têm prova de POSIÇÃO no prosrc vivo: mover o INSERT
  * pode ser equivalente em vendas sem falha, mas viola o bloco aprovado.
@@ -211,6 +211,17 @@ async function motivoPrivado(c) {
   assert.equal(v.r.order.user_id, CLIENTE);
   assert.equal(Number(v.r.order.total), 90);
   assert.equal((await dados(c, p)).estoque, 9);
+  // O histórico do pedido é legível pela dona (20261202): leva só a frase fixa, nunca o motivo.
+  assert.deepEqual(
+    (
+      await c.query(
+        "SELECT notes FROM public.marketplace_order_history WHERE order_id = $1",
+        [v.r.order.id],
+      )
+    ).rows,
+    [{ notes: "Venda no balcão" }],
+    "histórico legível pela cliente só leva a frase fixa",
+  );
 
   await entrar(c, CLIENTE, false);
   try {
@@ -480,11 +491,16 @@ async function prevoo(c) {
       "ALTER TABLE public.marketplace_order_internal_notes DROP CONSTRAINT marketplace_order_internal_notes_note_check",
     ],
     [
+      "dono da função diferente do dono do pedido",
+      `CREATE ROLE pdv249_dono NOLOGIN; GRANT CREATE ON SCHEMA public TO pdv249_dono; ALTER FUNCTION ${FN} OWNER TO pdv249_dono`,
+      /o dono de .* não é o dono de marketplace_orders/,
+    ],
+    [
       "publicada",
       "CREATE PUBLICATION pdv249_publicada FOR TABLE public.marketplace_order_internal_notes",
     ],
   ];
-  for (const [rotulo, sql] of casos) {
+  for (const [rotulo, sql, padrao] of casos) {
     await c.query("SAVEPOINT divergencia");
     try {
       await c.query(sql);
@@ -499,7 +515,7 @@ async function prevoo(c) {
       await c.query("ROLLBACK TO SAVEPOINT tentativa");
       await c.query("RELEASE SAVEPOINT tentativa");
       assert(erro, `pré-voo aceitou: ${rotulo}`);
-      assert.match(erro.message, /B1_BASELINE_DIVERGENT/, rotulo);
+      assert.match(erro.message, padrao ?? /B1_BASELINE_DIVERGENT/, rotulo);
       assert.deepEqual(
         await catalogo(c),
         antes,
@@ -557,6 +573,15 @@ async function mutantes(c) {
         "IF v_desconto > 0 AND NULLIF(btrim(COALESCE(p_observacao,'')),'') IS NULL THEN",
       ),
       brancoComDesconto,
+    ],
+    [
+      "motivo copiado para o histórico do pedido",
+      trocar(
+        FUNCAO,
+        "'delivered', 'Venda no balcão', v_vendedor",
+        "'delivered', COALESCE(v_motivo, 'Venda no balcão'), v_vendedor",
+      ),
+      motivoPrivado,
     ],
     [
       "truncar em vez de recusar",
@@ -621,7 +646,7 @@ async function main() {
         migrationERollback,
       ],
       ["pré-voo operacional recusa divergências", prevoo],
-      ["sete mutantes mortos pela prova indicada", mutantes],
+      ["oito mutantes mortos pela prova indicada", mutantes],
     ]) {
       await c.query("SAVEPOINT prova");
       try {

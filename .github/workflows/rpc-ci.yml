@@ -132,6 +132,8 @@ on:
       - "scripts/publicacao/consultas/50b-antes-nota-interna-do-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/51a-conferir-notes-do-pedido-fechada-aplicado.sql"
       - "scripts/publicacao/consultas/51b-antes-notes-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/52a-conferir-motivo-do-balcao-privado-aplicado.sql"
+      - "scripts/publicacao/consultas/52b-antes-motivo-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -233,6 +235,8 @@ on:
       - "scripts/publicacao/consultas/50b-antes-nota-interna-do-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/51a-conferir-notes-do-pedido-fechada-aplicado.sql"
       - "scripts/publicacao/consultas/51b-antes-notes-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/52a-conferir-motivo-do-balcao-privado-aplicado.sql"
+      - "scripts/publicacao/consultas/52b-antes-motivo-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -1014,6 +1018,9 @@ jobs:
       - name: Prova viva da coluna notes do pedido fechada ao painel (20261248000000, papeis reais e mutantes)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/notes-do-pedido-fechada-viva.cjs
+      - name: Prova viva do motivo privado do desconto do balcao (20261249000000, papeis reais e mutantes)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pdv-motivo-privado-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

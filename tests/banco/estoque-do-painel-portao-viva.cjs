@@ -1216,6 +1216,11 @@ async function main() {
         "20261246000000_o_lancamento_repetido_nao_duplica.sql",
         "public.fin_lancamento_salvar(jsonb)",
       ],
+      // A 249 sucede a 235 no PDV, fora destas tres funcoes.
+      [
+        "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql",
+        "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

@@ -127,6 +127,10 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: marketplace_orders ausente ou sem id uuid.';
   END IF;
   SELECT relowner INTO v_dono FROM pg_class WHERE oid = v_orders;
+  -- A função grava numa tabela com RLS que só o dono dela (o mesmo dono de marketplace_orders) alcança sem depender de privilégio: o dono da RPC tem de ser esse.
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid = v_oid AND p.proowner = v_dono) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: o dono de % não é o dono de marketplace_orders — meça a loja e revise antes de aplicar.', v_fn;
+  END IF;
   IF NOT COALESCE(to_regprocedure('public.is_admin_atual()') IS NOT NULL
     AND to_regprocedure('public.rls_admin_atual()') IS NOT NULL
     AND to_regprocedure('auth.uid()') IS NOT NULL
@@ -599,6 +603,9 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: marketplace_orders ausente ou sem id uuid.';
   END IF;
   SELECT relowner INTO v_dono FROM pg_class WHERE oid = v_orders;
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid = v_oid AND p.proowner = v_dono) THEN
+    RAISE EXCEPTION 'conferencia 20261249: o dono de % não é o dono de marketplace_orders', v_fn;
+  END IF;
   IF NOT COALESCE(to_regprocedure('public.is_admin_atual()') IS NOT NULL
     AND to_regprocedure('public.rls_admin_atual()') IS NOT NULL
     AND to_regprocedure('auth.uid()') IS NOT NULL

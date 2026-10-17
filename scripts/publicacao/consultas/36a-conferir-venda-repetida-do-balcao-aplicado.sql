@@ -16,7 +16,8 @@
 -- reprovam SO as duas linhas do corpo (md5 e marcador).
 --
 --   * sobrecargas -- UMA funcao com esse nome em `public`.
---   * corpo   -- md5(replace(prosrc, chr(13), '')) do corpo vivo (LF ou CRLF): o da 20261235000000.
+--   * corpo   -- md5(replace(prosrc, chr(13), '')): o da 20261235000000 OU a sucessora EXATA 20261249000000.
+--                A sucessora preserva a trava; seu hash aceito mostra o esperado da 235. Corpo estranho reprova.
 --   * marcador -- 'sim' se o corpo traz a trava pela chave
 --                (`hashtextextended('venda_presencial:' || p_idempotency_key::text, 0)`). Leitura humana do mesmo fato
 --                do md5.
@@ -28,8 +29,9 @@
 --                exigem.
 --
 -- CADEIA: o corpo desta consulta e' o SUCESSOR da 20261199000000 (portas do painel exigem o admin atual): nao ha
--- redefinicao entre as duas. Depois desta migration a 8e (lote 92-202) e a 9a (lote 60-66) continuam POSITIVAS: as duas
--- aceitam este corpo (a 8e ao lado do da 20261199000000; a 9a, que e' exata, fixa o desta).
+-- redefinicao entre as duas. Depois a 249 sucede a 235 sem perder a trava: a 8e (lote 92-202) guarda os corpos
+-- da 99, da 235 e da 249; a 9a (lote 60-66) fixa SO o final da 249, nao o intermediario da 235.
+-- A 36a prova a trava da 235, inclusive com a 249 no ar; a 52a prova o motivo privado da 249.
 --
 -- md5 recalculado dos ARQUIVOS das migrations por tests/ci_conferir_banco_test.ts e por tests/migration_a_venda_repetida_do_balcao_devolve_a_venda_feita_test.ts;
 -- tests/banco/venda-balcao-mesma-chave-portao-viva.cjs roda esta consulta num Postgres real (positiva depois do apply,
@@ -74,7 +76,8 @@ WITH alvo(assinatura) AS (
   UNION ALL
   SELECT 'registrar_venda_presencial: corpo e o da 20261235000000, com a trava pela chave (md5)',
          '996caf02505ac16a8bded73bcf8900aa',
-         COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
+         COALESCE((SELECT CASE WHEN f.m = '796e0aaeb00b6f5133a54ce12f2df396'
+                               THEN '996caf02505ac16a8bded73bcf8900aa' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'registrar_venda_presencial: o corpo toma a trava consultiva pela chave de idempotencia',
          'sim',
