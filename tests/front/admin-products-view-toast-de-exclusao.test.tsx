@@ -244,7 +244,7 @@ describe("AdminProductsView — conserto 4: toast de sucesso só some com delete
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Confirmar Exclusão",
+      "Excluir Produto: confirmar exclusão",
     )!;
     expect(botaoConfirmar).toBeDefined();
 

@@ -3,6 +3,7 @@ import {
   AdminKpiCarousel,
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
@@ -741,9 +742,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     >
       <header className="px-5 pb-4 pt-5">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="min-w-0 text-[28px] font-bold tracking-tight">
-            {NOMES_DO_PAINEL["admin-products"]}
-          </h1>
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-products"]} />
           <div className="flex shrink-0 items-center gap-2">
             <div className="produtos-cupons">
               <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
@@ -1589,7 +1588,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmDelete}
-                aria-label="Confirmar Exclusão"
+                aria-label="Excluir Produto: confirmar exclusão"
                 className="produto-perigo w-full"
               >
                 <Trash2 aria-hidden="true" className="mr-2 size-4" /> Excluir
@@ -1624,7 +1623,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmDuplicate}
-                aria-label="Confirmar Duplicação"
+                aria-label="Duplicar Produto: confirmar duplicação"
                 className="produto-principal w-full"
               >
                 <Copy aria-hidden="true" className="mr-2 size-4" /> Duplicar
@@ -1986,7 +1985,10 @@ const AdminProductCard = memo(function AdminProductCard({
                   estado === "Esgotado" && "text-red-300",
                 )}
               >
-                <span>{product.stock}</span> un.
+                <span className={cn(estoqueBaixo && "text-orange-300")}>
+                  {product.stock}
+                </span>{" "}
+                un.
               </p>
             </div>
             {!custoSuspeito && (
@@ -2180,18 +2182,20 @@ const AdminProductCard = memo(function AdminProductCard({
               >
                 {estado}
               </Badge>
-              {estoqueBaixo && estado === "Em Operação" && (
+              {estoqueBaixo && estado !== "Esgotado" && (
                 <Badge className="produto-status text-[11px] text-orange-300">
                   Crítico
                 </Badge>
               )}
-              <span>{product.stock}</span>
+              <span className={cn(estoqueBaixo && "text-orange-300")}>
+                {product.stock}
+              </span>
               <span>
                 {estado === "Em Operação" && !estoqueBaixo
                   ? "em estoque"
                   : "un."}
               </span>
-              {estoqueBaixo && estado === "Em Operação" && (
+              {estoqueBaixo && estado !== "Esgotado" && (
                 <span className="text-orange-300">
                   · mín. {product.estoqueMinimo ?? LIMIAR_PADRAO_DE_ESTOQUE}
                 </span>

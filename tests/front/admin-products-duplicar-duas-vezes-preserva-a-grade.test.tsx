@@ -269,7 +269,7 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Confirmar Duplicação",
+      "Duplicar Produto: confirmar duplicação",
     )!;
     expect(botaoConfirmar).toBeDefined();
     await act(async () => {

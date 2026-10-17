@@ -250,7 +250,10 @@ describe("Produtos — exclusão e paginação", () => {
       botao!.click();
     });
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Confirmar Exclusão")!.click();
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Excluir Produto: confirmar exclusão",
+      )!.click();
     });
     await aguardarBusca();
   }
@@ -317,7 +320,10 @@ describe("Produtos — exclusão e paginação", () => {
       localizarBotaoPorTexto(hospedeiro, "Excluir Produto")!.click();
     });
     await act(async () => {
-      localizarBotaoPorTexto(hospedeiro, "Confirmar Exclusão")!.click();
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Excluir Produto: confirmar exclusão",
+      )!.click();
     });
     // Enquanto a exclusão não volta, a lojista vai para a página anterior.
     await act(async () => {

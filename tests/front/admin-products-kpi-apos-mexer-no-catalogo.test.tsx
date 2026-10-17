@@ -321,7 +321,7 @@ describe("AdminProductsView — achado 7: KPIs rebuscam depois de mexer no catá
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Confirmar Exclusão",
+      "Excluir Produto: confirmar exclusão",
     )!;
     expect(botaoConfirmar).toBeDefined();
     await act(async () => {
@@ -342,7 +342,7 @@ describe("AdminProductsView — achado 7: KPIs rebuscam depois de mexer no catá
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Confirmar Duplicação",
+      "Duplicar Produto: confirmar duplicação",
     )!;
     expect(botaoConfirmar).toBeDefined();
     await act(async () => {

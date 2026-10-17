@@ -263,7 +263,7 @@ describe("AdminProductsView — achado 16: excluir produto não duplica o aviso 
 
     const botaoConfirmar = localizarBotaoPorTexto(
       hospedeiro,
-      "Confirmar Exclusão",
+      "Excluir Produto: confirmar exclusão",
     )!;
     expect(botaoConfirmar).toBeDefined();
     await act(async () => {

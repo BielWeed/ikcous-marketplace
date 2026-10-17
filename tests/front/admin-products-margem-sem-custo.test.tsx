@@ -483,7 +483,9 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
       await esperarMicrotarefas();
     });
     const confirmar = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => b.getAttribute("aria-label") === "Confirmar Duplicação",
+      (b) =>
+        b.getAttribute("aria-label") ===
+        "Duplicar Produto: confirmar duplicação",
     ) as HTMLButtonElement;
     expect(confirmar).toBeDefined();
     await act(async () => {
