@@ -215,8 +215,11 @@ export default defineConfig(async (context): Promise<UserConfig> => {
           },
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
+            // Estes vendors já eram dependências estáticas do início da loja.
+            // Juntos compartilham minificação e dicionário Brotli, sem
+            // antecipar código que antes fosse lazy.
             if (normalizedId.includes("commonjsHelpers")) {
-              return "vendor-react";
+              return "vendor-inicio";
             }
             if (id.includes("node_modules")) {
               if (normalizedId.includes("zxing-wasm")) {
@@ -261,29 +264,29 @@ export default defineConfig(async (context): Promise<UserConfig> => {
                 // brotli de biblioteca de gráfico para o boot de todo
                 // cliente da vitrine (modulepreload no index.html). Este
                 // vendor já é estático na entrada: zero requisição nova.
-                return "vendor-ui-helpers";
+                return "vendor-inicio";
               }
               if (normalizedId.includes("react-resizable-panels")) {
                 return "vendor-panels";
               }
               if (normalizedId.includes("lucide-react")) {
-                return "vendor-lucide";
+                return "vendor-inicio";
               }
               if (
                 normalizedId.includes("react-hook-form") ||
                 normalizedId.includes("zod") ||
                 normalizedId.includes("@hookform")
               ) {
-                return "vendor-form";
+                return "vendor-inicio";
               }
               if (normalizedId.includes("@radix-ui")) {
-                return "vendor-radix";
+                return "vendor-inicio";
               }
               if (normalizedId.includes("framer-motion")) {
                 return "vendor-motion";
               }
               if (normalizedId.includes("@supabase")) {
-                return "vendor-supabase";
+                return "vendor-inicio";
               }
               if (
                 normalizedId.includes("recharts") ||
@@ -296,7 +299,7 @@ export default defineConfig(async (context): Promise<UserConfig> => {
                 normalizedId.includes("/node_modules/react-dom/") ||
                 normalizedId.includes("/node_modules/scheduler/")
               ) {
-                return "vendor-react";
+                return "vendor-inicio";
               }
             }
           },
