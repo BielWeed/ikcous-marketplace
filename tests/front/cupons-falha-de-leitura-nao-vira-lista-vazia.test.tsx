@@ -155,7 +155,7 @@ describe("Cupons — falha de leitura não vira lista vazia", () => {
   it("leitura válida realmente vazia mantém o estado vazio e a criação", async () => {
     listar.mockResolvedValue({ data: [], error: null });
     await abrir();
-    expect(hospedeiro.textContent).toContain("Nenhum cupom ativo");
+    expect(hospedeiro.textContent).toContain("Nenhum cupom cadastrado");
     expect(hospedeiro.textContent).toContain("Criar Primeiro Cupom");
     expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   });

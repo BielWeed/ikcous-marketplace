@@ -82,6 +82,11 @@ describe("AdminCouponFormView — a pré-visualização mostra os centavos do m�
         <AdminCouponFormView couponId={couponId} onNavigate={vi.fn()} />,
       );
     });
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>('[aria-controls="coupon-preview"]')
+        ?.click();
+    });
   }
 
   it("R$ 49,90 não vira R$ 50 na pré-visualização, ao editar um cupom existente", async () => {

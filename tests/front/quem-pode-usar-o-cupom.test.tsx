@@ -127,6 +127,28 @@ describe("QuemPodeUsarOCupom — as três opções", () => {
   });
 });
 
+it("nomes longos e alternativas sem nome aparecem inteiros com remoção acessível", async () => {
+  const nome = "Maria Amélia de Albuquerque Figueira";
+  await montar({
+    clientes: [
+      { id: "longa", nome, email: null },
+      { id: "email", nome: null, email: "cliente.sem.nome@exemplo.com" },
+      { id: "sem", nome: null, email: null },
+    ],
+  });
+  const lista = hospedeiro.querySelector(
+    '[aria-label="Clientes que podem usar"]',
+  );
+  expect(lista?.textContent).toContain(nome);
+  expect(lista?.textContent).toContain("cliente.sem.nome@exemplo.com");
+  expect(lista?.textContent).toContain("Cliente sem nome");
+  await act(async () => botao(`Tirar ${nome} da lista`).click());
+  expect(onClientes).toHaveBeenCalledWith([
+    { id: "email", nome: null, email: "cliente.sem.nome@exemplo.com" },
+    { id: "sem", nome: null, email: null },
+  ]);
+});
+
 describe("QuemPodeUsarOCupom — buscar e montar a lista", () => {
   it("menos de 2 letras não busca; com 2, busca depois da pausa", async () => {
     buscarClientes.mockResolvedValue([ANA]);

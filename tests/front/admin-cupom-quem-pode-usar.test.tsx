@@ -425,6 +425,7 @@ describe("formulário de cupom — Quem pode usar", () => {
       await montar();
       expect(container?.textContent).not.toContain("Quem pode usar");
       expect(container?.textContent).not.toContain("Clientes escolhidos");
+      expect(container?.textContent).toContain("Somente os campos básicos");
     });
 
     it("criar cupom salva como sempre: sem alcance e sem lista", async () => {

@@ -118,7 +118,7 @@ describe("Cupons — erro da consulta atual não confirma lista vazia", () => {
     expect(tela.querySelector('[role="alert"]')?.textContent).toContain(
       "Não conseguimos carregar os cupons agora.",
     );
-    expect(tela.textContent).not.toContain("Nenhum cupom ativo");
+    expect(tela.textContent).not.toContain("Nenhum cupom cadastrado");
     const botao = Array.from(tela.querySelectorAll("button")).find(
       (elemento) => elemento.textContent?.trim() === "Tentar de novo",
     );
@@ -145,13 +145,13 @@ describe("Cupons — erro da consulta atual não confirma lista vazia", () => {
     expect(listar).toHaveBeenCalledTimes(2);
     expect(tela.textContent).toContain(cupom.code);
     expect(tela.querySelector('[role="alert"]')).toBeNull();
-    expect(tela.textContent).not.toContain("Nenhum cupom ativo");
+    expect(tela.textContent).not.toContain("Nenhum cupom cadastrado");
   });
 
   it("consulta bem-sucedida sem cupons mantém o vazio verdadeiro", async () => {
     listar.mockResolvedValue({ data: [], error: null });
     await abrir();
-    expect(tela.textContent).toContain("Nenhum cupom ativo");
+    expect(tela.textContent).toContain("Nenhum cupom cadastrado");
     expect(tela.querySelector('[role="alert"]')).toBeNull();
   });
 
@@ -162,7 +162,7 @@ describe("Cupons — erro da consulta atual não confirma lista vazia", () => {
     await abrir();
     const botao = conferirFalha();
     await act(async () => botao.click());
-    expect(tela.textContent).toContain("Nenhum cupom ativo");
+    expect(tela.textContent).toContain("Nenhum cupom cadastrado");
     expect(tela.querySelector('[role="alert"]')).toBeNull();
   });
 
