@@ -172,4 +172,34 @@ describe("DebouncedSearchInput — ciclo de digitação", () => {
     expect(onTyping).toHaveBeenLastCalledWith(false);
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("limpar a busca mantém o atraso e devolve o foco ao campo", async () => {
+    const { DebouncedSearchInput } = await import(
+      "@/components/admin/DebouncedSearchInput"
+    );
+    const onChange = vi.fn();
+    await act(async () =>
+      raiz.render(
+        <DebouncedSearchInput
+          id="busca-teste"
+          limpavel
+          value="maria"
+          onChange={onChange}
+          delay={40}
+        />,
+      ),
+    );
+    const limpar = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Limpar busca"]',
+    )!;
+    expect(limpar).not.toBeNull();
+    await act(async () => limpar.click());
+    const campo = hospedeiro.querySelector<HTMLInputElement>("input")!;
+    expect(campo.value).toBe("");
+    expect(document.activeElement).toBe(campo);
+    expect(onChange).not.toHaveBeenCalled();
+    await esperarAte(() => onChange.mock.calls.length > 0);
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("");
+    expect(hospedeiro.querySelector('[aria-label="Limpar busca"]')).toBeNull();
+  });
 });

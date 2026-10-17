@@ -10,13 +10,8 @@
 // modos de visualização (detalhado e compacto), sem sobrar manipulador,
 // estado ou ícone órfão.
 //
-// Segue o mesmo padrão de admin-products-view-toast-de-exclusao.test.tsx:
-// mocka os componentes Radix de `dropdown-menu` para não depender de
-// PointerEvent/pointer capture que o jsdom não implementa — os itens do
-// menu passam a renderizar sempre, sem precisar abrir o dropdown de
-// verdade.
+// A v6 abre a folha real pelo botão nomeado, nos dois modos.
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -74,32 +69,6 @@ vi.mock("@/hooks/usePrefetchOnHover", () => ({
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
-}));
-
-// Mesmo mock de admin-products-view-toast-de-exclusao.test.tsx: renderiza os
-// itens sempre, preservando `onClick`, sem depender de abrir/fechar via
-// pointer capture.
-vi.mock("@/components/ui/dropdown-menu", () => ({
-  DropdownMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-  DropdownMenuContent: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-  DropdownMenuLabel: ({ children }: { children: ReactNode }) => <>{children}</>,
-  DropdownMenuSeparator: () => null,
-  DropdownMenuItem: ({
-    children,
-    onClick,
-  }: {
-    children: ReactNode;
-    onClick?: () => void;
-  }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
 }));
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
@@ -185,12 +154,23 @@ describe("AdminCustomersView — 'Congelar Acesso' sai do menu de gestão", () =
     });
   }
 
+  async function abrirMenu() {
+    const gatilho = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Gestão de Cliente: Cliente Teste"]',
+    )!;
+    expect(gatilho).not.toBeNull();
+    await act(async () => gatilho.click());
+    const dialogo = document.body.querySelector('[role="dialog"]');
+    expect(dialogo).not.toBeNull();
+    return dialogo!.textContent ?? "";
+  }
+
   it("modo compacto (padrão): 'Congelar Acesso' não existe mais, os outros itens continuam", async () => {
     stubLocalStorage("compact");
 
     await abrirTela();
 
-    const texto = hospedeiro.textContent ?? "";
+    const texto = await abrirMenu();
     expect(texto).not.toContain("Congelar Acesso");
     expect(texto).toContain("Ver ficha do cliente");
     expect(texto).toContain("Notificação Push");
@@ -201,7 +181,7 @@ describe("AdminCustomersView — 'Congelar Acesso' sai do menu de gestão", () =
 
     await abrirTela();
 
-    const texto = hospedeiro.textContent ?? "";
+    const texto = await abrirMenu();
     expect(texto).not.toContain("Congelar Acesso");
     expect(texto).toContain("Ver ficha do cliente");
     expect(texto).toContain("Notificação Push");
@@ -213,6 +193,9 @@ describe("AdminCustomersView — 'Congelar Acesso' sai do menu de gestão", () =
     await abrirTela();
 
     expect(hospedeiro.textContent ?? "").not.toContain(
+      "Funcionalidade em desenvolvimento",
+    );
+    expect(await abrirMenu()).not.toContain(
       "Funcionalidade em desenvolvimento",
     );
   });

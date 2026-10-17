@@ -159,6 +159,13 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
       "Não conseguimos carregar os clientes agora.",
     );
     expect(botao("Tentar de novo").disabled).toBe(false);
+    expect(botao("Tentar de novo").getAttribute("aria-label")).toBe(
+      "Tentar carregar os clientes de novo",
+    );
+    expect(hospedeiro.textContent).toContain("Falha ao atualizar clientes");
+    expect(hospedeiro.textContent).not.toContain(
+      "contas no app · Sincronizado",
+    );
     expect(hospedeiro.textContent).not.toContain("Nenhum cliente retornado");
     expect(hospedeiro.textContent).not.toContain("João Silva");
     expect(
@@ -253,7 +260,148 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     await abrirTela();
 
     expect(hospedeiro.textContent).toContain("Nenhum cliente retornado");
+    expect(hospedeiro.textContent).toContain(
+      "Revise os filtros ou sua pesquisa.",
+    );
     expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
     expect(hospedeiro.textContent).not.toContain("Tentar de novo");
+  });
+
+  it("mostra o resumo antes da busca, com os modos nomeados e a seleção explícita", async () => {
+    rpc.mockResolvedValue(sucesso([cliente("joao", "João Silva")], 24));
+    await abrirTela();
+    const metricas = hospedeiro.querySelector(
+      '[aria-label="Métricas de Clientes"]',
+    )!;
+    const busca = hospedeiro.querySelector("#customers-search")!;
+    expect(metricas).not.toBeNull();
+    expect(
+      metricas.compareDocumentPosition(busca) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const acoes = hospedeiro.querySelector(
+      '[aria-label="Ações dos clientes"]',
+    )!;
+    expect(acoes.className).toContain("fixed");
+    expect(acoes.querySelectorAll("button")).toHaveLength(2);
+    for (const acao of acoes.querySelectorAll("button"))
+      expect(acao.className).toContain("min-h-14");
+    const compacta = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Visualização Compacta"]',
+    )!;
+    const detalhada = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Visualização Detalhada"]',
+    )!;
+    expect(compacta.getAttribute("aria-pressed")).toBe("true");
+    expect(detalhada.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => detalhada.click());
+    expect(detalhada.getAttribute("aria-pressed")).toBe("true");
+    expect(compacta.getAttribute("aria-pressed")).toBe("false");
+    expect(botao("Maior total comprado").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Primeira página · Anterior indisponível",
+    );
+    // Trocar a apresentação não refaz nem altera a consulta.
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("expande as quatro métricas e oferece carrossel com grupos nomeados", async () => {
+    rpc.mockResolvedValue(sucesso([]));
+    await abrirTela();
+    await clicar("Expandir");
+    const metricas = hospedeiro.querySelector(
+      '[aria-label="Métricas de Clientes"]',
+    )!;
+    expect(metricas.querySelectorAll("[data-metrica]")).toHaveLength(4);
+    expect(metricas.textContent).toContain("Valor médio por venda");
+    await clicar("Carrossel");
+    expect(
+      metricas.querySelectorAll('[aria-label^="Mostrar o grupo"]'),
+    ).toHaveLength(4);
+    expect(
+      metricas
+        .querySelector('[aria-label="Mostrar o grupo 1 de 4"]')
+        ?.getAttribute("aria-current"),
+    ).toBe("true");
+    expect(
+      metricas.querySelector<HTMLButtonElement>(
+        '[aria-label="Grupo anterior de métricas"]',
+      )?.disabled,
+    ).toBe(true);
+  });
+
+  it("depois de expandir as métricas, 'Recolher' volta ao resumo (em grade e em carrossel)", async () => {
+    rpc.mockResolvedValue(sucesso([]));
+    await abrirTela();
+    const metricas = () =>
+      hospedeiro.querySelector('[aria-label="Métricas de Clientes"]')!;
+    expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(0);
+
+    await clicar("Expandir");
+    expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(4);
+    await clicar("Recolher");
+    expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(0);
+
+    await clicar("Expandir");
+    await clicar("Carrossel");
+    await clicar("Recolher");
+    expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(0);
+    expect(hospedeiro.textContent).toContain("Expandir");
+  });
+
+  it("o raio aparece apenas no cliente com aviso ativo, nos dois modos", async () => {
+    rpc.mockResolvedValue(
+      sucesso([
+        { ...cliente("joao", "João Silva"), is_push_subscribed: true },
+        { ...cliente("maria", "Maria Souza"), is_push_subscribed: false },
+      ]),
+    );
+    await abrirTela();
+    for (const modo of ["Visualização Compacta", "Visualização Detalhada"]) {
+      await act(async () =>
+        hospedeiro
+          .querySelector<HTMLButtonElement>(`[aria-label="${modo}"]`)!
+          .click(),
+      );
+      const raios = hospedeiro.querySelectorAll('[aria-label="Avisos ativos"]');
+      expect(raios).toHaveLength(1);
+      expect(raios[0].closest('[role="button"]')?.textContent).toContain(
+        "João Silva",
+      );
+      const maria = hospedeiro
+        .querySelector('[aria-label="Gestão de Cliente: Maria Souza"]')!
+        .closest('[role="button"]')!;
+      expect(maria.querySelector('[aria-label="Avisos ativos"]')).toBeNull();
+    }
+  });
+
+  it("cliente sem raio mantém o menu nomeado e as duas ações com o mesmo destinatário", async () => {
+    const navegar = vi.fn();
+    rpc.mockResolvedValue(sucesso([cliente("joao", "João Silva")]));
+    await act(async () =>
+      raiz.render(<AdminCustomersView active onNavigate={navegar} />),
+    );
+    await avancar(320);
+    expect(hospedeiro.querySelector('[aria-label="Avisos ativos"]')).toBeNull();
+    const menu = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Gestão de Cliente: João Silva"]',
+    )!;
+    await act(async () => menu.click());
+    const dialogo = document.body.querySelector('[role="dialog"]')!;
+    expect(dialogo.textContent).toContain(
+      "Sem avisos ativos. Notificação Push continua disponível.",
+    );
+    const acoes = Array.from(dialogo.querySelectorAll("button"));
+    expect(
+      acoes.some((b) => b.textContent?.includes("Ver ficha do cliente")),
+    ).toBe(true);
+    const push = acoes.find((b) =>
+      b.textContent?.includes("Notificação Push"),
+    )!;
+    await act(async () => push.click());
+    expect(navegar).toHaveBeenCalledExactlyOnceWith("admin-push", "joao");
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 });
