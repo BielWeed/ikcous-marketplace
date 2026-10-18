@@ -118,11 +118,11 @@ export function paiDaTelaDoAdmin(
       return "admin-settings";
     case "admin-notifications":
       return "admin-dashboard";
-    // "Vender" é sub-view do painel principal, não da aba Pedidos (plano
-    // §5.3: "sub-view; não é sexta aba") — por isso o pai é admin-dashboard,
-    // não admin-orders, mesmo sendo vizinha temática em adminViewIndices.
+    // "Vender" é a sexta aba da barra de baixo (decisão do Gabriel, 17/10/2026,
+    // com print: o botão dizia "Voltar" numa tela que se abre pela barra).
+    // Como as outras abas, é raiz: o botão do topo diz "Perfil".
     case "admin-pdv":
-      return "admin-dashboard";
+      return "profile";
     // Dashboard CRM e Financeiro abrem pelos botões do Início (perfil do
     // lojista) — voltam para ele, como o "Vender".
     case "admin-crm":
