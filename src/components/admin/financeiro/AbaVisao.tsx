@@ -31,10 +31,9 @@ import type {
   TotaisPrevistos,
 } from "@/types/financeiro";
 import { FluxoDeCaixaGrafico } from "./FluxoDeCaixaGrafico";
-import { IconeDoTipoDeConta } from "./icones";
+import { IconeDoTipoDeConta, matizDoTipoDeConta } from "./icones";
 import type { AbaDoFinanceiro, LadoDosPrevistos } from "./navegacao";
 import {
-  BlocoKpi,
   CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CASCA_DO_CARTAO,
   CLASSE_ROTULO_DO_CARTAO,
@@ -49,7 +48,7 @@ import {
 } from "./partes";
 
 const COR_APP = "#38bdf8";
-const COR_LOJA = "#f9c406";
+const COR_LOJA = "#FF8BB2";
 
 function CartaoDePrevistos({
   titulo,
@@ -64,52 +63,60 @@ function CartaoDePrevistos({
 }) {
   const temVencido = Math.round(totais.vencido * 100) > 0;
   return (
-    <CartaoSecao
-      titulo={titulo}
-      acao={
-        <button
-          type="button"
-          onClick={() => aoVer(lado)}
-          className="inline-flex min-h-11 items-center gap-1 rounded-xl px-2 text-xs font-bold text-zinc-400 hover:text-white"
-        >
-          Ver contas
-          <ChevronRight aria-hidden="true" className="size-4" />
-        </button>
-      }
-    >
-      <Dinheiro
-        valor={totais.total}
-        className={cn(
-          "text-3xl font-black tracking-tight",
-          lado === "entrada" ? "text-emerald-300" : "text-red-300",
-        )}
-      />
-      <dl className="mt-4 grid grid-cols-2 gap-2">
-        <div
-          className={
-            temVencido
-              ? "rounded-2xl border border-red-500/30 bg-red-500/10 p-3"
-              : `p-3 ${CLASSE_CASCA_DO_CARTAO}`
-          }
-        >
-          <dt className={CLASSE_ROTULO_DO_CARTAO}>Vencido</dt>
-          <dd
-            className={cn(
-              "mt-1 text-sm font-black",
-              temVencido ? "text-red-300" : "text-zinc-300",
-            )}
+    <section aria-label={titulo}>
+      <button
+        type="button"
+        onClick={() => aoVer(lado)}
+        className="flex min-h-20 w-full flex-col gap-2 rounded-2xl bg-[#101013] p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+      >
+        <span className="flex w-full flex-wrap items-center gap-2 text-sm font-bold text-white">
+          {lado === "entrada" ? (
+            <ArrowDownLeft
+              aria-hidden="true"
+              className="size-6 shrink-0 text-teal-300"
+            />
+          ) : (
+            <ArrowUpRight
+              aria-hidden="true"
+              className="size-6 shrink-0 text-red-400"
+            />
+          )}
+          <span className="flex-1">{titulo}</span>
+          <Dinheiro
+            valor={totais.total}
+            sentido={lado === "entrada" ? 1 : -1}
+            className={cn("text-sm font-bold", "text-white")}
+          />
+          <ChevronRight aria-hidden="true" className="size-4 text-zinc-400" />
+        </span>
+        <dl className="grid w-full grid-cols-1 gap-1 pl-8 text-xs sm:grid-cols-2">
+          <div
+            className={
+              temVencido
+                ? "flex flex-wrap items-baseline gap-1 text-red-400"
+                : "flex flex-wrap items-baseline gap-1 text-zinc-400"
+            }
           >
-            <Dinheiro valor={totais.vencido} />
-          </dd>
-        </div>
-        <div className={`p-3 ${CLASSE_CASCA_DO_CARTAO}`}>
-          <dt className={CLASSE_ROTULO_DO_CARTAO}>Próximos 7 dias</dt>
-          <dd className="mt-1 text-sm font-black text-zinc-100">
-            <Dinheiro valor={totais.proximos7Dias} />
-          </dd>
-        </div>
-      </dl>
-    </CartaoSecao>
+            <dt>Vencido</dt>
+            <dd
+              className={cn(
+                "font-medium",
+                temVencido ? "text-red-400" : "text-zinc-400",
+              )}
+            >
+              <Dinheiro valor={totais.vencido} />
+            </dd>
+          </div>
+          <div className="flex flex-wrap items-baseline gap-1 text-zinc-400">
+            <dt>Próximos 7 dias</dt>
+            <dd>
+              <Dinheiro valor={totais.proximos7Dias} />
+            </dd>
+          </div>
+        </dl>
+        <span className="sr-only">Ver contas</span>
+      </button>
+    </section>
   );
 }
 
@@ -127,7 +134,7 @@ function RecebimentosPorForma({
       subtitulo="Como o dinheiro entrou no período"
     >
       {formas.length === 0 || total <= 0 ? (
-        <p className="text-xs text-zinc-500">Nenhum recebimento no período.</p>
+        <p className="text-xs text-zinc-400">Nenhum recebimento no período.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {formas.map((forma) => {
@@ -138,7 +145,7 @@ function RecebimentosPorForma({
                 className="flex flex-col gap-1.5"
               >
                 <div className="flex items-baseline justify-between gap-3 text-xs">
-                  <span className="truncate font-bold text-zinc-200">
+                  <span className="break-words font-bold text-zinc-200">
                     {rotuloDaForma(forma.forma)}
                   </span>
                   <span className="shrink-0 tabular-nums text-zinc-400">
@@ -151,8 +158,16 @@ function RecebimentosPorForma({
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-white/5">
                   <div
-                    className="h-full rounded-full bg-admin-gold/80"
-                    style={{ width: `${Math.max(pct, 1.5)}%` }}
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.max(pct, 1.5)}%`,
+                      backgroundColor:
+                        forma.forma === "pix"
+                          ? "#2DD4BF"
+                          : forma.forma === "credito"
+                            ? "#BA9AFF"
+                            : "#7AA2FF",
+                    }}
                   />
                 </div>
               </li>
@@ -175,7 +190,7 @@ function AppVersusLoja({ resumo }: { readonly resumo: ResumoFinanceiro }) {
       subtitulo="Vendas recebidas no período"
     >
       {total <= 0 ? (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-zinc-400">
           Nenhuma venda recebida no período.
         </p>
       ) : (
@@ -197,9 +212,9 @@ function AppVersusLoja({ resumo }: { readonly resumo: ResumoFinanceiro }) {
               />
             ) : null}
           </div>
-          <dl className="grid grid-cols-2 gap-3">
+          <dl className="grid grid-cols-1 gap-5">
             <div>
-              <dt className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              <dt className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
                 <span
                   className="size-2 rounded-sm"
                   style={{ background: COR_APP }}
@@ -209,12 +224,12 @@ function AppVersusLoja({ resumo }: { readonly resumo: ResumoFinanceiro }) {
               <dd className="mt-1 text-base font-black text-white">
                 <Dinheiro valor={online} />
               </dd>
-              <dd className="text-xs text-zinc-500">
+              <dd className="text-xs text-zinc-400">
                 {formatarPercentual(pctApp)}
               </dd>
             </div>
             <div>
-              <dt className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              <dt className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
                 <span
                   className="size-2 rounded-sm"
                   style={{ background: COR_LOJA }}
@@ -224,7 +239,7 @@ function AppVersusLoja({ resumo }: { readonly resumo: ResumoFinanceiro }) {
               <dd className="mt-1 text-base font-black text-white">
                 <Dinheiro valor={presencial} />
               </dd>
-              <dd className="text-xs text-zinc-500">
+              <dd className="text-xs text-zinc-400">
                 {formatarPercentual(pctLoja)}
               </dd>
             </div>
@@ -303,7 +318,7 @@ export function AbaVisao({
   const caixa = dados.caixaAberto;
 
   return (
-    <div className="flex flex-col gap-4 lg:gap-6">
+    <div className="flex flex-col gap-7">
       {resumo.erro ? (
         <EstadoDeErro
           mensagem={resumo.erro}
@@ -311,131 +326,160 @@ export function AbaVisao({
         />
       ) : null}
 
-      <CartaoSecao
-        titulo="Saldo total"
-        subtitulo="Soma de todas as contas da loja, hoje"
-        className="bg-gradient-to-br from-admin-gold/[0.06] to-transparent"
+      <section
+        aria-label="Saldo total"
+        className="rounded-3xl bg-[#17171C] p-4"
       >
+        <h2 className="mb-2 text-xs font-bold uppercase text-zinc-400">
+          Saldo total · hoje
+        </h2>
+        <p className="sr-only">Soma de todas as contas da loja, hoje</p>
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <Dinheiro
             valor={dados.saldoTotal}
             className={cn(
-              "text-4xl font-black tracking-tighter sm:text-5xl",
+              "text-[clamp(1.5rem,8vw,2.25rem)] font-bold leading-tight tracking-tight",
               dados.saldoTotal < 0 ? "text-red-300" : "text-white",
             )}
           />
-          {dados.contas.length > 0 ? (
-            <ul
-              aria-label="Saldo por conta"
-              className="grid grid-cols-2 gap-2 lg:flex lg:flex-wrap lg:justify-end"
-            >
-              {dados.contas.map((conta) => {
-                return (
-                  <li
-                    key={conta.id}
-                    className={`flex min-w-0 flex-col gap-1 p-3 lg:min-w-[150px] ${CLASSE_CASCA_DO_CARTAO}`}
-                  >
-                    <span
-                      className={cn(
-                        "flex items-center gap-1.5",
-                        CLASSE_ROTULO_DO_CARTAO,
-                      )}
-                    >
-                      <IconeDoTipoDeConta
-                        tipo={conta.tipo}
-                        className="size-4 shrink-0"
-                      />
-                      <span className="truncate">{conta.nome}</span>
-                    </span>
-                    <Dinheiro
-                      valor={conta.saldo}
-                      className={cn(
-                        "text-base font-black",
-                        conta.saldo < 0 ? "text-red-300" : "text-white",
-                      )}
-                    />
-                    <span className="sr-only">
-                      {rotuloDoTipoDeConta(conta.tipo)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
         </div>
-      </CartaoSecao>
+      </section>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <BlocoKpi
-          rotulo="Entradas"
-          icone={ArrowDownLeft}
-          destaque="text-emerald-400"
-        >
-          <Dinheiro
-            valor={dados.entradas}
-            sentido={1}
-            className="text-emerald-300"
-          />
-        </BlocoKpi>
-        <BlocoKpi rotulo="Saídas" icone={ArrowUpRight} destaque="text-red-400">
-          <Dinheiro
-            valor={dados.saidas}
-            sentido={-1}
-            className="text-red-300"
-          />
-        </BlocoKpi>
-        <BlocoKpi
-          rotulo="Resultado"
-          icone={Scale}
-          destaque="text-admin-gold"
-          detalhe="Entradas − saídas do período"
-        >
-          <Dinheiro
-            valor={dados.resultado}
-            comSinal
-            className={corDoValor(dados.resultado)}
-          />
-        </BlocoKpi>
-        <BlocoKpi
-          rotulo="Caixa da loja"
-          icone={caixa ? LockOpen : Lock}
-          destaque={caixa ? "text-emerald-400" : "text-zinc-400"}
-          detalhe={
-            <button
-              type="button"
-              onClick={() => irParaAba("caixa")}
-              className="-mx-1 inline-flex min-h-8 items-center gap-1 rounded-lg px-1 font-bold text-admin-gold hover:underline"
-            >
-              {caixa ? "Ver o caixa" : "Abrir o caixa"}
-              <ChevronRight aria-hidden="true" className="size-3.5" />
-            </button>
-          }
-        >
-          <span className={caixa ? "text-emerald-300" : "text-zinc-400"}>
-            {caixa ? "Aberto" : "Fechado"}
-          </span>
-          {caixa ? (
-            <span className="block text-xs font-medium text-zinc-400">
-              desde {formatarHora(caixa.abertoEm)}
-            </span>
-          ) : null}
-        </BlocoKpi>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
-        <CartaoDePrevistos
-          titulo="A receber"
-          totais={dados.aReceber}
-          lado="entrada"
-          aoVer={verPrevistos}
-        />
+      <div className="grid grid-cols-1 gap-1 rounded-3xl bg-[#101013] p-1 lg:grid-cols-2">
         <CartaoDePrevistos
           titulo="A pagar"
           totais={dados.aPagar}
           lado="saida"
           aoVer={verPrevistos}
         />
+        <CartaoDePrevistos
+          titulo="A receber"
+          totais={dados.aReceber}
+          lado="entrada"
+          aoVer={verPrevistos}
+        />
       </div>
+
+      <section
+        aria-label="Movimentos do período"
+        className="rounded-3xl bg-[#101013] p-4"
+      >
+        <dl className="grid grid-cols-2 gap-4">
+          <div>
+            <dt className="mb-1 text-xs text-zinc-400">Entradas</dt>
+            <dd className="text-xl font-bold">
+              <Dinheiro
+                valor={dados.entradas}
+                sentido={1}
+                className="text-emerald-300"
+              />
+            </dd>
+          </div>
+          <div>
+            <dt className="mb-1 text-xs text-zinc-400">Saídas</dt>
+            <dd className="text-xl font-bold">
+              <Dinheiro
+                valor={dados.saidas}
+                sentido={-1}
+                className="text-red-300"
+              />
+            </dd>
+          </div>
+          <div className="col-span-2 text-xs text-zinc-400">
+            <dt className="inline">Resultado </dt>
+            <dd className="inline">
+              <Dinheiro
+                valor={dados.resultado}
+                comSinal
+                className={corDoValor(dados.resultado)}
+              />
+            </dd>
+            <span> · Entradas − saídas do período</span>
+          </div>
+        </dl>
+      </section>
+
+      <div className="flex flex-col rounded-3xl bg-[#101013] p-2">
+        <button
+          type="button"
+          onClick={() => irParaAba("caixa")}
+          className="flex min-h-14 items-center gap-3 rounded-2xl px-3 text-left text-sm text-white hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+        >
+          {caixa ? (
+            <LockOpen aria-hidden="true" className="size-5 text-teal-300" />
+          ) : (
+            <Lock aria-hidden="true" className="size-5 text-teal-300" />
+          )}
+          <span className="min-w-0 flex-1 break-words">
+            {caixa ? "Ver o caixa" : "Abrir o caixa"}
+            <span className="ml-1 text-xs text-zinc-400">
+              ·{" "}
+              {caixa
+                ? `aberto desde ${formatarHora(caixa.abertoEm)}`
+                : "Fechado"}
+            </span>
+          </span>
+          <ChevronRight
+            aria-hidden="true"
+            className="size-4 shrink-0 text-zinc-400"
+          />
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            document
+              .getElementById("fin-saldos-e-analises")
+              ?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+          className="flex min-h-14 items-center gap-3 rounded-2xl px-3 text-left text-sm text-white hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+        >
+          <Scale aria-hidden="true" className="size-5 shrink-0 text-blue-300" />
+          <span className="flex-1">Ver saldos e análises da Visão</span>
+          <ChevronRight
+            aria-hidden="true"
+            className="size-4 shrink-0 text-zinc-400"
+          />
+        </button>
+      </div>
+
+      <CartaoSecao
+        id="fin-saldos-e-analises"
+        titulo="Saldo por conta"
+        subtitulo="Todas as contas da loja, hoje"
+      >
+        <ul aria-label="Saldo por conta" className="flex flex-col gap-4">
+          {dados.contas.map((conta) => (
+            <li
+              key={conta.id}
+              className={`flex min-w-0 flex-wrap items-center gap-3 p-3 ${CLASSE_CASCA_DO_CARTAO}`}
+            >
+              <span
+                className={`flex min-w-0 flex-1 items-center gap-3 ${CLASSE_ROTULO_DO_CARTAO}`}
+              >
+                <span
+                  className="flex size-9 shrink-0 items-center justify-center rounded-xl border"
+                  style={{
+                    color: matizDoTipoDeConta(conta.tipo),
+                    backgroundColor: `${matizDoTipoDeConta(conta.tipo)}1A`,
+                    borderColor: `${matizDoTipoDeConta(conta.tipo)}40`,
+                  }}
+                >
+                  <IconeDoTipoDeConta tipo={conta.tipo} className="size-5" />
+                </span>
+                <span className="break-words">{conta.nome}</span>
+              </span>
+              <Dinheiro
+                valor={conta.saldo}
+                className={`text-base font-bold ${conta.saldo < 0 ? "text-red-300" : "text-white"}`}
+              />
+              <span className="sr-only">{rotuloDoTipoDeConta(conta.tipo)}</span>
+            </li>
+          ))}
+        </ul>
+        {dados.contas.length === 0 ? (
+          <p className="text-sm text-zinc-400">Nenhuma conta ainda.</p>
+        ) : null}
+      </CartaoSecao>
 
       <CartaoSecao
         titulo="Fluxo de caixa — últimos 30 dias"
@@ -462,7 +506,7 @@ export function AbaVisao({
       </div>
 
       {caixa ? (
-        <p className="text-[11px] text-zinc-600">
+        <p className="text-xs text-zinc-400">
           Caixa aberto em {formatarDataHora(caixa.abertoEm)} com{" "}
           <Dinheiro valor={caixa.valorAbertura} /> de troco.
         </p>

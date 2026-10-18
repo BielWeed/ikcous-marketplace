@@ -32,8 +32,10 @@ import {
   CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
   Campo,
+  Dinheiro,
   EstadoDeErro,
   Segmentado,
+  useConfirmacaoFinanceira,
 } from "./partes";
 import {
   chaveEmAbertoDoConteudo,
@@ -96,6 +98,7 @@ export function NovoLancamentoFolha({
   readonly aoMudarSujo: (sujo: boolean) => void;
   readonly aoMudarEnviando?: (enviando: boolean) => void;
 }) {
+  const confirmarVisualmente = useConfirmacaoFinanceira();
   const contasAtivas = useMemo(() => contas.filter((c) => c.ativa), [contas]);
   const [formInicial] = useState<FormularioDoLancamento>(() =>
     formularioInicialDoLancamento(hoje, {
@@ -104,6 +107,8 @@ export function NovoLancamentoFolha({
     }),
   );
   const [form, setForm] = useState<FormularioDoLancamento>(formInicial);
+  // O campo do formulário mantém o nome do contrato; a tela só fala "mês de referência".
+  const { dataCompetencia: mesDeReferencia } = form;
   const formRef = useRef(formInicial);
   const [chaveInicial] = useState(gerarChaveDaTentativa);
   const chaveDaTentativa = useRef(chaveInicial);
@@ -195,6 +200,56 @@ export function NovoLancamentoFolha({
         () => erroDePrazo,
       );
       esquecerChaveEmAberto(conteudo);
+      confirmarVisualmente({
+        titulo:
+          ids.length > 1
+            ? `${ids.length} parcelas lançadas.`
+            : "Lançamento salvo.",
+        descricao: resultado.payload.descricao,
+        valor: resultado.payload.valor,
+        sentido:
+          resultado.payload.tipo === "transferencia"
+            ? 0
+            : resultado.payload.tipo === "entrada"
+              ? 1
+              : -1,
+        linhas: [
+          {
+            rotulo: transferencia ? "Sai de" : "Conta",
+            texto:
+              contas.find((c) => c.id === resultado.payload.conta_id)?.nome ??
+              "—",
+          },
+          ...(transferencia
+            ? [
+                {
+                  rotulo: "Entra em",
+                  texto:
+                    contas.find(
+                      (c) => c.id === resultado.payload.conta_destino_id,
+                    )?.nome ?? "—",
+                },
+              ]
+            : []),
+          {
+            rotulo: previsto ? "Vencimento" : "Data",
+            texto: formatarData(
+              resultado.payload.data_realizacao ??
+                resultado.payload.data_vencimento ??
+                "",
+            ),
+          },
+          {
+            rotulo: "Mês de referência",
+            texto: formatarData(resultado.payload.data_competencia),
+          },
+        ],
+        ...(transferencia
+          ? {
+              nota: "O dinheiro muda de conta. O saldo total da loja continua o mesmo; esta transferência fica fora do resultado.",
+            }
+          : {}),
+      });
       aoSalvar(
         ids.length > 1
           ? `${ids.length} parcelas lançadas.`
@@ -232,7 +287,7 @@ export function NovoLancamentoFolha({
       rodape={
         <div className="flex flex-col gap-3">
           {erroDoServidor ? <EstadoDeErro mensagem={erroDoServidor} /> : null}
-          <div className="flex gap-3">
+          <div className="flex flex-col-reverse gap-3">
             <button
               type="button"
               onClick={fechar}
@@ -344,7 +399,7 @@ export function NovoLancamentoFolha({
           </Campo>
         )}
 
-        <div className={transferencia ? "grid grid-cols-2 gap-3" : ""}>
+        <div className={transferencia ? "grid grid-cols-1 gap-5" : ""}>
           <Campo
             id="fin-lanc-conta"
             rotulo={transferencia ? "Sai de" : "Conta"}
@@ -417,7 +472,7 @@ export function NovoLancamentoFolha({
           />
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-5">
           {previsto ? (
             <Campo
               id="fin-lanc-vencimento"
@@ -461,17 +516,25 @@ export function NovoLancamentoFolha({
               id="fin-lanc-competencia"
               disabled={enviando}
               type="date"
-              value={form.dataCompetencia}
+              value={mesDeReferencia}
               onChange={(e) => atualizar({ dataCompetencia: e.target.value })}
               className={CLASSE_CAMPO}
             />
           </Campo>
         </div>
-        <p className="-mt-2 text-[11px] text-zinc-500">
-          Mês de referência é o mês a que o valor pertence (o resultado conta
-          por ele); pode ser diferente do dia em que o dinheiro se mexe.
-          Qualquer dia do mês serve; nos filtros por dia, vale a data escolhida.
-        </p>
+        {transferencia ? (
+          <p className="-mt-2 text-xs leading-relaxed text-zinc-400">
+            Referência do registro. Transferências entre contas ficam fora do
+            resultado; não alteram o lucro.
+          </p>
+        ) : (
+          <p className="-mt-2 text-xs leading-relaxed text-zinc-400">
+            Mês de referência é o mês a que o valor pertence (o resultado conta
+            por ele); pode ser diferente do dia em que o dinheiro se mexe.
+            Qualquer dia do mês serve; nos filtros por dia, vale a data
+            escolhida.
+          </p>
+        )}
 
         {previsto ? (
           <Campo
@@ -534,6 +597,85 @@ export function NovoLancamentoFolha({
             className={`${CLASSE_CAMPO} min-h-[72px] py-2`}
           />
         </Campo>
+        <section
+          aria-label="Confira antes de salvar"
+          className="mt-3 rounded-3xl border border-white/10 bg-[#17171C] p-4"
+        >
+          <h3 className="text-base font-bold text-white">
+            Confira antes de salvar
+          </h3>
+          <dl className="mt-4 flex flex-col gap-4 text-sm">
+            <div className="flex flex-wrap justify-between gap-2">
+              <dt className="text-zinc-400">Valor total</dt>
+              <dd className="text-2xl font-bold">
+                {valorDigitado === null ? (
+                  "—"
+                ) : (
+                  <Dinheiro valor={valorDigitado} />
+                )}
+              </dd>
+            </div>
+            <div className="flex flex-wrap justify-between gap-2">
+              <dt className="text-zinc-400">
+                {previsto
+                  ? parcelas > 1
+                    ? "1º vencimento"
+                    : "Vencimento"
+                  : transferencia
+                    ? "Data"
+                    : receita
+                      ? "Recebido em"
+                      : "Pago em"}
+              </dt>
+              <dd className="font-bold">
+                {formatarData(
+                  previsto ? form.dataVencimento : form.dataRealizacao,
+                )}
+              </dd>
+            </div>
+            <div className="flex flex-wrap justify-between gap-2">
+              <dt className="text-zinc-400">Mês de referência</dt>
+              <dd className="font-bold">{formatarData(mesDeReferencia)}</dd>
+            </div>
+            {transferencia ? (
+              <>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-zinc-400">Sai de</dt>
+                  <dd className="break-words font-bold">
+                    {contas.find((c) => c.id === form.contaId)?.nome ?? "—"}
+                  </dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-zinc-400">Entra em</dt>
+                  <dd className="break-words font-bold">
+                    {contas.find((c) => c.id === form.contaDestinoId)?.nome ??
+                      "—"}
+                  </dd>
+                </div>
+              </>
+            ) : null}
+            {previsto ? (
+              <div className="flex justify-between gap-2">
+                <dt className="text-zinc-400">Parcelas</dt>
+                <dd className="font-bold">{parcelas}×</dd>
+              </div>
+            ) : null}
+          </dl>
+        </section>
+        {transferencia ? (
+          <p className="rounded-2xl bg-violet-400/5 p-3 text-xs leading-relaxed text-zinc-400">
+            Sempre realizada, entre contas da loja. Não muda o total da loja e
+            fica fora do resultado. Sem categoria, forma ou parcelas.
+          </p>
+        ) : null}
+        {enviando ? (
+          <p
+            role="status"
+            className="rounded-2xl bg-sky-400/5 p-3 text-xs leading-relaxed text-zinc-300"
+          >
+            Salvando… Os campos e o fechamento estão bloqueados durante o envio.
+          </p>
+        ) : null}
       </form>
     </FolhaFinanceira>
   );

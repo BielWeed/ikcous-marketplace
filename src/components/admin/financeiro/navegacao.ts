@@ -41,6 +41,8 @@ export interface AlvoDoCancelamento {
 
 export type FolhaDoFinanceiro =
   | { readonly tipo: "periodo" }
+  | { readonly tipo: "secoes" }
+  | { readonly tipo: "periodos" }
   | {
       readonly tipo: "novo-lancamento";
       readonly inicial?: Partial<FormularioDoLancamento>;

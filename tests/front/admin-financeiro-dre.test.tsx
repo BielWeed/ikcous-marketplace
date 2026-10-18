@@ -124,7 +124,7 @@ describe("Financeiro — DRE", () => {
       expect(linha(chave).className, chave).toContain("font-black");
       expect(linha(chave).className, chave).toContain("border-t");
     }
-    expect(linha("lucro_liquido").className).toContain("border-admin-gold/40");
+    expect(linha("lucro_liquido").className).toContain("border-violet-400/40");
     expect(linha("cmv").className).not.toContain("font-black");
 
     // O CMV avisa que parte dele é estimada pelo custo ATUAL dos produtos (o servidor diz `cmv_estimado`).
@@ -189,7 +189,7 @@ describe("Financeiro — DRE", () => {
     expect(cabecalho).toEqual(["Linha", "jul/26", "ago/26", "set/26", "Total"]);
   });
 
-  it("falha do servidor vira frase com tentar de novo", async () => {
+  it("instalação ausente vira orientação técnica, sem erro interno nem repetição inútil", async () => {
     rpcFalso.mockResolvedValue({
       data: null,
       error: { code: "PGRST202", message: "Could not find the function" },
@@ -201,6 +201,7 @@ describe("Financeiro — DRE", () => {
       "O Financeiro ainda não foi instalado no banco desta loja.",
     );
     expect(texto).not.toContain("Could not find");
-    expect(texto).toContain("Tentar de novo");
+    expect(texto).toContain("Copiar orientação técnica");
+    expect(texto).not.toContain("Tentar de novo");
   });
 });

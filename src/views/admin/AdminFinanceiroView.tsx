@@ -11,7 +11,21 @@
 // busca de novo) e a FOLHA aberta (uma por vez — é o que liga o Voltar do
 // celular e o aviso de alterações não salvas ao formulário da vez).
 
-import { Eye, EyeOff, Plus } from "lucide-react";
+import {
+  BarChart3,
+  CalendarClock,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Eye,
+  EyeOff,
+  Plus,
+  ReceiptText,
+  SlidersHorizontal,
+  Store,
+  Wallet,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -23,6 +37,7 @@ import { AbaDre } from "@/components/admin/financeiro/AbaDre";
 import { AbaExtrato } from "@/components/admin/financeiro/AbaExtrato";
 import { AbaPrevistos } from "@/components/admin/financeiro/AbaPrevistos";
 import { AbaVisao } from "@/components/admin/financeiro/AbaVisao";
+import { FolhaFinanceira } from "@/components/admin/financeiro/FolhaFinanceira";
 import {
   CategoriaFolha,
   ContaFolha,
@@ -39,6 +54,7 @@ import {
 } from "@/components/admin/financeiro/FolhasDoCaixa";
 import { NovoLancamentoFolha } from "@/components/admin/financeiro/NovoLancamentoFolha";
 import {
+  OpcoesDePeriodo,
   PeriodoPersonalizadoFolha,
   SeletorDePeriodo,
 } from "@/components/admin/financeiro/SeletorDePeriodo";
@@ -47,7 +63,15 @@ import type {
   FolhaDoFinanceiro,
   LadoDosPrevistos,
 } from "@/components/admin/financeiro/navegacao";
-import { ContextoValoresOcultos } from "@/components/admin/financeiro/partes";
+import {
+  CLASSE_BOTAO_PRIMARIO,
+  CLASSE_BOTAO_SECUNDARIO,
+  type ConfirmacaoFinanceira,
+  ContextoConfirmacaoFinanceira,
+  ContextoValoresOcultos,
+  ReciboFinanceiro,
+  SeloFinanceiro,
+} from "@/components/admin/financeiro/partes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
@@ -74,14 +98,27 @@ interface AdminFinanceiroViewProps {
 const ABAS: readonly {
   valor: AbaDoFinanceiro;
   rotulo: string;
+  icone: LucideIcon;
+  matiz: string;
   avancado?: boolean;
 }[] = [
-  { valor: "visao", rotulo: "Visão" },
-  { valor: "extrato", rotulo: "Extrato" },
-  { valor: "previstos", rotulo: "A pagar e receber" },
-  { valor: "caixa", rotulo: "Caixa" },
-  { valor: "dre", rotulo: "Resultado" },
-  { valor: "contas", rotulo: "Contas e categorias", avancado: true },
+  { valor: "visao", rotulo: "Visão", icone: Wallet, matiz: "#69C8FF" },
+  { valor: "extrato", rotulo: "Extrato", icone: ReceiptText, matiz: "#7AA2FF" },
+  {
+    valor: "previstos",
+    rotulo: "A pagar e receber",
+    icone: CalendarClock,
+    matiz: "#FF8BB2",
+  },
+  { valor: "caixa", rotulo: "Caixa", icone: Store, matiz: "#2DD4BF" },
+  { valor: "dre", rotulo: "Resultado", icone: BarChart3, matiz: "#BA9AFF" },
+  {
+    valor: "contas",
+    rotulo: "Contas e categorias",
+    icone: SlidersHorizontal,
+    matiz: "#FF9F5A",
+    avancado: true,
+  },
 ];
 
 function ehAba(valor: string): valor is AbaDoFinanceiro {
@@ -89,7 +126,7 @@ function ehAba(valor: string): valor is AbaDoFinanceiro {
 }
 
 const CLASSE_ABA =
-  "min-h-11 flex-none rounded-none border-0 border-b-2 border-transparent px-3 text-[11px] font-black uppercase tracking-wider text-zinc-500 hover:text-zinc-200 data-[state=active]:border-admin-gold data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:shadow-none dark:data-[state=active]:border-admin-gold dark:data-[state=active]:bg-transparent dark:data-[state=active]:text-white dark:text-zinc-500 dark:hover:text-zinc-200";
+  "min-h-11 flex-none rounded-xl border border-transparent px-3 text-xs font-bold text-zinc-400 hover:text-white data-[state=active]:border-admin-gold/50 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold data-[state=active]:shadow-none dark:data-[state=active]:bg-admin-gold/10 dark:data-[state=active]:text-admin-gold";
 
 export function AdminFinanceiroView({
   onNavigate,
@@ -120,6 +157,9 @@ export function AdminFinanceiroView({
   const folhaEmEnvio = useRef(false);
   const [sujo, setSujo] = useState(false);
   const [ocultos, alternarOcultos] = useValoresOcultos();
+  const [confirmacao, setConfirmacao] = useState<ConfirmacaoFinanceira | null>(
+    null,
+  );
 
   const contas = useContasFinanceiras(ativo, versao);
   const categorias = useCategoriasFinanceiras(ativo, versao);
@@ -197,6 +237,71 @@ export function AdminFinanceiroView({
   function renderizarFolha() {
     if (!folha) return null;
     switch (folha.tipo) {
+      case "secoes":
+        return (
+          <FolhaFinanceira
+            titulo="Seções do Financeiro"
+            descricao="Escolha o que precisa conferir."
+            icone={SlidersHorizontal}
+            aoFechar={fecharFolha}
+          >
+            <div
+              aria-label="Escolha a seção"
+              className="flex flex-col gap-2 rounded-3xl border border-white/10 bg-[#101013] p-3"
+            >
+              {ABAS.map((item) => (
+                <button
+                  key={item.valor}
+                  type="button"
+                  data-secao={item.valor}
+                  aria-pressed={item.valor === aba}
+                  onClick={() => {
+                    setAba(item.valor);
+                    fecharFolha();
+                  }}
+                  className={`flex min-h-16 items-center gap-3 rounded-2xl p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${item.valor === aba ? "bg-admin-gold/10 text-admin-gold" : "text-white hover:bg-white/5"}`}
+                >
+                  <SeloFinanceiro icone={item.icone} matiz={item.matiz} />
+                  <span className="min-w-0 flex-1 break-words text-sm font-bold">
+                    {item.rotulo}
+                    {item.avancado ? (
+                      <span className="block text-xs font-normal text-zinc-400">
+                        Avançado
+                      </span>
+                    ) : null}
+                  </span>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-4 shrink-0"
+                  />
+                </button>
+              ))}
+            </div>
+          </FolhaFinanceira>
+        );
+      case "periodos":
+        return (
+          <FolhaFinanceira
+            titulo="Período"
+            descricao="Usado em Visão, Extrato e Resultado."
+            icone={CalendarClock}
+            aoFechar={fecharFolha}
+          >
+            <OpcoesDePeriodo
+              periodo={periodo}
+              hoje={hoje}
+              aoEscolher={(escolhido) => {
+                setPeriodo(escolhido);
+                fecharFolha();
+              }}
+              aoPedirPersonalizado={() => abrirFolha({ tipo: "periodo" })}
+            />
+            <p className="mt-4 rounded-2xl bg-sky-400/5 p-3 text-xs leading-relaxed text-zinc-400">
+              A pagar e receber, Caixa e Contas e categorias não usam este
+              período. O fluxo usa sempre seus últimos 30 dias.
+            </p>
+          </FolhaFinanceira>
+        );
       case "periodo":
         return (
           <PeriodoPersonalizadoFolha
@@ -313,160 +418,212 @@ export function AdminFinanceiroView({
   return (
     <ContextoDoCacheFinanceiro.Provider value={cache}>
       <ContextoValoresOcultos.Provider value={ocultos}>
-        <div className="pb-admin h-auto bg-admin-bg text-white lg:pb-12">
-          <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-            <AdminPageHeader
-              titulo={NOMES_DO_PAINEL["admin-financeiro"]}
-              acoes={
-                <>
-                  <button
-                    type="button"
-                    onClick={alternarOcultos}
-                    aria-pressed={ocultos}
-                    aria-label={ocultos ? "Mostrar valores" : "Ocultar valores"}
-                    title={ocultos ? "Mostrar valores" : "Ocultar valores"}
-                    className="flex size-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
-                  >
-                    {ocultos ? (
-                      <EyeOff aria-hidden="true" className="size-4" />
-                    ) : (
-                      <Eye aria-hidden="true" className="size-4" />
-                    )}
-                  </button>
+        <ContextoConfirmacaoFinanceira.Provider value={setConfirmacao}>
+          <div className="pb-admin h-auto bg-[#08080A] text-white lg:pb-12">
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 pb-7 pt-6 [&_h1]:text-[32px] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
+              <AdminPageHeader
+                titulo={NOMES_DO_PAINEL["admin-financeiro"]}
+                acoes={
+                  <>
+                    <button
+                      type="button"
+                      onClick={alternarOcultos}
+                      aria-pressed={ocultos}
+                      aria-label={
+                        ocultos ? "Mostrar valores" : "Ocultar valores"
+                      }
+                      title={ocultos ? "Mostrar valores" : "Ocultar valores"}
+                      className="flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#17171C] px-4 text-xs text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                    >
+                      {ocultos ? (
+                        <EyeOff aria-hidden="true" className="size-4" />
+                      ) : (
+                        <Eye aria-hidden="true" className="size-4" />
+                      )}
+                      <span>{ocultos ? "Mostrar" : "Ocultar"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => novoLancamento()}
+                      className={`${aba === "caixa" ? CLASSE_BOTAO_SECUNDARIO : CLASSE_BOTAO_PRIMARIO} hidden lg:inline-flex`}
+                    >
+                      <Plus aria-hidden="true" className="size-4" />
+                      Novo lançamento
+                    </button>
+                  </>
+                }
+              />
+            </div>
+
+            <div className="mx-auto flex max-w-7xl flex-col gap-7 px-5">
+              {confirmacao ? (
+                <ReciboFinanceiro
+                  confirmacao={confirmacao}
+                  aoFechar={() => setConfirmacao(null)}
+                />
+              ) : null}
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 lg:block">
+                {aba === "visao" || aba === "extrato" || aba === "dre" ? (
+                  <SeletorDePeriodo
+                    periodo={periodo}
+                    rotulo={rotulo}
+                    aoEscolher={setPeriodo}
+                    aoPedirPersonalizado={() => abrirFolha({ tipo: "periodo" })}
+                    aoPedirOpcoes={() => abrirFolha({ tipo: "periodos" })}
+                  />
+                ) : (
+                  <p className="flex min-h-12 items-center gap-2 rounded-2xl bg-[#17171C] px-3 text-xs text-zinc-300">
+                    <Clock
+                      aria-hidden="true"
+                      className="size-5 shrink-0 text-teal-300"
+                    />
+                    {aba === "caixa"
+                      ? "Sessão atual"
+                      : aba === "previstos"
+                        ? "Todos os vencimentos"
+                        : "Cadastros da loja"}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  aria-label="Seções do Financeiro"
+                  aria-haspopup="dialog"
+                  aria-expanded={folha?.tipo === "secoes"}
+                  onClick={() => abrirFolha({ tipo: "secoes" })}
+                  className="flex min-h-12 items-center gap-3 rounded-2xl bg-admin-gold/10 px-3 text-left text-xs text-admin-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 lg:hidden"
+                >
+                  <span>
+                    Seções
+                    <strong className="block max-w-32 break-words text-sm">
+                      {ABAS.find((item) => item.valor === aba)?.rotulo}
+                    </strong>
+                  </span>
+                  <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
+                </button>
+              </div>
+
+              <Tabs
+                value={aba}
+                onValueChange={(valor) =>
+                  setAba(ehAba(valor) ? valor : "visao")
+                }
+                className="gap-7"
+              >
+                <TabsList className="no-scrollbar hidden size-auto justify-start gap-1 overflow-x-auto rounded-2xl bg-[#17171C] p-1 lg:flex">
+                  {ABAS.map((item) => (
+                    <TabsTrigger
+                      key={item.valor}
+                      value={item.valor}
+                      className={CLASSE_ABA}
+                    >
+                      {item.rotulo}
+                      {item.avancado ? (
+                        <>
+                          {" "}
+                          <span
+                            data-selo-avancado=""
+                            className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold normal-case tracking-normal text-zinc-400"
+                          >
+                            Avançado
+                          </span>
+                        </>
+                      ) : null}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+
+                <TabsContent value="visao">
+                  <AbaVisao
+                    ativo={ativo}
+                    intervalo={intervalo}
+                    hoje={hoje}
+                    versao={versao}
+                    contas={listaDeContas}
+                    irParaAba={setAba}
+                    verPrevistos={(lado) => {
+                      setLadoDosPrevistos(lado);
+                      setAba("previstos");
+                    }}
+                  />
+                </TabsContent>
+                <TabsContent value="extrato">
+                  <AbaExtrato
+                    ativo={ativo}
+                    intervalo={intervalo}
+                    hoje={hoje}
+                    versao={versao}
+                    contas={listaDeContas}
+                    rotuloDoPeriodo={rotulo}
+                    abrirFolha={abrirFolha}
+                    aoNovoLancamento={() => novoLancamento()}
+                  />
+                </TabsContent>
+                <TabsContent value="previstos">
+                  <AbaPrevistos
+                    ativo={ativo}
+                    hoje={hoje}
+                    versao={versao}
+                    lado={ladoDosPrevistos}
+                    aoMudarLado={setLadoDosPrevistos}
+                    abrirFolha={abrirFolha}
+                    aoNovoLancamento={novoLancamento}
+                    aoAbrirPedido={abrirPedido}
+                  />
+                </TabsContent>
+                <TabsContent value="caixa">
+                  <AbaCaixa
+                    ativo={ativo}
+                    versao={versao}
+                    abrirFolha={abrirFolha}
+                    aoNovoLancamento={() => novoLancamento()}
+                    mostrarAcaoFixa={ativo && !folha}
+                  />
+                </TabsContent>
+                <TabsContent value="dre">
+                  <AbaDre
+                    ativo={ativo}
+                    intervalo={intervalo}
+                    versao={versao}
+                    rotuloDoPeriodo={rotulo}
+                  />
+                </TabsContent>
+                <TabsContent value="contas">
+                  <AbaContasECategorias
+                    contas={contas}
+                    categorias={categorias}
+                    abrirFolha={abrirFolha}
+                  />
+                </TabsContent>
+              </Tabs>
+
+              {/* Respiro para o botão flutuante não cobrir o fim da lista no celular. */}
+              <div aria-hidden="true" className="h-24 lg:hidden" />
+            </div>
+
+            <div key={numeroDaFolha}>{renderizarFolha()}</div>
+
+            {ativo &&
+            !folha &&
+            aba !== "caixa" &&
+            typeof document !== "undefined"
+              ? createPortal(
+                  // Acima da barra inferior do admin no celular (mesma conta do
+                  // botão flutuante do formulário de produto); no computador o
+                  // botão mora no cabeçalho.
                   <button
                     type="button"
                     onClick={() => novoLancamento()}
-                    className="hidden min-h-11 items-center gap-2 rounded-xl bg-admin-gold px-4 text-sm font-black text-black transition-opacity hover:opacity-90 lg:inline-flex"
+                    aria-label="Novo lançamento"
+                    className={`${CLASSE_BOTAO_PRIMARIO} fixed inset-x-5 bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-50 lg:hidden`}
                   >
-                    <Plus aria-hidden="true" className="size-4" />
+                    <Plus aria-hidden="true" className="size-6" />
                     Novo lançamento
-                  </button>
-                </>
-              }
-            />
+                  </button>,
+                  document.body,
+                )
+              : null}
           </div>
-
-          <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 sm:px-6">
-            <SeletorDePeriodo
-              periodo={periodo}
-              rotulo={rotulo}
-              aoEscolher={setPeriodo}
-              aoPedirPersonalizado={() => abrirFolha({ tipo: "periodo" })}
-            />
-
-            <Tabs
-              value={aba}
-              onValueChange={(valor) => setAba(ehAba(valor) ? valor : "visao")}
-              className="gap-4"
-            >
-              <TabsList className="no-scrollbar -mx-4 size-auto justify-start gap-1 overflow-x-auto rounded-none border-b border-white/5 bg-transparent p-0 px-4 sm:mx-0 sm:px-0">
-                {ABAS.map((item) => (
-                  <TabsTrigger
-                    key={item.valor}
-                    value={item.valor}
-                    className={CLASSE_ABA}
-                  >
-                    {item.rotulo}
-                    {item.avancado ? (
-                      <>
-                        {" "}
-                        <span
-                          data-selo-avancado=""
-                          className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold normal-case tracking-normal text-zinc-400"
-                        >
-                          Avançado
-                        </span>
-                      </>
-                    ) : null}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-
-              <TabsContent value="visao">
-                <AbaVisao
-                  ativo={ativo}
-                  intervalo={intervalo}
-                  hoje={hoje}
-                  versao={versao}
-                  contas={listaDeContas}
-                  irParaAba={setAba}
-                  verPrevistos={(lado) => {
-                    setLadoDosPrevistos(lado);
-                    setAba("previstos");
-                  }}
-                />
-              </TabsContent>
-              <TabsContent value="extrato">
-                <AbaExtrato
-                  ativo={ativo}
-                  intervalo={intervalo}
-                  hoje={hoje}
-                  versao={versao}
-                  contas={listaDeContas}
-                  rotuloDoPeriodo={rotulo}
-                  abrirFolha={abrirFolha}
-                  aoNovoLancamento={() => novoLancamento()}
-                />
-              </TabsContent>
-              <TabsContent value="previstos">
-                <AbaPrevistos
-                  ativo={ativo}
-                  hoje={hoje}
-                  versao={versao}
-                  lado={ladoDosPrevistos}
-                  aoMudarLado={setLadoDosPrevistos}
-                  abrirFolha={abrirFolha}
-                  aoNovoLancamento={novoLancamento}
-                  aoAbrirPedido={abrirPedido}
-                />
-              </TabsContent>
-              <TabsContent value="caixa">
-                <AbaCaixa
-                  ativo={ativo}
-                  versao={versao}
-                  abrirFolha={abrirFolha}
-                />
-              </TabsContent>
-              <TabsContent value="dre">
-                <AbaDre
-                  ativo={ativo}
-                  intervalo={intervalo}
-                  versao={versao}
-                  rotuloDoPeriodo={rotulo}
-                />
-              </TabsContent>
-              <TabsContent value="contas">
-                <AbaContasECategorias
-                  contas={contas}
-                  categorias={categorias}
-                  abrirFolha={abrirFolha}
-                />
-              </TabsContent>
-            </Tabs>
-
-            {/* Respiro para o botão flutuante não cobrir o fim da lista no celular. */}
-            <div aria-hidden="true" className="h-16 lg:hidden" />
-          </div>
-
-          <div key={numeroDaFolha}>{renderizarFolha()}</div>
-
-          {ativo && !folha && typeof document !== "undefined"
-            ? createPortal(
-                // Acima da barra inferior do admin no celular (mesma conta do
-                // botão flutuante do formulário de produto); no computador o
-                // botão mora no cabeçalho.
-                <button
-                  type="button"
-                  onClick={() => novoLancamento()}
-                  aria-label="Novo lançamento"
-                  className="fixed bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] right-5 z-50 flex size-14 items-center justify-center rounded-full bg-admin-gold text-black shadow-[0_15px_30px_rgba(0,0,0,0.6)] transition-transform hover:scale-105 active:scale-95 lg:hidden"
-                >
-                  <Plus aria-hidden="true" className="size-6" />
-                </button>,
-                document.body,
-              )
-            : null}
-        </div>
+        </ContextoConfirmacaoFinanceira.Provider>
       </ContextoValoresOcultos.Provider>
     </ContextoDoCacheFinanceiro.Provider>
   );

@@ -151,10 +151,15 @@ module.exports = [
     // ~+2 kB). O painel carrega por tela (22 telas sob demanda), entao +3 kB
     // custam ao lojista so na primeira abertura da tela. Duas caças a economia
     // (PR #999, -4 kB; analise de 17/10, ~100 bytes) nao acharam mais gordura.
+    // AJUSTE no mesmo dia: 471 -> 472 kB. O Financeiro medido somou +3,7 kB (a
+    // estimativa do socio era ~+2): 471,38 kB. E a correcao da estimativa do
+    // MESMO redesenho, nao uma subida nova; folga real ~0,5 kB. Duas tentativas
+    // de enxugar o chunk (GPT) acharam so ~125 bytes: o brotli ja comprime a
+    // repeticao.
     // REGRA: dai em diante o painel nao sobe mais; cada kB novo e pago com um
     // kB tirado de outro lugar (primeira fonte: a biblioteca de graficos).
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "471 kB",
+    limit: "472 kB",
     webpack: false,
     running: false,
   },

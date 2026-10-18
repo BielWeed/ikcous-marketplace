@@ -1,11 +1,10 @@
-// Peças visuais do Financeiro, no idioma do painel (fundo #09090b, cartão
-// `admin-glass`, título de seção em caixa-alta espaçada, ouro de destaque).
+// Peças visuais do Financeiro v8: superfícies escuras e matiz por função.
 // Tudo que mostra dinheiro passa por <Dinheiro>, que obedece ao "olho" do
 // cabeçalho — esconder os valores esconde TODOS, não só o saldo.
 
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, Check, RefreshCw, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { type ReactNode, createContext, useContext } from "react";
+import { type ReactNode, createContext, useContext, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatarBRL, formatarBRLComSinal } from "@/lib/financeiro";
@@ -18,6 +17,94 @@ import { cn } from "@/lib/utils";
 export const ContextoValoresOcultos = createContext(false);
 
 export const useValoresEstaoOcultos = () => useContext(ContextoValoresOcultos);
+
+export interface ConfirmacaoFinanceira {
+  readonly titulo: string;
+  readonly descricao: string;
+  readonly valor?: number;
+  readonly rotuloValor?: string;
+  readonly sentido?: 1 | -1 | 0;
+  readonly linhas?: readonly {
+    readonly rotulo: string;
+    readonly texto: string;
+  }[];
+  readonly nota?: string;
+}
+
+export const ContextoConfirmacaoFinanceira = createContext<
+  (confirmacao: ConfirmacaoFinanceira) => void
+>(() => {});
+export const useConfirmacaoFinanceira = () =>
+  useContext(ContextoConfirmacaoFinanceira);
+
+export function ReciboFinanceiro({
+  confirmacao,
+  aoFechar,
+}: {
+  readonly confirmacao: ConfirmacaoFinanceira;
+  readonly aoFechar: () => void;
+}) {
+  return (
+    <section
+      role="status"
+      aria-label={confirmacao.titulo}
+      className="rounded-3xl border border-teal-400/20 bg-[#17171C] p-5"
+    >
+      <div className="flex items-start gap-3">
+        <SeloFinanceiro icone={Check} matiz="#2DD4BF" />
+        <div className="min-w-0 flex-1">
+          <h2 className="break-words text-xl font-bold text-white">
+            {confirmacao.titulo}
+          </h2>
+          <p className="mt-2 break-words text-sm text-zinc-400">
+            {confirmacao.descricao}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={aoFechar}
+          aria-label="Fechar confirmação"
+          className={`${CLASSE_BOTAO_SECUNDARIO} size-11 shrink-0 p-0`}
+        >
+          <X aria-hidden="true" className="size-5" />
+        </button>
+      </div>
+      {confirmacao.valor !== undefined ? (
+        <div className="mt-5">
+          {confirmacao.rotuloValor ? (
+            <p className="mb-2 text-xs text-zinc-400">
+              {confirmacao.rotuloValor}
+            </p>
+          ) : null}
+          <Dinheiro
+            valor={confirmacao.valor}
+            sentido={confirmacao.sentido}
+            className="block text-3xl font-bold"
+          />
+        </div>
+      ) : null}
+      {confirmacao.linhas ? (
+        <dl className="mt-5 flex flex-col gap-3 text-sm">
+          {confirmacao.linhas.map((linha) => (
+            <div
+              key={linha.rotulo}
+              className="flex flex-wrap justify-between gap-2"
+            >
+              <dt className="text-zinc-400">{linha.rotulo}</dt>
+              <dd className="max-w-full break-words font-bold text-white">
+                {linha.texto}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      <p className="mt-4 text-xs leading-relaxed text-zinc-400">
+        {confirmacao.nota ??
+          "Registro confirmado pelo servidor. Os dados da tela foram atualizados."}
+      </p>
+    </section>
+  );
+}
 
 const MASCARA = "R$ ••••••";
 
@@ -53,7 +140,12 @@ export function Dinheiro({
   } else if (comSinal || valor < 0) exibido = formatarBRLComSinal(valor);
   else exibido = formatarBRL(valor);
   return (
-    <span className={cn("whitespace-nowrap tabular-nums", className)}>
+    <span
+      className={cn(
+        "break-words tabular-nums [overflow-wrap:anywhere]",
+        className,
+      )}
+    >
       {exibido}
     </span>
   );
@@ -71,7 +163,29 @@ export function corDoValor(valor: number): string {
 // ---------------------------------------------------------------------------
 
 export const CLASSE_TITULO_SECAO =
-  "text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
+  "text-base font-bold leading-snug text-white";
+
+export function SeloFinanceiro({
+  icone: Icone,
+  matiz = "#69C8FF",
+}: {
+  readonly icone: LucideIcon;
+  readonly matiz?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border"
+      style={{
+        color: matiz,
+        backgroundColor: `${matiz}1A`,
+        borderColor: `${matiz}40`,
+      }}
+    >
+      <Icone className="size-5" strokeWidth={1.9} />
+    </span>
+  );
+}
 
 export function CartaoSecao({
   titulo,
@@ -93,19 +207,21 @@ export function CartaoSecao({
       id={id}
       aria-label={titulo}
       className={cn(
-        "admin-glass rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6",
+        "min-w-0 rounded-3xl border border-white/10 bg-[#101013] p-4 sm:p-5",
         className,
       )}
     >
       {titulo || acao ? (
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             {titulo ? <h2 className={CLASSE_TITULO_SECAO}>{titulo}</h2> : null}
             {subtitulo ? (
-              <p className="mt-1 text-xs text-zinc-500">{subtitulo}</p>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                {subtitulo}
+              </p>
             ) : null}
           </div>
-          {acao ? <div className="shrink-0">{acao}</div> : null}
+          {acao ? <div className="w-full sm:w-auto">{acao}</div> : null}
         </div>
       ) : null}
       {children}
@@ -113,28 +229,19 @@ export function CartaoSecao({
   );
 }
 
-/**
- * Casca de cartão de métrica, a mesma do KpiCard do painel (redesenho de
- * 10/10/2026): borda de 10%, fundo zinc translúcido e brilho no topo. Os
- * mini-cartões das abas (Vencido, Entrou, Esperado…) usam a mesma casca, e
- * o rótulo em frase normal de 12px (cinza 300, contraste AA).
- */
+/** Superfície elevada das métricas, com rótulo de 12px em frase normal. */
 export const CLASSE_CASCA_DO_CARTAO =
-  "rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent";
+  "rounded-2xl border border-white/10 bg-[#17171C]";
 
 export const CLASSE_ROTULO_DO_CARTAO =
   "text-xs font-semibold leading-tight text-zinc-300";
 
-/**
- * Casca de linha-botão (a do AtalhosDaAba): gradiente para a direita, borda
- * que esquenta no hover e foco visível. O chamador põe `group`, `min-h-*` e o
- * miolo; a seta usa `CLASSE_SETA_DA_LINHA_BOTAO`.
- */
+/** Linha acionável: superfície, foco azul e seta, sem dourado decorativo. */
 export const CLASSE_CASCA_DA_LINHA_BOTAO =
-  "group rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent text-left shadow-lg transition-all hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]";
+  "group rounded-2xl border border-white/10 bg-[#101013] text-left transition-colors hover:bg-[#1E1E24] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.99]";
 
 export const CLASSE_SETA_DA_LINHA_BOTAO =
-  "size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold";
+  "size-5 shrink-0 text-zinc-400 transition-transform group-hover:translate-x-0.5 group-hover:text-white";
 
 /**
  * Piso do cartão de KPI e do esqueleto (uma constante só, para não divergirem).
@@ -161,42 +268,31 @@ export function BlocoKpi({
 }) {
   return (
     <div
-      // Valor em dinheiro: 17px na base, 24px de `sm`, 18px em `lg` (grade de
-      // 4 colunas ao lado da sidebar: ~145px úteis a 1024px) e 24px de `xl`.
-      // Medido no Chromium, "−R$ 123.456,78" cabe a 360px (≈129/136px, folga
-      // ≈7px com `px-2.5`; com `px-3` eram ≈3px), a 1024px (≈137/145px) e a
-      // 1280px (≈182/209px). O padding é 10px na base e 12px de `sm` em diante
-      // (o selo é `absolute right-3` e não muda). Folga curta: valor maior
-      // ou fonte mais larga que a medida volta a cortar (o `truncate` é só
-      // rede de segurança). Template e não `cn`: o tailwind-merge trata
-      // `bg-gradient-to-*` como conflito de `bg-zinc-900/70` e descartaria o
-      // fundo da casca.
-      className={`relative flex min-w-0 flex-col gap-1.5 overflow-hidden px-2.5 py-3.5 shadow-lg sm:px-3 ${CLASSE_CASCA_DO_CARTAO} ${ALTURA_MINIMA_DO_KPI}${className ? ` ${className}` : ""}`}
+      // Valores e rótulos podem aumentar a altura do cartão, sem reticências.
+      className={`relative flex min-w-0 flex-col gap-3 p-4 ${CLASSE_CASCA_DO_CARTAO} ${ALTURA_MINIMA_DO_KPI}${className ? ` ${className}` : ""}`}
     >
       {/* O ícone fica num selo no canto (nunca some); o rótulo reserva a
           faixa dele (`pr-9`) só quando há ícone, e o valor usa a largura toda. */}
       {Icone ? (
-        <span className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06]">
+        <span className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06]">
           <Icone
             aria-hidden="true"
             className={cn("size-4 shrink-0", destaque ?? "text-zinc-400")}
           />
         </span>
       ) : null}
-      {/* Rótulo longo ("Sobra depois dos custos da venda") quebra em até duas
-          linhas em vez de cortar; a altura de duas linhas vale para todos,
-          para os valores dos cartões lado a lado ficarem na mesma altura. */}
+      {/* O piso alinha os cartões, sem limitar a quantidade de linhas. */}
       <span
         data-rotulo-do-kpi=""
         className={cn(
-          "line-clamp-2 min-h-[2.5em] min-w-0 break-words",
+          "min-h-[2.5em] min-w-0 break-words",
           CLASSE_ROTULO_DO_CARTAO,
           Icone && "pr-9",
         )}
       >
         {rotulo}
       </span>
-      <div className="min-w-0 truncate text-[17px] font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight lg:text-lg xl:text-2xl">
+      <div className="min-w-0 break-words text-2xl font-black tabular-nums leading-tight tracking-tight text-white">
         {children}
       </div>
       {detalhe ? (
@@ -224,7 +320,7 @@ export function EsqueletoDeKpis({
 }: { readonly quantos?: number }) {
   return (
     <div
-      className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
       aria-busy="true"
       aria-live="polite"
     >
@@ -251,12 +347,14 @@ export function EstadoVazio({
   readonly acao?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center">
-      <div className="flex size-12 items-center justify-center rounded-2xl border border-admin-gold/10 bg-admin-gold/5">
-        <Icone aria-hidden="true" className="size-5 text-admin-gold/60" />
-      </div>
-      <p className="text-sm font-bold text-white">{titulo}</p>
-      {texto ? <p className="max-w-sm text-xs text-zinc-500">{texto}</p> : null}
+    <div className="flex flex-col items-start gap-4 rounded-3xl border border-white/10 bg-[#101013] p-5">
+      <SeloFinanceiro icone={Icone} matiz="#BA9AFF" />
+      <p className="text-xl font-bold text-white">{titulo}</p>
+      {texto ? (
+        <p className="max-w-md text-sm leading-relaxed text-zinc-400">
+          {texto}
+        </p>
+      ) : null}
       {acao}
     </div>
   );
@@ -269,19 +367,70 @@ export function EstadoDeErro({
   readonly mensagem: string;
   readonly aoTentarDeNovo?: () => void;
 }) {
+  const [copia, setCopia] = useState("");
+  const instalacao = mensagem.includes("não foi instalado");
+  const exigeOutraAcao =
+    instalacao ||
+    mensagem.includes("administrador") ||
+    mensagem.includes("formato");
+  const titulo = mensagem.includes("não foi instalado")
+    ? "Instalação ausente"
+    : mensagem.includes("administrador")
+      ? "Acesso restrito"
+      : mensagem.includes("formato")
+        ? "Atualização necessária"
+        : mensagem.includes("conexão") || mensagem.includes("internet")
+          ? "Confira a conexão"
+          : mensagem.includes("recusou os dados")
+            ? "Confira os campos"
+            : "Não foi possível concluir";
   return (
     <div
       role="alert"
-      className="flex flex-col items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-4 sm:flex-row sm:items-center"
+      className="flex flex-col items-start gap-4 rounded-3xl border border-red-400/25 bg-[#17171C] p-5"
     >
       <div className="flex min-w-0 flex-1 items-start gap-2">
-        <AlertTriangle
-          aria-hidden="true"
-          className="mt-0.5 size-4 shrink-0 text-red-400"
-        />
-        <p className="text-sm text-red-200">{mensagem}</p>
+        <SeloFinanceiro icone={AlertTriangle} matiz="#FF9F5A" />
+        <div className="min-w-0">
+          <h3 className="text-base font-bold text-white">{titulo}</h3>
+          <p className="mt-2 break-words text-sm leading-relaxed text-zinc-300">
+            {mensagem}
+          </p>
+        </div>
       </div>
-      {aoTentarDeNovo ? (
+      {instalacao ? (
+        <>
+          <p className="text-xs leading-relaxed text-zinc-400">
+            Entregue esta orientação ao responsável técnico: concluir a
+            instalação do Financeiro no banco da loja. Depois, volte ao
+            Financeiro.
+          </p>
+          <button
+            type="button"
+            className={CLASSE_BOTAO_SECUNDARIO}
+            onClick={() => {
+              void (async () => {
+                try {
+                  await navigator.clipboard.writeText(
+                    `Concluir a instalação do Financeiro no banco da loja. ${mensagem}`,
+                  );
+                  setCopia("Orientação copiada.");
+                } catch {
+                  setCopia("Selecione e copie a orientação acima.");
+                }
+              })();
+            }}
+          >
+            Copiar orientação técnica
+          </button>
+          {copia ? (
+            <p role="status" className="text-xs text-zinc-300">
+              {copia}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      {aoTentarDeNovo && !exigeOutraAcao ? (
         <button
           type="button"
           onClick={aoTentarDeNovo}
@@ -300,16 +449,16 @@ export function EstadoDeErro({
 // ---------------------------------------------------------------------------
 
 export const CLASSE_BOTAO_PRIMARIO =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-admin-gold px-4 text-sm font-black text-black transition-opacity hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#F9D65B] to-[#EABD28] px-4 py-3 text-sm font-bold text-[#171308] shadow-[0_8px_24px_#EABD2814] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:from-[#26262E] disabled:to-[#26262E] disabled:text-zinc-400 disabled:shadow-none";
 
 export const CLASSE_BOTAO_SECUNDARIO =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-bold text-zinc-200 transition-colors hover:bg-white/10 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#1E1E24] px-4 py-2.5 text-sm font-bold text-zinc-100 transition-colors hover:bg-[#26262E] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-zinc-400";
 
 export const CLASSE_BOTAO_PERIGO =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 text-sm font-bold text-red-300 transition-colors hover:bg-red-500/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-red-400/25 bg-red-400/10 px-4 py-2.5 text-sm font-bold text-red-300 transition-colors hover:bg-red-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-zinc-400";
 
 export const CLASSE_CAMPO =
-  "min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-base text-white outline-none transition-colors placeholder:text-zinc-600 focus:border-admin-gold/60 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm";
+  "min-h-[72px] w-full min-w-0 rounded-2xl border border-white/15 bg-[#1E1E24] px-3 pb-2 pt-7 text-base text-white outline-none transition-colors placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-sky-300 aria-invalid:border-red-400 disabled:cursor-not-allowed disabled:text-zinc-400 [&>option]:bg-[#1E1E24]";
 
 export const CLASSE_ROTULO = "text-xs font-bold text-zinc-300";
 
@@ -329,19 +478,29 @@ export function Campo({
   readonly className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      <label htmlFor={id} className={CLASSE_ROTULO}>
+    <div
+      className={cn(
+        "relative flex min-w-0 flex-col gap-2",
+        erro &&
+          "[&>input]:border-red-400 [&>select]:border-red-400 [&>textarea]:border-red-400",
+        className,
+      )}
+    >
+      <label
+        htmlFor={id}
+        className="absolute inset-x-3 top-3 z-10 text-xs font-medium leading-tight text-zinc-400"
+      >
         {rotulo}
       </label>
       {children}
       {ajuda && !erro ? (
-        <p className="text-[11px] text-zinc-500">{ajuda}</p>
+        <p className="text-xs leading-relaxed text-zinc-400">{ajuda}</p>
       ) : null}
       {erro ? (
         <p
           id={`${id}-erro`}
           role="alert"
-          className="flex items-center gap-1 text-[11px] font-bold text-red-400"
+          className="flex items-start gap-1 text-xs font-medium text-red-400"
         >
           <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
           {erro}
@@ -375,10 +534,7 @@ export function Segmentado<V extends string>({
     <div
       role="group"
       aria-label={rotulo}
-      className={cn(
-        "flex gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1",
-        className,
-      )}
+      className={cn("flex gap-1 rounded-2xl bg-[#17171C] p-1", className)}
     >
       {opcoes.map((opcao) => (
         <button
@@ -388,9 +544,9 @@ export function Segmentado<V extends string>({
           disabled={opcao.desabilitada}
           onClick={() => aoMudar(opcao.valor)}
           className={cn(
-            "min-h-10 flex-1 rounded-lg px-3 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+            "min-h-11 min-w-0 flex-1 break-words rounded-xl border border-transparent px-2 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-[#1E1E24] disabled:text-zinc-400",
             opcao.valor === valor
-              ? "bg-white text-black shadow"
+              ? "border-admin-gold/60 bg-admin-gold/10 text-admin-gold"
               : "text-zinc-400 hover:bg-white/5 hover:text-white",
           )}
         >
@@ -412,14 +568,14 @@ export function Etiqueta({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider",
+        "inline-flex max-w-full items-center rounded-lg border px-2 py-1 text-xs font-medium",
         tom === "neutro" && "border-white/10 bg-white/5 text-zinc-400",
-        tom === "aviso" && "border-amber-500/30 bg-amber-500/10 text-amber-300",
+        tom === "aviso" &&
+          "border-orange-400/30 bg-orange-400/10 text-orange-300",
         tom === "perigo" && "border-red-500/30 bg-red-500/10 text-red-300",
         tom === "sucesso" &&
           "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-        tom === "ouro" &&
-          "border-admin-gold/30 bg-admin-gold/10 text-admin-gold",
+        tom === "ouro" && "border-white/10 bg-white/5 text-zinc-300",
       )}
     >
       {children}

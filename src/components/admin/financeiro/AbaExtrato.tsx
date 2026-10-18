@@ -1,4 +1,4 @@
-import { Plus, ReceiptText } from "lucide-react";
+import { ChevronRight, Plus, ReceiptText } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useExtratoFinanceiro } from "@/hooks/useFinanceiro";
@@ -20,10 +20,11 @@ import type {
 import { IconeDaOrigem } from "./icones";
 import type { AbrirFolha } from "./navegacao";
 import {
-  CLASSE_BOTAO_PRIMARIO,
+  CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
   CLASSE_CASCA_DO_CARTAO,
   CLASSE_ROTULO_DO_CARTAO,
+  Campo,
   CartaoSecao,
   Dinheiro,
   EsqueletoDeLista,
@@ -74,8 +75,7 @@ function LinhaDoExtratoItem({
         type="button"
         onClick={() => aoAbrir(linha)}
         className={cn(
-          "group flex min-h-14 w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-white/[0.04] lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:gap-4 lg:px-3",
-          (previsto || cancelado) && "opacity-70",
+          "group relative flex min-h-14 w-full flex-col items-stretch gap-3 rounded-3xl border border-white/10 bg-[#101013] p-4 text-left transition-colors hover:bg-[#17171C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center lg:gap-4",
         )}
       >
         <span className="flex min-w-0 flex-1 items-center gap-3">
@@ -85,7 +85,8 @@ function LinhaDoExtratoItem({
               sentido > 0 &&
                 "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
               sentido < 0 && "border-red-500/20 bg-red-500/10 text-red-300",
-              sentido === 0 && "border-white/10 bg-white/5 text-zinc-300",
+              sentido === 0 &&
+                "border-violet-400/25 bg-violet-400/10 text-violet-300",
             )}
           >
             <IconeDaOrigem
@@ -97,40 +98,44 @@ function LinhaDoExtratoItem({
           <span className="min-w-0">
             <span
               className={cn(
-                "block truncate text-sm font-bold text-white",
+                "block break-words pr-4 text-sm font-bold leading-relaxed text-white",
                 cancelado && "line-through",
               )}
             >
               {linha.descricao}
             </span>
-            <span className="block truncate text-[11px] text-zinc-500 lg:hidden">
+            <span className="mt-1 block break-words text-xs leading-relaxed text-zinc-400 lg:hidden">
               {categoria} · {conta}
             </span>
           </span>
         </span>
-        <span className="hidden truncate text-xs text-zinc-400 lg:block">
+        <span className="hidden break-words text-xs text-zinc-400 lg:block">
           {categoria}
         </span>
-        <span className="hidden truncate text-xs text-zinc-400 lg:block">
+        <span className="hidden break-words text-xs text-zinc-400 lg:block">
           {conta}
         </span>
-        <span className="flex shrink-0 flex-col items-end gap-1">
+        <span className="flex min-w-0 flex-col items-start gap-2 lg:items-end">
           <Dinheiro
             valor={linha.valor}
             sentido={sentido}
             className={cn(
-              "text-sm font-black",
+              "text-2xl font-bold lg:text-base",
               cancelado
-                ? "text-zinc-500 line-through"
+                ? "text-zinc-400 line-through"
                 : sentido === 0
-                  ? "text-zinc-300"
+                  ? "text-violet-300"
                   : corDoValor(sentido),
-              previsto && "opacity-80",
+              previsto && "text-orange-300",
             )}
           />
           {previsto ? <Etiqueta tom="aviso">Previsto</Etiqueta> : null}
-          {cancelado ? <Etiqueta tom="perigo">Cancelado</Etiqueta> : null}
+          {cancelado ? <Etiqueta>Cancelado</Etiqueta> : null}
         </span>
+        <ChevronRight
+          aria-hidden="true"
+          className="absolute right-4 top-4 size-4 text-zinc-400 lg:hidden"
+        />
       </button>
     </li>
   );
@@ -138,11 +143,11 @@ function LinhaDoExtratoItem({
 
 function CabecalhoDoDia({ grupo }: { readonly grupo: DiaDoExtrato }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-white/5 px-2 pb-2 lg:px-3">
+    <div className="mb-3 flex flex-col gap-2 px-1 lg:flex-row lg:flex-wrap lg:items-baseline lg:justify-between">
       <h3 className="text-xs font-black text-zinc-300">
         {formatarDiaPorExtenso(grupo.dia)}
       </h3>
-      <p className="flex items-baseline gap-3 text-[11px] text-zinc-500">
+      <p className="flex flex-wrap items-baseline gap-3 text-xs text-zinc-400">
         <span>
           Resultado{" "}
           <Dinheiro
@@ -232,16 +237,10 @@ export function AbaExtrato({
   const quantidade = visiveis.reduce((soma, g) => soma + g.linhas.length, 0);
 
   return (
-    <div className="flex flex-col gap-4">
-      <CartaoSecao>
+    <div className="flex flex-col gap-7">
+      <CartaoSecao className="border-0 bg-transparent p-0 sm:p-0">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="flex flex-col gap-1.5 lg:w-64">
-            <label
-              htmlFor="fin-extrato-conta"
-              className="text-xs font-bold text-zinc-300"
-            >
-              Conta
-            </label>
+          <Campo id="fin-extrato-conta" rotulo="Conta" className="lg:w-64">
             <select
               id="fin-extrato-conta"
               value={contaId}
@@ -256,7 +255,7 @@ export function AbaExtrato({
                 </option>
               ))}
             </select>
-          </div>
+          </Campo>
           <Segmentado<FiltroDoTipo>
             rotulo="Mostrar"
             valor={filtro}
@@ -270,24 +269,26 @@ export function AbaExtrato({
             ]}
           />
         </div>
-        <dl className="mt-4 grid grid-cols-1 gap-2 text-center xs:grid-cols-3">
-          <div className={`p-2 ${CLASSE_CASCA_DO_CARTAO}`}>
+        <dl
+          className={`mt-7 flex flex-col gap-4 p-4 ${CLASSE_CASCA_DO_CARTAO}`}
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
             <dt className={CLASSE_ROTULO_DO_CARTAO}>Entrou</dt>
-            <dd className="mt-1 text-xs font-black text-emerald-300 sm:text-sm">
+            <dd className="text-sm font-bold text-emerald-300">
               <Dinheiro valor={totais.entradas} sentido={1} />
             </dd>
           </div>
-          <div className={`p-2 ${CLASSE_CASCA_DO_CARTAO}`}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
             <dt className={CLASSE_ROTULO_DO_CARTAO}>Saiu</dt>
-            <dd className="mt-1 text-xs font-black text-red-300 sm:text-sm">
+            <dd className="text-sm font-bold text-red-300">
               <Dinheiro valor={totais.saidas} sentido={-1} />
             </dd>
           </div>
-          <div className={`p-2 ${CLASSE_CASCA_DO_CARTAO}`}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
             <dt className={CLASSE_ROTULO_DO_CARTAO}>Resultado</dt>
             <dd
               className={cn(
-                "mt-1 text-xs font-black sm:text-sm",
+                "text-2xl font-bold",
                 corDoValor(totais.entradas - totais.saidas),
               )}
             >
@@ -295,7 +296,7 @@ export function AbaExtrato({
             </dd>
           </div>
         </dl>
-        <p className="mt-2 text-[11px] text-zinc-500">
+        <p className="mt-4 text-xs leading-relaxed text-zinc-400">
           {rotuloDoPeriodo} · só o realizado entra nos totais
           {conta && saldoAtual === null
             ? " · o saldo por dia aparece quando o período chega até hoje"
@@ -318,12 +319,16 @@ export function AbaExtrato({
               ? "Nenhum lançamento no período"
               : "Nada com esse filtro"
           }
-          texto="Vendas pagas aparecem aqui sozinhas. Aluguel, fornecedor e outras contas você lança à mão."
+          texto={
+            extrato.dados.length === 0
+              ? "Vendas pagas aparecem aqui sozinhas. Aluguel, fornecedor e outras contas você lança à mão."
+              : "Mude Conta ou Mostrar acima. Vendas pagas aparecem aqui sozinhas; outras contas você lança à mão."
+          }
           acao={
             <button
               type="button"
               onClick={aoNovoLancamento}
-              className={CLASSE_BOTAO_PRIMARIO}
+              className={CLASSE_BOTAO_SECUNDARIO}
             >
               <Plus aria-hidden="true" className="size-4" />
               Novo lançamento
@@ -333,6 +338,7 @@ export function AbaExtrato({
       ) : (
         <CartaoSecao
           titulo={`${quantidade} ${quantidade === 1 ? "lançamento" : "lançamentos"}`}
+          className="border-0 bg-transparent p-0 sm:p-0"
         >
           {extrato.erro ? (
             <div className="mb-3">
@@ -344,7 +350,7 @@ export function AbaExtrato({
           ) : null}
           <div
             aria-hidden="true"
-            className="hidden border-b border-white/5 px-3 pb-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:gap-4"
+            className="hidden border-b border-white/5 px-3 pb-2 text-xs font-black uppercase tracking-[0.2em] text-zinc-400 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:gap-4"
           >
             <span>Descrição</span>
             <span>Categoria</span>
@@ -358,7 +364,7 @@ export function AbaExtrato({
                 aria-label={formatarDiaPorExtenso(grupo.dia)}
               >
                 <CabecalhoDoDia grupo={grupo} />
-                <ul className="mt-1 flex flex-col">
+                <ul className="mt-3 flex flex-col gap-3">
                   {linhas.map((linha) => (
                     <LinhaDoExtratoItem
                       key={linha.id}
@@ -371,6 +377,11 @@ export function AbaExtrato({
               </section>
             ))}
           </div>
+          <p className="mt-5 rounded-2xl bg-sky-400/5 p-3 text-xs leading-relaxed text-zinc-400">
+            Os totais e o resultado completo do dia não mudam ao filtrar
+            Mostrar. O saldo diário aparece com uma conta escolhida e o período
+            chegando até hoje.
+          </p>
         </CartaoSecao>
       )}
     </div>
