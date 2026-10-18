@@ -1,3 +1,4 @@
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -7,7 +8,6 @@ import {
   Plus,
   Store,
 } from "lucide-react";
-import { createPortal } from "react-dom";
 
 import { useCaixaAtual, useHistoricoDoCaixa } from "@/hooks/useFinanceiro";
 import { diferencaDoFechamento, formatarDataHora } from "@/lib/financeiro";
@@ -122,14 +122,16 @@ function CaixaAberto({
                 <ArrowDownToLine aria-hidden="true" className="size-4" />
                 Suprimento
               </button>
-              <button
-                type="button"
-                onClick={() => abrirFolha({ tipo: "caixa-fechar", caixa })}
-                className={`${CLASSE_BOTAO_PRIMARIO} col-span-2 ${mostrarAcaoFixa ? "hidden lg:inline-flex" : ""}`}
-              >
-                <Lock aria-hidden="true" className="size-4" />
-                Fechar caixa
-              </button>
+              {!mostrarAcaoFixa && (
+                <button
+                  type="button"
+                  onClick={() => abrirFolha({ tipo: "caixa-fechar", caixa })}
+                  className={`${CLASSE_BOTAO_PRIMARIO} col-span-2`}
+                >
+                  <Lock aria-hidden="true" className="size-4" />
+                  Fechar caixa
+                </button>
+              )}
               {aoNovoLancamento ? (
                 <button
                   type="button"
@@ -182,19 +184,18 @@ function CaixaAberto({
         </div>
       </CartaoSecao>
 
-      {mostrarAcaoFixa && typeof document !== "undefined"
-        ? createPortal(
-            <button
-              type="button"
-              onClick={() => abrirFolha({ tipo: "caixa-fechar", caixa })}
-              className={`${CLASSE_BOTAO_PRIMARIO} fixed inset-x-5 bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-50 lg:hidden`}
-            >
-              <Lock aria-hidden="true" className="size-5" />
-              Fechar caixa
-            </button>,
-            document.body,
-          )
-        : null}
+      {mostrarAcaoFixa ? (
+        <AcaoDaBarra>
+          <button
+            type="button"
+            onClick={() => abrirFolha({ tipo: "caixa-fechar", caixa })}
+            className={`${CLASSE_BOTAO_PRIMARIO} admin-barra-principal w-full`}
+          >
+            <Lock aria-hidden="true" className="size-5" />
+            Fechar caixa
+          </button>
+        </AcaoDaBarra>
+      ) : null}
 
       <CartaoSecao titulo="Movimentos desta sessão">
         {caixa.movimentos.length === 0 ? (
@@ -386,15 +387,17 @@ export function AbaCaixa({
       )}
 
       {!atual.dados?.sessao && aoNovoLancamento ? (
-        <button
-          type="button"
-          aria-label="Novo lançamento"
-          onClick={aoNovoLancamento}
-          className={cn(CLASSE_BOTAO_SECUNDARIO, "text-sky-300 lg:hidden")}
-        >
-          <Plus aria-hidden="true" className="size-5" />
-          Novo lançamento
-        </button>
+        <AcaoDaBarra ativa={ativo && mostrarAcaoFixa}>
+          <button
+            type="button"
+            aria-label="Novo lançamento"
+            onClick={aoNovoLancamento}
+            className={`${CLASSE_BOTAO_PRIMARIO} admin-barra-principal w-full`}
+          >
+            <Plus aria-hidden="true" className="size-5" />
+            Novo lançamento
+          </button>
+        </AcaoDaBarra>
       ) : null}
 
       <CartaoSecao

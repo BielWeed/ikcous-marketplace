@@ -291,7 +291,10 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     const acoes = hospedeiro.querySelector(
       '[aria-label="Ações dos clientes"]',
     )!;
-    expect(acoes.className).toContain("fixed");
+    // Sem a casca do painel o componente usa o rodapé sticky de desktop.
+    // Dentro do AdminLayout, o teste da barra prova o portal na pílula.
+    expect(acoes.className).toContain("admin-acao-inline");
+    expect(acoes.className).not.toContain("fixed");
     expect(acoes.querySelectorAll("button")).toHaveLength(2);
     for (const acao of acoes.querySelectorAll("button"))
       expect(acao.className).toContain("min-h-14");

@@ -1,7 +1,7 @@
 .produtos-tela {
   --produto-altura-compacto: 380px;
   min-height: 100%;
-  padding-bottom: calc(var(--admin-tab-pb, 6.25rem) + 5rem);
+  padding-bottom: var(--admin-tab-pb, 6.25rem);
   background: #08080a;
 }
 
@@ -199,14 +199,6 @@
   margin: 0;
 }
 
-.produtos-novo {
-  position: fixed;
-  z-index: 35;
-  inset-inline: 20px;
-  bottom: var(--admin-tab-pb, 6.25rem);
-  padding: 8px 0;
-  background: #08080af5;
-}
 .produtos-cupons button {
   width: 48px;
   min-height: 44px;
@@ -462,11 +454,5 @@ body:has(.produtos-tela[data-categorias])
     border-radius: 4px;
     background: #52525b;
     content: "";
-  }
-}
-@media (width >= 1024px) {
-  .produtos-novo {
-    position: sticky;
-    bottom: 0;
   }
 }

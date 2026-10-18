@@ -336,7 +336,7 @@ describe("Início do painel", () => {
     await montar();
     const ids = Array.from(
       hospedeiro.querySelectorAll(
-        'section[aria-labelledby^="inicio-"], nav[aria-label="Atalhos do painel"]',
+        'section[aria-labelledby^="inicio-"], [role="group"][aria-label="Atalhos do painel"]',
       ),
     ).map((secao) => secao.getAttribute("aria-labelledby") ?? "atalhos");
     expect(ids).toEqual([

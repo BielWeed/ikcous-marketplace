@@ -321,7 +321,7 @@ export function ClienteDaVenda({
           onClick={() => despachar({ tipo: "etapa_pedida", etapa: "cupom" })}
         >
           <ChevronLeft aria-hidden="true" className="pdv-blue size-5" />
-          Voltar ao cupom
+          Voltar à venda
         </Button>
       </div>
     </section>

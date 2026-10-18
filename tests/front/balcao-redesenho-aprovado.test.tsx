@@ -54,7 +54,7 @@ it("cupom vazio explica o bloqueio e mantém a busca e a identificação dispon�
       />,
     ),
   );
-  expect(host.textContent).toContain("Seu cupom está vazio.");
+  expect(host.textContent).toContain("Nenhum item na venda ainda.");
   expect(host.textContent).toContain(
     "Indisponível: adicione pelo menos um item.",
   );
@@ -161,7 +161,7 @@ it("identificação conserva o subtotal e a ação existente de fechar a venda",
       />,
     ),
   );
-  const resumo = host.querySelector('[aria-label="Fechamento do cupom"]')!;
+  const resumo = host.querySelector('[aria-label="Fechamento da venda"]')!;
   expect(resumo.textContent).toContain("R$ 1.198,80");
   const fechar = resumo.querySelector("button")!;
   expect(fechar.disabled).toBe(false);

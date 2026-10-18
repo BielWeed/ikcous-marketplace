@@ -6,6 +6,7 @@ import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1123,17 +1124,17 @@ export const AdminProductsView = memo(function AdminProductsView({
           </div>
         )}
 
-        <div className="produtos-novo">
+        <AcaoDaBarra ativa={active !== false}>
           <button
             type="button"
             disabled={isOffline}
             onClick={() => handleLocalNavigate("admin-product-form")}
-            className="produto-principal w-full"
+            className="produto-principal admin-barra-principal w-full"
           >
             <Plus aria-hidden="true" className="size-5" />{" "}
             {isOffline ? "Novo produto indisponível" : "Novo produto"}
           </button>
-        </div>
+        </AcaoDaBarra>
 
         {/* Modal de Ajuda Global */}
         <FolhaDoPainel

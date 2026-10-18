@@ -10,6 +10,7 @@ import {
   FOCO_CLIENTES,
   FolhaClientes,
 } from "@/components/admin/users/FolhaClientes";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -453,7 +454,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-[#08080A] pb-[calc(var(--admin-tab-pb,6.25rem)+5.5rem)] text-white lg:pb-12"
+      className="pb-admin h-auto bg-[#08080A] text-white lg:pb-12"
     >
       <div className="flex items-start justify-between gap-3 px-5 pb-2 pt-4">
         <div className="min-w-0 [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
@@ -827,34 +828,31 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             }}
           />
         </div>
+        <AcaoDaBarra ativa={active !== false} aria-label="Ações dos clientes">
+          <button
+            type="button"
+            onClick={() => handleLocalNavigate("admin-qa")}
+            className={`flex min-h-14 min-w-0 flex-[0.8] items-center justify-center gap-2 rounded-[1.125rem] border border-white/10 bg-[#17171C] p-2 text-left text-xs font-bold text-white ${FOCO_CLIENTES}`}
+          >
+            <MessageSquare
+              aria-hidden="true"
+              className="size-7 shrink-0 rounded-lg border border-violet-300/20 bg-violet-300/10 p-1 text-violet-300"
+            />
+            <span className="min-w-0">Perguntas e avaliações</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleLocalNavigate("admin-push")}
+            className={`admin-barra-principal flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2 rounded-[1.125rem] bg-gradient-to-b from-[#F9D65C] to-[#E4AF16] p-2 text-sm font-bold text-[#1B1300] ${FOCO_CLIENTES}`}
+          >
+            <Megaphone
+              aria-hidden="true"
+              className="size-8 shrink-0 rounded-xl border border-sky-300/30 bg-sky-950 p-1.5 text-sky-200"
+            />
+            <span>{NOMES_DO_PAINEL["admin-push"]}</span>
+          </button>
+        </AcaoDaBarra>
       </div>
-      <nav
-        aria-label="Ações dos clientes"
-        className="fixed inset-x-0 bottom-[var(--admin-tab-pb,6.25rem)] z-40 flex items-stretch gap-2 bg-[#08080A]/95 px-5 py-2 backdrop-blur-md lg:sticky lg:bottom-0 lg:mt-5"
-      >
-        <button
-          type="button"
-          onClick={() => handleLocalNavigate("admin-qa")}
-          className={`flex min-h-14 min-w-0 flex-[0.8] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-[#101013] p-2 text-left text-xs font-bold text-white ${FOCO_CLIENTES}`}
-        >
-          <MessageSquare
-            aria-hidden="true"
-            className="size-7 shrink-0 rounded-lg border border-violet-300/20 bg-violet-300/10 p-1 text-violet-300"
-          />
-          <span className="min-w-0">Perguntas e avaliações</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleLocalNavigate("admin-push")}
-          className={`flex min-h-14 min-w-0 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#F9D65C] to-[#E4AF16] p-2 text-sm font-bold text-[#1B1300] ${FOCO_CLIENTES}`}
-        >
-          <Megaphone
-            aria-hidden="true"
-            className="size-8 shrink-0 rounded-xl border border-sky-300/30 bg-sky-950 p-1.5 text-sky-200"
-          />
-          <span>{NOMES_DO_PAINEL["admin-push"]}</span>
-        </button>
-      </nav>
     </div>
   );
 });

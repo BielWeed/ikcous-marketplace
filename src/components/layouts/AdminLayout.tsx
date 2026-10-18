@@ -1,4 +1,8 @@
 import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
+import {
+  ContextoDaBarra,
+  useBarraAcoplada,
+} from "@/components/layouts/AcaoDaBarra";
 import { ConexaoDoPainel } from "@/components/layouts/ConexaoDoPainel";
 import { IlhaDeAtualizacao } from "@/components/pwa/IlhaDeAtualizacao";
 import { Button } from "@/components/ui/button";
@@ -797,7 +801,11 @@ export function AdminLayout({
     [isOffline, quality, latency, showSyncFlash],
   );
 
-  return (
+  const barraAcoplada = useBarraAcoplada();
+
+  return React.createElement(
+    ContextoDaBarra.Provider,
+    { value: barraAcoplada },
     <div
       className="flex size-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-50 lg:flex-row"
       style={
@@ -806,9 +814,10 @@ export function AdminLayout({
           // (`black-translucent`); sem esta folga o cabeçalho do painel ficava
           // por baixo dela. Vale 0 fora disso.
           paddingTop: "var(--safe-area-top)",
+          "--admin-prateleira-altura": `${barraAcoplada.altura}px`,
           "--admin-tab-pb": isStandalone
-            ? "calc(6.25rem + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
-            : `calc(6.25rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))`,
+            ? "calc(6.25rem + var(--admin-prateleira-altura, 0px) + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
+            : `calc(6.25rem + var(--admin-prateleira-altura, 0px) + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))`,
         } as React.CSSProperties
       }
     >
@@ -1233,7 +1242,7 @@ export function AdminLayout({
               exit={{ y: 120, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
               aria-label="Navegação inferior do painel"
-              className="fixed inset-x-5 z-[60] mx-auto flex h-16 max-w-lg items-center rounded-[2rem] border border-white/15 bg-[#141418] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.6)] lg:hidden"
+              className="fixed inset-x-5 z-[60] mx-auto max-w-lg rounded-[2rem] border border-white/15 bg-[#141418] shadow-[0_12px_28px_rgba(0,0,0,0.6)] lg:hidden"
               style={
                 {
                   bottom: `calc(0.75rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)) * 0.5)`,
@@ -1243,98 +1252,111 @@ export function AdminLayout({
                 } as React.CSSProperties
               }
             >
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const parentView = getParentView(currentView);
-                // O pai da venda continua valendo para Voltar, sem marcar Início.
-                const isActive =
-                  currentView === item.view ||
-                  (item.view === "admin-dashboard" &&
-                    currentView === "admin") ||
-                  (parentView === item.view && currentView !== "admin-pdv");
-                return (
-                  <button
-                    key={item.view}
-                    type="button"
-                    aria-current={isActive ? "page" : undefined}
-                    aria-label={
-                      item.view === "admin-orders" && pendingOrdersCount > 0
-                        ? `${item.label}, ${pendingOrdersCount} para preparar`
-                        : item.label
-                    }
-                    onClick={() => {
-                      haptic.light();
-                      onNavigate(item.view as View);
-                    }}
-                    onMouseEnter={() => handleMouseEnter(item.view)}
-                    onMouseLeave={handleMouseLeave}
-                    onTouchStart={() => handleMouseEnter(item.view, true)}
-                    className={cn(
-                      "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
-                      isActive
-                        ? "bg-[#3B3016] text-admin-gold"
-                        : "text-[#A1A1AD] hover:text-white",
-                    )}
-                  >
-                    <span
+              <div
+                ref={barraAcoplada.receberPrateleira}
+                role="group"
+                aria-label="Ações da tela"
+                className="admin-prateleira"
+              />
+              <div className="flex h-16 items-center p-1.5" data-admin-abas>
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const parentView = getParentView(currentView);
+                  // O pai da venda continua valendo para Voltar, sem marcar Início.
+                  const isActive =
+                    currentView === item.view ||
+                    (item.view === "admin-dashboard" &&
+                      currentView === "admin") ||
+                    (parentView === item.view && currentView !== "admin-pdv");
+                  return (
+                    <button
+                      key={item.view}
+                      type="button"
+                      aria-current={isActive ? "page" : undefined}
+                      aria-label={
+                        item.view === "admin-orders" && pendingOrdersCount > 0
+                          ? `${item.label}, ${pendingOrdersCount} para preparar`
+                          : item.label
+                      }
+                      onClick={() => {
+                        haptic.light();
+                        onNavigate(item.view as View);
+                      }}
+                      onMouseEnter={() => handleMouseEnter(item.view)}
+                      onMouseLeave={handleMouseLeave}
+                      onTouchStart={() => handleMouseEnter(item.view, true)}
                       className={cn(
-                        "flex size-6 items-center justify-center rounded-lg border",
-                        isActive ? "border-transparent" : item.cor,
+                        "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
+                        isActive
+                          ? "bg-[#3B3016] text-admin-gold"
+                          : "text-[#A1A1AD] hover:text-white",
                       )}
                     >
-                      <Icon aria-hidden="true" className="size-[18px]" />
-                    </span>
-                    <span className="text-center text-[11px] font-medium leading-3">
-                      {item.label}
-                    </span>
-                    {item.view === "admin-orders" && pendingOrdersCount > 0 && (
                       <span
-                        aria-hidden="true"
-                        className="absolute -top-2 right-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1 text-[11px] font-bold text-white ring-2 ring-[#141418]"
+                        className={cn(
+                          "flex size-6 items-center justify-center rounded-lg border",
+                          isActive ? "border-transparent" : item.cor,
+                        )}
                       >
-                        {pendingOrdersCount > 99 ? "99+" : pendingOrdersCount}
+                        <Icon aria-hidden="true" className="size-[18px]" />
                       </span>
-                    )}
-                  </button>
-                );
-              })}
-              {/* Ação separada das cinco abas; rótulo sempre visível. */}
-              <button
-                type="button"
-                aria-current={currentView === "admin-pdv" ? "page" : undefined}
-                onClick={() => {
-                  haptic.light();
-                  onNavigate("admin-pdv" as View);
-                }}
-                onMouseEnter={() => handleMouseEnter("admin-pdv")}
-                onMouseLeave={handleMouseLeave}
-                onTouchStart={() => handleMouseEnter("admin-pdv", true)}
-                aria-label="Vender"
-                className={cn(
-                  "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
-                  currentView === "admin-pdv"
-                    ? "bg-[#3B3016] text-admin-gold"
-                    : "text-[#A1A1AD] hover:text-white",
-                )}
-              >
-                <span
+                      <span className="text-center text-[11px] font-medium leading-3">
+                        {item.label}
+                      </span>
+                      {item.view === "admin-orders" &&
+                        pendingOrdersCount > 0 && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute -top-2 right-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B82243] px-1 text-[11px] font-bold text-white ring-2 ring-[#141418]"
+                          >
+                            {pendingOrdersCount > 99
+                              ? "99+"
+                              : pendingOrdersCount}
+                          </span>
+                        )}
+                    </button>
+                  );
+                })}
+                {/* Ação separada das cinco abas; rótulo sempre visível. */}
+                <button
+                  type="button"
+                  aria-current={
+                    currentView === "admin-pdv" ? "page" : undefined
+                  }
+                  onClick={() => {
+                    haptic.light();
+                    onNavigate("admin-pdv" as View);
+                  }}
+                  onMouseEnter={() => handleMouseEnter("admin-pdv")}
+                  onMouseLeave={handleMouseLeave}
+                  onTouchStart={() => handleMouseEnter("admin-pdv", true)}
+                  aria-label="Vender"
                   className={cn(
-                    "flex size-6 items-center justify-center rounded-lg border",
+                    "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95",
                     currentView === "admin-pdv"
-                      ? "border-transparent"
-                      : "border-emerald-400/20 bg-emerald-400/10 text-emerald-400",
+                      ? "bg-[#3B3016] text-admin-gold"
+                      : "text-[#A1A1AD] hover:text-white",
                   )}
                 >
-                  <ScanBarcode aria-hidden="true" className="size-[18px]" />
-                </span>
-                <span className="text-center text-[11px] font-medium leading-3">
-                  Vender
-                </span>
-              </button>
+                  <span
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded-lg border",
+                      currentView === "admin-pdv"
+                        ? "border-transparent"
+                        : "border-emerald-400/20 bg-emerald-400/10 text-emerald-400",
+                    )}
+                  >
+                    <ScanBarcode aria-hidden="true" className="size-[18px]" />
+                  </span>
+                  <span className="text-center text-[11px] font-medium leading-3">
+                    Vender
+                  </span>
+                </button>
+              </div>
             </motion.nav>
           )}
         </AnimatePresence>
       </div>
-    </div>
+    </div>,
   );
 }

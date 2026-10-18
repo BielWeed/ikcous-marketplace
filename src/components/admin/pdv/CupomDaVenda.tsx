@@ -11,6 +11,7 @@
 // da máquina (useVendaPresencial.ts).
 
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
 import type {
   AcaoDaVenda,
@@ -435,8 +436,8 @@ export function CupomDaVenda({
             Produto inativo
           </p>
           <p className="pdv-muted">
-            "{estado.aviso.nome}" está inativo no catálogo. Não foi adicionado
-            ao cupom.
+            "{estado.aviso.nome}" está inativo no catálogo. Não foi adicionado à
+            venda.
           </p>
           <Button
             type="button"
@@ -482,14 +483,14 @@ export function CupomDaVenda({
 
       <section
         className="pdv-cupom pdv-stack"
-        aria-label="Cupom da venda"
+        aria-label="Itens da venda"
         data-resumo={
           estado.etapa === "cliente" || estado.etapa === "fechamento"
         }
       >
         <div className="pdv-heading">
           <ShoppingCart aria-hidden="true" className="pdv-icon pdv-purple" />
-          <h3 className="flex-1">Cupom</h3>
+          <h3 className="flex-1">Venda atual</h3>
           <span className="pdv-muted">
             {estado.itens.length} {estado.itens.length === 1 ? "item" : "itens"}
           </span>
@@ -500,7 +501,7 @@ export function CupomDaVenda({
         {estado.itens.length === 0 ? (
           <div className="pdv-card pdv-stack pdv-empty">
             <p className="pdv-heading">Bipe o primeiro produto</p>
-            <p className="pdv-muted">Seu cupom está vazio.</p>
+            <p className="pdv-muted">Nenhum item na venda ainda.</p>
           </div>
         ) : (
           <ul>
@@ -587,7 +588,7 @@ export function CupomDaVenda({
                     </span>
                     <button
                       type="button"
-                      aria-label={`Remover ${item.nome} do cupom`}
+                      aria-label={`Remover ${item.nome} da venda`}
                       disabled={estado.enviando}
                       onClick={() =>
                         despachar({ tipo: "item_removido", chave: item.chave })
@@ -640,7 +641,7 @@ export function CupomDaVenda({
             <XCircle aria-hidden="true" className="pdv-icon pdv-red" />
             Cancelar venda
           </p>
-          <p className="text-xl font-bold">Descartar este cupom?</p>
+          <p className="text-xl font-bold">Descartar esta venda?</p>
           <p className="pdv-muted">
             Os itens e o cliente escolhido serão limpos, e o caixa volta ao
             começo.{" "}
@@ -858,32 +859,37 @@ export function CupomDaVenda({
           )}
       </section>
 
-      <div className="pdv-footer" aria-label="Fechamento do cupom">
-        <div className="pdv-total">
-          <span className="pdv-muted">Subtotal</span>
-          <strong>R$ {reais(subtotal)}</strong>
-        </div>
-        <Button
-          type="button"
-          className="pdv-primary bg-admin-gold text-black"
-          disabled={estado.itens.length === 0}
-          onClick={() =>
-            despachar({ tipo: "etapa_pedida", etapa: "fechamento" })
-          }
-        >
-          {estado.itens.length === 0 ? (
-            <LockKeyhole aria-hidden="true" className="size-5" />
-          ) : (
-            <ChevronRight aria-hidden="true" className="size-5" />
+      <AcaoDaBarra
+        ativa={estado.etapa !== "fechamento"}
+        aria-label="Fechamento da venda"
+      >
+        <div className="pdv-footer">
+          <div className="pdv-total">
+            <span className="pdv-muted">Subtotal</span>
+            <strong>R$ {reais(subtotal)}</strong>
+          </div>
+          <Button
+            type="button"
+            className="pdv-primary admin-barra-principal bg-admin-gold text-black"
+            disabled={estado.itens.length === 0}
+            onClick={() =>
+              despachar({ tipo: "etapa_pedida", etapa: "fechamento" })
+            }
+          >
+            {estado.itens.length === 0 ? (
+              <LockKeyhole aria-hidden="true" className="size-5" />
+            ) : (
+              <ChevronRight aria-hidden="true" className="size-5" />
+            )}
+            Fechar venda{estado.itens.length > 0 && ` · R$ ${reais(subtotal)}`}
+          </Button>
+          {estado.itens.length === 0 && (
+            <p className="pdv-muted">
+              Indisponível: adicione pelo menos um item.
+            </p>
           )}
-          Fechar venda{estado.itens.length > 0 && ` · R$ ${reais(subtotal)}`}
-        </Button>
-        {estado.itens.length === 0 && (
-          <p className="pdv-muted">
-            Indisponível: adicione pelo menos um item.
-          </p>
-        )}
-      </div>
+        </div>
+      </AcaoDaBarra>
     </div>
   );
 }

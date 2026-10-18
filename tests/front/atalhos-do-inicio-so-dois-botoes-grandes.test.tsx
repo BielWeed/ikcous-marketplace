@@ -67,16 +67,38 @@ describe("AtalhosDoInicio — só os dois botões grandes", () => {
   });
 });
 
-describe("AtalhosDoInicio — desenho novo (10/10/2026)", () => {
-  it("a descrição de cada botão tem 12px (`text-xs`), nunca 11px, e o botão mantém o alvo grande", () => {
+describe("AtalhosDoInicio — prateleira acoplada", () => {
+  it("mantém a descrição acessível com 12px no desktop e alvos de 56px na prateleira", () => {
     const tela = montar(<AtalhosDoInicio onNavigate={vi.fn()} />);
     for (const botao of Array.from(tela.querySelectorAll("button"))) {
-      const descricao = botao.querySelector("span.mt-2");
+      const descricao = botao.querySelector("span.sr-only");
       expect(descricao).not.toBeNull();
       expect(descricao?.classList.contains("text-xs")).toBe(true);
       expect(descricao?.className).not.toContain("text-[11px]");
       expect(descricao?.className).toContain("text-zinc-400");
-      expect(botao.className).toContain("min-h-[88px]");
+      expect(descricao?.className).toContain("lg:not-sr-only");
+      expect(botao.className).toContain("min-h-14");
+      expect(botao.className).toContain("min-w-0");
+      expect(botao.querySelector(".truncate")).toBeNull();
     }
+    expect(tela.textContent).not.toContain("Acessos rápidos");
+  });
+
+  it("preserva o aquecimento por foco, hover e toque", () => {
+    const preparar = vi.fn();
+    const tela = montar(
+      <AtalhosDoInicio onNavigate={vi.fn()} aoPrepararDestino={preparar} />,
+    );
+    const botoes = [...tela.querySelectorAll("button")];
+    act(() => botoes[0].focus());
+    expect(preparar).toHaveBeenLastCalledWith("admin-crm");
+    act(() =>
+      botoes[1].dispatchEvent(new MouseEvent("mouseover", { bubbles: true })),
+    );
+    expect(preparar).toHaveBeenLastCalledWith("admin-financeiro");
+    act(() =>
+      botoes[0].dispatchEvent(new Event("touchstart", { bubbles: true })),
+    );
+    expect(preparar).toHaveBeenLastCalledWith("admin-crm");
   });
 });

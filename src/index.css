@@ -1152,8 +1152,65 @@ body.admin-modal-open .active-scroll-container {
 :root {
   --admin-tab-pb: calc(
     6.25rem +
+    var(--admin-prateleira-altura, 0px) +
     var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px))
   );
+}
+
+.admin-prateleira {
+  position: relative;
+  padding: 10px;
+}
+.admin-prateleira:empty {
+  display: none;
+}
+.admin-prateleira:not(:empty)::after {
+  position: absolute;
+  inset-inline: 14px;
+  bottom: 0;
+  height: 1px;
+  background: #ffffff14;
+  content: "";
+}
+.admin-acoes-da-barra {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: 8px;
+  color: #fafafa;
+}
+.admin-acoes-da-barra > button,
+.admin-acoes-da-barra > div > button,
+.admin-acoes-da-barra button[data-slot] {
+  min-width: 0;
+  min-height: 56px;
+  height: auto;
+  border-radius: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.admin-acoes-da-barra .admin-barra-principal:not(:disabled) {
+  background: linear-gradient(#f9d65c, #e4af16);
+  color: #1b1300;
+}
+.admin-acoes-da-barra button:disabled {
+  background: #17171c;
+  color: #a7a7b5;
+  opacity: 1;
+  cursor: not-allowed;
+}
+.admin-acoes-da-barra button:focus-visible {
+  outline: 2px solid #a5d7e9;
+  outline-offset: 2px;
+}
+.admin-acao-inline {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  order: 20;
+  margin-top: 20px;
+  padding: 10px 0;
+  background: #141418;
 }
 
 @media (width >= 768px) {

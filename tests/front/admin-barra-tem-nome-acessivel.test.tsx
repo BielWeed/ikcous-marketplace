@@ -14,8 +14,9 @@
 //      visual fica `aria-hidden`, para o leitor não ler "Pedidos 3 3".
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { supabase } from "@/lib/supabase";
-import { act } from "react";
+import { type ReactNode, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -134,12 +135,12 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
     vi.unstubAllGlobals();
   });
 
-  async function montar() {
+  async function montar(children: ReactNode = <div />) {
     const { AdminLayout } = await import("@/components/layouts/AdminLayout");
     await act(async () => {
       raiz.render(
         <AdminLayout currentView="admin-dashboard" onNavigate={vi.fn()}>
-          <div />
+          {children}
         </AdminLayout>,
       );
     });
@@ -154,6 +155,27 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
       (b.getAttribute("aria-label") ?? "").startsWith(rotulo),
     ) as HTMLButtonElement | undefined;
   }
+
+  it("acopla a ação dentro da mesma pílula, acima das seis abas", async () => {
+    const aoClicar = vi.fn();
+    const nav = await montar(
+      <AcaoDaBarra>
+        <button onClick={aoClicar}>Novo produto</button>
+      </AcaoDaBarra>,
+    );
+    const prateleira = nav.querySelector(".admin-prateleira")!;
+    const acao = prateleira.querySelector("button")!;
+    expect(acao.textContent).toBe("Novo produto");
+    expect(hospedeiro.querySelector("main button")).toBeNull();
+    expect(
+      prateleira.compareDocumentPosition(
+        nav.querySelector("[data-admin-abas]")!,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(nav.querySelectorAll("[data-admin-abas] button")).toHaveLength(6);
+    await act(async () => acao.click());
+    expect(aoClicar).toHaveBeenCalledOnce();
+  });
 
   it("cada uma das 5 abas é um botão com nome acessível", async () => {
     const nav = await montar();
@@ -181,7 +203,11 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
     expect(botaoDaAba(nav, "Início")!.getAttribute("aria-current")).toBe(
       "page",
     );
-    expect(nav.className).toContain("h-16");
+    // A fileira mantém 64px; a pílula pode crescer para receber as ações.
+    expect(nav.querySelector("[data-admin-abas]")?.className).toContain("h-16");
+    expect(
+      nav.querySelector('[aria-label="Ações da tela"]')?.childElementCount,
+    ).toBe(0);
     // Margem de 20px dos dois lados (`inset-x-5` = left-5 + right-5).
     expect(nav.className).toContain("inset-x-5");
   });
@@ -284,5 +310,8 @@ describe("AdminLayout — folga de baixo comporta a barra com rótulo", () => {
     );
     expect(bloco).not.toContain("5.5rem");
     expect(bloco.match(/6\.25rem/g)?.length).toBe(2);
+    expect(bloco.match(/var\(--admin-prateleira-altura, 0px\)/g)?.length).toBe(
+      2,
+    );
   });
 });
