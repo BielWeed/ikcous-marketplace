@@ -1,6 +1,6 @@
 import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { BarraDeBusca } from "@/components/admin/BarraDeBusca";
 import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
@@ -30,9 +30,6 @@ import {
   CloudOff,
   HelpCircle,
   Info,
-  LayoutGrid,
-  List,
-  Loader2,
   Megaphone,
   MessageSquare,
   RefreshCw,
@@ -64,14 +61,14 @@ const ORDENACOES_CLIENTES = [
   {
     campo: "orders_count",
     direcao: "desc",
-    rotulo: "Mais Pedidos",
+    rotulo: "Mais pedidos",
     icone: Box,
     cor: "text-pink-300",
   },
   {
     campo: "full_name",
     direcao: "asc",
-    rotulo: "Alfabética",
+    rotulo: "A–Z",
     icone: ArrowDownAZ,
     cor: "text-violet-300",
   },
@@ -451,6 +448,18 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     </div>
   );
 
+  const temBuscaOuOrdenacao =
+    Boolean(searchTerm) ||
+    sortField !== "total_spent" ||
+    sortDirection !== "desc";
+  const limparBuscaEOrdenacao = () => {
+    setSearchTerm("");
+    setSortField("total_spent");
+    setSortDirection("desc");
+    setPage(0);
+    shouldScrollToTop.current = true;
+  };
+
   return (
     <div
       ref={viewRef}
@@ -520,110 +529,37 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           {/* Sticky de filha DIRETA deste bloco (que contém a lista): sticky
               só anda dentro do próprio containing block — embrulhada num
               wrapper da própria altura ela nunca gruda (achado 1 da revisão). */}
-          <div className="sticky top-0 z-30 -mx-5 bg-[#08080A]/95 px-5 py-2 backdrop-blur-md">
-            <div className="flex w-full flex-wrap items-stretch gap-2">
-              <div className="relative min-w-[120px] flex-1">
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3 top-3 z-10 flex size-5 items-center justify-center rounded-md bg-indigo-300/10 text-indigo-300"
-                >
-                  {loading || isTyping ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Search className="size-4" />
-                  )}
-                </span>
-                <label htmlFor="customers-search" className="sr-only">
-                  Buscar clientes
-                </label>
-                <DebouncedSearchInput
-                  limpavel
-                  id="customers-search"
-                  name="search"
-                  placeholder="Buscar clientes..."
-                  className="h-11 w-full rounded-xl border-white/10 bg-[#17171C] pl-10 text-sm text-zinc-100 placeholder:text-zinc-400 focus-visible:ring-sky-300"
-                  value={searchTerm}
-                  onChange={(val) => {
-                    setSearchTerm(val);
-                    setPage(0);
-                    shouldScrollToTop.current = true;
-                  }}
-                  onTyping={setIsTyping}
-                  delay={300}
-                />
-              </div>
-              <div
-                role="group"
-                aria-label="Visualização dos clientes"
-                className="flex gap-1"
-              >
-                {(["compact", "detailed"] as const).map((modo) => {
-                  const Icone = modo === "compact" ? List : LayoutGrid;
-                  return (
-                    <button
-                      key={modo}
-                      type="button"
-                      onClick={() => setViewMode(modo)}
-                      aria-label={
-                        modo === "compact"
-                          ? "Visualização Compacta"
-                          : "Visualização Detalhada"
-                      }
-                      aria-pressed={viewMode === modo}
-                      className={cn(
-                        `flex min-h-11 min-w-11 flex-col items-center justify-center rounded-xl border px-2 text-xs ${FOCO_CLIENTES}`,
-                        viewMode === modo
-                          ? "border-white/20 bg-[#26262E] font-bold text-white"
-                          : "border-white/10 bg-[#101013] text-zinc-400",
-                      )}
-                    >
-                      <Icone
-                        aria-hidden="true"
-                        className="size-4 rounded bg-indigo-300/10 text-indigo-300"
-                      />
-                      {modo === "compact" ? "Compacta" : "Detalhada"}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div
-              role="group"
-              aria-label="Ordenar clientes"
-              className="mt-1 flex w-full gap-1"
-            >
-              {ORDENACOES_CLIENTES.map((o) => (
-                <button
-                  key={o.campo}
-                  type="button"
-                  aria-pressed={
-                    sortField === o.campo && sortDirection === o.direcao
-                  }
-                  onClick={() => {
-                    setSortField(o.campo);
-                    setSortDirection(o.direcao);
-                    setPage(0);
-                    shouldScrollToTop.current = true;
-                  }}
-                  className={cn(
-                    `flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl border px-1 py-1 text-left text-xs leading-tight ${FOCO_CLIENTES}`,
-                    sortField === o.campo && sortDirection === o.direcao
-                      ? "border-[#F5C542] bg-[#F5C542]/10 font-bold text-white"
-                      : "border-white/10 bg-[#17171C] text-zinc-300",
-                  )}
-                >
-                  <o.icone
-                    aria-hidden="true"
-                    className={cn(
-                      "size-6 shrink-0 rounded-lg border border-white/10 bg-white/5 p-1",
-                      o.cor,
-                    )}
-                  />
-                  <span className="min-w-0 break-words">{o.rotulo}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <BarraDeBusca
+            id="customers-search"
+            rotulo="Buscar clientes"
+            placeholder="Buscar cliente, telefone…"
+            value={searchTerm}
+            onChange={(val) => {
+              setSearchTerm(val);
+              setPage(0);
+              shouldScrollToTop.current = true;
+            }}
+            onTyping={setIsTyping}
+            carregando={loading || isTyping}
+            modo={viewMode}
+            onMudarModo={setViewMode}
+            grupo="Ordenar clientes"
+            tituloFiltro="Ordenar por"
+            opcoes={ORDENACOES_CLIENTES.map((o) => ({
+              valor: o.campo,
+              rotulo: o.rotulo,
+              icone: o.icone,
+              cor: o.cor,
+              selecionada: sortField === o.campo && sortDirection === o.direcao,
+              onClick: () => {
+                setSortField(o.campo);
+                setSortDirection(o.direcao);
+                setPage(0);
+                shouldScrollToTop.current = true;
+              },
+            }))}
+            onLimpar={temBuscaOuOrdenacao ? limparBuscaEOrdenacao : undefined}
+          />
           {isOffline && (
             <div
               role="status"
@@ -706,11 +642,20 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                     <p className="text-xs text-zinc-400">
                       Revise os filtros ou sua pesquisa.
                     </p>
+                    {temBuscaOuOrdenacao && (
+                      <button
+                        type="button"
+                        onClick={limparBuscaEOrdenacao}
+                        className={BOTAO_CLIENTES}
+                      >
+                        Limpar tudo
+                      </button>
+                    )}
                   </div>
                 ) : viewMode === "detailed" ? (
                   <>
                     {/* Cabeçalhos desktop: mesmos campos e handlers de ordenação. */}
-                    <div className="sticky top-[112px] z-20 hidden grid-cols-12 gap-4 border-b border-white/10 bg-[#17171C] p-3 md:grid">
+                    <div className="sticky top-[120px] z-20 hidden grid-cols-12 gap-4 border-b border-white/10 bg-[#17171C] p-3 md:grid">
                       <div
                         className="group/th col-span-4 flex min-h-11 cursor-pointer items-center gap-2"
                         onClick={() => handleSort("full_name")}

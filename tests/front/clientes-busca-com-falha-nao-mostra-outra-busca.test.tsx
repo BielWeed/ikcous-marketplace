@@ -155,6 +155,7 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
   }
 
   function esperarFalhaSemResultadoAntigo() {
+    expect(hospedeiro.querySelector("[data-barra-de-busca]")).not.toBeNull();
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
       "Não conseguimos carregar os clientes agora.",
     );
@@ -249,7 +250,7 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     );
   });
 
-  it.each(["Próximo", "Alfabética"])(
+  it.each(["Próximo", "A–Z"])(
     "falha ao mudar %s não reapresenta a consulta anterior",
     async (rotulo) => {
       rpc.mockResolvedValueOnce(sucesso([cliente("joao", "João Silva")], 24));
@@ -276,6 +277,61 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     expect(hospedeiro.textContent).not.toContain("Tentar de novo");
   });
 
+  it("folha mantém as três ordenações, e limpar no vazio restaura busca e ordem sem mudar o modo", async () => {
+    rpc.mockResolvedValue(sucesso([]));
+    await abrirTela();
+    const filtros = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Filtros"]',
+    )!;
+    await act(async () => filtros.click());
+    const folha = document.querySelector('[role="dialog"]')!;
+    expect(folha.querySelector("legend")?.textContent).toBe("Ordenar por");
+    expect(
+      [...folha.querySelectorAll("button[aria-pressed]")].map(
+        (b) => b.textContent,
+      ),
+    ).toEqual(["Maior total comprado", "Mais pedidos", "A–Z"]);
+    const alfabetica = [
+      ...folha.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => b.textContent === "A–Z")!;
+    await act(async () => alfabetica.click());
+    await avancar(320);
+    expect(rpc).toHaveBeenLastCalledWith(
+      "get_admin_customers_paged",
+      expect.objectContaining({
+        p_sort_field: "full_name",
+        p_sort_direction: "asc",
+        p_page: 0,
+      }),
+    );
+    await act(async () =>
+      folha
+        .querySelector<HTMLButtonElement>('[aria-label="Fechar filtros"]')!
+        .click(),
+    );
+    await buscarMaria();
+    expect(hospedeiro.textContent).toContain("Nenhum cliente retornado");
+    await clicar("Limpar tudo");
+    await avancar(320);
+    expect(
+      hospedeiro.querySelector<HTMLInputElement>("#customers-search")?.value,
+    ).toBe("");
+    expect(rpc).toHaveBeenLastCalledWith(
+      "get_admin_customers_paged",
+      expect.objectContaining({
+        p_search: "",
+        p_sort_field: "total_spent",
+        p_sort_direction: "desc",
+        p_page: 0,
+      }),
+    );
+    expect(
+      hospedeiro
+        .querySelector('[aria-label="Mostrar detalhado"]')
+        ?.hasAttribute("aria-pressed"),
+    ).toBe(false);
+  });
+
   it("mostra o resumo antes da busca, com os modos nomeados e a seleção explícita", async () => {
     rpc.mockResolvedValue(sucesso([cliente("joao", "João Silva")], 24));
     await abrirTela();
@@ -298,17 +354,18 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     expect(acoes.querySelectorAll("button")).toHaveLength(2);
     for (const acao of acoes.querySelectorAll("button"))
       expect(acao.className).toContain("min-h-14");
-    const compacta = hospedeiro.querySelector<HTMLButtonElement>(
-      '[aria-label="Visualização Compacta"]',
+    const modo = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Mostrar detalhado"]',
     )!;
-    const detalhada = hospedeiro.querySelector<HTMLButtonElement>(
-      '[aria-label="Visualização Detalhada"]',
-    )!;
-    expect(compacta.getAttribute("aria-pressed")).toBe("true");
-    expect(detalhada.getAttribute("aria-pressed")).toBe("false");
-    await act(async () => detalhada.click());
-    expect(detalhada.getAttribute("aria-pressed")).toBe("true");
-    expect(compacta.getAttribute("aria-pressed")).toBe("false");
+    expect(modo.hasAttribute("aria-pressed")).toBe(false);
+    expect(hospedeiro.querySelectorAll("[data-barra-de-busca]")).toHaveLength(
+      1,
+    );
+    await act(async () => modo.click());
+    expect(modo.getAttribute("aria-label")).toBe("Mostrar compacto");
+    expect(
+      hospedeiro.querySelectorAll('button[aria-label^="Mostrar"]'),
+    ).toHaveLength(1);
     expect(botao("Maior total comprado").getAttribute("aria-pressed")).toBe(
       "true",
     );
@@ -384,12 +441,16 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
       ]),
     );
     await abrirTela();
-    for (const modo of ["Visualização Compacta", "Visualização Detalhada"]) {
-      await act(async () =>
-        hospedeiro
-          .querySelector<HTMLButtonElement>(`[aria-label="${modo}"]`)!
-          .click(),
-      );
+    for (const modo of ["compact", "detailed"]) {
+      if (modo === "detailed") {
+        await act(async () =>
+          hospedeiro
+            .querySelector<HTMLButtonElement>(
+              '[aria-label="Mostrar detalhado"]',
+            )!
+            .click(),
+        );
+      }
       const raios = hospedeiro.querySelectorAll('[aria-label="Avisos ativos"]');
       expect(raios).toHaveLength(1);
       expect(raios[0].closest('[role="button"]')?.textContent).toContain(

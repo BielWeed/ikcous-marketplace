@@ -130,7 +130,9 @@ describe("Pedidos — falha de leitura não vira lista vazia", () => {
 
   function botao(texto: string) {
     const encontrado = Array.from(
-      document.body.querySelectorAll("button"),
+      (
+        document.querySelector('[role="dialog"]') ?? document.body
+      ).querySelectorAll("button"),
     ).find((elemento) => elemento.textContent?.trim() === texto);
     expect(encontrado).toBeDefined();
     return encontrado!;
@@ -177,10 +179,11 @@ describe("Pedidos — falha de leitura não vira lista vazia", () => {
     await act(async () =>
       hospedeiro
         .querySelector<HTMLButtonElement>(
-          'button[aria-label^="Status do pedido:"]',
+          'button[aria-label="Filtros e ferramentas"]',
         )!
         .click(),
     );
+    await act(async () => botao("Abrir filtros").click());
     await act(async () => botao("Todos").click());
     await act(async () => botao("Fechar").click());
     await act(async () => {

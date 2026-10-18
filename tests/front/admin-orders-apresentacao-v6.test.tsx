@@ -144,9 +144,48 @@ it("dado não carregado continua travessão, nunca inventa zero", async () => {
   ).toBe("—");
 });
 
+it("barra única oferece status direto, preserva o total do recorte e alterna o modo sem recarregar", async () => {
+  vi.useFakeTimers();
+  armazem.set("admin_orders_current_page", "3");
+  await montar();
+  expect(host.querySelectorAll("[data-barra-de-busca]")).toHaveLength(1);
+  const status = host.querySelector(
+    '[role="group"][aria-label="Status do pedido"]',
+  )!;
+  expect(
+    [...status.querySelectorAll("button")].map((b) =>
+      b.getAttribute("aria-label")?.replace("Status do pedido: ", ""),
+    ),
+  ).toEqual([
+    "Em Aberto",
+    "Todos",
+    "Novo Pedido",
+    "Em Separação",
+    "Em Trânsito",
+    "Finalizado",
+    "Cancelado",
+  ]);
+  expect(status.querySelectorAll('[aria-label$="no recorte"]')).toHaveLength(1);
+  expect(
+    status.querySelector('[aria-pressed="true"]')?.getAttribute("aria-label"),
+  ).toBe("Status do pedido: Em Aberto");
+  carregar.mockClear();
+  await clicar("Mostrar detalhado");
+  expect(armazem.get("admin_orders_view_mode")).toBe("detailed");
+  expect(carregar).not.toHaveBeenCalled();
+  await clicar("Status do pedido: Cancelado");
+  expect(armazem.get("admin_orders_filter_v2")).toBe('"cancelled"');
+  expect(armazem.get("admin_orders_current_page")).toBe("0");
+  await clicar("Filtros e ferramentas");
+  await clicar("Limpar tudo");
+  expect(armazem.get("admin_orders_filter_v2")).toBe('"all"');
+  expect(armazem.get("admin_orders_view_mode")).toBe("detailed");
+});
+
 it("filtros mantêm a ordem aprovada e mostram todas as opções de pagamento", async () => {
   await montar();
-  await clicar("Status do pedido: Em Aberto");
+  await clicar("Filtros e ferramentas");
+  await clicar("Abrir filtros");
   const campos = [...document.querySelectorAll('[role="dialog"] legend')].map(
     (el) => el.textContent,
   );
@@ -177,7 +216,8 @@ it("ferramentas expõem modo e CSV, e chips removem somente o filtro escolhido",
   ).toBeTruthy();
   await clicar("Visualização Detalhada");
   expect(
-    document.querySelector('button[aria-pressed="true"]')?.textContent,
+    document.querySelector('[role="dialog"] button[aria-pressed="true"]')
+      ?.textContent,
   ).toBe("Visualização Detalhada");
 });
 
@@ -188,6 +228,7 @@ it("erro oferece nova tentativa sem afirmar loja vazia; botão chama o carregame
     "Não foi possível carregar",
   );
   expect(host.textContent).not.toContain("Seus pedidos vão aparecer aqui");
+  expect(host.querySelector("[data-barra-de-busca]")).not.toBeNull();
   carregar.mockClear();
   await clicar("Tentar de novo");
   expect(carregar).toHaveBeenCalledWith(
