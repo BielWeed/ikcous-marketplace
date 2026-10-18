@@ -1,6 +1,6 @@
 import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { BarraDeBusca } from "@/components/admin/BarraDeBusca";
 import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
@@ -58,9 +58,6 @@ import {
   DollarSign,
   Edit2,
   HelpCircle,
-  LayoutGrid,
-  List,
-  Loader2,
   Package,
   Pause,
   Percent,
@@ -69,12 +66,10 @@ import {
   RefreshCw,
   Search,
   ShoppingBag,
-  SlidersHorizontal,
   Sparkles,
   Trash2,
   TrendingUp,
   Wallet,
-  X,
 } from "lucide-react";
 import {
   Suspense,
@@ -818,125 +813,46 @@ export const AdminProductsView = memo(function AdminProductsView({
           </button>
         </div>
 
-        {/* Busca e categorias ficam na mesma âncora durante a rolagem. */}
-        <div className="sticky top-0 z-30 -mx-5 bg-[#08080a]/95 px-5 py-2 backdrop-blur-md">
-          <div className="flex items-center gap-2">
-            <div className="relative min-w-0 flex-1">
-              <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sky-200">
-                {loading || isTyping ? (
-                  <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-                ) : (
-                  <Search aria-hidden="true" className="size-4" />
-                )}
-              </div>
-              <label htmlFor="search-assets" className="sr-only">
-                Buscar produtos
-              </label>
-              <DebouncedSearchInput
-                id="search-assets"
-                name="search-assets"
-                placeholder="Buscar produtos..."
-                className="h-12 w-full rounded-2xl border-white/10 bg-[#17171c] pl-9 pr-11 text-xs text-white placeholder:text-zinc-400"
-                value={searchTerm}
-                onChange={(val) => {
-                  setSearchTerm(val);
-                  setCurrentPage(0);
-                  shouldScrollToTop.current = true;
-                }}
-                onTyping={setIsTyping}
-                delay={300}
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  aria-label="Limpar busca"
-                  className="absolute inset-y-0 right-0 flex min-w-11 items-center justify-center rounded-xl text-zinc-200"
-                  onClick={() => {
-                    setSearchTerm("");
-                    setCurrentPage(0);
-                    shouldScrollToTop.current = true;
-                  }}
-                >
-                  <X aria-hidden="true" className="size-4" />
-                </button>
-              )}
-            </div>
-            <div
-              className="flex shrink-0 rounded-2xl border border-white/10 bg-[#17171c] p-0.5"
-              role="group"
-              aria-label="Visualização dos produtos"
-            >
-              {(["compact", "detailed"] as const).map((modo) => (
-                <button
-                  key={modo}
-                  type="button"
-                  aria-label={
-                    modo === "compact"
-                      ? "Mostrar em grade"
-                      : "Mostrar em lista com detalhes"
-                  }
-                  aria-pressed={viewMode === modo}
-                  onClick={() => setViewMode(modo)}
-                  className={cn(
-                    "flex size-11 items-center justify-center rounded-xl text-zinc-400",
-                    viewMode === modo && "bg-white/10 text-white",
-                  )}
-                >
-                  {modo === "compact" ? (
-                    <LayoutGrid aria-hidden="true" className="size-4" />
-                  ) : (
-                    <List aria-hidden="true" className="size-4" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="mt-2 flex min-w-0 items-start gap-2">
-            <div
-              className="custom-scrollbar-hidden flex min-w-0 flex-1 gap-2 overflow-x-auto"
-              role="group"
-              aria-label="Categorias dos produtos"
-            >
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  aria-pressed={filterCategory === cat}
-                  onClick={() => {
-                    setFilterCategory(cat);
-                    setCurrentPage(0);
-                    shouldScrollToTop.current = true;
-                  }}
-                  className={cn(
-                    "min-h-11 max-w-full shrink-0 break-words rounded-full border px-4 py-2 text-xs font-semibold",
-                    filterCategory === cat
-                      ? "border-admin-gold bg-admin-gold/10 text-admin-gold"
-                      : "border-white/10 bg-[#17171c] text-zinc-200",
-                  )}
-                >
-                  {cat === "all" ? "Todas as Categorias" : cat}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setGerenciandoCategorias(true)}
-              aria-label="Gerenciar categorias"
-              className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-teal-300/25 bg-teal-300/10 text-teal-300"
-            >
-              <SlidersHorizontal aria-hidden="true" className="size-5" />
-              <span className="sr-only">Gerenciar categorias</span>
-            </button>
-          </div>
-          {gerenciandoCategorias && (
-            <Suspense fallback={null}>
-              <GerenciarCategorias
-                aberta
-                onFechar={() => setGerenciandoCategorias(false)}
-              />
-            </Suspense>
-          )}
-        </div>
+        <BarraDeBusca
+          id="search-assets"
+          name="search-assets"
+          rotulo="Buscar produtos"
+          placeholder="Buscar produto, código…"
+          value={searchTerm}
+          onChange={(val) => {
+            setSearchTerm(val);
+            setCurrentPage(0);
+            shouldScrollToTop.current = true;
+          }}
+          onTyping={setIsTyping}
+          carregando={loading || isTyping}
+          modo={viewMode}
+          onMudarModo={setViewMode}
+          produtos
+          grupo="Categorias dos produtos"
+          tituloFiltro="Categoria"
+          filtrosAtivos={Number(filterCategory !== "all")}
+          opcoes={categories.map((cat) => ({
+            valor: cat,
+            rotulo: cat === "all" ? "Todas as categorias" : cat,
+            selecionada: filterCategory === cat,
+            onClick: () => {
+              setFilterCategory(cat);
+              setCurrentPage(0);
+              shouldScrollToTop.current = true;
+            },
+          }))}
+          onLimpar={temBuscaOuFiltro ? limparBuscaEFiltros : undefined}
+          onGerenciarCategorias={() => setGerenciandoCategorias(true)}
+        />
+        {gerenciandoCategorias && (
+          <Suspense fallback={null}>
+            <GerenciarCategorias
+              aberta
+              onFechar={() => setGerenciandoCategorias(false)}
+            />
+          </Suspense>
+        )}
 
         {/* Grid view of Products as Assets */}
         <LocalErrorBoundary>

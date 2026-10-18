@@ -222,14 +222,35 @@ describe("AdminProductsView — o filtro lembrado acompanha a categoria renomead
     expect(document.body.textContent).not.toMatch(
       /Renomeie, esconda da vitrine/,
     );
-    const botao = [...document.querySelectorAll("button")].find((b) =>
+    const filtros = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Filtros"]',
+    )!;
+    expect(filtros.querySelector("span")?.textContent).toBe("1");
+    expect(hospedeiro.querySelectorAll("[data-barra-de-busca]")).toHaveLength(
+      1,
+    );
+    await act(async () => filtros.click());
+    expect(rpcMock).not.toHaveBeenCalled();
+    const folha = document.querySelector('[role="dialog"]')!;
+    expect(folha.textContent).toContain("Categoria");
+    const botao = [...folha.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Gerenciar categorias"),
     ) as HTMLButtonElement | undefined;
     expect(botao).toBeDefined();
     await act(async () => {
       botao?.click();
-      await espera(100);
     });
+    // A tela de categorias é carregada sob demanda: espera ela aparecer, sem
+    // contar um tempo fixo (sob carga o carregamento demora mais que isso).
+    const limite = Date.now() + 5000;
+    while (
+      Date.now() < limite &&
+      !/Renomeie, esconda da vitrine/.test(document.body.textContent ?? "")
+    ) {
+      await act(async () => {
+        await espera(25);
+      });
+    }
     expect(rpcMock).toHaveBeenCalledWith("categorias_com_uso");
     expect(document.body.textContent).toMatch(/Renomeie, esconda da vitrine/);
   });

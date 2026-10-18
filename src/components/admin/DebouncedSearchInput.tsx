@@ -103,7 +103,7 @@ export const DebouncedSearchInput = React.memo(function DebouncedSearchInput({
             setLocalValue("");
             document.getElementById(id ?? "")?.focus();
           }}
-          className="absolute right-0 top-0 flex size-11 items-center justify-center rounded-xl text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
         >
           <X aria-hidden="true" className="size-4" />
         </button>
