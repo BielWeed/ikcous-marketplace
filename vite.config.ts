@@ -7,6 +7,7 @@ import type { UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
 import { escalasEnxutasDoGrafico } from "./scripts/escalasEnxutasDoGrafico";
+import { helpersCompartilhadosDoGrafico } from "./scripts/helpersCompartilhadosDoGrafico";
 import { portaoDividido } from "./scripts/portaoDividido";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
 // Endereço público de CADA loja — MESMO corpo de `resolverEnderecoPublico`
@@ -138,6 +139,9 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       // do painel só usam 3 escalas (~6 kB brotli). Detalhes e a trava que
       // protege o caso `scale="time"` em scripts/escalasEnxutasDoGrafico.ts.
       escalasEnxutasDoGrafico(),
+      // Helpers Babel com AST e bindings aprovados passam a uma definição
+      // compartilhada, só dentro do Recharts, antes da minificação.
+      helpersCompartilhadosDoGrafico(),
       ...(process.env.ANALYZE === "true"
         ? [
             visualizer({
