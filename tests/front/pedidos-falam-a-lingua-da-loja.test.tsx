@@ -439,6 +439,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
     await act(async () => {
       raiz.render(
         <BuscaDeProduto
+          visivel
           despachar={vi.fn()}
           buscarProdutos={vi.fn().mockResolvedValue({ produtos: [], total: 0 })}
         />,

@@ -84,14 +84,19 @@ export function AdminPdvView({
 }: AdminPdvViewProps): ReactElement {
   // L10: o rascunho do caixa é do usuário que está nele (`:<uid>`).
   const { user } = useAuth();
-  const { estado, despachar, subtotal, limparCupom } = useVendaPresencial({
+  const {
+    estado,
+    despachar,
+    subtotal,
+    limparCupom: limparCupomDaVenda,
+  } = useVendaPresencial({
     userId: user?.id,
   });
   const { anular } = useAnularVendaDoBalcao();
   // Amarra o pedido do recibo (o botão do recibo só conhece o motivo).
   const anularEstaVenda = (orderId: string) => (motivo: string) =>
     anular(orderId, motivo);
-  const { config, products = [] } = useStore();
+  const { config } = useStore();
   const storeName = config.storeName?.trim() || branding.appName;
 
   // Uma "camada" é uma folha por cima do cupom (variação, cliente ou
@@ -209,28 +214,10 @@ export function AdminPdvView({
     "bipar",
   );
 
-  // Só adapta o catálogo já carregado ao formato da busca. Nenhuma consulta.
-  const produtosIniciais: readonly ProdutoEncontradoNaBusca[] = products
-    .filter((produto) => produto.isActive && !produto.variantsUnavailable)
-    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
-    .slice(0, 30)
-    .map((produto) => ({
-      id: produto.id,
-      nome: produto.name,
-      preco_venda: produto.price,
-      estoque: produto.stock,
-      imagem_url: produto.images[0] ?? null,
-      imagem_urls: produto.images,
-      product_variants: (produto.variants ?? []).map((variante) => ({
-        id: variante.id,
-        name: variante.name,
-        value: variante.value,
-        price_override: variante.priceOverride ?? null,
-        stock_increment: variante.stockIncrement,
-        active: variante.active,
-        image_url: variante.imageUrl ?? null,
-      })),
-    }));
+  function limparCupom(): void {
+    limparCupomDaVenda();
+    setModoDeProduto("bipar");
+  }
 
   async function buscarPorCodigo(codigo: string): Promise<RespostaDoCodigo> {
     // `leitura.codigo` vai DIRETO, sem normalizar (pdv-c2.json é explícito:
@@ -660,6 +647,7 @@ export function AdminPdvView({
             modoDeProduto === "bipar" &&
             estado.etapa === "cupom"
           }
+          lerTeclado={active === false ? false : estado.etapa === "cupom"}
           aoLer={aoLerCodigo}
           titulo="Bipar produto"
           dica="Aponte a câmera para o código de barras — ou digite embaixo"
@@ -676,7 +664,13 @@ export function AdminPdvView({
           <BuscaDeProduto
             despachar={despachar}
             buscarProdutos={buscarProdutos}
-            produtosIniciais={produtosIniciais}
+            visivel={
+              active === false
+                ? false
+                : modoDeProduto === "buscar"
+                  ? estado.etapa === "cupom"
+                  : false
+            }
           />
         </div>
       )}

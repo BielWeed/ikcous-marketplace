@@ -4,7 +4,13 @@ import { Button } from "@/components/ui/button";
 import type { AcaoDaVenda, ItemDoCupom } from "@/hooks/useVendaPresencial";
 import { chaveDoItemDoCupom } from "@/hooks/useVendaPresencial";
 import { ChevronDown, PackagePlus, Plus, Search } from "lucide-react";
-import { type ReactElement, useRef, useState } from "react";
+import {
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import "./pdv.css";
 
 /** Uma variação de `product_variants` (baseline:4041-4053) — só os campos
@@ -48,7 +54,7 @@ interface PropsDaBuscaDeProduto {
     termo: string,
     pagina: number,
   ) => Promise<PaginaDeProdutosEncontrados>;
-  readonly produtosIniciais?: readonly ProdutoEncontradoNaBusca[];
+  readonly visivel: boolean;
   readonly agora?: () => number;
 }
 
@@ -113,7 +119,7 @@ function itemDaVarianteEncontrada(
 export function BuscaDeProduto({
   despachar,
   buscarProdutos,
-  produtosIniciais = [],
+  visivel,
   agora = () => Date.now(),
 }: PropsDaBuscaDeProduto): ReactElement {
   const [termoDeBusca, setTermoDeBusca] = useState("");
@@ -141,59 +147,59 @@ export function BuscaDeProduto({
   // ("Mostrar mais") somam à que já está na tela, sem repetir produto (um
   // cadastro novo entre duas páginas empurra a fila e o mesmo produto
   // apareceria de novo).
-  async function buscarPagina(termo: string, pagina: number): Promise<void> {
-    const rodada = ++rodadaRef.current;
-    setTermoBuscado(termo);
-    setBuscando(true);
-    setFalhaDaBusca(null);
-    try {
-      const resposta = await buscarProdutos(termo, pagina);
-      if (rodada !== rodadaRef.current) return;
-      const jaNaTela = pagina === 0 ? [] : resultadosDaBusca;
-      const ids = new Set(jaNaTela.map((p) => p.id));
-      const novos = resposta.produtos.filter((p) => !ids.has(p.id));
-      const todos = [...jaNaTela, ...novos];
-      setResultadosDaBusca(todos);
-      // Página seguinte vazia com a lista ainda "incompleta" = o catálogo
-      // mudou no meio do caminho: fecha a conta com o que há, em vez de
-      // oferecer um "Mostrar mais" que não traz nada.
-      setTotalDaBusca(
-        pagina > 0 && novos.length === 0
-          ? todos.length
-          : Math.max(resposta.total, todos.length),
-      );
-      setPaginaCarregada(pagina);
-      setBuscaRespondeu(true);
-    } catch (erro) {
-      if (rodada !== rodadaRef.current) return;
-      console.error("Erro ao buscar produto no balcão:", erro);
-      if (pagina === 0) {
-        setResultadosDaBusca([]);
-        setTotalDaBusca(0);
-        setBuscaRespondeu(false);
+  const buscarPagina = useCallback(
+    async (termo: string, pagina: number): Promise<void> => {
+      const rodada = ++rodadaRef.current;
+      setTermoBuscado(termo);
+      setBuscando(true);
+      setFalhaDaBusca(null);
+      try {
+        const resposta = await buscarProdutos(termo, pagina);
+        if (rodada !== rodadaRef.current) return;
+        const jaNaTela = pagina === 0 ? [] : resultadosDaBusca;
+        const ids = new Set(jaNaTela.map((p) => p.id));
+        const novos = resposta.produtos.filter((p) => !ids.has(p.id));
+        const todos = [...jaNaTela, ...novos];
+        setResultadosDaBusca(todos);
+        // Página seguinte vazia com a lista ainda "incompleta" = o catálogo
+        // mudou no meio do caminho: fecha a conta com o que há, em vez de
+        // oferecer um "Mostrar mais" que não traz nada.
+        setTotalDaBusca(
+          pagina > 0 && novos.length === 0
+            ? todos.length
+            : Math.max(resposta.total, todos.length),
+        );
+        setPaginaCarregada(pagina);
+        setBuscaRespondeu(true);
+      } catch (erro) {
+        if (rodada !== rodadaRef.current) return;
+        console.error("Erro ao buscar produto no balcão:", erro);
+        if (pagina === 0) {
+          setResultadosDaBusca([]);
+          setTotalDaBusca(0);
+          setBuscaRespondeu(false);
+        }
+        setFalhaDaBusca({ pagina });
+      } finally {
+        if (rodada === rodadaRef.current) setBuscando(false);
       }
-      setFalhaDaBusca({ pagina });
-    } finally {
-      if (rodada === rodadaRef.current) setBuscando(false);
-    }
-  }
+    },
+    [buscarProdutos, resultadosDaBusca],
+  );
+
+  useEffect(() => {
+    if (!visivel) return;
+    // Só a primeira abertura consulta a lista base. Alternar os modos
+    // preserva o termo e as páginas, inclusive com StrictMode.
+    if (rodadaRef.current !== 0) return;
+    void buscarPagina("", 0);
+  }, [visivel, buscarPagina]);
 
   async function aoDigitarBusca(valor: string): Promise<void> {
     setTermoDeBusca(valor);
-    const termoLimpo = valor.trim();
-    if (termoLimpo.length < 2) {
-      // Uma resposta ainda no ar não pode reabrir a lista de um termo que a
-      // lojista já apagou.
-      rodadaRef.current++;
-      setTermoBuscado("");
-      setResultadosDaBusca([]);
-      setTotalDaBusca(0);
-      setPaginaCarregada(0);
-      setBuscaRespondeu(false);
-      setFalhaDaBusca(null);
-      setBuscando(false);
-      return;
-    }
+    // Menos de duas letras mostra a lista base do banco. Se ela já está
+    // na tela (ou a caminho), a guarda abaixo evita repetir a consulta.
+    const termoLimpo = valor.trim().length < 2 ? "" : valor.trim();
     // O campo entrega o texto de novo quando PERDE O FOCO. No celular o toque
     // em "Mostrar mais" tira o foco do campo antes do clique: refazer aqui a
     // busca do termo que já está na tela (ou a caminho) travava o botão no
@@ -244,11 +250,6 @@ export function BuscaDeProduto({
     });
   }
 
-  const mostrandoIniciais = termoDeBusca.trim() === "";
-  const produtosNaTela = mostrandoIniciais
-    ? produtosIniciais
-    : resultadosDaBusca;
-
   return (
     <section
       className="pdv-search pdv-stack"
@@ -284,11 +285,17 @@ export function BuscaDeProduto({
         buscaRespondeu &&
         resultadosDaBusca.length === 0 && (
           <div role="status" className="pdv-card pdv-stack">
-            <p className="pdv-heading">Nenhum produto encontrado</p>
-            <p className="pdv-muted">
-              Sem resultado para &quot;{termoBuscado}&quot;. Confira o nome ou
-              digite menos letras.
-            </p>
+            {termoBuscado === "" ? (
+              <p className="pdv-heading">Nenhum produto ativo cadastrado</p>
+            ) : (
+              <>
+                <p className="pdv-heading">Nenhum produto encontrado</p>
+                <p className="pdv-muted">
+                  Sem resultado para &quot;{termoBuscado}&quot;. Confira o nome
+                  ou digite menos letras.
+                </p>
+              </>
+            )}
           </div>
         )}
       {falhaDaBusca && !buscando && (
@@ -310,18 +317,17 @@ export function BuscaDeProduto({
           </Button>
         </div>
       )}
-      {produtosNaTela.length > 0 && (
+      {resultadosDaBusca.length > 0 && (
         <>
           <div className="pdv-heading">
             <PackagePlus aria-hidden="true" className="pdv-icon pdv-pink" />
             <h3 className="flex-1">Produtos</h3>
             <span className="pdv-muted">
-              {produtosNaTela.length}
-              {!mostrandoIniciais && ` de ${totalDaBusca}`}
+              {resultadosDaBusca.length} de {totalDaBusca}
             </span>
           </div>
           <ul className="pdv-stack">
-            {produtosNaTela.map((produto) => {
+            {resultadosDaBusca.map((produto) => {
               const ativas = produto.product_variants.filter((v) => v.active);
               const expandido = produtoExpandidoId === produto.id;
               return (

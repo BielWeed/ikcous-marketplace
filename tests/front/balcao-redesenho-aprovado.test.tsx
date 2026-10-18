@@ -46,7 +46,11 @@ it("cupom vazio explica o bloqueio e mantém a busca e a identificação dispon�
   await act(async () =>
     raiz.render(
       <>
-        <BuscaDeProduto despachar={vi.fn()} buscarProdutos={vi.fn()} />
+        <BuscaDeProduto
+          visivel
+          despachar={vi.fn()}
+          buscarProdutos={vi.fn().mockResolvedValue({ produtos: [], total: 0 })}
+        />
         <CupomDaVenda
           estado={estadoInicialDaVenda(() => "vazia")}
           subtotal={0}
@@ -73,7 +77,11 @@ it("cupom mantém nomes completos, controles nomeados e o valor junto à ação 
   await act(async () =>
     raiz.render(
       <>
-        <BuscaDeProduto despachar={despachar} buscarProdutos={vi.fn()} />
+        <BuscaDeProduto
+          visivel
+          despachar={despachar}
+          buscarProdutos={vi.fn().mockResolvedValue({ produtos: [], total: 0 })}
+        />
         <CupomDaVenda
           estado={estado}
           subtotal={1198.8}

@@ -214,7 +214,7 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
         return { data: { data: linhas }, error: null };
       }
       if (nome === "get_admin_products_paged") {
-        return { data: { data: [] }, error: null };
+        return { data: { data: [], total_count: 0 }, error: null };
       }
       throw new Error(`RPC não mockada neste teste: ${nome}`);
     });
@@ -240,6 +240,29 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     });
     await avancar();
   }
+
+  it("a lista base só consulta produtos ao entrar em Buscar, sem afetar o cupom", async () => {
+    await montar();
+    expect(rpcMock).not.toHaveBeenCalled();
+    await act(async () =>
+      localizarBotaoPorTexto(hospedeiro, "Buscar produto")!.click(),
+    );
+    expect(rpcMock).toHaveBeenCalledExactlyOnceWith(
+      "get_admin_products_paged",
+      {
+        p_search: "",
+        p_category: "all",
+        p_status: "active",
+        p_stock: "all",
+        p_page: 0,
+        p_page_size: 8,
+      },
+    );
+    expect(hospedeiro.textContent).toContain("Nenhum produto ativo cadastrado");
+    expect(
+      hospedeiro.querySelector('[aria-label="Itens da venda"] li'),
+    ).toBeNull();
+  });
 
   it("caso 1 — bipar código conhecido mostra o item, o preço e o subtotal", async () => {
     await montar();

@@ -18,6 +18,8 @@ import "./pdv.css";
 
 export interface PropsDoLeitorDeCodigo {
   readonly aberto: boolean;
+  /** Escuta USB/Bluetooth independente da câmera; por padrão segue `aberto`. */
+  readonly lerTeclado?: boolean;
   readonly modo?: "continuo" | "unico";
   readonly aoLer: (leitura: Leitura) => void;
   readonly aoFechar?: () => void;
@@ -27,6 +29,7 @@ export interface PropsDoLeitorDeCodigo {
 
 export function LeitorDeCodigo({
   aberto,
+  lerTeclado = aberto,
   modo,
   aoLer,
   aoFechar,
@@ -39,6 +42,7 @@ export function LeitorDeCodigo({
   // O hook é chamado SEMPRE (regra dos Hooks) — `ativo: aberto` é quem
   // decide se a câmera liga. Quando `aberto` é `false`, o componente
   // devolve `null` mais abaixo e a câmera é solta pelo próprio hook.
+  // `lerTeclado` pode continuar ligado: a pistola independe da câmera.
   const {
     estado,
     erro,
@@ -46,7 +50,7 @@ export function LeitorDeCodigo({
     refDoVideo,
     tentarDeNovo,
     lerCodigoDigitado,
-  } = useLeitorDeCodigo({ ativo: aberto, modo, aoLer, lerTeclado: aberto });
+  } = useLeitorDeCodigo({ ativo: aberto, modo, aoLer, lerTeclado });
 
   if (!aberto) {
     return null;
