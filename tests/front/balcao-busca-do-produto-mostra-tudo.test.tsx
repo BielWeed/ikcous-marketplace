@@ -134,6 +134,9 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
     });
     await avancar();
     await act(async () => {
+      botaoPorTexto(hospedeiro, "Buscar produto")!.click();
+    });
+    await act(async () => {
       digitarInput("busca-manual-de-produto", termo);
     });
     await avancar(400);
@@ -145,38 +148,41 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
       .filter((t) => t.startsWith("Vestido"));
   }
 
-  it("com mais produtos do que cabem na página, diz quantos são e deixa ver o resto", async () => {
-    rpcMock.mockImplementation(bancoComVestidos(22));
-    await montarEBuscar("vestido");
+  it.each(["", "vestido"])(
+    "com mais produtos do que cabem na página, o termo '%s' diz quantos são e deixa ver o resto",
+    async (termo) => {
+      rpcMock.mockImplementation(bancoComVestidos(22));
+      await montarEBuscar(termo);
 
-    expect(nomesNaLista()).toHaveLength(POR_PAGINA);
-    expect(hospedeiro.textContent).toContain("Mostrando 8 de 22");
+      expect(nomesNaLista()).toHaveLength(POR_PAGINA);
+      expect(hospedeiro.textContent).toContain("Mostrando 8 de 22");
 
-    const maisUma = botaoPorTexto(hospedeiro, "Mostrar mais");
-    expect(maisUma, "botão Mostrar mais ausente").toBeTruthy();
-    await act(async () => {
-      maisUma!.click();
-    });
-    await avancar();
+      const maisUma = botaoPorTexto(hospedeiro, "Mostrar mais");
+      expect(maisUma, "botão Mostrar mais ausente").toBeTruthy();
+      await act(async () => {
+        maisUma!.click();
+      });
+      await avancar();
 
-    expect(nomesNaLista()).toHaveLength(16);
-    expect(hospedeiro.textContent).toContain("Mostrando 16 de 22");
-    // A segunda página foi pedida ao banco com o MESMO termo.
-    const ultima = rpcMock.mock.calls.at(-1)!;
-    expect(ultima[0]).toBe("get_admin_products_paged");
-    expect(ultima[1]).toMatchObject({ p_search: "vestido", p_page: 1 });
+      expect(nomesNaLista()).toHaveLength(16);
+      expect(hospedeiro.textContent).toContain("Mostrando 16 de 22");
+      // A segunda página foi pedida ao banco com o MESMO termo.
+      const ultima = rpcMock.mock.calls.at(-1)!;
+      expect(ultima[0]).toBe("get_admin_products_paged");
+      expect(ultima[1]).toMatchObject({ p_search: termo, p_page: 1 });
 
-    await act(async () => {
-      botaoPorTexto(hospedeiro, "Mostrar mais")!.click();
-    });
-    await avancar();
+      await act(async () => {
+        botaoPorTexto(hospedeiro, "Mostrar mais")!.click();
+      });
+      await avancar();
 
-    // Terceira página (6 produtos): todos os 22 à vista, e nada mais a mostrar.
-    expect(nomesNaLista()).toHaveLength(22);
-    expect(new Set(nomesNaLista()).size).toBe(22);
-    expect(botaoPorTexto(hospedeiro, "Mostrar mais")).toBeUndefined();
-    expect(hospedeiro.textContent).not.toContain("Mostrando");
-  });
+      // Terceira página (6 produtos): todos os 22 à vista, e nada mais a mostrar.
+      expect(nomesNaLista()).toHaveLength(22);
+      expect(new Set(nomesNaLista()).size).toBe(22);
+      expect(botaoPorTexto(hospedeiro, "Mostrar mais")).toBeUndefined();
+      expect(hospedeiro.textContent).not.toContain("Mostrando");
+    },
+  );
 
   it("quando tudo cabe na página, não aparece aviso nem botão de mostrar mais", async () => {
     rpcMock.mockImplementation(bancoComVestidos(5));
@@ -195,26 +201,36 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
     expect(nomesNaLista()).toHaveLength(0);
   });
 
-  it("não diz 'nenhum produto' enquanto ainda está buscando nem antes de digitar", async () => {
+  it("uma letra mantém a lista base sem buscar esse termo e usa o estado vazio de produtos ativos", async () => {
     rpcMock.mockImplementation(bancoComVestidos(0));
     await act(async () => {
       raiz.render(<AdminPdvView onNavigate={vi.fn()} active />);
     });
     await avancar();
     expect(hospedeiro.textContent).not.toContain("Nenhum produto encontrado");
+    expect(rpcMock).not.toHaveBeenCalled();
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Buscar produto")!.click();
+    });
 
-    // Uma letra só: a busca nem sai (mínimo de 2), então também não há "nada".
+    // Uma letra só mantém a consulta base, sem pedir uma busca por 'v'.
     await act(async () => {
       digitarInput("busca-manual-de-produto", "v");
     });
     await avancar(400);
     expect(hospedeiro.textContent).not.toContain("Nenhum produto encontrado");
-    expect(rpcMock).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("Nenhum produto ativo cadastrado");
+    expect(hospedeiro.textContent).not.toContain('Sem resultado para ""');
+    expect(rpcMock).toHaveBeenCalledExactlyOnceWith(
+      "get_admin_products_paged",
+      expect.objectContaining({ p_search: "", p_page: 0, p_page_size: 8 }),
+    );
   });
 
   it("quando a rede falha, a lojista vê o erro e consegue tentar de novo", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const banco = bancoComVestidos(3);
+    rpcMock.mockImplementationOnce(banco);
     rpcMock.mockRejectedValueOnce(new Error("Failed to fetch"));
     rpcMock.mockImplementation(banco);
     await montarEBuscar("vestido");
@@ -237,6 +253,7 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
   it("se a segunda página falha, a primeira continua na tela e dá para tentar de novo", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const banco = bancoComVestidos(12);
+    rpcMock.mockImplementationOnce(banco);
     rpcMock.mockImplementationOnce(banco);
     rpcMock.mockRejectedValueOnce(new Error("Failed to fetch"));
     rpcMock.mockImplementation(banco);
@@ -263,6 +280,7 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
     // Entre a página 1 e a 2 entrou um produto novo e empurrou a fila: o
     // "Vestido 8" volta na segunda página junto com os novos.
     const banco = bancoComVestidos(12);
+    rpcMock.mockImplementationOnce(banco);
     rpcMock.mockImplementationOnce(banco);
     rpcMock.mockImplementationOnce(async () => ({
       data: {

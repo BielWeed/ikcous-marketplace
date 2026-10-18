@@ -163,6 +163,37 @@
   flex: 1 1 140px;
   min-width: 0;
 }
+.pdv-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #ffffff14;
+  border-radius: 18px;
+  background: #17171c;
+}
+.pdv-modes button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  min-width: 0;
+  padding: 10px 8px;
+  border-radius: 14px;
+  color: #a7a7b5;
+  font-weight: 700;
+}
+.pdv-modes svg {
+  flex-shrink: 0;
+}
+.pdv-modes [aria-selected="true"] {
+  background: linear-gradient(#f9d85c, #e4ac15);
+  color: #1b1300;
+}
+.pdv-modes [aria-selected="true"] svg {
+  color: inherit;
+}
 .pdv-field {
   width: 100%;
   min-width: 0;
@@ -309,10 +340,6 @@
 }
 .pdv-cupom[data-resumo="true"] .pdv-resumo-qtd {
   display: inline;
-}
-.pdv-flow[data-etapa="cliente"] > .pdv-search,
-.pdv-flow[data-etapa="fechamento"] > .pdv-search {
-  display: none;
 }
 .pdv-result {
   display: flex;

@@ -1,3 +1,4 @@
+import { BuscaDeProduto } from "@/components/admin/pdv/BuscaDeProduto";
 // @vitest-environment jsdom
 import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
 import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
@@ -44,14 +45,20 @@ function botao(texto: string) {
 it("cupom vazio explica o bloqueio e mantém a busca e a identificação disponíveis", async () => {
   await act(async () =>
     raiz.render(
-      <CupomDaVenda
-        estado={estadoInicialDaVenda(() => "vazia")}
-        subtotal={0}
-        despachar={vi.fn()}
-        buscarProdutos={vi.fn()}
-        onNavigate={vi.fn()}
-        feedback={null}
-      />,
+      <>
+        <BuscaDeProduto
+          visivel
+          despachar={vi.fn()}
+          buscarProdutos={vi.fn().mockResolvedValue({ produtos: [], total: 0 })}
+        />
+        <CupomDaVenda
+          estado={estadoInicialDaVenda(() => "vazia")}
+          subtotal={0}
+          despachar={vi.fn()}
+          onNavigate={vi.fn()}
+          feedback={null}
+        />
+      </>,
     ),
   );
   expect(host.textContent).toContain("Nenhum item na venda ainda.");
@@ -69,15 +76,21 @@ it("cupom mantém nomes completos, controles nomeados e o valor junto à ação 
   const despachar = vi.fn();
   await act(async () =>
     raiz.render(
-      <CupomDaVenda
-        estado={estado}
-        subtotal={1198.8}
-        despachar={despachar}
-        buscarProdutos={vi.fn()}
-        onNavigate={vi.fn()}
-        limparCupom={vi.fn()}
-        feedback={null}
-      />,
+      <>
+        <BuscaDeProduto
+          visivel
+          despachar={despachar}
+          buscarProdutos={vi.fn().mockResolvedValue({ produtos: [], total: 0 })}
+        />
+        <CupomDaVenda
+          estado={estado}
+          subtotal={1198.8}
+          despachar={despachar}
+          onNavigate={vi.fn()}
+          limparCupom={vi.fn()}
+          feedback={null}
+        />
+      </>,
     ),
   );
   const linha = host.querySelector("li")!;
@@ -95,9 +108,10 @@ it("cupom mantém nomes completos, controles nomeados e o valor junto à ação 
     ) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   expect(
-    botao("Cancelar venda").compareDocumentPosition(
-      host.querySelector("#busca-manual-de-produto")!,
-    ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    host
+      .querySelector("#busca-manual-de-produto")!
+      .compareDocumentPosition(botao("Cancelar venda")) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   await act(async () =>
     linha
@@ -155,7 +169,6 @@ it("identificação conserva o subtotal e a ação existente de fechar a venda",
         estado={{ ...estado, etapa: "cliente" }}
         subtotal={1198.8}
         despachar={despachar}
-        buscarProdutos={vi.fn()}
         onNavigate={vi.fn()}
         feedback={null}
       />,

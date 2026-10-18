@@ -131,11 +131,18 @@ describe("Balcão — busca de produto: corrida e foco", () => {
     vi.unstubAllGlobals();
   });
 
-  async function montar(): Promise<void> {
+  async function montar(resolverListaBase = true): Promise<void> {
     await act(async () => {
       raiz.render(<AdminPdvView onNavigate={vi.fn()} active />);
     });
     await avancar();
+    await act(async () => {
+      botao(hospedeiro, "Buscar produto")!.click();
+    });
+    if (resolverListaBase) {
+      await resolver(0, pagina([], 0));
+      pendentes.shift();
+    }
   }
 
   async function digitarBusca(termo: string): Promise<void> {
@@ -162,6 +169,34 @@ describe("Balcão — busca de produto: corrida e foco", () => {
       (params as Record<string, unknown>).p_search,
       (params as Record<string, unknown>).p_page,
     ]);
+
+  it("trocar de modo preserva o termo e a página carregada sem refazer a consulta", async () => {
+    await montar();
+    await digitarBusca("vestido");
+    await resolver(0, pagina(lote(1, 8), 20));
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>("#modo-bipar-produto")!
+        .click();
+    });
+    expect(
+      hospedeiro.querySelector("#busca-do-balcao")?.hasAttribute("hidden"),
+    ).toBe(true);
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>("#modo-buscar-produto")!
+        .click();
+    });
+    expect(
+      (document.getElementById("busca-manual-de-produto") as HTMLInputElement)
+        .value,
+    ).toBe("vestido");
+    expect(nomes()).toHaveLength(8);
+    expect(chamadas()).toEqual([
+      ["", 0],
+      ["vestido", 0],
+    ]);
+  });
 
   it("o campo ainda focado: tirar o foco no toque de 'Mostrar mais' não recomeça a busca nem mata o primeiro toque", async () => {
     await montar();
@@ -190,6 +225,7 @@ describe("Balcão — busca de produto: corrida e foco", () => {
 
     // Só UMA busca da página 0; o primeiro toque pediu a página 1.
     expect(chamadas()).toEqual([
+      ["", 0],
       ["vestido", 0],
       ["vestido", 1],
     ]);
@@ -219,6 +255,7 @@ describe("Balcão — busca de produto: corrida e foco", () => {
     });
     await avancar();
     expect(chamadas()).toEqual([
+      ["", 0],
       ["vestido", 0],
       ["vestido", 0],
     ]);
@@ -263,15 +300,37 @@ describe("Balcão — busca de produto: corrida e foco", () => {
     expect(hospedeiro.textContent).not.toContain("Mostrando");
   });
 
-  it("apagou o termo com a busca no ar: a resposta não reabre a lista", async () => {
-    await montar();
-    await digitarBusca("vestido");
-    await digitarBusca("");
+  it.each(["", "v"])(
+    "reduziu o termo para '%s' com a busca no ar: recarrega a lista base e ignora a resposta antiga",
+    async (termo) => {
+      await montar();
+      await digitarBusca("vestido");
+      await digitarBusca(termo);
 
+      expect(chamadas()).toEqual([
+        ["", 0],
+        ["vestido", 0],
+        ["", 0],
+      ]);
+      await resolver(1, pagina(lote(1, 2, "Calça"), 2));
+
+      await resolver(0, pagina(lote(1, 8), 20));
+
+      expect(nomes()).toHaveLength(2);
+      expect(nomes().every((n) => n.startsWith("Calça"))).toBe(true);
+      expect(hospedeiro.textContent).not.toContain("Nenhum produto");
+      expect(hospedeiro.textContent).not.toContain("Mostrando");
+    },
+  );
+
+  it("a lista inicial atrasada não sobrescreve a busca digitada mais nova", async () => {
+    await montar(false);
+    expect(hospedeiro.textContent).toContain("Buscando…");
+    await digitarBusca("calça");
+    await resolver(1, pagina(lote(1, 2, "Calça"), 2));
     await resolver(0, pagina(lote(1, 8), 20));
-
-    expect(nomes()).toHaveLength(0);
-    expect(hospedeiro.textContent).not.toContain("Nenhum produto");
+    expect(nomes()).toHaveLength(2);
+    expect(nomes().every((n) => n.startsWith("Calça"))).toBe(true);
     expect(hospedeiro.textContent).not.toContain("Mostrando");
   });
 
