@@ -2,15 +2,15 @@ import {
   AlertTriangle,
   Banknote,
   CreditCard,
+  KeyRound,
   Loader2,
-  Lock,
-  Truck,
-  Wallet,
+  PackageCheck,
   XCircle,
 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
+import { IconePix } from "@/components/admin/primitivos/IconePix";
 import { Switch } from "@/components/ui/switch";
 import {
   type ConfigDoCartao,
@@ -169,7 +169,7 @@ export function FormasDePagamentoSection({
           o atalho para a seção do Mercado Pago. */}
       <div className={`${CARTAO_AJUSTES} space-y-4`}>
         <div className="flex items-center gap-3">
-          <IconeDeAjustes icone={Wallet} matiz="verde" />
+          <IconeDeAjustes icone={IconePix} matiz="verde" />
           <span className="min-w-0">
             <span className="block text-base font-bold text-white">
               Pagar pelo app (PIX)
@@ -184,7 +184,7 @@ export function FormasDePagamentoSection({
           onClick={onAbrirMercadoPago}
           className="ajustes-secundario min-h-11"
         >
-          <Lock aria-hidden="true" className="size-4" />
+          <KeyRound aria-hidden="true" className="size-4" />
           Configurar credenciais
         </button>
       </div>
@@ -201,7 +201,7 @@ export function FormasDePagamentoSection({
           (mesmo padrão imediato de AdminReviewsView: clique salva). */}
       <div className={`${CARTAO_AJUSTES} space-y-3`}>
         <div className="flex items-center gap-3">
-          <IconeDeAjustes icone={Truck} matiz="azul" />
+          <IconeDeAjustes icone={PackageCheck} matiz="azul" />
           <div>
             <h3 className="text-base font-bold">Na entrega ou retirada</h3>
             <p className="text-xs text-zinc-400">
@@ -225,7 +225,7 @@ export function FormasDePagamentoSection({
                     ? CreditCard
                     : forma === "cash"
                       ? Banknote
-                      : Wallet
+                      : IconePix
                 }
                 matiz={
                   forma === "card"

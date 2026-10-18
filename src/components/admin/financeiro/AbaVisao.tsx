@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 
+import { IconePix } from "@/components/admin/primitivos/IconePix";
 import { useResumoFinanceiro } from "@/hooks/useFinanceiro";
 import {
   formatarDataHora,
@@ -146,6 +147,9 @@ function RecebimentosPorForma({
               >
                 <div className="flex items-baseline justify-between gap-3 text-xs">
                   <span className="break-words font-bold text-zinc-200">
+                    {forma.forma === "pix" && (
+                      <IconePix className="mr-1 inline-block size-4 align-text-bottom text-teal-300" />
+                    )}
                     {rotuloDaForma(forma.forma)}
                   </span>
                   <span className="shrink-0 tabular-nums text-zinc-400">

@@ -1,4 +1,5 @@
-import type { LucideIcon } from "lucide-react";
+import type { LucideProps } from "lucide-react";
+import type { ComponentType } from "react";
 
 export const CARTAO_AJUSTES =
   "rounded-3xl border border-white/10 bg-[#101013] p-4";
@@ -25,7 +26,7 @@ export function IconeDeAjustes({
   icone: Icone,
   matiz = "azul",
 }: {
-  readonly icone: LucideIcon;
+  readonly icone: ComponentType<Pick<LucideProps, "className" | "strokeWidth">>;
   readonly matiz?: MatizDeAjustes;
 }) {
   return (

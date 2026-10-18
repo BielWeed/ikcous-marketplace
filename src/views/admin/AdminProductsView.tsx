@@ -1675,6 +1675,11 @@ function MenuDoProduto({
   readonly className: string;
 }) {
   const [aberto, setAberto] = useState(false);
+  // O menu do Radix abre no primeiro contato do dedo, e como a área é grande
+  // quem rola a lista em cima de uma foto abriria o menu sem querer. No toque
+  // abrimos no clique (que o navegador não dispara depois de uma rolagem);
+  // mouse e teclado seguem o caminho do Radix.
+  const veioDoToque = useRef(false);
   return (
     <DropdownMenu open={aberto} onOpenChange={setAberto}>
       <DropdownMenuTrigger asChild>
@@ -1684,6 +1689,16 @@ function MenuDoProduto({
           aria-label={`Ações de ${product.name}`}
           aria-haspopup="menu"
           aria-expanded={aberto}
+          onPointerDown={(e) => {
+            veioDoToque.current =
+              e.pointerType === "touch" || e.pointerType === "pen";
+            if (veioDoToque.current) e.preventDefault();
+          }}
+          onClick={() => {
+            if (!veioDoToque.current) return;
+            veioDoToque.current = false;
+            setAberto((atual) => !atual);
+          }}
           className={cn(
             "produto-gatilho min-h-11 min-w-11 w-full cursor-pointer text-left",
             className,
@@ -1916,8 +1931,7 @@ const AdminProductCard = memo(function AdminProductCard({
             </span>
             <span className="min-w-0 flex-1">
               <span
-                role="heading"
-                aria-level={4}
+                data-produto-nome=""
                 className="block break-words text-sm font-bold leading-snug"
               >
                 {product.name}
@@ -1945,6 +1959,7 @@ const AdminProductCard = memo(function AdminProductCard({
               )}
             </span>
           </MenuDoProduto>
+          <h4 className="sr-only">{product.name}</h4>
           <div className="produto-resumo mt-3 grid grid-cols-3 gap-2">
             <div className="min-w-0">
               <p className="text-[11px] text-zinc-400">Preço de Venda</p>
@@ -2135,8 +2150,7 @@ const AdminProductCard = memo(function AdminProductCard({
               {product.category}
             </span>
             <span
-              role="heading"
-              aria-level={4}
+              data-produto-nome=""
               className={cn(
                 "mt-1 block break-words text-sm font-bold leading-snug",
                 !product.isActive && "text-zinc-400",
@@ -2146,6 +2160,7 @@ const AdminProductCard = memo(function AdminProductCard({
             </span>
           </span>
         </MenuDoProduto>
+        <h4 className="sr-only">{product.name}</h4>
         <div className="flex min-w-0 flex-1 flex-col px-2.5 pb-2.5">
           <div className="mt-auto pt-3">
             <p className="break-words text-xl font-bold tabular-nums">

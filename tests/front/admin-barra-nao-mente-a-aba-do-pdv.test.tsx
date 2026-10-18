@@ -154,6 +154,23 @@ describe("AdminLayout — na tela de venda, a barra marca o Vender e não a aba 
     expect(vender!.textContent).toBe("Vender");
   });
 
+  it("em admin-pdv, o botão do topo diz Perfil (a venda é aba da barra, não sub-tela)", async () => {
+    const { AdminLayout } = await import("@/components/layouts/AdminLayout");
+    await act(async () => {
+      raiz.render(
+        <AdminLayout currentView="admin-pdv" onNavigate={vi.fn()}>
+          <div />
+        </AdminLayout>,
+      );
+    });
+
+    const textos = [...hospedeiro.querySelectorAll("header button")].map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(textos).toContain("Perfil");
+    expect(textos).not.toContain("Voltar");
+  });
+
   it("controle: sub-view de verdade (admin-user-detail) continua acendendo a aba pai Clientes", async () => {
     const { AdminLayout } = await import("@/components/layouts/AdminLayout");
     await act(async () => {

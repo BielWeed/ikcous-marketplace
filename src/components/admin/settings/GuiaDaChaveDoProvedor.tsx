@@ -1,5 +1,5 @@
 import type { ProvedorFrete } from "@/components/admin/settings/TransportadorasCard";
-import { ChevronDown, ExternalLink, HelpCircle } from "lucide-react";
+import { ChevronDown, ExternalLink, KeyRound } from "lucide-react";
 import { useId, useState } from "react";
 
 /**
@@ -126,7 +126,10 @@ export function GuiaDaChaveDoProvedor({
         onClick={() => setAberto((v) => !v)}
         className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-bold text-zinc-300 transition-colors hover:text-admin-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60"
       >
-        <HelpCircle className="size-3.5 shrink-0 text-admin-gold" />
+        <KeyRound
+          aria-hidden="true"
+          className="size-3.5 shrink-0 text-admin-gold"
+        />
         <span className="flex-1">Como pegar a chave</span>
         <ChevronDown
           className={`size-3.5 shrink-0 transition-transform ${aberto ? "rotate-180" : ""}`}

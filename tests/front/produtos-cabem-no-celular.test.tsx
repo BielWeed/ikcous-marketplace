@@ -213,9 +213,9 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
   }
 
   function nomeDoProduto(modo: "compact" | "detailed"): HTMLElement {
-    const nome = [
-      ...cartao(modo).querySelectorAll('[role="heading"][aria-level="4"]'),
-    ].find((el) => el.textContent === produtosMock[0].name);
+    const nome = [...cartao(modo).querySelectorAll("[data-produto-nome]")].find(
+      (el) => el.textContent === produtosMock[0].name,
+    );
     if (!nome) throw new Error("Nome do produto não está no cartão.");
     return nome as HTMLElement;
   }
@@ -554,6 +554,46 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         expect(menu).not.toBeNull();
         return menu!;
       }
+
+      it("o nome continua sendo título de verdade, fora do botão do menu", async () => {
+        montarProduto({ variants: [{ value: "P", stockIncrement: 20 }] });
+        await montar(modo);
+        const titulo = [...cartao(modo).querySelectorAll("h4")].find(
+          (el) => el.textContent === produtosMock[0].name,
+        );
+        expect(titulo).toBeDefined();
+        expect(gatilho().contains(titulo!)).toBe(false);
+        expect(gatilho().querySelector('[role="heading"]')).toBeNull();
+      });
+
+      it("no toque o menu só abre no clique: o início de uma rolagem não abre", async () => {
+        montarProduto({ variants: [{ value: "P", stockIncrement: 20 }] });
+        await montar(modo);
+        const foto = gatilho().querySelector("img")!;
+        const encostar = () => {
+          const evento = new MouseEvent("pointerdown", {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+          });
+          Object.defineProperty(evento, "pointerType", { value: "touch" });
+          foto.dispatchEvent(evento);
+          return evento;
+        };
+        // Dedo encosta e vira rolagem: o navegador não manda o clique.
+        await act(async () => {
+          encostar();
+        });
+        expect(gatilho().getAttribute("aria-expanded")).toBe("false");
+        expect(document.querySelector('[role="menu"]')).toBeNull();
+        // Toque de verdade: encosta e solta, o clique abre o menu.
+        await act(async () => {
+          encostar();
+          foto.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(gatilho().getAttribute("aria-expanded")).toBe("true");
+        expect(document.querySelector('[role="menu"]')).not.toBeNull();
+      });
 
       it("foto inteira, categoria e nome abrem o mesmo menu; editar e ativar ficam fora", async () => {
         montarProduto({ variants: [{ value: "P", stockIncrement: 20 }] });

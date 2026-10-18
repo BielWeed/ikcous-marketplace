@@ -144,6 +144,27 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     expect(hospedeiro.textContent).not.toMatch(/pedido de teste/i);
   });
 
+  it("distingue PIX, cartão e dinheiro sem mudar os nomes dos interruptores", async () => {
+    await montar();
+    const pix = interruptor("Pix na entrega ou retirada").closest("label")!;
+    expect(
+      pix.querySelector("svg.icone-pix")?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(pix.querySelector(".lucide-wallet")).toBeNull();
+    expect(hospedeiro.querySelectorAll("svg.icone-pix")).toHaveLength(2);
+    expect(
+      interruptor("Cartão na entrega ou retirada")
+        .closest("label")!
+        .querySelector(".lucide-credit-card"),
+    ).not.toBeNull();
+    expect(
+      interruptor("Dinheiro na entrega ou retirada")
+        .closest("label")!
+        .querySelector(".lucide-banknote"),
+    ).not.toBeNull();
+    expect(banco.rpc).not.toHaveBeenCalled();
+  });
+
   it("ligar crédito grava pela RPC e mostra a linha devolvida — com o 'Parcelar em até' 1 a 12x", async () => {
     await montar();
     await clicar(credito());
