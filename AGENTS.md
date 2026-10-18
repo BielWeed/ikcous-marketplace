@@ -281,6 +281,23 @@ alcançado é cliente, o resto é painel. Grava `.portao-tamanho/<dist|dist-test
 (`scripts/validarPortaoDeTamanho.cjs`) — rode `npm run build` antes. Subir teto ou mexer na
 fronteira é decisão do dono, não ajuste de CI.
 
+**Suite pesada sem lotar a RAM local: rodar na nuvem (grátis, repo público).** O workflow
+`.github/workflows/rodar-na-nuvem.yml` (`workflow_dispatch`) roda UMA suíte no runner do
+GitHub, com os mesmos passos de instalação do `ci.yml` (Node 24, `npm ci`, Deno 2.x), sem
+segredo nenhum (`contents: read`, 30 min de teto). Suítes: `front` (`npx vitest run`),
+`unit`, `edge`, ou `arquivo` (vitest de um caminho em `tests/front/`). O script faz tudo
+(empurra o commit para `nuvem/<sha12>` se ele ainda não está no GitHub, dispara, espera e
+imprime máquina, tempo e as linhas que falharam):
+
+```powershell
+powershell -File scripts\nuvem-testar.ps1 -Suite front
+powershell -File scripts\nuvem-testar.ps1 -Suite arquivo -Arquivo tests/front/mappers.test.ts
+```
+
+Só o que está **commitado** vai; os hooks de git do push rodam normalmente. Isto NÃO
+substitui o `ci.yml` (portão do PR): não roda tipos, build, lint nem tamanho. Para ver os
+resultados sem o script: `gh run list --workflow rodar-na-nuvem.yml` e `gh run view <id> --log-failed`.
+
 Duas leituras que enganam:
 
 - **`eslint` tem teto de warnings pré-existentes e 0 erro — os DOIS reprovam se subirem.**

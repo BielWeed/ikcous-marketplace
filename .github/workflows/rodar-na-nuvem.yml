@@ -1,0 +1,159 @@
+# Roda UMA suite de testes numa maquina do GitHub, sob demanda (18/10/2026).
+#
+# Por que existe: a maquina do dono lota a RAM com a suite inteira do vitest
+# (498 arquivos). Aqui ela roda no runner do GitHub e o resultado volta por
+# `gh` (scripts/nuvem-testar.ps1) -- nada pesado na maquina local.
+#
+# O que NAO e: nao substitui o ci.yml (o portao do PR). Mesma instalacao
+# (Node 24, `npm ci`, cache npm, Deno 2.x) e os mesmos comandos de teste, mas
+# SEM tipos, build, lint, tamanho e SEM os dois shards: e para investigar e
+# conferir um recorte, nao para aprovar PR.
+#
+# Seguranca:
+#  - So dispara por `workflow_dispatch` (quem tem escrita no repositorio).
+#  - `permissions: contents: read`; NENHUM segredo e usado em passo algum --
+#    nem os do repositorio, nem credencial de loja. Os testes nao tocam rede
+#    externa (ver o comentario do test-front-a no ci.yml).
+#  - Entrada do usuario NUNCA e interpolada no script: vai por `env:` e passa
+#    por validacao de caracteres antes de qualquer uso. `ref` so e usado como
+#    parametro do actions/checkout; `arquivo` so como argumento do vitest.
+#  - Custo: repositorio PUBLICO = minutos de runner padrao gratuitos.
+#
+# NAO mexe em: ci.yml, pwa-ci.yml.
+
+name: Rodar na nuvem
+
+run-name: "Nuvem ${{ inputs.suite }} @ ${{ inputs.ref }} [${{ inputs.marca }}]"
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch ou SHA a testar (ex.: claude/minha-branch ou o SHA de 40 hex)"
+        required: true
+        type: string
+      suite:
+        description: "Qual suite rodar"
+        required: true
+        type: choice
+        default: front
+        options:
+          - front # npx vitest run (tests/front, a suite inteira)
+          - unit # npm run test:unit (Deno, tests/)
+          - edge # npm run test:edge (Deno, supabase/functions/)
+          - arquivo # vitest de UM caminho em tests/front/ (campo abaixo)
+      arquivo:
+        description: "So para suite=arquivo: caminho em tests/front/ (ex.: tests/front/mappers.test.ts)"
+        required: false
+        type: string
+        default: ""
+      marca:
+        description: "Etiqueta unica para achar a execucao (o script preenche; pode ficar vazio)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  # Mesma versao do gate (ci.yml) -- se divergir, um passa e o outro mente.
+  NODE_VERSION: "24"
+
+jobs:
+  rodar:
+    name: Rodar ${{ inputs.suite }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Valida ANTES de qualquer checkout. Entradas chegam por env, nunca
+      # dentro do texto do script.
+      - name: Valida as entradas
+        env:
+          ENTRADA_REF: ${{ inputs.ref }}
+          ENTRADA_SUITE: ${{ inputs.suite }}
+          ENTRADA_ARQUIVO: ${{ inputs.arquivo }}
+        run: |
+          if ! [[ "$ENTRADA_REF" =~ ^[A-Za-z0-9._/-]{1,200}$ ]] || [[ "$ENTRADA_REF" == -* ]] || [[ "$ENTRADA_REF" == *..* ]]; then
+            echo "::error::ref invalida: use so letras, numeros, ponto, barra, hifen e underscore (sem '..' e sem hifen no comeco)."
+            exit 1
+          fi
+          case "$ENTRADA_SUITE" in
+            front|unit|edge) ;;
+            arquivo)
+              if ! [[ "$ENTRADA_ARQUIVO" =~ ^tests/front/[A-Za-z0-9_./-]+$ ]] || [[ "$ENTRADA_ARQUIVO" == *..* ]]; then
+                echo "::error::arquivo invalido: precisa estar em tests/front/ e usar so letras, numeros, ponto, barra, hifen e underscore."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::suite desconhecida."
+              exit 1
+              ;;
+          esac
+          echo "INICIO_JOB=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # Deno so para as suites que o usam (o front roda no Node).
+      - uses: denoland/setup-deno@v2
+        if: inputs.suite == 'unit' || inputs.suite == 'edge'
+        with:
+          deno-version: v2.x
+      # O test:unit resolve `@supabase/supabase-js` via src/ e o Deno recusa
+      # sem node_modules (historia no ci.yml, job test-deno); por isso `npm ci`
+      # em todas as suites, igual ao CI.
+      - run: npm ci
+
+      - name: Roda a suite
+        id: suite
+        env:
+          ENTRADA_SUITE: ${{ inputs.suite }}
+          ENTRADA_ARQUIVO: ${{ inputs.arquivo }}
+        run: |
+          inicio=$(date +%s)
+          case "$ENTRADA_SUITE" in
+            front) cmd=(npx vitest run) ;;
+            unit) cmd=(npm run test:unit) ;;
+            edge) cmd=(npm run test:edge) ;;
+            arquivo) cmd=(npx vitest run "$ENTRADA_ARQUIVO") ;;
+          esac
+          set +e
+          "${cmd[@]}"
+          status=$?
+          set -e
+          echo "segundos=$(( $(date +%s) - inicio ))" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      # Roda mesmo com a suite vermelha: o numero que interessa (maquina e
+      # tempo) tem de aparecer sempre.
+      - name: Resumo (maquina e tempo)
+        if: always()
+        env:
+          NOME_RUNNER: ${{ runner.name }}
+          SEGUNDOS_SUITE: ${{ steps.suite.outputs.segundos }}
+          RESULTADO: ${{ job.status }}
+          ENTRADA_SUITE: ${{ inputs.suite }}
+          ENTRADA_ARQUIVO: ${{ inputs.arquivo }}
+        run: |
+          cpu=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | xargs || true)
+          {
+            echo "### Rodar na nuvem"
+            echo ""
+            echo "| Item | Valor |"
+            echo "| --- | --- |"
+            echo "| Resultado | ${RESULTADO} |"
+            echo "| Suite | ${ENTRADA_SUITE} ${ENTRADA_ARQUIVO} |"
+            echo "| Commit testado | $(git rev-parse HEAD 2>/dev/null || echo desconhecido) |"
+            echo "| Maquina (runner) | ${NOME_RUNNER} |"
+            echo "| CPU | ${cpu:-desconhecida} x $(nproc) nucleos |"
+            echo "| Memoria | $(free -m | awk '/^Mem:/ {print $2}') MB |"
+            echo "| Tempo so da suite | ${SEGUNDOS_SUITE:-n/d} s |"
+            echo "| Tempo total do job (apos validar) | $(( $(date +%s) - ${INICIO_JOB:-$(date +%s)} )) s |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
