@@ -1,10 +1,8 @@
 import { LazyImage } from "@/components/LazyImage";
-import {
-  AdminKpiCarousel,
-  type KpiCardConfig,
-} from "@/components/admin/AdminKpiCarousel";
+import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
@@ -196,7 +194,6 @@ export const AdminProductsView = memo(function AdminProductsView({
     "all",
   );
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
-  const [metricasAbertas, setMetricasAbertas] = useState(false);
   const [totalProducts, setTotalProducts] = useState(() => cachedProductsTotal);
   const [currentPage, setCurrentPage] = useLocalStorage<number>(
     "admin_products_current_page",
@@ -799,25 +796,18 @@ export const AdminProductsView = memo(function AdminProductsView({
           </div>
         )}
 
-        <section
-          id="metricas-dos-produtos"
-          hidden={!metricasAbertas}
-          className="produtos-metricas scroll-mt-4 space-y-4"
-        >
-          <button
-            type="button"
-            aria-label="Fechar métricas"
-            onClick={() => setMetricasAbertas(false)}
-            className="produto-secundario ml-auto flex"
-          >
-            <X aria-hidden="true" className="size-4" /> Fechar métricas
-          </button>
+        <div className="space-y-4">
           <LocalErrorBoundary>
-            <AdminKpiCarousel
-              active={active && metricasAbertas}
+            <MetricasDoPainel
+              titulo="Métricas de Produtos"
+              legendasDoResumo={[
+                "Em estoque",
+                "Lucro potencial",
+                "Lucro sobre o custo",
+                "Catálogo",
+              ]}
               cards={kpiCards}
               loading={loading && !stats}
-              title="Métricas de Produtos"
             />
           </LocalErrorBoundary>
           <button
@@ -828,7 +818,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             <BookOpen aria-hidden="true" className="size-5 text-violet-300" />{" "}
             Guia e simulador
           </button>
-        </section>
+        </div>
 
         {/* Busca e categorias ficam na mesma âncora durante a rolagem. */}
         <div className="sticky top-0 z-30 -mx-5 bg-[#08080a]/95 px-5 py-2 backdrop-blur-md">
@@ -902,30 +892,6 @@ export const AdminProductsView = memo(function AdminProductsView({
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              className="flex min-h-12 min-w-11 shrink-0 flex-col items-center justify-center rounded-2xl border border-violet-300/20 bg-violet-300/10 px-2 text-[11px] text-zinc-100"
-              aria-controls="metricas-dos-produtos"
-              aria-expanded={metricasAbertas}
-              onClick={() => {
-                setMetricasAbertas(!metricasAbertas);
-                if (!metricasAbertas)
-                  requestAnimationFrame(() =>
-                    document
-                      .getElementById("metricas-dos-produtos")
-                      ?.scrollIntoView?.({
-                        block: "start",
-                        behavior: "smooth",
-                      }),
-                  );
-              }}
-            >
-              <BarChart3
-                aria-hidden="true"
-                className="size-5 text-violet-300"
-              />{" "}
-              Métricas
-            </button>
           </div>
           <div className="mt-2 flex min-w-0 items-start gap-2">
             <div

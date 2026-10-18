@@ -2,6 +2,7 @@ import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import {
@@ -81,8 +82,6 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   CreditCard,
   Download,
@@ -119,111 +118,6 @@ const BOTAO_PEDIDOS = `flex min-h-11 items-center justify-center gap-2 whitespac
 const OPCAO_PEDIDOS = `${BOTAO_PEDIDOS} w-full rounded-full text-left`;
 const SELECIONADO_PEDIDOS =
   "border-admin-gold bg-admin-gold/10 ring-1 ring-admin-gold";
-
-/** Uma métrica inteira por vez; setas fora do texto e grade ao expandir. */
-function MetricasDePedidos({
-  cards,
-}: { readonly cards: readonly KpiCardConfig[] }) {
-  const [expandido, setExpandido] = useState(false);
-  const [indice, setIndice] = useState(0);
-  return (
-    <section aria-label="Métricas de Pedidos" className="space-y-3">
-      <div className="flex items-center gap-2">
-        {expandido ? (
-          <h2 className="flex-1 text-xs font-bold uppercase tracking-wide text-zinc-400">
-            Métricas de Pedidos
-          </h2>
-        ) : (
-          <button
-            type="button"
-            aria-label="Métrica anterior"
-            title="Anterior"
-            onClick={() =>
-              setIndice((indice + cards.length - 1) % cards.length)
-            }
-            className={`${BOTAO_PEDIDOS} size-11 shrink-0 p-0`}
-          >
-            <ChevronLeft aria-hidden="true" className="size-5" />
-          </button>
-        )}
-        <div
-          className={expandido ? "hidden" : "min-w-0 flex-1"}
-          aria-live="polite"
-        >
-          {cards.map((card, i) => (
-            <div key={card.label} hidden={indice !== i}>
-              <div className="flex min-h-14 items-center gap-2 rounded-2xl border border-white/10 bg-[#101013] p-2">
-                <card.icon
-                  aria-hidden="true"
-                  className={cn("size-6 shrink-0", card.accent)}
-                />
-                <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                  <h3 className="text-2xl font-bold tabular-nums text-white">
-                    {card.value}
-                  </h3>
-                  <p className="min-w-0 flex-1 text-sm leading-snug text-zinc-100">
-                    {card.label}
-                  </p>
-                  <p className="sr-only">{card.subValue}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        {!expandido && (
-          <button
-            type="button"
-            aria-label="Próxima métrica"
-            title="Próximo"
-            onClick={() => setIndice((indice + 1) % cards.length)}
-            className={`${BOTAO_PEDIDOS} size-11 shrink-0 p-0`}
-          >
-            <ChevronRight aria-hidden="true" className="size-5" />
-          </button>
-        )}
-        <button
-          type="button"
-          aria-expanded={expandido}
-          onClick={() => setExpandido(!expandido)}
-          className={`${BOTAO_PEDIDOS} shrink-0 px-2 text-xs`}
-        >
-          {expandido ? "Carrossel" : "Expandir"}
-        </button>
-      </div>
-      {expandido && (
-        <>
-          <div className="grid grid-cols-2 gap-3">
-            {cards.map((card) => (
-              <article
-                key={card.label}
-                className="flex items-start gap-2 rounded-2xl border border-white/10 bg-[#101013] p-3"
-              >
-                <card.icon
-                  aria-hidden="true"
-                  className={cn("mt-1 size-6 shrink-0", card.accent)}
-                />
-                <div className="min-w-0">
-                  <h3 className="text-2xl font-bold text-white">
-                    {card.value}
-                  </h3>
-                  <p className="text-xs leading-relaxed text-zinc-300">
-                    {card.label}
-                  </p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
-                    {card.subValue}
-                  </p>
-                </div>
-              </article>
-            ))}
-          </div>
-          <p className="text-xs text-zinc-400">
-            Para preparar: só pedidos com pagamento liberado.
-          </p>
-        </>
-      )}
-    </section>
-  );
-}
 
 /**
  * Subtítulo do cartão "Para preparar" — achado 10 da auditoria de
@@ -1771,7 +1665,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         {active && (
           <div className="space-y-3">
             <LocalErrorBoundary>
-              <MetricasDePedidos cards={kpiCards} />
+              <MetricasDoPainel
+                titulo="Métricas de Pedidos"
+                legendasDoResumo={[
+                  "Para preparar",
+                  "Aguardando pagamento",
+                  "A caminho ou retirada",
+                  "Finalizados",
+                ]}
+                cards={kpiCards}
+              />
+              <p className="mt-2 text-xs text-zinc-400">
+                Para preparar: só pedidos com pagamento liberado.
+              </p>
             </LocalErrorBoundary>
             {avisoPagamentoAConferir && (
               <div role="status" data-aviso="pagamento-a-conferir">

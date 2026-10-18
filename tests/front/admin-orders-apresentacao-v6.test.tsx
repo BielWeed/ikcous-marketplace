@@ -98,15 +98,27 @@ async function clicar(nome: string) {
   await act(async () => botao!.click());
 }
 
-it("métrica de pagamento fica inteira e fora das setas; expandir preserva as quatro fontes", async () => {
+it("resumo já mostra pagamento sem setas; expandir preserva as quatro fontes", async () => {
   await montar();
-  await clicar("Próxima métrica");
-  const rotulo = [...host.querySelectorAll("p")].find(
-    (p) => p.textContent === "Aguardando pagamento",
+  const metricas = host.querySelector(
+    'section[aria-label="Métricas de Pedidos"]',
   )!;
+  const pagamento = metricas.querySelector(
+    '[role="group"][aria-label="Aguardando pagamento"]',
+  )!;
+  const rotulo = [
+    ...pagamento.querySelectorAll('span[aria-hidden="true"]'),
+  ].find((el) => el.textContent === "Aguardando pagamento")!;
+  expect(rotulo).toBeTruthy();
   expect(rotulo.closest("[hidden]")?.hasAttribute("hidden")).not.toBe(true);
   expect(rotulo.className).not.toMatch(/truncate|line-clamp/);
-  expect(rotulo.parentElement?.querySelector("h3")?.textContent).toBe("0");
+  expect(pagamento.querySelector("h3")?.textContent).toBe("0");
+  expect(
+    metricas.querySelector('button[aria-label="Próxima métrica"]'),
+  ).toBeNull();
+  expect(
+    metricas.querySelector('button[aria-label="Métrica anterior"]'),
+  ).toBeNull();
   await clicar("Expandir");
   const cartoes = host.querySelectorAll(
     'section[aria-label="Métricas de Pedidos"] article',
@@ -117,6 +129,10 @@ it("métrica de pagamento fica inteira e fora das setas; expandir preserva as qu
     "2",
     "1",
   ]);
+  expect(metricas.querySelectorAll("button")).toHaveLength(1);
+  expect(metricas.querySelector("button")?.textContent).toContain("Recolher");
+  await clicar("Recolher");
+  expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(4);
 });
 
 it("dado não carregado continua travessão, nunca inventa zero", async () => {

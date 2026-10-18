@@ -418,23 +418,49 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
   });
 
   describe("redesenho aprovado: catálogo primeiro", () => {
-    it("métricas começam recolhidas e o atalho abre e fecha os indicadores", async () => {
+    it("métricas começam visíveis no resumo e Expandir/Recolher alterna a grade", async () => {
       montarProduto({});
       await montar();
-      const atalho = hospedeiro.querySelector<HTMLButtonElement>(
-        'button[aria-controls="metricas-dos-produtos"]',
-      );
       const metricas = hospedeiro.querySelector<HTMLElement>(
-        "#metricas-dos-produtos",
-      );
+        'section[aria-label="Métricas de Produtos"]',
+      )!;
+      const atalho = metricas.querySelector<HTMLButtonElement>("button");
       expect(atalho).not.toBeNull();
-      expect(metricas?.hidden).toBe(true);
+      expect(metricas.hidden).toBe(false);
+      expect(metricas.closest("[hidden]")).toBeNull();
+      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(4);
+      expect(metricas.querySelectorAll("article")).toHaveLength(0);
+      expect(atalho?.textContent).toContain("Expandir");
       expect(atalho?.getAttribute("aria-expanded")).toBe("false");
       await act(async () => atalho?.click());
-      expect(metricas?.hidden).toBe(false);
-      expect(atalho?.getAttribute("aria-expanded")).toBe("true");
-      await act(async () => atalho?.click());
-      expect(metricas?.hidden).toBe(true);
+      expect(metricas.hidden).toBe(false);
+      expect(metricas.querySelectorAll("article")).toHaveLength(4);
+      expect(
+        [...metricas.querySelectorAll("article")].map((el) =>
+          el.getAttribute("aria-label"),
+        ),
+      ).toEqual([
+        "Dinheiro parado em estoque",
+        "Lucro se vender tudo",
+        "Lucro sobre o custo",
+        "Produtos no Catálogo",
+      ]);
+      const recolher = metricas.querySelector<HTMLButtonElement>("button");
+      expect(recolher?.textContent).toContain("Recolher");
+      expect(recolher?.getAttribute("aria-expanded")).toBe("true");
+      expect(metricas.querySelectorAll("button")).toHaveLength(1);
+      await act(async () => recolher?.click());
+      expect(metricas.hidden).toBe(false);
+      expect(metricas.querySelectorAll("article")).toHaveLength(0);
+      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(4);
+      expect(
+        metricas.querySelector("button")?.getAttribute("aria-expanded"),
+      ).toBe("false");
+      expect(
+        hospedeiro.querySelector(
+          'button[title="Guia Completo de Métricas e Ajuda"]',
+        ),
+      ).not.toBeNull();
     });
 
     it("preço vem antes das métricas secundárias, que abrem por produto", async () => {
