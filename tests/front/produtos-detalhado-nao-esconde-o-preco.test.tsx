@@ -303,15 +303,19 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
     it("o nome quebra palavra sem limitar linhas nem ficar sob o menu", async () => {
       await montar();
 
-      const nome = [...cartao().querySelectorAll("h4")].find(
-        (el) => el.textContent === produtosMock[0].name,
-      );
+      const nome = [
+        ...cartao().querySelectorAll('[role="heading"][aria-level="4"]'),
+      ].find((el) => el.textContent === produtosMock[0].name);
       expect(nome, "nome do produto ausente").toBeDefined();
       const classes = classesDe(nome as HTMLElement);
       expect(classes.some((c) => c.includes("line-clamp"))).toBe(false);
       expect(classes).toContain("break-words");
       expect(nome?.parentElement?.className).toContain("min-w-0");
-      expect(nome?.parentElement?.nextElementSibling?.tagName).toBe("BUTTON");
+      const gatilho = nome?.closest("button");
+      expect(gatilho?.getAttribute("aria-label")).toBe(
+        `Ações de ${produtosMock[0].name}`,
+      );
+      expect(gatilho?.querySelector("button")).toBeNull();
       expect(classes).not.toContain("truncate");
     });
   });

@@ -26,6 +26,15 @@ const FONTE = readFileSync(
   join(__dirname, "..", "..", "src/views/admin/AdminProductsView.tsx"),
   "utf8",
 );
+const CSS = readFileSync(
+  join(
+    __dirname,
+    "..",
+    "..",
+    "src/components/admin/products/catalogo-produtos.css",
+  ),
+  "utf8",
+);
 
 const TEXTO_MIUDO = /text-\[(?:[6-9]|10)(?:\.\d+)?px\]/g;
 
@@ -57,6 +66,20 @@ function tagAntesDe(texto: string, nome: string, ancora: string): string {
 }
 
 describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
+  it("a foto quadrada tem reserva maior e o esqueleto acompanha a grade", () => {
+    const altura = CSS.match(/--produto-altura-compacto:\s*(\d+)px/)?.[1];
+    expect(Number(altura)).toBeGreaterThanOrEqual(360);
+    expect(CSS).toContain(
+      "contain-intrinsic-size: auto var(--produto-altura-compacto)",
+    );
+    expect(CSS).toMatch(
+      /\.produto-esqueleto\.overflow-hidden\s*\{\s*min-height: var\(--produto-altura-compacto\)/,
+    );
+    expect(CSS).toMatch(
+      /\.produto-esqueleto\.overflow-hidden > :first-child\s*\{\s*height: auto;\s*aspect-ratio: 1;/,
+    );
+  });
+
   it("Fechar faz parte dos itens navegáveis do menu do produto", () => {
     const fechar = tagAntesDe(FONTE, "DropdownMenuItem", "setAberto(false)");
     expect(fechar).toContain("onClick={() => setAberto(false)}");
