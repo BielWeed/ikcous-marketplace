@@ -179,7 +179,10 @@ if (-not $terminou) {
 # pela API, sem passar pelo hook de pre-push (que rodaria o typecheck de novo).
 if ($temporaria) {
     & gh api -X DELETE "repos/$Repo/git/refs/heads/$temporaria" 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { Write-Host "Branch temporaria $temporaria apagada." }
+    if ($LASTEXITCODE -eq 0) {
+        & git update-ref -d "refs/remotes/origin/$temporaria" 2>$null
+        Write-Host "Branch temporaria $temporaria apagada."
+    }
 }
 $total = [int]((Get-Date) - $inicio).TotalSeconds
 Write-Host "Tempo desde o disparo (inclui fila): $total s"
