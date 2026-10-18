@@ -23,7 +23,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -67,27 +66,6 @@ vi.mock("@/hooks/useOnlineStatus", () => ({
 
 vi.mock("@/hooks/usePrefetchOnHover", () => ({
   usePrefetchOnHover: () => ({ prefetchView: vi.fn() }),
-}));
-
-vi.mock("@/components/ui/dropdown-menu", () => ({
-  DropdownMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-  DropdownMenuContent: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-  DropdownMenuItem: ({
-    children,
-    onClick,
-  }: {
-    children: ReactNode;
-    onClick?: () => void;
-  }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
 }));
 
 vi.mock("sonner", () => ({
@@ -168,6 +146,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
 
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    vi.stubGlobal("PointerEvent", MouseEvent);
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: false,
       media: query,
@@ -234,7 +213,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
   }
 
   function nomeDoProduto(modo: "compact" | "detailed"): HTMLElement {
-    const nome = [...cartao(modo).querySelectorAll("h4")].find(
+    const nome = [...cartao(modo).querySelectorAll("[data-produto-nome]")].find(
       (el) => el.textContent === produtosMock[0].name,
     );
     if (!nome) throw new Error("Nome do produto não está no cartão.");
@@ -350,7 +329,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       }
     });
 
-    it("o nome completo usa coluna separada do menu", async () => {
+    it("o nome completo abre o menu sem disputar espaço com outro botão", async () => {
       montarProduto({});
       await montar("detailed");
 
@@ -358,7 +337,11 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       expect(nome.className).not.toMatch(/line-clamp|truncate/);
       expect(nome.className).toContain("break-words");
       expect(nome.parentElement?.className).toContain("min-w-0");
-      expect(nome.parentElement?.nextElementSibling?.tagName).toBe("BUTTON");
+      const gatilho = nome.closest("button");
+      expect(gatilho?.getAttribute("aria-label")).toBe(
+        `Ações de ${produtosMock[0].name}`,
+      );
+      expect(gatilho?.querySelector("button")).toBeNull();
       expect(nome.className).not.toContain("truncate");
     });
   });
@@ -418,23 +401,49 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
   });
 
   describe("redesenho aprovado: catálogo primeiro", () => {
-    it("métricas começam recolhidas e o atalho abre e fecha os indicadores", async () => {
+    it("métricas começam visíveis no resumo e Expandir/Recolher alterna a grade", async () => {
       montarProduto({});
       await montar();
-      const atalho = hospedeiro.querySelector<HTMLButtonElement>(
-        'button[aria-controls="metricas-dos-produtos"]',
-      );
       const metricas = hospedeiro.querySelector<HTMLElement>(
-        "#metricas-dos-produtos",
-      );
+        'section[aria-label="Métricas de Produtos"]',
+      )!;
+      const atalho = metricas.querySelector<HTMLButtonElement>("button");
       expect(atalho).not.toBeNull();
-      expect(metricas?.hidden).toBe(true);
+      expect(metricas.hidden).toBe(false);
+      expect(metricas.closest("[hidden]")).toBeNull();
+      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(4);
+      expect(metricas.querySelectorAll("article")).toHaveLength(0);
+      expect(atalho?.textContent).toContain("Expandir");
       expect(atalho?.getAttribute("aria-expanded")).toBe("false");
       await act(async () => atalho?.click());
-      expect(metricas?.hidden).toBe(false);
-      expect(atalho?.getAttribute("aria-expanded")).toBe("true");
-      await act(async () => atalho?.click());
-      expect(metricas?.hidden).toBe(true);
+      expect(metricas.hidden).toBe(false);
+      expect(metricas.querySelectorAll("article")).toHaveLength(4);
+      expect(
+        [...metricas.querySelectorAll("article")].map((el) =>
+          el.getAttribute("aria-label"),
+        ),
+      ).toEqual([
+        "Dinheiro parado em estoque",
+        "Lucro se vender tudo",
+        "Lucro sobre o custo",
+        "Produtos no Catálogo",
+      ]);
+      const recolher = metricas.querySelector<HTMLButtonElement>("button");
+      expect(recolher?.textContent).toContain("Recolher");
+      expect(recolher?.getAttribute("aria-expanded")).toBe("true");
+      expect(metricas.querySelectorAll("button")).toHaveLength(1);
+      await act(async () => recolher?.click());
+      expect(metricas.hidden).toBe(false);
+      expect(metricas.querySelectorAll("article")).toHaveLength(0);
+      expect(metricas.querySelectorAll('[role="group"]')).toHaveLength(4);
+      expect(
+        metricas.querySelector("button")?.getAttribute("aria-expanded"),
+      ).toBe("false");
+      expect(
+        hospedeiro.querySelector(
+          'button[title="Guia Completo de Métricas e Ajuda"]',
+        ),
+      ).not.toBeNull();
     });
 
     it("preço vem antes das métricas secundárias, que abrem por produto", async () => {
@@ -442,7 +451,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       await montar("detailed");
       const item = cartao("detailed");
       const botao = item.querySelector<HTMLButtonElement>(
-        "button[aria-expanded]",
+        'button[aria-controls="metricas-produto-prod-1"]',
       );
       const detalhes = item.querySelector<HTMLElement>(
         "[data-metricas-do-produto]",
@@ -476,27 +485,30 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       expect(onNavigate).toHaveBeenCalledWith("admin-product-form", "prod-1");
     });
 
-    it("offline explica o bloqueio e desabilita cadastro, edição, ativação e menu", async () => {
-      montarProduto({});
-      offlineMock = true;
-      await montar();
-      const item = cartao("compact");
-      expect(hospedeiro.textContent).toContain("Sem conexão com o servidor");
-      expect(hospedeiro.textContent).toContain(
-        "voltam quando a internet voltar",
-      );
-      for (const nome of ["Ações de", "Editar", "Pausar"]) {
-        const botao = item.querySelector<HTMLButtonElement>(
-          `button[aria-label^="${nome} "]`,
+    it.each(["compact", "detailed"] as const)(
+      "%s: offline explica o bloqueio e desabilita cadastro, edição, ativação e menu",
+      async (modo) => {
+        montarProduto({});
+        offlineMock = true;
+        await montar(modo);
+        const item = cartao(modo);
+        expect(hospedeiro.textContent).toContain("Sem conexão com o servidor");
+        expect(hospedeiro.textContent).toContain(
+          "voltam quando a internet voltar",
         );
-        expect(botao, nome).not.toBeNull();
-        expect(botao?.disabled, nome).toBe(true);
-      }
-      const novo = [...hospedeiro.querySelectorAll("button")].find((b) =>
-        b.textContent?.includes("Novo produto indisponível"),
-      );
-      expect(novo?.disabled).toBe(true);
-    });
+        for (const nome of ["Ações de", "Editar", "Pausar"]) {
+          const botao = item.querySelector<HTMLButtonElement>(
+            `button[aria-label^="${nome} "]`,
+          );
+          expect(botao, nome).not.toBeNull();
+          expect(botao?.disabled, nome).toBe(true);
+        }
+        const novo = [...hospedeiro.querySelectorAll("button")].find((b) =>
+          b.textContent?.includes("Novo produto indisponível"),
+        );
+        expect(novo?.disabled).toBe(true);
+      },
+    );
 
     it("sem foto usa câmera e texto; editar e menu identificam o produto", async () => {
       montarProduto({
@@ -519,6 +531,207 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       expect(onNavigate).toHaveBeenCalledWith("admin-product-form", "prod-1");
     });
   });
+
+  describe.each(["compact", "detailed"] as const)(
+    "foto e título como gatilho (%s)",
+    (modo) => {
+      function gatilho() {
+        const botao = cartao(modo).querySelector<HTMLButtonElement>(
+          'button[aria-label^="Ações de "]',
+        );
+        expect(botao).not.toBeNull();
+        return botao!;
+      }
+
+      async function abrir(alvo: Element) {
+        await act(async () => {
+          alvo.dispatchEvent(
+            new MouseEvent("pointerdown", { bubbles: true, button: 0 }),
+          );
+        });
+        expect(gatilho().getAttribute("aria-expanded")).toBe("true");
+        const menu = document.querySelector('[role="menu"]');
+        expect(menu).not.toBeNull();
+        return menu!;
+      }
+
+      it("o nome continua sendo título de verdade, fora do botão do menu", async () => {
+        montarProduto({ variants: [{ value: "P", stockIncrement: 20 }] });
+        await montar(modo);
+        const titulo = [...cartao(modo).querySelectorAll("h4")].find(
+          (el) => el.textContent === produtosMock[0].name,
+        );
+        expect(titulo).toBeDefined();
+        expect(gatilho().contains(titulo!)).toBe(false);
+        expect(gatilho().querySelector('[role="heading"]')).toBeNull();
+      });
+
+      it("no toque o menu só abre no clique: o início de uma rolagem não abre", async () => {
+        montarProduto({ variants: [{ value: "P", stockIncrement: 20 }] });
+        await montar(modo);
+        const foto = gatilho().querySelector("img")!;
+        const encostar = () => {
+          const evento = new MouseEvent("pointerdown", {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+          });
+          Object.defineProperty(evento, "pointerType", { value: "touch" });
+          foto.dispatchEvent(evento);
+          return evento;
+        };
+        // Dedo encosta e vira rolagem: o navegador não manda o clique.
+        await act(async () => {
+          encostar();
+        });
+        expect(gatilho().getAttribute("aria-expanded")).toBe("false");
+        expect(document.querySelector('[role="menu"]')).toBeNull();
+        // Toque de verdade: encosta e solta, o clique abre o menu.
+        await act(async () => {
+          encostar();
+          foto.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(gatilho().getAttribute("aria-expanded")).toBe("true");
+        expect(document.querySelector('[role="menu"]')).not.toBeNull();
+      });
+
+      it("foto inteira, categoria e nome abrem o mesmo menu; editar e ativar ficam fora", async () => {
+        montarProduto({ variants: [{ value: "P", stockIncrement: 20 }] });
+        await montar(modo);
+        const botao = gatilho();
+        const foto = botao.querySelector("img");
+        const nome = nomeDoProduto(modo);
+        expect(foto).not.toBeNull();
+        expect(foto?.className).toContain("object-contain");
+        expect(foto?.parentElement?.className).toContain(
+          modo === "compact" ? "aspect-square" : "size-16",
+        );
+        expect(botao.contains(nome)).toBe(true);
+        expect(foto!.compareDocumentPosition(nome)).toBe(
+          Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+        expect(botao.textContent).toContain("Vestidos");
+        expect(botao.getAttribute("type")).toBe("button");
+        expect(botao.getAttribute("aria-label")).toBe(
+          `Ações de ${produtosMock[0].name}`,
+        );
+        expect(botao.getAttribute("aria-haspopup")).toBe("menu");
+        expect(botao.className).toContain("min-h-11");
+        expect(botao.querySelector("button")).toBeNull();
+        expect(
+          cartao(modo).querySelector(".lucide-ellipsis-vertical"),
+        ).toBeNull();
+        const editar = cartao(modo).querySelector(
+          'button[aria-label^="Editar "]',
+        );
+        const pausar = cartao(modo).querySelector(
+          'button[aria-label^="Pausar "]',
+        );
+        expect(editar).not.toBeNull();
+        expect(editar?.className).toContain("min-w-11");
+        expect(pausar).not.toBeNull();
+        expect(botao.contains(editar)).toBe(false);
+        expect(botao.contains(pausar)).toBe(false);
+        expect(botao.compareDocumentPosition(editar!)).toBe(
+          Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+        const menu = await abrir(foto!);
+        const itens = [...menu.querySelectorAll('[role="menuitem"]')];
+        expect(
+          itens.map(
+            (item) =>
+              item.querySelector("span")?.textContent ?? item.textContent,
+          ),
+        ).toEqual([
+          "Editar produto",
+          "Pausar Produto",
+          "Duplicar Produto",
+          "Excluir Produto",
+          "Fechar",
+        ]);
+        expect(deleteProduct).not.toHaveBeenCalled();
+        expect(addProduct).not.toHaveBeenCalled();
+        await act(async () => {
+          itens[4].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(gatilho().getAttribute("aria-expanded")).toBe("false");
+        await abrir(nome);
+      });
+
+      it("o teclado abre o menu e o item editar preserva a navegação", async () => {
+        montarProduto({});
+        await montar(modo);
+        await act(async () => {
+          gatilho().dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+          );
+        });
+        const editar = document.querySelector<HTMLElement>('[role="menuitem"]');
+        expect(editar?.textContent).toContain("Editar produto");
+        await act(async () => editar?.click());
+        expect(onNavigate).toHaveBeenCalledWith("admin-product-form", "prod-1");
+      });
+
+      it.each(["Duplicar Produto", "Excluir Produto"])(
+        "%s ainda pede confirmação antes de alterar dados",
+        async (acao) => {
+          montarProduto({});
+          await montar(modo);
+          const menu = await abrir(nomeDoProduto(modo));
+          const item = [
+            ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+          ].find((el) => el.textContent?.startsWith(acao));
+          expect(item).toBeDefined();
+          await act(async () => item?.click());
+          const dialogo = document.querySelector('[role="alertdialog"]');
+          expect(dialogo).not.toBeNull();
+          expect(
+            dialogo?.querySelector(`button[aria-label^="${acao}: confirmar"]`),
+          ).not.toBeNull();
+          expect(addProduct).not.toHaveBeenCalled();
+          expect(deleteProduct).not.toHaveBeenCalled();
+        },
+      );
+
+      it("sem foto mantém a área e o nome", async () => {
+        montarProduto({ images: [] });
+        await montar(modo);
+        expect(gatilho().textContent).toContain("Sem foto");
+        expect(
+          gatilho().querySelector("[data-produto-foto]")?.className,
+        ).toContain(modo === "compact" ? "aspect-square" : "size-16");
+      });
+
+      it("foto que falha mostra aviso sem botão aninhado", async () => {
+        montarProduto({});
+        await montar(modo);
+        const foto = gatilho().querySelector("img");
+        expect(foto).not.toBeNull();
+        await act(async () => {
+          foto?.dispatchEvent(new Event("error"));
+        });
+        expect(gatilho().textContent).toContain("Foto indisponível");
+        expect(gatilho().querySelector("button")).toBeNull();
+        await abrir(nomeDoProduto(modo));
+      });
+
+      it("produto pausado mantém foto esmaecida, nome inteiro e ação Ativar", async () => {
+        montarProduto({ isActive: false });
+        await montar(modo);
+        const foto = gatilho().querySelector("img");
+        expect(foto?.className).toContain("opacity-40");
+        expect(foto?.className).toContain("grayscale");
+        expect(nomeDoProduto(modo).textContent).toBe(produtosMock[0].name);
+        const menu = await abrir(nomeDoProduto(modo));
+        const ativar = [
+          ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+        ].find((item) => item.textContent?.startsWith("Ativar Produto"));
+        expect(ativar).toBeDefined();
+        await act(async () => ativar?.click());
+        expect(toggleProductStatus).toHaveBeenCalledWith("prod-1", false);
+      });
+    },
+  );
 
   describe("h. guia de métricas: exemplo e simulador em pt-BR e sem corte", () => {
     async function abrirGuia() {

@@ -1,10 +1,7 @@
-import { LazyImage } from "@/components/LazyImage";
-import {
-  AdminKpiCarousel,
-  type KpiCardConfig,
-} from "@/components/admin/AdminKpiCarousel";
+import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
@@ -20,7 +17,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
   DropdownMenu,
@@ -64,7 +60,6 @@ import {
   LayoutGrid,
   List,
   Loader2,
-  MoreVertical,
   Package,
   Pause,
   Percent,
@@ -196,7 +191,6 @@ export const AdminProductsView = memo(function AdminProductsView({
     "all",
   );
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
-  const [metricasAbertas, setMetricasAbertas] = useState(false);
   const [totalProducts, setTotalProducts] = useState(() => cachedProductsTotal);
   const [currentPage, setCurrentPage] = useLocalStorage<number>(
     "admin_products_current_page",
@@ -799,25 +793,18 @@ export const AdminProductsView = memo(function AdminProductsView({
           </div>
         )}
 
-        <section
-          id="metricas-dos-produtos"
-          hidden={!metricasAbertas}
-          className="produtos-metricas scroll-mt-4 space-y-4"
-        >
-          <button
-            type="button"
-            aria-label="Fechar métricas"
-            onClick={() => setMetricasAbertas(false)}
-            className="produto-secundario ml-auto flex"
-          >
-            <X aria-hidden="true" className="size-4" /> Fechar métricas
-          </button>
+        <div className="space-y-4">
           <LocalErrorBoundary>
-            <AdminKpiCarousel
-              active={active && metricasAbertas}
+            <MetricasDoPainel
+              titulo="Métricas de Produtos"
+              legendasDoResumo={[
+                "Em estoque",
+                "Lucro potencial",
+                "Lucro sobre o custo",
+                "Catálogo",
+              ]}
               cards={kpiCards}
               loading={loading && !stats}
-              title="Métricas de Produtos"
             />
           </LocalErrorBoundary>
           <button
@@ -828,7 +815,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             <BookOpen aria-hidden="true" className="size-5 text-violet-300" />{" "}
             Guia e simulador
           </button>
-        </section>
+        </div>
 
         {/* Busca e categorias ficam na mesma âncora durante a rolagem. */}
         <div className="sticky top-0 z-30 -mx-5 bg-[#08080a]/95 px-5 py-2 backdrop-blur-md">
@@ -902,30 +889,6 @@ export const AdminProductsView = memo(function AdminProductsView({
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              className="flex min-h-12 min-w-11 shrink-0 flex-col items-center justify-center rounded-2xl border border-violet-300/20 bg-violet-300/10 px-2 text-[11px] text-zinc-100"
-              aria-controls="metricas-dos-produtos"
-              aria-expanded={metricasAbertas}
-              onClick={() => {
-                setMetricasAbertas(!metricasAbertas);
-                if (!metricasAbertas)
-                  requestAnimationFrame(() =>
-                    document
-                      .getElementById("metricas-dos-produtos")
-                      ?.scrollIntoView?.({
-                        block: "start",
-                        behavior: "smooth",
-                      }),
-                  );
-              }}
-            >
-              <BarChart3
-                aria-hidden="true"
-                className="size-5 text-violet-300"
-              />{" "}
-              Métricas
-            </button>
           </div>
           <div className="mt-2 flex min-w-0 items-start gap-2">
             <div
@@ -1675,20 +1638,25 @@ interface AdminProductCardProps {
 /** A mesma foto, ações e nomes acessíveis nos dois modos do catálogo. */
 function FotoDoCatalogo({ product }: { readonly product: any }) {
   const foto = soFotosReais(product.images)[0];
-  return foto ? (
-    <LazyImage
+  const [fotoComErro, setFotoComErro] = useState<string | null>(null);
+  // A foto fica dentro do gatilho do menu: o aviso de erro não pode criar outro botão.
+  return foto && foto !== fotoComErro ? (
+    <img
       src={foto}
       alt={product.name}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFotoComErro(foto)}
       className={cn(
         "size-full object-contain",
         !product.isActive && "opacity-40 grayscale",
       )}
     />
   ) : (
-    <div className="flex size-full flex-col items-center justify-center gap-1 bg-[#17171c] text-[11px] text-zinc-400">
-      <Camera aria-hidden="true" className="size-5 text-slate-300" />
-      <span>Sem foto</span>
-    </div>
+    <span className="flex size-full flex-col items-center justify-center gap-1 bg-zinc-100 p-2 text-center text-[11px] text-zinc-600">
+      <Camera aria-hidden="true" className="size-5 shrink-0 text-slate-600" />
+      <span>{foto ? "Foto indisponível" : "Sem foto"}</span>
+    </span>
   );
 }
 
@@ -1699,27 +1667,51 @@ function MenuDoProduto({
   onDuplicate,
   onDelete,
   isOffline,
-}: Omit<AdminProductCardProps, "viewMode" | "onPrefetch">) {
+  children,
+  className,
+}: Omit<AdminProductCardProps, "viewMode" | "onPrefetch"> & {
+  readonly children: React.ReactNode;
+  readonly className: string;
+}) {
   const [aberto, setAberto] = useState(false);
+  // O menu do Radix abre no primeiro contato do dedo, e como a área é grande
+  // quem rola a lista em cima de uma foto abriria o menu sem querer. No toque
+  // abrimos no clique (que o navegador não dispara depois de uma rolagem);
+  // mouse e teclado seguem o caminho do Radix.
+  const veioDoToque = useRef(false);
   return (
     <DropdownMenu open={aberto} onOpenChange={setAberto}>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
+        <button
+          type="button"
           disabled={isOffline}
           aria-label={`Ações de ${product.name}`}
-          className="size-11 shrink-0 rounded-full border border-white/15 bg-black/75 text-white"
+          aria-haspopup="menu"
+          aria-expanded={aberto}
+          onPointerDown={(e) => {
+            veioDoToque.current =
+              e.pointerType === "touch" || e.pointerType === "pen";
+            if (veioDoToque.current) e.preventDefault();
+          }}
+          onClick={() => {
+            if (!veioDoToque.current) return;
+            veioDoToque.current = false;
+            setAberto((atual) => !atual);
+          }}
+          className={cn(
+            "produto-gatilho min-h-11 min-w-11 w-full cursor-pointer text-left",
+            className,
+          )}
         >
-          <MoreVertical aria-hidden="true" className="size-5 rotate-90" />
-        </Button>
+          {children}
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
         className="produto-menu z-50 w-80 max-w-[calc(100vw-40px)] rounded-3xl border border-white/10 bg-[#17171c] p-4 text-zinc-100 shadow-2xl"
       >
         <div className="mb-3 flex gap-3 border-b border-white/10 pb-4">
-          <div className="size-12 shrink-0 overflow-hidden rounded-xl">
+          <div className="size-12 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
             <FotoDoCatalogo product={product} />
           </div>
           <div className="min-w-0">
@@ -1809,16 +1801,14 @@ const AdminProductCard = memo(function AdminProductCard({
   onPrefetch,
 }: AdminProductCardProps) {
   const [maisMetricas, setMaisMetricas] = useState(false);
-  const acoes = (
-    <MenuDoProduto
-      product={product}
-      onNavigate={onNavigate}
-      onToggleStatus={onToggleStatus}
-      onDuplicate={onDuplicate}
-      onDelete={onDelete}
-      isOffline={isOffline}
-    />
-  );
+  const acoes = {
+    product,
+    onNavigate,
+    onToggleStatus,
+    onDuplicate,
+    onDelete,
+    isOffline,
+  };
   const editar = () => onNavigate("admin-product-form", product.id);
   const estado = statusDoProdutoNoPainel(product);
   const classeDoEstado =
@@ -1848,7 +1838,7 @@ const AdminProductCard = memo(function AdminProductCard({
         disabled={isOffline}
         aria-label={`Editar ${product.name}`}
         onClick={editar}
-        className="produto-secundario px-3"
+        className="produto-secundario min-w-11 px-3"
       >
         <Edit2 aria-hidden="true" className="size-4 text-sky-200" />
         {detalhado && (custoSuspeito ? "Revisar custo" : "Editar")}
@@ -1928,15 +1918,24 @@ const AdminProductCard = memo(function AdminProductCard({
             RESERVA_DO_CARTAO_DETALHADO,
           )}
         >
-          <div className="flex items-start gap-2">
-            <div className="size-12 shrink-0 overflow-hidden rounded-xl">
+          <MenuDoProduto
+            {...acoes}
+            className="flex items-start gap-3 rounded-xl"
+          >
+            <span
+              data-produto-foto=""
+              className="block size-16 shrink-0 overflow-hidden rounded-xl bg-zinc-100"
+            >
               <FotoDoCatalogo product={product} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h4 className="break-words text-sm font-bold leading-snug">
+            </span>
+            <span className="min-w-0 flex-1">
+              <span
+                data-produto-nome=""
+                className="block break-words text-sm font-bold leading-snug"
+              >
                 {product.name}
-              </h4>
-              <p className="mt-1 break-words text-[11px] text-zinc-400">
+              </span>
+              <span className="mt-1 block break-words text-[11px] text-zinc-400">
                 {product.category} ·{" "}
                 <Badge className={cn("produto-status", classeDoEstado)}>
                   {estado}
@@ -1946,20 +1945,20 @@ const AdminProductCard = memo(function AdminProductCard({
                     Crítico
                   </Badge>
                 )}
-              </p>
+              </span>
               {product.sku && (
-                <p className="mt-1 break-words text-[11px] text-zinc-400">
+                <span className="mt-1 block break-words text-[11px] text-zinc-400">
                   Código {product.sku}
-                </p>
+                </span>
               )}
               {!hasCost && (
-                <p className="mt-1 text-[11px] font-semibold text-slate-300">
+                <span className="mt-1 block text-[11px] font-semibold text-slate-300">
                   Sem Custo Cadastrado
-                </p>
+                </span>
               )}
-            </div>
-            {acoes}
-          </div>
+            </span>
+          </MenuDoProduto>
+          <h4 className="sr-only">{product.name}</h4>
           <div className="produto-resumo mt-3 grid grid-cols-3 gap-2">
             <div className="min-w-0">
               <p className="text-[11px] text-zinc-400">Preço de Venda</p>
@@ -2135,22 +2134,33 @@ const AdminProductCard = memo(function AdminProductCard({
       onTouchStart={onPrefetch}
     >
       <div className="produto-cartao content-visibility-compact-card flex w-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#101013]">
-        <div className="relative h-[60px] shrink-0 bg-zinc-100">
-          <FotoDoCatalogo product={product} />
-          <div className="absolute right-1 top-1">{acoes}</div>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col p-2.5">
-          <p className="break-words text-[11px] font-semibold uppercase text-zinc-400">
-            {product.category}
-          </p>
-          <h4
-            className={cn(
-              "mt-1 break-words text-sm font-bold leading-snug",
-              !product.isActive && "text-zinc-400",
-            )}
+        <MenuDoProduto
+          {...acoes}
+          className="block shrink-0 overflow-hidden rounded-t-3xl"
+        >
+          <span
+            data-produto-foto=""
+            className="block aspect-square w-full overflow-hidden bg-zinc-100"
           >
-            {product.name}
-          </h4>
+            <FotoDoCatalogo product={product} />
+          </span>
+          <span className="block min-w-0 p-2.5">
+            <span className="block break-words text-[11px] font-semibold uppercase text-zinc-400">
+              {product.category}
+            </span>
+            <span
+              data-produto-nome=""
+              className={cn(
+                "mt-1 block break-words text-sm font-bold leading-snug",
+                !product.isActive && "text-zinc-400",
+              )}
+            >
+              {product.name}
+            </span>
+          </span>
+        </MenuDoProduto>
+        <h4 className="sr-only">{product.name}</h4>
+        <div className="flex min-w-0 flex-1 flex-col px-2.5 pb-2.5">
           <div className="mt-auto pt-3">
             <p className="break-words text-xl font-bold tabular-nums">
               R${" "}
