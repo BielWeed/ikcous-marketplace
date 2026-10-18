@@ -93,7 +93,26 @@ if (-not $WorkflowRef) {
 
 # 1. O commit precisa existir no GitHub.
 $temporaria = $null
-$emRemoto = (& git branch -r --contains $shaCompleto 2>$null)
+# "Ja esta no GitHub" so vale se uma branch do origin que contem o commit tem,
+# NO SERVIDOR, a mesma ponta que a copia local (ref de rastreio velha engana) e
+# se o origin e mesmo o repositorio $Repo (outro remote nao conta).
+$emRemoto = $false
+$urlOrigin = (& git remote get-url origin 2>$null)
+if ($urlOrigin -and $urlOrigin -like "*$Repo*") {
+    $candidatas = @(& git branch -r --contains $shaCompleto 2>$null |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -like 'origin/*' -and $_ -notlike '*->*' } |
+        Select-Object -First 5)
+    foreach ($c in $candidatas) {
+        $nome = $c.Substring('origin/'.Length)
+        $pontaLocal = (& git rev-parse "refs/remotes/origin/$nome" 2>$null)
+        $pontaServidor = (& git ls-remote origin "refs/heads/$nome" 2>$null)
+        if ($pontaLocal -and $pontaServidor -and $pontaServidor.Split()[0] -eq $pontaLocal.Trim()) {
+            $emRemoto = $true
+            break
+        }
+    }
+}
 if (-not $emRemoto) {
     # Prefixo claude/ de proposito: a Vercel nao faz previa de claude/** (o
     # vercel.json desliga) e nenhum workflow escuta push nessa familia.
