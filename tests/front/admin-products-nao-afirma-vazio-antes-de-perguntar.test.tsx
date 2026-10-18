@@ -282,9 +282,9 @@ describe("AdminProductsView — achado 11: não afirma catálogo vazio antes de 
     expect(hospedeiro.querySelectorAll(".produto-esqueleto")).toHaveLength(12);
     expect(
       hospedeiro
-        .querySelector('button[aria-label="Mostrar em grade"]')
+        .querySelector('button[aria-label="Mostrar em lista com detalhes"]')
         ?.getAttribute("aria-pressed"),
-    ).toBe("true");
+    ).toBe("false");
   });
 
   it("depois da resposta com produtos: a lista aparece, sem o aviso de vazio", async () => {
@@ -307,6 +307,7 @@ describe("AdminProductsView — achado 11: não afirma catálogo vazio antes de 
     await avancar320ms();
 
     expect(hospedeiro.textContent).toContain(TEXTO_VAZIO);
+    expect(hospedeiro.querySelector("[data-barra-de-busca]")).not.toBeNull();
   });
 
   it("quando a busca FALHA: não afirma catálogo vazio, e mostra um aviso de erro distinto (não esqueleto eterno)", async () => {
@@ -328,6 +329,7 @@ describe("AdminProductsView — achado 11: não afirma catálogo vazio antes de 
       hospedeiro.querySelector('[data-testid="ponto-de-operacao"]'),
     ).toBeNull();
     expect(hospedeiro.textContent).toContain("Não sincronizou");
+    expect(hospedeiro.querySelector("[data-barra-de-busca]")).not.toBeNull();
     expect(hospedeiro.querySelectorAll(".produto-esqueleto")).toHaveLength(0);
   });
 

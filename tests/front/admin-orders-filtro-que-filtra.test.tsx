@@ -110,19 +110,22 @@ async function esperarAte(
 }
 
 function botaoComTexto(_hospedeiro: HTMLElement, texto: string) {
-  return Array.from(document.body.querySelectorAll("button")).find(
-    (b) => b.textContent?.trim() === texto,
-  );
+  return Array.from(
+    (
+      document.querySelector('[role="dialog"]') ?? document.body
+    ).querySelectorAll("button"),
+  ).find((b) => b.textContent?.trim() === texto);
 }
 
 async function abrirFiltros(hospedeiro: HTMLElement) {
   await act(async () => {
     hospedeiro
       .querySelector<HTMLButtonElement>(
-        'button[aria-label^="Status do pedido:"]',
+        'button[aria-label="Filtros e ferramentas"]',
       )!
       .click();
   });
+  await act(async () => botaoComTexto(hospedeiro, "Abrir filtros")!.click());
 }
 
 /** 3º argumento posicional de `loadOrders` na última chamada — é o valor que

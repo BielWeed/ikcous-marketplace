@@ -163,10 +163,10 @@ describe("AdminOrdersView — Pedidos cabe no celular (onda J, J2)", () => {
     expect(valor).toBe("1.150");
   });
 
-  it("a busca tem placeholder curto 'Buscar…' e nome acessível 'Buscar pedidos'", () => {
+  it("a busca diz os campos disponíveis e mantém o nome acessível 'Buscar pedidos'", () => {
     const campo = hospedeiro.querySelector<HTMLInputElement>("#orders-search");
     expect(campo).toBeTruthy();
-    expect(campo?.placeholder).toBe("Buscar…");
+    expect(campo?.placeholder).toBe("Buscar pedido, cliente…");
     const rotulo = hospedeiro.querySelector('label[for="orders-search"]');
     expect(rotulo?.textContent).toBe("Buscar pedidos");
   });

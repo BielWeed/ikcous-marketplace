@@ -363,12 +363,17 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       });
 
       expect(paraLista?.getAttribute("aria-pressed")).toBe("true");
+      expect(paraLista?.getAttribute("aria-label")).toBe("Mostrar em grade");
       expect(
-        hospedeiro
-          .querySelector('button[aria-label="Mostrar em grade"]')
-          ?.getAttribute("aria-pressed"),
-      ).toBe("false");
+        hospedeiro.querySelectorAll('button[aria-label^="Mostrar em"]'),
+      ).toHaveLength(1);
       expect(armazem.get("admin_products_view_mode")).toBe("detailed");
+      await act(async () => paraLista?.click());
+      expect(paraLista?.getAttribute("aria-pressed")).toBe("false");
+      expect(paraLista?.getAttribute("aria-label")).toBe(
+        "Mostrar em lista com detalhes",
+      );
+      expect(armazem.get("admin_products_view_mode")).toBe("compact");
     });
   });
 

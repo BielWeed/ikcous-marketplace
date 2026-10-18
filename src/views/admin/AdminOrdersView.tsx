@@ -1,7 +1,7 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { BarraDeBusca, OpcoesDaBusca } from "@/components/admin/BarraDeBusca";
 import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
@@ -81,7 +81,6 @@ import {
   AlertCircle,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   Clock,
   CreditCard,
   Download,
@@ -91,8 +90,6 @@ import {
   Package,
   RefreshCw,
   RotateCcw,
-  Search,
-  SlidersHorizontal,
   Store,
   Truck,
   WifiOff,
@@ -1594,6 +1591,27 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     );
   }
 
+  const opcoesDeStatus = [
+    { status: "open", label: "Em Aberto" },
+    { status: "all", label: "Todos" },
+    ...Object.entries(statusConfig).map(([status, cfg]) => ({
+      status,
+      label: cfg.label,
+    })),
+  ].map(({ status, label }) => ({
+    valor: status,
+    rotulo: label,
+    ariaLabel: `Status do pedido: ${label}`,
+    selecionada: filter === status,
+    cor: STATUS_ORDER_COLORS.get(status),
+    // O total é do recorte atual, nunca uma contagem global de cada status.
+    quantidade: filter === status ? totalOrders : undefined,
+    onClick: () => {
+      setFilter(status as typeof filter);
+      setCurrentPage(0);
+    },
+  }));
+
   return (
     <div
       ref={viewRef}
@@ -1688,132 +1706,79 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             )}
           </div>
         )}
-        <div className="sticky top-0 z-30 -mx-5 space-y-2 border-b border-white/5 bg-[#08080A]/95 px-5 py-2 backdrop-blur-md">
-          <div className="flex items-center gap-2">
-            <div className="group relative min-w-0 flex-1">
-              <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
-                {!isLoaded || isTyping ? (
-                  <Loader2
-                    aria-hidden="true"
-                    className="size-5 animate-spin text-sky-300"
-                  />
-                ) : (
-                  <Search aria-hidden="true" className="size-5 text-zinc-400" />
-                )}
-              </div>
-              <label htmlFor="orders-search" className="sr-only">
-                Buscar pedidos
-              </label>
-              <DebouncedSearchInput
-                id="orders-search"
-                name="search"
-                placeholder="Buscar…"
-                className="h-11 w-full rounded-2xl border-white/10 bg-[#17171C] pl-10 text-sm text-white placeholder:text-zinc-400 focus-visible:ring-sky-300"
-                value={searchQuery}
-                onChange={(val) => {
-                  setSearchQuery(val);
-                  setCurrentPage(0);
-                }}
-                onTyping={setIsTyping}
-                delay={300}
-              />
-              <span id="pedidos-busca-ajuda" className="sr-only">
-                Busque por ID, nome, telefone ou #número.
-              </span>
-            </div>
-            <button
-              type="button"
-              aria-label={`Status do pedido: ${filter === "open" ? "Em Aberto" : filter === "all" ? "Todos" : rotuloDoStatus(filter)}`}
-              onClick={() => setPainelDeFiltros("filtros")}
-              className={`${BOTAO_PEDIDOS} ${SELECIONADO_PEDIDOS} max-w-[45%] gap-1 px-2 text-xs`}
-            >
-              <span>
-                {filter === "open"
-                  ? "Em Aberto"
-                  : filter === "all"
-                    ? "Todos"
-                    : rotuloDoStatus(filter)}
-              </span>
-              <span className="tabular-nums text-admin-gold">
-                {totalOrders}
-              </span>
-              <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
-            </button>
-            <button
-              type="button"
-              aria-label="Filtros e ferramentas"
-              onClick={() => setPainelDeFiltros("ferramentas")}
-              className={`${BOTAO_PEDIDOS} relative size-11 shrink-0 p-0 text-violet-300`}
-            >
-              <SlidersHorizontal aria-hidden="true" className="size-5" />
-              {(dateRange.start ||
-                dateRange.end ||
-                canalFilter !== "all" ||
-                paymentFilter !== "all") && (
-                <span className="absolute -right-1 -top-1 rounded-full bg-violet-300 px-1.5 text-[11px] font-bold text-zinc-950">
-                  {Number(Boolean(dateRange.start || dateRange.end)) +
-                    Number(canalFilter !== "all") +
-                    Number(paymentFilter !== "all")}
-                </span>
-              )}
-            </button>
-          </div>
+        <BarraDeBusca
+          id="orders-search"
+          rotulo="Buscar pedidos"
+          placeholder="Buscar pedido, cliente…"
+          value={searchQuery}
+          onChange={(val) => {
+            setSearchQuery(val);
+            setCurrentPage(0);
+          }}
+          onTyping={setIsTyping}
+          carregando={!isLoaded || isTyping}
+          modo={viewMode}
+          onMudarModo={setViewMode}
+          nomeFiltros="Filtros e ferramentas"
+          filtrosAbertos={painelDeFiltros !== null}
+          onAbrirFiltros={() => setPainelDeFiltros("ferramentas")}
+          filtrosAtivos={
+            Number(Boolean(dateRange.start || dateRange.end)) +
+            Number(canalFilter !== "all") +
+            Number(paymentFilter !== "all")
+          }
+          grupo="Status do pedido"
+          opcoes={opcoesDeStatus}
+        >
           {(dateRange.start ||
             dateRange.end ||
             canalFilter !== "all" ||
             paymentFilter !== "all") && (
             <div className="flex flex-wrap gap-2">
-              {(dateRange.start || dateRange.end) && (
-                <button
-                  type="button"
-                  aria-label="Limpar Datas"
-                  onClick={() => {
-                    setDateRange({ start: "", end: "" });
-                    setCurrentPage(0);
-                  }}
-                  className={`${BOTAO_PEDIDOS} flex-1 text-xs`}
-                >
-                  {dateRange.start
-                    ? dateRange.start.split("-").reverse().join("/")
-                    : "Início"}{" "}
-                  –{" "}
-                  {dateRange.end
-                    ? dateRange.end.split("-").reverse().join("/")
-                    : "Fim"}
-                  <X aria-hidden="true" className="size-4 shrink-0" />
-                </button>
-              )}
-              {canalFilter !== "all" && (
-                <button
-                  type="button"
-                  aria-label="Limpar Canal da Venda"
-                  onClick={() => {
-                    setCanalFilter("all");
-                    setCurrentPage(0);
-                  }}
-                  className={`${BOTAO_PEDIDOS} flex-1 text-xs`}
-                >
-                  {canalFilter === "online" ? "Site" : "Balcão"}
-                  <X aria-hidden="true" className="size-4 shrink-0" />
-                </button>
-              )}
-              {paymentFilter !== "all" && (
-                <button
-                  type="button"
-                  aria-label="Limpar Status de Pagamento"
-                  onClick={() => {
-                    setPaymentFilter("all");
-                    setCurrentPage(0);
-                  }}
-                  className={`${BOTAO_PEDIDOS} flex-1 text-xs`}
-                >
-                  {getPaymentStatusConfig(paymentFilter).label}
-                  <X aria-hidden="true" className="size-4 shrink-0" />
-                </button>
-              )}
+              {[
+                {
+                  ativo: Boolean(dateRange.start || dateRange.end),
+                  nome: "Limpar Datas",
+                  rotulo: `${dateRange.start ? dateRange.start.split("-").reverse().join("/") : "Início"} – ${dateRange.end ? dateRange.end.split("-").reverse().join("/") : "Fim"}`,
+                  limpar: () => setDateRange({ start: "", end: "" }),
+                },
+                {
+                  ativo: canalFilter !== "all",
+                  nome: "Limpar Canal da Venda",
+                  rotulo: canalFilter === "online" ? "Site" : "Balcão",
+                  limpar: () => setCanalFilter("all"),
+                },
+                {
+                  ativo: paymentFilter !== "all",
+                  nome: "Limpar Status de Pagamento",
+                  rotulo:
+                    paymentFilter === "all"
+                      ? ""
+                      : getPaymentStatusConfig(paymentFilter).label,
+                  limpar: () => setPaymentFilter("all"),
+                },
+              ]
+                .filter((chip) => chip.ativo)
+                .map((chip) => (
+                  <button
+                    key={chip.nome}
+                    type="button"
+                    aria-label={chip.nome}
+                    className={`${BOTAO_PEDIDOS} max-w-full rounded-full text-xs`}
+                    onClick={() => {
+                      chip.limpar();
+                      setCurrentPage(0);
+                    }}
+                  >
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
+                      {chip.rotulo}
+                    </span>
+                    <X aria-hidden="true" className="size-4 shrink-0" />
+                  </button>
+                ))}
             </div>
           )}
-        </div>
+        </BarraDeBusca>
         <Dialog
           open={painelDeFiltros !== null}
           onOpenChange={(aberto) => {
@@ -1842,6 +1807,27 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             <DialogDescription className="text-sm text-zinc-400">
               Buscar por ID, nome, telefone ou #número.
             </DialogDescription>
+            {(searchQuery ||
+              filter !== "all" ||
+              dateRange.start ||
+              dateRange.end ||
+              canalFilter !== "all" ||
+              paymentFilter !== "all") && (
+              <button
+                type="button"
+                className={BOTAO_PEDIDOS}
+                onClick={() => {
+                  setFilter("all");
+                  setPaymentFilter("all");
+                  setCanalFilter("all");
+                  setSearchQuery("");
+                  setDateRange({ start: "", end: "" });
+                  setCurrentPage(0);
+                }}
+              >
+                Limpar tudo
+              </button>
+            )}
             {painelDeFiltros === "ferramentas" ? (
               <div className="space-y-7">
                 <button
@@ -1911,39 +1897,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   <legend className="mb-3 text-xs font-bold uppercase tracking-wide text-zinc-400">
                     Status do pedido
                   </legend>
-                  {[
-                    { status: "open", label: "Em Aberto" },
-                    ...Object.entries(statusConfig).map(([status, cfg]) => ({
-                      status,
-                      label: cfg.label,
-                    })),
-                    { status: "all", label: "Todos" },
-                  ].map(({ status, label }) => (
-                    <button
-                      key={status}
-                      type="button"
-                      aria-pressed={filter === status}
-                      onClick={() => {
-                        setFilter(status as typeof filter);
-                        setCurrentPage(0);
-                      }}
-                      className={cn(
-                        OPCAO_PEDIDOS,
-                        filter === status && SELECIONADO_PEDIDOS,
-                      )}
-                    >
-                      {STATUS_ORDER_COLORS.has(status) && (
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            "size-1.5 shrink-0 rounded-full",
-                            STATUS_ORDER_COLORS.get(status),
-                          )}
-                        />
-                      )}
-                      {label}
-                    </button>
-                  ))}
+                  <OpcoesDaBusca opcoes={opcoesDeStatus} folha />
                 </fieldset>
                 <fieldset className="space-y-3">
                   <legend className="mb-3 flex items-center gap-2 text-sm font-bold">
