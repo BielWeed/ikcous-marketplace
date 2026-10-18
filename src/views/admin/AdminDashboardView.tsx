@@ -329,6 +329,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           </div>
           <div className="min-w-0 space-y-7">
             <AtalhosDoInicio
+              ativa={ativo}
               onNavigate={onNavigate}
               aoPrepararDestino={prefetchView}
             />

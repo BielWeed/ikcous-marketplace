@@ -11,6 +11,7 @@
 // da máquina (useVendaPresencial.ts).
 
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
 import type {
   AcaoDaVenda,
@@ -858,32 +859,37 @@ export function CupomDaVenda({
           )}
       </section>
 
-      <div className="pdv-footer" aria-label="Fechamento do cupom">
-        <div className="pdv-total">
-          <span className="pdv-muted">Subtotal</span>
-          <strong>R$ {reais(subtotal)}</strong>
-        </div>
-        <Button
-          type="button"
-          className="pdv-primary bg-admin-gold text-black"
-          disabled={estado.itens.length === 0}
-          onClick={() =>
-            despachar({ tipo: "etapa_pedida", etapa: "fechamento" })
-          }
-        >
-          {estado.itens.length === 0 ? (
-            <LockKeyhole aria-hidden="true" className="size-5" />
-          ) : (
-            <ChevronRight aria-hidden="true" className="size-5" />
+      <AcaoDaBarra
+        ativa={estado.etapa !== "fechamento"}
+        aria-label="Fechamento do cupom"
+      >
+        <div className="pdv-footer">
+          <div className="pdv-total">
+            <span className="pdv-muted">Subtotal</span>
+            <strong>R$ {reais(subtotal)}</strong>
+          </div>
+          <Button
+            type="button"
+            className="pdv-primary admin-barra-principal bg-admin-gold text-black"
+            disabled={estado.itens.length === 0}
+            onClick={() =>
+              despachar({ tipo: "etapa_pedida", etapa: "fechamento" })
+            }
+          >
+            {estado.itens.length === 0 ? (
+              <LockKeyhole aria-hidden="true" className="size-5" />
+            ) : (
+              <ChevronRight aria-hidden="true" className="size-5" />
+            )}
+            Fechar venda{estado.itens.length > 0 && ` · R$ ${reais(subtotal)}`}
+          </Button>
+          {estado.itens.length === 0 && (
+            <p className="pdv-muted">
+              Indisponível: adicione pelo menos um item.
+            </p>
           )}
-          Fechar venda{estado.itens.length > 0 && ` · R$ ${reais(subtotal)}`}
-        </Button>
-        {estado.itens.length === 0 && (
-          <p className="pdv-muted">
-            Indisponível: adicione pelo menos um item.
-          </p>
-        )}
-      </div>
+        </div>
+      </AcaoDaBarra>
     </div>
   );
 }

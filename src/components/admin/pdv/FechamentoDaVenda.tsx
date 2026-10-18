@@ -18,6 +18,7 @@
 // fato da venda: mora em estado local, não vai ao rascunho nem ao servidor.
 
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
@@ -353,42 +354,44 @@ export function FechamentoDaVenda({
           Começar uma venda nova
         </Button>
       )}
-      <div className="pdv-footer" aria-label="Registrar a venda">
-        <div className="pdv-total pdv-muted">
-          <span>Subtotal</span>
-          <span>R$ {reais(subtotal)}</span>
-        </div>
-        {estado.desconto > 0 && (
+      <AcaoDaBarra aria-label="Registrar a venda">
+        <div className="pdv-footer">
           <div className="pdv-total pdv-muted">
-            <span>Desconto</span>
-            <span>- R$ {reais(estado.desconto)}</span>
+            <span>Subtotal</span>
+            <span>R$ {reais(subtotal)}</span>
           </div>
-        )}
-        <div className="pdv-total">
-          <span className="pdv-muted">
-            {estado.desconto > 0 ? "Total com desconto" : "Total"}
-          </span>
-          <strong>R$ {reais(total)}</strong>
-        </div>
-        <Button
-          type="button"
-          disabled={desabilitado}
-          onClick={aoClicarRegistrar}
-          className="pdv-primary bg-admin-gold text-black"
-        >
-          {desabilitado ? (
-            <LockKeyhole aria-hidden="true" className="size-5" />
-          ) : (
-            <Check aria-hidden="true" className="size-5" />
+          {estado.desconto > 0 && (
+            <div className="pdv-total pdv-muted">
+              <span>Desconto</span>
+              <span>- R$ {reais(estado.desconto)}</span>
+            </div>
           )}
-          {estado.enviando ? "Registrando…" : "Registrar venda"}
-        </Button>
-        {isOffline && (
-          <p className="pdv-muted">
-            Indisponível enquanto estiver sem internet.
-          </p>
-        )}
-      </div>
+          <div className="pdv-total">
+            <span className="pdv-muted">
+              {estado.desconto > 0 ? "Total com desconto" : "Total"}
+            </span>
+            <strong>R$ {reais(total)}</strong>
+          </div>
+          <Button
+            type="button"
+            disabled={desabilitado}
+            onClick={aoClicarRegistrar}
+            className="pdv-primary admin-barra-principal bg-admin-gold text-black"
+          >
+            {desabilitado ? (
+              <LockKeyhole aria-hidden="true" className="size-5" />
+            ) : (
+              <Check aria-hidden="true" className="size-5" />
+            )}
+            {estado.enviando ? "Registrando…" : "Registrar venda"}
+          </Button>
+          {isOffline && (
+            <p className="pdv-muted">
+              Indisponível enquanto estiver sem internet.
+            </p>
+          )}
+        </div>
+      </AcaoDaBarra>
     </section>
   );
 }

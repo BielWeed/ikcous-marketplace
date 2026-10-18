@@ -89,6 +89,15 @@ it("Visão apresenta A pagar antes de A receber e antes dos movimentos do perío
   expect(host.textContent).toContain("Cadastre onde o dinheiro da loja mora");
 });
 
+it("o rodapé inline de Novo lançamento conserva as margens do conteúdo", async () => {
+  await act(async () =>
+    root.render(<AdminFinanceiroView onNavigate={vi.fn()} />),
+  );
+  const novo = host.querySelector('[aria-label="Novo lançamento"]')!;
+  expect(novo.closest(".admin-acao-inline")).not.toBeNull();
+  expect(novo.closest(".px-5.max-w-7xl")).not.toBeNull();
+});
+
 it("a confirmação identifica uma operação e também respeita Ocultar valores", async () => {
   const fechar = vi.fn();
   await act(async () =>

@@ -27,7 +27,6 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -65,13 +64,13 @@ import type {
 } from "@/components/admin/financeiro/navegacao";
 import {
   CLASSE_BOTAO_PRIMARIO,
-  CLASSE_BOTAO_SECUNDARIO,
   type ConfirmacaoFinanceira,
   ContextoConfirmacaoFinanceira,
   ContextoValoresOcultos,
   ReciboFinanceiro,
   SeloFinanceiro,
 } from "@/components/admin/financeiro/partes";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
@@ -423,35 +422,21 @@ export function AdminFinanceiroView({
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 pb-7 pt-6 [&_h1]:text-[32px] [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight [&_h1_span]:not-italic">
               <AdminPageHeader
                 titulo={NOMES_DO_PAINEL["admin-financeiro"]}
-                acoes={
-                  <>
-                    <button
-                      type="button"
-                      onClick={alternarOcultos}
-                      aria-pressed={ocultos}
-                      aria-label={
-                        ocultos ? "Mostrar valores" : "Ocultar valores"
-                      }
-                      title={ocultos ? "Mostrar valores" : "Ocultar valores"}
-                      className="flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#17171C] px-4 text-xs text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
-                    >
-                      {ocultos ? (
-                        <EyeOff aria-hidden="true" className="size-4" />
-                      ) : (
-                        <Eye aria-hidden="true" className="size-4" />
-                      )}
-                      <span>{ocultos ? "Mostrar" : "Ocultar"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => novoLancamento()}
-                      className={`${aba === "caixa" ? CLASSE_BOTAO_SECUNDARIO : CLASSE_BOTAO_PRIMARIO} hidden lg:inline-flex`}
-                    >
-                      <Plus aria-hidden="true" className="size-4" />
-                      Novo lançamento
-                    </button>
-                  </>
-                }
+                acoes=<button
+                  type="button"
+                  onClick={alternarOcultos}
+                  aria-pressed={ocultos}
+                  aria-label={ocultos ? "Mostrar valores" : "Ocultar valores"}
+                  title={ocultos ? "Mostrar valores" : "Ocultar valores"}
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#17171C] px-4 text-xs text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                >
+                  {ocultos ? (
+                    <EyeOff aria-hidden="true" className="size-4" />
+                  ) : (
+                    <Eye aria-hidden="true" className="size-4" />
+                  )}
+                  <span>{ocultos ? "Mostrar" : "Ocultar"}</span>
+                </button>
               />
             </div>
 
@@ -595,33 +580,22 @@ export function AdminFinanceiroView({
                   />
                 </TabsContent>
               </Tabs>
-
-              {/* Respiro para o botão flutuante não cobrir o fim da lista no celular. */}
-              <div aria-hidden="true" className="h-24 lg:hidden" />
-            </div>
-
-            <div key={numeroDaFolha}>{renderizarFolha()}</div>
-
-            {ativo &&
-            !folha &&
-            aba !== "caixa" &&
-            typeof document !== "undefined"
-              ? createPortal(
-                  // Acima da barra inferior do admin no celular (mesma conta do
-                  // botão flutuante do formulário de produto); no computador o
-                  // botão mora no cabeçalho.
+              {ativo && !folha && aba !== "caixa" ? (
+                <AcaoDaBarra>
                   <button
                     type="button"
                     onClick={() => novoLancamento()}
                     aria-label="Novo lançamento"
-                    className={`${CLASSE_BOTAO_PRIMARIO} fixed inset-x-5 bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] z-50 lg:hidden`}
+                    className={`${CLASSE_BOTAO_PRIMARIO} admin-barra-principal w-full`}
                   >
                     <Plus aria-hidden="true" className="size-6" />
                     Novo lançamento
-                  </button>,
-                  document.body,
-                )
-              : null}
+                  </button>
+                </AcaoDaBarra>
+              ) : null}
+            </div>
+
+            <div key={numeroDaFolha}>{renderizarFolha()}</div>
           </div>
         </ContextoConfirmacaoFinanceira.Provider>
       </ContextoValoresOcultos.Provider>
