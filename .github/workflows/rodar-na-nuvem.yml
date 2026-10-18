@@ -19,6 +19,10 @@
 #    parametro do actions/checkout; `arquivo` so como argumento do vitest.
 #  - Custo: repositorio PUBLICO = minutos de runner padrao gratuitos.
 #
+# Limite do GitHub (medido 18/10/2026: HTTP 404 "not found on the default
+# branch"): workflow_dispatch so funciona para arquivo que JA esta na branch
+# padrao. Edicao deste arquivo so vale depois de juntada.
+#
 # NAO mexe em: ci.yml, pwa-ci.yml.
 
 name: Rodar na nuvem

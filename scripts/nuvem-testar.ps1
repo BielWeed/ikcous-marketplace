@@ -32,8 +32,10 @@
   Commit a testar. Padrao: HEAD.
 
 .PARAMETER WorkflowRef
-  Branch de onde sai a definicao do workflow. Padrao: branch padrao do
-  repositorio. Use a sua branch enquanto o workflow ainda nao foi juntado.
+  Branch de onde sai a definicao do workflow (o arquivo precisa JA existir na
+  branch padrao: o GitHub nao dispara workflow que so existe em outra branch).
+  Serve para testar uma edicao do workflow numa branch. Padrao: branch padrao do
+  repositorio.
 
 .EXAMPLE
   powershell -File scripts\nuvem-testar.ps1 -Suite front
@@ -110,7 +112,7 @@ $argsDisparo = @('workflow', 'run', $arquivoWorkflow, '-R', $Repo, '--ref', $Wor
 if ($Suite -eq 'arquivo') { $argsDisparo += @('-f', "arquivo=$Arquivo") }
 & gh @argsDisparo
 if ($LASTEXITCODE -ne 0) {
-    Falha "gh workflow run falhou. Se o workflow ainda nao esta na branch '$WorkflowRef', passe -WorkflowRef com a branch que o contem."
+    Falha "gh workflow run falhou. O GitHub so aceita disparar um workflow que ja existe na branch padrao do repositorio; se este arquivo ainda nao foi juntado la, junte o PR primeiro."
 }
 
 # 3. Acha a execucao pela etiqueta (o titulo da execucao leva [marca]).

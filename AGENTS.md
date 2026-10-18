@@ -294,7 +294,9 @@ powershell -File scripts\nuvem-testar.ps1 -Suite front
 powershell -File scripts\nuvem-testar.ps1 -Suite arquivo -Arquivo tests/front/mappers.test.ts
 ```
 
-Só o que está **commitado** vai; os hooks de git do push rodam normalmente. Isto NÃO
+Só o que está **commitado** vai; os hooks de git do push rodam normalmente (o `typecheck`
+do pre-push leva ~1 min). O GitHub só dispara workflow que **já existe na branch padrão**:
+mudança no próprio `rodar-na-nuvem.yml` só passa a valer depois de juntada. Isto NÃO
 substitui o `ci.yml` (portão do PR): não roda tipos, build, lint nem tamanho. Para ver os
 resultados sem o script: `gh run list --workflow rodar-na-nuvem.yml` e `gh run view <id> --log-failed`.
 
