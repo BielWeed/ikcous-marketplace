@@ -134,6 +134,9 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
     });
     await avancar();
     await act(async () => {
+      botaoPorTexto(hospedeiro, "Buscar produto")!.click();
+    });
+    await act(async () => {
       digitarInput("busca-manual-de-produto", termo);
     });
     await avancar(400);
@@ -202,6 +205,9 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
     });
     await avancar();
     expect(hospedeiro.textContent).not.toContain("Nenhum produto encontrado");
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Buscar produto")!.click();
+    });
 
     // Uma letra só: a busca nem sai (mínimo de 2), então também não há "nada".
     await act(async () => {

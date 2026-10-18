@@ -20,7 +20,7 @@ export interface PropsDoLeitorDeCodigo {
   readonly aberto: boolean;
   readonly modo?: "continuo" | "unico";
   readonly aoLer: (leitura: Leitura) => void;
-  readonly aoFechar: () => void;
+  readonly aoFechar?: () => void;
   readonly titulo?: string;
   readonly dica?: string;
 }
@@ -67,15 +67,17 @@ export function LeitorDeCodigo({
             {titulo}
           </h2>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="pdv-secondary"
-          onClick={aoFechar}
-        >
-          <X aria-hidden="true" className="pdv-blue size-5" />
-          Fechar
-        </Button>
+        {aoFechar && (
+          <Button
+            type="button"
+            variant="outline"
+            className="pdv-secondary"
+            onClick={aoFechar}
+          >
+            <X aria-hidden="true" className="pdv-blue size-5" />
+            Fechar
+          </Button>
+        )}
       </div>
 
       <div className="pdv-reader-preview">

@@ -23,17 +23,17 @@
 // dentro de `FechamentoDaVenda` — esta view deixa o erro CRU subir.
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { ClienteDaVenda } from "@/components/admin/pdv/ClienteDaVenda";
-import type { LinhaDeClienteEncontrado } from "@/components/admin/pdv/ClienteDaVenda";
-import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
+import { BuscaDeProduto } from "@/components/admin/pdv/BuscaDeProduto";
 import type {
   PaginaDeProdutosEncontrados,
   ProdutoEncontradoNaBusca,
-} from "@/components/admin/pdv/CupomDaVenda";
+} from "@/components/admin/pdv/BuscaDeProduto";
+import { ClienteDaVenda } from "@/components/admin/pdv/ClienteDaVenda";
+import type { LinhaDeClienteEncontrado } from "@/components/admin/pdv/ClienteDaVenda";
+import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
 import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
 import { LeitorDeCodigo } from "@/components/admin/pdv/LeitorDeCodigo";
 import { ReciboDaVenda } from "@/components/admin/pdv/ReciboDaVenda";
-import { Button } from "@/components/ui/button";
 import { branding } from "@/config/branding";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
@@ -56,7 +56,13 @@ import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { ScanBarcode, Search } from "lucide-react";
-import { type ReactElement, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 /** Quanto o balconista espera pelo registro da venda antes de ver a frase de
@@ -85,7 +91,7 @@ export function AdminPdvView({
   // Amarra o pedido do recibo (o botão do recibo só conhece o motivo).
   const anularEstaVenda = (orderId: string) => (motivo: string) =>
     anular(orderId, motivo);
-  const { config } = useStore();
+  const { config, products = [] } = useStore();
   const storeName = config.storeName?.trim() || branding.appName;
 
   // Uma "camada" é uma folha por cima do cupom (variação, cliente ou
@@ -199,10 +205,32 @@ export function AdminPdvView({
     return () => onSetDirty?.(false);
   }, [onSetDirty]);
 
-  // O leitor fica sempre visível acima do cupom, mas o balconista pode
-  // recolher a câmera sem perder a tela (LeitorDeCodigo é um cartão inline,
-  // não uma folha — contexto, fato 2).
-  const [leitorAberto, setLeitorAberto] = useState(true);
+  const [modoDeProduto, setModoDeProduto] = useState<"bipar" | "buscar">(
+    "bipar",
+  );
+
+  // Só adapta o catálogo já carregado ao formato da busca. Nenhuma consulta.
+  const produtosIniciais: readonly ProdutoEncontradoNaBusca[] = products
+    .filter((produto) => produto.isActive && !produto.variantsUnavailable)
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    .slice(0, 30)
+    .map((produto) => ({
+      id: produto.id,
+      nome: produto.name,
+      preco_venda: produto.price,
+      estoque: produto.stock,
+      imagem_url: produto.images[0] ?? null,
+      imagem_urls: produto.images,
+      product_variants: (produto.variants ?? []).map((variante) => ({
+        id: variante.id,
+        name: variante.name,
+        value: variante.value,
+        price_override: variante.priceOverride ?? null,
+        stock_increment: variante.stockIncrement,
+        active: variante.active,
+        image_url: variante.imageUrl ?? null,
+      })),
+    }));
 
   async function buscarPorCodigo(codigo: string): Promise<RespostaDoCodigo> {
     // `leitura.codigo` vai DIRETO, sem normalizar (pdv-c2.json é explícito:
@@ -552,6 +580,23 @@ export function AdminPdvView({
     }
   }
 
+  const teclarNosModos = (evento: KeyboardEvent) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(evento.key)) {
+      return;
+    }
+    evento.preventDefault();
+    const proximo =
+      evento.key === "Home"
+        ? "bipar"
+        : evento.key === "End"
+          ? "buscar"
+          : modoDeProduto === "bipar"
+            ? "buscar"
+            : "bipar";
+    setModoDeProduto(proximo);
+    document.getElementById(`modo-${proximo}-produto`)?.focus();
+  };
+
   return (
     // pb-admin lg:pb-12 — o MESMO respiro das outras telas do admin: sem ele,
     // no navegador do celular o "Registrar venda" (último elemento da última
@@ -567,50 +612,80 @@ export function AdminPdvView({
       </div>
 
       {estado.etapa === "cupom" && (
-        <div className="pdv-actions">
-          <Button
+        <div
+          className="pdv-modes"
+          role="tablist"
+          aria-label="Adicionar produto à venda"
+        >
+          <button
+            id="modo-bipar-produto"
             type="button"
-            variant="outline"
-            className="pdv-secondary"
-            aria-expanded={leitorAberto}
+            role="tab"
+            aria-selected={modoDeProduto === "bipar"}
+            tabIndex={modoDeProduto === "bipar" ? 0 : -1}
             aria-controls="leitor-do-balcao"
-            onClick={() => setLeitorAberto(true)}
+            onKeyDown={teclarNosModos}
+            onClick={() => setModoDeProduto("bipar")}
           >
             <ScanBarcode aria-hidden="true" className="pdv-cyan size-5" />
-            {leitorAberto ? "Bipar produto" : "Abrir leitor de código"}
-          </Button>
-          <Button
+            <span>Bipar produto</span>
+          </button>
+          <button
+            id="modo-buscar-produto"
             type="button"
-            variant="outline"
-            className="pdv-secondary"
-            onClick={() =>
-              document.getElementById("busca-manual-de-produto")?.focus()
-            }
+            role="tab"
+            aria-selected={modoDeProduto === "buscar"}
+            tabIndex={modoDeProduto === "buscar" ? 0 : -1}
+            aria-controls="busca-do-balcao"
+            onKeyDown={teclarNosModos}
+            onClick={() => setModoDeProduto("buscar")}
           >
             <Search aria-hidden="true" className="pdv-blue size-5" />
-            Buscar produto
-          </Button>
+            <span>Buscar produto</span>
+          </button>
         </div>
       )}
-      <div id="leitor-do-balcao" className="empty:hidden">
+      <div
+        id="leitor-do-balcao"
+        role="tabpanel"
+        aria-labelledby="modo-bipar-produto"
+        hidden={estado.etapa !== "cupom" || modoDeProduto !== "bipar"}
+      >
         <LeitorDeCodigo
           // Gate por `active` (nova-tela.md, molde AdminProductsView): quando
           // a sub-view não está em foco, a câmera não pode continuar ligada
           // comendo bateria do tablet do balcão.
-          aberto={active !== false && leitorAberto && estado.etapa === "cupom"}
+          aberto={
+            active !== false &&
+            modoDeProduto === "bipar" &&
+            estado.etapa === "cupom"
+          }
           aoLer={aoLerCodigo}
-          aoFechar={() => setLeitorAberto(false)}
           titulo="Bipar produto"
           dica="Aponte a câmera para o código de barras — ou digite embaixo"
         />
       </div>
 
       {estado.etapa !== "recibo" && (
+        <div
+          id="busca-do-balcao"
+          role="tabpanel"
+          aria-labelledby="modo-buscar-produto"
+          hidden={estado.etapa !== "cupom" || modoDeProduto !== "buscar"}
+        >
+          <BuscaDeProduto
+            despachar={despachar}
+            buscarProdutos={buscarProdutos}
+            produtosIniciais={produtosIniciais}
+          />
+        </div>
+      )}
+
+      {estado.etapa !== "recibo" && (
         <CupomDaVenda
           estado={estado}
           despachar={despachar}
           subtotal={subtotal}
-          buscarProdutos={buscarProdutos}
           onNavigate={onNavigate}
           limparCupom={limparCupom}
         />

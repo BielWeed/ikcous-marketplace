@@ -136,6 +136,9 @@ describe("Balcão — busca de produto: corrida e foco", () => {
       raiz.render(<AdminPdvView onNavigate={vi.fn()} active />);
     });
     await avancar();
+    await act(async () => {
+      botao(hospedeiro, "Buscar produto")!.click();
+    });
   }
 
   async function digitarBusca(termo: string): Promise<void> {
@@ -162,6 +165,31 @@ describe("Balcão — busca de produto: corrida e foco", () => {
       (params as Record<string, unknown>).p_search,
       (params as Record<string, unknown>).p_page,
     ]);
+
+  it("trocar de modo preserva o termo e a página carregada sem refazer a consulta", async () => {
+    await montar();
+    await digitarBusca("vestido");
+    await resolver(0, pagina(lote(1, 8), 20));
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>("#modo-bipar-produto")!
+        .click();
+    });
+    expect(
+      hospedeiro.querySelector("#busca-do-balcao")?.hasAttribute("hidden"),
+    ).toBe(true);
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>("#modo-buscar-produto")!
+        .click();
+    });
+    expect(
+      (document.getElementById("busca-manual-de-produto") as HTMLInputElement)
+        .value,
+    ).toBe("vestido");
+    expect(nomes()).toHaveLength(8);
+    expect(chamadas()).toEqual([["vestido", 0]]);
+  });
 
   it("o campo ainda focado: tirar o foco no toque de 'Mostrar mais' não recomeça a busca nem mata o primeiro toque", async () => {
     await montar();

@@ -251,6 +251,11 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     // Um item, quantidade 1: subtotal do cupom == preço do item.
     const ocorrencias = hospedeiro.textContent?.match(/39,90/g) ?? [];
     expect(ocorrencias.length).toBeGreaterThanOrEqual(2); // preço unitário + subtotal
+    expect(
+      hospedeiro
+        .querySelector("#modo-bipar-produto")
+        ?.getAttribute("aria-selected"),
+    ).toBe("true");
   });
 
   it("caso 2 — bipar de novo o mesmo código soma quantidade (fora da janela de repetição)", async () => {
@@ -286,6 +291,7 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     await bipar(PRODUTO_COM_VARIACOES.codigo);
 
     expect(hospedeiro.textContent).toContain("Qual combinação");
+    expect(hospedeiro.querySelector('[role="tablist"]')).toBeNull();
     const botaoP = localizarBotaoPorTexto(hospedeiro, "Tamanho P")!;
     expect(botaoP).toBeTruthy();
 
@@ -297,6 +303,11 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     expect(hospedeiro.textContent).not.toContain("Qual combinação");
     expect(hospedeiro.textContent).toContain("Camiseta Estampada");
     expect(hospedeiro.textContent).toContain("Tamanho P");
+    expect(
+      hospedeiro
+        .querySelector("#modo-bipar-produto")
+        ?.getAttribute("aria-selected"),
+    ).toBe("true");
   });
 
   it("caso 5 — '−' em quantidade 1 remove o item", async () => {
