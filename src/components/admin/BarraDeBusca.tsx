@@ -132,7 +132,6 @@ export function BarraDeBusca({
   const escolhida = opcoes.find((opcao) => opcao.selecionada)?.valor;
   // Escolha vinda de fora (alerta, valor salvo) pode estar além da borda: traz
   // a opção ligada para a vista, para o lojista ver qual filtro está valendo.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: só reage à troca
   useEffect(() => {
     faixaDeOpcoes.current
       ?.querySelector('[aria-pressed="true"]')
