@@ -28,7 +28,12 @@ async function empacotar(
     ],
   });
   try {
-    const { output } = await pacote.generate({ format: "es" });
+    const { output } = await pacote.generate({
+      format: "es",
+      // Nome fixo: com caminho Windows como entrada o [name] padrão viraria
+      // um caminho absoluto, que o Rollup recusa no Linux do CI.
+      entryFileNames: "pacote.js",
+    });
     expect(output).toHaveLength(1);
     const item = output[0];
     if (item.type !== "chunk") throw new Error("Esperava JavaScript");
