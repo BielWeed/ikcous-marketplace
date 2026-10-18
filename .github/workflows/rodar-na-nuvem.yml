@@ -5,9 +5,11 @@
 # `gh` (scripts/nuvem-testar.ps1) -- nada pesado na maquina local.
 #
 # O que NAO e: nao substitui o ci.yml (o portao do PR). Mesma instalacao
-# (Node 24, `npm ci`, cache npm, Deno 2.x) e os mesmos comandos de teste, mas
-# SEM tipos, build, lint, tamanho e SEM os dois shards: e para investigar e
-# conferir um recorte, nao para aprovar PR.
+# (Node 24, `npm ci`, cache npm, Deno 2.x) e os mesmos comandos base de teste,
+# mas SEM tipos, build, lint, tamanho, SEM os dois shards e SEM o `--retry=1`
+# do ci.yml (linhas do test-front-a/b): a suite front inteira roda num runner
+# so, e o teste instavel documentado la pode dar vermelho aqui e verde no CI.
+# E para investigar e conferir um recorte, nao para aprovar PR.
 #
 # Seguranca:
 #  - So dispara por `workflow_dispatch` (quem tem escrita no repositorio).

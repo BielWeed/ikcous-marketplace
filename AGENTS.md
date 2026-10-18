@@ -286,7 +286,7 @@ fronteira é decisão do dono, não ajuste de CI.
 GitHub, com os mesmos passos de instalação do `ci.yml` (Node 24, `npm ci`, Deno 2.x), sem
 segredo nenhum (`contents: read`, 30 min de teto). Suítes: `front` (`npx vitest run`),
 `unit`, `edge`, ou `arquivo` (vitest de um caminho em `tests/front/`). O script faz tudo
-(empurra o commit para `nuvem/<sha12>` se ele ainda não está no GitHub, dispara, espera e
+(empurra o commit para `claude/nuvem-<sha12>` (e a apaga no fim) se ele ainda não está no GitHub, dispara, espera e
 imprime máquina, tempo e as linhas que falharam):
 
 ```powershell

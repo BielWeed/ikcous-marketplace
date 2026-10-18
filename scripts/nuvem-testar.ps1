@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   1. Descobre o SHA (padrao: HEAD). Se ele ainda nao esta em nenhuma branch do
-     GitHub, empurra para uma branch temporaria nuvem/<sha12> (os hooks de
+     GitHub, empurra para uma branch temporaria claude/nuvem-<sha12> (apagada no fim; os hooks de
      git rodam normalmente; nada de --no-verify).
   2. Dispara .github/workflows/rodar-na-nuvem.yml com `gh workflow run`.
   3. Acha a execucao pela etiqueta unica (-f marca=...) e acompanha com
@@ -67,8 +67,8 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Falha 'git nao encon
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { Falha 'gh (GitHub CLI) nao encontrado no PATH.' }
 
 if ($Suite -eq 'arquivo') {
-    if ($Arquivo -notmatch '^tests/front/[A-Za-z0-9_./-]+$' -or $Arquivo -match '\.\.') {
-        Falha 'com -Suite arquivo, passe -Arquivo dentro de tests/front/ (so letras, numeros, ponto, barra, hifen, underscore).'
+    if ($Arquivo -cnotmatch '^tests/front/[A-Za-z0-9_./-]+$' -or $Arquivo -match '\.\.') {
+        Falha 'com -Suite arquivo, passe -Arquivo dentro de tests/front/ (so letras, numeros, ponto, barra, hifen, underscore; maiusculas e minusculas contam).'
     }
 }
 elseif ($Arquivo -ne '') {
@@ -92,9 +92,12 @@ if (-not $WorkflowRef) {
 }
 
 # 1. O commit precisa existir no GitHub.
+$temporaria = $null
 $emRemoto = (& git branch -r --contains $shaCompleto 2>$null)
 if (-not $emRemoto) {
-    $temporaria = "nuvem/$sha12"
+    # Prefixo claude/ de proposito: a Vercel nao faz previa de claude/** (o
+    # vercel.json desliga) e nenhum workflow escuta push nessa familia.
+    $temporaria = "claude/nuvem-$sha12"
     Write-Host "Empurrando $sha12 para a branch temporaria $temporaria ..."
     & git push origin "${shaCompleto}:refs/heads/$temporaria" --force
     if ($LASTEXITCODE -ne 0) { Falha 'git push falhou (veja a mensagem acima; hooks de git rodam e nao devem ser pulados).' }
@@ -134,13 +137,30 @@ $codigo = $LASTEXITCODE
 
 # 5. Resumo: maquina e tempo (vem da API de jobs).
 $jobs = (& gh api "repos/$Repo/actions/runs/$idExecucao/jobs" | ConvertFrom-Json).jobs
+$terminou = $true
 foreach ($job in $jobs) {
-    $segundos = [int](([datetime]$job.completed_at) - ([datetime]$job.started_at)).TotalSeconds
     Write-Host ''
     Write-Host "Job:       $($job.name)"
     Write-Host "Resultado: $($job.conclusion)"
     Write-Host "Maquina:   $($job.runner_name) (grupo: $($job.runner_group_name))"
-    Write-Host "Tempo job: $segundos s"
+    if ($job.completed_at -and $job.started_at) {
+        $segundos = [int](([datetime]$job.completed_at) - ([datetime]$job.started_at)).TotalSeconds
+        Write-Host "Tempo job: $segundos s"
+    }
+    else {
+        $terminou = $false
+        Write-Host 'Tempo job: ainda em andamento'
+    }
+}
+if (-not $terminou) {
+    Write-Host "A execucao ainda nao terminou (o acompanhamento caiu?). Retome com: gh run watch $idExecucao -R $Repo" -ForegroundColor Yellow
+    exit 2
+}
+# A branch temporaria ja cumpriu o papel (a execucao guarda o commit). Apaga
+# pela API, sem passar pelo hook de pre-push (que rodaria o typecheck de novo).
+if ($temporaria) {
+    & gh api -X DELETE "repos/$Repo/git/refs/heads/$temporaria" 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { Write-Host "Branch temporaria $temporaria apagada." }
 }
 $total = [int]((Get-Date) - $inicio).TotalSeconds
 Write-Host "Tempo desde o disparo (inclui fila): $total s"
