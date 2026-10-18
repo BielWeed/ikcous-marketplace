@@ -1,4 +1,18 @@
 {
+  "1.5.37": {
+    "titulo": "Painel mais rápido de usar",
+    "novidades": [
+      "No balcão, você escolhe entre bipar o código ou buscar o produto pelo nome. A lista de produtos já aparece ao abrir a busca.",
+      "Os botões de salvar e de ação agora ficam dentro da barra de navegação, no celular, em vez de flutuar sobre a tela.",
+      "Pedidos, Produtos e Clientes passaram a ter a mesma barra de busca e filtros."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "No Financeiro, as abas ficam sempre visíveis no alto da tela.",
+      "Em Pagamentos, o PIX ganhou o símbolo oficial e o cartão mostra o status em uma faixa própria.",
+      "O cartão de produto mostra a foto inteira, e os números do painel seguem o mesmo visual em todas as telas."
+    ]
+  },
   "1.5.36": {
     "titulo": "Motivo do desconto só da equipe",
     "novidades": [],
