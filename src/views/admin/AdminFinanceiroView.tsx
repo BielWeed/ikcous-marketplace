@@ -444,7 +444,7 @@ export function AdminFinanceiroView({
                   <TabsList
                     ref={listaDeAbas}
                     aria-label="Abas do Financeiro"
-                    className="no-scrollbar -mx-5 flex h-auto w-[calc(100%+2.5rem)] justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-5 py-1"
+                    className="no-scrollbar -mx-5 flex h-auto scroll-px-5 w-[calc(100%+2.5rem)] justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-5 py-1"
                   >
                     {ABAS.map((item) => (
                       <TabsTrigger
