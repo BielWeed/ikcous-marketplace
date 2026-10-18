@@ -1,4 +1,5 @@
 .produtos-tela {
+  --produto-altura-compacto: 380px;
   min-height: 100%;
   padding-bottom: var(--admin-tab-pb, 6.25rem);
   background: #08080a;
@@ -9,6 +10,14 @@
 }
 .produto-esqueleto {
   pointer-events: none;
+}
+.produto-esqueleto.overflow-hidden {
+  min-height: var(--produto-altura-compacto);
+}
+.produto-esqueleto.overflow-hidden > :first-child {
+  height: auto;
+  aspect-ratio: 1;
+  flex-shrink: 0;
 }
 .produtos-abas button,
 .produtos-guia .uppercase {
@@ -25,13 +34,19 @@
   opacity: 0.45;
 }
 .produto-cartao {
-  contain-intrinsic-size: auto 260px !important;
+  contain-intrinsic-size: auto var(--produto-altura-compacto) !important;
 }
 .produto-cartao.content-visibility-detailed-card {
   contain-intrinsic-size: auto 210px !important;
 }
 .produto-cartao :is(p, h4, span) {
   overflow-wrap: anywhere;
+}
+.produtos-tela .produto-gatilho:focus-visible {
+  outline-offset: -3px;
+}
+.produto-gatilho:hover {
+  background: #ffffff05;
 }
 .produto-status[data-slot="badge"] {
   display: inline;

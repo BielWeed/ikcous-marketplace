@@ -1,6 +1,7 @@
 import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { MetricasDoPainel } from "@/components/admin/MetricasDoPainel";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { CartaoCliente } from "@/components/admin/users/CartaoCliente";
@@ -9,7 +10,6 @@ import {
   FOCO_CLIENTES,
   FolhaClientes,
 } from "@/components/admin/users/FolhaClientes";
-import { MetricasClientes } from "@/components/admin/users/MetricasClientes";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
@@ -505,7 +505,16 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       </p>
       <div className="px-5">
         <LocalErrorBoundary>
-          <MetricasClientes cards={kpiCards} />
+          <MetricasDoPainel
+            titulo="Métricas de Clientes"
+            legendasDoResumo={[
+              "Total",
+              "Novos · 30d",
+              "Média/pedido",
+              "Pedidos",
+            ]}
+            cards={kpiCards}
+          />
         </LocalErrorBoundary>
         <div className="relative z-30 mt-7 flex flex-col">
           {/* Sticky de filha DIRETA deste bloco (que contém a lista): sticky

@@ -179,6 +179,15 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     await abrirTela();
 
     esperarFalhaSemResultadoAntigo();
+    const metricas = hospedeiro.querySelector(
+      'section[aria-label="Métricas de Clientes"]',
+    )!;
+    expect(metricas.querySelector('[role="status"]')?.textContent).toContain(
+      "Aguardando métricas",
+    );
+    expect(
+      [...metricas.querySelectorAll("h3")].map((el) => el.textContent),
+    ).toEqual(["—", "—", "—", "—"]);
   });
 
   it.each(["compact", "detailed"] as const)(
@@ -310,7 +319,7 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     expect(rpc).toHaveBeenCalledTimes(1);
   });
 
-  it("expande as quatro métricas e oferece carrossel com grupos nomeados", async () => {
+  it("expande as quatro métricas em ordem, com um único botão para recolher", async () => {
     rpc.mockResolvedValue(sucesso([]));
     await abrirTela();
     await clicar("Expandir");
@@ -319,23 +328,31 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     )!;
     expect(metricas.querySelectorAll("[data-metrica]")).toHaveLength(4);
     expect(metricas.textContent).toContain("Valor médio por venda");
-    await clicar("Carrossel");
     expect(
-      metricas.querySelectorAll('[aria-label^="Mostrar o grupo"]'),
-    ).toHaveLength(4);
+      [...metricas.querySelectorAll("article")].map((el) =>
+        el.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "Total Clientes",
+      "Novos (30 dias)",
+      "Valor médio por venda",
+      "Pedidos Totais",
+    ]);
+    expect(metricas.querySelectorAll("button")).toHaveLength(1);
+    expect(metricas.querySelector("button")?.textContent).toContain("Recolher");
     expect(
-      metricas
-        .querySelector('[aria-label="Mostrar o grupo 1 de 4"]')
-        ?.getAttribute("aria-current"),
+      metricas.querySelector("button")?.getAttribute("aria-expanded"),
     ).toBe("true");
+    expect(metricas.textContent).not.toContain("Carrossel");
     expect(
-      metricas.querySelector<HTMLButtonElement>(
-        '[aria-label="Grupo anterior de métricas"]',
-      )?.disabled,
-    ).toBe(true);
+      metricas.querySelector('[aria-label^="Mostrar o grupo"]'),
+    ).toBeNull();
+    expect(
+      metricas.querySelector('[aria-label="Grupo anterior de métricas"]'),
+    ).toBeNull();
   });
 
-  it("depois de expandir as métricas, 'Recolher' volta ao resumo (em grade e em carrossel)", async () => {
+  it("depois de expandir as métricas, Recolher sempre volta aos quatro números do resumo", async () => {
     rpc.mockResolvedValue(sucesso([]));
     await abrirTela();
     const metricas = () =>
@@ -346,11 +363,16 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(4);
     await clicar("Recolher");
     expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(0);
+    expect(metricas().querySelectorAll('[role="group"]')).toHaveLength(4);
+    expect(
+      metricas().querySelector("button")?.getAttribute("aria-expanded"),
+    ).toBe("false");
 
     await clicar("Expandir");
-    await clicar("Carrossel");
+    expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(4);
     await clicar("Recolher");
     expect(metricas().querySelectorAll("[data-metrica]")).toHaveLength(0);
+    expect(metricas().querySelectorAll('[role="group"]')).toHaveLength(4);
     expect(hospedeiro.textContent).toContain("Expandir");
   });
 
