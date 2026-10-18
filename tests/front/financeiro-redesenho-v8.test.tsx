@@ -42,31 +42,121 @@ afterEach(() => {
   host.remove();
 });
 
-it("Seções apresenta os seis destinos e mantém a seleção do Financeiro", async () => {
+it("a barra de abas apresenta os seis destinos e mantém a seleção do Financeiro", async () => {
   await act(async () =>
     root.render(<AdminFinanceiroView onNavigate={vi.fn()} />),
   );
-  const abrir = host.querySelector<HTMLButtonElement>(
-    '[aria-label="Seções do Financeiro"]',
+  expect(host.querySelector('[aria-label="Seções do Financeiro"]')).toBeNull();
+  const menu = host.querySelector(
+    '[role="tablist"][aria-label="Abas do Financeiro"]',
   );
-  expect(abrir).not.toBeNull();
-  await act(async () => abrir?.click());
-  const menu = document.querySelector('[aria-label="Escolha a seção"]');
-  const opcoes = [...(menu?.querySelectorAll("button") ?? [])];
-  expect(opcoes.map((b) => b.dataset.secao)).toEqual([
-    "visao",
-    "extrato",
-    "previstos",
-    "caixa",
-    "dre",
-    "contas",
-  ]);
-  await act(async () => opcoes[2].click());
+  expect(menu).not.toBeNull();
+  expect(host.querySelectorAll('[role="tablist"]')).toHaveLength(1);
+  const opcoes = [...menu!.querySelectorAll<HTMLElement>('[role="tab"]')];
+  expect(opcoes.map((b) => b.textContent?.replace(/\s+/g, " ").trim())).toEqual(
+    [
+      "Visão",
+      "Extrato",
+      "A pagar e receber",
+      "Caixa",
+      "Resultado",
+      "Contas e categorias Avançado",
+    ],
+  );
+  expect(menu!.classList.contains("hidden")).toBe(false);
+  for (const opcao of opcoes) {
+    expect(opcao.classList.contains("min-h-11")).toBe(true);
+    expect(opcao.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(opcao.classList.contains("truncate")).toBe(false);
+    expect(opcao.classList.contains("whitespace-normal")).toBe(true);
+  }
+  expect(menu!.parentElement!.classList.contains("sticky")).toBe(true);
+  expect(menu!.parentElement!.classList.contains("top-0")).toBe(true);
+  expect(opcoes[0].getAttribute("aria-selected")).toBe("true");
+  await act(async () =>
+    opcoes[2].dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+    ),
+  );
   expect(host.textContent).toContain("Todos os vencimentos");
+  expect(opcoes[0].getAttribute("aria-selected")).toBe("false");
+  expect(opcoes[2].getAttribute("aria-selected")).toBe("true");
   expect(
     host.querySelector('[role="tab"][data-state="active"]')?.textContent,
   ).toBe("A pagar e receber");
+  expect(document.querySelector('[aria-label="Escolha a seção"]')).toBeNull();
 });
+
+it("revela a aba ativa ao selecionar e ao usar um atalho do conteúdo", async () => {
+  await act(async () =>
+    root.render(<AdminFinanceiroView onNavigate={vi.fn()} />),
+  );
+  const abas = [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
+  const revelarExtrato = vi.fn();
+  const revelarContas = vi.fn();
+  Object.defineProperty(abas[1], "scrollIntoView", { value: revelarExtrato });
+  Object.defineProperty(abas[5], "scrollIntoView", { value: revelarContas });
+  await act(async () =>
+    abas[1].dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+    ),
+  );
+  expect(revelarExtrato).toHaveBeenCalledWith({
+    block: "nearest",
+    inline: "nearest",
+  });
+  await act(async () =>
+    abas[0].dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+    ),
+  );
+  const atalho = [
+    ...host.querySelectorAll<HTMLButtonElement>('button:not([role="tab"])'),
+  ].find((b) => b.textContent?.trim() === "Contas e categorias");
+  expect(atalho).toBeDefined();
+  await act(async () => atalho!.click());
+  expect(abas[5].getAttribute("aria-selected")).toBe("true");
+  expect(revelarContas).toHaveBeenCalledWith({
+    block: "nearest",
+    inline: "nearest",
+  });
+  expect(host.textContent).toContain("Cadastros da loja");
+});
+
+it.each(["carregando", "erro", "vazio"])(
+  "as abas continuam acessíveis com o conteúdo %s",
+  async (estado) => {
+    rpc.mockImplementation((nome: string) => {
+      if (nome === "fin_resumo") {
+        if (estado === "carregando") return new Promise(() => {});
+        return Promise.resolve({
+          data: estado === "vazio" ? { saldo_total: 0, contas: [] } : null,
+          error: estado === "erro" ? { message: "Failed to fetch" } : null,
+        });
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+    await act(async () =>
+      root.render(<AdminFinanceiroView onNavigate={vi.fn()} />),
+    );
+    if (estado === "erro") {
+      expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    }
+    if (estado === "vazio") {
+      expect(host.textContent).toContain("Nenhuma conta ainda");
+    }
+    const abas = [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
+    expect(abas).toHaveLength(6);
+    await act(async () =>
+      abas[1].dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+      ),
+    );
+    expect(abas[1].getAttribute("aria-selected")).toBe("true");
+    expect(host.textContent).toContain("Nenhum lançamento no período");
+    expect(host.querySelector('[aria-label="Novo lançamento"]')).not.toBeNull();
+  },
+);
 
 it("Visão apresenta A pagar antes de A receber e antes dos movimentos do período", async () => {
   await act(async () =>

@@ -14,8 +14,6 @@
 import {
   BarChart3,
   CalendarClock,
-  ChevronDown,
-  ChevronRight,
   Clock,
   Eye,
   EyeOff,
@@ -68,7 +66,6 @@ import {
   ContextoConfirmacaoFinanceira,
   ContextoValoresOcultos,
   ReciboFinanceiro,
-  SeloFinanceiro,
 } from "@/components/admin/financeiro/partes";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -125,7 +122,7 @@ function ehAba(valor: string): valor is AbaDoFinanceiro {
 }
 
 const CLASSE_ABA =
-  "min-h-11 flex-none rounded-xl border border-transparent px-3 text-xs font-bold text-zinc-400 hover:text-white data-[state=active]:border-admin-gold/50 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold data-[state=active]:shadow-none dark:data-[state=active]:bg-admin-gold/10 dark:data-[state=active]:text-admin-gold";
+  "h-auto min-h-11 flex-none whitespace-normal rounded-xl border border-transparent px-3 py-2 text-xs font-bold text-zinc-300 hover:text-white focus-visible:ring-sky-300 data-[state=active]:border-admin-gold/50 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold data-[state=active]:shadow-none dark:data-[state=active]:border-admin-gold/50 dark:data-[state=active]:bg-admin-gold/10 dark:data-[state=active]:text-admin-gold";
 
 export function AdminFinanceiroView({
   onNavigate,
@@ -138,6 +135,13 @@ export function AdminFinanceiroView({
   const hoje = useDiaDeSaoPaulo(ativo);
 
   const [aba, setAba] = useState<AbaDoFinanceiro>("visao");
+  const listaDeAbas = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ativo) return;
+    listaDeAbas.current
+      ?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [aba, ativo]);
   const [ladoDosPrevistos, setLadoDosPrevistos] =
     useState<LadoDosPrevistos>("saida");
   const [periodo, setPeriodo] = useState<PeriodoEscolhido>({
@@ -236,48 +240,6 @@ export function AdminFinanceiroView({
   function renderizarFolha() {
     if (!folha) return null;
     switch (folha.tipo) {
-      case "secoes":
-        return (
-          <FolhaFinanceira
-            titulo="Seções do Financeiro"
-            descricao="Escolha o que precisa conferir."
-            icone={SlidersHorizontal}
-            aoFechar={fecharFolha}
-          >
-            <div
-              aria-label="Escolha a seção"
-              className="flex flex-col gap-2 rounded-3xl border border-white/10 bg-[#101013] p-3"
-            >
-              {ABAS.map((item) => (
-                <button
-                  key={item.valor}
-                  type="button"
-                  data-secao={item.valor}
-                  aria-pressed={item.valor === aba}
-                  onClick={() => {
-                    setAba(item.valor);
-                    fecharFolha();
-                  }}
-                  className={`flex min-h-16 items-center gap-3 rounded-2xl p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 ${item.valor === aba ? "bg-admin-gold/10 text-admin-gold" : "text-white hover:bg-white/5"}`}
-                >
-                  <SeloFinanceiro icone={item.icone} matiz={item.matiz} />
-                  <span className="min-w-0 flex-1 break-words text-sm font-bold">
-                    {item.rotulo}
-                    {item.avancado ? (
-                      <span className="block text-xs font-normal text-zinc-400">
-                        Avançado
-                      </span>
-                    ) : null}
-                  </span>
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="size-4 shrink-0"
-                  />
-                </button>
-              ))}
-            </div>
-          </FolhaFinanceira>
-        );
       case "periodos":
         return (
           <FolhaFinanceira
@@ -447,7 +409,7 @@ export function AdminFinanceiroView({
                   aoFechar={() => setConfirmacao(null)}
                 />
               ) : null}
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 lg:block">
+              <div>
                 {aba === "visao" || aba === "extrato" || aba === "dre" ? (
                   <SeletorDePeriodo
                     periodo={periodo}
@@ -469,22 +431,6 @@ export function AdminFinanceiroView({
                         : "Cadastros da loja"}
                   </p>
                 )}
-                <button
-                  type="button"
-                  aria-label="Seções do Financeiro"
-                  aria-haspopup="dialog"
-                  aria-expanded={folha?.tipo === "secoes"}
-                  onClick={() => abrirFolha({ tipo: "secoes" })}
-                  className="flex min-h-12 items-center gap-3 rounded-2xl bg-admin-gold/10 px-3 text-left text-xs text-admin-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 lg:hidden"
-                >
-                  <span>
-                    Seções
-                    <strong className="block max-w-32 break-words text-sm">
-                      {ABAS.find((item) => item.valor === aba)?.rotulo}
-                    </strong>
-                  </span>
-                  <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
-                </button>
               </div>
 
               <Tabs
@@ -492,30 +438,46 @@ export function AdminFinanceiroView({
                 onValueChange={(valor) =>
                   setAba(ehAba(valor) ? valor : "visao")
                 }
-                className="gap-7"
+                className="min-w-0 gap-7"
               >
-                <TabsList className="no-scrollbar hidden size-auto justify-start gap-1 overflow-x-auto rounded-2xl bg-[#17171C] p-1 lg:flex">
-                  {ABAS.map((item) => (
-                    <TabsTrigger
-                      key={item.valor}
-                      value={item.valor}
-                      className={CLASSE_ABA}
-                    >
-                      {item.rotulo}
-                      {item.avancado ? (
-                        <>
-                          {" "}
-                          <span
-                            data-selo-avancado=""
-                            className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold normal-case tracking-normal text-zinc-400"
-                          >
-                            Avançado
-                          </span>
-                        </>
-                      ) : null}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+                <div className="sticky top-0 z-20 -mx-5 border-b border-white/10 bg-[#08080A]/95 px-5 py-2 backdrop-blur-sm before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-5 before:bg-gradient-to-r before:from-[#08080A] before:to-transparent after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-5 after:bg-gradient-to-l after:from-[#08080A] after:to-transparent">
+                  <TabsList
+                    ref={listaDeAbas}
+                    aria-label="Abas do Financeiro"
+                    className="no-scrollbar -mx-5 flex h-auto w-[calc(100%+2.5rem)] justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-5 py-1"
+                  >
+                    {ABAS.map((item) => (
+                      <TabsTrigger
+                        key={item.valor}
+                        value={item.valor}
+                        className={CLASSE_ABA}
+                      >
+                        <item.icone
+                          aria-hidden="true"
+                          className="size-4"
+                          style={{
+                            color:
+                              item.valor === aba ? "currentColor" : item.matiz,
+                          }}
+                        />
+                        <span className="max-w-40 break-words text-left leading-snug">
+                          {item.rotulo}
+                          {item.avancado ? (
+                            <>
+                              {" "}
+                              <span
+                                data-selo-avancado=""
+                                className="block text-[11px] font-normal text-zinc-400"
+                              >
+                                Avançado
+                              </span>
+                            </>
+                          ) : null}
+                        </span>
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </div>
 
                 <TabsContent value="visao">
                   <AbaVisao
