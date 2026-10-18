@@ -1,3 +1,4 @@
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
@@ -17,6 +18,8 @@ import { numeroComPais, numeroParaOCampo, whatsappParaGravar } from "./contato";
 // descrição têm o Salvar do cabeçalho de Minha loja.
 
 interface ContatoDaLojaProps {
+  /** Só a tela ativa ocupa a prateleira da navegação. */
+  readonly ativa?: boolean;
   /** Avisa a tela quando há alteração não salva (guarda de navegação). */
   readonly onDirtyChange?: (pendente: boolean) => void;
   /** Voltar do aparelho com a folha de modelos aberta: fecha só a folha. */
@@ -24,6 +27,7 @@ interface ContatoDaLojaProps {
 }
 
 export const ContatoDaLoja = memo(function ContatoDaLoja({
+  ativa = true,
   onDirtyChange,
   onSetBackOverride,
 }: ContatoDaLojaProps) {
@@ -131,15 +135,13 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
         />
       </div>
 
-      {/* Um só Salvar, sempre à vista: gruda acima da barra de baixo enquanto
-          o bloco está na tela, para não exigir rolar a prévia de 420px. */}
-      <div className="sticky bottom-[var(--admin-tab-pb,6.25rem)] z-20 flex justify-end rounded-xl border border-white/5 bg-admin-bg/95 p-3 backdrop-blur-md">
+      <AcaoDaBarra ativa={ativa} aria-label="Ações do contato da loja">
         <button
           type="button"
           onClick={() => void salvar()}
           disabled={!isLoaded || offline || salvando || !alterado}
           title="Salva o WhatsApp e a mensagem de compartilhamento"
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-admin-gold px-5 text-xs font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:w-auto"
+          className="admin-barra-principal flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-admin-gold px-5 text-xs font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-admin-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale"
         >
           {salvando ? (
             <>
@@ -153,7 +155,7 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
             </>
           )}
         </button>
-      </div>
+      </AcaoDaBarra>
     </div>
   );
 });

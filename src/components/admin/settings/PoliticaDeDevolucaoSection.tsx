@@ -18,6 +18,7 @@ import {
   LocalBufferedInput,
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
@@ -135,9 +136,11 @@ const CAIXA = `${CARTAO_AJUSTES} space-y-4`;
  * formulário explica antes de gastar a chamada.
  */
 export function PoliticaDeDevolucaoSection({
+  ativa = true,
   isOffline = false,
   onDirtyMudou,
 }: Readonly<{
+  ativa?: boolean;
   isOffline?: boolean;
   onDirtyMudou?: (sujo: boolean) => void;
 }>) {
@@ -664,34 +667,36 @@ export function PoliticaDeDevolucaoSection({
         </p>
       </div>
 
-      <div className="sticky bottom-[var(--admin-tab-pb,6.25rem)] z-20 -mx-3 space-y-2 border-t border-white/10 bg-[#08080a]/95 p-3 backdrop-blur-md lg:bottom-0">
-        <button
-          type="button"
-          onClick={() => void salvar()}
-          disabled={!sujo || salvando || temErro || isOffline}
-          className="ajustes-primario flex min-h-11 w-full items-center justify-center gap-2"
-        >
-          {salvando ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Save className="size-4" />
-          )}
-          {sujo ? "Salvar política" : "Política salva"}
-        </button>
-        <p role="status" className="text-center text-xs text-zinc-400">
-          {sujo ? "Salve antes de fechar" : "Os prazos contam da entrega"}
-        </p>
-        {!sujo &&
-          salva?.updated_at &&
-          !Number.isNaN(Date.parse(salva.updated_at)) && (
-            <p className="text-center text-xs text-zinc-400">
-              Salva em{" "}
-              <time dateTime={salva.updated_at}>
-                {new Date(salva.updated_at).toLocaleString("pt-BR")}
-              </time>
-            </p>
-          )}
-      </div>
+      <AcaoDaBarra ativa={ativa} aria-label="Ações da política de devolução">
+        <div className="w-full space-y-2">
+          <button
+            type="button"
+            onClick={() => void salvar()}
+            disabled={!sujo || salvando || temErro || isOffline}
+            className="admin-barra-principal ajustes-primario flex min-h-14 w-full items-center justify-center gap-2"
+          >
+            {salvando ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : (
+              <Save aria-hidden="true" className="size-4" />
+            )}
+            {sujo ? "Salvar política" : "Política salva"}
+          </button>
+          <p role="status" className="text-center text-xs text-zinc-400">
+            {sujo ? "Salve antes de fechar" : "Os prazos contam da entrega"}
+          </p>
+          {!sujo &&
+            salva?.updated_at &&
+            !Number.isNaN(Date.parse(salva.updated_at)) && (
+              <p className="text-center text-xs text-zinc-400">
+                Salva em{" "}
+                <time dateTime={salva.updated_at}>
+                  {new Date(salva.updated_at).toLocaleString("pt-BR")}
+                </time>
+              </p>
+            )}
+        </div>
+      </AcaoDaBarra>
     </fieldset>
   );
 }

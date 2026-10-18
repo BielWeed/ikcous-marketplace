@@ -109,7 +109,9 @@ describe("cupons — alvos de toque do formulário", () => {
     const fonte = ler(FORMULARIO);
     const estilos = ler("src/components/admin/coupons/apresentacao.tsx");
     expect(fonte).toMatch(/className=\{SECUNDARIO\}\s*>\s*Cancelar/);
-    expect(fonte).toMatch(/className=\{`\$\{PRIMARIO\} h-auto w-full`\}/);
+    expect(fonte).toMatch(
+      /className=\{`\$\{PRIMARIO\} admin-barra-principal h-auto w-full`\}/,
+    );
     for (const [nome, altura] of [
       ["SECUNDARIO", "min-h-11"],
       ["PRIMARIO", "min-h-14"],

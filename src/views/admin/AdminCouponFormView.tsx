@@ -9,6 +9,7 @@ import {
   SECUNDARIO,
   Selo,
 } from "@/components/admin/coupons/apresentacao";
+import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -895,18 +896,16 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
             )}
           </div>
         </div>
-      </div>
-      <div className="sticky bottom-[var(--admin-tab-pb,6.25rem)] z-20 border-t border-white/10 bg-[#17171C]/95 px-5 py-4 backdrop-blur-xl lg:bottom-0">
-        <div className="mx-auto max-w-xl">
+        <AcaoDaBarra aria-label="Ações do cupom">
           <Button
             onClick={handleSubmit}
             disabled={isOffline || isSubmitting}
-            className={`${PRIMARIO} h-auto w-full`}
+            className={`${PRIMARIO} admin-barra-principal h-auto w-full`}
           >
             <Save aria-hidden="true" className="size-5" />
             {isSubmitting ? "Salvando..." : "Salvar Cupom"}
           </Button>
-        </div>
+        </AcaoDaBarra>
       </div>
     </div>
   );
