@@ -239,8 +239,18 @@ describe("AdminProductsView — o filtro lembrado acompanha a categoria renomead
     expect(botao).toBeDefined();
     await act(async () => {
       botao?.click();
-      await espera(100);
     });
+    // A tela de categorias é carregada sob demanda: espera ela aparecer, sem
+    // contar um tempo fixo (sob carga o carregamento demora mais que isso).
+    const limite = Date.now() + 5000;
+    while (
+      Date.now() < limite &&
+      !/Renomeie, esconda da vitrine/.test(document.body.textContent ?? "")
+    ) {
+      await act(async () => {
+        await espera(25);
+      });
+    }
     expect(rpcMock).toHaveBeenCalledWith("categorias_com_uso");
     expect(document.body.textContent).toMatch(/Renomeie, esconda da vitrine/);
   });

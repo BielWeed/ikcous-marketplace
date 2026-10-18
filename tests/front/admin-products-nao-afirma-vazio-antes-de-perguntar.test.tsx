@@ -283,8 +283,8 @@ describe("AdminProductsView — achado 11: não afirma catálogo vazio antes de 
     expect(
       hospedeiro
         .querySelector('button[aria-label="Mostrar em lista com detalhes"]')
-        ?.getAttribute("aria-pressed"),
-    ).toBe("false");
+        ?.hasAttribute("aria-pressed"),
+    ).toBe(false);
   });
 
   it("depois da resposta com produtos: a lista aparece, sem o aviso de vazio", async () => {

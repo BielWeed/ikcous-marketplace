@@ -72,10 +72,10 @@ it("mantém busca, modo e filtros nessa ordem, antes dos chips, e alterna o pró
       antes.compareDocumentPosition(depois) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   }
-  expect(modo.getAttribute("aria-pressed")).toBe("false");
+  // O nome já diz a ação; aria-pressed junto faria o leitor de tela se contradizer.
+  expect(modo.hasAttribute("aria-pressed")).toBe(false);
   await act(async () => modo.click());
   expect(modo.getAttribute("aria-label")).toBe("Mostrar compacto");
-  expect(modo.getAttribute("aria-pressed")).toBe("true");
   await act(async () => modo.click());
   expect(modo.getAttribute("aria-label")).toBe("Mostrar detalhado");
   expect(host.querySelectorAll('button[aria-label^="Mostrar"]')).toHaveLength(
@@ -90,7 +90,6 @@ it("grade/lista usa a mesma convenção de próximo modo", async () => {
   )!;
   await act(async () => modo.click());
   expect(modo.getAttribute("aria-label")).toBe("Mostrar em grade");
-  expect(modo.getAttribute("aria-pressed")).toBe("true");
 });
 
 it("chip seleciona, folha repete a escolha, selo conta e limpar remove busca e categoria", async () => {

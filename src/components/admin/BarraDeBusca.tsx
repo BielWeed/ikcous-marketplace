@@ -10,7 +10,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 const FOCO =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
@@ -128,9 +128,20 @@ export function BarraDeBusca({
 }: BarraDeBuscaProps) {
   const [aberta, setAberta] = useState(false);
   const botaoFiltros = useRef<HTMLButtonElement>(null);
+  const faixaDeOpcoes = useRef<HTMLDivElement>(null);
+  const escolhida = opcoes.find((opcao) => opcao.selecionada)?.valor;
+  // Escolha vinda de fora (alerta, valor salvo) pode estar além da borda: traz
+  // a opção ligada para a vista, para o lojista ver qual filtro está valendo.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: só reage à troca
+  useEffect(() => {
+    faixaDeOpcoes.current
+      ?.querySelector('[aria-pressed="true"]')
+      ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [escolhida]);
   const abrindoCategorias = useRef(false);
   const detalhada = modo === "detailed";
-  // O ícone e o nome sempre descrevem o PRÓXIMO modo nas três telas.
+  // O nome diz o que o toque faz (o PRÓXIMO modo); o ícone mostra o modo atual
+  // em Pedidos e Clientes e o próximo em Produtos, como já era antes.
   const IconeModo = detalhada ? LayoutGrid : List;
   const proximoModo = produtos
     ? detalhada
@@ -176,7 +187,6 @@ export function BarraDeBusca({
           type="button"
           aria-label={proximoModo}
           title={proximoModo}
-          aria-pressed={detalhada}
           onClick={() => onMudarModo(detalhada ? "compact" : "detailed")}
           className={cn(BOTAO, "size-12 shrink-0 rounded-2xl p-0 text-sky-300")}
         >
@@ -205,6 +215,7 @@ export function BarraDeBusca({
         </button>
       </div>
       <div
+        ref={faixaDeOpcoes}
         role="group"
         aria-label={grupo}
         className="custom-scrollbar-hidden flex gap-2 overflow-x-auto"

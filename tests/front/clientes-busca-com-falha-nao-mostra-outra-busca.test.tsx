@@ -328,8 +328,8 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     expect(
       hospedeiro
         .querySelector('[aria-label="Mostrar detalhado"]')
-        ?.getAttribute("aria-pressed"),
-    ).toBe("false");
+        ?.hasAttribute("aria-pressed"),
+    ).toBe(false);
   });
 
   it("mostra o resumo antes da busca, com os modos nomeados e a seleção explícita", async () => {
@@ -357,13 +357,12 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     const modo = hospedeiro.querySelector<HTMLButtonElement>(
       '[aria-label="Mostrar detalhado"]',
     )!;
-    expect(modo.getAttribute("aria-pressed")).toBe("false");
+    expect(modo.hasAttribute("aria-pressed")).toBe(false);
     expect(hospedeiro.querySelectorAll("[data-barra-de-busca]")).toHaveLength(
       1,
     );
     await act(async () => modo.click());
     expect(modo.getAttribute("aria-label")).toBe("Mostrar compacto");
-    expect(modo.getAttribute("aria-pressed")).toBe("true");
     expect(
       hospedeiro.querySelectorAll('button[aria-label^="Mostrar"]'),
     ).toHaveLength(1);

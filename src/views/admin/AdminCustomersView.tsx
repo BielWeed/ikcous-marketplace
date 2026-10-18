@@ -655,7 +655,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                 ) : viewMode === "detailed" ? (
                   <>
                     {/* Cabeçalhos desktop: mesmos campos e handlers de ordenação. */}
-                    <div className="sticky top-[112px] z-20 hidden grid-cols-12 gap-4 border-b border-white/10 bg-[#17171C] p-3 md:grid">
+                    <div className="sticky top-[120px] z-20 hidden grid-cols-12 gap-4 border-b border-white/10 bg-[#17171C] p-3 md:grid">
                       <div
                         className="group/th col-span-4 flex min-h-11 cursor-pointer items-center gap-2"
                         onClick={() => handleSort("full_name")}

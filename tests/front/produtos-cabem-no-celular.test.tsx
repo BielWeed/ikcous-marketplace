@@ -355,21 +355,19 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         'button[aria-label="Mostrar em lista com detalhes"]',
       ) as HTMLButtonElement | null;
       expect(paraLista, "botão de modo sem nome acessível").not.toBeNull();
-      expect(paraLista?.getAttribute("aria-pressed")).toBe("false");
+      expect(paraLista?.hasAttribute("aria-pressed")).toBe(false);
 
       await act(async () => {
         paraLista?.click();
         await esperarMicrotarefas();
       });
 
-      expect(paraLista?.getAttribute("aria-pressed")).toBe("true");
       expect(paraLista?.getAttribute("aria-label")).toBe("Mostrar em grade");
       expect(
         hospedeiro.querySelectorAll('button[aria-label^="Mostrar em"]'),
       ).toHaveLength(1);
       expect(armazem.get("admin_products_view_mode")).toBe("detailed");
       await act(async () => paraLista?.click());
-      expect(paraLista?.getAttribute("aria-pressed")).toBe("false");
       expect(paraLista?.getAttribute("aria-label")).toBe(
         "Mostrar em lista com detalhes",
       );
