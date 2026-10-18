@@ -129,17 +129,14 @@ describe("paiDaTelaDoAdmin", () => {
     expect(paiDaTelaDoAdmin("home" as never, null, false)).toBe("profile");
   });
 
-  // C3.3 (plano §5.3): "Vender" é sub-view do painel PRINCIPAL, não uma
-  // sensível à origem como admin-push/admin-notifications/admin-whatsapp-
-  // config — sem este `case` o `default` devolveria "profile" e o botão
-  // Voltar do AdminLayout sairia do painel inteiro (nova-tela.md:45).
-  it("admin-pdv sempre volta para admin-dashboard, com ou sem origem do admin conhecida", () => {
-    expect(paiDaTelaDoAdmin("admin-pdv", null, false)).toBe("admin-dashboard");
-    expect(paiDaTelaDoAdmin("admin-pdv", "home", false)).toBe(
-      "admin-dashboard",
-    );
+  // 17/10/2026: "Vender" abre pela barra de baixo, como Início, Pedidos,
+  // Produtos, Clientes e Ajustes — é raiz, não sub-tela. O botão do topo diz
+  // "Perfil" (print do Gabriel: dizia "Voltar").
+  it("admin-pdv é raiz da barra: o botão do topo leva ao perfil, com ou sem origem", () => {
+    expect(paiDaTelaDoAdmin("admin-pdv", null, false)).toBe("profile");
+    expect(paiDaTelaDoAdmin("admin-pdv", "home", false)).toBe("profile");
     expect(paiDaTelaDoAdmin("admin-pdv", "admin-orders", false)).toBe(
-      "admin-dashboard",
+      "profile",
     );
   });
 
