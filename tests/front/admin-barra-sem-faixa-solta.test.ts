@@ -96,5 +96,6 @@ it("Produtos e Vender deixam de posicionar suas ações por CSS próprio", () =>
     "utf8",
   );
   expect(produtos).not.toContain(".produtos-novo");
-  expect(pdv).not.toContain("bottom: var(--admin-tab-pb");
+  // Só a propriedade `bottom` (não `padding-bottom`, que é legítimo).
+  expect(pdv).not.toMatch(/(^|[\s;{])bottom:\s*var\(--admin-tab-pb/m);
 });
