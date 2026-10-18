@@ -756,13 +756,15 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // nasce fechado (e só fala com o servidor quando a lojista o abre).
     // O sétimo é "Pedidos de privacidade dos clientes" (14/10/2026), também em
     // Minha loja, fechado e sem ler nada do banco até a lojista abrir.
+    // O oitavo é a linha do Cartão pelo app (17/10/2026), logo abaixo do
+    // termômetro do PIX: mesma linha à vista, diagnóstico fechado.
     const gruposRecolhidos = hospedeiro.querySelectorAll(
       "button[data-cabecalho-grupo][aria-expanded]",
     );
     expect(gruposRecolhidos).toHaveLength(5);
     for (const grupo of gruposRecolhidos)
       expect(grupo.getAttribute("aria-expanded")).toBe("false");
-    expect(cabecalhos.length).toBe(7);
+    expect(cabecalhos.length).toBe(8);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }

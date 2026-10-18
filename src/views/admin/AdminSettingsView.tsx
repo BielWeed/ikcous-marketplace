@@ -72,7 +72,10 @@ import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
-import { StatusPagamentoPix } from "@/views/admin/StatusPagamentoPix";
+import {
+  StatusPagamentoCartao,
+  StatusPagamentoPix,
+} from "@/views/admin/StatusPagamentoPix";
 
 import type { View } from "@/types";
 
@@ -975,7 +978,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             onDirtyMudou={setFormasPagamentoPendente}
             relerGatilho={relerCartaoGatilho}
           >
-            {(resumoDoCartao, controlesDoCartao, estadoDoCartao) => (
+            {(
+              resumoDoCartao,
+              controlesDoCartao,
+              estadoDoCartao,
+              cartaoLigado,
+            ) => (
               <>
                 <section
                   aria-label="Recebimentos"
@@ -1156,12 +1164,14 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   onNavigate={onNavigate}
                   subtitulos={subtitulos}
                 >
-                  {/* O termômetro do PIX no TOPO do grupo: o ÚNICO status do PIX
-                  da tela (H6, painel simples, P2 aprovada). "Minha loja está
-                  no ar?", "Formas de pagamento" e o bloco do Mercado Pago
-                  deixaram de repetir o estado — cada um aponta para cá ou só
-                  traz a ação (Pausar/Retomar). */}
+                  {/* Mesmos sinais dos controles, só leitura. O cartão depende
+                  também da liberação do pagamento pelo app, como no checkout. */}
                   <StatusPagamentoPix ligado={pixLigado} chaveOk={pixChaveOk} />
+                  <StatusPagamentoCartao
+                    ligado={pixLigado && cartaoLigado}
+                    chaveOk={pixChaveOk}
+                    estado={estadoDoCartao}
+                  />
 
                   {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
                   20261174000000): ANTES do Mercado Pago (pedido explícito do
