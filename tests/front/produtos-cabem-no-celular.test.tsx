@@ -555,6 +555,35 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         return menu!;
       }
 
+      it("no toque o menu só abre no clique: o início de uma rolagem não abre", async () => {
+        montarProduto({ variants: [{ value: "P", stockIncrement: 20 }] });
+        await montar(modo);
+        const foto = gatilho().querySelector("img")!;
+        const encostar = () => {
+          const evento = new MouseEvent("pointerdown", {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+          });
+          Object.defineProperty(evento, "pointerType", { value: "touch" });
+          foto.dispatchEvent(evento);
+          return evento;
+        };
+        // Dedo encosta e vira rolagem: o navegador não manda o clique.
+        await act(async () => {
+          encostar();
+        });
+        expect(gatilho().getAttribute("aria-expanded")).toBe("false");
+        expect(document.querySelector('[role="menu"]')).toBeNull();
+        // Toque de verdade: encosta e solta, o clique abre o menu.
+        await act(async () => {
+          encostar();
+          foto.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(gatilho().getAttribute("aria-expanded")).toBe("true");
+        expect(document.querySelector('[role="menu"]')).not.toBeNull();
+      });
+
       it("foto inteira, categoria e nome abrem o mesmo menu; editar e ativar ficam fora", async () => {
         montarProduto({ variants: [{ value: "P", stockIncrement: 20 }] });
         await montar(modo);

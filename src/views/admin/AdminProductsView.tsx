@@ -1674,6 +1674,11 @@ function MenuDoProduto({
   readonly className: string;
 }) {
   const [aberto, setAberto] = useState(false);
+  // O menu do Radix abre no primeiro contato do dedo, e como a área é grande
+  // quem rola a lista em cima de uma foto abriria o menu sem querer. No toque
+  // abrimos no clique (que o navegador não dispara depois de uma rolagem);
+  // mouse e teclado seguem o caminho do Radix.
+  const veioDoToque = useRef(false);
   return (
     <DropdownMenu open={aberto} onOpenChange={setAberto}>
       <DropdownMenuTrigger asChild>
@@ -1683,6 +1688,16 @@ function MenuDoProduto({
           aria-label={`Ações de ${product.name}`}
           aria-haspopup="menu"
           aria-expanded={aberto}
+          onPointerDown={(e) => {
+            veioDoToque.current =
+              e.pointerType === "touch" || e.pointerType === "pen";
+            if (veioDoToque.current) e.preventDefault();
+          }}
+          onClick={() => {
+            if (!veioDoToque.current) return;
+            veioDoToque.current = false;
+            setAberto((atual) => !atual);
+          }}
           className={cn(
             "produto-gatilho min-h-11 min-w-11 w-full cursor-pointer text-left",
             className,
