@@ -13,7 +13,10 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { StatusPagamentoPix } from "@/views/admin/StatusPagamentoPix";
+import {
+  StatusPagamentoCartao,
+  StatusPagamentoPix,
+} from "@/views/admin/StatusPagamentoPix";
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
 // dos outros testes de componente deste projeto.
@@ -44,6 +47,133 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
 
   const rotulo = () =>
     hospedeiro.querySelector<HTMLButtonElement>("button")!.textContent ?? "";
+
+  it("usa o símbolo do PIX e nomeia o estado para o leitor de tela", async () => {
+    await renderizar({ ligado: true, chaveOk: true });
+    const botao = hospedeiro.querySelector("button")!;
+    expect(botao.querySelector("svg.icone-pix")).not.toBeNull();
+    expect(
+      botao.querySelector("svg.icone-pix")?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(botao.querySelector(".lucide-wallet")).toBeNull();
+    expect(botao.getAttribute("aria-label")).toBe(
+      "Pagamento online (PIX): Funcionando",
+    );
+    expect(botao.getAttribute("aria-expanded")).toBe("false");
+    expect(botao.querySelector(".truncate")).toBeNull();
+  });
+
+  it.each([
+    {
+      estado: "ok",
+      ligado: true,
+      chaveOk: true,
+      texto: "Funcionando",
+      verdes: 3,
+      vermelhas: 0,
+      diagnostico:
+        "Isso só confirma que está ligado e com a chave pública da loja.",
+    },
+    {
+      estado: "ok",
+      ligado: true,
+      chaveOk: false,
+      texto: "Chave ausente",
+      verdes: 0,
+      vermelhas: 1,
+      diagnostico: "Salve as chaves de novo em Pagamentos › Mercado Pago.",
+    },
+    {
+      estado: "ok",
+      ligado: false,
+      chaveOk: true,
+      texto: "Desligado",
+      verdes: 0,
+      vermelhas: 0,
+      diagnostico:
+        "Para receber com cartão pelo app, ligue crédito ou débito em Formas de pagamento.",
+    },
+    {
+      estado: "carregando",
+      ligado: true,
+      chaveOk: true,
+      texto: "Verificando…",
+      verdes: 0,
+      vermelhas: 0,
+      diagnostico: "Estou lendo a configuração do cartão.",
+    },
+    {
+      estado: "falhou",
+      ligado: true,
+      chaveOk: true,
+      texto: "Não consegui verificar",
+      verdes: 0,
+      vermelhas: 0,
+      diagnostico: "Abra Formas de pagamento para tentar de novo.",
+    },
+  ] as const)(
+    "cartão: $estado, ligado=$ligado, chave=$chaveOk → $texto",
+    async ({
+      estado,
+      ligado,
+      chaveOk,
+      texto,
+      verdes,
+      vermelhas,
+      diagnostico,
+    }) => {
+      await act(async () => {
+        raiz.render(
+          <StatusPagamentoCartao
+            estado={estado}
+            ligado={ligado}
+            chaveOk={chaveOk}
+          />,
+        );
+      });
+      const botao = hospedeiro.querySelector("button")!;
+      expect(botao.textContent).toContain(texto);
+      expect(botao.getAttribute("aria-label")).toBe(
+        `Cartão pelo app: ${texto}`,
+      );
+      expect(botao.getAttribute("aria-expanded")).toBe("false");
+      expect(botao.querySelector(".lucide-credit-card")).not.toBeNull();
+      expect(botao.querySelectorAll("span.bg-emerald-400")).toHaveLength(
+        verdes,
+      );
+      expect(botao.querySelectorAll("span.bg-red-400")).toHaveLength(vermelhas);
+      expect(hospedeiro.textContent).not.toContain(diagnostico);
+      expect(botao.querySelector(".truncate")).toBeNull();
+      await act(async () => botao.click());
+      expect(botao.getAttribute("aria-expanded")).toBe("true");
+      const painel = document.getElementById(
+        botao.getAttribute("aria-controls")!,
+      );
+      expect(painel?.textContent).toContain(diagnostico);
+      expect(painel?.textContent).not.toMatch(/\btoken\b|\bRPC\b|\bfrota\b/i);
+    },
+  );
+
+  it("os diagnósticos do PIX e do cartão abrem e recolhem de forma independente", async () => {
+    await act(async () => {
+      raiz.render(
+        <>
+          <StatusPagamentoPix ligado chaveOk />
+          <StatusPagamentoCartao estado="ok" ligado chaveOk />
+        </>,
+      );
+    });
+    const [pix, cartao] = hospedeiro.querySelectorAll("button");
+    await act(async () => cartao.click());
+    expect(cartao.getAttribute("aria-expanded")).toBe("true");
+    expect(pix.getAttribute("aria-expanded")).toBe("false");
+    expect(cartao.getAttribute("aria-controls")).not.toBe(
+      pix.getAttribute("aria-controls"),
+    );
+    await act(async () => cartao.click());
+    expect(cartao.getAttribute("aria-expanded")).toBe("false");
+    expect(pix.getAttribute("aria-expanded")).toBe("false");
+  });
 
   it("ligado com chave: nível 3, rótulo 'Funcionando', diagnóstico recolhido", async () => {
     await renderizar({ ligado: true, chaveOk: true });

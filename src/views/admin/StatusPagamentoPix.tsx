@@ -1,36 +1,12 @@
+import { IconePix } from "@/components/admin/primitivos/IconePix";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import { Wallet } from "lucide-react";
-import { useState } from "react";
+import { CreditCard } from "lucide-react";
+import { type ComponentType, useId, useState } from "react";
 
-/**
- * Termômetro do pagamento online (PIX) — tela de Ajustes, no TOPO do grupo
- * Pagamentos: o único status do PIX da tela (H6, painel simples; antes ele
- * morava em "Minha loja está no ar?" e o estado se repetia em mais três
- * lugares).
- *
- * ANTES: um card inteiro com três parágrafos de diagnóstico por estado,
- * ocupando mais espaço que qualquer porta da tela (relato do Gabriel,
- * 02/09: "deve ser algo visualmente absolutamente compacto").
- *
- * AGORA: uma linha única com o termômetro de 3 níveis —
- *   ▮▮▮  verde     = ligado e com chave pública na configuração da loja
- *                    (frota) (funcionando);
- *   ▮▯▯  vermelho  = ligado, MAS a chave pública não está na configuração
- *                    da loja (a tela de pagamento nem carrega para o
- *                    cliente);
- *   ▯▯▯  cinza     = desligado (o cliente finaliza por pagamento na
- *                    entrega).
- * O diagnóstico completo (as instruções de correção do laudo 0109, D1)
- * continua a um clique — recolhido por padrão para a linha ficar compacta.
- *
- * Componente PURO: `ligado`/`chaveOk` chegam de fora (a configuração da
- * loja, lida da ficha em AdminSettingsView — escala etapa 3, 11/09/2026)
- * — este arquivo não lê a ficha, e é assim que os três estados são
- * exercitáveis por teste sem stub de ambiente.
- */
-
-type NivelDoPagamento = "ok" | "alerta" | "off";
+// Termômetros somente de leitura: ligado + chave pública, sem testar o provedor.
+type EstadoDaLeitura = "ok" | "carregando" | "falhou";
+type NivelDoPagamento = "ok" | "alerta" | "off" | "carregando" | "falhou";
 
 interface StatusPagamentoPixProps {
   readonly ligado: boolean;
@@ -44,7 +20,7 @@ interface StatusPagamentoPixProps {
 // e o que fazer, sem nome de segredo, de servidor nem de configuração interna.
 // O "ok" só enxerga ligado + chave pública: a senha dos avisos (sem a qual a
 // cobrança do PIX é recusada) não chega aqui, então o texto não promete mais.
-const DIAGNOSTICO = new Map<NivelDoPagamento, string>([
+const DIAGNOSTICO_DO_PIX = new Map<NivelDoPagamento, string>([
   [
     "ok",
     "Ligado e com a chave pública da loja. Se algum cliente não conseguir pagar por PIX, confira em Pagamentos › Mercado Pago se não falta nenhuma chave.",
@@ -59,10 +35,32 @@ const DIAGNOSTICO = new Map<NivelDoPagamento, string>([
   ],
 ]);
 
+const DIAGNOSTICO_DO_CARTAO = new Map<NivelDoPagamento, string>([
+  [
+    "ok",
+    "Isso só confirma que está ligado e com a chave pública da loja. Não confirma uma cobrança. Para conferir, faça a compra de valor baixo indicada em Formas de pagamento.",
+  ],
+  [
+    "alerta",
+    "O cartão pelo app está ligado, mas falta a chave pública da loja. Salve as chaves de novo em Pagamentos › Mercado Pago.",
+  ],
+  [
+    "off",
+    "Para receber com cartão pelo app, ligue crédito ou débito em Formas de pagamento. O pagamento pelo app também precisa estar liberado em Pagamentos › Mercado Pago.",
+  ],
+  ["carregando", "Estou lendo a configuração do cartão. Aguarde um instante."],
+  [
+    "falhou",
+    "Não consegui ler a configuração do cartão. Abra Formas de pagamento para tentar de novo.",
+  ],
+]);
+
 const ROTULO = new Map<NivelDoPagamento, string>([
   ["ok", "Funcionando"],
   ["alerta", "Chave ausente"],
   ["off", "Desligado"],
+  ["carregando", "Verificando…"],
+  ["falhou", "Não consegui verificar"],
 ]);
 
 /** Barra acesa mais alta por nível (o "nível do termômetro"). */
@@ -76,9 +74,53 @@ export function StatusPagamentoPix({
   ligado,
   chaveOk,
 }: StatusPagamentoPixProps) {
-  const [aberto, setAberto] = useState(false);
+  return (
+    <StatusPagamento
+      nome="Pagamento online (PIX)"
+      icone={IconePix}
+      ligado={ligado}
+      chaveOk={chaveOk}
+      diagnosticos={DIAGNOSTICO_DO_PIX}
+    />
+  );
+}
 
-  const nivel: NivelDoPagamento = !ligado ? "off" : chaveOk ? "ok" : "alerta";
+export function StatusPagamentoCartao({
+  ligado,
+  chaveOk,
+  estado,
+}: StatusPagamentoPixProps & { readonly estado: EstadoDaLeitura }) {
+  return (
+    <StatusPagamento
+      nome="Cartão pelo app"
+      icone={CreditCard}
+      ligado={ligado}
+      chaveOk={chaveOk}
+      estado={estado}
+      diagnosticos={DIAGNOSTICO_DO_CARTAO}
+    />
+  );
+}
+
+function StatusPagamento({
+  nome,
+  icone: Icone,
+  ligado,
+  chaveOk,
+  estado = "ok",
+  diagnosticos,
+}: StatusPagamentoPixProps & {
+  readonly nome: string;
+  readonly icone: ComponentType<{ className?: string }>;
+  readonly estado?: EstadoDaLeitura;
+  readonly diagnosticos: ReadonlyMap<NivelDoPagamento, string>;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const diagnosticoId = useId();
+
+  const nivel: NivelDoPagamento =
+    estado !== "ok" ? estado : !ligado ? "off" : chaveOk ? "ok" : "alerta";
+  const rotulo = ROTULO.get(nivel) ?? "";
 
   const corAcesa =
     nivel === "ok" ? "bg-emerald-400" : nivel === "alerta" ? "bg-red-400" : "";
@@ -87,7 +129,7 @@ export function StatusPagamentoPix({
       ? "text-emerald-400"
       : nivel === "alerta"
         ? "text-red-400"
-        : "text-zinc-500";
+        : "text-zinc-400";
 
   const alturas = ["h-1.5", "h-2.5", "h-3.5"];
 
@@ -96,36 +138,34 @@ export function StatusPagamentoPix({
       <button
         type="button"
         onClick={() => setAberto((antes) => !antes)}
+        aria-label={`${nome}: ${rotulo}`}
         aria-expanded={aberto}
-        className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.02]"
+        aria-controls={diagnosticoId}
+        className="grid min-h-11 w-full grid-cols-2 items-center gap-3 rounded-2xl px-4 py-2.5 text-left transition-colors hover:bg-white/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
       >
         <span className="flex min-w-0 items-center gap-2.5">
-          <Wallet
-            className={cn(
-              "size-4 shrink-0",
-              nivel === "ok"
-                ? "text-emerald-400"
-                : nivel === "alerta"
-                  ? "text-red-400"
-                  : "text-zinc-500",
-            )}
-          />
-          <span className="truncate text-[11px] font-bold text-zinc-200">
-            Pagamento online (PIX)
+          <span aria-hidden="true" className={cn("shrink-0", corDoRotulo)}>
+            <Icone className="size-4" />
+          </span>
+          <span className="min-w-0 break-words text-[11px] font-bold text-zinc-200">
+            {nome}
           </span>
         </span>
 
-        <span className="flex shrink-0 items-center gap-2.5">
+        <span className="flex min-w-0 items-center justify-end gap-2.5">
           <span
             className={cn(
-              "text-[11px] font-black uppercase tracking-wider",
+              "min-w-0 break-words text-right text-[11px] font-bold",
               corDoRotulo,
             )}
           >
-            {ROTULO.get(nivel) ?? ""}
+            {rotulo}
           </span>
           {/* Termômetro: 3 barras; acesas até o nível do estado. */}
-          <span className="flex items-end gap-[3px]" aria-hidden="true">
+          <span
+            className="flex shrink-0 items-end gap-[3px]"
+            aria-hidden="true"
+          >
             {alturas.map((altura, indice) => (
               <span
                 key={altura}
@@ -148,6 +188,7 @@ export function StatusPagamentoPix({
       <AnimatePresence initial={false}>
         {aberto && (
           <motion.div
+            id={diagnosticoId}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -155,7 +196,7 @@ export function StatusPagamentoPix({
             className="overflow-hidden"
           >
             <p className="border-t border-white/5 px-4 pb-3 pt-2.5 text-[11px] leading-relaxed text-zinc-400">
-              {DIAGNOSTICO.get(nivel) ?? ""}
+              {diagnosticos.get(nivel) ?? ""}
             </p>
           </motion.div>
         )}
