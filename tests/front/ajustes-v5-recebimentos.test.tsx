@@ -93,6 +93,131 @@ async function clicar(label: string) {
   await act(async () => button!.click());
 }
 const resumo = () => host.querySelector('[aria-label="Recebimentos"]')!;
+const faixaDoCartao = () =>
+  host.querySelector<HTMLButtonElement>(
+    'button[aria-label^="Cartão pelo app:"]',
+  )!;
+
+it("Pagamentos mostra PIX e cartão nessa ordem, antes dos controles, sem outra consulta", async () => {
+  await montar();
+  await clicar("Pagamentos");
+  const pagamentos = host.querySelector("#grupo-de-ajustes-pagamentos")!;
+  const botoes = [...pagamentos.querySelectorAll("button")];
+  const pix = pagamentos.querySelector<HTMLButtonElement>(
+    'button[aria-label^="Pagamento online (PIX):"]',
+  )!;
+  const cartao = faixaDoCartao();
+  const formas = botoes.find((b) =>
+    b.textContent?.includes("Formas de pagamento"),
+  )!;
+  expect(botoes.indexOf(cartao)).toBe(botoes.indexOf(pix) + 1);
+  expect(
+    cartao.compareDocumentPosition(formas) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(cartao.textContent).toContain("Funcionando");
+  expect(pix.querySelector("svg.icone-pix")).not.toBeNull();
+  expect(cartao.querySelector("svg.lucide-credit-card")).not.toBeNull();
+  expect(estado.ler).toHaveBeenCalledTimes(1);
+  await act(async () => cartao.click());
+  expect(cartao.getAttribute("aria-expanded")).toBe("true");
+  expect(pix.getAttribute("aria-expanded")).toBe("false");
+  expect(estado.ler).toHaveBeenCalledTimes(1);
+  expect(estado.salvar).not.toHaveBeenCalled();
+});
+
+it.each([
+  {
+    credito: true,
+    debito: false,
+    liberado: true,
+    chave: "APP_USR-exemplo",
+    texto: "Funcionando",
+  },
+  {
+    credito: false,
+    debito: true,
+    liberado: true,
+    chave: "APP_USR-exemplo",
+    texto: "Funcionando",
+  },
+  {
+    credito: false,
+    debito: false,
+    liberado: true,
+    chave: "APP_USR-exemplo",
+    texto: "Desligado",
+  },
+  {
+    credito: true,
+    debito: true,
+    liberado: true,
+    chave: "",
+    texto: "Chave ausente",
+  },
+  {
+    credito: true,
+    debito: true,
+    liberado: false,
+    chave: "APP_USR-exemplo",
+    texto: "Desligado",
+  },
+])(
+  "faixa usa os interruptores gravados e a liberação do app: $texto",
+  async ({ credito, debito, liberado, chave, texto }) => {
+    estado.ligado = liberado;
+    estado.chave = chave;
+    estado.ler.mockResolvedValue({
+      ok: true,
+      config: { credito, debito, parcelasMax: 1 },
+    });
+    await montar();
+    expect(faixaDoCartao().getAttribute("aria-label")).toBe(
+      `Cartão pelo app: ${texto}`,
+    );
+    expect(estado.ler).toHaveBeenCalledTimes(1);
+    expect(estado.salvar).not.toHaveBeenCalled();
+  },
+);
+
+it("não inventa estado durante a leitura e recupera a falha pela releitura já existente", async () => {
+  let resolver!: (valor: { ok: false }) => void;
+  estado.ler.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolver = resolve;
+    }),
+  );
+  await montar();
+  expect(faixaDoCartao().textContent).toContain("Verificando…");
+  expect(faixaDoCartao().textContent).not.toMatch(/Funcionando|Desligado/);
+  await act(async () => resolver({ ok: false }));
+  expect(faixaDoCartao().textContent).toContain("Não consegui verificar");
+  expect(faixaDoCartao().textContent).not.toMatch(/Funcionando|Desligado/);
+  await clicar("Gerenciar recebimentos");
+  expect(faixaDoCartao().textContent).toContain("Funcionando");
+  expect(estado.ler).toHaveBeenCalledTimes(2);
+  expect(estado.salvar).not.toHaveBeenCalled();
+});
+
+it("faixa acompanha a resposta gravada, inclusive quando difere do clique", async () => {
+  estado.salvar.mockResolvedValue({
+    credito: false,
+    debito: false,
+    parcelasMax: 12,
+  });
+  await montar();
+  await clicar("Gerenciar recebimentos");
+  expect(faixaDoCartao().textContent).toContain("Funcionando");
+  await clicar("Cartão de crédito pelo app");
+  expect(estado.salvar).toHaveBeenCalledTimes(1);
+  expect(estado.salvar).toHaveBeenCalledWith({
+    credito: false,
+    debito: true,
+    parcelasMax: 12,
+  });
+  expect(faixaDoCartao().textContent).toContain("Desligado");
+  expect(resumo().textContent).toContain("Cartão desligado");
+  expect(estado.ler).toHaveBeenCalledTimes(2);
+});
 
 it.each([true, false])(
   "o PIX usa seu símbolo decorativo, ligado=%s",

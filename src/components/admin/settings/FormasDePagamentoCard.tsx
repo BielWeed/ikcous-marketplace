@@ -339,6 +339,7 @@ export function CartaoPeloAppBloco({
     resumo: React.ReactNode,
     controles: React.ReactNode,
     estado: LeituraDoCartao["estado"],
+    ligado: boolean,
   ) => React.ReactNode;
   readonly relerGatilho?: number;
 }) {
@@ -583,5 +584,6 @@ export function CartaoPeloAppBloco({
     </div>,
     controles,
     leitura.estado,
+    Boolean(config?.credito || config?.debito),
   );
 }
