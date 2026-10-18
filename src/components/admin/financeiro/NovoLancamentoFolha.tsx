@@ -107,6 +107,8 @@ export function NovoLancamentoFolha({
     }),
   );
   const [form, setForm] = useState<FormularioDoLancamento>(formInicial);
+  // O campo do formulário mantém o nome do contrato; a tela só fala "mês de referência".
+  const { dataCompetencia: mesDeReferencia } = form;
   const formRef = useRef(formInicial);
   const [chaveInicial] = useState(gerarChaveDaTentativa);
   const chaveDaTentativa = useRef(chaveInicial);
@@ -514,7 +516,7 @@ export function NovoLancamentoFolha({
               id="fin-lanc-competencia"
               disabled={enviando}
               type="date"
-              value={form.dataCompetencia}
+              value={mesDeReferencia}
               onChange={(e) => atualizar({ dataCompetencia: e.target.value })}
               className={CLASSE_CAMPO}
             />
@@ -633,9 +635,7 @@ export function NovoLancamentoFolha({
             </div>
             <div className="flex flex-wrap justify-between gap-2">
               <dt className="text-zinc-400">Mês de referência</dt>
-              <dd className="font-bold">
-                {formatarData(form.dataCompetencia)}
-              </dd>
+              <dd className="font-bold">{formatarData(mesDeReferencia)}</dd>
             </div>
             {transferencia ? (
               <>
