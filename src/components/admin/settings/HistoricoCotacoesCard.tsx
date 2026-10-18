@@ -10,7 +10,7 @@ import {
 } from "@/lib/motivo-da-cotacao";
 import { papel } from "@/lib/papeis-aria-da-tabela";
 import { supabase } from "@/lib/supabase";
-import { Boxes, RefreshCw } from "lucide-react";
+import { History, RefreshCw } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useState } from "react";
 
 // A coluna guarda milissegundos; a lojista lê segundos ("0,3 s"). Sem tempo
@@ -188,7 +188,10 @@ export const HistoricoCotacoesSection = memo(
         className="flex flex-col gap-3 text-zinc-200"
       >
         <p className="flex items-start gap-2 text-left text-xs leading-relaxed text-zinc-400">
-          <Boxes className="mt-0.5 size-3.5 shrink-0 text-admin-gold" />
+          <History
+            aria-hidden="true"
+            className="mt-0.5 size-3.5 shrink-0 text-admin-gold"
+          />
           <span>
             As últimas consultas de frete que o app fez para os seus clientes,
             das mais recentes para as mais antigas. Serve para conferir se a

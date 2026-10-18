@@ -1,14 +1,14 @@
 import {
   AlertTriangle,
+  Banknote,
   Check,
   Clock,
+  FileText,
   Loader2,
   MapPin,
   RotateCcw,
   Save,
   Tag,
-  Type,
-  Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -576,7 +576,7 @@ export function PoliticaDeDevolucaoSection({
 
       <div className={CAIXA}>
         <h4 className="flex items-center gap-3 text-base font-bold">
-          <IconeDeAjustes icone={Wallet} matiz="roxo" />
+          <IconeDeAjustes icone={Banknote} matiz="roxo" />
           Dinheiro e frete
         </h4>
         <Escolha
@@ -644,7 +644,7 @@ export function PoliticaDeDevolucaoSection({
 
       <div className={`${CAIXA} bg-gradient-to-br from-[#24242e] to-[#101013]`}>
         <h4 className="flex items-center gap-3 text-base font-bold">
-          <IconeDeAjustes icone={Type} matiz="rosa" />
+          <IconeDeAjustes icone={FileText} matiz="rosa" />
           Texto da política
         </h4>
         <label htmlFor="politica-texto" className={ROTULO}>

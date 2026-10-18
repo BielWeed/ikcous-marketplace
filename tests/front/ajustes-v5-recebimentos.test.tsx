@@ -94,6 +94,30 @@ async function clicar(label: string) {
 }
 const resumo = () => host.querySelector('[aria-label="Recebimentos"]')!;
 
+it.each([true, false])(
+  "o PIX usa seu símbolo decorativo, ligado=%s",
+  async (ligado) => {
+    estado.ligado = ligado;
+    await montar();
+    const pix = [...resumo().querySelectorAll("dt")].find(
+      (dt) => dt.textContent === "PIX",
+    )!;
+    const icone = pix.querySelector("svg.icone-pix");
+    expect(icone).not.toBeNull();
+    expect(icone?.getAttribute("aria-hidden")).toBe("true");
+    expect(icone?.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(icone?.getAttribute("fill")).toBe("currentColor");
+    expect(pix.querySelector(".lucide-wallet")).toBeNull();
+    expect(pix.nextElementSibling?.textContent).toBe(
+      ligado ? "Funcionando" : "Desligado",
+    );
+    const entrega = [...resumo().querySelectorAll("dt")].find(
+      (dt) => dt.textContent === "Na entrega",
+    )!;
+    expect(entrega.querySelector("svg.lucide-package-check")).not.toBeNull();
+  },
+);
+
 it("mostra PIX, cartão com parcelas e entrega antes dos seis grupos, sem duplicar a leitura do cartão", async () => {
   await montar();
   expect(resumo().textContent).toContain("Funcionando");
@@ -140,6 +164,21 @@ it("falha de leitura não vira cartão desligado", async () => {
   await montar();
   expect(resumo().textContent).toContain("Não foi possível consultar");
   expect(resumo().textContent).not.toContain("Cartão desligado");
+  expect(resumo().querySelector("svg.icone-pix")).not.toBeNull();
+});
+
+it("as portas e grupos distinguem pagamento, ferramentas, banners e vitrines", async () => {
+  await montar();
+  for (const [seletor, icone] of [
+    ['button[aria-label="Pagamentos"]', "coins"],
+    ['button[aria-label="Ferramentas"]', "sliders-horizontal"],
+    ['[data-porta-ajustes="admin-banners"]', "image"],
+    ['[data-porta-ajustes="admin-carousels"]', "gallery-horizontal"],
+  ]) {
+    const porta = host.querySelector(seletor);
+    expect(porta).not.toBeNull();
+    expect(porta!.querySelector(`svg.lucide-${icone}`)).not.toBeNull();
+  }
 });
 
 it("sem liberação pelo app, informa indisponibilidade mesmo com cartão configurado", async () => {
@@ -149,6 +188,7 @@ it("sem liberação pelo app, informa indisponibilidade mesmo com cartão config
   expect(resumo().textContent).toContain("Cartão indisponível");
   expect(resumo().textContent).toContain("Libere o pagamento pelo app");
   expect(resumo().textContent).toContain("Nenhuma forma ligada");
+  expect(resumo().querySelector("svg.icone-pix")).not.toBeNull();
 });
 
 it("com chave ausente não apresenta cartão como disponível", async () => {

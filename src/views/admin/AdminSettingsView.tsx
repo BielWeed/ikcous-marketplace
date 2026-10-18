@@ -1,22 +1,24 @@
 import {
   Activity,
   AlertTriangle,
-  ArrowUpRight,
   Banknote,
   ChevronDown,
   ChevronRight,
+  Coins,
+  GalleryHorizontal,
   HelpCircle,
-  Layers,
-  Lock,
+  ImageIcon,
+  KeyRound,
   type LucideIcon,
   Mail,
+  PackageCheck,
   Palette,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
+  SlidersHorizontal,
   Store,
   Truck,
-  Wallet,
   Wifi,
 } from "lucide-react";
 import {
@@ -31,6 +33,7 @@ import {
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { IconePix } from "@/components/admin/primitivos/IconePix";
 import {
   CartaoPeloAppBloco,
   FormasDePagamentoSection,
@@ -467,19 +470,39 @@ const CLASSE_DO_ICONE_DA_PORTA = "size-5";
 const ICONE_DA_PORTA = new Map<TelaDoPainel, React.ReactNode>([
   [
     "admin-about-store",
-    <Store key="s" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+    <Store
+      key="s"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
   ],
   [
     "admin-banners",
-    <Palette key="p" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+    <ImageIcon
+      key="p"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
   ],
   [
     "admin-carousels",
-    <Layers key="l" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+    <GalleryHorizontal
+      key="l"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
   ],
   [
     "admin-shipping",
-    <Truck key="t" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+    <Truck
+      key="t"
+      aria-hidden="true"
+      className={CLASSE_DO_ICONE_DA_PORTA}
+      strokeWidth={2.25}
+    />,
   ],
 ]);
 
@@ -548,9 +571,9 @@ const VISUAL_DO_GRUPO = new Map<
   ["minha-loja", { icone: Store, matiz: "azul" }],
   ["aparencia", { icone: Palette, matiz: "roxo" }],
   ["entrega", { icone: Truck, matiz: "laranja" }],
-  ["pagamentos", { icone: Wallet, matiz: "verde" }],
+  ["pagamentos", { icone: Coins, matiz: "verde" }],
   ["devolucao", { icone: RotateCcw, matiz: "rosa" }],
-  ["ferramentas", { icone: Wifi, matiz: "ciano" }],
+  ["ferramentas", { icone: SlidersHorizontal, matiz: "ciano" }],
 ]);
 
 function GrupoDeAjustes({
@@ -986,7 +1009,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   <dl className="space-y-3">
                     <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-start gap-3">
                       <dt className="flex items-center gap-2 text-sm font-bold">
-                        <IconeDeAjustes icone={Wallet} matiz="verde" />
+                        <IconeDeAjustes icone={IconePix} matiz="verde" />
                         PIX
                       </dt>
                       <dd className="pt-1 text-right text-xs text-zinc-400">
@@ -1000,7 +1023,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     {resumoDoCartao}
                     <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-start gap-3">
                       <dt className="flex items-center gap-2 text-sm font-bold">
-                        <IconeDeAjustes icone={Truck} matiz="azul" />
+                        <IconeDeAjustes icone={PackageCheck} matiz="azul" />
                         Na entrega
                       </dt>
                       <dd className="pt-1 text-right text-xs text-zinc-400">
@@ -1173,7 +1196,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   <SecaoColapsavel
                     titulo="Mercado Pago"
                     subtitulo="Chaves do seu Mercado Pago no app"
-                    icone={Lock}
+                    icone={KeyRound}
                     comPendencia={pagamentosPendente}
                     abrirGatilho={abrirMercadoPagoGatilho}
                   >
@@ -1288,7 +1311,10 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                             </span>
                             <span className="flex shrink-0 items-center gap-1 text-sky-300">
                               Ver o PIX em Pagamentos
-                              <ArrowUpRight className="size-3.5" />
+                              <ChevronRight
+                                aria-hidden="true"
+                                className="size-3.5"
+                              />
                             </span>
                           </button>
                         </div>

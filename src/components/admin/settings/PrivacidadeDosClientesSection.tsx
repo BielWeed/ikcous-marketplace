@@ -26,7 +26,7 @@ import {
   ChevronDown,
   Loader2,
   Mail,
-  ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import {
@@ -471,7 +471,7 @@ function CabecalhoDoPedido({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <IconeDeAjustes
-        icone={pedido.tipo === "corrigir_email" ? Mail : ShieldCheck}
+        icone={pedido.tipo === "corrigir_email" ? Mail : Trash2}
         matiz={pedido.tipo === "corrigir_email" ? "verde" : "roxo"}
       />
       <div className="min-w-0 space-y-0.5">
