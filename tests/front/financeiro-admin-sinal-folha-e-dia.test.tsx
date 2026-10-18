@@ -326,7 +326,12 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     await clicar(botaoEm(atual, "Salvar lançamento"));
     expect(botaoEm(atual, "Cancelar").disabled).toBe(true);
     await clicar(botaoEm(atual, "Cancelar"));
-    await clicar(botaoEm(hospedeiro, "Novo lançamento"));
+    // Com a folha aberta a ação da barra some: não há como abrir outra por cima.
+    expect(
+      [...hospedeiro.querySelectorAll("button")].some(
+        (b) => (b.textContent ?? "").trim() === "Novo lançamento",
+      ),
+    ).toBe(false);
     await clicar(
       atual.querySelector<HTMLButtonElement>('[aria-label="Fechar"]')!,
     );
