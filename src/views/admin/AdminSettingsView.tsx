@@ -1269,6 +1269,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       comPendencia={politicaDevolucaoPendente}
                     >
                       <PoliticaDeDevolucaoSection
+                        ativa={active !== false && aberta}
                         isOffline={isOffline}
                         onDirtyMudou={setPoliticaDevolucaoPendente}
                       />

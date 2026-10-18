@@ -519,6 +519,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           refDoTitulo={guardarTitulo("contato")}
         >
           <ContatoDaLoja
+            ativa={active}
             onDirtyChange={setContatoPendente}
             onSetBackOverride={onSetBackOverride}
           />
