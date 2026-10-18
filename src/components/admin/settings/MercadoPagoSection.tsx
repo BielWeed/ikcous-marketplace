@@ -19,7 +19,6 @@ import {
   Lock,
   RefreshCw,
   Save,
-  ShieldCheck,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -876,8 +875,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         <p className="flex items-center gap-2 text-xs text-zinc-400">
           {config.configurado ? (
             <>
-              <ShieldCheck className="size-4 shrink-0 text-sky-300" /> Chaves
-              salvas. Falta testar a conexão.
+              <KeyRound
+                aria-hidden="true"
+                className="size-4 shrink-0 text-sky-300"
+              />{" "}
+              Chaves salvas. Falta testar a conexão.
             </>
           ) : (
             "Nenhuma chave do Mercado Pago salva ainda."
@@ -1093,7 +1095,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 {testando ? (
                   <RefreshCw className="size-3.5 animate-spin" />
                 ) : (
-                  <CheckCircle2 className="size-3.5" />
+                  <RefreshCw aria-hidden="true" className="size-3.5" />
                 )}
                 <span>Testar conexão</span>
               </button>
@@ -1292,7 +1294,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     {testando ? (
                       <RefreshCw className="size-3.5 animate-spin" />
                     ) : (
-                      <CheckCircle2 className="size-3.5" />
+                      <RefreshCw aria-hidden="true" className="size-3.5" />
                     )}
                     <span>Testar conexão</span>
                   </button>
