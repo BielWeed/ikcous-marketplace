@@ -410,10 +410,7 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     // Da camada de cliente até o recibo: voltar ao cupom, fechar a venda,
     // escolher o pagamento e registrar (o mock da RPC resolve com um pedido
     // gravado mínimo, no formato de `RespostaDoFechamento`).
-    const voltarAoCupom = localizarBotaoPorTexto(
-      hospedeiro,
-      "Voltar ao cupom",
-    )!;
+    const voltarAoCupom = localizarBotaoPorTexto(hospedeiro, "Voltar à venda")!;
     await act(async () => {
       voltarAoCupom.click();
     });

@@ -248,7 +248,7 @@ describe("Balcão — com a venda sendo gravada o cupom fica travado na tela", (
 
     // Voltando ao cupom (o envio segue pendente), o leitor reaparece: um
     // código bipado agora avisa em vez de sumir, e nenhuma busca sai.
-    await clicar("Voltar ao cupom");
+    await clicar("Voltar à venda");
     const buscasAntes = rpcMock.mock.calls.filter(
       ([nome]) => nome === "buscar_por_codigo_barras",
     ).length;

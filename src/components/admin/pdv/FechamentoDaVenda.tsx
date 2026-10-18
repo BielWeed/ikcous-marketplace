@@ -190,11 +190,11 @@ export function FechamentoDaVenda({
             type="button"
             variant="outline"
             className="pdv-secondary size-11 shrink-0"
-            aria-label="Voltar ao cupom"
+            aria-label="Voltar à venda"
             onClick={() => despachar({ tipo: "etapa_pedida", etapa: "cupom" })}
           >
             <ChevronLeft aria-hidden="true" className="pdv-blue size-5" />
-            <span className="sr-only">Voltar ao cupom</span>
+            <span className="sr-only">Voltar à venda</span>
           </Button>
           <div>
             <h2>Fechar venda</h2>
@@ -207,10 +207,10 @@ export function FechamentoDaVenda({
         <div role="alert" className="pdv-notice">
           <p className="pdv-heading">
             <WifiOff aria-hidden="true" className="pdv-icon pdv-red" />
-            Sem internet. Cupom salvo.
+            Sem internet. Venda salva.
           </p>
           <p className="pdv-muted">
-            Sem internet agora. O cupom fica salvo aqui; registre a venda quando
+            Sem internet agora. A venda fica salva aqui; registre a venda quando
             a conexão voltar.
           </p>
         </div>
