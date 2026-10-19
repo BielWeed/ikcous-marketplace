@@ -1,4 +1,15 @@
 {
+  "1.5.38": {
+    "titulo": "Resumos do painel mais organizados",
+    "novidades": [],
+    "correcoes": [
+      "Os números dos resumos se ajustam ao espaço da tela sem quebrar em outra linha."
+    ],
+    "melhorias": [
+      "Produtos, Clientes e Pedidos ganharam resumos compactos com informações mais organizadas.",
+      "Em Produtos, o guia e simulador ficou com um único acesso, sem o botão de ajuda repetido."
+    ]
+  },
   "1.5.37": {
     "titulo": "Painel mais rápido de usar",
     "novidades": [
