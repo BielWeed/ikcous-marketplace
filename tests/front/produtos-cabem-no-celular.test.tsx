@@ -737,6 +737,28 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
   );
 
   describe("h. guia de métricas: exemplo e simulador em pt-BR e sem corte", () => {
+    it("mantém um único acesso ao guia e simulador, sem ajuda duplicada no cabeçalho", async () => {
+      montarProduto({});
+      await montar();
+      const acessos = [...hospedeiro.querySelectorAll<HTMLButtonElement>("button")].filter(
+        (botao) => botao.textContent?.trim() === "Guia e simulador" ||
+          botao.getAttribute("aria-label") === "Guia Completo de Métricas e Ajuda",
+      );
+      expect(acessos).toHaveLength(1);
+      const acesso = acessos.at(0);
+      if (!acesso) throw new Error("Acesso ao guia ausente");
+      expect(acesso.textContent?.trim()).toBe("Guia e simulador");
+      await act(async () => {
+        acesso.click();
+        await esperarMicrotarefas();
+      });
+      const guia = document.querySelector('[role="dialog"]');
+      expect(guia).not.toBeNull();
+      expect(guia?.textContent).toContain("Guia Completo de Métricas e Ajuda");
+      expect(guia?.textContent).toContain("Dicionário");
+      expect(guia?.textContent).toContain("Simulador");
+    });
+
     async function abrirGuia() {
       const ajuda = hospedeiro.querySelector(
         'button[title="Guia Completo de Métricas e Ajuda"]',

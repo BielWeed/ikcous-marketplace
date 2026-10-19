@@ -49,6 +49,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -103,6 +104,80 @@ it.each(["Clientes", "Pedidos", "Produtos"])(
     expect(secao.querySelector('[role="status"]')).toBeNull();
   },
 );
+
+it("no resumo compacto, apresenta o rótulo antes do valor principal", async () => {
+  const secao = await montar();
+  for (const grupo of [...secao.querySelectorAll('[role="group"]')].slice(0, 2)) {
+    const legenda = grupo.querySelector('span[aria-hidden="true"]');
+    const valor = grupo.querySelector("h3");
+    expect(legenda).not.toBeNull();
+    expect(valor).not.toBeNull();
+    expect(
+      legenda!.compareDocumentPosition(valor!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  }
+});
+
+it.each(["R$ 2.624,84", "R$ 2.564,56", "R$ 123.456.789,90"])(
+  "hierarquiza a moeda sem alterar o texto recebido: %s",
+  async (valor) => {
+    const secao = await montar("Métricas de Produtos", [
+      { ...cards[0], value: valor },
+      ...cards.slice(1),
+    ]);
+    const numero = secao.querySelector("h3")!;
+    expect(numero.textContent).toBe(valor);
+    expect(numero.querySelector(".metricas-painel-moeda")?.textContent).toBe("R$");
+    expect(secao.querySelectorAll('[role="group"]')).toHaveLength(4);
+  },
+);
+
+it("adapta cada número sem mudar seu texto, inclusive nos cartões expandidos", async () => {
+  const secao = await montar();
+  for (const numero of secao.querySelectorAll("h3")) {
+    expect(numero.querySelector(".metricas-painel-numero")).not.toBeNull();
+  }
+  await act(async () => secao.querySelector("button")!.click());
+  for (const [i, numero] of [...secao.querySelectorAll("h3")].entries()) {
+    expect(numero.querySelector(".metricas-painel-numero")?.textContent).toBe(
+      cards.at(i)?.value,
+    );
+  }
+});
+
+it("reduz a fonte, recupera o tamanho ao alargar e desconecta a observação ao sair", async () => {
+  let disponivel = 100;
+  const callbacks: (() => void)[] = [];
+  const desconectar = vi.fn();
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: () => void) { callbacks.push(callback); }
+    observe() {}
+    disconnect() { desconectar(); }
+  });
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return { width: this.tagName === "H3" ? disponivel : 200 } as DOMRect;
+  });
+
+  const secao = await montar();
+  const numero = secao.querySelector<HTMLElement>(".metricas-painel-numero")!;
+  expect(numero.style.fontSize).toBe("49.75%");
+  expect(numero.textContent).toBe("16");
+
+  disponivel = 240;
+  callbacks.forEach((callback) => callback());
+  expect(numero.style.fontSize).toBe("");
+
+  disponivel = 80;
+  callbacks.forEach((callback) => callback());
+  expect(numero.style.fontSize).toBe("39.75%");
+
+  await act(async () => root.render(null));
+  expect(desconectar).toHaveBeenCalledTimes(4);
+  disponivel = 10;
+  callbacks.forEach((callback) => callback());
+  expect(numero.style.fontSize).toBe("39.75%");
+});
 
 it("Expandir abre todos os cartões; Recolher volta ao resumo, sem navegação de carrossel", async () => {
   const secao = await montar();
