@@ -57,7 +57,6 @@ import {
   Copy,
   DollarSign,
   Edit2,
-  HelpCircle,
   Package,
   Pause,
   Percent,
@@ -737,15 +736,6 @@ export const AdminProductsView = memo(function AdminProductsView({
             <div className="produtos-cupons">
               <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
             </div>
-            <button
-              type="button"
-              onClick={() => toggleHelp("global-guide")}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-violet-300/20 bg-violet-300/10 text-violet-300"
-              title="Guia Completo de Métricas e Ajuda"
-              aria-label="Guia Completo de Métricas e Ajuda"
-            >
-              <HelpCircle aria-hidden="true" className="size-6" />
-            </button>
           </div>
         </div>
         <div className="mt-2 flex items-center gap-2 text-xs text-zinc-400">
@@ -807,6 +797,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             type="button"
             onClick={() => toggleHelp("global-guide")}
             className="produto-secundario w-full"
+            title="Guia Completo de Métricas e Ajuda"
           >
             <BookOpen aria-hidden="true" className="size-5 text-violet-300" />{" "}
             Guia e simulador
