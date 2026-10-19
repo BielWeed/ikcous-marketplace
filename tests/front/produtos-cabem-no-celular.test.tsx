@@ -740,9 +740,13 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
     it("mantém um único acesso ao guia e simulador, sem ajuda duplicada no cabeçalho", async () => {
       montarProduto({});
       await montar();
-      const acessos = [...hospedeiro.querySelectorAll<HTMLButtonElement>("button")].filter(
-        (botao) => botao.textContent?.trim() === "Guia e simulador" ||
-          botao.getAttribute("aria-label") === "Guia Completo de Métricas e Ajuda",
+      const acessos = [
+        ...hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
+      ].filter(
+        (botao) =>
+          botao.textContent?.trim() === "Guia e simulador" ||
+          botao.getAttribute("aria-label") ===
+            "Guia Completo de Métricas e Ajuda",
       );
       expect(acessos).toHaveLength(1);
       const acesso = acessos.at(0);
