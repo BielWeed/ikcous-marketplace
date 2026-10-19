@@ -99,7 +99,7 @@
     "kimi-plugin-inspect-react": "^1.0.3",
     "knip": "^5.45.0",
     "lefthook": "^2.1.17",
-    "lockfile-lint": "^4.12.1",
+    "lockfile-lint": "^5.1.0",
     "pg": "^8.23.1",
     "png-to-ico": "^3.0.2",
     "postcss": "^8.5.29",
