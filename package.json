@@ -48,7 +48,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
-    "@supabase/supabase-js": "^2.117.2",
+    "@supabase/supabase-js": "^2.117.3",
     "@types/canvas-confetti": "^1.9.0",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
@@ -63,12 +63,12 @@
     "next-themes": "^0.4.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-hook-form": "^7.89.0",
+    "react-hook-form": "^7.90.0",
     "recharts": "^2.15.4",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "tus-js-client": "4.3.1",
-    "zod": "^4.6.5",
+    "zod": "^4.6.6",
     "zxing-wasm": "^3.1.5"
   },
   "devDependencies": {
