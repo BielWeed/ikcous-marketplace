@@ -23,24 +23,27 @@ async function condicao(
       controller: controlador,
     },
   });
-  const predicados: Array<() => Promise<unknown>> = [];
-  const waitForFunction = vi.fn(
-    async (
-      predicado: () => Promise<unknown>,
-      argumento: unknown,
-      opcoes: { timeout: number },
-    ) => {
-      predicados.push(predicado);
-      expect(argumento).toBeUndefined();
+  const evaluate = vi.fn((predicado: () => Promise<boolean>) => predicado());
+  let resultado: boolean | undefined;
+  const toBe = vi.fn(async (esperado: boolean) => {
+    expect(esperado).toBe(true);
+  });
+  const poll = vi.fn(
+    (ler: () => Promise<boolean>, opcoes: { timeout: number }) => {
       expect(opcoes.timeout).toBe(30_000);
+      return {
+        toBe: async (esperado: boolean) => {
+          resultado = await ler();
+          await toBe(esperado);
+        },
+      };
     },
   );
-  await esperar({ waitForFunction } as unknown as Pagina);
-  expect(waitForFunction).toHaveBeenCalledTimes(1);
-  const predicado = predicados.at(-1);
-  if (!predicado)
-    throw new Error("A espera deve consultar o estado do navegador.");
-  return predicado();
+  await esperar({ evaluate } as Pagina, { poll });
+  expect(poll).toHaveBeenCalledTimes(1);
+  expect(evaluate).toHaveBeenCalledTimes(1);
+  expect(toBe).toHaveBeenCalledTimes(1);
+  return resultado;
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -104,13 +107,58 @@ describe("preparação do incidente PWA — espera estado, não existência de c
     ).toBe(true);
   });
 
+  it.each([
+    { nome: "controle", esperar: esperarServiceWorkerControlando },
+    { nome: "waiting", esperar: esperarServiceWorkerEmEspera },
+  ])("repete false assíncrono na espera de $nome", async ({ esperar }) => {
+    let registro: Estado = {};
+    const active = { state: "activated" };
+    const getRegistration = vi.fn(async () => registro);
+    const serviceWorker = {
+      getRegistration,
+      controller: null as object | null,
+    };
+    vi.stubGlobal("navigator", { serviceWorker });
+    const page = {
+      evaluate: (predicado: () => Promise<boolean>) => predicado(),
+      // Semântica do Page.waitForFunction na versão do CI: a Promise já é
+      // truthy e é adotada no resultado, mesmo quando resolve false.
+      waitForFunction: async (predicado: () => Promise<boolean>) => predicado(),
+    };
+    let terminou = false;
+    const verificar = {
+      poll: (ler: () => Promise<boolean>) =>
+        expect.poll(ler, { timeout: 1000, interval: 10 }),
+    };
+    const execucao = esperar(page, verificar).then(() => {
+      terminou = true;
+    });
+    try {
+      // Duas leituras provam retry de false, não apenas adoção da Promise.
+      await expect
+        .poll(() => getRegistration.mock.calls.length, {
+          timeout: 500,
+          interval: 10,
+        })
+        .toBeGreaterThanOrEqual(2);
+      expect(terminou).toBe(false);
+    } finally {
+      registro = { active, waiting: { state: "installed" } };
+      serviceWorker.controller = active;
+      await execucao;
+    }
+    expect(terminou).toBe(true);
+  });
+
   it("o incidente espera controle antes do deploy e waiting antes de perder o chunk", () => {
     const spec = specDoIncidente;
     const controle = spec.indexOf(
-      "await esperarServiceWorkerControlando(page)",
+      "await esperarServiceWorkerControlando(page, expect)",
     );
     const deploy = spec.indexOf("/__pwa__/trocar");
-    const waiting = spec.indexOf("await esperarServiceWorkerEmEspera(page)");
+    const waiting = spec.indexOf(
+      "await esperarServiceWorkerEmEspera(page, expect)",
+    );
     const incidente = spec.indexOf("void import(arquivo)");
     expect(controle).toBeGreaterThan(0);
     expect(deploy).toBeGreaterThan(controle);

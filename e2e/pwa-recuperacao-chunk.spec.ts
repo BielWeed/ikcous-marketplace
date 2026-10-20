@@ -40,7 +40,7 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
   await abrirLojaPwa(page);
   // O install abre o cache antes de baixar tudo. Só simula o deploy quando
   // a v1 terminou de instalar e assumiu esta aba, sem derrubar o seu precache.
-  await esperarServiceWorkerControlando(page);
+  await esperarServiceWorkerControlando(page, expect);
   const nomeCacheV1 = await page.evaluate(async () => {
     const nomes = (await caches.keys()).filter((n) =>
       n.startsWith("app-cache-"),
@@ -54,15 +54,19 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
   // O deploy: dist-v2 entra no ar e o chunk escolhido SOME dele.
   const arquivos = await request.get(`${URL_DO_SERVIDOR}/__pwa__/arquivos`);
   const lista = (await arquivos.json()).arquivos as string[];
-  const alvo = lista.find((arquivo) => /^\/assets\/Admin.*\.js$/.test(arquivo));
-  expect(
-    alvo,
-    "o build tem um chunk Admin lazy para ser a vítima",
-  ).toBeTruthy();
-
   await request.post(`${URL_DO_SERVIDOR}/__pwa__/trocar`, {
     data: { dist: "dist-v2" },
   });
+  const arquivosV2 = await request.get(`${URL_DO_SERVIDOR}/__pwa__/arquivos`);
+  const listaV2 = (await arquivosV2.json()).arquivos as string[];
+  const alvo = lista.find(
+    (arquivo) =>
+      /^\/assets\/Admin.*\.js$/.test(arquivo) && !listaV2.includes(arquivo),
+  );
+  if (!alvo)
+    throw new Error("Falta um chunk Admin exclusivo da v1 para o incidente.");
+  // Nunca esconder um arquivo necessário ao precache da versão nova.
+  expect(listaV2).not.toContain(alvo);
   await request.post(`${URL_DO_SERVIDOR}/__pwa__/esconder`, {
     data: { arquivo: alvo },
   });
@@ -75,7 +79,24 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
     const registro = await navigator.serviceWorker.getRegistration();
     await registro?.update();
   });
-  await esperarServiceWorkerEmEspera(page);
+  await esperarServiceWorkerEmEspera(page, expect);
+
+  // Com o install realmente completo, o lazy está no precache. Simula o
+  // despejo de UMA entrada antiga, sem limpar o resto nem tocar na v2.
+  const removeuAlvo = await page.evaluate(
+    async ({ cacheV1, arquivo }) => {
+      const cache = await caches.open(cacheV1);
+      return cache.delete(arquivo);
+    },
+    { cacheV1: nomeCacheV1, arquivo: alvo },
+  );
+  expect(
+    removeuAlvo,
+    "o incidente removeu apenas o chunk antigo do cache",
+  ).toBe(true);
+  const respostaDoChunk = page.waitForResponse(
+    (resposta) => resposta.url() === `${URL_DO_SERVIDOR}${alvo}`,
+  );
 
   // A aba v1 pede o chunk que sumiu — um import() dinâmico real, lançado
   // FORA da promessa do evaluate para virar unhandledrejection DA PÁGINA,
@@ -86,6 +107,9 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
       void import(arquivo);
     }, 0);
   }, alvo);
+  expect((await respostaDoChunk).status(), "o import real recebeu o 404").toBe(
+    404,
+  );
 
   // A escada engajou: a página RECARREGA SOZINHA (ciclo do SW — controllerchange
   // → reload) sem nenhuma interação do teste.
@@ -116,6 +140,9 @@ test("aba velha com chunk sumido se recupera sozinha pelo ciclo do service worke
   expect(estado.count ?? 0).toBeGreaterThanOrEqual(1);
   expect(estado.count ?? 0).toBeLessThanOrEqual(2);
 
+  // controllerchange pode anteceder o fim do activate (claim e purga são
+  // concorrentes). Aguarda o ativo concluir antes de conferir a limpeza.
+  await esperarServiceWorkerControlando(page, expect);
   // Quem assumiu foi o SW NOVO: o activate dele purga o cache velho — só
   // sobra UM cache app-cache-*, e ele NÃO é o da v1 (app rodando sobre v2).
   const cachesFim = await page.evaluate(async () =>

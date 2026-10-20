@@ -1,38 +1,51 @@
-/** Só a capacidade usada pelas esperas; não depende dos tipos do runner E2E. */
-interface PaginaComEspera {
-  waitForFunction(
-    predicado: () => Promise<boolean>,
-    argumento: undefined,
+/** Só as capacidades usadas pelas esperas; sem importar o runner E2E. */
+interface PaginaComLeitura {
+  evaluate(predicado: () => Promise<boolean>): Promise<boolean>;
+}
+
+interface VerificadorComPolling {
+  poll(
+    ler: () => Promise<boolean>,
     opcoes: { timeout: number },
-  ): Promise<unknown>;
+  ): { toBe(valor: boolean): Promise<unknown> };
 }
 
 /** Cache aberto no install não comprova ativação nem controle desta aba. */
 export async function esperarServiceWorkerControlando(
-  page: PaginaComEspera,
+  page: PaginaComLeitura,
+  verificar: VerificadorComPolling,
 ): Promise<void> {
-  await page.waitForFunction(
-    async () => {
-      const registro = await navigator.serviceWorker.getRegistration();
-      return (
-        registro?.active?.state === "activated" &&
-        navigator.serviceWorker.controller === registro.active
-      );
-    },
-    undefined,
-    { timeout: 30_000 },
-  );
+  // Page.waitForFunction testa a Promise truthy, não o booleano assíncrono.
+  // O poll aguarda cada evaluate e só libera quando o valor lido é true.
+  await verificar
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          const registro = await navigator.serviceWorker.getRegistration();
+          return (
+            registro?.active?.state === "activated" &&
+            navigator.serviceWorker.controller === registro.active
+          );
+        }),
+      { timeout: 30_000 },
+    )
+    .toBe(true);
 }
 
 /** Ausência de registro ou de waiting nunca significa atualização pronta. */
 export async function esperarServiceWorkerEmEspera(
-  page: PaginaComEspera,
+  page: PaginaComLeitura,
+  verificar: VerificadorComPolling,
 ): Promise<void> {
-  await page.waitForFunction(
-    async () =>
-      (await navigator.serviceWorker.getRegistration())?.waiting?.state ===
-      "installed",
-    undefined,
-    { timeout: 30_000 },
-  );
+  await verificar
+    .poll(
+      () =>
+        page.evaluate(
+          async () =>
+            (await navigator.serviceWorker.getRegistration())?.waiting
+              ?.state === "installed",
+        ),
+      { timeout: 30_000 },
+    )
+    .toBe(true);
 }
