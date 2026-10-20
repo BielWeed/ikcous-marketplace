@@ -58,7 +58,15 @@ function semPermissaoDeAdmin(erro: unknown): boolean {
   return (erro as { code?: string } | null)?.code === "42501";
 }
 
-export const AdminCouponFormView = memo(function AdminCouponFormView({
+export const AdminCouponFormView = memo(function AdminCouponFormView(
+  props: AdminCouponFormViewProps,
+) {
+  // Outra identidade começa vazia, inclusive os campos com debounce e a lista
+  // de clientes. A desmontagem também invalida as respostas do cupom anterior.
+  return <FormularioDoCupom key={props.couponId ?? "novo"} {...props} />;
+});
+
+function FormularioDoCupom({
   couponId,
   onNavigate,
   onSetDirty,
@@ -909,4 +917,4 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
       </div>
     </div>
   );
-});
+}
