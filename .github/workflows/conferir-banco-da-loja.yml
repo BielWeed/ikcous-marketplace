@@ -199,6 +199,8 @@ on:
           - 51b-antes-notes-do-pedido-base-vigente
           - 52a-conferir-motivo-do-balcao-privado-aplicado
           - 52b-antes-motivo-do-balcao-base-vigente
+          - 53a-conferir-faturamento-potencial-aplicado
+          - 53b-antes-faturamento-potencial-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

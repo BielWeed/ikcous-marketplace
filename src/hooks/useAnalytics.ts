@@ -101,6 +101,8 @@ export interface DashboardStats {
   inventory?: {
     totalCost: number;
     totalValue: number;
+    /** Venda prevista de todo o estoque ativo, inclusive sem custo cadastrado. */
+    totalRevenue?: number;
   };
   averageTicket?: number;
   /** Pedidos com `status = 'delivered'`, desde sempre. Opcional: campo novo

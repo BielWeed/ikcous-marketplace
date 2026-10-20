@@ -6,6 +6,8 @@ pelo job do [.github/workflows/rpc-ci.yml](../../.github/workflows/rpc-ci.yml)
 — nada de lint de existência: as migrations são aplicadas DO ZERO e as
 invariantes abaixo são executadas contra o banco que nasceu delas.
 
+- **Faturamento potencial (`faturamento-potencial-viva.cjs`, via `rodar-isolado.cjs`)**: migration 20261250; todo estoque ativo, inclusive sem custo, sem inflar lucro. Variantes ativas substituem o pai, pausados/apagados ficam fora. Rol 53a/53b, ACL e admin atual, idempotência, rollback, CRLF e controle negativo que perde o produto sem custo. Só clone efêmero; não mede lojas reais.
+
 ## As provas (`invariantes-dinheiro.cjs`)
 
 - **(a) cupom**: `usage_limit` nunca fica negativo; a vaga do cupom não volta

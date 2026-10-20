@@ -2190,6 +2190,11 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           versao: "20261245000000",
         },
         {
+          fn: "get_admin_analytics_v2",
+          h: "5746d8a1df216ca4a5569901c45a2a07",
+          versao: "20261250000000",
+        },
+        {
           fn: "get_admin_customers_paged",
           h: "d6c092c3e0d8069891af795147d65e9e",
           versao: "20261230000000",
@@ -7816,6 +7821,21 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo45.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
+  const texto50 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini50 = texto50.indexOf(cabecalhoDepois17("get_admin_analytics_v2"));
+  assert(ini50 >= 0);
+  const abre50 = texto50.indexOf("AS $$", ini50) + 5;
+  const corpo50 = texto50.slice(abre50, texto50.indexOf("$$;", abre50));
+  const shaSucessora50 = {
+    lf: criarHash("sha256").update(corpo50).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo50.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
   for (const [nome, sql, lado, outro, rotulo] of [
     [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
@@ -7838,6 +7858,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora42.crlf,
                 shaSucessora45.lf,
                 shaSucessora45.crlf,
+                shaSucessora50.lf,
+                shaSucessora50.crlf,
               ]
             : [];
         assertEquals(new Set(todos).size, 6);
@@ -7868,6 +7890,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                     shaSucessora42.crlf,
                     shaSucessora45.lf,
                     shaSucessora45.crlf,
+                    shaSucessora50.lf,
+                    shaSucessora50.crlf,
                     x.lf,
                   ]
                 : [x.lf, x.lf, x.crlf, x.lf],
@@ -14116,7 +14140,7 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       // retirando exatamente as duas fórmulas declaradas, antes de comparar a regra histórica à 44m.
       assertEquals(
         vigente,
-        "20261245000000_o_lucro_desconta_o_cupom_do_pedido.sql",
+        "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql",
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
       const funcao = (sql: string) => {
@@ -14132,7 +14156,19 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
           /\r/g,
           "",
         ),
-      );
+      )
+        .replace("    inv_revenue_total numeric;\n", "")
+        .replace(",\n        COALESCE(SUM(faturamento), 0)", "")
+        .replace(
+          ",\n            CASE\n                WHEN COALESCE(v.qtd_ativas, 0) > 0 THEN COALESCE(v.soma_venda, 0)\n                ELSE p.preco_venda * p.estoque\n            END AS faturamento",
+          "",
+        )
+        .replace(
+          ",\n                SUM(COALESCE(pv.price_override, p.preco_venda) * COALESCE(pv.stock_increment, 0)) FILTER (WHERE pv.active) AS soma_venda",
+          "",
+        )
+        .replace("inv_value_total, inv_revenue_total", "inv_value_total")
+        .replace(",\n            'totalRevenue', inv_revenue_total", "");
       const anterior = funcao(
         (
           await Deno.readTextFile(

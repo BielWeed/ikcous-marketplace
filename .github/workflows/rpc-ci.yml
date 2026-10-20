@@ -134,6 +134,8 @@ on:
       - "scripts/publicacao/consultas/51b-antes-notes-do-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/52a-conferir-motivo-do-balcao-privado-aplicado.sql"
       - "scripts/publicacao/consultas/52b-antes-motivo-do-balcao-base-vigente.sql"
+      - "scripts/publicacao/consultas/53a-conferir-faturamento-potencial-aplicado.sql"
+      - "scripts/publicacao/consultas/53b-antes-faturamento-potencial-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -237,6 +239,8 @@ on:
       - "scripts/publicacao/consultas/51b-antes-notes-do-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/52a-conferir-motivo-do-balcao-privado-aplicado.sql"
       - "scripts/publicacao/consultas/52b-antes-motivo-do-balcao-base-vigente.sql"
+      - "scripts/publicacao/consultas/53a-conferir-faturamento-potencial-aplicado.sql"
+      - "scripts/publicacao/consultas/53b-antes-faturamento-potencial-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -858,6 +862,9 @@ jobs:
       - name: Prova viva do lucro com desconto (migration 20261245)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/lucro-com-desconto-viva.cjs
+      - name: Prova viva do faturamento potencial (migration 20261250)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/faturamento-potencial-viva.cjs
       # O sino do pedido de retirada (migration 20261233, dado de cliente; cacada de 14/10/2026): o pedido de RETIRADA na loja
       # (customer_data->>'shipping_option_id' = 'store-pickup') avisa "Pedido pronto para retirar" e "Pedido retirado" no sino, e
       # o resto fica byte a byte como era. COMPORTAMENTO com a trigger real: o fluxo de entrega e o de retirada, o cancelamento

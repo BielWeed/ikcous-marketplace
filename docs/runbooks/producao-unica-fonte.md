@@ -2126,3 +2126,18 @@ nunca confirma.
     Prova de comportamento: `tests/banco/pdv-motivo-privado-viva.cjs` (PG 17 efêmero, papéis reais e mutantes).
     A 8e aceita os elos 99 → 235 → 249; a 9a exige a 249; a 36a continua provando a trava nos dois corpos
     medidos com trava, e a 36b recusa ambos. Evidência local não mede o banco remoto. Nenhum apply é feito por este roteiro.
+
+53. **Lote de UMA migration: `20261250000000` — faturamento potencial de todo o estoque.**
+    Acrescenta `inventory.totalRevenue` ao `get_admin_analytics_v2`: preço de venda vezes estoque
+    efetivo dos produtos ativos e não apagados, inclusive os sem custo. Variantes ativas usam seu
+    preço próprio (inclusive zero; só NULL herda o preço do produto) e substituem o estoque do pai. Não altera `totalValue` (só com custo), custo, lucro,
+    permissões, assinatura ou dados. É previsão antes de descontos, taxas e frete, não receita realizada.
+    **Banco antes do front:** `53a-conferir-faturamento-potencial-aplicado`; se NEGATIVA, medir
+    `53b-antes-faturamento-potencial-base-vigente` mais nova e POSITIVA, aplicar pelo workflow
+    `20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql` e repetir a 53a.
+    São quatro linhas de catálogo em cada consulta, rol fechado. Corpo desconhecido exige parar.
+    Sem backfill. Front antigo continua compatível; front novo sem o campo mostra travessão, não zero.
+    **Desfazer:** retirar o front novo e executar o rollback-manual desta migration pelo workflow;
+    devolve exatamente o corpo da 245 e não apaga dados. Desfazer a 250 antes das ancestrais.
+    Prova comportamental: `tests/banco/faturamento-potencial-viva.cjs`, apenas no clone descartável.
+    Testes locais de texto não provam Postgres nem o estado das lojas. Nenhum apply é feito por este roteiro.

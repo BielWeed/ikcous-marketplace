@@ -14,6 +14,9 @@ const LUCRO_COM_DESCONTO = Object.freeze({
     = 'ab25e738a3101cccbb0c09450b660ee0', false) AS sim`,
 });
 async function desfazerLucroComDescontoNaTransacao(c) {
+  await require("./faturamento-potencial-posterior.cjs").desfazerFaturamentoPotencialNaTransacao(
+    c,
+  );
   if ((await c.query(LUCRO_COM_DESCONTO.noAr)).rows[0]?.sim !== true)
     return false;
   await c.query(

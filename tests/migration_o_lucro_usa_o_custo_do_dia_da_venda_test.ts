@@ -65,7 +65,13 @@ Deno.test("20261242 — a 45 sucede só o analytics: a 45a aceita o novo hash ex
   const a45 = lerArq(
     "scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql",
   );
-  assert.ok(a45.includes(`f.m IN ('${DESTA[ANALYTICS]}', '${h45}')`));
+  const h50 = md5(
+    corpoDe(
+      ler("20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql"),
+      ANALYTICS,
+    ),
+  );
+  assert.ok(a45.includes(`f.m IN ('${DESTA[ANALYTICS]}', '${h45}', '${h50}')`));
   assert.ok(a45.includes(`'${DESTA[DRE]}'`));
   for (const n of ["custo-do-dia-viva.cjs", "custo-do-dia-portao-viva.cjs"])
     assert.ok(

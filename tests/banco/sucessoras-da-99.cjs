@@ -78,6 +78,7 @@ const NOMES = [
   "20261246000000_o_lancamento_repetido_nao_duplica.sql",
   // O motivo privado sucede a 235: cadeia 99 -> 235 -> 249, sem perder a trava consultiva.
   "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql",
+  "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

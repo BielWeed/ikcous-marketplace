@@ -409,6 +409,11 @@ export const AdminProductsView = memo(function AdminProductsView({
     // nao vale nada; o travessao nao afirma nada).
     const invested = stats?.inventory?.totalCost ?? null;
     const potentialValue = stats?.inventory?.totalValue ?? null;
+    const totalRevenue = stats?.inventory?.totalRevenue;
+    const potentialRevenue =
+      typeof totalRevenue === "number" && Number.isFinite(totalRevenue)
+        ? totalRevenue
+        : null;
     const potentialProfit =
       invested !== null && potentialValue !== null
         ? potentialValue - invested
@@ -421,6 +426,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     return {
       invested,
       potential: potentialProfit,
+      potentialRevenue,
       avgRoi,
       totalCount: totalProducts,
     };
@@ -453,6 +459,17 @@ export const AdminProductsView = memo(function AdminProductsView({
         icon: TrendingUp,
         accent: "text-emerald-300",
         subValue: "Só com custo",
+      },
+      {
+        id: "faturamento-potencial",
+        label: "Faturamento potencial",
+        value:
+          financialStats.potentialRevenue !== null
+            ? `R$ ${financialStats.potentialRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : "—",
+        icon: DollarSign,
+        accent: "text-amber-300",
+        subValue: "Todo o estoque ativo · antes de descontos, taxas e frete",
       },
       {
         id: "roi-portfolio",
@@ -786,6 +803,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               legendasDoResumo={[
                 "Em estoque",
                 "Lucro potencial",
+                "Faturamento potencial",
                 "Lucro sobre o custo",
                 "Catálogo",
               ]}
