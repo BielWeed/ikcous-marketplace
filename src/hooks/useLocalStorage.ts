@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 function lerValorCompativel<T>(item: string | null, initialValue: T): T {
   if (!item) return initialValue;
   const value: unknown = JSON.parse(item);
-  // JSON válido ainda pode ter outro tipo: null e arrays não são objetos de configuração.
+  // Protege a estrutura sem descartar uniões primitivas como number | "all".
   if (
-    typeof value !== typeof initialValue ||
+    (typeof value === "object") !== (typeof initialValue === "object") ||
     (value === null) !== (initialValue === null) ||
     Array.isArray(value) !== Array.isArray(initialValue)
   ) {

@@ -47,9 +47,14 @@ describe("useLocalStorage — JSON com tipo incompatível", () => {
 
   it.each([
     { inicial: [], salvo: {}, esperado: [] },
-    { inicial: false, salvo: "false", esperado: false },
-    { inicial: 0, salvo: "42", esperado: 0 },
-    { inicial: "", salvo: 42, esperado: "" },
+    { inicial: false, salvo: "false", esperado: "false" },
+    { inicial: 0, salvo: "42", esperado: "42" },
+    { inicial: "", salvo: 42, esperado: 42 },
+    { inicial: "all", salvo: true, esperado: true },
+    { inicial: 0, salvo: false, esperado: false },
+    { inicial: "all", salvo: null, esperado: "all" },
+    { inicial: "all", salvo: [], esperado: "all" },
+    { inicial: "all", salvo: {}, esperado: "all" },
     { inicial: null, salvo: {}, esperado: null },
     { inicial: [0], salvo: [1, 2], esperado: [1, 2] },
     {
@@ -62,7 +67,7 @@ describe("useLocalStorage — JSON com tipo incompatível", () => {
     { inicial: "", salvo: "ok", esperado: "ok" },
     { inicial: null, salvo: null, esperado: null },
   ])(
-    "respeita o tipo básico: $inicial → $salvo",
+    "valida a estrutura sem restringir uniões primitivas: $inicial → $salvo",
     async ({ inicial, salvo, esperado }) => {
       window.localStorage.setItem("chave", JSON.stringify(salvo));
       await act(async () =>
@@ -71,6 +76,39 @@ describe("useLocalStorage — JSON com tipo incompatível", () => {
       expect(valor).toEqual(esperado);
     },
   );
+
+  it('preserva o filtro de 5 estrelas quando o valor inicial é "all"', async () => {
+    function SondaFiltro() {
+      const [filtro] = useLocalStorage<number | "all">(
+        "admin_reviews_rating_filter",
+        "all",
+      );
+      useEffect(() => {
+        valor = filtro;
+      }, [filtro]);
+      return null;
+    }
+    window.localStorage.setItem("admin_reviews_rating_filter", "5");
+    await act(async () => raiz.render(<SondaFiltro />));
+    expect(valor).toBe(5);
+  });
+
+  it("também preserva a união primitiva quando a chave muda", async () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem("avaliacoes-a", '"all"');
+    window.localStorage.setItem("avaliacoes-b", "5");
+    await act(async () =>
+      raiz.render(<Sonda chave="avaliacoes-a" inicial="all" />),
+    );
+    expect(valor).toBe("all");
+    await act(async () =>
+      raiz.render(<Sonda chave="avaliacoes-b" inicial="all" />),
+    );
+    await act(async () => {
+      vi.runAllTimers();
+    });
+    expect(valor).toBe(5);
+  });
 
   it("também recusa null quando a chave muda depois da montagem", async () => {
     vi.useFakeTimers();
