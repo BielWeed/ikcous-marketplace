@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+function lerValorCompativel<T>(item: string | null, initialValue: T): T {
+  if (!item) return initialValue;
+  const value: unknown = JSON.parse(item);
+  // Protege a estrutura sem descartar uniões primitivas como number | "all".
+  if (
+    (typeof value === "object") !== (typeof initialValue === "object") ||
+    (value === null) !== (initialValue === null) ||
+    Array.isArray(value) !== Array.isArray(initialValue)
+  ) {
+    return initialValue;
+  }
+  return value as T;
+}
+
 export function useLocalStorage<T>(
   key: string,
   initialValue: T,
@@ -9,7 +23,7 @@ export function useLocalStorage<T>(
     if (typeof window === "undefined") return initialValue;
     try {
       const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
+      return lerValorCompativel(item, initialValue);
     } catch (error) {
       console.error("Error reading from localStorage:", error);
       return initialValue;
@@ -40,7 +54,7 @@ export function useLocalStorage<T>(
 
     try {
       const item = window.localStorage.getItem(key);
-      const newValue = item ? JSON.parse(item) : initialValueRef.current;
+      const newValue = lerValorCompativel(item, initialValueRef.current);
 
       // Update state only if it actually changed to prevent loops
       // Wrap in setTimeout to move out of the render cycle and suppress lint warnings

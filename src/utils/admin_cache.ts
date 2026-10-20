@@ -1,6 +1,8 @@
 import { cupomDoBanco } from "@/lib/cupom-do-banco";
 import { supabase } from "@/lib/supabase";
 
+let geracaoDosCachesDeAdmin = 0;
+
 export interface Customer {
   id: string;
   email: string | null;
@@ -34,6 +36,7 @@ export async function prefetchCustomersData() {
   if (cachedCustomersData && cachedCustomersData.customers.length > 0) {
     return;
   }
+  const geracao = geracaoDosCachesDeAdmin;
   try {
     const { data, error } = await (supabase.rpc as any)(
       "get_admin_customers_paged",
@@ -45,7 +48,7 @@ export async function prefetchCustomersData() {
         p_page_size: 10,
       },
     );
-    if (!error && data) {
+    if (!error && data && geracao === geracaoDosCachesDeAdmin) {
       cachedCustomersData = {
         customers: data.data || [],
         total: data.total_count || 0,
@@ -85,6 +88,8 @@ export function setCachedQuestionsData(data: any[] | null) {
 // fallback de erro do `logout`) e também quando o `onAuthStateChange` detecta
 // troca de uid sem SIGNED_OUT explícito entre as duas sessões.
 export function limparCachesDeAdmin() {
+  // Prefetch iniciado na sessão anterior não pode repopular o cache limpo.
+  geracaoDosCachesDeAdmin++;
   cachedCustomersData = null;
   cachedCouponsData = null;
   cachedReviewsData = null;
@@ -96,13 +101,14 @@ export async function prefetchCouponsData() {
   if (cachedCouponsData && cachedCouponsData.length > 0) {
     return;
   }
+  const geracao = geracaoDosCachesDeAdmin;
   try {
     const { data, error } = await supabase
       .from("coupons")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
+    if (!error && data && geracao === geracaoDosCachesDeAdmin) {
       // PAINEL-12 + frente B: o mapeador único do cupom.
       cachedCouponsData = data.map((c) => cupomDoBanco(c));
     }
@@ -116,6 +122,7 @@ export async function prefetchReviewsData() {
   if (cachedReviewsData && cachedReviewsData.length > 0) {
     return;
   }
+  const geracao = geracaoDosCachesDeAdmin;
   try {
     // Fetch first page of reviews via standard pagination RPC
     const { data, error } = await (supabase.rpc as any)(
@@ -128,7 +135,7 @@ export async function prefetchReviewsData() {
       },
     );
 
-    if (!error && data) {
+    if (!error && data && geracao === geracaoDosCachesDeAdmin) {
       const reviewsList = data.data || [];
 
       const formatted = reviewsList.map((item: any) => ({
@@ -157,6 +164,7 @@ export async function prefetchQAData() {
   if (cachedQuestionsData && cachedQuestionsData.length > 0) {
     return;
   }
+  const geracao = geracaoDosCachesDeAdmin;
   try {
     // Fetch first page of pending questions via standard select
     const { data, error } = await supabase
@@ -170,7 +178,7 @@ export async function prefetchQAData() {
       .order("created_at", { ascending: false })
       .range(0, 9); // Page 0, PageSize 10
 
-    if (!error && data) {
+    if (!error && data && geracao === geracaoDosCachesDeAdmin) {
       const formatted = data.map((item: any) => ({
         id: item.id,
         userId: item.user_id,
