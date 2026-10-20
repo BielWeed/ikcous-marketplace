@@ -24,21 +24,30 @@ import { Controller, useForm } from "react-hook-form";
 import * as z from "zod";
 
 const addressSchema = z.object({
-  name: z.string().min(1, "Nome/Apelido é obrigatório"),
+  // Aparar só para validar mantém os valores válidos enviados como antes.
+  name: z
+    .string()
+    .refine((v) => v.trim().length > 0, "Nome/Apelido é obrigatório"),
   // A máscara devolve "12345-67" para 7 dígitos — 8 CARACTERES contando o
   // hífen, o que passava num min(8) e gravava CEP incompleto como endereço
   // de entrega. O que valida CEP é a contagem de DÍGITOS: sempre 8.
   cep: z
     .string()
     .refine((v) => v.replace(/\D/g, "").length === 8, "CEP inválido"),
-  street: z.string().min(1, "Logradouro é obrigatório"),
-  number: z.string().min(1, "Número é obrigatório"),
+  street: z
+    .string()
+    .refine((v) => v.trim().length > 0, "Logradouro é obrigatório"),
+  number: z.string().refine((v) => v.trim().length > 0, "Número é obrigatório"),
   complement: z.string().optional().or(z.literal("")),
-  neighborhood: z.string().min(1, "Bairro é obrigatório"),
-  city: z.string().min(1, "Cidade é obrigatória"),
-  state: z.string().min(1, "Estado é obrigatório"),
+  neighborhood: z
+    .string()
+    .refine((v) => v.trim().length > 0, "Bairro é obrigatório"),
+  city: z.string().refine((v) => v.trim().length > 0, "Cidade é obrigatória"),
+  state: z.string().refine((v) => v.trim().length > 0, "Estado é obrigatório"),
   reference: z.string().optional().or(z.literal("")),
-  recipient_name: z.string().min(1, "Nome do destinatário é obrigatório"),
+  recipient_name: z
+    .string()
+    .refine((v) => v.trim().length > 0, "Nome do destinatário é obrigatório"),
   is_default: z.boolean(),
 });
 
