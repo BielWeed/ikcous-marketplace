@@ -1,4 +1,14 @@
 {
+  "1.5.39": {
+    "titulo": "Faturamento potencial do estoque",
+    "novidades": [
+      "Em Produtos, o resumo mostra quanto você pode faturar ao vender todo o estoque ativo, antes de descontos, taxas e frete."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "A previsão de faturamento inclui produtos sem custo informado e respeita o preço de cada variação."
+    ]
+  },
   "1.5.38": {
     "titulo": "Resumos do painel mais organizados",
     "novidades": [],
