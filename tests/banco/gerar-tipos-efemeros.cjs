@@ -30,6 +30,80 @@ const SINAIS = new Set(["SIGTERM", "SIGKILL", "SIGINT", "SIGABRT"]);
 // Só mensagens criadas aqui podem atravessar o catch CLI; prefixo não é prova.
 const diagnosticos = new WeakMap();
 
+const CAUSAS_NPM = new Map([
+  ["E404", "NPM_E404"],
+  ["ETARGET", "NPM_ETARGET"],
+  ["ENOTFOUND", "NPM_ENOTFOUND"],
+  ["EAI_AGAIN", "NPM_EAI_AGAIN"],
+  ["ECONNRESET", "NPM_ECONNRESET"],
+  ["EINTEGRITY", "NPM_EINTEGRITY"],
+  ["EBADPLATFORM", "NPM_EBADPLATFORM"],
+  ["ENOSPC", "NPM_ENOSPC"],
+  ["EACCES", "NPM_EACCES"],
+]);
+const PADROES_LAUNCHER = [
+  [
+    /No matching Supabase CLI binary package found|Unsupported (platform|architecture)/,
+    "LAUNCHER_SEM_PACOTE",
+  ],
+  [/\bspawn\b[^\r\n]*\bEACCES\b/i, "LAUNCHER_SPAWN_EACCES"],
+  [/\bspawn\b[^\r\n]*\bENOENT\b/i, "LAUNCHER_SPAWN_ENOENT"],
+  [/\bspawn\b[^\r\n]*\bENOEXEC\b/i, "LAUNCHER_SPAWN_ENOEXEC"],
+];
+const PADROES_CLI = [
+  [/supabase start is not running/i, "CLI_LOCAL_NAO_RODANDO"],
+  [/failed to generate types|error generating types/i, "CLI_GERACAO"],
+  [/unknown (option|flag)|invalid (option|flag)/i, "CLI_FLAG"],
+  [/ssl|tls|certificate/i, "DB_TLS"],
+  [/ECONNREFUSED|connection refused/i, "DB_RECUSADA"],
+  [/ETIMEDOUT|timed? out/i, "DB_TIMEOUT"],
+  [/ENOTFOUND|EAI_AGAIN/i, "DB_DNS"],
+  [/password authentication failed|\b28P01\b/i, "DB_AUTH"],
+  [/\b42P01\b/, "SQLSTATE_42P01"],
+  [/\b42883\b/, "SQLSTATE_42883"],
+  [/\b42501\b/, "SQLSTATE_42501"],
+  [/\b3F000\b/, "SQLSTATE_3F000"],
+  [/\b42704\b/, "SQLSTATE_42704"],
+];
+
+function classificarStderr(stderr) {
+  const texto = typeof stderr === "string" ? stderr : "";
+  const causas = new Set();
+  const npm = /^npm (error|ERR!)/m.test(texto);
+  const chegouConexao = /^Connecting to /m.test(texto);
+  if (
+    /^npm (?:error|ERR!) could not determine executable to run/m.test(texto)
+  ) {
+    causas.add("NPM_SEM_EXECUTAVEL");
+  }
+  for (const linha of texto.matchAll(
+    /^npm (?:error|ERR!) (?:code (\S+)|(E[A-Z0-9_]+)\b)/gm,
+  )) {
+    causas.add(CAUSAS_NPM.get(linha[1] ?? linha[2]) ?? "NPM_OUTRO");
+  }
+  let launcher = false;
+  for (const [padrao, causa] of PADROES_LAUNCHER) {
+    if (padrao.test(texto)) {
+      launcher = true;
+      causas.add(causa);
+    }
+  }
+  let cli = chegouConexao;
+  for (const [padrao, causa] of PADROES_CLI) {
+    if (padrao.test(texto)) {
+      cli = true;
+      causas.add(causa);
+    }
+  }
+  if (!causas.size) causas.add("OUTRO");
+  return {
+    camada: npm ? "NPM" : launcher ? "LAUNCHER" : cli ? "CLI" : "DESCONHECIDA",
+    chegou_conexao: chegouConexao,
+    loopback_v6: texto.includes("::1"),
+    causas: [...causas].sort(),
+  };
+}
+
 function falhaDeEtapa(etapa, retorno = {}) {
   if (!ETAPAS.has(etapa)) return new Error("Falha inesperada.");
   const codigo = retorno.error?.code ?? retorno.code;
@@ -39,6 +113,9 @@ function falhaDeEtapa(etapa, retorno = {}) {
     codigo: CODIGOS.has(codigo) ? codigo : null,
     sinal: SINAIS.has(retorno.signal) ? retorno.signal : null,
   };
+  if (etapa === "RETORNO_CLI") {
+    Object.assign(diagnostico, classificarStderr(retorno.stderr));
+  }
   const mensagem = `TIPOS_EFEMEROS ${JSON.stringify(diagnostico)}`;
   const erro = new Error(mensagem);
   diagnosticos.set(erro, mensagem);
