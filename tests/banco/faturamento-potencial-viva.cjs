@@ -23,6 +23,13 @@ const DEPOIS = "5746d8a1df216ca4a5569901c45a2a07";
 const ANTES = "ab25e738a3101cccbb0c09450b660ee0";
 const A = "53a-conferir-faturamento-potencial-aplicado";
 const B = "53b-antes-faturamento-potencial-base-vigente";
+const ANCESTRAIS = [
+  "8e-conferir-92-a-202-aplicado",
+  "17a-conferir-estoque-do-painel-aplicado",
+  "35a-conferir-lucro-so-com-custo-aplicado",
+  "45a-conferir-custo-do-dia-aplicado",
+  "48a-conferir-lucro-com-desconto-aplicado",
+];
 const sqlConsulta = (n) =>
   fs.readFileSync(
     path.join(
@@ -75,11 +82,10 @@ const analytics = (c) =>
   );
 async function consulta(c, nome, positiva) {
   const linhas = (await c.query(sqlConsulta(nome))).rows;
-  assert.equal(linhas.length, 4);
-  assert.deepEqual(
-    linhas.map((l) => l.item).sort(),
-    [...CONF.ROL_FECHADO_POR_CONSULTA[nome]].sort(),
-  );
+  const rol = CONF.ROL_FECHADO_POR_CONSULTA[nome];
+  assert.ok(Array.isArray(rol), `${nome}: rol fechado ausente`);
+  assert.equal(linhas.length, rol.length);
+  assert.deepEqual(linhas.map((l) => l.item).sort(), [...rol].sort());
   assert.equal(
     linhas.every((l) => l.ok === true),
     positiva,
@@ -188,6 +194,8 @@ async function main() {
     marcar("estoque ativo vazio tem faturamento zero");
     await consulta(c, A, true);
     await consulta(c, B, false);
+    for (const nome of ANCESTRAIS) await consulta(c, nome, true);
+    marcar("portoes ancestrais aceitam a 250 com rol fechado completo");
     await c.query(MIGRATION);
     await c.query(MIGRATION);
     assert.deepEqual(await catalogo(c), estado);
@@ -212,6 +220,7 @@ async function main() {
     );
     await consulta(c, A, false);
     await consulta(c, B, true);
+    for (const nome of ANCESTRAIS) await consulta(c, nome, true);
     await c.query(MIGRATION.replace(/\r?\n/g, "\r\n"));
     assert.deepEqual(await analytics(c), novo);
     marcar("rollback exato, ida-volta-ida CRLF e consultas antes/depois");

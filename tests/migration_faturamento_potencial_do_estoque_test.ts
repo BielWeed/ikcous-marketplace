@@ -147,3 +147,21 @@ Deno.test("faturamento potencial — provas historicas reconhecem a sucessora se
     ),
   );
 });
+
+Deno.test("faturamento potencial — prova viva executa portoes ancestrais no corpo novo e no rollback", () => {
+  const viva = ler("tests/banco/faturamento-potencial-viva.cjs");
+  for (const nome of [
+    "8e-conferir-92-a-202-aplicado",
+    "17a-conferir-estoque-do-painel-aplicado",
+    "35a-conferir-lucro-so-com-custo-aplicado",
+    "45a-conferir-custo-do-dia-aplicado",
+    "48a-conferir-lucro-com-desconto-aplicado",
+  ])
+    assert.ok(viva.includes(`"${nome}"`), nome);
+  assert.equal(
+    viva.split("for (const nome of ANCESTRAIS) await consulta(c, nome, true);")
+      .length - 1,
+    2,
+    "os portoes devem rodar com a 250 no ar e com a 245 restaurada",
+  );
+});
