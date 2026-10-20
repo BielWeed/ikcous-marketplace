@@ -18,24 +18,25 @@ const ler = (rel: string) =>
   );
 const migration = ler(`supabase/migrations/${NOME}`);
 const FUNCOES = ["fin_caixa_fechar_sessao", "fin_caixa_movimentar_com_chave"];
+const checagens = Object.entries(VERIFICACOES).find(
+  ([nome]) => nome === NOME,
+)?.[1];
 
 Deno.test("20261252 db-apply: as duas funções têm verificação própria", () => {
-  assert(VERIFICACOES[NOME], "a migration não pode ficar sem conferência");
+  assert(checagens, "a migration não pode ficar sem conferência");
   assertEquals(
-    VERIFICACOES[NOME].map((c: any) => c.funcao),
+    checagens.map((c: any) => c.funcao),
     FUNCOES,
   );
 });
 
 for (const funcao of FUNCOES) {
   Deno.test(`20261252 db-apply: ${funcao} verifica o corpo real e recusa perder cada marcador`, () => {
-    const checagem = VERIFICACOES[NOME]?.find((c: any) => c.funcao === funcao);
+    const checagem = checagens?.find((c: any) => c.funcao === funcao);
     assert(checagem, `sem verificação para ${funcao}`);
-    const corpo = migration.match(
-      new RegExp(
-        `CREATE OR REPLACE FUNCTION public\\.${funcao}\\([\\s\\S]*?AS \\$\\$([\\s\\S]*?)\\$\\$;`,
-      ),
-    )?.[1];
+    const corpo = migration
+      .split(`CREATE OR REPLACE FUNCTION public.${funcao}(`)[1]
+      ?.match(/AS \$\$([\s\S]*?)\$\$;/)?.[1];
     assert(corpo, "corpo real não encontrado");
     assertEquals(avaliarChecagem(corpo, checagem).situacao, "verificada");
     for (const marcador of checagem.esperado) {
@@ -66,7 +67,9 @@ Deno.test("20261252 publicação: 55a e 55b exigem o rol exato e estão nos dois
     const sql = ler(`scripts/publicacao/consultas/${consulta}.sql`);
     const itens = [...sql.matchAll(/\bSELECT '([^']+)'/g)].map((m) => m[1]);
     assertEquals(itens.length, quantidade);
-    const rol = ROL_FECHADO_POR_CONSULTA[consulta];
+    const rol = Object.entries(ROL_FECHADO_POR_CONSULTA).find(
+      ([nome]) => nome === consulta,
+    )?.[1];
     assert(rol, `rol ausente: ${consulta}`);
     assertEquals([...rol].sort(), [...itens].sort());
     assertEquals(new Set(rol).size, quantidade);
@@ -89,9 +92,9 @@ Deno.test("20261252 publicação: 55a e 55b exigem o rol exato e estão nos dois
     const caminho = `"scripts/publicacao/consultas/${consulta}.sql"`;
     assertEquals(workflow.split(caminho).length - 1, 2);
     for (const evento of ["pull_request", "push"]) {
-      const bloco = workflow.match(
-        new RegExp(`  ${evento}:[\\s\\S]*?(?=\\n  [a-z_]+:|\\n[a-z_]+:)`),
-      )?.[0];
+      const bloco = workflow
+        .split(`  ${evento}:`)[1]
+        ?.split(/\n {2}[a-z_]+:|\n[a-z_]+:/)[0];
       assert(bloco, `gatilho ausente: ${evento}`);
       assertStringIncludes(bloco, caminho);
     }
