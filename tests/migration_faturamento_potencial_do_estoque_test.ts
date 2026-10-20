@@ -120,3 +120,30 @@ Deno.test("faturamento potencial — lote proprio e prova viva entram no caminho
   assert.ok(ler("scripts/db-apply.cjs").includes(NOME));
   assert.ok(ler("tests/banco/sucessoras-da-99.cjs").includes(NOME));
 });
+
+Deno.test("faturamento potencial — provas historicas reconhecem a sucessora sem mudar a base medida", () => {
+  const estoque = ler("tests/banco/estoque-do-painel-portao-viva.cjs");
+  assert.ok(
+    estoque.includes(
+      `        "${NOME}",\n        "public.get_admin_analytics_v2(integer)",`,
+    ),
+    "a lista fechada de posteriores do lote 17 deve incluir a 250 para desfazer em ordem inversa",
+  );
+  const prova8e = ler("tests/banco/portao-8e-aceita-sucessoras-viva.cjs");
+  const filtro = prova8e.slice(
+    prova8e.indexOf(
+      "const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(",
+    ),
+    prova8e.indexOf("const REPO ="),
+  );
+  assert.ok(
+    filtro.replace(/\s+/g, " ").includes(`s.nome !== "${NOME}"`),
+    "a prova historica da 8e mede a base anterior a 42 e deve excluir a 250 ja desfeita",
+  );
+  assert.ok(prova8e.includes("await devolverAoEstadoAnteriorAoCustoDoDia(C)"));
+  assert.ok(
+    ler("tests/banco/lucro-com-desconto-posterior.cjs").includes(
+      "desfazerFaturamentoPotencialNaTransacao",
+    ),
+  );
+});

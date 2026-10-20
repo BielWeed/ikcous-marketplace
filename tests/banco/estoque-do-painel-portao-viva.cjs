@@ -1221,6 +1221,10 @@ async function main() {
         "20261249000000_o_motivo_do_desconto_do_balcao_nao_chega_a_cliente.sql",
         "public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)",
       ],
+      [
+        "20261250000000_o_faturamento_potencial_conta_todo_o_estoque.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
