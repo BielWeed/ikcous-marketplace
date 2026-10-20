@@ -1,0 +1,17 @@
+{
+  "plano": "noturno-tipos-efemeros",
+  "frentes": [
+    {
+      "nome": "gerador",
+      "descricao": "Gerar artefato de tipos somente do Postgres efêmero do CI",
+      "posse": [
+        "tests/banco/gerar-tipos-efemeros.cjs",
+        "tests/ci_tipos_efemeros_test.ts",
+        ".github/workflows/rpc-ci.yml"
+      ]
+    }
+  ],
+  "liberados": {
+    ".github/workflows/rpc-ci.yml": "gerador"
+  }
+}
