@@ -32,6 +32,7 @@ const TIPOS = `export type Database = {
 function montar(
   alteracoes = {},
   resultado = { status: 0, stdout: TIPOS, stderr: "" },
+  opcoes = {},
 ) {
   const env = {
     CI: "true",
@@ -50,7 +51,10 @@ function montar(
   const gravados = new Map();
   const logs = [];
   const fs = {
-    mkdirSync: (...args) => chamadas.push(["mkdir", ...args]),
+    mkdirSync: (...args) => {
+      if (opcoes.erroFs) throw opcoes.erroFs;
+      chamadas.push(["mkdir", ...args]);
+    },
     writeFileSync: (nome, texto) => {
       chamadas.push(["write", nome]);
       gravados.set(nome, texto);
@@ -89,10 +93,17 @@ function montar(
           return resultado;
         },
       };
-    if (nome === "node:crypto") return { createHash };
+    if (nome === "node:crypto")
+      return {
+        createHash: (...args) => {
+          if (opcoes.erroHash) throw opcoes.erroHash;
+          return createHash(...args);
+        },
+      };
     if (nome === "node:path") return path;
     throw new Error("Importação inesperada");
   };
+  if (opcoes.entrada) importar.main = modulo;
   runInNewContext(fonte, {
     module: modulo,
     require: importar,
@@ -101,8 +112,15 @@ function montar(
     URL,
     Buffer,
   });
-  assertEquals(chamadas.length, 0, "importar não pode executar nem escrever");
-  return { gerar: modulo.exports.gerarTiposEfemeros, chamadas, gravados, logs };
+  if (!opcoes.entrada)
+    assertEquals(chamadas.length, 0, "importar não pode executar nem escrever");
+  return {
+    gerar: modulo.exports.gerarTiposEfemeros,
+    chamadas,
+    gravados,
+    logs,
+    processo,
+  };
 }
 
 Deno.test("tipos efêmeros: recusa ambiente e host antes de qualquer efeito", () => {
@@ -213,6 +231,117 @@ Deno.test("tipos efêmeros: sucesso preserva bytes e metadata amarra SHA e hash"
   });
   assert(!metadata.includes("postgres"));
   assertEquals(caso.logs, []);
+});
+
+const PAYLOAD = "DADO_SINTETICO_NAO_PUBLICAR";
+const PREFIXO = "TIPOS_EFEMEROS ";
+
+function diagnostico(mensagem) {
+  assert(mensagem.startsWith(PREFIXO));
+  assert(!mensagem.includes(PAYLOAD));
+  assert(!mensagem.includes(URL_EFEMERA));
+  return JSON.parse(mensagem.slice(PREFIXO.length));
+}
+
+Deno.test("diagnóstico: status 1 é retorno CLI, não validação de saída", () => {
+  const caso = montar({}, { status: 1, stdout: PAYLOAD, stderr: PAYLOAD });
+  const erro = assertThrows(() => caso.gerar());
+  assertEquals(diagnostico(erro.message), {
+    etapa: "RETORNO_CLI",
+    status: 1,
+    codigo: null,
+    sinal: null,
+  });
+  assertEquals(caso.gravados.size, 0);
+  const entrada = montar(
+    {},
+    { status: 1, stdout: PAYLOAD, stderr: PAYLOAD },
+    { entrada: true },
+  );
+  assertEquals(entrada.processo.exitCode, 1);
+  assertEquals(entrada.logs, [erro.message]);
+  const invalido = montar({}, { status: 0, stdout: PAYLOAD, stderr: PAYLOAD });
+  assertEquals(diagnostico(assertThrows(() => invalido.gerar()).message), {
+    etapa: "VALIDACAO_SAIDA",
+    status: 0,
+    codigo: null,
+    sinal: null,
+  });
+});
+
+Deno.test("diagnóstico: códigos e sinais fora da lista nunca saem", () => {
+  for (const [codigo, sinal, esperadoCodigo, esperadoSinal] of [
+    ["ETIMEDOUT", "SIGTERM", "ETIMEDOUT", "SIGTERM"],
+    ["ENOBUFS", "SIGKILL", "ENOBUFS", "SIGKILL"],
+    [PAYLOAD, PAYLOAD, null, null],
+    [URL_EFEMERA, URL_EFEMERA, null, null],
+  ]) {
+    const erro = Object.assign(new Error(PAYLOAD), { code: codigo });
+    const caso = montar(
+      {},
+      { status: null, error: erro, signal: sinal, stderr: PAYLOAD },
+      { entrada: true },
+    );
+    assertEquals(caso.processo.exitCode, 1);
+    assertEquals(caso.logs.length, 1);
+    assertEquals(diagnostico(caso.logs[0]), {
+      etapa: "RETORNO_CLI",
+      status: null,
+      codigo: esperadoCodigo,
+      sinal: esperadoSinal,
+    });
+  }
+  const statusForjado = montar(
+    {},
+    { status: PAYLOAD, stdout: PAYLOAD },
+    { entrada: true },
+  );
+  assertEquals(diagnostico(statusForjado.logs[0]).status, null);
+});
+
+Deno.test("diagnóstico: spawn, guarda, ambiente e escrita mantêm causa fechada", () => {
+  const erro = Object.assign(new Error(PAYLOAD), { code: "ENOENT" });
+  const spawn = montar({}, erro, { entrada: true });
+  assertEquals(diagnostico(spawn.logs[0]), {
+    etapa: "SPAWN",
+    status: null,
+    codigo: "ENOENT",
+    sinal: null,
+  });
+  const escrita = montar(
+    {},
+    { status: 0, stdout: TIPOS, stderr: PAYLOAD },
+    { entrada: true, erroFs: erro },
+  );
+  assertEquals(diagnostico(escrita.logs[0]), {
+    etapa: "ESCRITA",
+    status: null,
+    codigo: "ENOENT",
+    sinal: null,
+  });
+  for (const env of [
+    { CI: "false" },
+    { DATABASE_URL: PAYLOAD },
+    { CI_BANCO_EFEMERO: "" },
+  ]) {
+    const caso = montar(env, undefined, { entrada: true });
+    assertEquals(caso.processo.exitCode, 1);
+    for (const log of caso.logs) {
+      assertEquals(diagnostico(log).etapa, "GUARDA_AMBIENTE");
+      assert(!log.includes(PAYLOAD));
+      assert(!log.includes(URL_EFEMERA));
+    }
+    assertEquals(caso.gravados.size, 0);
+  }
+});
+
+Deno.test("diagnóstico: erro inesperado com prefixo forjado continua genérico", () => {
+  const erro = new Error(`${PREFIXO}${PAYLOAD}`);
+  const caso = montar({}, undefined, { entrada: true, erroHash: erro });
+  assertEquals(caso.processo.exitCode, 1);
+  assertEquals(caso.logs, [
+    "Geração de tipos efêmeros recusada ou malsucedida; nenhum upload autorizado.",
+  ]);
 });
 
 Deno.test("RPC-CI: geração e upload dependem dos passos certos e gatilhos", () => {
