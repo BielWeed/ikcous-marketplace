@@ -727,6 +727,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
   const [uploading, setUploading] = useState(false);
+  const geracaoDoUploadPendente = useRef<number | null>(null);
   const geracaoDoEditor = useRef(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTab, setSelectedTab] = useLocalStorage<
@@ -990,13 +991,22 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
   const [adjustingImgUrl, setAdjustingImgUrl] = useState("");
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
+  // O bloqueio síncrono pertence à geração: uma resposta antiga não libera a nova.
+  const geracaoDoRecortePendente = useRef<number | null>(null);
 
   const openAdjuster = (url: string) => {
+    if (isSubmittingRef.current) return;
     setAdjustingImgUrl(url);
     setIsAdjusterOpen(true);
   };
 
   const handleAdjustConfirm = async (croppedBlob: Blob) => {
+    if (
+      isSubmittingRef.current ||
+      geracaoDoRecortePendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para salvar a imagem ajustada.",
@@ -1004,6 +1014,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       return;
     }
     const geracaoDoRecorte = geracaoDoEditor.current;
+    geracaoDoRecortePendente.current = geracaoDoRecorte;
     setIsUploadingAdjusted(true);
     // Mesmo achado do produto (AdminProductFormView-499): o ImageAdjuster
     // exporta webp — nome/tipo fixos ".jpg"/"image/jpeg" mentiam sobre o
@@ -1036,6 +1047,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     } finally {
       fim();
       if (geracaoDoRecorte === geracaoDoEditor.current) {
+        geracaoDoRecortePendente.current = null;
         setIsUploadingAdjusted(false);
       }
     }
@@ -1730,6 +1742,12 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (
+      isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description:
@@ -1741,6 +1759,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     if (!file) return;
 
     const geracaoDoUpload = geracaoDoEditor.current;
+    geracaoDoUploadPendente.current = geracaoDoUpload;
     setUploading(true);
     const loadingToast = toast.loading("Enviando imagem do banner...");
     const fim = marcarOperacaoSensivel("upload-de-banner");
@@ -1766,6 +1785,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     } finally {
       fim();
       if (geracaoDoUpload === geracaoDoEditor.current) {
+        geracaoDoUploadPendente.current = null;
         setUploading(false);
       }
     }
@@ -1784,7 +1804,13 @@ export const AdminBannersView = memo(function AdminBannersView({
       });
       return;
     }
-    if (isSubmitting) return;
+    if (
+      isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current ||
+      geracaoDoRecortePendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
     const revisaoEnviada = revisaoDaDigitacao.current;
     setIsSubmitting(true);
     isSubmittingRef.current = true;
@@ -1885,6 +1911,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         return;
       }
       isSavedRef.current = true;
+      geracaoDoEditor.current += 1;
       setEdicaoPendenteAposSalvar(false);
       if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
       setIsDialogOpen(false);
@@ -2916,7 +2943,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             accept="image/*"
                             className="hidden"
                             onChange={handleFileUpload}
-                            disabled={uploading}
+                            disabled={uploading || isSubmitting}
                           />
                         </div>
                       </div>
@@ -3231,7 +3258,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           accept="image/*"
                           className="hidden"
                           onChange={handleFileUpload}
-                          disabled={uploading}
+                          disabled={uploading || isSubmitting}
                         />
                       </div>
                     </div>
@@ -5067,12 +5094,17 @@ export const AdminBannersView = memo(function AdminBannersView({
                   </Button>
                   <Button
                     onClick={handleSubmit}
-                    disabled={uploading || isSubmitting || isOffline}
+                    disabled={
+                      uploading ||
+                      isUploadingAdjusted ||
+                      isSubmitting ||
+                      isOffline
+                    }
                     className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
                   >
                     {isOffline
                       ? "Modo Offline"
-                      : uploading
+                      : uploading || isUploadingAdjusted
                         ? "Enviando Imagem..."
                         : isSubmitting
                           ? "Salvando..."
@@ -5120,12 +5152,17 @@ export const AdminBannersView = memo(function AdminBannersView({
                   ) : (
                     <Button
                       onClick={handleSubmit}
-                      disabled={uploading || isSubmitting || isOffline}
+                      disabled={
+                        uploading ||
+                        isUploadingAdjusted ||
+                        isSubmitting ||
+                        isOffline
+                      }
                       className="h-9.5 flex-[2] cursor-pointer rounded-xl border border-amber-400/20 bg-gradient-to-r from-[#FFBF00] to-amber-500 text-[11px] font-black uppercase tracking-wider text-black shadow-lg transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(255,191,0,0.2)] active:scale-95 disabled:pointer-events-none disabled:scale-100 disabled:border-white/5 disabled:from-zinc-850 disabled:to-zinc-900 disabled:text-zinc-650 disabled:shadow-none"
                     >
                       {isOffline
                         ? "Modo Offline"
-                        : uploading
+                        : uploading || isUploadingAdjusted
                           ? "Enviando Imagem..."
                           : isSubmitting
                             ? "Salvando..."
