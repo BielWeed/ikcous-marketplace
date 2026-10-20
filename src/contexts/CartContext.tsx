@@ -15,6 +15,10 @@ import {
 import { economiaDaOpcao, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { mapProductFromDB } from "@/lib/mappers";
 import { precoVendido } from "@/lib/preco-vendido";
+import {
+  lerRascunhoDoCheckout,
+  salvarRascunhoDoCheckout,
+} from "@/lib/rascunho-do-checkout";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, Product, ShippingOption } from "@/types";
 import React, {
@@ -329,6 +333,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Track which user we have already synced for
   const lastSessionUserId = useRef<string | null>(null);
+  // Só a ausência de algo que já vimos no banco prova uma exclusão remota.
+  // Item local novo ou editado depois dessa leitura continua na junção.
+  const ultimoCarrinhoRemoto = useRef(new Map<string, number>());
 
   // Conta atual, para a leitura em voo saber se ainda é a dela quando voltar.
   const userIdAtualRef = useRef<string | null>(userId ?? null);
@@ -476,11 +483,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const lido = await lerProdutosEVariacoes(productIds);
             products = lido.produtos;
             variants = lido.variantes;
-            // Sem as variações o catálogo está incompleto: não se aplica ao
-            // carrinho (o carrinho do banco segue sendo montado como antes).
-            if (!lido.variantesFalharam) {
-              catalogo = montarCatalogo(productIds, products, variants);
+            // Sem as variações não há preço confiável para reconstruir o
+            // carrinho remoto. Mantém a cópia local e tenta reler, sem gravar
+            // um carrinho incompleto por cima do banco.
+            if (lido.variantesFalharam) {
+              const faltaPrecoDaVariacao = dbItems.some(
+                (item) =>
+                  item.variant_id &&
+                  !cartRef.current.some(
+                    (local) =>
+                      local.product.id === item.product_id &&
+                      local.product.variants?.some(
+                        (v) => v.id === item.variant_id,
+                      ),
+                  ),
+              );
+              if (faltaPrecoDaVariacao) {
+                toast.error(
+                  "Não foi possível conferir o preço das variações. Tente novamente.",
+                );
+              }
+              throw new Error("Catálogo de variações indisponível");
             }
+            catalogo = montarCatalogo(productIds, products, variants);
           }
 
           const reconstructedCart: CartItem[] = dbItems
@@ -548,6 +573,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           const comOCatalogo = (itens: CartItem[]) =>
             catalogo ? aplicarCatalogoAoCarrinho(itens, catalogo) : itens;
 
+          const remotoAnterior = ultimoCarrinhoRemoto.current;
+          const remotoAtual = new Map(
+            reconstructedCart.map((item) => [
+              `${item.product.id}-${item.variantId || ""}`,
+              item.lastModifiedAt || 0,
+            ]),
+          );
+          ultimoCarrinhoRemoto.current = remotoAtual;
+
           setCart((prev) => {
             const tombstones = loadTombstones();
             const prevHash = JSON.stringify(prev);
@@ -575,6 +609,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             // Add local items first (these carry local timestamps)
             prev.forEach((item) => {
               const key = `${item.product.id}-${item.variantId || ""}`;
+              const carimboRemotoAnterior = remotoAnterior.get(key);
+              if (
+                carimboRemotoAnterior !== undefined &&
+                !remotoAtual.has(key) &&
+                (item.lastModifiedAt || 0) <= carimboRemotoAnterior
+              ) {
+                return;
+              }
               // A exclusão de outra aba também vale para a cópia que ficou aqui.
               const tombstone = tombstones.get(key);
               if (
@@ -689,6 +731,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       syncLocked.current = true;
       // O carrinho do banco da conta anterior não diz nada sobre o desta.
       remotoMescladoRef.current = false;
+      ultimoCarrinhoRemoto.current = new Map();
       setRemotoMesclado(false);
       falhasDeLeitura.current = 0;
       cancelarReleitura();
@@ -1151,6 +1194,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
     setSelectedShippingOption(null);
     setShippingCep(null);
+    const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+    if (rascunho) {
+      salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+        ...rascunho,
+        cupom: null,
+        contaDoCupom: null,
+      });
+    }
     removerSeguro(CART_STORAGE_KEY);
     toast.info("Carrinho limpo");
   }, [setSelectedShippingOption]);
