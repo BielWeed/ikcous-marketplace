@@ -283,6 +283,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     });
     hospedeiro.remove();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -591,13 +592,64 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     },
   );
 
+  it.each(["Sangria", "Suprimento"])(
+    "replay realizado de %s informa que nada novo foi gravado; próxima intenção igual é nova",
+    async (movimento) => {
+      servidor.replay = true;
+      await prepararMovimento(movimento);
+      vi.mocked(toast.success).mockClear();
+      vi.mocked(toast.info).mockClear();
+      const registrar = `Registrar ${movimento.toLowerCase()}`;
+      const sucesso =
+        movimento === "Sangria"
+          ? "Sangria registrada."
+          : "Suprimento registrado.";
+      const aviso =
+        movimento === "Sangria"
+          ? "Esta sangria já estava registrada por uma tentativa anterior; nada novo foi gravado. Se esta é outra sangria, registre de novo."
+          : "Este suprimento já estava registrado por uma tentativa anterior; nada novo foi gravado. Se este é outro suprimento, registre de novo.";
+      const leiturasAntes = rpcFalso.mock.calls.filter(
+        ([nome]) => nome === "fin_caixa_atual",
+      ).length;
+      await clicar(botaoEm(folha() as HTMLElement, registrar));
+      expect(toast.info).toHaveBeenCalledWith(aviso);
+      expect(toast.success).not.toHaveBeenCalled();
+      expect(document.body.textContent).not.toContain(sucesso);
+      expect(document.body.textContent).not.toContain("Saiu de");
+      expect(guardado.size).toBe(0);
+      expect(folha()).toBeNull();
+      expect(
+        rpcFalso.mock.calls.filter(([nome]) => nome === "fin_caixa_atual")
+          .length,
+      ).toBeGreaterThan(leiturasAntes);
+      const primeira = { ...movimentos()[0] };
+
+      servidor.replay = false;
+      await reabrirMovimento(movimento);
+      await digitar("fin-caixa-mov-descricao", "  Guardar no cofre  ");
+      await escolherConta(CONTA_BANCARIA);
+      await clicar(botaoEm(folha() as HTMLElement, registrar));
+      expect(movimentos()).toHaveLength(2);
+      expect(movimentos()[1].p_chave).not.toBe(primeira.p_chave);
+      expect({ ...movimentos()[1], p_chave: primeira.p_chave }).toEqual(
+        primeira,
+      );
+      expect(toast.success).toHaveBeenCalledExactlyOnceWith(sucesso);
+      expect(guardado.size).toBe(0);
+    },
+  );
+
   it("não expira identidade pelo relógio", async () => {
     servidor.falhasMovimento.push(new TypeError("Failed to fetch"));
     await prepararMovimento();
     await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
     const primeira = { ...movimentos()[0] };
     await clicar(botaoEm(folha() as HTMLElement, "Voltar"));
-    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 365 * 86400000);
+    const futuro = Date.now() + 365 * 86400000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(futuro);
+    expect(Date.now()).toBe(futuro);
+    expect(new Date().getTime()).toBe(futuro);
     await remontar();
     await reabrirMovimento();
     await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));

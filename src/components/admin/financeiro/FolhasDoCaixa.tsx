@@ -341,6 +341,15 @@ export function MovimentarCaixaFolha({
         );
         return;
       }
+      if (resultado.replay) {
+        aoSalvar(
+          sangria
+            ? "Esta sangria já estava registrada por uma tentativa anterior; nada novo foi gravado. Se esta é outra sangria, registre de novo."
+            : "Este suprimento já estava registrado por uma tentativa anterior; nada novo foi gravado. Se este é outro suprimento, registre de novo.",
+          "informacao",
+        );
+        return;
+      }
       confirmarVisualmente({
         titulo: sangria ? "Sangria registrada." : "Suprimento registrado.",
         descricao: enviada.descricao,
