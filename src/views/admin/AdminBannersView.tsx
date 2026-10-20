@@ -729,6 +729,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [uploading, setUploading] = useState(false);
   const geracaoDoUploadPendente = useRef<number | null>(null);
   const geracaoDoEditor = useRef(0);
+  const imagemEnviadaNaoSalvaRef = useRef<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTab, setSelectedTab] = useLocalStorage<
     "all" | "home_top" | "home_middle" | "home_bottom"
@@ -1000,6 +1001,22 @@ export const AdminBannersView = memo(function AdminBannersView({
     setIsAdjusterOpen(true);
   };
 
+  const adotarImagemEnviada = (url: string) => {
+    // Recorte e upload podem responder antes do próximo render. Compartilham
+    // a imagem substituível, sem depender do formData capturado por cada envio.
+    const imagemAnterior =
+      imagemEnviadaNaoSalvaRef.current ?? formData.imageUrl;
+    imagemEnviadaNaoSalvaRef.current = url;
+    if (
+      imagemAnterior &&
+      imagemAnterior !== url &&
+      imagemAnterior !== editingBanner?.imageUrl
+    ) {
+      deleteStorageFile(imagemAnterior).catch(() => {});
+    }
+    setFormData((prev) => ({ ...prev, imageUrl: url }));
+  };
+
   const handleAdjustConfirm = async (croppedBlob: Blob) => {
     if (
       isSubmittingRef.current ||
@@ -1031,10 +1048,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         toast.dismiss(loadingToast);
         return;
       }
-      if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
-        deleteStorageFile(formData.imageUrl).catch(() => {});
-      }
-      setFormData((prev) => ({ ...prev, imageUrl: url }));
+      adotarImagemEnviada(url);
       toast.success("Imagem ajustada com sucesso!", { id: loadingToast });
       setIsAdjusterOpen(false);
     } catch (error) {
@@ -1484,6 +1498,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const handleOpenDialog = (banner?: Banner) => {
     geracaoDoEditor.current += 1;
+    imagemEnviadaNaoSalvaRef.current = null;
     setUploading(false);
     setIsUploadingAdjusted(false);
     setIsAdjusterOpen(false);
@@ -1755,7 +1770,8 @@ export const AdminBannersView = memo(function AdminBannersView({
       });
       return;
     }
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
 
     const geracaoDoUpload = geracaoDoEditor.current;
@@ -1771,10 +1787,7 @@ export const AdminBannersView = memo(function AdminBannersView({
         toast.dismiss(loadingToast);
         return;
       }
-      if (formData.imageUrl && formData.imageUrl !== editingBanner?.imageUrl) {
-        deleteStorageFile(formData.imageUrl).catch(() => {});
-      }
-      setFormData((prev) => ({ ...prev, imageUrl: url }));
+      adotarImagemEnviada(url);
       toast.success("Imagem enviada com sucesso", { id: loadingToast });
     } catch {
       if (geracaoDoUpload !== geracaoDoEditor.current) {
@@ -1783,6 +1796,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       }
       toast.error("Erro ao enviar imagem", { id: loadingToast });
     } finally {
+      input.value = "";
       fim();
       if (geracaoDoUpload === geracaoDoEditor.current) {
         geracaoDoUploadPendente.current = null;
@@ -1897,6 +1911,8 @@ export const AdminBannersView = memo(function AdminBannersView({
           setEditingBanner({ ...dataToSubmit, id: criado.id } as Banner);
         }
       }
+      // O envio agora pertence ao banner publicado, mesmo se o editor continuar aberto.
+      imagemEnviadaNaoSalvaRef.current = null;
       const mudouDuranteEnvio =
         JSON.stringify(formularioAtual.current.formData) !==
           JSON.stringify(formData) ||
