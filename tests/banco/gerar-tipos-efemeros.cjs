@@ -30,6 +30,14 @@ const SINAIS = new Set(["SIGTERM", "SIGKILL", "SIGINT", "SIGABRT"]);
 // Só mensagens criadas aqui podem atravessar o catch CLI; prefixo não é prova.
 const diagnosticos = new WeakMap();
 
+// Exigências da saída, usadas na validação e no diagnóstico. @supabase/postgrest-typegen
+// (CLI 2.121.0 -> typegen 0.2.2 -> postgrest-typegen 0.4.0) escreve a chave da função com
+// JSON.stringify: `"nome":`. Aspas opcionais aceitam também o formato antigo sem aspas;
+// \b e o `"?` seguido de `:` impedem casar `nome_antiga` ou `x_nome`.
+const EXIGE_DATABASE = /export type Database\s*=/;
+const EXIGE_FECHAR = /\bfin_caixa_fechar_sessao"?\s*:/;
+const EXIGE_MOVIMENTAR = /\bfin_caixa_movimentar_com_chave"?\s*:/;
+
 const CAUSAS_NPM = new Map([
   ["E404", "NPM_E404"],
   ["ETARGET", "NPM_ETARGET"],
@@ -110,10 +118,10 @@ function resumirSaida(stdout) {
   const texto = typeof stdout === "string" ? stdout : "";
   return {
     bytes: Buffer.byteLength(texto, "utf8"),
-    database: /export type Database\s*=/.test(texto),
+    database: EXIGE_DATABASE.test(texto),
     functions: /\bFunctions\s*:/.test(texto),
-    fechar: /\bfin_caixa_fechar_sessao\s*:/.test(texto),
-    movimentar: /\bfin_caixa_movimentar_com_chave\s*:/.test(texto),
+    fechar: EXIGE_FECHAR.test(texto),
+    movimentar: EXIGE_MOVIMENTAR.test(texto),
     prefixo_caixa: /\bfin_caixa_/.test(texto),
   };
 }
@@ -214,9 +222,9 @@ function gerarTiposEfemeros() {
     typeof tipos !== "string" ||
     !tipos.trim() ||
     Buffer.byteLength(tipos, "utf8") > MAX_BUFFER ||
-    !/export type Database\s*=/.test(tipos) ||
-    !/\bfin_caixa_fechar_sessao\s*:/.test(tipos) ||
-    !/\bfin_caixa_movimentar_com_chave\s*:/.test(tipos)
+    !EXIGE_DATABASE.test(tipos) ||
+    !EXIGE_FECHAR.test(tipos) ||
+    !EXIGE_MOVIMENTAR.test(tipos)
   ) {
     throw falhaDeEtapa("VALIDACAO_SAIDA", resultado);
   }

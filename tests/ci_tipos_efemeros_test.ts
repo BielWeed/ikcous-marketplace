@@ -21,10 +21,13 @@ const guarda = Deno.readTextFileSync(
 );
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const URL_EFEMERA = "postgres://postgres:postgres@localhost:5432/postgres";
+// Formato real do CLI 2.121.0 (postgrest-typegen 0.4.0): chaves com JSON.stringify.
 const TIPOS = `export type Database = {
-  public: { Functions: {
-    fin_caixa_fechar_sessao: { Args: { p_sessao_id: string }; Returns: unknown }
-    fin_caixa_movimentar_com_chave: { Args: { p_chave: string }; Returns: unknown }
+  "public": { Functions: {
+    "fin_caixa_fechar_sessao":
+      { Args: { "p_sessao_id": string }; Returns: unknown },
+    "fin_caixa_movimentar_com_chave":
+      { Args: { "p_chave": string }; Returns: unknown }
   } }
 }
 `;
@@ -210,6 +213,28 @@ Deno.test("tipos efêmeros: falha, timeout, vazio e RPC ausente não escrevem", 
     );
     assertEquals(caso.gravados.size, 0);
     assertEquals(caso.logs, []);
+  }
+});
+
+Deno.test("tipos efêmeros: RPC do caixa exige a chave exata, com ou sem aspas", () => {
+  const legado = TIPOS.replaceAll('"fin_caixa', "fin_caixa").replaceAll(
+    'sessao"',
+    "sessao",
+  ).replaceAll('chave"', "chave");
+  assert(!legado.includes('"fin_caixa'));
+  montar({}, { status: 0, stdout: legado, stderr: "" }).gerar();
+  for (const trocar of [
+    ['"fin_caixa_fechar_sessao":', '"fin_caixa_fechar_sessao_antiga":'],
+    ['"fin_caixa_fechar_sessao":', '"x_fin_caixa_fechar_sessao":'],
+    ['"fin_caixa_movimentar_com_chave":', '"fin_caixa_movimentar_com_chave_antiga":'],
+    ['"fin_caixa_movimentar_com_chave":', '"x_fin_caixa_movimentar_com_chave":'],
+    ['"fin_caixa_fechar_sessao":', "// fin_caixa_fechar_sessao sem chave\n"],
+  ]) {
+    const stdout = TIPOS.replace(trocar[0], trocar[1]);
+    assert(stdout !== TIPOS);
+    const caso = montar({}, { status: 0, stdout, stderr: "" });
+    assertThrows(() => caso.gerar());
+    assertEquals(caso.gravados.size, 0);
   }
 });
 
