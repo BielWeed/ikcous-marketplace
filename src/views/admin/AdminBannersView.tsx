@@ -727,6 +727,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
   const [uploading, setUploading] = useState(false);
+  const geracaoDoUploadPendente = useRef<number | null>(null);
   const geracaoDoEditor = useRef(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTab, setSelectedTab] = useLocalStorage<
@@ -1741,6 +1742,12 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (
+      isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current
+    ) {
+      return;
+    }
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description:
@@ -1752,6 +1759,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     if (!file) return;
 
     const geracaoDoUpload = geracaoDoEditor.current;
+    geracaoDoUploadPendente.current = geracaoDoUpload;
     setUploading(true);
     const loadingToast = toast.loading("Enviando imagem do banner...");
     const fim = marcarOperacaoSensivel("upload-de-banner");
@@ -1777,6 +1785,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     } finally {
       fim();
       if (geracaoDoUpload === geracaoDoEditor.current) {
+        geracaoDoUploadPendente.current = null;
         setUploading(false);
       }
     }
@@ -1797,6 +1806,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     }
     if (
       isSubmittingRef.current ||
+      geracaoDoUploadPendente.current === geracaoDoEditor.current ||
       geracaoDoRecortePendente.current === geracaoDoEditor.current
     ) {
       return;
@@ -2933,7 +2943,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             accept="image/*"
                             className="hidden"
                             onChange={handleFileUpload}
-                            disabled={uploading}
+                            disabled={uploading || isSubmitting}
                           />
                         </div>
                       </div>
@@ -3248,7 +3258,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           accept="image/*"
                           className="hidden"
                           onChange={handleFileUpload}
-                          disabled={uploading}
+                          disabled={uploading || isSubmitting}
                         />
                       </div>
                     </div>
