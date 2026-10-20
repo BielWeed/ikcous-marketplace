@@ -1,10 +1,10 @@
+import { publicarMudancaDeCategoria } from "@/lib/avisos-de-categoria";
+import type { Product } from "@/types";
+import { AdminProductsView } from "@/views/admin/AdminProductsView";
 // @vitest-environment jsdom
 import { act, useCallback, useRef, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { publicarMudancaDeCategoria } from "@/lib/avisos-de-categoria";
-import type { Product } from "@/types";
-import { AdminProductsView } from "@/views/admin/AdminProductsView";
 
 type Resultado = { products: Product[]; total: number } | null;
 
@@ -126,7 +126,9 @@ describe("AdminProductsView — só a recarga atual conclui o estado", () => {
 
   async function montar(active = true) {
     await act(async () => {
-      raiz.render(<AdminProductsView active={active} onNavigate={onNavigate} />);
+      raiz.render(
+        <AdminProductsView active={active} onNavigate={onNavigate} />,
+      );
     });
   }
 
@@ -148,22 +150,25 @@ describe("AdminProductsView — só a recarga atual conclui o estado", () => {
   it.each([
     ["com produto", comProduto, "Produto atual"],
     ["vazio legítimo", vazio, "Nenhum produto cadastrado"],
-  ])("B %s antes de A cancelada não vira falha", async (_, resultado, texto) => {
-    const a = pendente();
-    const b = pendente();
-    consultar.mockReturnValueOnce(a.promessa).mockReturnValueOnce(b.promessa);
-    await iniciarPrimeira();
-    await recarregarPorCategoria();
-    expect(consultar).toHaveBeenCalledTimes(2);
-    await act(async () => b.resolver(resultado));
-    expect(hospedeiro.textContent).toContain(texto);
-    expect(hospedeiro.textContent).toContain("Sincronizado");
-    await act(async () => a.resolver(null));
-    expect(hospedeiro.textContent).toContain(texto);
-    expect(hospedeiro.textContent).toContain("Sincronizado");
-    expect(hospedeiro.textContent).not.toContain("Não sincronizou");
-    expect(hospedeiro.textContent).not.toContain("Erro ao Carregar Produtos");
-  });
+  ])(
+    "B %s antes de A cancelada não vira falha",
+    async (_, resultado, texto) => {
+      const a = pendente();
+      const b = pendente();
+      consultar.mockReturnValueOnce(a.promessa).mockReturnValueOnce(b.promessa);
+      await iniciarPrimeira();
+      await recarregarPorCategoria();
+      expect(consultar).toHaveBeenCalledTimes(2);
+      await act(async () => b.resolver(resultado));
+      expect(hospedeiro.textContent).toContain(texto);
+      expect(hospedeiro.textContent).toContain("Sincronizado");
+      await act(async () => a.resolver(null));
+      expect(hospedeiro.textContent).toContain(texto);
+      expect(hospedeiro.textContent).toContain("Sincronizado");
+      expect(hospedeiro.textContent).not.toContain("Não sincronizou");
+      expect(hospedeiro.textContent).not.toContain("Erro ao Carregar Produtos");
+    },
+  );
 
   it("A cancelada antes de B não encerra o primeiro carregamento", async () => {
     const a = pendente();
