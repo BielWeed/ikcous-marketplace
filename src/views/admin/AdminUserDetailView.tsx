@@ -63,7 +63,7 @@ import {
   Trash2,
   User,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface Profile {
@@ -91,6 +91,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const isOffline = useOnlineStatus();
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [idCarregado, setIdCarregado] = useState<string | null>(null);
+  // Troca de cliente, nova tentativa e desmontagem invalidam respostas antigas.
+  const consultaFicha = useRef(0);
+  const consultaVoz = useRef(0);
+  const fichaCarregada = !loading && idCarregado === userId && isAdmin;
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -132,8 +137,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
   const carregarVoz = useCallback(async () => {
     if (!isAdmin) return;
+    const consulta = ++consultaVoz.current;
     setVozCarregando(true);
     setVozErro(null);
+    setAvaliacoes([]);
+    setPerguntas([]);
     try {
       const [resReviews, resQuestions] = await Promise.all([
         supabase
@@ -147,6 +155,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           .eq("user_id", userId)
           .order("created_at", { ascending: false }),
       ]);
+      if (consulta !== consultaVoz.current) return;
       if (resReviews.error) throw resReviews.error;
       if (resQuestions.error) throw resQuestions.error;
 
@@ -188,15 +197,20 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         })),
       );
     } catch (err) {
+      if (consulta !== consultaVoz.current) return;
       console.error("[AdminUserDetail] Erro ao carregar voz do cliente:", err);
       setVozErro("Não foi possível carregar o que este cliente escreveu.");
     } finally {
-      setVozCarregando(false);
+      if (consulta === consultaVoz.current) setVozCarregando(false);
     }
   }, [userId, isAdmin]);
 
   useEffect(() => {
+    const controle = consultaVoz;
     carregarVoz();
+    return () => {
+      controle.current++;
+    };
   }, [carregarVoz]);
 
   const handleCopy = (text: string, field: "id" | "email" | "whatsapp") => {
@@ -224,13 +238,23 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
   const fetchUserData = useCallback(async () => {
     if (!isAdmin) return;
+    const consulta = ++consultaFicha.current;
     setLoading(true);
     setLoadFailed(false);
+    setIdCarregado(null);
+    setProfile(null);
+    setOrders([]);
+    setAddresses([]);
+    setCartItems([]);
+    setCartItemToRemove(null);
+    setIsClearingCart(false);
+    setCopiedField(null);
     try {
       const { data, error } = await supabase.rpc("get_admin_user_detail", {
         p_user_id: userId,
       });
 
+      if (consulta !== consultaFicha.current) return;
       if (error) throw error;
 
       const payload = data as any;
@@ -248,6 +272,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           .select("*, product_variants(*)")
           .in("id", productIds);
 
+        if (consulta !== consultaFicha.current) return;
         if (prodError) throw prodError;
 
         const reconstructedCart: CartItem[] = (payload.cart_items || []).map(
@@ -304,25 +329,33 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       } else {
         setCartItems([]);
       }
+      setIdCarregado(userId);
     } catch (err) {
+      if (consulta !== consultaFicha.current) return;
       console.error("[AdminUserDetail] Error fetching data:", err);
       toast.error("Erro ao carregar dados do usuário");
       setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (consulta === consultaFicha.current) setLoading(false);
     }
   }, [userId, isAdmin]);
 
   useEffect(() => {
+    const controle = consultaFicha;
     fetchUserData();
+    return () => {
+      controle.current++;
+    };
   }, [fetchUserData]);
 
   const handleRemoveCartItem = (productId: string, variantId?: string) => {
+    if (!fichaCarregada) return;
     setCartItemToRemove({ productId, variantId });
   };
 
   const confirmRemoveCartItem = async () => {
-    if (!cartItemToRemove) return;
+    if (!cartItemToRemove || !fichaCarregada || !idCarregado) return;
+    const consulta = consultaFicha.current;
     if (isOffline) {
       toast.error("Operação negada: Você está offline.");
       return;
@@ -334,7 +367,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         .from("cart_items")
         .delete()
         .select("id")
-        .eq("user_id", userId)
+        .eq("user_id", idCarregado)
         .eq("product_id", productId);
 
       if (variantId) {
@@ -345,6 +378,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
       const { data, error } = await query;
 
+      if (consulta !== consultaFicha.current) return;
       if (error) throw error;
 
       // A policy de DELETE de `cart_items` ganhou o ramo de admin na
@@ -371,18 +405,22 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       toast.success("Item removido com sucesso!");
       fetchUserData();
     } catch (err) {
+      if (consulta !== consultaFicha.current) return;
       console.error("Error removing cart item:", err);
       toast.error("Erro ao remover item do carrinho");
     } finally {
-      setCartItemToRemove(null);
+      if (consulta === consultaFicha.current) setCartItemToRemove(null);
     }
   };
 
   const handleClearUserCart = () => {
+    if (!fichaCarregada) return;
     setIsClearingCart(true);
   };
 
   const confirmClearUserCart = async () => {
+    if (!fichaCarregada || !idCarregado) return;
+    const consulta = consultaFicha.current;
     if (isOffline) {
       toast.error("Operação negada: Você está offline.");
       return;
@@ -392,8 +430,9 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         .from("cart_items")
         .delete()
         .select("id")
-        .eq("user_id", userId);
+        .eq("user_id", idCarregado);
 
+      if (consulta !== consultaFicha.current) return;
       if (error) throw error;
 
       // Mesmo defeito do item único: policy de DELETE sem `is_admin()`
@@ -411,10 +450,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       toast.success("Carrinho limpo com sucesso!");
       fetchUserData();
     } catch (err) {
+      if (consulta !== consultaFicha.current) return;
       console.error("Error clearing user cart:", err);
       toast.error("Erro ao limpar carrinho");
     } finally {
-      setIsClearingCart(false);
+      if (consulta === consultaFicha.current) setIsClearingCart(false);
     }
   };
 
@@ -631,7 +671,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             Tentar novamente
           </button>
         </div>
-      ) : loading ? (
+      ) : !fichaCarregada ? (
         renderContentSkeleton()
       ) : (
         <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -1072,7 +1112,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                               variant="ghost"
                               size="sm"
                               onClick={handleClearUserCart}
-                              disabled={isOffline}
+                              disabled={isOffline || !fichaCarregada}
                               className="min-h-11 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 text-[11px] font-black uppercase tracking-widest text-red-500 shadow-sm transition-all hover:bg-red-500/20 disabled:pointer-events-none disabled:opacity-40"
                             >
                               Limpar Carrinho
@@ -1262,7 +1302,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                             item.variantId,
                                           )
                                         }
-                                        disabled={isOffline}
+                                        disabled={isOffline || !fichaCarregada}
                                         className="size-11 rounded-lg text-zinc-500 hover:bg-red-500/10 hover:text-red-500 disabled:pointer-events-none disabled:opacity-40"
                                         title="Remover do Carrinho"
                                       >
@@ -1521,7 +1561,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
       {/* Diálogo de Confirmação de Remoção de Item do Carrinho */}
       <AlertDialog
-        open={cartItemToRemove !== null}
+        open={fichaCarregada && cartItemToRemove !== null}
         onOpenChange={(open) => !open && setCartItemToRemove(null)}
       >
         <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
@@ -1539,6 +1579,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmRemoveCartItem}
+              disabled={isOffline || !fichaCarregada}
               className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
             >
               Remover Item
@@ -1549,7 +1590,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
       {/* Diálogo de Confirmação de Limpeza de Carrinho */}
       <AlertDialog
-        open={isClearingCart}
+        open={fichaCarregada && isClearingCart}
         onOpenChange={(open) => !open && setIsClearingCart(false)}
       >
         <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
@@ -1568,6 +1609,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmClearUserCart}
+              disabled={isOffline || !fichaCarregada}
               className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
             >
               Limpar Carrinho
