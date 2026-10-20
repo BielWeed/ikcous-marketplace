@@ -717,7 +717,18 @@ async function comoApp(c, uid, papelJwt, fn) {
   }
 }
 
+// Quem muda o papel de U_REB é OUTRO admin real (U_ADMIN): o banco recusa, com razão,
+// que alguém troque o próprio papel ("You cannot change your own role.").
+async function mudarPapelDoRebaixado(c, papel) {
+  await logar(c, U_ADMIN);
+  await c.query("UPDATE public.profiles SET role = $2 WHERE id = $1", [
+    U_REB,
+    papel,
+  ]);
+}
+
 async function rebaixado(c) {
+  await logar(c, U_ADMIN);
   await montarUsuario(c, U_REB, "admin", "admin");
   await logar(c, U_REB);
   const s = await abrir(c, 100);
@@ -735,10 +746,7 @@ async function rebaixado(c) {
     );
     assert.equal(ctrlF.replay, true, "controle do fechamento como app");
     // Rebaixado só no profiles, JWT velho dizendo admin: 42501 ANTES do replay.
-    await c.query(
-      "UPDATE public.profiles SET role = 'customer' WHERE id = $1",
-      [U_REB],
-    );
+    await mudarPapelDoRebaixado(c, "customer");
     await comoApp(c, U_REB, "admin", () =>
       recusa(
         CHAVE.movimentar(c, s, k, "suprimento", 10, "troco"),
@@ -756,9 +764,7 @@ async function rebaixado(c) {
       ),
     );
   } finally {
-    await c.query("UPDATE public.profiles SET role = 'admin' WHERE id = $1", [
-      U_REB,
-    ]);
+    await mudarPapelDoRebaixado(c, "admin");
     await logar(c, U_REB);
     await fecharSeAberta(c, CHAVE, s);
     await logar(c, U_ADMIN);
@@ -912,7 +918,13 @@ async function corridas(c, url) {
     const f = await corrida(url, fechar, fechar, "COMMIT");
     if (f.rB.e) throw f.rB.e;
     assert.equal(f.rA.replay, false);
-    assert.equal(f.rB.replay, true, "o 2º fechamento concorrente é replay");
+    // `corrida` devolve rB = { r } ou { e }: a resposta de B está em rB.r.
+    assert.equal(
+      f.rB.r.replay,
+      true,
+      `o 2º fechamento concorrente é replay (B respondeu ${JSON.stringify(f.rB.r)})`,
+    );
+    assert.equal(f.rB.r.id, f.rA.id, "o replay responde pela mesma sessão");
     assert.equal(
       (await lancamentosDaSessao(c, s)).filter(
         (l) => l.origem === "ajuste_caixa",
@@ -965,9 +977,10 @@ async function portaoERollback(c) {
     const mutacoes = [
       [
         "fin_caixa_fechar_sessao: corpo conhecido",
+        // Callback, não string: na string de substituição "$$" vira "$" e o SQL quebra.
         definicao(M252, "fin_caixa_fechar_sessao").replace(
           /\nEND;\n\$\$;$/,
-          "\n-- estranho\nEND;\n$$;",
+          () => "\n-- estranho\nEND;\n$$;",
         ),
       ],
       [
@@ -982,7 +995,7 @@ async function portaoERollback(c) {
         "rpcs antigas do caixa: corpo",
         definicao(M199, "fin_caixa_fechar").replace(
           /\nEND;\n\$\$;$/,
-          "\n-- estranho\nEND;\n$$;",
+          () => "\n-- estranho\nEND;\n$$;",
         ),
       ],
       [
