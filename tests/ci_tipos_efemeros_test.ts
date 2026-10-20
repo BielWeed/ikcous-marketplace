@@ -217,17 +217,22 @@ Deno.test("tipos efêmeros: falha, timeout, vazio e RPC ausente não escrevem", 
 });
 
 Deno.test("tipos efêmeros: RPC do caixa exige a chave exata, com ou sem aspas", () => {
-  const legado = TIPOS.replaceAll('"fin_caixa', "fin_caixa").replaceAll(
-    'sessao"',
-    "sessao",
-  ).replaceAll('chave"', "chave");
+  const legado = TIPOS.replaceAll('"fin_caixa', "fin_caixa")
+    .replaceAll('sessao"', "sessao")
+    .replaceAll('chave"', "chave");
   assert(!legado.includes('"fin_caixa'));
   montar({}, { status: 0, stdout: legado, stderr: "" }).gerar();
   for (const trocar of [
     ['"fin_caixa_fechar_sessao":', '"fin_caixa_fechar_sessao_antiga":'],
     ['"fin_caixa_fechar_sessao":', '"x_fin_caixa_fechar_sessao":'],
-    ['"fin_caixa_movimentar_com_chave":', '"fin_caixa_movimentar_com_chave_antiga":'],
-    ['"fin_caixa_movimentar_com_chave":', '"x_fin_caixa_movimentar_com_chave":'],
+    [
+      '"fin_caixa_movimentar_com_chave":',
+      '"fin_caixa_movimentar_com_chave_antiga":',
+    ],
+    [
+      '"fin_caixa_movimentar_com_chave":',
+      '"x_fin_caixa_movimentar_com_chave":',
+    ],
     ['"fin_caixa_fechar_sessao":', "// fin_caixa_fechar_sessao sem chave\n"],
   ]) {
     const stdout = TIPOS.replace(trocar[0], trocar[1]);
