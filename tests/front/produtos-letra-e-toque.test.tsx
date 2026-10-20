@@ -6,8 +6,8 @@
 // "Resetar Simulador" com 24px e rótulos de 8-10px. O jsdom não aplica CSS, então
 // a prova é sobre a classe escrita no arquivo (a medida real é do render do
 // integrador):
-//   a. o acesso único ao guia e simulador tem largura completa e altura mínima
-//      de 44px, definida pela classe compartilhada `produto-secundario`;
+//   a. os acessos discretos ao guia e aos valores mantêm altura mínima
+//      de 44px, sem o antigo botão de largura completa;
 //   b. os três campos do simulador têm `min-h-11`;
 //   c. "Resetar Simulador" tem `min-h-11` e letra de 11px;
 //   d. nenhum texto abaixo de 11px no arquivo todo (a aba "Conceitos" do guia
@@ -88,14 +88,22 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
 
   it("a. o acesso único ao guia e simulador mantém uma área de toque de 44px", () => {
     const botao = tagAntesDe(FONTE, "button", 'toggleHelp("global-guide")}');
-    expect(botao).toContain("produto-secundario");
-    expect(botao).toContain("w-full");
+    const valores = tagAntesDe(
+      FONTE,
+      "button",
+      'onClick={() => toggleHelp("financial-values")}',
+    );
+    for (const acesso of [botao, valores]) {
+      expect(acesso).toContain("min-h-11");
+      expect(acesso).toContain("text-xs");
+      expect(acesso).toContain("focus-visible:outline");
+      expect(acesso).not.toContain("w-full");
+    }
     expect(
       FONTE.match(/title="Guia Completo de Métricas e Ajuda"/g),
     ).toHaveLength(1);
-    const regra = CSS.match(/\.produto-secundario,[^{]+\{([^}]+)\}/)?.[1];
-    expect(regra).toMatch(/min-height:\s*44px/);
     expect(botao).not.toContain("expandedHelp");
+    expect(valores).toContain('aria-haspopup="dialog"');
   });
 
   it("b. os campos do simulador (custo, preço, estoque) têm min-h-11", () => {

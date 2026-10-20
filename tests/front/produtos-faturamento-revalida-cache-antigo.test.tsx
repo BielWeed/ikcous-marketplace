@@ -86,8 +86,19 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
   const tela = (active = true) => (
     <AdminProductsView onNavigate={navegar} active={active} />
   );
-  const faturamento = () =>
-    caixa.querySelector('[aria-label="Receita bruta potencial"]')?.textContent;
+  async function abrirValores() {
+    if (document.querySelector('[role="dialog"]')) return;
+    const botao = [...caixa.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Entender valores",
+    );
+    expect(botao).toBeDefined();
+    await act(async () => botao!.click());
+  }
+  async function faturamento() {
+    await abrirValores();
+    return document.querySelector('[aria-label="Receita bruta potencial"]')
+      ?.textContent;
+  }
 
   async function aquecerCache() {
     await act(async () => {
@@ -161,7 +172,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     expect(h.rpc).toHaveBeenCalledWith("get_admin_analytics_v2", {
       p_limit_days: 3650,
     });
-    expect(faturamento()).toContain("400,00");
+    expect(await faturamento()).toContain("400,00");
     expect(h.put).toHaveBeenCalledWith("store_config", {
       id: "admin_dashboard_stats",
       data: novo,
@@ -176,7 +187,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       raiz.render(tela());
     });
     expect(h.rpc).toHaveBeenCalledTimes(1);
-    expect(faturamento()).toContain("—");
+    expect(await faturamento()).toContain("—");
     expect(
       caixa.querySelector('[aria-label="Custo conhecido em estoque"]')
         ?.textContent,
@@ -185,7 +196,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       rede.resolver({ data: novo, error: null });
       await rede.promessa;
     });
-    expect(faturamento()).toContain("400,00");
+    expect(await faturamento()).toContain("400,00");
   });
 
   it("aba ainda inativa só busca quando for aberta", async () => {
@@ -198,7 +209,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       raiz.render(tela());
     });
     expect(h.rpc).toHaveBeenCalledTimes(1);
-    expect(faturamento()).toContain("400,00");
+    expect(await faturamento()).toContain("400,00");
   });
 
   it("leitura antiga do disco que termina depois da rede não apaga o campo novo", async () => {
@@ -209,12 +220,12 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     await act(async () => {
       raiz.render(tela());
     });
-    expect(faturamento()).toContain("400,00");
+    expect(await faturamento()).toContain("400,00");
     await act(async () => {
       disco.resolver({ id: "admin_dashboard_stats", data: legado });
       await disco.promessa;
     });
-    expect(faturamento()).toContain("400,00");
+    expect(await faturamento()).toContain("400,00");
     expect(h.rpc).toHaveBeenCalledTimes(1);
   });
 
@@ -231,6 +242,50 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     await act(async () => expandir!.click());
   }
 
+  it("resumo compacto compara a mesma base e deixa os detalhes fechados", async () => {
+    h.rpc.mockResolvedValue({
+      data: {
+        inventory: {
+          totalCost: 100,
+          totalValue: 160,
+          totalRevenue: 460,
+          revenueWithoutCost: 300,
+          productsWithoutCost: 1,
+          productsWithCost: 1,
+        },
+      },
+      error: null,
+    });
+    await act(async () => raiz.render(tela()));
+    expect(metrica("Venda prevista (com custo)")).toContain("160,00");
+    expect(metrica("Custo conhecido em estoque")).toContain("100,00");
+    expect(metrica("Lucro bruto potencial")).toContain("60,00");
+    expect(caixa.textContent).toContain("1 produto sem custo");
+    expect(caixa.textContent).not.toContain("460,00");
+    expect(caixa.textContent).not.toContain("300,00");
+    expect(caixa.textContent).not.toContain("Estimativa de venda do estoque");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    const entender = [...caixa.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Entender valores",
+    );
+    expect(entender).toBeDefined();
+    await act(async () => entender!.click());
+    const dialogo = document.querySelector('[role="dialog"]');
+    expect(dialogo).not.toBeNull();
+    expect(dialogo?.textContent).toContain("460,00");
+    expect(dialogo?.textContent).toContain("300,00");
+    expect(dialogo?.textContent).toContain("160,00");
+    expect(dialogo?.textContent).toContain("taxas");
+    const fechar = dialogo!.querySelector<HTMLButtonElement>(
+      'button[aria-label="Fechar"]',
+    );
+    expect(fechar).not.toBeNull();
+    await act(async () => fechar!.click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(caixa.textContent).not.toContain("460,00");
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+  });
+
   it("separa receita total, custo e lucro bruto parcial sem inventar lucro líquido", async () => {
     await mostrarInventario({
       totalCost: 100,
@@ -240,16 +295,18 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       productsWithoutCost: 1,
       productsWithCost: 1,
     });
-    expect(metrica("Receita bruta potencial")).toContain("460,00");
+    expect(metrica("Venda prevista (com custo)")).toContain("160,00");
     expect(metrica("Custo conhecido em estoque")).toContain("100,00");
     expect(metrica("Lucro bruto potencial")).toContain("60,00");
     expect(metrica("Lucro bruto potencial")).toContain("Parcial");
     expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
     expect(metrica("Lucro líquido potencial")).not.toContain("360,00");
-    expect(caixa.textContent).toContain("300,00");
-    expect(caixa.textContent).toContain("fora do custo e do lucro");
-    expect(caixa.textContent).toContain("160,00");
-    expect(caixa.textContent).toContain("taxas");
+    expect(caixa.textContent).not.toContain("300,00");
+    await abrirValores();
+    expect(document.body.textContent).toContain("300,00");
+    expect(document.body.textContent).toContain("fora do custo e do lucro");
+    expect(document.body.textContent).toContain("160,00");
+    expect(document.body.textContent).toContain("taxas");
     expect(caixa.textContent).not.toContain("Lucro se vender tudo");
   });
 
@@ -270,7 +327,10 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       expect(metrica("Lucro bruto potencial")).toContain(bruto);
       expect(metrica("Lucro bruto potencial")).not.toContain("Parcial");
       expect(metrica("Lucro líquido potencial")).toContain("Não calculado");
-      expect(caixa.textContent).toContain(
+      expect(caixa.textContent).not.toContain("produto sem custo");
+      expect(caixa.textContent).not.toContain("produtos sem custo");
+      await abrirValores();
+      expect(document.body.textContent).toContain(
         "Todos os produtos em estoque têm custo cadastrado",
       );
     },
@@ -287,7 +347,9 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
     });
     expect(metrica("Lucro bruto potencial")).toContain("—");
     expect(metrica("Lucro sobre o custo")).toContain("—");
-    expect(caixa.textContent).toContain(
+    expect(caixa.textContent).toContain("1 produto sem custo");
+    await abrirValores();
+    expect(document.body.textContent).toContain(
       "Nenhum custo cadastrado para o estoque",
     );
   });
@@ -337,7 +399,8 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       totalRevenue: 460,
     });
     expect(metrica("Lucro bruto potencial")).toContain("—");
-    expect(caixa.textContent).toContain("Aguardando a separação");
+    expect(caixa.textContent).toContain("Conferindo custos");
+    expect(metrica("Venda prevista (com custo)")).toContain("—");
     h.rpc.mockResolvedValue({
       data: {
         inventory: {
@@ -371,7 +434,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
         raiz.render(tela());
       });
       expect(h.rpc).toHaveBeenCalledTimes(1);
-      expect(faturamento()).toContain(valor === undefined ? "—" : "0,00");
+      expect(await faturamento()).toContain(valor === undefined ? "—" : "0,00");
       await act(async () => {
         raiz.render(tela());
       });

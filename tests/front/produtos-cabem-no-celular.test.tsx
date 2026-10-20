@@ -258,15 +258,26 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
   });
 
   describe("faturamento potencial do estoque", () => {
-    function faturamento() {
-      return hospedeiro.querySelector('[aria-label="Receita bruta potencial"]');
+    async function faturamento() {
+      if (!document.querySelector('[role="dialog"]')) {
+        const abrir = [...hospedeiro.querySelectorAll("button")].find(
+          (botao) => botao.textContent?.trim() === "Entender valores",
+        );
+        expect(abrir).toBeDefined();
+        await act(async () => abrir!.click());
+      }
+      return document.querySelector('[aria-label="Receita bruta potencial"]');
     }
 
-    it("mostra todo o estoque no resumo sem confundir com o lucro ou a página atual", async () => {
+    it("resumo usa a mesma base do lucro e o total do estoque fica nos detalhes", async () => {
       montarProduto({ price: 15, stock: 2, costPrice: null });
       await montar();
-
-      expect(faturamento()?.textContent).toContain("R$ 990,50");
+      expect(
+        hospedeiro.querySelector('[aria-label="Venda prevista (com custo)"]')
+          ?.textContent,
+      ).toContain("R$ 690,50");
+      expect(hospedeiro.textContent).not.toContain("990,50");
+      expect((await faturamento())?.textContent).toContain("R$ 990,50");
       expect(
         hospedeiro.querySelector('[aria-label="Lucro bruto potencial"]')
           ?.textContent,
@@ -282,8 +293,10 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       );
       await act(async () => abrir?.click());
 
-      expect(faturamento()?.textContent).toContain("R$ 990,50");
-      expect(faturamento()?.textContent).toContain("Todo o estoque ativo");
+      expect((await faturamento())?.textContent).toContain("R$ 990,50");
+      expect((await faturamento())?.textContent).toContain(
+        "Venda de todo o estoque",
+      );
     });
 
     it("banco antigo sem o campo não inventa faturamento usando custo e lucro", async () => {
@@ -291,8 +304,8 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       montarProduto({});
       await montar();
 
-      expect(faturamento()?.textContent).toContain("—");
-      expect(faturamento()?.textContent).not.toContain("690,50");
+      expect((await faturamento())?.textContent).toContain("—");
+      expect((await faturamento())?.textContent).not.toContain("690,50");
     });
 
     it("zero medido é R$ 0,00, não ausência de informação", async () => {
@@ -300,7 +313,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       montarProduto({});
       await montar();
 
-      expect(faturamento()?.textContent).toContain("R$ 0,00");
+      expect((await faturamento())?.textContent).toContain("R$ 0,00");
     });
 
     it.each([undefined, Number.NaN, Number.POSITIVE_INFINITY])(
@@ -313,7 +326,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         montarProduto({});
         await montar();
 
-        expect(faturamento()?.textContent).toContain("—");
+        expect((await faturamento())?.textContent).toContain("—");
       },
     );
   });
@@ -507,7 +520,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       ).toEqual([
         "Custo conhecido em estoque",
         "Lucro bruto potencial",
-        "Receita bruta potencial",
+        "Venda prevista (com custo)",
         "Lucro líquido potencial",
         "Lucro sobre o custo",
         "Produtos no Catálogo",

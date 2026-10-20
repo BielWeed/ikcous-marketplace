@@ -1,4 +1,15 @@
 {
+  "1.5.42": {
+    "titulo": "Resumo de Produtos mais limpo",
+    "novidades": [],
+    "correcoes": [
+      "Venda prevista, custo e lucro bruto do resumo agora consideram os mesmos produtos com custo cadastrado."
+    ],
+    "melhorias": [
+      "As explicações saíram da lista de produtos e só abrem ao tocar em Entender valores.",
+      "O total de vendas de todo o estoque fica separado nos detalhes, com um aviso curto quando falta cadastrar custos."
+    ]
+  },
   "1.5.41": {
     "titulo": "Custo e lucro do estoque sem confusão",
     "novidades": [],
