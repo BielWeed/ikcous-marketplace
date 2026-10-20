@@ -1,4 +1,14 @@
 {
+  "1.5.43": {
+    "titulo": "Mais segurança ao editar banners e responder perguntas",
+    "novidades": [],
+    "correcoes": [
+      "Uma resposta enviada não apaga a nova pergunta ou resposta que você começou a escrever.",
+      "O envio e o recorte de banners aguardam o salvamento terminar, sem trocar a imagem de outro banner nem apagar a imagem publicada.",
+      "Ao atualizar Produtos, os números e avisos da consulta mais recente são preservados."
+    ],
+    "melhorias": []
+  },
   "1.5.42": {
     "titulo": "Resumo de Produtos mais limpo",
     "novidades": [],
