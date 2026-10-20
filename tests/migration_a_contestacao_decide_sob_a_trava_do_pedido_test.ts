@@ -377,6 +377,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    // 20261252: sessao explicita, chave idempotente, corridas e mutantes do caixa.
+    "tests/banco/caixa-intencao-viva.cjs",
     // 20261251: lucro por variante e cobertura do custo do estoque.
     "tests/banco/lucro-do-estoque-viva.cjs",
     // 20261250: faturamento do estoque e compatibilidade dos portões ancestrais.
