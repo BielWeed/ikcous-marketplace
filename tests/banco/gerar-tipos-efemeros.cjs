@@ -146,6 +146,11 @@ function gerarTiposEfemeros() {
     throw erroGuarda;
   }
 
+  // CLI 2.121.0: URL sem sslmode que não é da pilha local exige TLS (sem queda para texto
+  // puro). O Postgres efêmero do CI (loopback, já validado acima) não oferece TLS.
+  const urlCli = new URL(url);
+  urlCli.searchParams.set("sslmode", "disable");
+
   let resultado;
   try {
     resultado = spawnSync(
@@ -161,7 +166,7 @@ function gerarTiposEfemeros() {
         "--schema",
         "public",
         "--db-url",
-        url,
+        urlCli.toString(),
       ],
       {
         shell: false,

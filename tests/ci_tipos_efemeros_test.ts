@@ -169,7 +169,7 @@ Deno.test("tipos efêmeros: comando fixado, sem shell nem credenciais herdadas",
     "--schema",
     "public",
     "--db-url",
-    URL_EFEMERA,
+    `${URL_EFEMERA}?sslmode=disable`,
   ]);
   assertEquals(opcoes.shell, false);
   assert(opcoes.timeout > 0 && opcoes.timeout <= 120000);
